@@ -15,6 +15,12 @@ type BookingWithDetails = Booking & {
   event: Required<Pick<Event, 'name' | 'date' | 'time'>>
 }
 
+type GroupedBookings = {
+  event: Pick<Event, 'id' | 'name' | 'date' | 'time'>
+  bookings: BookingWithDetails[]
+  reminders: BookingWithDetails[]
+}
+
 export default function BookingsPage() {
   const [bookings, setBookings] = useState<BookingWithDetails[]>([])
   const [events, setEvents] = useState<Event[]>([])
@@ -147,8 +153,8 @@ export default function BookingsPage() {
     }
 
     return (
-      <div className="max-w-2xl mx-auto py-6">
-        <h1 className="text-2xl font-bold mb-6">
+      <div className="max-w-2xl mx-auto py-4">
+        <h1 className="text-2xl font-bold mb-4">
           {editingBooking ? 'Edit Booking' : 'Create New Booking'}
         </h1>
         <BookingForm
@@ -165,14 +171,34 @@ export default function BookingsPage() {
     )
   }
 
+  // Group bookings by event and sort them
+  const groupedBookings: GroupedBookings[] = events
+    .map(event => {
+      const eventBookings = bookings.filter(b => b.event_id === event.id)
+      return {
+        event: {
+          id: event.id,
+          name: event.name,
+          date: event.date,
+          time: event.time
+        },
+        bookings: eventBookings
+          .filter(b => b.seats && b.seats > 0)
+          .sort((a, b) => (b.seats ?? 0) - (a.seats ?? 0)),
+        reminders: eventBookings.filter(b => !b.seats || b.seats === 0)
+      }
+    })
+    .filter(group => group.bookings.length > 0 || group.reminders.length > 0)
+    .sort((a, b) => new Date(a.event.date).getTime() - new Date(b.event.date).getTime())
+
   return (
-    <div className="py-6">
+    <div className="py-4">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="sm:flex sm:items-center">
           <div className="sm:flex-auto">
             <h1 className="text-2xl font-bold">Bookings</h1>
           </div>
-          <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
+          <div className="mt-2 sm:mt-0 sm:ml-16 sm:flex-none">
             <div className="flex items-center space-x-4">
               <select
                 value={selectedEvent?.id ?? ''}
@@ -207,34 +233,40 @@ export default function BookingsPage() {
           </div>
         </div>
 
-        <div className="mt-8 flex flex-col">
-          <div className="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
-            <div className="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
-              <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
+        <div className="mt-4 flex flex-col space-y-4">
+          {groupedBookings.map(group => (
+            <div key={group.event.id} className="bg-white shadow ring-1 ring-black ring-opacity-5 md:rounded-lg overflow-hidden">
+              <div className="px-4 py-3 sm:px-6 bg-gray-50 border-b border-gray-200">
+                <h3 className="text-lg font-medium leading-6 text-gray-900">
+                  {group.event.name}
+                </h3>
+                <p className="mt-0.5 text-sm text-gray-500">
+                  {formatDate(group.event.date)} at {group.event.time}
+                </p>
+              </div>
+
+              {group.bookings.length > 0 && (
                 <table className="min-w-full divide-y divide-gray-300">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      <th className="px-3 py-2.5 text-left text-sm font-semibold text-gray-900">
                         Customer
                       </th>
-                      <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                        Event
-                      </th>
-                      <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                        Date & Time
-                      </th>
-                      <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      <th className="px-3 py-2.5 text-left text-sm font-semibold text-gray-900">
                         Seats
                       </th>
-                      <th className="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                      <th className="px-3 py-2.5 text-left text-sm font-semibold text-gray-900">
+                        Created
+                      </th>
+                      <th className="relative py-2.5 pl-3 pr-4 sm:pr-6">
                         <span className="sr-only">Actions</span>
                       </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 bg-white">
-                    {bookings.map((booking) => (
+                    {group.bookings.map((booking) => (
                       <tr key={booking.id}>
-                        <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
+                        <td className="whitespace-nowrap px-3 py-2.5 text-sm text-gray-900">
                           <Link
                             href={`/customers/${booking.customer_id}`}
                             className="text-indigo-600 hover:text-indigo-900"
@@ -242,26 +274,18 @@ export default function BookingsPage() {
                             {booking.customer.first_name} {booking.customer.last_name}
                           </Link>
                         </td>
-                        <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                          <Link
-                            href={`/events/${booking.event_id}`}
-                            className="text-indigo-600 hover:text-indigo-900"
-                          >
-                            {booking.event.name}
-                          </Link>
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                          {formatDate(booking.event.date)} at {booking.event.time}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
+                        <td className="whitespace-nowrap px-3 py-2.5 text-sm text-gray-900">
                           <Link
                             href={`/bookings/${booking.id}`}
-                            className="text-indigo-600 hover:text-indigo-900"
+                            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"
                           >
-                            {booking.seats ?? 'Reminder only'}
+                            {booking.seats} Seats
                           </Link>
                         </td>
-                        <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                        <td className="whitespace-nowrap px-3 py-2.5 text-sm text-gray-500">
+                          {formatDate(booking.created_at)}
+                        </td>
+                        <td className="relative whitespace-nowrap py-2.5 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                           <button
                             onClick={() => setEditingBooking(booking)}
                             className="text-indigo-600 hover:text-indigo-900 mr-4"
@@ -279,21 +303,68 @@ export default function BookingsPage() {
                         </td>
                       </tr>
                     ))}
-                    {bookings.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={5}
-                          className="px-3 py-4 text-sm text-gray-500 text-center"
-                        >
-                          No bookings found. Create one to get started.
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
-              </div>
+              )}
+
+              {group.reminders.length > 0 && (
+                <>
+                  <div className="px-4 py-2 bg-gray-50 border-t border-gray-200">
+                    <h4 className="text-sm font-medium text-gray-500">Reminders</h4>
+                  </div>
+                  <table className="min-w-full divide-y divide-gray-300">
+                    <tbody className="divide-y divide-gray-200 bg-white">
+                      {group.reminders.map((booking) => (
+                        <tr key={booking.id}>
+                          <td className="whitespace-nowrap px-3 py-2.5 text-sm text-gray-900">
+                            <Link
+                              href={`/customers/${booking.customer_id}`}
+                              className="text-indigo-600 hover:text-indigo-900"
+                            >
+                              {booking.customer.first_name} {booking.customer.last_name}
+                            </Link>
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2.5 text-sm text-gray-900">
+                            <Link
+                              href={`/bookings/${booking.id}`}
+                              className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800"
+                            >
+                              Reminder
+                            </Link>
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2.5 text-sm text-gray-500">
+                            {formatDate(booking.created_at)}
+                          </td>
+                          <td className="relative whitespace-nowrap py-2.5 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                            <button
+                              onClick={() => setEditingBooking(booking)}
+                              className="text-indigo-600 hover:text-indigo-900 mr-4"
+                            >
+                              <PencilIcon className="h-5 w-5" />
+                              <span className="sr-only">Edit</span>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteBooking(booking)}
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              <TrashIcon className="h-5 w-5" />
+                              <span className="sr-only">Delete</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
             </div>
-          </div>
+          ))}
+
+          {groupedBookings.length === 0 && (
+            <div className="text-center text-gray-500 bg-white shadow ring-1 ring-black ring-opacity-5 md:rounded-lg p-4">
+              No bookings found. Create one to get started.
+            </div>
+          )}
         </div>
       </div>
     </div>
