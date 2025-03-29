@@ -5,11 +5,13 @@ import { supabase } from '@/lib/supabase'
 import { useEffect, useState } from 'react'
 import { CustomerForm } from '@/components/CustomerForm'
 import { CustomerImport } from '@/components/CustomerImport'
-import { PlusIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
+  const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([])
+  const [searchTerm, setSearchTerm] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
@@ -18,6 +20,22 @@ export default function CustomersPage() {
   useEffect(() => {
     loadCustomers()
   }, [])
+
+  useEffect(() => {
+    if (searchTerm.trim() === '') {
+      setFilteredCustomers(customers)
+      return
+    }
+
+    const searchTermLower = searchTerm.toLowerCase()
+    const searchTermDigits = searchTerm.replace(/\D/g, '') // Remove non-digits for phone number search
+    const filtered = customers.filter(customer => 
+      customer.first_name.toLowerCase().includes(searchTermLower) ||
+      (customer.last_name?.toLowerCase() || '').includes(searchTermLower) ||
+      customer.mobile_number.replace(/\D/g, '').includes(searchTermDigits)
+    )
+    setFilteredCustomers(filtered)
+  }, [searchTerm, customers])
 
   async function loadCustomers() {
     try {
@@ -169,7 +187,22 @@ export default function CustomersPage() {
           </div>
         </div>
 
-        <div className="mt-8 flex flex-col">
+        <div className="mt-4">
+          <div className="relative max-w-md">
+            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+              <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
+            </div>
+            <input
+              type="text"
+              className="block w-full rounded-md border-gray-300 pl-10 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+              placeholder="Search by name or mobile number"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-col">
           <div className="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
             <div className="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
               <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
@@ -188,7 +221,7 @@ export default function CustomersPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 bg-white">
-                    {customers.map((customer) => (
+                    {filteredCustomers.map((customer) => (
                       <tr key={customer.id}>
                         <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                           {customer.first_name} {customer.last_name}
@@ -214,13 +247,13 @@ export default function CustomersPage() {
                         </td>
                       </tr>
                     ))}
-                    {customers.length === 0 && (
+                    {filteredCustomers.length === 0 && (
                       <tr>
                         <td
                           colSpan={3}
                           className="px-3 py-4 text-sm text-gray-500 text-center"
                         >
-                          No customers found. Create one to get started.
+                          {searchTerm.trim() ? 'No customers found matching your search.' : 'No customers found. Create one to get started.'}
                         </td>
                       </tr>
                     )}
