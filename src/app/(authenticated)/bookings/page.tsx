@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { BookingForm } from '@/components/BookingForm'
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
+import { sendBookingConfirmation } from '@/app/actions/sms'
 
 type BookingWithDetails = Booking & {
   customer: { first_name: string; last_name: string }
@@ -60,8 +61,20 @@ export default function BookingsPage() {
     bookingData: Omit<Booking, 'id' | 'created_at'>
   ) {
     try {
-      const { error } = await supabase.from('bookings').insert([bookingData])
+      const { data, error } = await supabase
+        .from('bookings')
+        .insert([bookingData])
+        .select()
+        .single()
+
       if (error) throw error
+
+      // Send booking confirmation SMS
+      const { success, error: smsError } = await sendBookingConfirmation(data.id)
+      if (!success) {
+        console.error('Failed to send SMS:', smsError)
+        toast.error('Booking created but failed to send confirmation SMS')
+      }
 
       toast.success('Booking created successfully')
       setShowForm(false)
