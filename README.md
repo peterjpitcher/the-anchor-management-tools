@@ -1,36 +1,112 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Event Planner 3.0
 
-## Getting Started
+A web-based application for managing events and customer bookings with automated SMS notifications.
 
-First, run the development server:
+## Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- User authentication with Supabase Auth
+- Event management (create, edit, delete)
+- Customer management (create, edit, delete)
+- Booking management (create, edit, delete)
+- Automated SMS notifications via Twilio
+  - Booking confirmations
+  - 7-day reminders
+  - 24-hour reminders
+
+## Tech Stack
+
+- **Frontend**: Next.js 14 with TypeScript and Tailwind CSS
+- **Authentication**: Supabase Auth
+- **Database**: Supabase (PostgreSQL)
+- **SMS Service**: Twilio
+- **Hosting**: Vercel
+- **Scheduler**: GitHub Actions
+
+## Prerequisites
+
+- Node.js 18.17 or later
+- npm 9.6.7 or later
+- Supabase account
+- Twilio account
+- GitHub account (for deployment and scheduled tasks)
+
+## Environment Variables
+
+Create a `.env.local` file in the root directory with the following variables:
+
+```env
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=your-supabase-project-url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
+
+# Twilio
+TWILIO_ACCOUNT_SID=your-twilio-account-sid
+TWILIO_AUTH_TOKEN=your-twilio-auth-token
+TWILIO_PHONE_NUMBER=your-twilio-phone-number
+
+# General
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Setup Instructions
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Clone the repository
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Set up your environment variables
+4. Set up your Supabase database tables
+5. Run the development server:
+   ```bash
+   npm run dev
+   ```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Database Schema
 
-## Learn More
+### Events Table
+- `id` (UUID, Primary Key)
+- `name` (string, required)
+- `date` (date, required)
+- `time` (string, required)
+- `created_at` (timestamp, auto-generated)
 
-To learn more about Next.js, take a look at the following resources:
+### Customers Table
+- `id` (UUID, Primary Key)
+- `first_name` (string, required)
+- `last_name` (string, required)
+- `mobile_number` (string, required)
+- `created_at` (timestamp, auto-generated)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Bookings Table
+- `id` (UUID, Primary Key)
+- `customer_id` (foreign key to Customers)
+- `event_id` (foreign key to Events)
+- `seats` (integer, nullable)
+- `created_at` (timestamp, auto-generated)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## SMS Templates
 
-## Deploy on Vercel
+### Booking Confirmation
+```
+Hi {{customer_name}}, your booking for {{event_name}} on {{event_date}} at {{event_time}} is confirmed. We've reserved {{seats}} seat(s) for you. Reply to this message if you need to make any changes. The Anchor.
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 7-Day Reminder
+```
+Hi {{customer_name}}, don't forget, we've got our {{event_name}} on {{event_date}} at {{event_time}}! If you'd like to book seats, WhatsApp/Call 01753682707
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### 24-Hour Reminder
+```
+Hi {{customer_name}}, just a reminder that you're booked for {{event_name}} tomorrow at {{event_time}}. We look forward to seeing you! Reply to this message if you need to make any changes. The Anchor.
+```
+
+## Contributing
+
+This is a private project. Please do not share or distribute without permission.
+
+## License
+
+Private - All rights reserved
