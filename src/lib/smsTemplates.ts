@@ -10,7 +10,7 @@ export const smsTemplates = {
       month: 'long',
       day: 'numeric',
     })
-    return `Hi ${params.firstName}, your booking for ${params.seats} people for our ${params.eventName} on ${formattedDate} at ${params.eventTime} is confirmed! See you then. If you've got any questions, WhatsApp/Call 01753682707`
+    return `Hi ${params.firstName}, your booking for ${params.seats} people for our ${params.eventName} on ${formattedDate} at ${params.eventTime} is confirmed! See you then. The Anchor 01753682707`
   },
 
   reminderOnly: (params: {
@@ -23,7 +23,7 @@ export const smsTemplates = {
       month: 'long',
       day: 'numeric',
     })
-    return `Hi ${params.firstName}, don't forget, we've got our ${params.eventName} on ${formattedDate} at ${params.eventTime}! If you'd like to book seats, WhatsApp/Call 01753682707`
+    return `Hi ${params.firstName}, don't forget, we've got our ${params.eventName} on ${formattedDate} at ${params.eventTime}! Let us know if you want to book seats. The Anchor 01753682707`
   },
 
   dayBeforeReminder: (params: {
@@ -35,7 +35,7 @@ export const smsTemplates = {
     const seatInfo = params.seats
       ? `and you have ${params.seats} seats booked`
       : ''
-    return `Hi ${params.firstName}, just a reminder that our ${params.eventName} is tomorrow at ${params.eventTime} ${seatInfo}. If you've got any questions, WhatsApp/Call 01753682707`
+    return `Hi ${params.firstName}, just a reminder that our ${params.eventName} is tomorrow at ${params.eventTime} ${seatInfo}. See you tomorrow! The Anchor 01753682707`
   },
 
   weekBeforeReminder: (params: {
@@ -52,6 +52,6 @@ export const smsTemplates = {
     const seatInfo = params.seats
       ? `and you have ${params.seats} seats booked`
       : ''
-    return `Hi ${params.firstName}, just a reminder that our ${params.eventName} is next week on ${formattedDate} at ${params.eventTime} ${seatInfo}. If you've got any questions, WhatsApp/Call 01753682707`
+    return `Hi ${params.firstName}, just a reminder that our ${params.eventName} is next week on ${formattedDate} at ${params.eventTime} ${seatInfo}. See you here! The Anchor 01753682707`
   },
 } 

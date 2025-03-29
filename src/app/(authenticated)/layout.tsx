@@ -4,6 +4,7 @@ import { Navigation } from '@/components/Navigation'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
 import { useRouter } from 'next/navigation'
+import { BottomNavigation } from '@/components/BottomNavigation'
 
 export default function AuthenticatedLayout({
   children,
@@ -54,6 +55,7 @@ export default function AuthenticatedLayout({
           <main className="flex-1 overflow-y-auto bg-gray-50 p-6">
             {children}
           </main>
+          <BottomNavigation />
         </div>
       </div>
     </div>
