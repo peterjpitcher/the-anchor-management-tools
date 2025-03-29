@@ -10,15 +10,12 @@ export default function LoginPage() {
   const router = useRouter()
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_IN') {
+    // Check if we're already logged in
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
         router.push('/')
       }
     })
-
-    return () => {
-      subscription.unsubscribe()
-    }
   }, [router])
 
   return (
@@ -37,7 +34,7 @@ export default function LoginPage() {
             supabaseClient={supabase}
             appearance={{ theme: ThemeSupa }}
             providers={[]}
-            redirectTo="/"
+            redirectTo={`${typeof window !== 'undefined' ? window.location.origin : ''}/`}
             onlyThirdPartyProviders={false}
             view="sign_in"
           />

@@ -2,15 +2,10 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  const requestHeaders = new Headers(request.headers)
-  requestHeaders.set('x-url', request.url)
+  // Initialize response
+  const response = NextResponse.next()
 
-  const response = NextResponse.next({
-    request: {
-      headers: requestHeaders,
-    },
-  })
-
+  // Create server-side supabase client
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -34,26 +29,27 @@ export async function middleware(request: NextRequest) {
           })
         },
       },
-      auth: {
-        flowType: 'pkce',
-      },
     }
   )
 
   try {
-    const { data: { session } } = await supabase.auth.getSession()
+    // Refresh session if expired
+    await supabase.auth.getSession()
 
-    // If there's no session and we're not on the login page, redirect to login
-    if (!session && !request.nextUrl.pathname.startsWith('/login')) {
-      const redirectUrl = request.nextUrl.clone()
-      redirectUrl.pathname = '/login'
+    // Get the latest session
+    const { data: { session } } = await supabase.auth.getSession()
+    const pathname = request.nextUrl.pathname
+
+    // Handle authentication redirects
+    if (!session && pathname !== '/login') {
+      // Redirect to login if not authenticated and not on login page
+      const redirectUrl = new URL('/login', request.url)
       return NextResponse.redirect(redirectUrl)
     }
 
-    // If we have a session and we're on the login page, redirect to home
-    if (session && request.nextUrl.pathname.startsWith('/login')) {
-      const redirectUrl = request.nextUrl.clone()
-      redirectUrl.pathname = '/'
+    if (session && pathname === '/login') {
+      // Redirect to home if authenticated and on login page
+      const redirectUrl = new URL('/', request.url)
       return NextResponse.redirect(redirectUrl)
     }
 
@@ -61,8 +57,7 @@ export async function middleware(request: NextRequest) {
   } catch (error) {
     console.error('Auth error:', error)
     // On auth error, redirect to login
-    const redirectUrl = request.nextUrl.clone()
-    redirectUrl.pathname = '/login'
+    const redirectUrl = new URL('/login', request.url)
     return NextResponse.redirect(redirectUrl)
   }
 }
