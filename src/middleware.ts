@@ -2,7 +2,7 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  // Initialize response
+  // Create a response object
   const response = NextResponse.next()
 
   // Create server-side supabase client
@@ -15,17 +15,23 @@ export async function middleware(request: NextRequest) {
           return request.cookies.get(name)?.value
         },
         set(name: string, value: string, options: CookieOptions) {
+          // Set the cookie on the response
           response.cookies.set({
             name,
             value,
             ...options,
+            // Ensure cookies work in iframe
+            sameSite: 'lax',
+            httpOnly: true,
           })
         },
         remove(name: string, options: CookieOptions) {
+          // Remove the cookie from the response
           response.cookies.set({
             name,
             value: '',
             ...options,
+            maxAge: -1,
           })
         },
       },
@@ -33,10 +39,7 @@ export async function middleware(request: NextRequest) {
   )
 
   try {
-    // Refresh session if expired
-    await supabase.auth.getSession()
-
-    // Get the latest session
+    // Get the session - this will also refresh the session if needed
     const { data: { session } } = await supabase.auth.getSession()
     const pathname = request.nextUrl.pathname
 
@@ -70,9 +73,7 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * - login (auth page)
      */
-    '/((?!api|_next/static|_next/image|favicon.ico|login).*)',
-    '/login',
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
   ],
 } 
