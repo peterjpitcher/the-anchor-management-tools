@@ -2,6 +2,8 @@ import { Booking, Customer, Event } from '@/types/database'
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import { MagnifyingGlassIcon } from '@heroicons/react/24/outline'
+import { formatDate } from '@/lib/dateUtils'
 
 interface BookingFormProps {
   booking?: Booking
@@ -14,18 +16,20 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
   const [customerId, setCustomerId] = useState(booking?.customer_id ?? '')
   const [seats, setSeats] = useState(booking?.seats?.toString() ?? '')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [customers, setCustomers] = useState<Pick<Customer, 'id' | 'first_name' | 'last_name'>[]>([])
+  const [customers, setCustomers] = useState<Pick<Customer, 'id' | 'first_name' | 'last_name' | 'mobile_number'>[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [allCustomers, setAllCustomers] = useState<Pick<Customer, 'id' | 'first_name' | 'last_name' | 'mobile_number'>[]>([])
 
   const loadAvailableCustomers = useCallback(async () => {
     try {
       // First get all customers
-      const { data: allCustomers } = await supabase
+      const { data: fetchedCustomers } = await supabase
         .from('customers')
-        .select('id, first_name, last_name')
+        .select('id, first_name, last_name, mobile_number')
         .order('first_name')
 
-      if (!allCustomers) {
+      if (!fetchedCustomers) {
         toast.error('Failed to load customers')
         return
       }
@@ -44,10 +48,11 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
       // Filter out customers who already have a booking for this event
       // unless it's the current booking's customer
       const existingCustomerIds = new Set(existingBookings.map(b => b.customer_id))
-      const availableCustomers = allCustomers.filter(customer => 
+      const availableCustomers = fetchedCustomers.filter(customer => 
         !existingCustomerIds.has(customer.id) || customer.id === booking?.customer_id
       )
 
+      setAllCustomers(availableCustomers)
       setCustomers(availableCustomers)
     } catch (error) {
       console.error('Error loading customers:', error)
@@ -60,6 +65,21 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
   useEffect(() => {
     loadAvailableCustomers()
   }, [loadAvailableCustomers])
+
+  useEffect(() => {
+    if (searchTerm.trim() === '') {
+      setCustomers(allCustomers)
+      return
+    }
+
+    const searchTermLower = searchTerm.toLowerCase()
+    const filtered = allCustomers.filter(customer => 
+      customer.first_name.toLowerCase().includes(searchTermLower) ||
+      customer.last_name.toLowerCase().includes(searchTermLower) ||
+      customer.mobile_number.includes(searchTerm)
+    )
+    setCustomers(filtered)
+  }, [searchTerm, allCustomers])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -82,11 +102,39 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
+        <h2 className="text-lg font-medium text-gray-900 mb-4">
+          New Booking for {event.name} on {formatDate(event.date)} at {event.time}
+        </h2>
+      </div>
+
+      <div className="space-y-2">
+        <label
+          htmlFor="search"
+          className="block text-sm font-medium text-gray-700"
+        >
+          Search Customer
+        </label>
+        <div className="relative">
+          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+            <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
+          </div>
+          <input
+            type="text"
+            id="search"
+            className="block w-full rounded-md border-gray-300 pl-10 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+            placeholder="Search by name or mobile number"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div>
         <label
           htmlFor="customer"
           className="block text-sm font-medium text-gray-700"
         >
-          Customer
+          Select Customer
         </label>
         <select
           id="customer"
@@ -98,11 +146,16 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
           <option value="">Select a customer</option>
           {customers.map((customer) => (
             <option key={customer.id} value={customer.id}>
-              {customer.first_name} {customer.last_name}
+              {customer.first_name} {customer.last_name} ({customer.mobile_number})
             </option>
           ))}
         </select>
-        {customers.length === 0 && (
+        {customers.length === 0 && searchTerm && (
+          <p className="mt-1 text-sm text-gray-500">
+            No customers found matching your search.
+          </p>
+        )}
+        {customers.length === 0 && !searchTerm && (
           <p className="mt-1 text-sm text-red-600">
             No available customers. Either all customers are already booked for this event,
             or no customers exist in the system.

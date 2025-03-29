@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { EventForm } from '@/components/EventForm'
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
+import { formatDate } from '@/lib/dateUtils'
 
 export default function EventsPage() {
   const [events, setEvents] = useState<Event[]>([])
@@ -152,7 +153,7 @@ export default function EventsPage() {
                           {event.name}
                         </td>
                         <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                          {new Date(event.date).toLocaleDateString()}
+                          {formatDate(event.date)}
                         </td>
                         <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                           {event.time}
