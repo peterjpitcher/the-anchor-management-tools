@@ -57,26 +57,20 @@ export function EventForm({ event, onSubmit, onCancel }: EventFormProps) {
 
       <div>
         <label htmlFor="time" className="block text-sm font-medium text-gray-700">
-          Time
+          Time (e.g., "7:30pm" or "19:30")
         </label>
         <input
-          type="time"
+          type="text"
           id="time"
           value={time}
-          onChange={(e) => {
-            // Convert 24h time to 12h format with am/pm
-            const timeValue = e.target.value
-            if (timeValue) {
-              const [hours, minutes] = timeValue.split(':')
-              const hour = parseInt(hours, 10)
-              const ampm = hour >= 12 ? 'pm' : 'am'
-              const hour12 = hour % 12 || 12
-              setTime(`${hour12}:${minutes}${ampm}`)
-            }
-          }}
+          onChange={(e) => setTime(e.target.value)}
+          placeholder="Enter time (e.g., 7:30pm)"
           required
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
+        <p className="mt-1 text-sm text-gray-500">
+          Enter time in any format (e.g., "7:30pm", "19:30", "7:30 PM")
+        </p>
       </div>
 
       <div className="flex justify-end space-x-3">

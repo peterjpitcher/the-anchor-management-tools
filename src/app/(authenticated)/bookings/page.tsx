@@ -69,15 +69,15 @@ export default function BookingsPage() {
 
       if (error) throw error
 
-      // Send booking confirmation SMS
+      // Try to send SMS but don't block on failure
       try {
         await sendBookingConfirmation(data.id)
-        toast.success('Booking created successfully')
       } catch (error) {
         console.error('Failed to send SMS:', error)
-        toast.error('Booking created but failed to send confirmation SMS')
+        // Don't show error toast for SMS failure
       }
 
+      toast.success('Booking created successfully')
       setShowForm(false)
       setSelectedEvent(null)
       loadData()
