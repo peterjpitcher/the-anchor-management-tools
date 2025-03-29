@@ -2,8 +2,8 @@ name: Daily SMS Reminders
 
 on:
   schedule:
-    - cron: '0 9 * * *'  # Runs at 9 AM UTC every day
-  workflow_dispatch:  # Allows manual triggering for testing
+    - cron: '0 9 * * *'  # Run at 9 AM UTC daily
+  workflow_dispatch:      # Allow manual triggering
 
 jobs:
   send-reminders:
@@ -20,56 +20,46 @@ jobs:
             exit 1
           fi
           echo "Required secrets are set"
-          echo "Using Vercel URL: ${{ secrets.VERCEL_URL }}"
 
-      - name: Send HTTP Request
+      - name: Send Reminders
         run: |
-          # Make sure URL starts with https://
+          # Normalize URL (ensure it starts with https:// and has no double slashes)
           VERCEL_URL="${{ secrets.VERCEL_URL }}"
           if [[ ! $VERCEL_URL =~ ^https:// ]]; then
             VERCEL_URL="https://${VERCEL_URL}"
           fi
+          # Remove any double slashes in the path portion (after the host)
+          VERCEL_URL=$(echo "$VERCEL_URL" | sed 's#\([^:]\)//\+#\1/#g')
           
           echo "Making request to: ${VERCEL_URL}/api/cron/reminders"
           echo "Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          
-          # First make a verbose request to see headers
-          echo "Testing endpoint with verbose output..."
-          curl -X GET "${VERCEL_URL}/api/cron/reminders" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET_KEY }}" \
-            -H "Content-Type: application/json" \
-            -v \
-            -L \
-            2>&1 | sed 's/Bearer [^ ]*/Bearer ***/'
-          
-          echo "\n--- Making actual request ---\n"
-          
+
           response=$(curl -X GET "${VERCEL_URL}/api/cron/reminders" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET_KEY }}" \
             -H "Content-Type: application/json" \
             -w "\n%{http_code}\n%{url_effective}\n%{time_total}\n%{size_download}\n%{speed_download}" \
             -L \
             -s)
-          
+
           # Extract the response components
-          speed_download=$(echo "$response" | tail -n1)
-          size_download=$(echo "$response" | tail -n2 | head -n1)
-          time_total=$(echo "$response" | tail -n3 | head -n1)
-          url_effective=$(echo "$response" | tail -n4 | head -n1)
-          status_code=$(echo "$response" | tail -n5 | head -n1)
           body=$(echo "$response" | sed 'N;$!N;$!N;$!N;$d')
-          
+          status_code=$(echo "$response" | tail -n5 | head -n1)
+          url_effective=$(echo "$response" | tail -n4 | head -n1)
+          time_total=$(echo "$response" | tail -n3 | head -n1)
+          size_download=$(echo "$response" | tail -n2 | head -n1)
+          speed_download=$(echo "$response" | tail -n1)
+
           echo "Response body: $body"
           echo "Status code: $status_code"
           echo "Final URL: $url_effective"
           echo "Request time: ${time_total}s"
           echo "Response size: ${size_download} bytes"
           echo "Download speed: ${speed_download} bytes/sec"
-          
+
           if [ "$status_code" -ge 400 ]; then
             echo "Error: Request failed with status $status_code"
             echo "Full response: $response"
             exit 1
           fi
-          
+
           echo "Reminder check completed successfully"
