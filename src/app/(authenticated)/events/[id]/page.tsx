@@ -59,11 +59,11 @@ export default function EventViewPage({ params }) {
     <table className="min-w-full divide-y divide-gray-200">
       <thead className="bg-gray-50">
         <tr>
-          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
+          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">Customer</th>
           {type === 'booking' && (
-            <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Seats</th>
+            <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">Seats</th>
           )}
-          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">Created</th>
         </tr>
       </thead>
       <tbody className="bg-white divide-y divide-gray-200">
@@ -81,14 +81,14 @@ export default function EventViewPage({ params }) {
                 </span>
               </td>
             )}
-            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+            <td className="px-4 py-2 whitespace-nowrap text-sm text-black">
               {formatDate(booking.created_at)}
             </td>
           </tr>
         ))}
         {items.length === 0 && (
           <tr>
-            <td colSpan={type === 'booking' ? 3 : 2} className="px-4 py-2 text-center text-sm text-gray-500">
+            <td colSpan={type === 'booking' ? 3 : 2} className="px-4 py-2 text-center text-sm text-black">
               No {type === 'booking' ? 'bookings' : 'reminders'} found
             </td>
           </tr>
@@ -99,25 +99,25 @@ export default function EventViewPage({ params }) {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Event Details</h1>
+      <h1 className="text-2xl font-bold mb-4 text-black">Event Details</h1>
       <div className="bg-white shadow rounded-lg overflow-hidden mb-6">
         <div className="px-4 py-5 sm:p-6">
           <dl className="grid grid-cols-4 gap-4">
             <div>
-              <dt className="text-sm font-medium text-gray-500">Name</dt>
-              <dd className="mt-1">{event.name}</dd>
+              <dt className="text-sm font-medium text-black">Name</dt>
+              <dd className="mt-1 text-black">{event.name}</dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">Date</dt>
-              <dd className="mt-1">{formatDate(event.date)}</dd>
+              <dt className="text-sm font-medium text-black">Date</dt>
+              <dd className="mt-1 text-black">{formatDate(event.date)}</dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">Time</dt>
-              <dd className="mt-1">{event.time}</dd>
+              <dt className="text-sm font-medium text-black">Time</dt>
+              <dd className="mt-1 text-black">{event.time}</dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">Total Seats</dt>
-              <dd className="mt-1">{totalSeats}</dd>
+              <dt className="text-sm font-medium text-black">Total Seats</dt>
+              <dd className="mt-1 text-black">{totalSeats}</dd>
             </div>
           </dl>
         </div>
@@ -125,7 +125,7 @@ export default function EventViewPage({ params }) {
 
       {activeBookings.length > 0 && (
         <>
-          <h2 className="text-xl font-bold mb-4">Bookings</h2>
+          <h2 className="text-xl font-bold mb-4 text-black">Bookings</h2>
           <div className="bg-white shadow rounded-lg overflow-hidden mb-8">
             <BookingTable items={activeBookings} type="booking" />
           </div>
@@ -134,7 +134,7 @@ export default function EventViewPage({ params }) {
 
       {reminders.length > 0 && (
         <>
-          <h2 className="text-xl font-bold mb-4">Reminders</h2>
+          <h2 className="text-xl font-bold mb-4 text-black">Reminders</h2>
           <div className="bg-white shadow rounded-lg overflow-hidden">
             <BookingTable items={reminders} type="reminder" />
           </div>
@@ -142,7 +142,7 @@ export default function EventViewPage({ params }) {
       )}
 
       {bookings.length === 0 && (
-        <div className="text-center text-gray-500 mt-8">
+        <div className="text-center text-black mt-8">
           No bookings or reminders found
         </div>
       )}

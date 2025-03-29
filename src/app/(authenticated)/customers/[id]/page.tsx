@@ -59,13 +59,13 @@ export default function CustomerViewPage({ params }) {
     <table className="min-w-full divide-y divide-gray-200">
       <thead className="bg-gray-50">
         <tr>
-          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Event</th>
-          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">Event</th>
+          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">Date</th>
+          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">Time</th>
           {type === 'booking' && (
-            <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Seats</th>
+            <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">Seats</th>
           )}
-          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">Created</th>
         </tr>
       </thead>
       <tbody className="bg-white divide-y divide-gray-200">
@@ -76,10 +76,10 @@ export default function CustomerViewPage({ params }) {
                 {booking.event.name}
               </Link>
             </td>
-            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+            <td className="px-4 py-2 whitespace-nowrap text-sm text-black">
               {formatDate(booking.event.date)}
             </td>
-            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+            <td className="px-4 py-2 whitespace-nowrap text-sm text-black">
               {booking.event.time}
             </td>
             {type === 'booking' && (
@@ -89,7 +89,7 @@ export default function CustomerViewPage({ params }) {
                 </span>
               </td>
             )}
-            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+            <td className="px-4 py-2 whitespace-nowrap text-sm text-black">
               {formatDate(booking.created_at)}
             </td>
           </tr>
@@ -107,25 +107,25 @@ export default function CustomerViewPage({ params }) {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Customer Details</h1>
+      <h1 className="text-2xl font-bold mb-4 text-black">Customer Details</h1>
       <div className="bg-white shadow rounded-lg overflow-hidden mb-6">
         <div className="px-4 py-5 sm:p-6">
-          <dl className="grid grid-cols-4 gap-4">
+          <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
-              <dt className="text-sm font-medium text-gray-500">Name</dt>
-              <dd className="mt-1">{customer.first_name} {customer.last_name}</dd>
+              <dt className="text-sm font-medium text-black">Name</dt>
+              <dd className="mt-1 text-black">{customer.first_name} {customer.last_name}</dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">Mobile</dt>
-              <dd className="mt-1">{customer.mobile_number}</dd>
+              <dt className="text-sm font-medium text-black">Mobile</dt>
+              <dd className="mt-1 text-black">{customer.mobile_number}</dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">Total Seats</dt>
-              <dd className="mt-1">{totalSeats}</dd>
+              <dt className="text-sm font-medium text-black">Total Seats</dt>
+              <dd className="mt-1 text-black">{totalSeats}</dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">Created</dt>
-              <dd className="mt-1">{formatDate(customer.created_at)}</dd>
+              <dt className="text-sm font-medium text-black">Created</dt>
+              <dd className="mt-1 text-black">{formatDate(customer.created_at)}</dd>
             </div>
           </dl>
         </div>
@@ -133,7 +133,7 @@ export default function CustomerViewPage({ params }) {
 
       {activeBookings.length > 0 && (
         <>
-          <h2 className="text-xl font-bold mb-4">Bookings</h2>
+          <h2 className="text-xl font-bold mb-4 text-black">Bookings</h2>
           <div className="bg-white shadow rounded-lg overflow-hidden mb-8">
             <BookingTable items={activeBookings} type="booking" />
           </div>
@@ -142,7 +142,7 @@ export default function CustomerViewPage({ params }) {
 
       {reminders.length > 0 && (
         <>
-          <h2 className="text-xl font-bold mb-4">Reminders</h2>
+          <h2 className="text-xl font-bold mb-4 text-black">Reminders</h2>
           <div className="bg-white shadow rounded-lg overflow-hidden">
             <BookingTable items={reminders} type="reminder" />
           </div>
@@ -150,7 +150,7 @@ export default function CustomerViewPage({ params }) {
       )}
 
       {bookings.length === 0 && (
-        <div className="text-center text-gray-500 mt-8">
+        <div className="text-center text-black mt-8">
           No bookings or reminders found
         </div>
       )}

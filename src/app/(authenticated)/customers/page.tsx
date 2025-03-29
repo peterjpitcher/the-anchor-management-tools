@@ -8,10 +8,13 @@ import { CustomerImport } from '@/components/CustomerImport'
 import toast from 'react-hot-toast'
 import { PlusIcon } from '@heroicons/react/24/outline'
 import { CustomerName } from '@/components/CustomerName'
-import { CustomerWithLoyalty, getLoyalCustomers } from '@/lib/customerUtils'
+import { CustomerWithLoyalty, getLoyalCustomers, sortCustomersByLoyalty } from '@/lib/customerUtils'
+import Link from 'next/link'
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<CustomerWithLoyalty[]>([])
+  const [filteredCustomers, setFilteredCustomers] = useState<CustomerWithLoyalty[]>([])
+  const [searchTerm, setSearchTerm] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<CustomerWithLoyalty | null>(null)
@@ -36,7 +39,7 @@ export default function CustomersPage() {
         isLoyal: loyalCustomerIds.includes(customer.id)
       }))
 
-      setCustomers(customersWithLoyalty)
+      setCustomers(sortCustomersByLoyalty(customersWithLoyalty))
     } catch (error) {
       console.error('Error loading customers:', error)
       toast.error('Failed to load customers')
@@ -48,6 +51,28 @@ export default function CustomersPage() {
   useEffect(() => {
     loadData()
   }, [])
+
+  useEffect(() => {
+    if (searchTerm.trim() === '') {
+      setFilteredCustomers(customers)
+      return
+    }
+
+    const searchTermLower = searchTerm.toLowerCase()
+    const searchTermDigits = searchTerm.replace(/\D/g, '') // Remove non-digits for phone number search
+    const filtered = customers.filter(customer => {
+      const fullName = `${customer.first_name} ${customer.last_name}`.toLowerCase()
+      const reversedFullName = `${customer.last_name} ${customer.first_name}`.toLowerCase()
+      const mobileDigits = customer.mobile_number.replace(/\D/g, '')
+      
+      return fullName.includes(searchTermLower) ||
+             reversedFullName.includes(searchTermLower) ||
+             customer.first_name.toLowerCase().includes(searchTermLower) ||
+             customer.last_name.toLowerCase().includes(searchTermLower) ||
+             mobileDigits.includes(searchTermDigits)
+    })
+    setFilteredCustomers(filtered)
+  }, [searchTerm, customers])
 
   async function handleCreateCustomer(
     customerData: Omit<Customer, 'id' | 'created_at'>
@@ -162,7 +187,7 @@ export default function CustomersPage() {
       <div className="sm:flex sm:items-center">
         <div className="sm:flex-auto">
           <h1 className="text-xl font-semibold text-black">Customers</h1>
-          <p className="mt-2 text-sm text-gray-700">
+          <p className="mt-2 text-sm text-black">
             A list of all customers and their contact information.
           </p>
         </div>
@@ -180,6 +205,18 @@ export default function CustomersPage() {
           >
             Import Customers
           </button>
+        </div>
+      </div>
+
+      <div className="max-w-3xl">
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="Search by name or mobile number"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-black"
+          />
         </div>
       </div>
 
@@ -202,12 +239,14 @@ export default function CustomersPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 bg-white">
-                  {customers.map((customer) => (
+                  {filteredCustomers.map((customer) => (
                     <tr key={customer.id}>
                       <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-black sm:pl-6">
-                        <CustomerName customer={customer} />
+                        <Link href={`/customers/${customer.id}`} className="hover:text-indigo-600">
+                          <CustomerName customer={customer} />
+                        </Link>
                       </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-700">
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
                         {customer.mobile_number}
                       </td>
                       <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">

@@ -46,14 +46,14 @@ export default function BookingViewPage({ params }) {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">
+      <h1 className="text-2xl font-bold mb-4 text-black">
         {isReminder ? 'Reminder' : 'Booking'} Details
       </h1>
       <div className="bg-white shadow rounded-lg overflow-hidden">
         <div className="px-4 py-5 sm:p-6">
           <dl className="grid grid-cols-3 gap-4">
             <div>
-              <dt className="text-sm font-medium text-gray-500">Customer</dt>
+              <dt className="text-sm font-medium text-black">Customer</dt>
               <dd className="mt-1">
                 <Link href={`/customers/${booking.customer_id}`} className="text-blue-600 hover:text-blue-800">
                   {booking.customer.first_name} {booking.customer.last_name}
@@ -61,7 +61,7 @@ export default function BookingViewPage({ params }) {
               </dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">Event</dt>
+              <dt className="text-sm font-medium text-black">Event</dt>
               <dd className="mt-1">
                 <Link href={`/events/${booking.event_id}`} className="text-blue-600 hover:text-blue-800">
                   {booking.event.name}
@@ -69,7 +69,7 @@ export default function BookingViewPage({ params }) {
               </dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">Type</dt>
+              <dt className="text-sm font-medium text-black">Type</dt>
               <dd className="mt-1">
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                   isReminder ? 'bg-purple-100 text-purple-800' : 'bg-green-100 text-green-800'
@@ -79,16 +79,16 @@ export default function BookingViewPage({ params }) {
               </dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">Date</dt>
-              <dd className="mt-1">{formatDate(booking.event.date)}</dd>
+              <dt className="text-sm font-medium text-black">Date</dt>
+              <dd className="mt-1 text-black">{formatDate(booking.event.date)}</dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">Time</dt>
-              <dd className="mt-1">{booking.event.time}</dd>
+              <dt className="text-sm font-medium text-black">Time</dt>
+              <dd className="mt-1 text-black">{booking.event.time}</dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">Created</dt>
-              <dd className="mt-1">{formatDate(booking.created_at)}</dd>
+              <dt className="text-sm font-medium text-black">Created</dt>
+              <dd className="mt-1 text-black">{formatDate(booking.created_at)}</dd>
             </div>
           </dl>
         </div>
