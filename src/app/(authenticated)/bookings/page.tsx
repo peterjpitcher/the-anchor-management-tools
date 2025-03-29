@@ -7,6 +7,7 @@ import { BookingForm } from '@/components/BookingForm'
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 import { sendBookingConfirmation } from '@/app/actions/sms'
+import { formatDate } from '@/lib/dateUtils'
 
 type BookingWithDetails = Booking & {
   customer: { first_name: string; last_name: string }
@@ -180,8 +181,7 @@ export default function BookingsPage() {
                 <option value="">Select an event</option>
                 {events.map((event) => (
                   <option key={event.id} value={event.id}>
-                    {event.name} ({new Date(event.date).toLocaleDateString()} at{' '}
-                    {event.time})
+                    {event.name} ({formatDate(event.date)} at {event.time})
                   </option>
                 ))}
               </select>
@@ -237,8 +237,7 @@ export default function BookingsPage() {
                           {booking.event.name}
                         </td>
                         <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                          {new Date(booking.event.date).toLocaleDateString()} at{' '}
-                          {booking.event.time}
+                          {formatDate(booking.event.date)} at {booking.event.time}
                         </td>
                         <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                           {booking.seats ?? 'Reminder only'}
