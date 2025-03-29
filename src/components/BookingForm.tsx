@@ -22,20 +22,17 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
   const [customers, setCustomers] = useState<CustomerWithLoyalty[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [allCustomers, setAllCustomers] = useState<Pick<Customer, 'id' | 'first_name' | 'last_name' | 'mobile_number'>[]>([])
 
-  const loadAvailableCustomers = useCallback(async () => {
+  async function loadCustomers() {
     try {
-      // First get all customers
-      const { data: fetchedCustomers } = await supabase
+      setIsLoading(true)
+      // Get all customers
+      const { data: customersData, error: customersError } = await supabase
         .from('customers')
-        .select('id, first_name, last_name, mobile_number')
+        .select('*')
         .order('first_name')
 
-      if (!fetchedCustomers) {
-        toast.error('Failed to load customers')
-        return
-      }
+      if (customersError) throw customersError
 
       // Then get existing bookings for this event
       const { data: existingBookings } = await supabase
@@ -48,73 +45,48 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
         return
       }
 
+      // Get loyal customer IDs
+      const loyalCustomerIds = await getLoyalCustomers(supabase)
+
       // Filter out customers who already have a booking for this event
       // unless it's the current booking's customer
       const existingCustomerIds = new Set(existingBookings.map(b => b.customer_id))
-      const availableCustomers = fetchedCustomers.filter(customer => 
-        !existingCustomerIds.has(customer.id) || customer.id === booking?.customer_id
-      )
+      const availableCustomers = (customersData || [])
+        .filter(customer => !existingCustomerIds.has(customer.id) || customer.id === booking?.customer_id)
+        .map(customer => ({
+          ...customer,
+          isLoyal: loyalCustomerIds.includes(customer.id)
+        }))
 
-      setAllCustomers(availableCustomers)
-      setCustomers(availableCustomers)
+      // Sort customers with loyal ones at the top
+      const sortedCustomers = sortCustomersByLoyalty(availableCustomers)
+      setCustomers(sortedCustomers)
     } catch (error) {
       console.error('Error loading customers:', error)
       toast.error('Failed to load customers')
     } finally {
       setIsLoading(false)
     }
+  }
+
+  useEffect(() => {
+    loadCustomers()
   }, [booking?.customer_id, event.id])
 
   useEffect(() => {
-    async function loadCustomers() {
-      try {
-        setIsLoading(true)
-        // Get all customers
-        const { data: customersData, error: customersError } = await supabase
-          .from('customers')
-          .select('id, first_name, last_name, mobile_number')
-          .order('first_name')
-
-        if (customersError) throw customersError
-
-        // Get loyal customer IDs
-        const loyalCustomerIds = await getLoyalCustomers(supabase)
-
-        // Mark loyal customers
-        const customersWithLoyalty = (customersData || []).map(customer => ({
-          ...customer,
-          isLoyal: loyalCustomerIds.includes(customer.id)
-        }))
-
-        // Sort customers with loyal ones at the top
-        const sortedCustomers = sortCustomersByLoyalty(customersWithLoyalty)
-        setCustomers(sortedCustomers)
-      } catch (error) {
-        console.error('Error loading customers:', error)
-        toast.error('Failed to load customers')
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    loadCustomers()
-  }, [])
-
-  useEffect(() => {
     if (searchTerm.trim() === '') {
-      setCustomers(allCustomers)
       return
     }
 
     const searchTermLower = searchTerm.toLowerCase()
     const searchTermDigits = searchTerm.replace(/\D/g, '') // Remove non-digits for phone number search
-    const filtered = allCustomers.filter(customer => 
+    const filtered = customers.filter(customer => 
       customer.first_name.toLowerCase().includes(searchTermLower) ||
       customer.last_name.toLowerCase().includes(searchTermLower) ||
       customer.mobile_number.replace(/\D/g, '').includes(searchTermDigits)
     )
     setCustomers(filtered)
-  }, [searchTerm, allCustomers])
+  }, [searchTerm])
 
   const handleSubmit = async (e: React.FormEvent, addAnother: boolean = false) => {
     e.preventDefault()
@@ -132,7 +104,7 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
         setSeats('')
         setSearchTerm('')
         // Reload available customers
-        await loadAvailableCustomers()
+        await loadCustomers()
       }
     } finally {
       setIsSubmitting(false)
@@ -191,7 +163,7 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
           <option value="">Select a customer</option>
           {customers.map((customer) => (
             <option key={customer.id} value={customer.id}>
-              <CustomerName customer={customer} showMobile />
+              {customer.first_name} {customer.last_name} ({customer.mobile_number}) {customer.isLoyal ? '★' : ''}
             </option>
           ))}
         </select>
