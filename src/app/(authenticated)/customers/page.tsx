@@ -24,6 +24,7 @@ export default function CustomersPage() {
       const { data, error } = await supabase
         .from('customers')
         .select('*')
+        .order('first_name', { ascending: true })
         .order('last_name', { ascending: true })
 
       if (error) throw error
