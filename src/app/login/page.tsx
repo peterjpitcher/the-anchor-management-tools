@@ -3,20 +3,37 @@
 import { Auth } from '@supabase/auth-ui-react'
 import { ThemeSupa } from '@supabase/auth-ui-shared'
 import { useRouter } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
 export default function LoginPage() {
   const router = useRouter()
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // Check if we're already logged in
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        router.push('/')
+    const checkSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          router.replace('/')
+        }
+      } catch (error) {
+        console.error('Error checking session:', error)
+      } finally {
+        setIsLoading(false)
       }
-    })
+    }
+
+    checkSession()
   }, [router])
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">Loading...</div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
