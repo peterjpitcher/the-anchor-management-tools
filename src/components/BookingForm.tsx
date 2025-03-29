@@ -5,7 +5,6 @@ import toast from 'react-hot-toast'
 import { MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import { formatDate } from '@/lib/dateUtils'
 import { CustomerWithLoyalty, getLoyalCustomers, sortCustomersByLoyalty } from '@/lib/customerUtils'
-import { CustomerName } from '@/components/CustomerName'
 
 interface BookingFormProps {
   booking?: Booking
@@ -23,7 +22,7 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
   const [searchTerm, setSearchTerm] = useState('')
   const [allCustomers, setAllCustomers] = useState<CustomerWithLoyalty[]>([])
 
-  async function loadCustomers() {
+  const loadCustomers = useCallback(async () => {
     try {
       setIsLoading(true)
       // Get all customers
@@ -68,11 +67,11 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [booking?.customer_id, event.id])
 
   useEffect(() => {
     loadCustomers()
-  }, [booking?.customer_id, event.id, loadCustomers])
+  }, [loadCustomers])
 
   useEffect(() => {
     if (searchTerm.trim() === '') {
