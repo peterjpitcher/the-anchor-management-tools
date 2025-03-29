@@ -45,4 +45,4 @@ jobs:
           if [ "$status_code" -ge 400 ]; then
             echo "Error: Request failed with status $status_code"
             exit 1
-          fi 
+          fi
