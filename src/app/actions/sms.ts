@@ -71,13 +71,22 @@ export async function sendEventReminders() {
   try {
     // Skip if Twilio credentials are not configured
     if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.TWILIO_PHONE_NUMBER) {
-      console.log('Skipping reminders - Twilio not configured')
+      console.log('Skipping reminders - Twilio not configured:', {
+        hasSid: !!process.env.TWILIO_ACCOUNT_SID,
+        hasToken: !!process.env.TWILIO_AUTH_TOKEN,
+        hasPhone: !!process.env.TWILIO_PHONE_NUMBER
+      })
       return
     }
 
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      console.log('Missing Supabase configuration')
+      throw new Error('Supabase configuration missing')
+    }
+
     const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     )
 
     const today = new Date()
@@ -90,6 +99,8 @@ export async function sendEventReminders() {
     const tomorrowStr = tomorrow.toISOString().split('T')[0]
     const nextWeekStr = nextWeek.toISOString().split('T')[0]
 
+    console.log('Checking for events on:', { tomorrowStr, nextWeekStr })
+
     // Get bookings for tomorrow and next week
     const { data: bookings, error: bookingsError } = await supabase
       .from('bookings')
@@ -98,13 +109,21 @@ export async function sendEventReminders() {
       .not('customer.mobile_number', 'is', null)
 
     if (bookingsError) {
-      throw new Error('Failed to fetch bookings for reminders')
+      console.error('Database error:', bookingsError)
+      throw new Error(`Failed to fetch bookings: ${bookingsError.message}`)
     }
 
     if (!bookings || bookings.length === 0) {
-      console.log('No reminders to send')
+      console.log('No reminders to send - No bookings found for dates:', { tomorrowStr, nextWeekStr })
       return
     }
+
+    console.log('Found bookings:', bookings.map(b => ({
+      eventName: b.event.name,
+      eventDate: b.event.date,
+      customerName: `${b.customer.first_name} ${b.customer.last_name}`,
+      mobile: b.customer.mobile_number
+    })))
 
     const client = twilio(
       process.env.TWILIO_ACCOUNT_SID,
@@ -113,7 +132,10 @@ export async function sendEventReminders() {
 
     // Send reminders for each booking
     for (const booking of bookings) {
-      if (!booking.customer?.mobile_number) continue
+      if (!booking.customer?.mobile_number) {
+        console.log('Skipping booking - No mobile number:', booking.id)
+        continue
+      }
 
       const eventDate = new Date(booking.event.date)
       const isNextDay = eventDate.toISOString().split('T')[0] === tomorrowStr
@@ -134,6 +156,14 @@ export async function sendEventReminders() {
           })
 
       try {
+        console.log('Sending SMS to:', {
+          to: booking.customer.mobile_number,
+          message,
+          isNextDay,
+          eventName: booking.event.name,
+          eventDate: booking.event.date
+        })
+
         await client.messages.create({
           body: message,
           to: booking.customer.mobile_number,
@@ -142,9 +172,11 @@ export async function sendEventReminders() {
         console.log(`Reminder sent to ${booking.customer.first_name} for ${booking.event.name}`)
       } catch (error) {
         console.error(`Failed to send reminder to ${booking.customer.first_name}:`, error)
+        // Continue with other bookings even if one fails
       }
     }
   } catch (error) {
     console.error('Failed to process reminders:', error)
+    throw error
   }
 } 
