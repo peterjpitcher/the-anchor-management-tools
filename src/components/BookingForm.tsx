@@ -4,6 +4,8 @@ import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 import { MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import { formatDate } from '@/lib/dateUtils'
+import { StarIcon } from '@heroicons/react/24/solid'
+import { CustomerWithLoyalty, getLoyalCustomers, sortCustomersByLoyalty } from '@/lib/customerUtils'
 
 interface BookingFormProps {
   booking?: Booking
@@ -16,7 +18,7 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
   const [customerId, setCustomerId] = useState(booking?.customer_id ?? '')
   const [seats, setSeats] = useState(booking?.seats?.toString() ?? '')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [customers, setCustomers] = useState<Pick<Customer, 'id' | 'first_name' | 'last_name' | 'mobile_number'>[]>([])
+  const [customers, setCustomers] = useState<CustomerWithLoyalty[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [allCustomers, setAllCustomers] = useState<Pick<Customer, 'id' | 'first_name' | 'last_name' | 'mobile_number'>[]>([])
@@ -63,8 +65,39 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
   }, [booking?.customer_id, event.id])
 
   useEffect(() => {
-    loadAvailableCustomers()
-  }, [loadAvailableCustomers])
+    async function loadCustomers() {
+      try {
+        setIsLoading(true)
+        // Get all customers
+        const { data: customersData, error: customersError } = await supabase
+          .from('customers')
+          .select('id, first_name, last_name, mobile_number')
+          .order('first_name')
+
+        if (customersError) throw customersError
+
+        // Get loyal customer IDs
+        const loyalCustomerIds = await getLoyalCustomers(supabase)
+
+        // Mark loyal customers
+        const customersWithLoyalty = (customersData || []).map(customer => ({
+          ...customer,
+          isLoyal: loyalCustomerIds.includes(customer.id)
+        }))
+
+        // Sort customers with loyal ones at the top
+        const sortedCustomers = sortCustomersByLoyalty(customersWithLoyalty)
+        setCustomers(sortedCustomers)
+      } catch (error) {
+        console.error('Error loading customers:', error)
+        toast.error('Failed to load customers')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadCustomers()
+  }, [])
 
   useEffect(() => {
     if (searchTerm.trim() === '') {
@@ -148,15 +181,17 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
         </label>
         <select
           id="customer"
+          name="customer"
+          className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
           value={customerId}
           onChange={(e) => setCustomerId(e.target.value)}
           required
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         >
           <option value="">Select a customer</option>
           {customers.map((customer) => (
             <option key={customer.id} value={customer.id}>
               {customer.first_name} {customer.last_name} ({customer.mobile_number})
+              {customer.isLoyal && ' ★'}
             </option>
           ))}
         </select>
