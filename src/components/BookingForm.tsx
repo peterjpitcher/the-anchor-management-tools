@@ -1,10 +1,9 @@
-import { Booking, Customer, Event } from '@/types/database'
+import { Booking, Event } from '@/types/database'
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 import { MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import { formatDate } from '@/lib/dateUtils'
-import { StarIcon } from '@heroicons/react/24/solid'
 import { CustomerWithLoyalty, getLoyalCustomers, sortCustomersByLoyalty } from '@/lib/customerUtils'
 import { CustomerName } from '@/components/CustomerName'
 
@@ -22,6 +21,7 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
   const [customers, setCustomers] = useState<CustomerWithLoyalty[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [allCustomers, setAllCustomers] = useState<CustomerWithLoyalty[]>([])
 
   async function loadCustomers() {
     try {
@@ -60,6 +60,7 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
 
       // Sort customers with loyal ones at the top
       const sortedCustomers = sortCustomersByLoyalty(availableCustomers)
+      setAllCustomers(sortedCustomers)
       setCustomers(sortedCustomers)
     } catch (error) {
       console.error('Error loading customers:', error)
@@ -71,22 +72,23 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
 
   useEffect(() => {
     loadCustomers()
-  }, [booking?.customer_id, event.id])
+  }, [booking?.customer_id, event.id, loadCustomers])
 
   useEffect(() => {
     if (searchTerm.trim() === '') {
+      setCustomers(allCustomers)
       return
     }
 
     const searchTermLower = searchTerm.toLowerCase()
     const searchTermDigits = searchTerm.replace(/\D/g, '') // Remove non-digits for phone number search
-    const filtered = customers.filter(customer => 
+    const filtered = allCustomers.filter(customer => 
       customer.first_name.toLowerCase().includes(searchTermLower) ||
       customer.last_name.toLowerCase().includes(searchTermLower) ||
       customer.mobile_number.replace(/\D/g, '').includes(searchTermDigits)
     )
     setCustomers(filtered)
-  }, [searchTerm])
+  }, [searchTerm, allCustomers])
 
   const handleSubmit = async (e: React.FormEvent, addAnother: boolean = false) => {
     e.preventDefault()

@@ -1,44 +1,21 @@
 'use client'
 
-import { Customer } from '@/types/database'
+import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useEffect, useState } from 'react'
+import { Customer } from '@/types/database'
 import { CustomerForm } from '@/components/CustomerForm'
 import { CustomerImport } from '@/components/CustomerImport'
-import { PlusIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
-import Link from 'next/link'
+import { PlusIcon } from '@heroicons/react/24/outline'
 import { CustomerName } from '@/components/CustomerName'
 import { CustomerWithLoyalty, getLoyalCustomers } from '@/lib/customerUtils'
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<CustomerWithLoyalty[]>([])
-  const [filteredCustomers, setFilteredCustomers] = useState<CustomerWithLoyalty[]>([])
-  const [searchTerm, setSearchTerm] = useState('')
-  const [isLoading, setIsLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<CustomerWithLoyalty | null>(null)
-
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  useEffect(() => {
-    if (searchTerm.trim() === '') {
-      setFilteredCustomers(customers)
-      return
-    }
-
-    const searchTermLower = searchTerm.toLowerCase()
-    const searchTermDigits = searchTerm.replace(/\D/g, '') // Remove non-digits for phone number search
-    const filtered = customers.filter(customer => 
-      customer.first_name.toLowerCase().includes(searchTermLower) ||
-      (customer.last_name?.toLowerCase() || '').includes(searchTermLower) ||
-      customer.mobile_number.replace(/\D/g, '').includes(searchTermDigits)
-    )
-    setFilteredCustomers(filtered)
-  }, [searchTerm, customers])
+  const [isLoading, setIsLoading] = useState(true)
 
   async function loadData() {
     try {
@@ -67,6 +44,10 @@ export default function CustomersPage() {
       setIsLoading(false)
     }
   }
+
+  useEffect(() => {
+    loadData()
+  }, [])
 
   async function handleCreateCustomer(
     customerData: Omit<Customer, 'id' | 'created_at'>
