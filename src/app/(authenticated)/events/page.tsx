@@ -7,6 +7,7 @@ import { EventForm } from '@/components/EventForm'
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 import { formatDate } from '@/lib/dateUtils'
+import Link from 'next/link'
 
 export default function EventsPage() {
   const [events, setEvents] = useState<Event[]>([])
@@ -150,7 +151,12 @@ export default function EventsPage() {
                     {events.map((event) => (
                       <tr key={event.id}>
                         <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                          {event.name}
+                          <Link
+                            href={`/events/${event.id}`}
+                            className="text-indigo-600 hover:text-indigo-900"
+                          >
+                            {event.name}
+                          </Link>
                         </td>
                         <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                           {formatDate(event.date)}

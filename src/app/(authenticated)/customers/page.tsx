@@ -7,6 +7,7 @@ import { CustomerForm } from '@/components/CustomerForm'
 import { CustomerImport } from '@/components/CustomerImport'
 import { PlusIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
+import Link from 'next/link'
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -224,7 +225,12 @@ export default function CustomersPage() {
                     {filteredCustomers.map((customer) => (
                       <tr key={customer.id}>
                         <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                          {customer.first_name} {customer.last_name}
+                          <Link
+                            href={`/customers/${customer.id}`}
+                            className="text-indigo-600 hover:text-indigo-900"
+                          >
+                            {customer.first_name} {customer.last_name}
+                          </Link>
                         </td>
                         <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                           {customer.mobile_number}
