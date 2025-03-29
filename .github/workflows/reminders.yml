@@ -9,12 +9,17 @@ jobs:
   send-reminders:
     runs-on: ubuntu-latest
     steps:
-      - name: Check Vercel URL
+      - name: Check Required Secrets
         run: |
           if [ -z "${{ secrets.VERCEL_URL }}" ]; then
             echo "Error: VERCEL_URL secret is not set"
             exit 1
           fi
+          if [ -z "${{ secrets.CRON_SECRET_KEY }}" ]; then
+            echo "Error: CRON_SECRET_KEY secret is not set"
+            exit 1
+          fi
+          echo "Required secrets are set"
           echo "Using Vercel URL: ${{ secrets.VERCEL_URL }}"
 
       - name: Send HTTP Request
@@ -24,25 +29,32 @@ jobs:
           if [[ ! $VERCEL_URL =~ ^https:// ]]; then
             VERCEL_URL="https://${VERCEL_URL}"
           fi
+          
           echo "Making request to: ${VERCEL_URL}/api/cron/reminders"
+          echo "Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
           
           response=$(curl -X GET "${VERCEL_URL}/api/cron/reminders" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET_KEY }}" \
             -H "Content-Type: application/json" \
-            -w "\n%{http_code}\n%{url_effective}" \
+            -w "\n%{http_code}\n%{url_effective}\n%{time_total}" \
             -L \
             -s)
           
-          # Extract the last two lines (status code and final URL)
-          url_effective=$(echo "$response" | tail -n1)
-          status_code=$(echo "$response" | tail -n2 | head -n1)
-          body=$(echo "$response" | sed 'N;$d')
+          # Extract the response components
+          time_total=$(echo "$response" | tail -n1)
+          url_effective=$(echo "$response" | tail -n2 | head -n1)
+          status_code=$(echo "$response" | tail -n3 | head -n1)
+          body=$(echo "$response" | sed 'N;$!N;$d')
           
           echo "Response body: $body"
           echo "Status code: $status_code"
           echo "Final URL: $url_effective"
+          echo "Request time: ${time_total}s"
           
           if [ "$status_code" -ge 400 ]; then
             echo "Error: Request failed with status $status_code"
+            echo "Full response: $response"
             exit 1
           fi
+          
+          echo "Reminder check completed successfully"
