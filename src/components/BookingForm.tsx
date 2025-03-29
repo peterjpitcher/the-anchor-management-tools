@@ -6,6 +6,7 @@ import { MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import { formatDate } from '@/lib/dateUtils'
 import { StarIcon } from '@heroicons/react/24/solid'
 import { CustomerWithLoyalty, getLoyalCustomers, sortCustomersByLoyalty } from '@/lib/customerUtils'
+import { CustomerName } from '@/components/CustomerName'
 
 interface BookingFormProps {
   booking?: Booking
@@ -139,13 +140,13 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
   }
 
   if (isLoading) {
-    return <div>Loading available customers...</div>
+    return <div className="text-black">Loading available customers...</div>
   }
 
   return (
     <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-4">
       <div>
-        <h2 className="text-lg font-medium text-gray-900 mb-4">
+        <h2 className="text-lg font-medium text-black mb-4">
           New Booking for {event.name} on {formatDate(event.date)} at {event.time}
         </h2>
       </div>
@@ -153,18 +154,18 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
       <div className="space-y-2">
         <label
           htmlFor="search"
-          className="block text-sm font-medium text-gray-700"
+          className="block text-sm font-medium text-black"
         >
           Search Customer
         </label>
         <div className="relative">
           <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-            <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
+            <MagnifyingGlassIcon className="h-5 w-5 text-gray-600" aria-hidden="true" />
           </div>
           <input
             type="text"
             id="search"
-            className="block w-full rounded-md border-gray-300 pl-10 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+            className="block w-full rounded-md border-gray-300 pl-10 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-black placeholder-gray-600"
             placeholder="Search by name or mobile number"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -175,14 +176,14 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
       <div>
         <label
           htmlFor="customer"
-          className="block text-sm font-medium text-gray-700"
+          className="block text-sm font-medium text-black"
         >
           Select Customer
         </label>
         <select
           id="customer"
           name="customer"
-          className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+          className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md text-black"
           value={customerId}
           onChange={(e) => setCustomerId(e.target.value)}
           required
@@ -190,18 +191,17 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
           <option value="">Select a customer</option>
           {customers.map((customer) => (
             <option key={customer.id} value={customer.id}>
-              {customer.first_name} {customer.last_name} ({customer.mobile_number})
-              {customer.isLoyal && ' ★'}
+              <CustomerName customer={customer} showMobile />
             </option>
           ))}
         </select>
         {customers.length === 0 && searchTerm && (
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-gray-700">
             No customers found matching your search.
           </p>
         )}
         {customers.length === 0 && !searchTerm && (
-          <p className="mt-1 text-sm text-red-600">
+          <p className="mt-1 text-sm text-red-700">
             No available customers. Either all customers are already booked for this event,
             or no customers exist in the system.
           </p>
@@ -211,7 +211,7 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
       <div>
         <label
           htmlFor="seats"
-          className="block text-sm font-medium text-gray-700"
+          className="block text-sm font-medium text-black"
         >
           Number of Seats (Optional)
         </label>
@@ -221,9 +221,9 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
           value={seats}
           onChange={(e) => setSeats(e.target.value)}
           min="1"
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-black"
         />
-        <p className="mt-1 text-sm text-gray-500">
+        <p className="mt-1 text-sm text-gray-700">
           Leave empty if this is just a reminder
         </p>
       </div>
@@ -249,7 +249,7 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
         <button
           type="submit"
           disabled={isSubmitting}
-          className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+          className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
         >
           {isSubmitting ? 'Saving...' : booking ? 'Update Booking' : 'Save'}
         </button>

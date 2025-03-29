@@ -1,8 +1,7 @@
 import { Customer } from '@/types/database'
 import { SupabaseClient } from '@supabase/supabase-js'
 
-export type CustomerWithLoyalty = Omit<Customer, 'created_at'> & {
-  created_at?: string
+export type CustomerWithLoyalty = Customer & {
   isLoyal?: boolean
 }
 

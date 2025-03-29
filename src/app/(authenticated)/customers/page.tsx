@@ -8,18 +8,20 @@ import { CustomerImport } from '@/components/CustomerImport'
 import { PlusIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 import Link from 'next/link'
+import { CustomerName } from '@/components/CustomerName'
+import { CustomerWithLoyalty, getLoyalCustomers } from '@/lib/customerUtils'
 
 export default function CustomersPage() {
-  const [customers, setCustomers] = useState<Customer[]>([])
-  const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([])
+  const [customers, setCustomers] = useState<CustomerWithLoyalty[]>([])
+  const [filteredCustomers, setFilteredCustomers] = useState<CustomerWithLoyalty[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
-  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
+  const [editingCustomer, setEditingCustomer] = useState<CustomerWithLoyalty | null>(null)
 
   useEffect(() => {
-    loadCustomers()
+    loadData()
   }, [])
 
   useEffect(() => {
@@ -38,17 +40,26 @@ export default function CustomersPage() {
     setFilteredCustomers(filtered)
   }, [searchTerm, customers])
 
-  async function loadCustomers() {
+  async function loadData() {
     try {
-      const { data, error } = await supabase
+      setIsLoading(true)
+      const { data: customersData, error } = await supabase
         .from('customers')
         .select('*')
-        .order('first_name', { ascending: true })
-        .order('last_name', { ascending: true })
+        .order('first_name')
 
       if (error) throw error
 
-      setCustomers(data)
+      // Get loyal customer IDs
+      const loyalCustomerIds = await getLoyalCustomers(supabase)
+
+      // Mark loyal customers
+      const customersWithLoyalty = (customersData || []).map(customer => ({
+        ...customer,
+        isLoyal: loyalCustomerIds.includes(customer.id)
+      }))
+
+      setCustomers(customersWithLoyalty)
     } catch (error) {
       console.error('Error loading customers:', error)
       toast.error('Failed to load customers')
@@ -66,7 +77,7 @@ export default function CustomersPage() {
 
       toast.success('Customer created successfully')
       setShowForm(false)
-      loadCustomers()
+      loadData()
     } catch (error) {
       console.error('Error creating customer:', error)
       toast.error('Failed to create customer')
@@ -88,7 +99,7 @@ export default function CustomersPage() {
 
       toast.success('Customer updated successfully')
       setEditingCustomer(null)
-      loadCustomers()
+      loadData()
     } catch (error) {
       console.error('Error updating customer:', error)
       toast.error('Failed to update customer')
@@ -112,7 +123,7 @@ export default function CustomersPage() {
       if (error) throw error
 
       toast.success('Customer deleted successfully')
-      loadCustomers()
+      loadData()
     } catch (error) {
       console.error('Error deleting customer:', error)
       toast.error('Failed to delete customer')
@@ -126,7 +137,7 @@ export default function CustomersPage() {
 
       toast.success('Customers imported successfully')
       setShowImport(false)
-      loadCustomers()
+      loadData()
     } catch (error) {
       console.error('Error importing customers:', error)
       toast.error('Failed to import customers')
@@ -134,7 +145,7 @@ export default function CustomersPage() {
   }
 
   if (isLoading) {
-    return <div>Loading...</div>
+    return <div className="text-black">Loading customers...</div>
   }
 
   if (showForm || editingCustomer) {
@@ -166,106 +177,76 @@ export default function CustomersPage() {
   }
 
   return (
-    <div className="py-6">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold">Customers</h1>
-          <div className="space-x-4">
-            <button
-              onClick={() => setShowImport(true)}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-            >
-              <ArrowUpTrayIcon className="-ml-1 mr-2 h-5 w-5" />
-              Import Customers
-            </button>
-            <button
-              onClick={() => setShowForm(true)}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-            >
-              <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
-              New Customer
-            </button>
-          </div>
+    <div className="space-y-4">
+      <div className="sm:flex sm:items-center">
+        <div className="sm:flex-auto">
+          <h1 className="text-xl font-semibold text-black">Customers</h1>
+          <p className="mt-2 text-sm text-gray-700">
+            A list of all customers and their contact information.
+          </p>
         </div>
-
-        <div className="mt-4">
-          <div className="relative max-w-md">
-            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-              <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
-            </div>
-            <input
-              type="text"
-              className="block w-full rounded-md border-gray-300 pl-10 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-              placeholder="Search by name or mobile number"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
+        <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none space-x-3">
+          <button
+            onClick={() => setShowForm(true)}
+            className="inline-flex items-center justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:w-auto"
+          >
+            <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
+            Add Customer
+          </button>
+          <button
+            onClick={() => setShowImport(true)}
+            className="hidden md:inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:w-auto"
+          >
+            Import Customers
+          </button>
         </div>
+      </div>
 
-        <div className="mt-4 flex flex-col">
-          <div className="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
-            <div className="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
-              <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
-                <table className="min-w-full divide-y divide-gray-300">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                        Name
-                      </th>
-                      <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                        Mobile Number
-                      </th>
-                      <th className="relative py-3.5 pl-3 pr-4 sm:pr-6">
-                        <span className="sr-only">Actions</span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200 bg-white">
-                    {filteredCustomers.map((customer) => (
-                      <tr key={customer.id}>
-                        <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                          <Link
-                            href={`/customers/${customer.id}`}
-                            className="text-indigo-600 hover:text-indigo-900"
-                          >
-                            {customer.first_name} {customer.last_name}
-                          </Link>
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                          {customer.mobile_number}
-                        </td>
-                        <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                          <button
-                            onClick={() => setEditingCustomer(customer)}
-                            className="text-indigo-600 hover:text-indigo-900 mr-4"
-                          >
-                            <PencilIcon className="h-5 w-5" />
-                            <span className="sr-only">Edit</span>
-                          </button>
-                          <button
-                            onClick={() => handleDeleteCustomer(customer)}
-                            className="text-red-600 hover:text-red-900"
-                          >
-                            <TrashIcon className="h-5 w-5" />
-                            <span className="sr-only">Delete</span>
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {filteredCustomers.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={3}
-                          className="px-3 py-4 text-sm text-gray-500 text-center"
+      <div className="mt-8 flex flex-col">
+        <div className="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
+          <div className="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
+            <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
+              <table className="min-w-full divide-y divide-gray-300">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-black sm:pl-6">
+                      Name
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-black">
+                      Mobile
+                    </th>
+                    <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                      <span className="sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {customers.map((customer) => (
+                    <tr key={customer.id}>
+                      <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-black sm:pl-6">
+                        <CustomerName customer={customer} />
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-700">
+                        {customer.mobile_number}
+                      </td>
+                      <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                        <button
+                          onClick={() => setEditingCustomer(customer)}
+                          className="text-indigo-600 hover:text-indigo-900"
                         >
-                          {searchTerm.trim() ? 'No customers found matching your search.' : 'No customers found. Create one to get started.'}
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCustomer(customer)}
+                          className="ml-4 text-red-600 hover:text-red-900"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
