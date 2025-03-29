@@ -34,6 +34,9 @@ export async function middleware(request: NextRequest) {
           })
         },
       },
+      auth: {
+        flowType: 'pkce',
+      },
     }
   )
 
