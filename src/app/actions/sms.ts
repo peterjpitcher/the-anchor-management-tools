@@ -119,7 +119,25 @@ export async function sendEventReminders() {
       return
     }
 
-    console.log('Found bookings:', bookings.map(b => ({
+    // Filter out any bookings with missing event or customer data
+    const validBookings = bookings.filter(booking => {
+      if (!booking.event || !booking.customer) {
+        console.log('Skipping invalid booking - Missing event or customer data:', {
+          bookingId: booking.id,
+          hasEvent: !!booking.event,
+          hasCustomer: !!booking.customer
+        })
+        return false
+      }
+      return true
+    })
+
+    if (validBookings.length === 0) {
+      console.log('No valid bookings found after filtering')
+      return
+    }
+
+    console.log('Found valid bookings:', validBookings.map(b => ({
       id: b.id,
       eventName: b.event.name,
       eventDate: b.event.date,
@@ -133,31 +151,26 @@ export async function sendEventReminders() {
     )
 
     // Send reminders for each booking
-    for (const booking of bookings) {
-      if (!booking.customer?.mobile_number) {
-        console.log('Skipping booking - No mobile number:', booking.id)
-        continue
-      }
-
-      const eventDate = new Date(booking.event.date)
-      const isNextDay = eventDate.toISOString().split('T')[0] === tomorrowStr
-      
-      const message = isNextDay
-        ? smsTemplates.dayBeforeReminder({
-            firstName: booking.customer.first_name,
-            eventName: booking.event.name,
-            eventTime: booking.event.time,
-            seats: booking.seats,
-          })
-        : smsTemplates.weekBeforeReminder({
-            firstName: booking.customer.first_name,
-            eventName: booking.event.name,
-            eventDate: eventDate,
-            eventTime: booking.event.time,
-            seats: booking.seats,
-          })
-
+    for (const booking of validBookings) {
       try {
+        const eventDate = new Date(booking.event.date)
+        const isNextDay = eventDate.toISOString().split('T')[0] === tomorrowStr
+        
+        const message = isNextDay
+          ? smsTemplates.dayBeforeReminder({
+              firstName: booking.customer.first_name,
+              eventName: booking.event.name,
+              eventTime: booking.event.time,
+              seats: booking.seats,
+            })
+          : smsTemplates.weekBeforeReminder({
+              firstName: booking.customer.first_name,
+              eventName: booking.event.name,
+              eventDate: eventDate,
+              eventTime: booking.event.time,
+              seats: booking.seats,
+            })
+
         console.log('Sending SMS to:', {
           to: booking.customer.mobile_number,
           message,
@@ -173,7 +186,7 @@ export async function sendEventReminders() {
         })
         console.log(`Reminder sent to ${booking.customer.first_name} for ${booking.event.name}`)
       } catch (error) {
-        console.error(`Failed to send reminder to ${booking.customer.first_name}:`, error)
+        console.error(`Failed to send reminder for booking ${booking.id}:`, error)
         // Continue with other bookings even if one fails
       }
     }
