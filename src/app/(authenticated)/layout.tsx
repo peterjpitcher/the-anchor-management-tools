@@ -1,23 +1,21 @@
 'use client'
 
 import { Navigation } from '@/components/Navigation'
-import { createClient } from '@supabase/supabase-js'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
-import { redirect } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 
 export default function AuthenticatedLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const router = useRouter()
+  const supabase = createClientComponentClient()
 
   async function handleSignOut() {
     await supabase.auth.signOut()
-    redirect('/login')
+    router.push('/auth/login')
   }
 
   return (
