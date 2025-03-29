@@ -1,42 +1,46 @@
 'use client'
 
-import { Booking } from '@/types/database'
-import { supabase } from '@/lib/supabase'
-import { useEffect, useState } from 'react'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { formatDate } from '@/lib/dateUtils'
-import { useRouter } from 'next/navigation'
-import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
+import { Booking, Customer, Event } from '@/types/database'
 
-export default function BookingViewPage({ params }: { params: { id: string } }) {
-  const [booking, setBooking] = useState<Booking | null>(null)
+type BookingWithDetails = Omit<Booking, 'customer' | 'event'> & {
+  customer: Pick<Customer, 'first_name' | 'last_name'>
+  event: Pick<Event, 'name' | 'date' | 'time'>
+}
+
+// @ts-expect-error - Next.js will provide the correct params type
+export default function BookingViewPage({ params }) {
+  const [booking, setBooking] = useState<BookingWithDetails | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const router = useRouter()
+  const supabase = createClientComponentClient()
 
   useEffect(() => {
-    loadBooking()
-  }, [params.id])
+    async function loadBooking() {
+      try {
+        const { data, error } = await supabase
+          .from('bookings')
+          .select(`
+            *,
+            customer:customers(*),
+            event:events(*)
+          `)
+          .eq('id', params.id)
+          .single()
 
-  async function loadBooking() {
-    try {
-      const { data, error } = await supabase
-        .from('bookings')
-        .select(`
-          *,
-          customer:customers(*),
-          event:events(*)
-        `)
-        .eq('id', params.id)
-        .single()
-
-      if (error) throw error
-      setBooking(data)
-    } catch (error) {
-      console.error('Error loading booking:', error)
-    } finally {
-      setIsLoading(false)
+        if (error) throw error
+        setBooking(data)
+      } catch (error) {
+        console.error('Error loading booking:', error)
+      } finally {
+        setIsLoading(false)
+      }
     }
-  }
+
+    loadBooking()
+  }, [params.id, supabase])
 
   if (isLoading) {
     return <div>Loading...</div>
@@ -50,13 +54,24 @@ export default function BookingViewPage({ params }: { params: { id: string } }) 
     <div className="py-6">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-6">
-          <button
-            onClick={() => router.back()}
+          <Link
+            href="/bookings"
             className="flex items-center text-gray-600 hover:text-gray-900"
           >
-            <ArrowLeftIcon className="h-5 w-5 mr-2" />
+            <svg
+              className="h-5 w-5 mr-2"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M17 10a.75.75 0 01-.75.75H5.612l4.158 4.158a.75.75 0 11-1.04 1.04l-5.5-5.5a.75.75 0 010-1.08l5.5-5.5a.75.75 0 111.04 1.04L5.612 9.25H16.25A.75.75 0 0117 10z"
+                clipRule="evenodd"
+              />
+            </svg>
             Back to Bookings
-          </button>
+          </Link>
         </div>
 
         <div className="bg-white shadow overflow-hidden sm:rounded-lg">
