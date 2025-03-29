@@ -1,6 +1,6 @@
 'use client'
 
-import { Booking, Event } from '@/types/database'
+import { Booking, Event, Customer } from '@/types/database'
 import { supabase } from '@/lib/supabase'
 import { useEffect, useState } from 'react'
 import { BookingForm } from '@/components/BookingForm'
@@ -8,10 +8,11 @@ import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 import { sendBookingConfirmation } from '@/app/actions/sms'
 import { formatDate } from '@/lib/dateUtils'
+import Link from 'next/link'
 
 type BookingWithDetails = Booking & {
-  customer: { first_name: string; last_name: string }
-  event: { name: string; date: string; time: string }
+  customer: Required<Pick<Customer, 'first_name' | 'last_name'>>
+  event: Required<Pick<Event, 'name' | 'date' | 'time'>>
 }
 
 export default function BookingsPage() {
@@ -234,16 +235,31 @@ export default function BookingsPage() {
                     {bookings.map((booking) => (
                       <tr key={booking.id}>
                         <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                          {booking.customer.first_name} {booking.customer.last_name}
+                          <Link
+                            href={`/customers/${booking.customer_id}`}
+                            className="text-indigo-600 hover:text-indigo-900"
+                          >
+                            {booking.customer.first_name} {booking.customer.last_name}
+                          </Link>
                         </td>
                         <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                          {booking.event.name}
+                          <Link
+                            href={`/events/${booking.event_id}`}
+                            className="text-indigo-600 hover:text-indigo-900"
+                          >
+                            {booking.event.name}
+                          </Link>
                         </td>
                         <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                           {formatDate(booking.event.date)} at {booking.event.time}
                         </td>
                         <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                          {booking.seats ?? 'Reminder only'}
+                          <Link
+                            href={`/bookings/${booking.id}`}
+                            className="text-indigo-600 hover:text-indigo-900"
+                          >
+                            {booking.seats ?? 'Reminder only'}
+                          </Link>
                         </td>
                         <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                           <button
