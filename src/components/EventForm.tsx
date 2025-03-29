@@ -57,7 +57,7 @@ export function EventForm({ event, onSubmit, onCancel }: EventFormProps) {
 
       <div>
         <label htmlFor="time" className="block text-sm font-medium text-gray-700">
-          Time (e.g., "7:30pm" or "19:30")
+          Time (e.g., &ldquo;7:30pm&rdquo; or &ldquo;19:30&rdquo;)
         </label>
         <input
           type="text"
@@ -69,7 +69,7 @@ export function EventForm({ event, onSubmit, onCancel }: EventFormProps) {
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
         <p className="mt-1 text-sm text-gray-500">
-          Enter time in any format (e.g., "7:30pm", "19:30", "7:30 PM")
+          Enter time in any format (e.g., &ldquo;7:30pm&rdquo;, &ldquo;19:30&rdquo;, &ldquo;7:30 PM&rdquo;)
         </p>
       </div>
 
