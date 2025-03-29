@@ -100,12 +100,13 @@ export async function sendEventReminders() {
     const nextWeekStr = nextWeek.toISOString().split('T')[0]
 
     console.log('Checking for events on:', { tomorrowStr, nextWeekStr })
+    console.log('Querying bookings with dates:', [tomorrowStr, nextWeekStr])
 
     // Get bookings for tomorrow and next week
     const { data: bookings, error: bookingsError } = await supabase
       .from('bookings')
       .select('*, customer:customers(first_name, last_name, mobile_number), event:events(name, date, time)')
-      .or(`event.date.eq.${tomorrowStr},event.date.eq.${nextWeekStr}`)
+      .in('event.date', [tomorrowStr, nextWeekStr])
       .not('customer.mobile_number', 'is', null)
 
     if (bookingsError) {
@@ -119,6 +120,7 @@ export async function sendEventReminders() {
     }
 
     console.log('Found bookings:', bookings.map(b => ({
+      id: b.id,
       eventName: b.event.name,
       eventDate: b.event.date,
       customerName: `${b.customer.first_name} ${b.customer.last_name}`,
