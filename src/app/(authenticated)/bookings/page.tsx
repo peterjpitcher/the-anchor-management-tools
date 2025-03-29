@@ -79,12 +79,15 @@ export default function BookingsPage() {
       }
 
       toast.success('Booking created successfully')
-      setShowForm(false)
-      setSelectedEvent(null)
-      loadData()
+      await loadData() // Reload the bookings list
+      
+      // Don't reset the form state - let the BookingForm handle this
+      // The form will clear itself if needed for "Save and Add Another"
     } catch (error) {
       console.error('Error creating booking:', error)
       toast.error('Failed to create booking')
+      setShowForm(false) // Only close the form on error
+      setSelectedEvent(null) // Only reset selected event on error
     }
   }
 

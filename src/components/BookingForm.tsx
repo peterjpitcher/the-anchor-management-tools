@@ -73,15 +73,16 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
     }
 
     const searchTermLower = searchTerm.toLowerCase()
+    const searchTermDigits = searchTerm.replace(/\D/g, '') // Remove non-digits for phone number search
     const filtered = allCustomers.filter(customer => 
       customer.first_name.toLowerCase().includes(searchTermLower) ||
       customer.last_name.toLowerCase().includes(searchTermLower) ||
-      customer.mobile_number.includes(searchTerm)
+      customer.mobile_number.replace(/\D/g, '').includes(searchTermDigits)
     )
     setCustomers(filtered)
   }, [searchTerm, allCustomers])
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent, addAnother: boolean = false) => {
     e.preventDefault()
     setIsSubmitting(true)
     try {
@@ -90,6 +91,15 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
         event_id: event.id,
         seats: seats ? parseInt(seats, 10) : null,
       })
+
+      if (addAnother) {
+        // Reset form for next booking
+        setCustomerId('')
+        setSeats('')
+        setSearchTerm('')
+        // Reload available customers
+        await loadAvailableCustomers()
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -100,7 +110,7 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-4">
       <div>
         <h2 className="text-lg font-medium text-gray-900 mb-4">
           New Booking for {event.name} on {formatDate(event.date)} at {event.time}
@@ -191,12 +201,22 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
         >
           Cancel
         </button>
+        {!booking && (
+          <button
+            type="button"
+            onClick={(e) => handleSubmit(e, true)}
+            disabled={isSubmitting}
+            className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
+          >
+            {isSubmitting ? 'Saving...' : 'Save and Add Another'}
+          </button>
+        )}
         <button
           type="submit"
           disabled={isSubmitting}
           className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
         >
-          {isSubmitting ? 'Saving...' : booking ? 'Update Booking' : 'Create Booking'}
+          {isSubmitting ? 'Saving...' : booking ? 'Update Booking' : 'Save'}
         </button>
       </div>
     </form>
