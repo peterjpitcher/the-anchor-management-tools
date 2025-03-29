@@ -39,6 +39,7 @@ async function getBookingsForReminders() {
   const tomorrowStr = tomorrow.toISOString().split('T')[0]
   const sevenDaysStr = sevenDays.toISOString().split('T')[0]
 
+  // Get all bookings for events happening tomorrow or in 7 days
   const { data, error } = await supabase
     .from('bookings')
     .select(
@@ -48,16 +49,14 @@ async function getBookingsForReminders() {
       event:events(name, date, time)
     `
     )
-    .or(
-      `and(event.date.eq.${tomorrowStr},type.eq.24hour),and(event.date.eq.${sevenDaysStr},type.eq.7day)`
-    )
+    .in('event.date', [tomorrowStr, sevenDaysStr])
 
   if (error) {
     console.error('Error fetching bookings:', error)
     return []
   }
 
-  return data
+  return data || []
 }
 
 async function main() {

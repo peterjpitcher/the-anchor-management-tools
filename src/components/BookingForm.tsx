@@ -1,5 +1,5 @@
 import { Booking, Customer, Event } from '@/types/database'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
@@ -14,45 +14,52 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
   const [customerId, setCustomerId] = useState(booking?.customer_id ?? '')
   const [seats, setSeats] = useState(booking?.seats?.toString() ?? '')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [availableCustomers, setAvailableCustomers] = useState<Customer[]>([])
+  const [customers, setCustomers] = useState<Pick<Customer, 'id' | 'first_name' | 'last_name'>[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  useEffect(() => {
-    loadAvailableCustomers()
-  }, [event.id])
-
-  async function loadAvailableCustomers() {
+  const loadAvailableCustomers = useCallback(async () => {
     try {
       // First get all customers
-      const { data: customers, error: customersError } = await supabase
+      const { data: allCustomers } = await supabase
         .from('customers')
-        .select('*')
-        .order('last_name', { ascending: true })
+        .select('id, first_name, last_name')
+        .order('first_name')
 
-      if (customersError) throw customersError
+      if (!allCustomers) {
+        toast.error('Failed to load customers')
+        return
+      }
 
-      // Then get customers who already have bookings for this event
-      const { data: existingBookings, error: bookingsError } = await supabase
+      // Then get existing bookings for this event
+      const { data: existingBookings } = await supabase
         .from('bookings')
         .select('customer_id')
         .eq('event_id', event.id)
 
-      if (bookingsError) throw bookingsError
+      if (!existingBookings) {
+        toast.error('Failed to load existing bookings')
+        return
+      }
 
-      // Filter out customers who already have bookings, unless it's the current booking being edited
-      const bookedCustomerIds = existingBookings.map(b => b.customer_id)
-      const availableCustomers = customers.filter(customer => 
-        !bookedCustomerIds.includes(customer.id) || customer.id === booking?.customer_id
+      // Filter out customers who already have a booking for this event
+      // unless it's the current booking's customer
+      const existingCustomerIds = new Set(existingBookings.map(b => b.customer_id))
+      const availableCustomers = allCustomers.filter(customer => 
+        !existingCustomerIds.has(customer.id) || customer.id === booking?.customer_id
       )
 
-      setAvailableCustomers(availableCustomers)
+      setCustomers(availableCustomers)
     } catch (error) {
-      console.error('Error loading available customers:', error)
-      toast.error('Failed to load available customers')
+      console.error('Error loading customers:', error)
+      toast.error('Failed to load customers')
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [booking?.customer_id, event.id])
+
+  useEffect(() => {
+    loadAvailableCustomers()
+  }, [loadAvailableCustomers])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -89,13 +96,13 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         >
           <option value="">Select a customer</option>
-          {availableCustomers.map((customer) => (
+          {customers.map((customer) => (
             <option key={customer.id} value={customer.id}>
               {customer.first_name} {customer.last_name}
             </option>
           ))}
         </select>
-        {availableCustomers.length === 0 && (
+        {customers.length === 0 && (
           <p className="mt-1 text-sm text-red-600">
             No available customers. Either all customers are already booked for this event,
             or no customers exist in the system.

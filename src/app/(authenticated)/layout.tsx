@@ -1,3 +1,5 @@
+'use client'
+
 import { Navigation } from '@/components/Navigation'
 import { createClient } from '@supabase/supabase-js'
 import { ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'

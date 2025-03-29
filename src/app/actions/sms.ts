@@ -1,65 +1,53 @@
 'use server'
 
-import { Booking } from '@/types/database'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@supabase/supabase-js'
 import twilio from 'twilio'
 
-const accountSid = process.env.TWILIO_ACCOUNT_SID!
-const authToken = process.env.TWILIO_AUTH_TOKEN!
-const fromNumber = process.env.TWILIO_PHONE_NUMBER!
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
-const twilioClient = twilio(accountSid, authToken)
+const twilioClient = twilio(
+  process.env.TWILIO_ACCOUNT_SID!,
+  process.env.TWILIO_AUTH_TOKEN!
+)
+
+const fromNumber = process.env.TWILIO_PHONE_NUMBER!
 
 export async function sendBookingConfirmation(bookingId: string) {
   try {
-    // Get booking details with customer and event information
     const { data: booking, error: bookingError } = await supabase
       .from('bookings')
-      .select(
-        `
+      .select(`
         *,
         customer:customers(first_name, last_name, mobile_number),
         event:events(name, date, time)
-      `
-      )
+      `)
       .eq('id', bookingId)
       .single()
 
-    if (bookingError) throw bookingError
-    if (!booking) throw new Error('Booking not found')
-
-    const customer = booking.customer as {
-      first_name: string
-      last_name: string
-      mobile_number: string
-    }
-    const event = booking.event as {
-      name: string
-      date: string
-      time: string
+    if (bookingError || !booking) {
+      console.error('Error fetching booking:', bookingError)
+      throw new Error('Failed to fetch booking details')
     }
 
-    // Format the message based on whether seats are included
-    let message = `Hi ${customer.first_name}, your booking for ${
-      event.name
-    } on ${new Date(event.date).toLocaleDateString()} at ${event.time} is confirmed.`
-
+    let message
     if (booking.seats) {
-      message += ` We've reserved ${booking.seats} seat(s) for you.`
+      message = `Hi ${booking.customer.first_name}, thanks for booking ${booking.seats} seats for ${booking.event.name} on ${new Date(booking.event.date).toLocaleDateString()} at ${booking.event.time}. We look forward to seeing you! Reply to this message if you need to make any changes. The Anchor.`
+    } else {
+      message = `Hi ${booking.customer.first_name}, thanks for your interest in ${booking.event.name} on ${new Date(booking.event.date).toLocaleDateString()} at ${booking.event.time}. We'll be in touch about availability. Reply to this message if you need to make any changes. The Anchor.`
     }
 
-    message += ' Reply to this message if you need to make any changes. The Anchor.'
-
-    // Send the SMS
     await twilioClient.messages.create({
       body: message,
-      to: customer.mobile_number,
+      to: booking.customer.mobile_number,
       from: fromNumber,
     })
 
     return { success: true }
   } catch (error) {
-    console.error('Error sending booking confirmation SMS:', error)
-    return { success: false, error }
+    console.error('Error sending SMS:', error)
+    throw error
   }
 } 

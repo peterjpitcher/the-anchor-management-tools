@@ -1,3 +1,5 @@
+'use client'
+
 import { Event } from '@/types/database'
 import { useState } from 'react'
 

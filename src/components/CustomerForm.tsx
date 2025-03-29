@@ -1,3 +1,5 @@
+'use client'
+
 import { Customer } from '@/types/database'
 import { useState } from 'react'
 
