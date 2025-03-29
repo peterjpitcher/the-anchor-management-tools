@@ -116,7 +116,7 @@ export default function EventsPage() {
     <div className="py-6">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold">Events</h1>
+          <h1 className="text-2xl font-bold text-black">Events</h1>
           <button
             onClick={() => setShowForm(true)}
             className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
@@ -133,13 +133,13 @@ export default function EventsPage() {
                 <table className="min-w-full divide-y divide-gray-300">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
                         Name
                       </th>
-                      <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
                         Date
                       </th>
-                      <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
                         Time
                       </th>
                       <th className="relative py-3.5 pl-3 pr-4 sm:pr-6">
@@ -150,7 +150,7 @@ export default function EventsPage() {
                   <tbody className="divide-y divide-gray-200 bg-white">
                     {events.map((event) => (
                       <tr key={event.id}>
-                        <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
+                        <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
                           <Link
                             href={`/events/${event.id}`}
                             className="text-indigo-600 hover:text-indigo-900"
@@ -158,10 +158,10 @@ export default function EventsPage() {
                             {event.name}
                           </Link>
                         </td>
-                        <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
+                        <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
                           {formatDate(event.date)}
                         </td>
-                        <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
+                        <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
                           {event.time}
                         </td>
                         <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
@@ -186,7 +186,7 @@ export default function EventsPage() {
                       <tr>
                         <td
                           colSpan={4}
-                          className="px-3 py-4 text-sm text-gray-500 text-center"
+                          className="px-3 py-4 text-sm text-black text-center"
                         >
                           No events found. Create one to get started.
                         </td>

@@ -196,7 +196,7 @@ export default function BookingsPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="sm:flex sm:items-center">
           <div className="sm:flex-auto">
-            <h1 className="text-2xl font-bold">Bookings</h1>
+            <h1 className="text-2xl font-bold text-black">Bookings</h1>
           </div>
           <div className="mt-2 sm:mt-0 sm:ml-16 sm:flex-none">
             <div className="flex items-center space-x-4">
@@ -237,10 +237,10 @@ export default function BookingsPage() {
           {groupedBookings.map(group => (
             <div key={group.event.id} className="bg-white shadow ring-1 ring-black ring-opacity-5 md:rounded-lg overflow-hidden">
               <div className="px-4 py-3 sm:px-6 bg-gray-50 border-b border-gray-200">
-                <h3 className="text-lg font-medium leading-6 text-gray-900">
+                <h3 className="text-lg font-medium leading-6 text-black">
                   {group.event.name}
                 </h3>
-                <p className="mt-0.5 text-sm text-gray-500">
+                <p className="mt-0.5 text-sm text-black">
                   {formatDate(group.event.date)} at {group.event.time}
                 </p>
               </div>
@@ -249,13 +249,13 @@ export default function BookingsPage() {
                 <table className="min-w-full divide-y divide-gray-300">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-3 py-2.5 text-left text-sm font-semibold text-gray-900">
+                      <th className="px-3 py-2.5 text-left text-sm font-semibold text-black">
                         Customer
                       </th>
-                      <th className="px-3 py-2.5 text-left text-sm font-semibold text-gray-900">
+                      <th className="px-3 py-2.5 text-left text-sm font-semibold text-black">
                         Seats
                       </th>
-                      <th className="px-3 py-2.5 text-left text-sm font-semibold text-gray-900">
+                      <th className="px-3 py-2.5 text-left text-sm font-semibold text-black">
                         Created
                       </th>
                       <th className="relative py-2.5 pl-3 pr-4 sm:pr-6">
@@ -266,7 +266,7 @@ export default function BookingsPage() {
                   <tbody className="divide-y divide-gray-200 bg-white">
                     {group.bookings.map((booking) => (
                       <tr key={booking.id}>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-sm text-gray-900">
+                        <td className="whitespace-nowrap px-3 py-2.5 text-sm text-black">
                           <Link
                             href={`/customers/${booking.customer_id}`}
                             className="text-indigo-600 hover:text-indigo-900"
@@ -274,7 +274,7 @@ export default function BookingsPage() {
                             {booking.customer.first_name} {booking.customer.last_name}
                           </Link>
                         </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-sm text-gray-900">
+                        <td className="whitespace-nowrap px-3 py-2.5 text-sm text-black">
                           <Link
                             href={`/bookings/${booking.id}`}
                             className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"
@@ -282,7 +282,7 @@ export default function BookingsPage() {
                             {booking.seats} Seats
                           </Link>
                         </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-sm text-gray-500">
+                        <td className="whitespace-nowrap px-3 py-2.5 text-sm text-black">
                           {formatDate(booking.created_at)}
                         </td>
                         <td className="relative whitespace-nowrap py-2.5 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
@@ -316,7 +316,7 @@ export default function BookingsPage() {
                     <tbody className="divide-y divide-gray-200 bg-white">
                       {group.reminders.map((booking) => (
                         <tr key={booking.id}>
-                          <td className="whitespace-nowrap px-3 py-2.5 text-sm text-gray-900">
+                          <td className="whitespace-nowrap px-3 py-2.5 text-sm text-black">
                             <Link
                               href={`/customers/${booking.customer_id}`}
                               className="text-indigo-600 hover:text-indigo-900"
@@ -324,7 +324,7 @@ export default function BookingsPage() {
                               {booking.customer.first_name} {booking.customer.last_name}
                             </Link>
                           </td>
-                          <td className="whitespace-nowrap px-3 py-2.5 text-sm text-gray-900">
+                          <td className="whitespace-nowrap px-3 py-2.5 text-sm text-black">
                             <Link
                               href={`/bookings/${booking.id}`}
                               className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800"
@@ -332,7 +332,7 @@ export default function BookingsPage() {
                               Reminder
                             </Link>
                           </td>
-                          <td className="whitespace-nowrap px-3 py-2.5 text-sm text-gray-500">
+                          <td className="whitespace-nowrap px-3 py-2.5 text-sm text-black">
                             {formatDate(booking.created_at)}
                           </td>
                           <td className="relative whitespace-nowrap py-2.5 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
@@ -361,7 +361,7 @@ export default function BookingsPage() {
           ))}
 
           {groupedBookings.length === 0 && (
-            <div className="text-center text-gray-500 bg-white shadow ring-1 ring-black ring-opacity-5 md:rounded-lg p-4">
+            <div className="text-center text-black bg-white shadow ring-1 ring-black ring-opacity-5 md:rounded-lg p-4">
               No bookings found. Create one to get started.
             </div>
           )}
