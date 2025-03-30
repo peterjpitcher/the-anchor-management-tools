@@ -20,6 +20,7 @@ export interface Booking {
   customer_id: string;
   event_id: string;
   seats: number | null;
+  notes: string | null;
   created_at: string;
   // Join fields
   customer?: Customer;

@@ -16,6 +16,7 @@ interface BookingFormProps {
 export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormProps) {
   const [customerId, setCustomerId] = useState(booking?.customer_id ?? '')
   const [seats, setSeats] = useState(booking?.seats?.toString() ?? '')
+  const [notes, setNotes] = useState(booking?.notes ?? '')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [customers, setCustomers] = useState<CustomerWithLoyalty[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -97,12 +98,14 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
         customer_id: customerId,
         event_id: event.id,
         seats: seats ? parseInt(seats, 10) : null,
+        notes: notes || null,
       })
 
       if (addAnother) {
         // Reset form for next booking
         setCustomerId('')
         setSeats('')
+        setNotes('')
         setSearchTerm('')
         // Reload available customers
         await loadCustomers()
@@ -199,6 +202,23 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
         <p className="mt-1 text-sm text-gray-700">
           Leave empty if this is just a reminder
         </p>
+      </div>
+
+      <div>
+        <label
+          htmlFor="notes"
+          className="block text-sm font-medium text-black"
+        >
+          Notes (Optional)
+        </label>
+        <textarea
+          id="notes"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={3}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-black"
+          placeholder="Add any notes about this booking..."
+        />
       </div>
 
       <div className="flex justify-end space-x-3">

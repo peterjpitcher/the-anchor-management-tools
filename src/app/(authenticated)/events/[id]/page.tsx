@@ -5,6 +5,9 @@ import { formatDate } from '@/lib/dateUtils'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { Event, Booking, Customer } from '@/types/database'
+import { PlusIcon } from '@heroicons/react/24/outline'
+import { BookingForm } from '@/components/BookingForm'
+import toast from 'react-hot-toast'
 
 type BookingWithCustomer = Omit<Booking, 'customer'> & {
   customer: Pick<Customer, 'first_name' | 'last_name'>
@@ -15,6 +18,7 @@ export default function EventViewPage({ params }) {
   const [event, setEvent] = useState<Event | null>(null)
   const [bookings, setBookings] = useState<BookingWithCustomer[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [showBookingForm, setShowBookingForm] = useState(false)
   const supabase = createClientComponentClient()
 
   useEffect(() => {
@@ -48,6 +52,32 @@ export default function EventViewPage({ params }) {
     loadEvent()
   }, [params.id, supabase])
 
+  const handleCreateBooking = async (data: Omit<Booking, 'id' | 'created_at'>) => {
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .insert([data])
+
+      if (error) throw error
+
+      toast.success('Booking created successfully')
+      setShowBookingForm(false)
+
+      // Refresh bookings
+      const { data: bookingsData, error: bookingsError } = await supabase
+        .from('bookings')
+        .select('*, customer:customers(first_name, last_name)')
+        .eq('event_id', params.id)
+        .order('created_at', { ascending: true })
+
+      if (bookingsError) throw bookingsError
+      setBookings(bookingsData as BookingWithCustomer[])
+    } catch (error) {
+      console.error('Error creating booking:', error)
+      toast.error('Failed to create booking')
+    }
+  }
+
   if (isLoading) return <div>Loading...</div>
   if (!event) return <div>Event not found</div>
 
@@ -63,6 +93,7 @@ export default function EventViewPage({ params }) {
           {type === 'booking' && (
             <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">Seats</th>
           )}
+          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">Notes</th>
           <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">Created</th>
         </tr>
       </thead>
@@ -81,6 +112,9 @@ export default function EventViewPage({ params }) {
                 </span>
               </td>
             )}
+            <td className="px-4 py-2 text-sm text-black">
+              {booking.notes || '-'}
+            </td>
             <td className="px-4 py-2 whitespace-nowrap text-sm text-black">
               {formatDate(booking.created_at)}
             </td>
@@ -88,7 +122,7 @@ export default function EventViewPage({ params }) {
         ))}
         {items.length === 0 && (
           <tr>
-            <td colSpan={type === 'booking' ? 3 : 2} className="px-4 py-2 text-center text-sm text-black">
+            <td colSpan={type === 'booking' ? 4 : 3} className="px-4 py-2 text-center text-sm text-black">
               No {type === 'booking' ? 'bookings' : 'reminders'} found
             </td>
           </tr>
@@ -99,7 +133,27 @@ export default function EventViewPage({ params }) {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4 text-black">Event Details</h1>
+      {showBookingForm && event && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
+            <BookingForm
+              event={event}
+              onSubmit={handleCreateBooking}
+              onCancel={() => setShowBookingForm(false)}
+            />
+          </div>
+        </div>
+      )}
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-2xl font-bold text-black">Event Details</h1>
+        <button
+          onClick={() => setShowBookingForm(true)}
+          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+        >
+          <PlusIcon className="h-5 w-5 mr-2" />
+          Quick Book
+        </button>
+      </div>
       <div className="bg-white shadow rounded-lg overflow-hidden mb-6">
         <div className="px-4 py-5 sm:p-6">
           <dl className="grid grid-cols-4 gap-4">

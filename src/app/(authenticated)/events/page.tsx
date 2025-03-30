@@ -11,7 +11,6 @@ import Link from 'next/link'
 
 type EventWithBookings = Event & {
   booked_seats: number
-  capacity?: number | null
 }
 
 export default function EventsPage() {
@@ -21,12 +20,12 @@ export default function EventsPage() {
   const [editingEvent, setEditingEvent] = useState<Event | null>(null)
 
   useEffect(() => {
-    loadEvents()
+    loadData()
   }, [])
 
-  async function loadEvents() {
+  async function loadData() {
     try {
-      // First get all events
+      // Load events without date filter
       const { data: eventsData, error: eventsError } = await supabase
         .from('events')
         .select('*')
@@ -34,16 +33,16 @@ export default function EventsPage() {
 
       if (eventsError) throw eventsError
 
-      // Then get booking counts for each event
-      const { data: bookingCounts, error: bookingsError } = await supabase
+      // Load bookings to calculate seats
+      const { data: bookingsData, error: bookingsError } = await supabase
         .from('bookings')
         .select('event_id, seats')
         .gt('seats', 0)
 
       if (bookingsError) throw bookingsError
 
-      // Calculate total booked seats for each event
-      const bookedSeatsMap = bookingCounts.reduce((acc, booking) => {
+      // Calculate booked seats for each event
+      const bookedSeatsMap = bookingsData.reduce((acc, booking) => {
         acc[booking.event_id] = (acc[booking.event_id] || 0) + (booking.seats || 0)
         return acc
       }, {} as Record<string, number>)
@@ -56,8 +55,8 @@ export default function EventsPage() {
 
       setEvents(eventsWithBookings)
     } catch (error) {
-      console.error('Error loading events:', error)
-      toast.error('Failed to load events')
+      console.error('Error loading data:', error)
+      toast.error('Failed to load data')
     } finally {
       setIsLoading(false)
     }
@@ -70,7 +69,7 @@ export default function EventsPage() {
 
       toast.success('Event created successfully')
       setShowForm(false)
-      loadEvents()
+      loadData()
     } catch (error) {
       console.error('Error creating event:', error)
       toast.error('Failed to create event')
@@ -90,7 +89,7 @@ export default function EventsPage() {
 
       toast.success('Event updated successfully')
       setEditingEvent(null)
-      loadEvents()
+      loadData()
     } catch (error) {
       console.error('Error updating event:', error)
       toast.error('Failed to update event')
@@ -109,7 +108,7 @@ export default function EventsPage() {
       if (error) throw error
 
       toast.success('Event deleted successfully')
-      loadEvents()
+      loadData()
     } catch (error) {
       console.error('Error deleting event:', error)
       toast.error('Failed to delete event')
@@ -138,10 +137,117 @@ export default function EventsPage() {
     )
   }
 
+  const now = new Date()
+  const upcomingEvents = events.filter(event => new Date(event.date) >= now)
+  const pastEvents = events.filter(event => new Date(event.date) < now)
+
+  const EventsTable = ({ events, title }: { events: EventWithBookings[], title: string }) => (
+    <>
+      <h2 className="text-xl font-bold text-black mb-4">{title}</h2>
+      <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg mb-8">
+        <table className="min-w-full divide-y divide-gray-300">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
+                Name
+              </th>
+              <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
+                Date
+              </th>
+              <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
+                Time
+              </th>
+              <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
+                Capacity
+              </th>
+              <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
+                Bookings
+              </th>
+              <th className="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                <span className="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200 bg-white">
+            {events.map((event) => (
+              <tr key={event.id}>
+                <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
+                  <Link
+                    href={`/events/${event.id}`}
+                    className="text-indigo-600 hover:text-indigo-900"
+                  >
+                    {event.name}
+                  </Link>
+                </td>
+                <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
+                  {formatDate(event.date)}
+                </td>
+                <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
+                  {event.time}
+                </td>
+                <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
+                  {event.capacity ? `${event.capacity} seats` : 'Unlimited'}
+                </td>
+                <td className="px-3 py-4 text-sm text-black">
+                  <div className="flex flex-col space-y-1">
+                    <div className="text-sm">
+                      {event.booked_seats} {event.booked_seats === 1 ? 'seat' : 'seats'} booked
+                      {event.capacity ? ` (${event.capacity - event.booked_seats} remaining)` : ''}
+                    </div>
+                    {event.capacity && (
+                      <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${
+                            event.booked_seats >= event.capacity
+                              ? 'bg-red-500'
+                              : event.booked_seats >= event.capacity * 0.8
+                              ? 'bg-yellow-500'
+                              : 'bg-green-500'
+                          }`}
+                          style={{ width: `${Math.min((event.booked_seats / event.capacity) * 100, 100)}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </td>
+                <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                  <button
+                    onClick={() => setEditingEvent(event)}
+                    className="text-indigo-600 hover:text-indigo-900 mr-4"
+                  >
+                    <PencilIcon className="h-5 w-5" />
+                    <span className="sr-only">Edit</span>
+                  </button>
+                  <button
+                    onClick={() => handleDeleteEvent(event)}
+                    className="text-red-600 hover:text-red-900"
+                  >
+                    <TrashIcon className="h-5 w-5" />
+                    <span className="sr-only">Delete</span>
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {events.length === 0 && (
+              <tr>
+                <td
+                  colSpan={6}
+                  className="px-3 py-4 text-sm text-black text-center"
+                >
+                  No events found
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
+  )
+
   return (
     <div className="py-6">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center mb-8">
           <h1 className="text-2xl font-bold text-black">Events</h1>
           <button
             onClick={() => setShowForm(true)}
@@ -152,114 +258,21 @@ export default function EventsPage() {
           </button>
         </div>
 
-        <div className="mt-8 flex flex-col">
-          <div className="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
-            <div className="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
-              <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
-                <table className="min-w-full divide-y divide-gray-300">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
-                        Name
-                      </th>
-                      <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
-                        Date
-                      </th>
-                      <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
-                        Time
-                      </th>
-                      <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
-                        Capacity
-                      </th>
-                      <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
-                        Bookings
-                      </th>
-                      <th className="relative py-3.5 pl-3 pr-4 sm:pr-6">
-                        <span className="sr-only">Actions</span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200 bg-white">
-                    {events.map((event) => {
-                      const bookedSeats = event.booked_seats
-
-                      return (
-                        <tr key={event.id}>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
-                            <Link
-                              href={`/events/${event.id}`}
-                              className="text-indigo-600 hover:text-indigo-900"
-                            >
-                              {event.name}
-                            </Link>
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
-                            {formatDate(event.date)}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
-                            {event.time}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
-                            {event.capacity ? `${event.capacity} seats` : 'Unlimited'}
-                          </td>
-                          <td className="px-3 py-4 text-sm text-black">
-                            <div className="flex flex-col space-y-1">
-                              <div className="text-sm">
-                                {bookedSeats} {bookedSeats === 1 ? 'seat' : 'seats'} booked
-                                {event.capacity ? ` (${event.capacity - bookedSeats} remaining)` : ''}
-                              </div>
-                              {event.capacity && (
-                                <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                                  <div
-                                    className={`h-full rounded-full ${
-                                      bookedSeats >= event.capacity
-                                        ? 'bg-red-500'
-                                        : bookedSeats >= event.capacity * 0.8
-                                        ? 'bg-yellow-500'
-                                        : 'bg-green-500'
-                                    }`}
-                                    style={{ width: `${Math.min((bookedSeats / event.capacity) * 100, 100)}%` }}
-                                  />
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                          <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                            <button
-                              onClick={() => setEditingEvent(event)}
-                              className="text-indigo-600 hover:text-indigo-900 mr-4"
-                            >
-                              <PencilIcon className="h-5 w-5" />
-                              <span className="sr-only">Edit</span>
-                            </button>
-                            <button
-                              onClick={() => handleDeleteEvent(event)}
-                              className="text-red-600 hover:text-red-900"
-                            >
-                              <TrashIcon className="h-5 w-5" />
-                              <span className="sr-only">Delete</span>
-                            </button>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                    {events.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={6}
-                          className="px-3 py-4 text-sm text-black text-center"
-                        >
-                          No events found. Create one to get started.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+        {events.length === 0 ? (
+          <div className="text-center text-black bg-white shadow ring-1 ring-black ring-opacity-5 md:rounded-lg p-4">
+            No events found. Create one to get started.
           </div>
-        </div>
+        ) : (
+          <>
+            {upcomingEvents.length > 0 && (
+              <EventsTable events={upcomingEvents} title="Upcoming Events" />
+            )}
+            {pastEvents.length > 0 && (
+              <EventsTable events={pastEvents} title="Past Events" />
+            )}
+          </>
+        )}
       </div>
     </div>
   )
-} 
+}
