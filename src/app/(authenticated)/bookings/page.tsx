@@ -15,12 +15,6 @@ type BookingWithDetails = Booking & {
   notes?: string
 }
 
-type GroupedBookings = {
-  event: Pick<Event, 'id' | 'name' | 'date' | 'time'>
-  bookings: BookingWithDetails[]
-  reminders: BookingWithDetails[]
-}
-
 export default function BookingsPage() {
   const [bookings, setBookings] = useState<BookingWithDetails[]>([])
   const [events, setEvents] = useState<Event[]>([])
@@ -139,8 +133,18 @@ export default function BookingsPage() {
     }
   }
 
+  // Group bookings by event
+  const groupedBookings = events.map(event => {
+    const eventBookings = bookings.filter(b => b.event_id === event.id)
+    return {
+      event,
+      bookings: eventBookings.filter(b => b.seats && b.seats > 0),
+      reminders: eventBookings.filter(b => !b.seats || b.seats === 0)
+    }
+  }).filter(group => group.bookings.length > 0 || group.reminders.length > 0)
+
   if (isLoading) {
-    return <div>Loading...</div>
+    return <div className="pb-20 sm:pb-6">Loading...</div>
   }
 
   if (showForm || editingBooking) {
@@ -149,91 +153,81 @@ export default function BookingsPage() {
       : selectedEvent
 
     if (!event) {
-      return <div>Event not found</div>
+      return <div className="pb-20 sm:pb-6">Event not found</div>
     }
 
     return (
-      <div className="max-w-2xl mx-auto py-4">
-        <h1 className="text-2xl font-bold mb-4">
-          {editingBooking ? 'Edit Booking' : 'Create New Booking'}
-        </h1>
-        <BookingForm
-          booking={editingBooking ?? undefined}
-          event={event}
-          onSubmit={editingBooking ? handleUpdateBooking : handleCreateBooking}
-          onCancel={() => {
-            setShowForm(false)
-            setEditingBooking(null)
-            setSelectedEvent(null)
-          }}
-        />
-      </div>
-    )
-  }
+      <div className="space-y-6 pb-20 sm:pb-6">
+        {showForm && selectedEvent && (
+          <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-auto">
+              <BookingForm
+                event={selectedEvent}
+                onSubmit={handleCreateBooking}
+                onCancel={() => setShowForm(false)}
+              />
+            </div>
+          </div>
+        )}
+        {editingBooking && (
+          <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-auto">
+              <BookingForm
+                booking={editingBooking}
+                event={event}
+                onSubmit={handleUpdateBooking}
+                onCancel={() => setEditingBooking(null)}
+              />
+            </div>
+          </div>
+        )}
 
-  // Group bookings by event and sort them
-  const groupedBookings: GroupedBookings[] = events
-    .map(event => {
-      const eventBookings = bookings.filter(b => b.event_id === event.id)
-      return {
-        event: {
-          id: event.id,
-          name: event.name,
-          date: event.date,
-          time: event.time
-        },
-        bookings: eventBookings
-          .filter(b => b.seats && b.seats > 0)
-          .sort((a, b) => (b.seats ?? 0) - (a.seats ?? 0)),
-        reminders: eventBookings.filter(b => !b.seats || b.seats === 0)
-      }
-    })
-    .filter(group => group.bookings.length > 0 || group.reminders.length > 0)
-    .sort((a, b) => new Date(a.event.date).getTime() - new Date(b.event.date).getTime())
-
-  return (
-    <div className="py-4">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="sm:flex sm:items-center">
           <div className="sm:flex-auto">
-            <h1 className="text-2xl font-bold text-black">Bookings</h1>
+            <h1 className="text-xl font-semibold text-black">Bookings</h1>
+            <p className="mt-2 text-sm text-black">
+              A list of all bookings grouped by event.
+            </p>
           </div>
-          <div className="mt-2 sm:mt-0 sm:ml-16 sm:flex-none">
-            <div className="flex items-center space-x-4">
-              <select
-                value={selectedEvent?.id ?? ''}
-                onChange={(e) => {
-                  const event = events.find((ev) => ev.id === e.target.value)
-                  setSelectedEvent(event ?? null)
-                }}
-                className="rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-              >
-                <option value="">Select an event</option>
-                {events.map((event) => (
-                  <option key={event.id} value={event.id}>
-                    {event.name} ({formatDate(event.date)} at {event.time})
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={() => {
-                  if (!selectedEvent) {
-                    toast.error('Please select an event first')
-                    return
-                  }
-                  setShowForm(true)
-                }}
-                disabled={!selectedEvent}
-                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
-                New Booking
-              </button>
-            </div>
+          <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none space-x-3">
+            <button
+              onClick={() => {
+                if (!selectedEvent) {
+                  toast.error('Please select an event first')
+                  return
+                }
+                setShowForm(true)
+              }}
+              disabled={!selectedEvent}
+              className="inline-flex items-center justify-center rounded-lg border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed sm:w-auto"
+            >
+              <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
+              New Booking
+            </button>
           </div>
         </div>
 
-        <div className="mt-4 flex flex-col space-y-4">
+        <div className="max-w-3xl">
+          <div className="relative">
+            <select
+              value={selectedEvent?.id ?? ''}
+              onChange={(e) => {
+                const event = events.find((ev) => ev.id === e.target.value)
+                setSelectedEvent(event ?? null)
+              }}
+              className="block w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 text-base md:text-sm py-3 md:py-2 text-black shadow-sm"
+            >
+              <option value="">Select an event</option>
+              {events.map((event) => (
+                <option key={event.id} value={event.id}>
+                  {event.name} ({formatDate(event.date)} at {event.time})
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-8 flex flex-col space-y-4">
           {groupedBookings.map(group => (
             <div key={group.event.id} className="bg-white shadow ring-1 ring-black ring-opacity-5 md:rounded-lg overflow-hidden">
               <div className="px-4 py-3 sm:px-6 bg-gray-50 border-b border-gray-200">
@@ -329,6 +323,164 @@ export default function BookingsPage() {
             </div>
           )}
         </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4 pb-20 sm:pb-6">
+      {showForm && selectedEvent && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-auto">
+            <BookingForm
+              event={selectedEvent}
+              onSubmit={handleCreateBooking}
+              onCancel={() => setShowForm(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="sm:flex sm:items-center">
+        <div className="sm:flex-auto">
+          <h1 className="text-xl font-semibold text-black">Bookings</h1>
+          <p className="mt-2 text-sm text-black">
+            A list of all bookings grouped by event.
+          </p>
+        </div>
+        <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none space-x-3">
+          <button
+            onClick={() => {
+              if (!selectedEvent) {
+                toast.error('Please select an event first')
+                return
+              }
+              setShowForm(true)
+            }}
+            disabled={!selectedEvent}
+            className="inline-flex items-center justify-center rounded-lg border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed sm:w-auto"
+          >
+            <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
+            New Booking
+          </button>
+        </div>
+      </div>
+
+      <div className="max-w-3xl">
+        <div className="relative">
+          <select
+            value={selectedEvent?.id ?? ''}
+            onChange={(e) => {
+              const event = events.find((ev) => ev.id === e.target.value)
+              setSelectedEvent(event ?? null)
+            }}
+            className="block w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 text-base md:text-sm py-3 md:py-2 text-black shadow-sm"
+          >
+            <option value="">Select an event</option>
+            {events.map((event) => (
+              <option key={event.id} value={event.id}>
+                {event.name} ({formatDate(event.date)} at {event.time})
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="mt-8 flex flex-col space-y-4">
+        {groupedBookings.map(group => (
+          <div key={group.event.id} className="bg-white shadow ring-1 ring-black ring-opacity-5 md:rounded-lg overflow-hidden">
+            <div className="px-4 py-3 sm:px-6 bg-gray-50 border-b border-gray-200">
+              <h3 className="text-lg font-medium leading-6 text-black">
+                {group.event.name}
+              </h3>
+              <div className="mt-0.5 flex justify-between items-center">
+                <p className="text-sm text-black">
+                  {formatDate(group.event.date)} at {group.event.time}
+                </p>
+                <div className="text-sm text-black">
+                  <span className="font-medium">Total Seats:</span> {group.bookings.reduce((sum, b) => sum + (b.seats || 0), 0)} 
+                  {group.reminders.length > 0 && (
+                    <span className="ml-4">
+                      <span className="font-medium">Reminders:</span> {group.reminders.length}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {group.bookings.length > 0 && (
+              <table className="min-w-full divide-y divide-gray-300">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
+                      Customer
+                    </th>
+                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
+                      Seats
+                    </th>
+                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
+                      Notes
+                    </th>
+                    <th className="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                      <span className="sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {group.bookings.map((booking) => (
+                    <tr key={booking.id}>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
+                        {booking.customer.first_name} {booking.customer.last_name}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
+                        {booking.seats}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
+                        {booking.notes || '-'}
+                      </td>
+                      <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                        <button
+                          onClick={() => setEditingBooking(booking)}
+                          className="text-indigo-600 hover:text-indigo-900 mr-4"
+                        >
+                          <PencilIcon className="h-5 w-5" />
+                          <span className="sr-only">Edit</span>
+                        </button>
+                        <button
+                          onClick={() => handleDeleteBooking(booking)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          <TrashIcon className="h-5 w-5" />
+                          <span className="sr-only">Delete</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {group.reminders.length > 0 && (
+              <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
+                <h4 className="text-sm font-medium text-black mb-2">Reminders ({group.reminders.length})</h4>
+                <div className="text-sm text-black">
+                  {group.reminders.map((reminder, index) => (
+                    <span key={reminder.id} className="inline-block">
+                      {reminder.customer.first_name} {reminder.customer.last_name}
+                      {index < group.reminders.length - 1 ? ', ' : ''}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+
+        {groupedBookings.length === 0 && (
+          <div className="text-center text-black bg-white shadow ring-1 ring-black ring-opacity-5 md:rounded-lg p-4">
+            No bookings found. Create one to get started.
+          </div>
+        )}
       </div>
     </div>
   )

@@ -142,28 +142,26 @@ export default function EventsPage() {
   const pastEvents = events.filter(event => new Date(event.date) < now)
 
   const EventsTable = ({ events, title }: { events: EventWithBookings[], title: string }) => (
-    <>
-      <h2 className="text-xl font-bold text-black mb-4">{title}</h2>
-      <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg mb-8">
+    <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+      <div className="px-4 py-5 sm:px-6">
+        <h3 className="text-lg leading-6 font-medium text-black">{title}</h3>
+      </div>
+      
+      {/* Desktop Table View */}
+      <div className="hidden md:block">
         <table className="min-w-full divide-y divide-gray-300">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
-                Name
+              <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-black">
+                Event
               </th>
-              <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
-                Date
+              <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-black">
+                Date & Time
               </th>
-              <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
-                Time
-              </th>
-              <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
+              <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-black">
                 Capacity
               </th>
-              <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
-                Bookings
-              </th>
-              <th className="relative py-3.5 pl-3 pr-4 sm:pr-6">
+              <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-6">
                 <span className="sr-only">Actions</span>
               </th>
             </tr>
@@ -172,21 +170,12 @@ export default function EventsPage() {
             {events.map((event) => (
               <tr key={event.id}>
                 <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
-                  <Link
-                    href={`/events/${event.id}`}
-                    className="text-indigo-600 hover:text-indigo-900"
-                  >
+                  <Link href={`/events/${event.id}`} className="font-medium hover:text-indigo-600">
                     {event.name}
                   </Link>
                 </td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
-                  {formatDate(event.date)}
-                </td>
-                <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
-                  {event.time}
-                </td>
-                <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
-                  {event.capacity ? `${event.capacity} seats` : 'Unlimited'}
+                  {formatDate(event.date)} at {event.time}
                 </td>
                 <td className="px-3 py-4 text-sm text-black">
                   <div className="flex flex-col space-y-1">
@@ -228,20 +217,63 @@ export default function EventsPage() {
                 </td>
               </tr>
             ))}
-            {events.length === 0 && (
-              <tr>
-                <td
-                  colSpan={6}
-                  className="px-3 py-4 text-sm text-black text-center"
-                >
-                  No events found
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
       </div>
-    </>
+
+      {/* Mobile Card View */}
+      <div className="md:hidden divide-y divide-gray-200">
+        {events.map((event) => (
+          <div key={event.id} className="p-4 space-y-3">
+            <div className="flex justify-between items-start">
+              <Link href={`/events/${event.id}`} className="flex-1">
+                <h3 className="text-base font-medium text-black hover:text-indigo-600">
+                  {event.name}
+                </h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  {formatDate(event.date)} at {event.time}
+                </p>
+              </Link>
+              <div className="flex space-x-2 ml-4">
+                <button
+                  onClick={() => setEditingEvent(event)}
+                  className="p-2 text-indigo-600 hover:text-indigo-900"
+                >
+                  <PencilIcon className="h-5 w-5" />
+                </button>
+                <button
+                  onClick={() => handleDeleteEvent(event)}
+                  className="p-2 text-red-600 hover:text-red-900"
+                >
+                  <TrashIcon className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-sm text-gray-700">
+                {event.booked_seats} {event.booked_seats === 1 ? 'seat' : 'seats'} booked
+                {event.capacity ? ` (${event.capacity - event.booked_seats} remaining)` : ''}
+              </div>
+              {event.capacity && (
+                <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${
+                      event.booked_seats >= event.capacity
+                        ? 'bg-red-500'
+                        : event.booked_seats >= event.capacity * 0.8
+                        ? 'bg-yellow-500'
+                        : 'bg-green-500'
+                    }`}
+                    style={{ width: `${Math.min((event.booked_seats / event.capacity) * 100, 100)}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 
   return (

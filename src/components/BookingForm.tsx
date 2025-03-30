@@ -120,7 +120,7 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
   }
 
   return (
-    <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-4">
+    <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-6 max-h-[calc(100vh-8rem)] overflow-y-auto">
       <div>
         <h2 className="text-lg font-medium text-black mb-4">
           New Booking for {event.name} on {formatDate(event.date)} at {event.time}
@@ -130,7 +130,7 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
       <div className="space-y-2">
         <label
           htmlFor="search"
-          className="block text-sm font-medium text-black"
+          className="block text-sm font-medium text-black mb-2"
         >
           Search Customer
         </label>
@@ -141,7 +141,8 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
           <input
             type="text"
             id="search"
-            className="block w-full rounded-md border-gray-300 pl-10 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-black placeholder-gray-600"
+            name="search"
+            className="block w-full rounded-lg border-gray-300 pl-10 focus:border-indigo-500 focus:ring-indigo-500 text-base md:text-sm py-3 md:py-2 text-black placeholder-gray-600"
             placeholder="Search by name or mobile number"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -152,14 +153,14 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
       <div>
         <label
           htmlFor="customer"
-          className="block text-sm font-medium text-black"
+          className="block text-sm font-medium text-black mb-2"
         >
           Select Customer
         </label>
         <select
           id="customer"
           name="customer"
-          className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md text-black"
+          className="block w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 text-base md:text-sm py-3 md:py-2 text-black"
           value={customerId}
           onChange={(e) => setCustomerId(e.target.value)}
           required
@@ -172,12 +173,12 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
           ))}
         </select>
         {customers.length === 0 && searchTerm && (
-          <p className="mt-1 text-sm text-gray-700">
+          <p className="mt-2 text-sm text-gray-700">
             No customers found matching your search.
           </p>
         )}
         {customers.length === 0 && !searchTerm && (
-          <p className="mt-1 text-sm text-red-700">
+          <p className="mt-2 text-sm text-red-700">
             No available customers. Either all customers are already booked for this event,
             or no customers exist in the system.
           </p>
@@ -187,19 +188,21 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
       <div>
         <label
           htmlFor="seats"
-          className="block text-sm font-medium text-black"
+          className="block text-sm font-medium text-black mb-2"
         >
           Number of Seats (Optional)
         </label>
         <input
           type="number"
           id="seats"
+          name="seats"
           value={seats}
           onChange={(e) => setSeats(e.target.value)}
           min="1"
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-black"
+          inputMode="numeric"
+          className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-base md:text-sm py-3 md:py-2 text-black"
         />
-        <p className="mt-1 text-sm text-gray-700">
+        <p className="mt-2 text-sm text-gray-700">
           Leave empty if this is just a reminder
         </p>
       </div>
@@ -207,25 +210,26 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
       <div>
         <label
           htmlFor="notes"
-          className="block text-sm font-medium text-black"
+          className="block text-sm font-medium text-black mb-2"
         >
           Notes (Optional)
         </label>
         <textarea
           id="notes"
+          name="notes"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={3}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-black"
+          className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-base md:text-sm text-black"
           placeholder="Add any notes about this booking..."
         />
       </div>
 
-      <div className="flex justify-end space-x-3">
+      <div className="flex flex-col space-y-3 sm:flex-row sm:space-y-0 sm:space-x-3 sm:justify-end mt-8">
         <button
           type="button"
           onClick={onCancel}
-          className="inline-flex justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+          className="inline-flex justify-center items-center rounded-lg border border-gray-300 bg-white px-6 py-3 md:py-2 text-base md:text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 w-full sm:w-auto min-h-[44px]"
         >
           Cancel
         </button>
@@ -234,7 +238,7 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
             type="button"
             onClick={(e) => handleSubmit(e, true)}
             disabled={isSubmitting}
-            className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
+            className="inline-flex justify-center items-center rounded-lg border border-transparent bg-indigo-600 px-6 py-3 md:py-2 text-base md:text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 w-full sm:w-auto min-h-[44px] disabled:opacity-50"
           >
             {isSubmitting ? 'Saving...' : 'Save and Add Another'}
           </button>
@@ -242,7 +246,7 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
         <button
           type="submit"
           disabled={isSubmitting}
-          className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
+          className="inline-flex justify-center items-center rounded-lg border border-transparent bg-indigo-600 px-6 py-3 md:py-2 text-base md:text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 w-full sm:w-auto min-h-[44px] disabled:opacity-50"
         >
           {isSubmitting ? 'Saving...' : booking ? 'Update Booking' : 'Save'}
         </button>
