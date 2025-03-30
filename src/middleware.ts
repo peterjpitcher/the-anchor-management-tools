@@ -20,7 +20,7 @@ export async function middleware(request: NextRequest) {
   // If has session and trying to access auth pages, redirect to dashboard
   if (session && request.nextUrl.pathname.startsWith('/auth')) {
     const redirectUrl = request.nextUrl.clone()
-    redirectUrl.pathname = '/events'
+    redirectUrl.pathname = '/dashboard'
     return NextResponse.redirect(redirectUrl)
   }
 

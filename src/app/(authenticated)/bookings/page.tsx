@@ -13,6 +13,7 @@ import Link from 'next/link'
 type BookingWithDetails = Booking & {
   customer: Required<Pick<Customer, 'first_name' | 'last_name'>>
   event: Required<Pick<Event, 'name' | 'date' | 'time'>>
+  notes?: string
 }
 
 type GroupedBookings = {
@@ -240,25 +241,35 @@ export default function BookingsPage() {
                 <h3 className="text-lg font-medium leading-6 text-black">
                   {group.event.name}
                 </h3>
-                <p className="mt-0.5 text-sm text-black">
-                  {formatDate(group.event.date)} at {group.event.time}
-                </p>
+                <div className="mt-0.5 flex justify-between items-center">
+                  <p className="text-sm text-black">
+                    {formatDate(group.event.date)} at {group.event.time}
+                  </p>
+                  <div className="text-sm text-black">
+                    <span className="font-medium">Total Seats:</span> {group.bookings.reduce((sum, b) => sum + (b.seats || 0), 0)} 
+                    {group.reminders.length > 0 && (
+                      <span className="ml-4">
+                        <span className="font-medium">Reminders:</span> {group.reminders.length}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {group.bookings.length > 0 && (
                 <table className="min-w-full divide-y divide-gray-300">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-3 py-2.5 text-left text-sm font-semibold text-black">
+                      <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
                         Customer
                       </th>
-                      <th className="px-3 py-2.5 text-left text-sm font-semibold text-black">
+                      <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
                         Seats
                       </th>
-                      <th className="px-3 py-2.5 text-left text-sm font-semibold text-black">
-                        Created
+                      <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
+                        Notes
                       </th>
-                      <th className="relative py-2.5 pl-3 pr-4 sm:pr-6">
+                      <th className="relative py-3.5 pl-3 pr-4 sm:pr-6">
                         <span className="sr-only">Actions</span>
                       </th>
                     </tr>
@@ -266,26 +277,16 @@ export default function BookingsPage() {
                   <tbody className="divide-y divide-gray-200 bg-white">
                     {group.bookings.map((booking) => (
                       <tr key={booking.id}>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-sm text-black">
-                          <Link
-                            href={`/customers/${booking.customer_id}`}
-                            className="text-indigo-600 hover:text-indigo-900"
-                          >
-                            {booking.customer.first_name} {booking.customer.last_name}
-                          </Link>
+                        <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
+                          {booking.customer.first_name} {booking.customer.last_name}
                         </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-sm text-black">
-                          <Link
-                            href={`/bookings/${booking.id}`}
-                            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"
-                          >
-                            {booking.seats} Seats
-                          </Link>
+                        <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
+                          {booking.seats}
                         </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-sm text-black">
-                          {formatDate(booking.created_at)}
+                        <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
+                          {booking.notes || '-'}
                         </td>
-                        <td className="relative whitespace-nowrap py-2.5 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                        <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                           <button
                             onClick={() => setEditingBooking(booking)}
                             className="text-indigo-600 hover:text-indigo-900 mr-4"
@@ -308,54 +309,17 @@ export default function BookingsPage() {
               )}
 
               {group.reminders.length > 0 && (
-                <>
-                  <div className="px-4 py-2 bg-gray-50 border-t border-gray-200">
-                    <h4 className="text-sm font-medium text-gray-500">Reminders</h4>
+                <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
+                  <h4 className="text-sm font-medium text-black mb-2">Reminders ({group.reminders.length})</h4>
+                  <div className="text-sm text-black">
+                    {group.reminders.map((reminder, index) => (
+                      <span key={reminder.id} className="inline-block">
+                        {reminder.customer.first_name} {reminder.customer.last_name}
+                        {index < group.reminders.length - 1 ? ', ' : ''}
+                      </span>
+                    ))}
                   </div>
-                  <table className="min-w-full divide-y divide-gray-300">
-                    <tbody className="divide-y divide-gray-200 bg-white">
-                      {group.reminders.map((booking) => (
-                        <tr key={booking.id}>
-                          <td className="whitespace-nowrap px-3 py-2.5 text-sm text-black">
-                            <Link
-                              href={`/customers/${booking.customer_id}`}
-                              className="text-indigo-600 hover:text-indigo-900"
-                            >
-                              {booking.customer.first_name} {booking.customer.last_name}
-                            </Link>
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-2.5 text-sm text-black">
-                            <Link
-                              href={`/bookings/${booking.id}`}
-                              className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800"
-                            >
-                              Reminder
-                            </Link>
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-2.5 text-sm text-black">
-                            {formatDate(booking.created_at)}
-                          </td>
-                          <td className="relative whitespace-nowrap py-2.5 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                            <button
-                              onClick={() => setEditingBooking(booking)}
-                              className="text-indigo-600 hover:text-indigo-900 mr-4"
-                            >
-                              <PencilIcon className="h-5 w-5" />
-                              <span className="sr-only">Edit</span>
-                            </button>
-                            <button
-                              onClick={() => handleDeleteBooking(booking)}
-                              className="text-red-600 hover:text-red-900"
-                            >
-                              <TrashIcon className="h-5 w-5" />
-                              <span className="sr-only">Delete</span>
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </>
+                </div>
               )}
             </div>
           ))}
