@@ -11,6 +11,7 @@ import Link from 'next/link'
 
 type EventWithBookings = Event & {
   booked_seats: number
+  capacity?: number | null
 }
 
 export default function EventsPage() {
