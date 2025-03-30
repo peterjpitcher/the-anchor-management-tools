@@ -8,7 +8,6 @@ import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 import { sendBookingConfirmation } from '@/app/actions/sms'
 import { formatDate } from '@/lib/dateUtils'
-import Link from 'next/link'
 
 type BookingWithDetails = Booking & {
   customer: Required<Pick<Customer, 'first_name' | 'last_name'>>
