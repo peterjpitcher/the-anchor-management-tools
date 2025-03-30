@@ -6,7 +6,7 @@ import { Customer } from '@/types/database'
 import { CustomerForm } from '@/components/CustomerForm'
 import { CustomerImport } from '@/components/CustomerImport'
 import toast from 'react-hot-toast'
-import { PlusIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, PencilIcon, TrashIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import { CustomerName } from '@/components/CustomerName'
 import { CustomerWithLoyalty, getLoyalCustomers, sortCustomersByLoyalty } from '@/lib/customerUtils'
 import Link from 'next/link'
@@ -151,12 +151,12 @@ export default function CustomersPage() {
   }
 
   if (isLoading) {
-    return <div className="text-black">Loading customers...</div>
+    return <div className="text-black pb-20 sm:pb-6">Loading customers...</div>
   }
 
   if (showForm || editingCustomer) {
     return (
-      <div className="max-w-2xl mx-auto py-6">
+      <div className="max-w-2xl mx-auto py-6 pb-20 sm:pb-6">
         <h1 className="text-2xl font-bold mb-6">
           {editingCustomer ? 'Edit Customer' : 'Create New Customer'}
         </h1>
@@ -174,16 +174,18 @@ export default function CustomersPage() {
 
   if (showImport) {
     return (
-      <CustomerImport
-        onImportComplete={handleImportCustomers}
-        onCancel={() => setShowImport(false)}
-        existingCustomers={customers}
-      />
+      <div className="pb-20 sm:pb-6">
+        <CustomerImport
+          onImportComplete={handleImportCustomers}
+          onCancel={() => setShowImport(false)}
+          existingCustomers={customers}
+        />
+      </div>
     )
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-20 sm:pb-6">
       <div className="sm:flex sm:items-center">
         <div className="sm:flex-auto">
           <h1 className="text-xl font-semibold text-black">Customers</h1>
@@ -210,12 +212,15 @@ export default function CustomersPage() {
 
       <div className="max-w-3xl">
         <div className="relative">
+          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+            <MagnifyingGlassIcon className="h-5 w-5 text-gray-600" aria-hidden="true" />
+          </div>
           <input
             type="text"
             placeholder="Search by name or mobile number"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-black"
+            className="block w-full rounded-lg border-gray-300 pl-10 focus:border-indigo-500 focus:ring-indigo-500 text-base md:text-sm py-3 md:py-2 text-black placeholder-gray-600 shadow-sm"
           />
         </div>
       </div>
@@ -223,7 +228,8 @@ export default function CustomersPage() {
       <div className="mt-8 flex flex-col">
         <div className="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
           <div className="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
-            <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
               <table className="min-w-full divide-y divide-gray-300">
                 <thead className="bg-gray-50">
                   <tr>
@@ -267,6 +273,36 @@ export default function CustomersPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="md:hidden space-y-3">
+              {filteredCustomers.map((customer) => (
+                <div key={customer.id} className="bg-white shadow rounded-lg p-4">
+                  <div className="flex justify-between items-start">
+                    <Link href={`/customers/${customer.id}`} className="flex-1">
+                      <h3 className="text-base font-medium text-black hover:text-indigo-600">
+                        <CustomerName customer={customer} />
+                      </h3>
+                      <p className="mt-1 text-sm text-gray-500">{customer.mobile_number}</p>
+                    </Link>
+                    <div className="flex space-x-2 ml-4">
+                      <button
+                        onClick={() => setEditingCustomer(customer)}
+                        className="p-2 text-indigo-600 hover:text-indigo-900"
+                      >
+                        <PencilIcon className="h-5 w-5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteCustomer(customer)}
+                        className="p-2 text-red-600 hover:text-red-900"
+                      >
+                        <TrashIcon className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
