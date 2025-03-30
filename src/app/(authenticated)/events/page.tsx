@@ -97,17 +97,48 @@ export default function EventsPage() {
   }
 
   async function handleDeleteEvent(event: Event) {
-    if (!confirm('Are you sure you want to delete this event?')) return
-
+    // First check if there are any bookings for this event
     try {
+      const { data: bookings, error: bookingsError } = await supabase
+        .from('bookings')
+        .select('id')
+        .eq('event_id', event.id)
+
+      if (bookingsError) {
+        console.error('Error checking bookings:', bookingsError)
+        toast.error('Failed to check associated bookings')
+        return
+      }
+
+      if (bookings.length > 0) {
+        const hasConfirmedBookingDeletion = confirm(
+          `This event has ${bookings.length} booking${bookings.length === 1 ? '' : 's'}. Would you like to delete the event and cancel all associated bookings?`
+        )
+        
+        if (!hasConfirmedBookingDeletion) {
+          toast.success('Event deletion cancelled')
+          return
+        }
+      } else if (!confirm('Are you sure you want to delete this event?')) {
+        return
+      }
+
       const { error } = await supabase
         .from('events')
         .delete()
         .eq('id', event.id)
 
-      if (error) throw error
+      if (error) {
+        console.error('Error deleting event:', error)
+        if (error.code === '23503') {
+          toast.error('Cannot delete event because it has associated bookings. Please try again after applying the database changes.')
+        } else {
+          toast.error(`Failed to delete event: ${error.message}`)
+        }
+        return
+      }
 
-      toast.success('Event deleted successfully')
+      toast.success('Event and associated bookings deleted successfully')
       loadData()
     } catch (error) {
       console.error('Error deleting event:', error)
