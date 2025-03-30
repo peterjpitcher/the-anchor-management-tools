@@ -13,13 +13,19 @@ export function EventForm({ event, onSubmit, onCancel }: EventFormProps) {
   const [name, setName] = useState(event?.name ?? '')
   const [date, setDate] = useState(event?.date ?? '')
   const [time, setTime] = useState(event?.time ?? '')
+  const [capacity, setCapacity] = useState(event?.capacity?.toString() ?? '')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
     try {
-      await onSubmit({ name, date, time })
+      await onSubmit({ 
+        name, 
+        date, 
+        time,
+        capacity: capacity ? parseInt(capacity, 10) : null
+      })
     } finally {
       setIsSubmitting(false)
     }
@@ -70,6 +76,23 @@ export function EventForm({ event, onSubmit, onCancel }: EventFormProps) {
         />
         <p className="mt-1 text-sm text-black">
           Enter time in any format (e.g., &ldquo;7:30pm&rdquo;, &ldquo;19:30&rdquo;, &ldquo;7:30 PM&rdquo;)
+        </p>
+      </div>
+
+      <div>
+        <label htmlFor="capacity" className="block text-sm font-medium text-black">
+          Capacity (Optional)
+        </label>
+        <input
+          type="number"
+          id="capacity"
+          value={capacity}
+          onChange={(e) => setCapacity(e.target.value)}
+          min="1"
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+        />
+        <p className="mt-1 text-sm text-black">
+          Leave empty for unlimited capacity
         </p>
       </div>
 
