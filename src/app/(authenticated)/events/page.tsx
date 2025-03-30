@@ -9,8 +9,12 @@ import toast from 'react-hot-toast'
 import { formatDate } from '@/lib/dateUtils'
 import Link from 'next/link'
 
+type EventWithBookings = Event & {
+  booked_seats: number
+}
+
 export default function EventsPage() {
-  const [events, setEvents] = useState<Event[]>([])
+  const [events, setEvents] = useState<EventWithBookings[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingEvent, setEditingEvent] = useState<Event | null>(null)
@@ -21,14 +25,35 @@ export default function EventsPage() {
 
   async function loadEvents() {
     try {
-      const { data, error } = await supabase
+      // First get all events
+      const { data: eventsData, error: eventsError } = await supabase
         .from('events')
         .select('*')
         .order('date', { ascending: true })
 
-      if (error) throw error
+      if (eventsError) throw eventsError
 
-      setEvents(data)
+      // Then get booking counts for each event
+      const { data: bookingCounts, error: bookingsError } = await supabase
+        .from('bookings')
+        .select('event_id, seats')
+        .gt('seats', 0)
+
+      if (bookingsError) throw bookingsError
+
+      // Calculate total booked seats for each event
+      const bookedSeatsMap = bookingCounts.reduce((acc, booking) => {
+        acc[booking.event_id] = (acc[booking.event_id] || 0) + (booking.seats || 0)
+        return acc
+      }, {} as Record<string, number>)
+
+      // Combine events with their booking counts
+      const eventsWithBookings = eventsData.map(event => ({
+        ...event,
+        booked_seats: bookedSeatsMap[event.id] || 0
+      }))
+
+      setEvents(eventsWithBookings)
     } catch (error) {
       console.error('Error loading events:', error)
       toast.error('Failed to load events')
@@ -142,50 +167,85 @@ export default function EventsPage() {
                       <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
                         Time
                       </th>
+                      <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
+                        Capacity
+                      </th>
+                      <th className="px-3 py-3.5 text-left text-sm font-semibold text-black">
+                        Bookings
+                      </th>
                       <th className="relative py-3.5 pl-3 pr-4 sm:pr-6">
                         <span className="sr-only">Actions</span>
                       </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 bg-white">
-                    {events.map((event) => (
-                      <tr key={event.id}>
-                        <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
-                          <Link
-                            href={`/events/${event.id}`}
-                            className="text-indigo-600 hover:text-indigo-900"
-                          >
-                            {event.name}
-                          </Link>
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
-                          {formatDate(event.date)}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
-                          {event.time}
-                        </td>
-                        <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                          <button
-                            onClick={() => setEditingEvent(event)}
-                            className="text-indigo-600 hover:text-indigo-900 mr-4"
-                          >
-                            <PencilIcon className="h-5 w-5" />
-                            <span className="sr-only">Edit</span>
-                          </button>
-                          <button
-                            onClick={() => handleDeleteEvent(event)}
-                            className="text-red-600 hover:text-red-900"
-                          >
-                            <TrashIcon className="h-5 w-5" />
-                            <span className="sr-only">Delete</span>
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {events.map((event) => {
+                      const bookedSeats = event.booked_seats
+
+                      return (
+                        <tr key={event.id}>
+                          <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
+                            <Link
+                              href={`/events/${event.id}`}
+                              className="text-indigo-600 hover:text-indigo-900"
+                            >
+                              {event.name}
+                            </Link>
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
+                            {formatDate(event.date)}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
+                            {event.time}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
+                            {event.capacity ? `${event.capacity} seats` : 'Unlimited'}
+                          </td>
+                          <td className="px-3 py-4 text-sm text-black">
+                            <div className="flex flex-col space-y-1">
+                              <div className="text-sm">
+                                {bookedSeats} {bookedSeats === 1 ? 'seat' : 'seats'} booked
+                                {event.capacity ? ` (${event.capacity - bookedSeats} remaining)` : ''}
+                              </div>
+                              {event.capacity && (
+                                <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full ${
+                                      bookedSeats >= event.capacity
+                                        ? 'bg-red-500'
+                                        : bookedSeats >= event.capacity * 0.8
+                                        ? 'bg-yellow-500'
+                                        : 'bg-green-500'
+                                    }`}
+                                    style={{ width: `${Math.min((bookedSeats / event.capacity) * 100, 100)}%` }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                            <button
+                              onClick={() => setEditingEvent(event)}
+                              className="text-indigo-600 hover:text-indigo-900 mr-4"
+                            >
+                              <PencilIcon className="h-5 w-5" />
+                              <span className="sr-only">Edit</span>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteEvent(event)}
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              <TrashIcon className="h-5 w-5" />
+                              <span className="sr-only">Delete</span>
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
                     {events.length === 0 && (
                       <tr>
                         <td
-                          colSpan={4}
+                          colSpan={6}
                           className="px-3 py-4 text-sm text-black text-center"
                         >
                           No events found. Create one to get started.
