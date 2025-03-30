@@ -5,7 +5,7 @@ import { formatDate } from '@/lib/dateUtils'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { Event, Booking, Customer } from '@/types/database'
-import { PlusIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, TrashIcon } from '@heroicons/react/24/outline'
 import { BookingForm } from '@/components/BookingForm'
 import toast from 'react-hot-toast'
 
@@ -78,6 +78,34 @@ export default function EventViewPage({ params }) {
     }
   }
 
+  const handleDeleteBooking = async (booking: BookingWithCustomer) => {
+    if (!confirm('Are you sure you want to delete this booking?')) return
+
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .delete()
+        .eq('id', booking.id)
+
+      if (error) throw error
+
+      toast.success('Booking deleted successfully')
+      
+      // Refresh bookings
+      const { data: bookingsData, error: bookingsError } = await supabase
+        .from('bookings')
+        .select('*, customer:customers(first_name, last_name)')
+        .eq('event_id', params.id)
+        .order('created_at', { ascending: true })
+
+      if (bookingsError) throw bookingsError
+      setBookings(bookingsData as BookingWithCustomer[])
+    } catch (error) {
+      console.error('Error deleting booking:', error)
+      toast.error('Failed to delete booking')
+    }
+  }
+
   if (isLoading) return <div>Loading...</div>
   if (!event) return <div>Event not found</div>
 
@@ -87,36 +115,45 @@ export default function EventViewPage({ params }) {
 
   const BookingTable = ({ items, type }: { items: BookingWithCustomer[], type: 'booking' | 'reminder' }) => (
     <table className="min-w-full divide-y divide-gray-200">
-      <thead className="bg-gray-50">
+      <thead>
         <tr>
-          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">Customer</th>
+          <th className="px-4 py-2 text-left text-sm font-medium text-black">Customer</th>
+          <th className="px-4 py-2 text-left text-sm font-medium text-black">Created</th>
           {type === 'booking' && (
-            <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">Seats</th>
+            <th className="px-4 py-2 text-left text-sm font-medium text-black">Seats</th>
           )}
-          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">Notes</th>
-          <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">Created</th>
+          <th className="relative px-4 py-2">
+            <span className="sr-only">Actions</span>
+          </th>
         </tr>
       </thead>
       <tbody className="bg-white divide-y divide-gray-200">
         {items.map((booking) => (
           <tr key={booking.id} className="hover:bg-gray-50">
             <td className="px-4 py-2 whitespace-nowrap">
-              <Link href={`/bookings/${booking.id}`} className="text-blue-600 hover:text-blue-800">
+              <Link href={`/customers/${booking.customer_id}`} className="text-blue-600 hover:text-blue-800">
                 {booking.customer.first_name} {booking.customer.last_name}
               </Link>
+            </td>
+            <td className="px-4 py-2 whitespace-nowrap text-sm text-black">
+              {formatDate(booking.created_at)}
             </td>
             {type === 'booking' && (
               <td className="px-4 py-2 whitespace-nowrap">
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                  {booking.seats} Seats
+                  {booking.seats} {booking.seats === 1 ? 'Seat' : 'Seats'}
                 </span>
               </td>
             )}
-            <td className="px-4 py-2 text-sm text-black">
-              {booking.notes || '-'}
-            </td>
-            <td className="px-4 py-2 whitespace-nowrap text-sm text-black">
-              {formatDate(booking.created_at)}
+            <td className="px-4 py-2 whitespace-nowrap text-right text-sm font-medium">
+              <button
+                onClick={() => handleDeleteBooking(booking)}
+                className="text-red-600 hover:text-red-900"
+                title="Delete Booking"
+              >
+                <TrashIcon className="h-5 w-5" />
+                <span className="sr-only">Delete</span>
+              </button>
             </td>
           </tr>
         ))}
