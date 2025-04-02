@@ -169,8 +169,20 @@ export default function EventsPage() {
   }
 
   const now = new Date()
-  const upcomingEvents = events.filter(event => new Date(event.date) >= now)
-  const pastEvents = events.filter(event => new Date(event.date) < now)
+  now.setHours(0, 0, 0, 0) // Set to start of today
+  const tomorrow = new Date(now)
+  tomorrow.setDate(tomorrow.getDate() + 1) // Set to start of tomorrow
+
+  const upcomingEvents = events.filter(event => {
+    const eventDate = new Date(event.date)
+    eventDate.setHours(0, 0, 0, 0)
+    return eventDate >= now
+  })
+  const pastEvents = events.filter(event => {
+    const eventDate = new Date(event.date)
+    eventDate.setHours(0, 0, 0, 0)
+    return eventDate < now
+  })
 
   const EventsTable = ({ events, title }: { events: EventWithBookings[], title: string }) => (
     <div className="bg-white shadow overflow-hidden sm:rounded-lg">
@@ -326,14 +338,14 @@ export default function EventsPage() {
             No events found. Create one to get started.
           </div>
         ) : (
-          <>
+          <div className="space-y-8">
             {upcomingEvents.length > 0 && (
               <EventsTable events={upcomingEvents} title="Upcoming Events" />
             )}
             {pastEvents.length > 0 && (
               <EventsTable events={pastEvents} title="Past Events" />
             )}
-          </>
+          </div>
         )}
       </div>
     </div>

@@ -307,7 +307,15 @@ export default function BookingsPage() {
                   <div className="text-sm text-black">
                     {group.reminders.map((reminder, index) => (
                       <span key={reminder.id} className="inline-block">
-                        {reminder.customer.first_name} {reminder.customer.last_name}
+                        <button
+                          onClick={() => {
+                            setEditingBooking(reminder)
+                            setSelectedEvent(group.event)
+                          }}
+                          className="text-indigo-600 hover:text-indigo-900 hover:underline focus:outline-none"
+                        >
+                          {reminder.customer.first_name} {reminder.customer.last_name}
+                        </button>
                         {index < group.reminders.length - 1 ? ', ' : ''}
                       </span>
                     ))}
@@ -466,7 +474,15 @@ export default function BookingsPage() {
                 <div className="text-sm text-black">
                   {group.reminders.map((reminder, index) => (
                     <span key={reminder.id} className="inline-block">
-                      {reminder.customer.first_name} {reminder.customer.last_name}
+                      <button
+                        onClick={() => {
+                          setEditingBooking(reminder)
+                          setSelectedEvent(group.event)
+                        }}
+                        className="text-indigo-600 hover:text-indigo-900 hover:underline focus:outline-none"
+                      >
+                        {reminder.customer.first_name} {reminder.customer.last_name}
+                      </button>
                       {index < group.reminders.length - 1 ? ', ' : ''}
                     </span>
                   ))}
