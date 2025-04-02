@@ -34,11 +34,12 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
 
       if (customersError) throw customersError
 
-      // Then get existing bookings for this event
+      // Then get existing bookings for this event with seats > 0
       const { data: existingBookings } = await supabase
         .from('bookings')
-        .select('customer_id')
+        .select('customer_id, seats')
         .eq('event_id', event.id)
+        .gt('seats', 0)
 
       if (!existingBookings) {
         toast.error('Failed to load existing bookings')
@@ -48,7 +49,7 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
       // Get loyal customer IDs
       const loyalCustomerIds = await getLoyalCustomers(supabase)
 
-      // Filter out customers who already have a booking for this event
+      // Filter out customers who already have a booking with seats for this event
       // unless it's the current booking's customer
       const existingCustomerIds = new Set(existingBookings.map(b => b.customer_id))
       const availableCustomers = (customersData || [])
@@ -92,6 +93,54 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
 
   const handleSubmit = async (e: React.FormEvent, addAnother: boolean = false) => {
     e.preventDefault()
+
+    // Check if customer already has a booking for this event
+    const { data: existingBooking } = await supabase
+      .from('bookings')
+      .select('id, seats')
+      .eq('event_id', event.id)
+      .eq('customer_id', customerId)
+      .single()
+
+    if (existingBooking) {
+      if (existingBooking.seats > 0 && !booking) {
+        const confirmBooking = window.confirm(
+          'This customer already has a booking with seats for this event. Would you like to create another booking for them?'
+        )
+        if (!confirmBooking) {
+          return
+        }
+      } else if (existingBooking.seats === 0 || existingBooking.seats === null) {
+        // Update the existing reminder booking using the onSubmit handler
+        setIsSubmitting(true)
+        try {
+          await onSubmit({
+            customer_id: customerId,
+            event_id: event.id,
+            seats: seats ? parseInt(seats, 10) : null,
+            notes: notes || null,
+          })
+
+          if (addAnother) {
+            setCustomerId('')
+            setSeats('')
+            setNotes('')
+            setSearchTerm('')
+            await loadCustomers()
+          } else {
+            onCancel() // Close the form if not adding another
+          }
+          return
+        } catch (error) {
+          console.error('Error updating reminder:', error)
+          toast.error('Failed to update reminder')
+          return
+        } finally {
+          setIsSubmitting(false)
+        }
+      }
+    }
+
     setIsSubmitting(true)
     try {
       await onSubmit({
@@ -109,6 +158,8 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
         setSearchTerm('')
         // Reload available customers
         await loadCustomers()
+      } else {
+        onCancel() // Close the form if not adding another
       }
     } finally {
       setIsSubmitting(false)
