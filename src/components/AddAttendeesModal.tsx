@@ -73,15 +73,39 @@ export function AddAttendeesModal({
 
   const availableCustomers = useMemo(() => {
     const bookedCustomerIds = new Set(currentBookings.map(b => b.customer_id))
-    return allCustomers
+    const filtered = allCustomers
       .filter(customer => !bookedCustomerIds.has(customer.id))
       .filter(customer => {
+        // Ensure mobile_number is not null before calling toLowerCase()
+        const mobile = customer.mobile_number ? customer.mobile_number.toLowerCase() : ''
         const fullName = `${customer.first_name} ${customer.last_name}`.toLowerCase()
-        const mobile = customer.mobile_number.toLowerCase()
         const term = searchTerm.toLowerCase()
         return fullName.includes(term) || mobile.includes(term)
       })
-  }, [allCustomers, currentBookings, searchTerm])
+
+    // Sort: recent bookers first, then by name
+    return filtered.sort((a, b) => {
+      const aIsRecent = recentBookerIds.has(a.id);
+      const bIsRecent = recentBookerIds.has(b.id);
+
+      if (aIsRecent && !bIsRecent) return -1; // a comes first
+      if (!aIsRecent && bIsRecent) return 1;  // b comes first
+
+      // If both are recent or neither are, sort by existing name order (already pre-sorted by Supabase)
+      // The original fetch sorts by last_name, then first_name. We can rely on that stable sort here
+      // if we don't introduce further name sorting, or re-apply it if needed.
+      // For simplicity, if original sort from Supabase is `last_name, first_name`,
+      // and no further re-sorting by name happens before this point for `allCustomers`,
+      // this should maintain groups correctly.
+      // If `allCustomers` could be re-sorted by something else before this useMemo,
+      // then a full name sort would be needed here as a tie-breaker:
+      // const nameA = `${a.last_name} ${a.first_name}`.toLowerCase();
+      // const nameB = `${b.last_name} ${b.first_name}`.toLowerCase();
+      // if (nameA < nameB) return -1;
+      // if (nameA > nameB) return 1;
+      return 0;
+    });
+  }, [allCustomers, currentBookings, searchTerm, recentBookerIds])
 
   const handleSelectCustomer = (customerId: string) => {
     setSelectedCustomerIds(prevSelected =>
