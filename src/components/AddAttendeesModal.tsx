@@ -14,7 +14,6 @@ interface BookingLike {
 }
 
 interface AddAttendeesModalProps {
-  eventId: string;
   eventName: string;
   currentBookings: BookingLike[];
   onClose: () => void;
@@ -22,7 +21,6 @@ interface AddAttendeesModalProps {
 }
 
 export function AddAttendeesModal({
-  eventId,
   eventName,
   currentBookings,
   onClose,
