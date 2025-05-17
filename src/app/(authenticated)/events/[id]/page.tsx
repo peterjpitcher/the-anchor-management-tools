@@ -153,13 +153,11 @@ export default function EventViewPage({ params }) {
 
     // Send SMS confirmations if bookings were created
     if (createdBookings && createdBookings.length > 0) {
-      let smsSuccessCount = 0;
       let smsErrorCount = 0;
 
       for (const booking of createdBookings) {
         try {
           await sendBookingConfirmation(booking.id);
-          smsSuccessCount++;
         } catch (smsError) {
           smsErrorCount++;
           console.error(`Failed to send booking confirmation SMS for booking ID ${booking.id}:`, smsError);
@@ -171,7 +169,7 @@ export default function EventViewPage({ params }) {
         toast.error(`${smsErrorCount} SMS confirmation(s) failed to send. Bookings were created.`);
       }
       // Optionally, a success toast for SMS if all went well, e.g.:
-      // if (smsSuccessCount > 0 && smsErrorCount === 0) {
+      // if (smsErrorCount === 0 && createdBookings.length > 0) {
       //   toast.success('All booking confirmation SMS sent!');
       // }
     }
