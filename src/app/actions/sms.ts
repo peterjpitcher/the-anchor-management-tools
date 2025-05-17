@@ -4,6 +4,15 @@ import { createClient } from '@supabase/supabase-js'
 import twilio from 'twilio'
 import { smsTemplates } from '@/lib/smsTemplates'
 
+// Define an interface for Twilio message creation parameters
+interface TwilioMessageCreateParams {
+  to: string;
+  body: string;
+  from?: string;
+  messagingServiceSid?: string;
+  // Add other potential parameters from Twilio.MessageListInstanceCreateOptions if needed
+}
+
 // Helper function to create Supabase client with Service Role Key for server-side actions
 function createAdminSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -76,7 +85,7 @@ export async function sendBookingConfirmation(bookingId: string) {
           eventTime: booking.event.time,
         })
     
-    const messageParams: any = {
+    const messageParams: TwilioMessageCreateParams = {
       body: message,
       to: booking.customer.mobile_number,
     };
@@ -191,7 +200,7 @@ export async function sendEventReminders() {
               seats: booking.seats,
             })
         
-        const messageParams: any = {
+        const messageParams: TwilioMessageCreateParams = {
           body: message,
           to: booking.customer.mobile_number,
         };
