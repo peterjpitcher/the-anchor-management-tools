@@ -4,7 +4,7 @@ import { Customer } from '@/types/database'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { useEffect, useState, useMemo } from 'react'
 import toast from 'react-hot-toast'
-import { MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { MagnifyingGlassIcon, XMarkIcon, StarIcon } from '@heroicons/react/24/solid'
 
 // Define a more specific type for currentBookings based on what EventViewPage uses
 // This assumes BookingWithCustomer has at least customer_id
@@ -28,31 +28,47 @@ export function AddAttendeesModal({
 }: AddAttendeesModalProps) {
   const supabase = createClientComponentClient()
   const [allCustomers, setAllCustomers] = useState<Customer[]>([])
+  const [recentBookerIds, setRecentBookerIds] = useState<Set<string>>(new Set())
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
 
   useEffect(() => {
-    async function fetchCustomers() {
+    async function fetchData() {
       setIsLoading(true)
       try {
-        const { data, error } = await supabase
+        // Fetch all customers
+        const { data: customersData, error: customersError } = await supabase
           .from('customers')
           .select('*')
           .order('last_name', { ascending: true })
           .order('first_name', { ascending: true })
 
-        if (error) throw error
-        setAllCustomers(data || [])
+        if (customersError) throw customersError
+        setAllCustomers(customersData || [])
+
+        // Fetch IDs of customers who booked in the last 3 months
+        const threeMonthsAgo = new Date()
+        threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
+        
+        const { data: recentBookings, error: recentBookingsError } = await supabase
+          .from('bookings')
+          .select('customer_id')
+          .gte('created_at', threeMonthsAgo.toISOString())
+        
+        if (recentBookingsError) throw recentBookingsError
+        
+        setRecentBookerIds(new Set(recentBookings?.map(b => b.customer_id) || []))
+
       } catch (err) {
-        console.error('Error fetching customers:', err)
-        toast.error('Could not load customers.')
+        console.error('Error fetching data for modal:', err)
+        toast.error('Could not load all customer data.')
       } finally {
         setIsLoading(false)
       }
     }
-    fetchCustomers()
+    fetchData()
   }, [supabase])
 
   const availableCustomers = useMemo(() => {
@@ -173,7 +189,10 @@ export function AddAttendeesModal({
                           aria-labelledby={`customer-name-${customer.id}`}
                         />
                       </td>
-                      <td id={`customer-name-${customer.id}`} className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                      <td id={`customer-name-${customer.id}`} className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 flex items-center">
+                        {recentBookerIds.has(customer.id) && (
+                          <StarIcon className="h-5 w-5 text-yellow-400 mr-1.5 flex-shrink-0" aria-label="Recent Booker" />
+                        )}
                         {customer.first_name} {customer.last_name}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
