@@ -9,6 +9,7 @@ import { PlusIcon, TrashIcon, UserGroupIcon } from '@heroicons/react/24/outline'
 import { BookingForm } from '@/components/BookingForm'
 import { AddAttendeesModal } from '@/components/AddAttendeesModal'
 import toast from 'react-hot-toast'
+import { sendBookingConfirmation } from '@/app/actions/sms'
 
 type BookingWithCustomer = Omit<Booking, 'customer'> & {
   customer: Pick<Customer, 'first_name' | 'last_name'>
@@ -57,16 +58,25 @@ export default function EventViewPage({ params }) {
 
   const handleCreateBooking = async (data: Omit<Booking, 'id' | 'created_at'>) => {
     try {
-      const { error } = await supabase
+      const { data: newBookingData, error } = await supabase
         .from('bookings')
         .insert([data])
+        .select('id')
+        .single()
 
       if (error) throw error
+      if (!newBookingData) throw new Error('Failed to create booking or get its ID')
 
       toast.success('Booking created successfully')
       setShowBookingForm(false)
 
-      // Refresh bookings
+      try {
+        await sendBookingConfirmation(newBookingData.id)
+      } catch (smsError) {
+        console.error('Failed to send booking confirmation SMS:', smsError)
+        toast.error('Booking created, but failed to send confirmation SMS.')
+      }
+
       const { data: bookingsData, error: bookingsError } = await supabase
         .from('bookings')
         .select('*, customer:customers!inner(first_name, last_name)')
@@ -91,25 +101,35 @@ export default function EventViewPage({ params }) {
       return
     }
 
-    const newBookingsData = customerIds.map(customerId => ({
+    const newBookingsToInsert = customerIds.map(customerId => ({
       event_id: event.id,
       customer_id: customerId,
-      seats: 0,
+      seats: 0, // Default seats for multi-add
       notes: null,
     }))
 
+    let createdBookings: { id: string }[] | null = null; // To store IDs for SMS
+
     try {
-      const { error } = await supabase.from('bookings').insert(newBookingsData)
+      const { data: insertedBookings, error } = await supabase
+        .from('bookings')
+        .insert(newBookingsToInsert)
+        .select('id') // Select IDs of newly inserted bookings
 
       if (error) {
         console.error('Error inserting multiple bookings:', error)
-        throw error
+        throw error // Propagate error to main catch block
       }
+      if (!insertedBookings) {
+        throw new Error('Failed to insert bookings or retrieve their IDs.');
+      }
+      
+      createdBookings = insertedBookings; // Store for SMS sending
 
       toast.success(`${customerIds.length} attendee(s) added successfully!`)
       setShowAddAttendeesModal(false)
 
-      // Refresh bookings list
+      // Refresh bookings list (moved before SMS sending for quicker UI update)
       const { data: refreshedBookings, error: refreshError } = await supabase
         .from('bookings')
         .select('*, customer:customers!inner(first_name, last_name)')
@@ -119,14 +139,41 @@ export default function EventViewPage({ params }) {
       if (refreshError) {
         console.error('Error refreshing bookings after add:', refreshError)
         toast.error('Attendees added, but failed to refresh list.')
+        // Still try to set bookings if some data came back
         if (refreshedBookings) setBookings(refreshedBookings as BookingWithCustomer[])
       } else {
         setBookings(refreshedBookings as BookingWithCustomer[])
       }
+
     } catch (error) {
-      console.error('Failed to add multiple attendees:', error)
+      console.error('Failed to add multiple attendees during DB operation:', error)
       toast.error('An error occurred while adding attendees. Please try again.')
-      throw error
+      // No re-throw here, allow SMS part to be attempted if some bookings might have been made before error
+    }
+
+    // Send SMS confirmations if bookings were created
+    if (createdBookings && createdBookings.length > 0) {
+      let smsSuccessCount = 0;
+      let smsErrorCount = 0;
+
+      for (const booking of createdBookings) {
+        try {
+          await sendBookingConfirmation(booking.id);
+          smsSuccessCount++;
+        } catch (smsError) {
+          smsErrorCount++;
+          console.error(`Failed to send booking confirmation SMS for booking ID ${booking.id}:`, smsError);
+          // Individual toast per error might be too noisy, consider a summary toast
+        }
+      }
+
+      if (smsErrorCount > 0) {
+        toast.error(`${smsErrorCount} SMS confirmation(s) failed to send. Bookings were created.`);
+      }
+      // Optionally, a success toast for SMS if all went well, e.g.:
+      // if (smsSuccessCount > 0 && smsErrorCount === 0) {
+      //   toast.success('All booking confirmation SMS sent!');
+      // }
     }
   }
 
