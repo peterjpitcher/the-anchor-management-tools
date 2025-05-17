@@ -94,7 +94,7 @@ export default function EventViewPage({ params }) {
     const newBookingsData = customerIds.map(customerId => ({
       event_id: event.id,
       customer_id: customerId,
-      seats: 1,
+      seats: 0,
       notes: null,
     }))
 
