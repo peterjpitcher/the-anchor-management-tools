@@ -59,17 +59,22 @@ export default function CustomersPage() {
     }
 
     const searchTermLower = searchTerm.toLowerCase()
-    const searchTermDigits = searchTerm.replace(/\D/g, '') // Remove non-digits for phone number search
+    const searchTermDigits = searchTerm.replace(/\D/g, '')
     const filtered = customers.filter(customer => {
       const fullName = `${customer.first_name} ${customer.last_name}`.toLowerCase()
       const reversedFullName = `${customer.last_name} ${customer.first_name}`.toLowerCase()
-      const mobileDigits = customer.mobile_number.replace(/\D/g, '')
+      const mobileDigits = customer.mobile_number ? customer.mobile_number.replace(/\D/g, '') : ''
       
-      return fullName.includes(searchTermLower) ||
-             reversedFullName.includes(searchTermLower) ||
-             customer.first_name.toLowerCase().includes(searchTermLower) ||
-             customer.last_name.toLowerCase().includes(searchTermLower) ||
-             mobileDigits.includes(searchTermDigits)
+      if (fullName.includes(searchTermLower) ||
+          reversedFullName.includes(searchTermLower) ||
+          customer.first_name.toLowerCase().includes(searchTermLower) ||
+          customer.last_name.toLowerCase().includes(searchTermLower)) {
+        return true;
+      }
+      if (searchTermDigits.length > 0 && mobileDigits.includes(searchTermDigits)) {
+        return true;
+      }
+      return false;
     })
     setFilteredCustomers(filtered)
   }, [searchTerm, customers])

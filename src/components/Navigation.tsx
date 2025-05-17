@@ -27,8 +27,8 @@ export function Navigation() {
             className={`
               group flex items-center px-2 py-2 text-sm font-medium rounded-md
               ${isActive
-                ? 'bg-gray-100 text-gray-900'
-                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                ? 'bg-orange-600 text-white'
+                : 'text-orange-100 hover:bg-orange-400 hover:text-orange-50'
               }
             `}
           >
@@ -36,8 +36,8 @@ export function Navigation() {
               className={`
                 mr-3 h-6 w-6
                 ${isActive
-                  ? 'text-gray-500'
-                  : 'text-gray-400 group-hover:text-gray-500'
+                  ? 'text-white'
+                  : 'text-orange-200 group-hover:text-orange-50'
                 }
               `}
               aria-hidden="true"

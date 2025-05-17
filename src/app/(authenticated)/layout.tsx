@@ -25,22 +25,22 @@ export default function AuthenticatedLayout({
         {/* Sidebar */}
         <div className="hidden md:flex md:flex-shrink-0">
           <div className="flex w-64 flex-col">
-            <div className="flex min-h-0 flex-1 flex-col border-r border-gray-200 bg-white">
+            <div className="flex min-h-0 flex-1 flex-col border-r border-orange-600 bg-orange-500">
               <div className="flex flex-1 flex-col overflow-y-auto pt-5 pb-4">
                 <div className="flex flex-shrink-0 items-center px-4">
-                  <h1 className="text-xl font-bold">Event Planner 3.0</h1>
+                  <h1 className="text-xl font-bold text-white">Event Planner 3.0</h1>
                 </div>
                 <div className="mt-5 flex-1">
                   <Navigation />
                 </div>
               </div>
-              <div className="flex flex-shrink-0 border-t border-gray-200 p-4">
+              <div className="flex flex-shrink-0 border-t border-orange-400 p-4">
                 <button
                   onClick={handleSignOut}
-                  className="group flex w-full items-center px-2 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                  className="group flex w-full items-center px-2 py-2 text-sm font-medium text-orange-100 hover:bg-orange-600 hover:text-white rounded-md"
                 >
                   <ArrowRightOnRectangleIcon
-                    className="mr-3 h-6 w-6 text-gray-400 group-hover:text-gray-500"
+                    className="mr-3 h-6 w-6 text-orange-200 group-hover:text-orange-100"
                     aria-hidden="true"
                   />
                   Sign out
