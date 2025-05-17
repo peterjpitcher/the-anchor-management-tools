@@ -236,7 +236,6 @@ export default function EventViewPage({ params }) {
 
       {showAddAttendeesModal && event && (
         <AddAttendeesModal
-          eventId={event.id}
           eventName={event.name}
           currentBookings={bookings}
           onClose={() => setShowAddAttendeesModal(false)}
