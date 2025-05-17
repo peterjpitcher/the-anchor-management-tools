@@ -5,8 +5,9 @@ import { formatDate } from '@/lib/dateUtils'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { Event, Booking, Customer } from '@/types/database'
-import { PlusIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, TrashIcon, UserGroupIcon } from '@heroicons/react/24/outline'
 import { BookingForm } from '@/components/BookingForm'
+import { AddAttendeesModal } from '@/components/AddAttendeesModal'
 import toast from 'react-hot-toast'
 
 type BookingWithCustomer = Omit<Booking, 'customer'> & {
@@ -19,6 +20,7 @@ export default function EventViewPage({ params }) {
   const [bookings, setBookings] = useState<BookingWithCustomer[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showBookingForm, setShowBookingForm] = useState(false)
+  const [showAddAttendeesModal, setShowAddAttendeesModal] = useState(false)
   const supabase = createClientComponentClient()
 
   useEffect(() => {
@@ -34,7 +36,7 @@ export default function EventViewPage({ params }) {
 
         const { data: bookingsData, error: bookingsError } = await supabase
           .from('bookings')
-          .select('*, customer:customers(first_name, last_name)')
+          .select('*, customer:customers!inner(first_name, last_name)')
           .eq('event_id', params.id)
           .order('created_at', { ascending: true })
 
@@ -44,6 +46,7 @@ export default function EventViewPage({ params }) {
         setBookings(bookingsData as BookingWithCustomer[])
       } catch (error) {
         console.error('Error loading event:', error)
+        toast.error('Failed to load event details.')
       } finally {
         setIsLoading(false)
       }
@@ -66,7 +69,7 @@ export default function EventViewPage({ params }) {
       // Refresh bookings
       const { data: bookingsData, error: bookingsError } = await supabase
         .from('bookings')
-        .select('*, customer:customers(first_name, last_name)')
+        .select('*, customer:customers!inner(first_name, last_name)')
         .eq('event_id', params.id)
         .order('created_at', { ascending: true })
 
@@ -75,6 +78,55 @@ export default function EventViewPage({ params }) {
     } catch (error) {
       console.error('Error creating booking:', error)
       toast.error('Failed to create booking')
+    }
+  }
+
+  const handleAddMultipleAttendees = async (customerIds: string[]) => {
+    if (!event) {
+      toast.error('Event details not loaded. Cannot add attendees.')
+      return
+    }
+    if (customerIds.length === 0) {
+      toast.error('No customers selected.')
+      return
+    }
+
+    const newBookingsData = customerIds.map(customerId => ({
+      event_id: event.id,
+      customer_id: customerId,
+      seats: 1,
+      notes: null,
+    }))
+
+    try {
+      const { error } = await supabase.from('bookings').insert(newBookingsData)
+
+      if (error) {
+        console.error('Error inserting multiple bookings:', error)
+        throw error
+      }
+
+      toast.success(`${customerIds.length} attendee(s) added successfully!`)
+      setShowAddAttendeesModal(false)
+
+      // Refresh bookings list
+      const { data: refreshedBookings, error: refreshError } = await supabase
+        .from('bookings')
+        .select('*, customer:customers!inner(first_name, last_name)')
+        .eq('event_id', params.id)
+        .order('created_at', { ascending: true })
+
+      if (refreshError) {
+        console.error('Error refreshing bookings after add:', refreshError)
+        toast.error('Attendees added, but failed to refresh list.')
+        if (refreshedBookings) setBookings(refreshedBookings as BookingWithCustomer[])
+      } else {
+        setBookings(refreshedBookings as BookingWithCustomer[])
+      }
+    } catch (error) {
+      console.error('Failed to add multiple attendees:', error)
+      toast.error('An error occurred while adding attendees. Please try again.')
+      throw error
     }
   }
 
@@ -94,7 +146,7 @@ export default function EventViewPage({ params }) {
       // Refresh bookings
       const { data: bookingsData, error: bookingsError } = await supabase
         .from('bookings')
-        .select('*, customer:customers(first_name, last_name)')
+        .select('*, customer:customers!inner(first_name, last_name)')
         .eq('event_id', params.id)
         .order('created_at', { ascending: true })
 
@@ -171,8 +223,8 @@ export default function EventViewPage({ params }) {
   return (
     <div className="p-6">
       {showBookingForm && event && (
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-auto">
             <BookingForm
               event={event}
               onSubmit={handleCreateBooking}
@@ -181,15 +233,35 @@ export default function EventViewPage({ params }) {
           </div>
         </div>
       )}
+
+      {showAddAttendeesModal && event && (
+        <AddAttendeesModal
+          eventId={event.id}
+          eventName={event.name}
+          currentBookings={bookings}
+          onClose={() => setShowAddAttendeesModal(false)}
+          onAddAttendees={handleAddMultipleAttendees}
+        />
+      )}
+
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold text-black">Event Details</h1>
-        <button
-          onClick={() => setShowBookingForm(true)}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
-        >
-          <PlusIcon className="h-5 w-5 mr-2" />
-          Quick Book
-        </button>
+        <div className="flex space-x-3">
+          <button
+            onClick={() => setShowAddAttendeesModal(true)}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+          >
+            <UserGroupIcon className="h-5 w-5 mr-2" />
+            Add Attendees
+          </button>
+          <button
+            onClick={() => setShowBookingForm(true)}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            <PlusIcon className="h-5 w-5 mr-2" />
+            Quick Book
+          </button>
+        </div>
       </div>
       <div className="bg-white shadow rounded-lg overflow-hidden mb-6">
         <div className="px-4 py-5 sm:p-6">
