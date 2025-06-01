@@ -20,12 +20,22 @@ async function getEmployee(id: string): Promise<Employee | null> {
   return data;
 }
 
-interface EditEmployeePageProps {
-  params: { employee_id: string };
-}
+// Ideal props definition (can be kept for clarity or removed if it causes issues with the workaround)
+// type EditEmployeePageProps = {
+//   params: { employee_id: string };
+//   searchParams: { [key: string]: string | string[] | undefined };
+// };
 
-export default async function EditEmployeePage({ params }: EditEmployeePageProps) {
-  const employee = await getEmployee(params.employee_id);
+// Removed @ts-expect-error as build indicated it was unused with {params: any}
+export default async function EditEmployeePage({ params, searchParams }: { params: any, searchParams: any }) {
+  const employee_id = params?.employee_id as string;
+  
+  if (!employee_id) {
+    console.error("Employee ID is missing from params");
+    notFound();
+  }
+
+  const employee = await getEmployee(employee_id);
 
   if (!employee) {
     notFound();
@@ -46,7 +56,7 @@ export default async function EditEmployeePage({ params }: EditEmployeePageProps
         <EmployeeForm 
           employee={employee} 
           formAction={updateEmployeeWithId} 
-          initialFormState={null} // Or provide initial success/error state if needed from a redirect
+          initialFormState={null} 
         />
       </div>
     </div>
