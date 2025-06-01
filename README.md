@@ -110,3 +110,109 @@ This is a private project. Please do not share or distribute without permission.
 ## License
 
 Private - All rights reserved
+
+## Application Update: The Anchor Management App & Employee Features (as of [Current Date - Please Update])
+
+This section details significant updates transforming the application into a management tool for "The Anchor," with a primary focus on adding comprehensive Employee Management functionality. For a snapshot of the application state *before* these changes, please refer to `docs/CURRENT_APPLICATION_OVERVIEW.md`.
+
+### 1. Core Application Name Change
+
+- The application is now geared towards being a management app for "The Anchor".
+
+### 2. Menu and Navigation Restructuring
+
+-   **Bookings Section Removed:** The dedicated "/bookings" page and its corresponding links in the sidebar and mobile navigation have been removed. The underlying booking *functionality* (data tables, SMS confirmations/reminders) remains intact.
+-   **Top-Level Menu Items:**
+    *   Dashboard
+    *   Events
+    *   Customers
+    *   *(New)* Employees (with a visual divider separating it from the above items in the sidebar)
+
+### 3. New Feature: Employee Management
+
+A comprehensive module for managing employee details, notes, and attachments has been added.
+
+#### 3.1. Database Schema Additions
+
+New tables have been added to the Supabase (PostgreSQL) database. Ensure RLS policies and (for attachments) Supabase Storage bucket policies are appropriately configured.
+
+*   **`employees` Table:** Stores core employee information.
+    *   `employee_id`: UUID (Primary Key)
+    *   `first_name`: TEXT (Not Null)
+    *   `last_name`: TEXT (Not Null)
+    *   `date_of_birth`: DATE (Nullable)
+    *   `address`: TEXT (Nullable)
+    *   `phone_number`: TEXT (Nullable)
+    *   `email_address`: TEXT (Unique, Not Null)
+    *   `job_title`: TEXT (Not Null)
+    *   `employment_start_date`: DATE (Not Null)
+    *   `employment_end_date`: DATE (Nullable)
+    *   `status`: TEXT (Not Null, Default: 'Active', e.g., 'Active', 'Former')
+    *   `emergency_contact_name`: TEXT (Nullable)
+    *   `emergency_contact_phone`: TEXT (Nullable)
+    *   `created_at`: TIMESTAMPTZ (Default: now(), Not Null)
+    *   `updated_at`: TIMESTAMPTZ (Default: now(), Not Null, with trigger to auto-update)
+
+*   **`employee_notes` Table:** For time-stamped notes/updates related to an employee.
+    *   `note_id`: UUID (Primary Key)
+    *   `employee_id`: UUID (Foreign Key to `employees.employee_id`, CASCADE DELETE)
+    *   `note_text`: TEXT (Not Null)
+    *   `created_by`: UUID (Nullable, intended to link to `auth.users.id`)
+    *   `created_at`: TIMESTAMPTZ (Default: now(), Not Null)
+
+*   **`attachment_categories` Table:** Stores user-definable categories for attachments.
+    *   `category_id`: UUID (Primary Key)
+    *   `category_name`: TEXT (Unique, Not Null)
+    *   `created_at`: TIMESTAMPTZ (Default: now(), Not Null)
+    *   `updated_at`: TIMESTAMPTZ (Default: now(), Not Null, with trigger to auto-update)
+    *   *Initial suggested categories:* 'Contract', 'ID Scan', 'Right to Work Document', 'Performance Review', 'Other'.
+
+*   **`employee_attachments` Table:** Stores metadata for files attached to an employee record.
+    *   `attachment_id`: UUID (Primary Key)
+    *   `employee_id`: UUID (Foreign Key to `employees.employee_id`, CASCADE DELETE)
+    *   `category_id`: UUID (Foreign Key to `attachment_categories.category_id`)
+    *   `file_name`: TEXT (Not Null) - Original name of the uploaded file.
+    *   `storage_path`: TEXT (Not Null) - Path to the file within Supabase Storage (e.g., in the 'employee-attachments' bucket).
+    *   `mime_type`: TEXT (Not Null)
+    *   `file_size_bytes`: BIGINT (Not Null)
+    *   `description`: TEXT (Nullable)
+    *   `uploaded_at`: TIMESTAMPTZ (Default: now(), Not Null)
+
+#### 3.2. User Interface and Functionality
+
+-   **Employee List (`/employees`):** Displays a table of all employees with key details (Name, Email, Job Title, Status) and links to view individual employee pages.
+    -   Includes an "Add Employee" button.
+-   **Add Employee Page (`/employees/new`):** A form to create new employee records.
+-   **View Employee Page (`/employees/[employee_id]`):**
+    -   Displays all details of a selected employee.
+    -   Includes an "Edit Employee" button.
+    -   Includes a "Delete Employee" button (with confirmation modal).
+    -   **Notes Section:**
+        -   Lists all notes for the employee, showing author (if available from a `profiles` table linked via `created_by`) and timestamp.
+        -   Form to add new time-stamped notes (associates the current authenticated user as `created_by`).
+    -   **Attachments Section:**
+        -   Lists all attachments for the employee (file name, size, description, category).
+        -   Provides download links for each attachment (using Supabase Storage signed URLs).
+        -   Includes a delete button for each attachment (with confirmation modal), which also removes the file from Supabase Storage.
+        -   Form to upload new attachments, including file selection, category dropdown (categories are fetched dynamically), and an optional description.
+-   **Edit Employee Page (`/employees/[employee_id]/edit`):** A form pre-filled with existing data to update an employee's record.
+
+#### 3.3. Backend Logic (Server Actions)
+
+Located primarily in `src/app/actions/employeeActions.ts`:
+
+-   `addEmployee`: Creates a new employee.
+-   `updateEmployee`: Updates an existing employee.
+-   `deleteEmployee`: Deletes an employee (and redirects to the employee list).
+-   `addEmployeeNote`: Adds a new note for an employee.
+-   `addEmployeeAttachment`: Handles file upload to Supabase Storage (bucket: `employee-attachments`) and creates a corresponding database record.
+-   `deleteEmployeeAttachment`: Deletes an attachment record from the database and the associated file from Supabase Storage.
+
+#### 3.4. Important Considerations
+
+-   **Supabase Storage:** Ensure the bucket named `employee-attachments` (or your chosen name) is created in your Supabase project and that appropriate RLS policies are set for access (uploads, downloads, deletes).
+-   **`created_by` in Notes:** The `addEmployeeNote` action attempts to capture the ID of the user creating the note. This relies on the client-side form passing the user's ID. Review and ensure this aligns with your authentication and RLS strategy for the `employee_notes` table.
+-   **Error Handling & UX:** Basic error handling is in place. For a production application, consider more robust error display (e.g., toast notifications) and user feedback.
+-   **Cascade Deletes:** The `employee_notes` and `employee_attachments` tables are set up with `ON DELETE CASCADE` for the `employee_id` foreign key. This means if an employee record is deleted, all their associated notes and attachment records will also be automatically deleted from the database. Files in Supabase Storage, however, are *not* automatically deleted by this database cascade and are handled by the `deleteEmployeeAttachment` action (and would need to be handled if an entire employee and their storage folder were to be bulk-deleted, which is not yet implemented).
+
+This concludes the main implementation of the employee management feature.

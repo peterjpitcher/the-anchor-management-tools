@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
-import { CalendarIcon, UserGroupIcon, BookOpenIcon, HomeIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon } from '@heroicons/react/24/outline'
 
 export function BottomNavigation() {
   const pathname = usePathname()
@@ -26,9 +26,9 @@ export function BottomNavigation() {
       icon: UserGroupIcon,
     },
     {
-      name: 'Bookings',
-      href: '/bookings',
-      icon: BookOpenIcon,
+      name: 'Employees',
+      href: '/employees',
+      icon: IdentificationIcon,
     },
   ]
 
