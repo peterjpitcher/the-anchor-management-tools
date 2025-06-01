@@ -22,6 +22,15 @@ A web-based application for managing events and customer bookings with automated
 - **Hosting**: Vercel
 - **Scheduler**: GitHub Actions
 
+## Documentation
+
+- [Authentication](./AUTHENTICATION.md)
+- [Product Requirements Document (PRD)](./PRD.md)
+- [SMS Functionality](./SMS_FUNCTIONALITY.md)
+- [Application Color Palette](./docs/color_palette.md)
+- [CSS Setup and Issues](./docs/css_setup_and_issue_summary.md)
+- [Navigation System](./docs/NAVIGATION.md)
+
 ## Prerequisites
 
 - Node.js 18.17 or later

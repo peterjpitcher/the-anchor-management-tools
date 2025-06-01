@@ -4,6 +4,8 @@ import { createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import type { Employee, EmployeeNote, EmployeeAttachment } from '@/types/database';
+import { cookies } from 'next/headers';
+import { createServerActionClient } from '@supabase/auth-helpers-nextjs';
 
 // Helper function to create Supabase client with Service Role Key for server-side actions
 // Ensure these ENV VARS are set in your Vercel/hosting environment
@@ -218,8 +220,30 @@ export async function deleteEmployee(employeeId: string, prevState: DeleteState 
   // return { message: 'Employee deleted successfully!', type: 'success' };
 }
 
+// Server action to get a simplified list of employees for dropdowns
+export async function getEmployeeList(): Promise<{ id: string; name: string; }[] | null> {
+  const supabase = createAdminSupabaseClient();
+  if (!supabase) {
+    console.error('getEmployeeList: Database connection failed.');
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from('employees')
+    .select('employee_id, first_name, last_name')
+    .order('last_name')
+    .order('first_name');
+
+  if (error) {
+    console.error('Error fetching employee list:', error);
+    return null;
+  }
+
+  return data.map(emp => ({ id: emp.employee_id, name: `${emp.first_name} ${emp.last_name}` }));
+}
+
 // Types for Employee Notes
-export type EmployeeNoteFormData = Omit<EmployeeNote, 'note_id' | 'created_at' | 'created_by'>; // created_by will be added server-side
+export type EmployeeNoteFormData = Omit<EmployeeNote, 'note_id' | 'created_at' | 'created_by'>;
 
 export type NoteFormState = {
   message: string;
@@ -235,10 +259,19 @@ export async function addEmployeeNote(
   prevState: NoteFormState, 
   formData: FormData
 ): Promise<NoteFormState> {
-  const supabase = createAdminSupabaseClient(); // Use the admin client for server-side operations
-  if (!supabase) {
+  const adminSupabase = createAdminSupabaseClient(); // Renamed for clarity
+  if (!adminSupabase) {
     return { message: 'Database connection failed.', type: 'error' };
   }
+
+  // Create a Supabase client with user context for getting user ID
+  const supabaseUserContext = createServerActionClient({ cookies });
+  const { data: { user } } = await supabaseUserContext.auth.getUser();
+
+  if (!user) {
+    return { message: 'User not authenticated.', type: 'error', errors: { general: 'Authentication required.' } };
+  }
+  const createdById = user.id;
 
   if (!employeeId) {
     return { message: 'Employee ID is missing.', type: 'error', errors: { general: 'Employee ID is missing.' } };
@@ -250,49 +283,22 @@ export async function addEmployeeNote(
     return { message: 'Note text cannot be empty.', type: 'error', errors: { note_text: 'Note cannot be empty.' } };
   }
 
-  // Get current authenticated user ID - this part is tricky with Service Role key
-  // Normally, for user-specific actions, you'd use the user's session-based Supabase client.
-  // If using admin client, we can't directly get user.id().
-  // For server actions where user identity is crucial and RLS is based on auth.uid(),
-  // you might need to create a Supabase client with the user's actual JWT if passed from client,
-  // or adjust RLS to allow service_role to set created_by.
-  // For now, let's assume RLS and DB policies allow service_role to insert with a passed created_by, 
-  // or created_by is nullable and we get it differently or pass it.
-  // A simpler approach for now, if RLS doesn't block it, is to get the user from a different client if needed.
-  // This requires careful setup of Supabase client for user context in server actions.
-  // For this example, we'll simulate getting a user ID or leave it null if not easily available.
-  // THIS IS A PLACEHOLDER - In a real app, you must correctly get the authenticated user's ID.
-  let createdById: string | null = null; 
-  
-  // Attempt to get current user from a non-admin client if possible, or pass it to the action
-  // For this example, we'll omit actually fetching the user to keep it simpler, assuming it might be passed
-  // or RLS for employee_notes allows service_key to set created_by or it's nullable.
-  // const { data: { user } } = await supabase.auth.getUser(); // This won't work with Service Role Key for the *specific* user.
-  // createdById = user?.id || null; // This is what you'd do with a user-session client.
-
-  // The SQL for the table makes `created_by` nullable, so if we can't get it, it will be null.
-  // The form will need to pass the current user's ID if it's required to be set by this action.
-  // Let's assume for now that the `created_by` field is correctly populated by the client/caller or RLS setup.
-  // The `formData` could potentially include a hidden field for `created_by` if set by the client component that has user context.
-  const created_by_from_client = formData.get('created_by_user_id') as string | null;
-  if (created_by_from_client) {
-      createdById = created_by_from_client;
-  }
-
   const noteData: Omit<EmployeeNote, 'note_id' | 'created_at'> = {
     employee_id: employeeId,
     note_text: noteText.trim(),
-    created_by: createdById, // This might be null
+    created_by: createdById, // Set with authenticated user ID
   };
 
-  const { error } = await supabase.from('employee_notes').insert(noteData);
+  // Use adminSupabase (service role) for the insert operation
+  // This assumes RLS allows service_role to insert notes and set created_by
+  const { error } = await adminSupabase.from('employee_notes').insert(noteData);
 
   if (error) {
     console.error('Error adding employee note:', error);
     return { message: `Failed to add note: ${error.message}`, type: 'error', errors: { general: error.message } };
   }
 
-  revalidatePath(`/employees/${employeeId}`); // Revalidate the employee detail page to show the new note
+  revalidatePath(`/employees/${employeeId}`);
 
   return { message: 'Note added successfully!', type: 'success' };
 }
