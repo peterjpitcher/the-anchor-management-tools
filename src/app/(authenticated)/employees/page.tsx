@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
-import { PlusIcon } from '@heroicons/react/24/outline';
 import type { Employee } from '@/types/database'; // Import Employee type
+import { Button } from '@/components/ui/Button';
 
 async function getEmployees(): Promise<Employee[] | null> {
   const { data, error } = await supabase.from('employees').select('*').order('last_name').order('first_name');
@@ -27,13 +27,11 @@ export default async function EmployeesPage() {
           </p>
         </div>
         <div className="mt-4 sm:ml-16 sm:mt-0 sm:flex-none">
-          <Link
-            href="/employees/new" // Link to be created later
-            className="inline-flex items-center rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary-emphasis focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            <PlusIcon className="-ml-0.5 mr-1.5 h-5 w-5" aria-hidden="true" />
-            Add Employee
-          </Link>
+          <Button asChild variant="primary" size="md">
+            <Link href="/employees/new" className="text-white">
+              Add Employee
+            </Link>
+          </Button>
         </div>
       </div>
 

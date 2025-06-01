@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, BuildingStorefrontIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, BuildingStorefrontIcon, PencilSquareIcon } from '@heroicons/react/24/outline'
 
 const primaryNavigation = [
   { name: 'Dashboard', href: '/', icon: HomeIcon },
@@ -12,17 +12,49 @@ const primaryNavigation = [
 
 const secondaryNavigation = [
   { name: 'Employees', href: '/employees', icon: IdentificationIcon },
+  { name: 'Quick Add Note', href: '#', icon: PencilSquareIcon, action: true },
   // Example of another section if needed in future
   // { name: 'The Anchor Mgmt', href: '/anchor', icon: BuildingStorefrontIcon }, 
 ];
 
-export function Navigation() {
+interface NavigationProps {
+  onQuickAddNoteClick: () => void;
+}
+
+export function Navigation({ onQuickAddNoteClick }: NavigationProps) {
   const pathname = usePathname()
 
-  const renderNavItem = (item: typeof primaryNavigation[0]) => {
-    const isActive = item.href === '/' 
+  type NavigationItem = {
+    name: string;
+    href: string;
+    icon: React.ElementType;
+    action?: boolean;
+  };
+
+  const renderNavItem = (item: NavigationItem) => {
+    const isActive = !item.action && item.href === '/' 
       ? pathname === '/'
-      : pathname.startsWith(item.href);
+      : !item.action && pathname.startsWith(item.href);
+
+    if (item.action && item.name === 'Quick Add Note') {
+      return (
+        <button
+          key={item.name}
+          onClick={onQuickAddNoteClick}
+          className={`
+            group flex items-center px-2 py-2 text-sm font-medium rounded-md w-full
+            text-gray-100 hover:bg-green-700 hover:text-white
+          `}
+        >
+          <item.icon
+            className={`mr-3 h-6 w-6 text-green-200 group-hover:text-white`}
+            aria-hidden="true"
+          />
+          {item.name}
+        </button>
+      );
+    }
+
     return (
       <Link
         key={item.name}
@@ -30,17 +62,17 @@ export function Navigation() {
         className={`
           group flex items-center px-2 py-2 text-sm font-medium rounded-md
           ${isActive
-            ? 'bg-primary-emphasis text-primary-foreground'
-            : 'text-primary-foreground hover:bg-primary-emphasis/80 hover:text-primary-foreground'
+            ? 'bg-green-700 text-white' 
+            : 'text-gray-100 hover:bg-green-700 hover:text-white'
           }
         `}
       >
         <item.icon
           className={`
-            mr-3 h-6 w-6 text-primary-foreground
+            mr-3 h-6 w-6
             ${isActive
-              ? 'opacity-100'
-              : 'opacity-70 group-hover:opacity-90'
+              ? 'text-white'
+              : 'text-green-200 group-hover:text-white'
             }
           `}
           aria-hidden="true"
@@ -52,14 +84,14 @@ export function Navigation() {
 
   return (
     <nav className="space-y-1 px-2">
-      {primaryNavigation.map(renderNavItem)}
+      {(primaryNavigation as NavigationItem[]).map(renderNavItem)}
       
       {/* Divider */}
       <div className="pt-2 pb-1">
-        <hr className="border-t border-primary-emphasis/50 opacity-50" />
+        <hr className="border-t border-green-600 opacity-75" />
       </div>
       
-      {secondaryNavigation.map(renderNavItem)}
+      {(secondaryNavigation as NavigationItem[]).map(renderNavItem)}
     </nav>
   )
 } 

@@ -6,6 +6,8 @@ import { ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
 import { useRouter } from 'next/navigation'
 import { BottomNavigation } from '@/components/BottomNavigation'
 import Image from 'next/image';
+import React, { useState } from 'react';
+import AddNoteModal from '@/components/modals/AddNoteModal';
 
 export default function AuthenticatedLayout({
   children,
@@ -14,11 +16,15 @@ export default function AuthenticatedLayout({
 }) {
   const router = useRouter()
   const supabase = createClientComponentClient()
+  const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false);
 
   async function handleSignOut() {
     await supabase.auth.signOut()
     router.push('/auth/login')
   }
+
+  const openAddNoteModal = () => setIsAddNoteModalOpen(true);
+  const closeAddNoteModal = () => setIsAddNoteModalOpen(false);
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -26,14 +32,14 @@ export default function AuthenticatedLayout({
         {/* Sidebar */}
         <div className="hidden md:flex md:flex-shrink-0">
           <div className="flex w-64 flex-col">
-            <div className="flex min-h-0 flex-1 flex-col border-r border-gray-300 bg-brand-test-color">
+            <div className="flex min-h-0 flex-1 flex-col border-r border-gray-300 bg-primary">
               <div className="flex flex-1 flex-col overflow-y-auto pt-5 pb-4">
                 <div className="flex flex-col items-center px-4 space-y-2 mb-4">
                   <Image src="/logo.png" alt="Management Tools Logo" width={192} height={192} />
                   <h1 className="text-xl font-bold text-white text-center">Management Tools</h1>
                 </div>
                 <div className="mt-5 flex-1">
-                  <Navigation />
+                  <Navigation onQuickAddNoteClick={openAddNoteModal} />
                 </div>
               </div>
               <div className="flex flex-shrink-0 border-t border-gray-200 p-4">
@@ -57,9 +63,10 @@ export default function AuthenticatedLayout({
           <main className="flex-1 overflow-y-auto bg-gray-50 p-6 md:p-6 p-3">
             {children}
           </main>
-          <BottomNavigation />
+          <BottomNavigation onQuickAddNoteClick={openAddNoteModal} />
         </div>
       </div>
+      <AddNoteModal isOpen={isAddNoteModalOpen} onClose={closeAddNoteModal} />
     </div>
   )
 } 
