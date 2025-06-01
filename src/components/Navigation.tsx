@@ -30,17 +30,17 @@ export function Navigation() {
         className={`
           group flex items-center px-2 py-2 text-sm font-medium rounded-md
           ${isActive
-            ? 'bg-orange-600 text-white'
-            : 'text-orange-100 hover:bg-orange-400 hover:text-orange-50'
+            ? 'bg-primary-emphasis text-primary-foreground'
+            : 'text-primary-foreground hover:bg-primary-emphasis/80 hover:text-primary-foreground'
           }
         `}
       >
         <item.icon
           className={`
-            mr-3 h-6 w-6
+            mr-3 h-6 w-6 text-primary-foreground
             ${isActive
-              ? 'text-white'
-              : 'text-orange-200 group-hover:text-orange-50'
+              ? 'opacity-100'
+              : 'opacity-70 group-hover:opacity-90'
             }
           `}
           aria-hidden="true"
@@ -56,7 +56,7 @@ export function Navigation() {
       
       {/* Divider */}
       <div className="pt-2 pb-1">
-        <hr className="border-t border-orange-400 opacity-50" />
+        <hr className="border-t border-primary-emphasis/50 opacity-50" />
       </div>
       
       {secondaryNavigation.map(renderNavItem)}

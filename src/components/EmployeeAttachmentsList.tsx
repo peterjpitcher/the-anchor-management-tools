@@ -170,7 +170,7 @@ export default function EmployeeAttachmentsList({ attachments, categoriesMap, em
             <button 
                 onClick={() => handleDownload(attachment)}
                 type="button" 
-                className="font-medium text-orange-600 hover:text-orange-500"
+                className="font-medium text-secondary hover:text-secondary-emphasis"
                 title="Download Attachment"
             >
               <ArrowDownTrayIcon className="h-5 w-5"/>

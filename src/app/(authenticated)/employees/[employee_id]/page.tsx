@@ -48,13 +48,21 @@ async function getAttachmentCategories(): Promise<Map<string, string>> {
   return map;
 }
 
-interface EmployeeDetailPageProps {
-  params: { employee_id: string };
-}
+// Commenting out original props interface for the workaround
+// interface EmployeeDetailPageProps {
+//   params: { employee_id: string };
+// }
 
-export default async function EmployeeDetailPage({ params: pageParams }: EmployeeDetailPageProps) {
-  const resolvedParams = await pageParams;
-  const { employee_id } = resolvedParams;
+// Removed @ts-expect-error as build indicated it was unused
+export default async function EmployeeDetailPage({ params }: { params: any, searchParams?: any }) {
+  // Remove await for params, as params from props is not a Promise
+  // const resolvedParams = await pageParams; 
+  const employee_id = params?.employee_id as string;
+
+  if (!employee_id) {
+    console.error("Employee ID is missing from params for detail page");
+    notFound();
+  }
 
   const employee = await getEmployee(employee_id);
 
@@ -103,7 +111,7 @@ export default async function EmployeeDetailPage({ params: pageParams }: Employe
             <div className="flex space-x-3">
               <Link 
                 href={`/employees/${employee.employee_id}/edit`} 
-                className="inline-flex items-center rounded-md bg-orange-100 px-3 py-2 text-sm font-semibold text-orange-700 shadow-sm hover:bg-orange-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600"
+                className="inline-flex items-center rounded-md bg-secondary-soft px-3 py-2 text-sm font-semibold text-secondary shadow-sm hover:bg-secondary-soft/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-secondary"
               >
                 <PencilSquareIcon className="-ml-0.5 mr-1.5 h-5 w-5" aria-hidden="true" />
                 Edit Employee

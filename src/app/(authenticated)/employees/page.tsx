@@ -29,7 +29,7 @@ export default async function EmployeesPage() {
         <div className="mt-4 sm:ml-16 sm:mt-0 sm:flex-none">
           <Link
             href="/employees/new" // Link to be created later
-            className="inline-flex items-center rounded-md bg-orange-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-orange-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600"
+            className="inline-flex items-center rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary-emphasis focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <PlusIcon className="-ml-0.5 mr-1.5 h-5 w-5" aria-hidden="true" />
             Add Employee
@@ -92,7 +92,7 @@ export default async function EmployeesPage() {
                           </span>
                         </td>
                         <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                          <Link href={`/employees/${employee.employee_id}`} className="text-orange-600 hover:text-orange-900">
+                          <Link href={`/employees/${employee.employee_id}`} className="text-secondary hover:text-secondary-emphasis">
                             View<span className="sr-only">, {employee.first_name} {employee.last_name}</span>
                           </Link>
                         </td>
