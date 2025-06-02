@@ -6,8 +6,8 @@ import { Toaster } from "react-hot-toast";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Event Planner 3.0",
-  description: "Event planning application with SMS notifications",
+  title: "The Anchor - Management Tools",
+  description: "Management tools for The Anchor, including event planning, employee management, and SMS notifications",
 };
 
 export default function RootLayout({

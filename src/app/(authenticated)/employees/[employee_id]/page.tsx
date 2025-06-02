@@ -9,6 +9,7 @@ import AddEmployeeNoteForm from '@/components/AddEmployeeNoteForm';
 import EmployeeAttachmentsList from '@/components/EmployeeAttachmentsList';
 import AddEmployeeAttachmentForm from '@/components/AddEmployeeAttachmentForm';
 import { Suspense } from 'react';
+import { Button } from '@/components/ui/Button';
 
 async function getEmployee(id: string): Promise<Employee | null> {
   const { data, error } = await supabase
@@ -109,13 +110,12 @@ export default async function EmployeeDetailPage({ params }: { params: any, sear
               </p>
             </div>
             <div className="flex space-x-3">
-              <Link 
-                href={`/employees/${employee.employee_id}/edit`} 
-                className="inline-flex items-center rounded-md bg-secondary-soft px-3 py-2 text-sm font-semibold text-secondary shadow-sm hover:bg-secondary-soft/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-secondary"
-              >
-                <PencilSquareIcon className="-ml-0.5 mr-1.5 h-5 w-5" aria-hidden="true" />
-                Edit Employee
-              </Link>
+              <Button asChild variant="primary" size="md">
+                <Link href={`/employees/${employee.employee_id}/edit`}>
+                  <PencilSquareIcon className="-ml-0.5 mr-1.5 h-5 w-5" aria-hidden="true" />
+                  Edit Employee
+                </Link>
+              </Button>
               <DeleteEmployeeButton 
                 employeeId={employee.employee_id} 
                 employeeName={`${employee.first_name} ${employee.last_name}`} 

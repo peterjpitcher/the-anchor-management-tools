@@ -6,6 +6,7 @@ import { useFormStatus } from 'react-dom';
 import { addEmployeeNote, type NoteFormState } from '@/app/actions/employeeActions';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'; 
 import type { User } from '@supabase/supabase-js';
+import { Button } from '@/components/ui/Button';
 
 interface AddEmployeeNoteFormProps {
   employeeId: string;
@@ -15,13 +16,9 @@ interface AddEmployeeNoteFormProps {
 function SubmitNoteButton() {
   const { pending } = useFormStatus();
   return (
-    <button
-      type="submit"
-      disabled={pending}
-      className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary-emphasis focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50"
-    >
+    <Button type="submit" variant="primary" size="md" disabled={pending}>
       {pending ? 'Adding Note...' : 'Add Note'}
-    </button>
+    </Button>
   );
 }
 

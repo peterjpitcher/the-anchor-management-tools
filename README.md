@@ -1,13 +1,14 @@
-# Event Planner 3.0
+# The Anchor - Management Tools
 
-A web-based application for managing events and customer bookings with automated SMS notifications.
+A web-based application for managing events, customers, and employees at The Anchor, with automated SMS notifications.
 
 ## Features
 
 - User authentication with Supabase Auth
 - Event management (create, edit, delete)
 - Customer management (create, edit, delete)
-- Booking management (create, edit, delete)
+- Employee management (create, edit, delete, notes, attachments)
+- Booking management (underlying functionality for creating bookings, with SMS confirmations/reminders)
 - Automated SMS notifications via Twilio
   - Booking confirmations
   - 7-day reminders
@@ -104,7 +105,7 @@ Hi {{customer_name}}, your booking for {{event_name}} on {{event_date}} at {{eve
 
 ### 7-Day Reminder
 ```
-Hi {{customer_name}}, don't forget, we've got our {{event_name}} on {{event_date}} at {{event_time}}! If you'd like to book seats, WhatsApp/Call 01753682707
+Hi {{customer_name}}, don't forget, we've got our {{event_name}} on {{event_date}} at {{event_time}}! If you'd like to book seats, WhatsApp/Call 01753682707. The Anchor.
 ```
 
 ### 24-Hour Reminder
@@ -122,11 +123,11 @@ Private - All rights reserved
 
 ## Application Update: The Anchor Management App & Employee Features (as of [Current Date - Please Update])
 
-This section details significant updates transforming the application into a management tool for "The Anchor," with a primary focus on adding comprehensive Employee Management functionality. For a snapshot of the application state *before* these changes, please refer to `docs/CURRENT_APPLICATION_OVERVIEW.md`.
+This section details significant updates transforming the application into "The Anchor - Management Tools," with a primary focus on adding comprehensive Employee Management functionality. For a snapshot of the application state *before* these changes, please refer to `docs/CURRENT_APPLICATION_OVERVIEW.md`.
 
 ### 1. Core Application Name Change
 
-- The application is now geared towards being a management app for "The Anchor".
+- The application is now geared towards being "The Anchor - Management Tools".
 
 ### 2. Menu and Navigation Restructuring
 

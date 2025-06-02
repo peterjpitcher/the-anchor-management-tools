@@ -3,8 +3,15 @@ import Link from 'next/link';
 import type { Employee } from '@/types/database'; // Import Employee type
 import { Button } from '@/components/ui/Button';
 
-async function getEmployees(): Promise<Employee[] | null> {
-  const { data, error } = await supabase.from('employees').select('*').order('last_name').order('first_name');
+async function getEmployees(statusFilter?: string): Promise<Employee[] | null> {
+  let query = supabase.from('employees').select('*').order('last_name').order('first_name');
+
+  if (statusFilter === 'Active' || statusFilter === 'Former') {
+    query = query.eq('status', statusFilter);
+  }
+  // If statusFilter is undefined or an invalid value, it fetches all employees.
+
+  const { data, error } = await query;
 
   if (error) {
     console.error('Error fetching employees:', error);
@@ -14,16 +21,31 @@ async function getEmployees(): Promise<Employee[] | null> {
   return data;
 }
 
-export default async function EmployeesPage() {
-  const employees = await getEmployees();
+// Using inline props type to avoid potential global PageProps conflicts
+export default async function EmployeesPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  // Resolve searchParams promise
+  const resolvedSearchParams = await searchParams;
+  // Ensure status is treated as a string if it exists, or undefined
+  const currentStatusFilter = typeof resolvedSearchParams?.status === 'string' ? resolvedSearchParams.status : undefined;
+  const employees = await getEmployees(currentStatusFilter);
+
+  const filterLinkClasses = (filterValue?: string) => {
+    const base = "px-3 py-1 text-sm font-medium rounded-md";
+    const isActive = (!currentStatusFilter && !filterValue) || currentStatusFilter === filterValue;
+    return isActive ? `${base} bg-primary text-white` : `${base} bg-gray-200 text-gray-700 hover:bg-gray-300`;
+  };
 
   return (
     <div className="px-4 sm:px-6 lg:px-8">
-      <div className="sm:flex sm:items-center">
+      <div className="sm:flex sm:items-center sm:justify-between mb-6">
         <div className="sm:flex-auto">
           <h1 className="text-2xl font-semibold leading-6 text-gray-900">Employees</h1>
           <p className="mt-2 text-sm text-gray-700">
-            A list of all the employees in your company including their name, title, email and status.
+            A list of all employees including their name, title, email and status.
           </p>
         </div>
         <div className="mt-4 sm:ml-16 sm:mt-0 sm:flex-none">
@@ -33,6 +55,13 @@ export default async function EmployeesPage() {
             </Link>
           </Button>
         </div>
+      </div>
+
+      <div className="mb-6 flex items-center space-x-2">
+        <span className="text-sm font-medium text-gray-700">Filter by status:</span>
+        <Link href="/employees" className={filterLinkClasses()}>All</Link>
+        <Link href="/employees?status=Active" className={filterLinkClasses('Active')}>Active</Link>
+        <Link href="/employees?status=Former" className={filterLinkClasses('Former')}>Former</Link>
       </div>
 
       {!employees && (
@@ -66,10 +95,10 @@ export default async function EmployeesPage() {
                         Email
                       </th>
                       <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                        Status
+                        Start Date
                       </th>
-                      <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-6">
-                        <span className="sr-only">Edit</span>
+                      <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                        Status
                       </th>
                     </tr>
                   </thead>
@@ -77,10 +106,17 @@ export default async function EmployeesPage() {
                     {employees.map((employee) => (
                       <tr key={employee.employee_id}>
                         <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
-                          {employee.first_name} {employee.last_name}
+                          <Link href={`/employees/${employee.employee_id}`} className="text-primary hover:text-primary/80">
+                            {employee.first_name} {employee.last_name}
+                          </Link>
                         </td>
                         <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{employee.job_title}</td>
                         <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{employee.email_address}</td>
+                        <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                          {employee.employment_start_date 
+                            ? new Date(employee.employment_start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                            : 'N/A'}
+                        </td>
                         <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                           <span
                             className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium 
@@ -88,11 +124,6 @@ export default async function EmployeesPage() {
                           >
                             {employee.status}
                           </span>
-                        </td>
-                        <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                          <Link href={`/employees/${employee.employee_id}`} className="text-secondary hover:text-secondary-emphasis">
-                            View<span className="sr-only">, {employee.first_name} {employee.last_name}</span>
-                          </Link>
                         </td>
                       </tr>
                     ))}
