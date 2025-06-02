@@ -36,7 +36,7 @@ export default function AuthenticatedLayout({
               <div className="flex flex-1 flex-col overflow-y-auto pt-5 pb-4">
                 <div className="flex flex-col items-center px-4 space-y-2 mb-4">
                   <Image src="/logo.png" alt="Management Tools Logo" width={192} height={192} />
-                  <h1 className="text-xl font-bold text-white text-center">Management Tools</h1>
+                  <h1 className="text-xl font-bold text-white text-center">The Anchor - Management Tools</h1>
                 </div>
                 <div className="mt-5 flex-1">
                   <Navigation onQuickAddNoteClick={openAddNoteModal} />

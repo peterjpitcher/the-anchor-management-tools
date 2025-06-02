@@ -1,6 +1,6 @@
 # Navigation System
 
-This document outlines the primary navigation structure and styling for the Event Planner 3.0 application.
+This document outlines the primary navigation structure and styling for The Anchor - Management Tools application.
 
 ## Authenticated User Navigation (Sidebar)
 

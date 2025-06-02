@@ -6,6 +6,7 @@ import { useFormStatus } from 'react-dom';
 import { addEmployeeAttachment, type AttachmentFormState } from '@/app/actions/employeeActions';
 import { supabase } from '@/lib/supabase'; // For fetching categories client-side
 import type { AttachmentCategory } from '@/types/database';
+import { Button } from '@/components/ui/Button';
 
 interface AddEmployeeAttachmentFormProps {
   employeeId: string;
@@ -14,13 +15,9 @@ interface AddEmployeeAttachmentFormProps {
 function SubmitAttachmentButton() {
   const { pending } = useFormStatus();
   return (
-    <button
-      type="submit"
-      disabled={pending}
-      className="rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary-emphasis focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50"
-    >
+    <Button type="submit" variant="primary" size="md" disabled={pending}>
       {pending ? 'Uploading...' : 'Upload Attachment'}
-    </button>
+    </Button>
   );
 }
 
