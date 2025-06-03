@@ -6,7 +6,7 @@ import { Toaster } from "react-hot-toast";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "The Anchor - Management Tools",
+  title: "Management Tools",
   description: "Management tools for The Anchor, including event planning, employee management, and SMS notifications",
 };
 
