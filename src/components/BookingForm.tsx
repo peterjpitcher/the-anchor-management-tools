@@ -1,20 +1,22 @@
-import { Booking, Event } from '@/types/database'
+import { Booking, Event, Customer } from '@/types/database'
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 import { MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import { formatDate } from '@/lib/dateUtils'
 import { CustomerWithLoyalty, getLoyalCustomers, sortCustomersByLoyalty } from '@/lib/customerUtils'
+import { Button } from '@/components/ui/Button'
 
 interface BookingFormProps {
   booking?: Booking
   event: Event
+  customer?: Customer
   onSubmit: (data: Omit<Booking, 'id' | 'created_at'>) => Promise<void>
   onCancel: () => void
 }
 
-export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormProps) {
-  const [customerId, setCustomerId] = useState(booking?.customer_id ?? '')
+export function BookingForm({ booking, event, customer: preselectedCustomer, onSubmit, onCancel }: BookingFormProps) {
+  const [customerId, setCustomerId] = useState(booking?.customer_id ?? preselectedCustomer?.id ?? '')
   const [seats, setSeats] = useState(booking?.seats?.toString() ?? '')
   const [notes, setNotes] = useState(booking?.notes ?? '')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -24,6 +26,13 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
   const [allCustomers, setAllCustomers] = useState<CustomerWithLoyalty[]>([])
 
   const loadCustomers = useCallback(async () => {
+    if (preselectedCustomer) {
+      setCustomers([{ ...preselectedCustomer, isLoyal: false }])
+      setAllCustomers([{ ...preselectedCustomer, isLoyal: false }])
+      setIsLoading(false)
+      return
+    }
+
     try {
       setIsLoading(true)
       // Get all customers
@@ -69,7 +78,7 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
     } finally {
       setIsLoading(false)
     }
-  }, [booking?.customer_id, event.id])
+  }, [booking?.customer_id, event.id, preselectedCustomer])
 
   useEffect(() => {
     loadCustomers()
@@ -181,73 +190,77 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
   return (
     <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-6 max-h-[calc(100vh-8rem)] overflow-y-auto">
       <div>
-        <h2 className="text-lg font-medium text-black mb-4">
+        <h2 className="text-lg font-medium text-gray-900 mb-4">
           New Booking for {event.name} on {formatDate(event.date)} at {event.time}
         </h2>
       </div>
 
-      <div className="space-y-2">
-        <label
-          htmlFor="search"
-          className="block text-sm font-medium text-black mb-2"
-        >
-          Search Customer
-        </label>
-        <div className="relative">
-          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-            <MagnifyingGlassIcon className="h-5 w-5 text-gray-600" aria-hidden="true" />
+      {!preselectedCustomer && (
+        <>
+          <div className="space-y-2">
+            <label
+              htmlFor="search"
+              className="block text-sm font-medium text-gray-900 mb-2"
+            >
+              Search Customer
+            </label>
+            <div className="relative">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
+              </div>
+              <input
+                type="text"
+                id="search"
+                name="search"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-2 pl-10 text-gray-900 placeholder-gray-500 focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                placeholder="Search by name or mobile number"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
           </div>
-          <input
-            type="text"
-            id="search"
-            name="search"
-            className="block w-full rounded-lg border-gray-300 pl-10 focus:border-indigo-500 focus:ring-indigo-500 text-base md:text-sm py-3 md:py-2 text-black placeholder-gray-600"
-            placeholder="Search by name or mobile number"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-      </div>
 
-      <div>
-        <label
-          htmlFor="customer"
-          className="block text-sm font-medium text-black mb-2"
-        >
-          Select Customer
-        </label>
-        <select
-          id="customer"
-          name="customer"
-          className="block w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 text-base md:text-sm py-3 md:py-2 text-black"
-          value={customerId}
-          onChange={(e) => setCustomerId(e.target.value)}
-          required
-        >
-          <option value="">Select a customer</option>
-          {customers.map((customer) => (
-            <option key={customer.id} value={customer.id}>
-              {customer.first_name} {customer.last_name} ({customer.mobile_number}) {customer.isLoyal ? '★' : ''}
-            </option>
-          ))}
-        </select>
-        {customers.length === 0 && searchTerm && (
-          <p className="mt-2 text-sm text-gray-700">
-            No customers found matching your search.
-          </p>
-        )}
-        {customers.length === 0 && !searchTerm && (
-          <p className="mt-2 text-sm text-red-700">
-            No available customers. Either all customers are already booked for this event,
-            or no customers exist in the system.
-          </p>
-        )}
-      </div>
+          <div>
+            <label
+              htmlFor="customer"
+              className="block text-sm font-medium text-gray-900 mb-2"
+            >
+              Select Customer
+            </label>
+            <select
+              id="customer"
+              name="customer"
+              className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-green-500 focus:ring-green-500 sm:text-sm"
+              value={customerId}
+              onChange={(e) => setCustomerId(e.target.value)}
+              required
+            >
+              <option value="">Select a customer</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.first_name} {c.last_name} ({c.mobile_number}) {c.isLoyal ? '★' : ''}
+                </option>
+              ))}
+            </select>
+            {customers.length === 0 && searchTerm && (
+              <p className="mt-2 text-sm text-gray-500">
+                No customers found matching your search.
+              </p>
+            )}
+            {customers.length === 0 && !searchTerm && (
+              <p className="mt-2 text-sm text-red-600">
+                No available customers. Either all customers are already booked for this event,
+                or no customers exist in the system.
+              </p>
+            )}
+          </div>
+        </>
+      )}
 
       <div>
         <label
           htmlFor="seats"
-          className="block text-sm font-medium text-black mb-2"
+          className="block text-sm font-medium text-gray-900 mb-2"
         >
           Number of Seats (Optional)
         </label>
@@ -255,12 +268,12 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
           type="number"
           id="seats"
           name="seats"
+          className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-green-500 focus:ring-green-500 sm:text-sm"
           value={seats}
           onChange={(e) => setSeats(e.target.value)}
           inputMode="numeric"
-          className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-base md:text-sm py-3 md:py-2 text-black"
         />
-        <p className="mt-2 text-sm text-gray-700">
+        <p className="mt-2 text-sm text-gray-500">
           Leave empty if this is just a reminder
         </p>
       </div>
@@ -268,46 +281,43 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
       <div>
         <label
           htmlFor="notes"
-          className="block text-sm font-medium text-black mb-2"
+          className="block text-sm font-medium text-gray-900 mb-2"
         >
           Notes (Optional)
         </label>
         <textarea
           id="notes"
           name="notes"
+          rows={4}
+          className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          rows={3}
-          className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-base md:text-sm text-black"
-          placeholder="Add any notes about this booking..."
-        />
+        ></textarea>
+        <p className="mt-2 text-sm text-gray-500">Add any notes about this booking...</p>
       </div>
-
-      <div className="flex flex-col space-y-3 sm:flex-row sm:space-y-0 sm:space-x-3 sm:justify-end mt-8">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="inline-flex justify-center items-center rounded-lg border border-gray-300 bg-white px-6 py-3 md:py-2 text-base md:text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 w-full sm:w-auto min-h-[44px]"
-        >
-          Cancel
-        </button>
-        {!booking && (
-          <button
-            type="button"
-            onClick={(e) => handleSubmit(e, true)}
-            disabled={isSubmitting}
-            className="inline-flex justify-center items-center rounded-lg border border-transparent bg-indigo-600 px-6 py-3 md:py-2 text-base md:text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 w-full sm:w-auto min-h-[44px] disabled:opacity-50"
-          >
-            {isSubmitting ? 'Saving...' : 'Save and Add Another'}
-          </button>
-        )}
-        <button
+      <div className="flex flex-col space-y-3 sm:flex-row-reverse sm:space-y-0 sm:space-x-reverse sm:space-x-3 sm:justify-start pt-4">
+        <Button
           type="submit"
           disabled={isSubmitting}
-          className="inline-flex justify-center items-center rounded-lg border border-transparent bg-indigo-600 px-6 py-3 md:py-2 text-base md:text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 w-full sm:w-auto min-h-[44px] disabled:opacity-50"
+          onClick={(e) => handleSubmit(e, false)}
         >
-          {isSubmitting ? 'Saving...' : booking ? 'Update Booking' : 'Save'}
-        </button>
+          {isSubmitting ? 'Saving...' : 'Save'}
+        </Button>
+        <Button
+          type="button"
+          disabled={isSubmitting}
+          onClick={(e) => handleSubmit(e, true)}
+        >
+          Save and Add Another
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCancel}
+          disabled={isSubmitting}
+        >
+          Cancel
+        </Button>
       </div>
     </form>
   )

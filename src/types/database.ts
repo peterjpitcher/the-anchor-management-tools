@@ -39,8 +39,39 @@ export interface Employee {
   employment_start_date: string; // Date
   employment_end_date?: string | null; // Date
   status: string; // e.g., 'Active', 'Former'
-  emergency_contact_name?: string | null;
-  emergency_contact_phone?: string | null;
+  created_at: string; // Timestamp
+  updated_at: string; // Timestamp
+}
+
+export interface EmployeeFinancialDetails {
+  employee_id: string; // UUID, Primary Key, Foreign Key to Employee
+  ni_number?: string | null;
+  bank_account_number?: string | null;
+  bank_sort_code?: string | null;
+  bank_name?: string | null;
+  payee_name?: string | null;
+  branch_address?: string | null;
+  created_at: string; // Timestamp
+  updated_at: string; // Timestamp
+}
+
+export interface EmployeeHealthRecord {
+  employee_id: string; // UUID, Primary Key, Foreign Key to Employee
+  doctor_name?: string | null;
+  doctor_address?: string | null;
+  allergies?: string | null;
+  illness_history?: string | null;
+  recent_treatment?: string | null;
+  has_diabetes: boolean;
+  has_epilepsy: boolean;
+  has_skin_condition: boolean;
+  has_depressive_illness: boolean;
+  has_bowel_problems: boolean;
+  has_ear_problems: boolean;
+  is_registered_disabled: boolean;
+  disability_reg_number?: string | null;
+  disability_reg_expiry_date?: string | null; // Date
+  disability_details?: string | null;
   created_at: string; // Timestamp
   updated_at: string; // Timestamp
 }
@@ -72,6 +103,16 @@ export interface EmployeeAttachment {
   uploaded_at: string; // Timestamp
 }
 
+export interface EmployeeEmergencyContact {
+  id: string; // UUID
+  employee_id: string; // UUID, Foreign Key to Employee
+  name: string;
+  relationship?: string | null;
+  address?: string | null;
+  phone_number?: string | null;
+  created_at: string; // Timestamp
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -95,6 +136,16 @@ export interface Database {
         Insert: Omit<Employee, 'employee_id' | 'created_at' | 'updated_at'>;
         Update: Partial<Omit<Employee, 'employee_id' | 'created_at' | 'updated_at'>>;
       };
+      employee_financial_details: {
+        Row: EmployeeFinancialDetails;
+        Insert: Omit<EmployeeFinancialDetails, 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<EmployeeFinancialDetails, 'created_at' | 'updated_at'>>;
+      };
+      employee_health_records: {
+        Row: EmployeeHealthRecord;
+        Insert: Omit<EmployeeHealthRecord, 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<EmployeeHealthRecord, 'created_at' | 'updated_at'>>;
+      };
       employee_notes: {
         Row: EmployeeNote;
         Insert: Omit<EmployeeNote, 'note_id' | 'created_at'>;
@@ -109,6 +160,11 @@ export interface Database {
         Row: EmployeeAttachment;
         Insert: Omit<EmployeeAttachment, 'attachment_id' | 'uploaded_at'>;
         Update: Partial<Omit<EmployeeAttachment, 'attachment_id' | 'uploaded_at' | 'employee_id'>>;
+      };
+      employee_emergency_contacts: {
+        Row: EmployeeEmergencyContact;
+        Insert: Omit<EmployeeEmergencyContact, 'id' | 'created_at'>;
+        Update: Partial<Omit<EmployeeEmergencyContact, 'id' | 'created_at' | 'employee_id'>>;
       };
     };
   };

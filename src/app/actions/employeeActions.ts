@@ -6,6 +6,8 @@ import { redirect } from 'next/navigation';
 import type { Employee, EmployeeNote, EmployeeAttachment } from '@/types/database';
 import { cookies } from 'next/headers';
 import { createServerActionClient } from '@supabase/auth-helpers-nextjs';
+import { supabase } from '@/lib/supabase';
+import { z } from 'zod';
 
 // Helper function to create Supabase client with Service Role Key for server-side actions
 // Ensure these ENV VARS are set in your Vercel/hosting environment
@@ -28,17 +30,17 @@ function createAdminSupabaseClient() {
   return createClient(supabaseUrl, supabaseServiceRoleKey);
 }
 
-export type FormState = {
+export type ActionFormState = {
   message: string;
   type: 'success' | 'error';
-  employeeId?: string;
-  errors?: Record<string, string>;
-} | null;
+  errors?: Record<string, string[]>;
+  employeeId?: string; // Optional employeeId for redirection
+};
 
 // Type for the data expected from the form, excluding auto-generated fields
 export type EmployeeFormData = Omit<Employee, 'employee_id' | 'created_at' | 'updated_at'>;
 
-export async function addEmployee(prevState: FormState, formData: FormData): Promise<FormState> {
+export async function addEmployee(prevState: ActionFormState | null, formData: FormData): Promise<ActionFormState> {
   const supabase = createAdminSupabaseClient();
   if (!supabase) {
     return { message: 'Database connection failed. Please try again.', type: 'error' };
@@ -60,12 +62,12 @@ export async function addEmployee(prevState: FormState, formData: FormData): Pro
   };
 
   // Basic Validation (more comprehensive validation should be added)
-  const errors: Record<string, string> = {};
-  if (!rawFormData.first_name) errors.first_name = 'First name is required.';
-  if (!rawFormData.last_name) errors.last_name = 'Last name is required.';
-  if (!rawFormData.email_address) errors.email_address = 'Email is required.';
-  if (!rawFormData.job_title) errors.job_title = 'Job title is required.';
-  if (!rawFormData.employment_start_date) errors.employment_start_date = 'Start date is required.';
+  const errors: Record<string, string[]> = {};
+  if (!rawFormData.first_name) errors.first_name = ['First name is required.'];
+  if (!rawFormData.last_name) errors.last_name = ['Last name is required.'];
+  if (!rawFormData.email_address) errors.email_address = ['Email is required.'];
+  if (!rawFormData.job_title) errors.job_title = ['Job title is required.'];
+  if (!rawFormData.employment_start_date) errors.employment_start_date = ['Start date is required.'];
 
   if (Object.keys(errors).length > 0) {
     return { message: 'Please correct the errors below.', type: 'error', errors };
@@ -88,7 +90,7 @@ export async function addEmployee(prevState: FormState, formData: FormData): Pro
 
   if (error) {
     console.error('Error adding employee:', error);
-    return { message: `Failed to add employee: ${error.message}`, type: 'error' };
+    return { message: `Failed to add employee: ${error.message}`, type: 'error', errors };
   }
 
   if (!newEmployee || !newEmployee.employee_id) {
@@ -110,11 +112,13 @@ export async function addEmployee(prevState: FormState, formData: FormData): Pro
   };
 }
 
-export async function updateEmployee(employeeId: string, prevState: FormState, formData: FormData): Promise<FormState> {
+export async function updateEmployee(prevState: ActionFormState | null, formData: FormData): Promise<ActionFormState> {
   const supabase = createAdminSupabaseClient();
   if (!supabase) {
     return { message: 'Database connection failed. Please try again.', type: 'error' };
   }
+
+  const employeeId = formData.get('employee_id') as string;
 
   if (!employeeId) {
     return { message: 'Employee ID is missing. Cannot update.', type: 'error' };
@@ -136,12 +140,12 @@ export async function updateEmployee(employeeId: string, prevState: FormState, f
   };
 
   // Basic Validation
-  const errors: Record<string, string> = {};
-  if (!rawFormData.first_name) errors.first_name = 'First name is required.';
-  if (!rawFormData.last_name) errors.last_name = 'Last name is required.';
-  if (!rawFormData.email_address) errors.email_address = 'Email is required.';
-  if (!rawFormData.job_title) errors.job_title = 'Job title is required.';
-  if (!rawFormData.employment_start_date) errors.employment_start_date = 'Start date is required.';
+  const errors: Record<string, string[]> = {};
+  if (!rawFormData.first_name) errors.first_name = ['First name is required.'];
+  if (!rawFormData.last_name) errors.last_name = ['Last name is required.'];
+  if (!rawFormData.email_address) errors.email_address = ['Email is required.'];
+  if (!rawFormData.job_title) errors.job_title = ['Job title is required.'];
+  if (!rawFormData.employment_start_date) errors.employment_start_date = ['Start date is required.'];
 
   if (Object.keys(errors).length > 0) {
     return { message: 'Please correct the errors below.', type: 'error', errors, employeeId };
@@ -438,4 +442,171 @@ export async function deleteEmployeeAttachment(
 
   revalidatePath(`/employees/${employeeId}`);
   return { message: 'Attachment deleted successfully!', type: 'success' };
+}
+
+const EmergencyContactSchema = z.object({
+  employee_id: z.string().uuid(),
+  name: z.string().min(1, 'Name is required'),
+  relationship: z.string().optional(),
+  phone_number: z.string().optional(),
+  address: z.string().optional(),
+});
+
+export async function addEmergencyContact(
+  prevState: ActionFormState | null,
+  formData: FormData
+): Promise<ActionFormState | null> {
+  const validatedFields = EmergencyContactSchema.safeParse(
+    Object.fromEntries(formData.entries())
+  );
+
+  if (!validatedFields.success) {
+    return {
+      type: 'error',
+      message: 'Validation failed.',
+      errors: validatedFields.error.flatten().fieldErrors,
+    };
+  }
+
+  const { employee_id, name, relationship, phone_number, address } = validatedFields.data;
+
+  const { error } = await supabase
+    .from('employee_emergency_contacts')
+    .insert([{ employee_id, name, relationship, phone_number, address }]);
+
+  if (error) {
+    console.error('Error adding emergency contact:', error);
+    return {
+      type: 'error',
+      message: 'Database error: Could not add emergency contact.',
+    };
+  }
+
+  revalidatePath(`/employees/${employee_id}`);
+  return {
+    type: 'success',
+    message: 'Emergency contact added successfully.',
+  };
+}
+
+// ==================================================================
+// Financial Details Actions
+// ==================================================================
+
+const FinancialDetailsSchema = z.object({
+  employee_id: z.string().uuid(),
+  ni_number: z.string().optional(),
+  bank_account_number: z.string().optional(),
+  bank_sort_code: z.string().optional(),
+  bank_name: z.string().optional(),
+  payee_name: z.string().optional(),
+  branch_address: z.string().optional(),
+});
+
+export async function upsertFinancialDetails(
+  prevState: ActionFormState | null,
+  formData: FormData
+): Promise<ActionFormState | null> {
+  const validatedFields = FinancialDetailsSchema.safeParse(
+    Object.fromEntries(formData.entries())
+  );
+
+  if (!validatedFields.success) {
+    return {
+      type: 'error',
+      message: 'Validation failed.',
+      errors: validatedFields.error.flatten().fieldErrors,
+    };
+  }
+
+  const { error } = await supabase
+    .from('employee_financial_details')
+    .upsert(validatedFields.data, { onConflict: 'employee_id' });
+
+  if (error) {
+    console.error('Error upserting financial details:', error);
+    return {
+      type: 'error',
+      message: 'Database error: Could not save financial details.',
+    };
+  }
+
+  revalidatePath(`/employees/${validatedFields.data.employee_id}`);
+  return {
+    type: 'success',
+    message: 'Financial details saved successfully.',
+  };
+}
+
+
+// ==================================================================
+// Health Record Actions
+// ==================================================================
+
+const HealthRecordSchema = z.object({
+  employee_id: z.string().uuid(),
+  doctor_name: z.string().optional(),
+  doctor_address: z.string().optional(),
+  allergies: z.string().optional(),
+  illness_history: z.string().optional(),
+  recent_treatment: z.string().optional(),
+  has_diabetes: z.boolean(),
+  has_epilepsy: z.boolean(),
+  has_skin_condition: z.boolean(),
+  has_depressive_illness: z.boolean(),
+  has_bowel_problems: z.boolean(),
+  has_ear_problems: z.boolean(),
+  is_registered_disabled: z.boolean(),
+  disability_reg_number: z.string().optional(),
+  disability_reg_expiry_date: z.string().optional().nullable(),
+  disability_details: z.string().optional(),
+});
+
+export async function upsertHealthRecord(
+  prevState: ActionFormState | null,
+  formData: FormData
+): Promise<ActionFormState | null> {
+  const data: any = Object.fromEntries(formData.entries());
+
+  // Convert checkbox values from 'on' to boolean
+  const booleanFields = [
+    'has_diabetes', 'has_epilepsy', 'has_skin_condition', 'has_depressive_illness',
+    'has_bowel_problems', 'has_ear_problems', 'is_registered_disabled'
+  ];
+  booleanFields.forEach(field => {
+    data[field] = data[field] === 'on';
+  });
+  
+  // Handle empty date string
+  if (data.disability_reg_expiry_date === '') {
+      data.disability_reg_expiry_date = null;
+  }
+
+  const validatedFields = HealthRecordSchema.safeParse(data);
+
+  if (!validatedFields.success) {
+    return {
+      type: 'error',
+      message: 'Validation failed.',
+      errors: validatedFields.error.flatten().fieldErrors,
+    };
+  }
+
+  const { error } = await supabase
+    .from('employee_health_records')
+    .upsert(validatedFields.data, { onConflict: 'employee_id' });
+
+  if (error) {
+    console.error('Error upserting health record:', error);
+    return {
+      type: 'error',
+      message: 'Database error: Could not save health record.',
+    };
+  }
+
+  revalidatePath(`/employees/${validatedFields.data.employee_id}`);
+  return {
+    type: 'success',
+    message: 'Health record saved successfully.',
+  };
 } 
