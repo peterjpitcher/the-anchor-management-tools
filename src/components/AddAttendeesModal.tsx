@@ -158,7 +158,7 @@ export function AddAttendeesModal({
             placeholder="Search by name or mobile..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-base md:text-sm py-3 md:py-2 pl-10"
+            className="block w-full rounded-lg border border-gray-300 px-3 py-2 pl-10 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
           />
           <MagnifyingGlassIcon className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
         </div>
@@ -178,7 +178,7 @@ export function AddAttendeesModal({
                     <th className="px-4 py-3 text-left">
                       <input
                         type="checkbox"
-                        className="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500"
+                        className="rounded border-gray-300 text-green-600 shadow-sm focus:ring-green-500"
                         checked={
                           availableCustomers.length > 0 &&
                           selectedCustomerIds.length === availableCustomers.length
@@ -202,7 +202,7 @@ export function AddAttendeesModal({
                       <td className="px-4 py-3 whitespace-nowrap">
                         <input
                           type="checkbox"
-                          className="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500"
+                          className="rounded border-gray-300 text-green-600 shadow-sm focus:ring-green-500"
                           checked={selectedCustomerIds.includes(customer.id)}
                           onChange={() => handleSelectCustomer(customer.id)}
                           aria-labelledby={`customer-name-${customer.id}`}
@@ -237,7 +237,7 @@ export function AddAttendeesModal({
             type="button"
             onClick={handleSubmit}
             disabled={isSubmitting || selectedCustomerIds.length === 0 || isLoading}
-            className="inline-flex justify-center items-center rounded-lg border border-transparent bg-indigo-600 px-6 py-3 md:py-2 text-base md:text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 w-full sm:w-auto min-h-[44px] disabled:opacity-50"
+            className="inline-flex justify-center items-center rounded-lg border border-transparent bg-green-600 px-6 py-3 md:py-2 text-base md:text-sm font-medium text-white shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 w-full sm:w-auto min-h-[44px] disabled:opacity-50"
           >
             {isSubmitting ? 'Adding...' : `Add ${selectedCustomerIds.length} Attendee(s)`}
           </button>

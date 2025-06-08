@@ -70,7 +70,7 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
         {/* Sidebar */}
         <div className="hidden md:flex md:flex-shrink-0">
           <div className="flex w-64 flex-col">
-            <div className="flex min-h-0 flex-1 flex-col border-r border-gray-300 bg-primary">
+            <div className="flex min-h-0 flex-1 flex-col border-r border-gray-300 bg-sidebar">
               <div className="flex flex-1 flex-col overflow-y-auto pt-5 pb-4">
                 <div className="flex flex-col items-center px-4 space-y-2 mb-4">
                   <Image src="/logo.png" alt="Management Tools Logo" width={192} height={192} />
@@ -98,7 +98,7 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
 
         {/* Main content */}
         <div className="flex flex-1 flex-col overflow-hidden">
-          <main className="flex-1 overflow-y-auto bg-gray-50 p-6 md:p-6 p-3">
+          <main className="flex-1 overflow-y-auto bg-gray-50 p-6">
             {children}
           </main>
           <BottomNavigation onQuickAddNoteClick={openAddNoteModal} />

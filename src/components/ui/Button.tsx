@@ -14,13 +14,13 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const Comp = asChild ? 'span' : 'button'; // Render a span if asChild is true, button otherwise
 
     // Base styles
-    let baseStyles = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background';
+    let baseStyles = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background whitespace-nowrap';
 
     // Variant styles
     let variantStyles = '';
     switch (variant) {
       case 'primary':
-        variantStyles = 'bg-primary text-white hover:bg-primary/90';
+        variantStyles = 'bg-primary text-primary-foreground hover:bg-primary/90';
         break;
       case 'secondary':
         variantStyles = 'bg-gray-200 text-gray-800 hover:bg-gray-300/90';

@@ -8,6 +8,7 @@ import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 import { formatDate } from '@/lib/dateUtils'
 import Link from 'next/link'
+import { Button } from '@/components/ui/Button'
 
 type EventWithBookings = Event & {
   booked_seats: number
@@ -25,7 +26,7 @@ export default function EventsPage() {
 
   async function loadData() {
     try {
-      // Load events without date filter
+      setIsLoading(true)
       const { data: eventsData, error: eventsError } = await supabase
         .from('events')
         .select('*')
@@ -33,7 +34,6 @@ export default function EventsPage() {
 
       if (eventsError) throw eventsError
 
-      // Load bookings to calculate seats
       const { data: bookingsData, error: bookingsError } = await supabase
         .from('bookings')
         .select('event_id, seats')
@@ -41,13 +41,11 @@ export default function EventsPage() {
 
       if (bookingsError) throw bookingsError
 
-      // Calculate booked seats for each event
       const bookedSeatsMap = bookingsData.reduce((acc, booking) => {
         acc[booking.event_id] = (acc[booking.event_id] || 0) + (booking.seats || 0)
         return acc
       }, {} as Record<string, number>)
 
-      // Combine events with their booking counts
       const eventsWithBookings = eventsData.map(event => ({
         ...event,
         booked_seats: bookedSeatsMap[event.id] || 0
@@ -66,10 +64,9 @@ export default function EventsPage() {
     try {
       const { error } = await supabase.from('events').insert([eventData])
       if (error) throw error
-
       toast.success('Event created successfully')
-      setShowForm(false)
-      loadData()
+      handleCloseForm()
+      await loadData()
     } catch (error) {
       console.error('Error creating event:', error)
       toast.error('Failed to create event')
@@ -86,10 +83,9 @@ export default function EventsPage() {
         .eq('id', editingEvent.id)
 
       if (error) throw error
-
       toast.success('Event updated successfully')
-      setEditingEvent(null)
-      loadData()
+      handleCloseForm()
+      await loadData()
     } catch (error) {
       console.error('Error updating event:', error)
       toast.error('Failed to update event')
@@ -97,165 +93,101 @@ export default function EventsPage() {
   }
 
   async function handleDeleteEvent(event: Event) {
-    // First check if there are any bookings for this event
+    const confirmMessage = `Are you sure you want to delete the event "${event.name}"? This action cannot be undone.`
+    if (!confirm(confirmMessage)) return
+    
     try {
-      const { data: bookings, error: bookingsError } = await supabase
-        .from('bookings')
-        .select('id')
-        .eq('event_id', event.id)
-
-      if (bookingsError) {
-        console.error('Error checking bookings:', bookingsError)
-        toast.error('Failed to check associated bookings')
-        return
-      }
-
-      if (bookings.length > 0) {
-        const hasConfirmedBookingDeletion = confirm(
-          `This event has ${bookings.length} booking${bookings.length === 1 ? '' : 's'}. Would you like to delete the event and cancel all associated bookings?`
-        )
-        
-        if (!hasConfirmedBookingDeletion) {
-          toast.success('Event deletion cancelled')
-          return
-        }
-      } else if (!confirm('Are you sure you want to delete this event?')) {
-        return
-      }
-
-      const { error } = await supabase
-        .from('events')
-        .delete()
-        .eq('id', event.id)
-
-      if (error) {
-        console.error('Error deleting event:', error)
-        if (error.code === '23503') {
-          toast.error('Cannot delete event because it has associated bookings. Please try again after applying the database changes.')
-        } else {
-          toast.error(`Failed to delete event: ${error.message}`)
-        }
-        return
-      }
-
-      toast.success('Event and associated bookings deleted successfully')
-      loadData()
+      const { error } = await supabase.from('events').delete().eq('id', event.id)
+      if (error) throw error
+      toast.success('Event deleted successfully')
+      await loadData()
     } catch (error) {
       console.error('Error deleting event:', error)
-      toast.error('Failed to delete event')
+      toast.error('Failed to delete event. It may have associated bookings.')
     }
+  }
+
+  const handleOpenForm = (event?: Event) => {
+    setEditingEvent(event || null)
+    setShowForm(true)
+  }
+
+  const handleCloseForm = () => {
+    setEditingEvent(null)
+    setShowForm(false)
   }
 
   if (isLoading) {
     return <div>Loading...</div>
   }
 
-  if (showForm || editingEvent) {
+  if (showForm) {
     return (
-      <div className="max-w-2xl mx-auto py-6">
-        <h1 className="text-2xl font-bold mb-6">
-          {editingEvent ? 'Edit Event' : 'Create New Event'}
-        </h1>
-        <EventForm
-          event={editingEvent ?? undefined}
-          onSubmit={editingEvent ? handleUpdateEvent : handleCreateEvent}
-          onCancel={() => {
-            setShowForm(false)
-            setEditingEvent(null)
-          }}
-        />
+      <div className="bg-white shadow sm:rounded-lg">
+        <div className="px-4 py-5 sm:p-6">
+          <h2 className="text-xl font-semibold mb-4">
+            {editingEvent ? 'Edit Event' : 'Create New Event'}
+          </h2>
+          <EventForm
+            event={editingEvent ?? undefined}
+            onSubmit={editingEvent ? handleUpdateEvent : handleCreateEvent}
+            onCancel={handleCloseForm}
+          />
+        </div>
       </div>
     )
   }
 
   const now = new Date()
-  now.setHours(0, 0, 0, 0) // Set to start of today
-  const tomorrow = new Date(now)
-  tomorrow.setDate(tomorrow.getDate() + 1) // Set to start of tomorrow
+  now.setHours(0, 0, 0, 0)
+  const upcomingEvents = events.filter(event => new Date(event.date) >= now)
+  const pastEvents = events.filter(event => new Date(event.date) < now).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  const upcomingEvents = events.filter(event => {
-    const eventDate = new Date(event.date)
-    eventDate.setHours(0, 0, 0, 0)
-    return eventDate >= now
-  })
-  const pastEvents = events.filter(event => {
-    const eventDate = new Date(event.date)
-    eventDate.setHours(0, 0, 0, 0)
-    return eventDate < now
-  })
-
-  const EventsTable = ({ events, title }: { events: EventWithBookings[], title: string }) => (
+  const EventsList = ({ events }: { events: EventWithBookings[]}) => (
     <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-      <div className="px-4 py-5 sm:px-6">
-        <h3 className="text-lg leading-6 font-medium text-black">{title}</h3>
-      </div>
-      
-      {/* Desktop Table View */}
-      <div className="hidden md:block">
-        <table className="min-w-full divide-y divide-gray-300">
+       <div className="hidden md:block">
+        <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-black">
-                Event
-              </th>
-              <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-black">
-                Date & Time
-              </th>
-              <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-black">
-                Capacity
-              </th>
-              <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-6">
-                <span className="sr-only">Actions</span>
-              </th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Event</th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date & Time</th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Capacity</th>
+              <th scope="col" className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 bg-white">
+          <tbody className="bg-white divide-y divide-gray-200">
             {events.map((event) => (
               <tr key={event.id}>
-                <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
-                  <Link href={`/events/${event.id}`} className="font-medium hover:text-indigo-600">
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  <Link href={`/events/${event.id}`} className="text-indigo-600 hover:text-indigo-900">
                     {event.name}
                   </Link>
                 </td>
-                <td className="whitespace-nowrap px-3 py-4 text-sm text-black">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {formatDate(event.date)} at {event.time}
                 </td>
-                <td className="px-3 py-4 text-sm text-black">
-                  <div className="flex flex-col space-y-1">
-                    <div className="text-sm">
-                      {event.booked_seats} {event.booked_seats === 1 ? 'seat' : 'seats'} booked
-                      {event.capacity ? ` (${event.capacity - event.booked_seats} remaining)` : ''}
-                    </div>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <div className="flex items-center">
+                    <span>{event.booked_seats} / {event.capacity || '∞'}</span>
                     {event.capacity && (
-                      <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="w-24 h-2 bg-gray-200 rounded-full ml-3 overflow-hidden">
                         <div
                           className={`h-full rounded-full ${
-                            event.booked_seats >= event.capacity
-                              ? 'bg-red-500'
-                              : event.booked_seats >= event.capacity * 0.8
-                              ? 'bg-yellow-500'
-                              : 'bg-green-500'
+                            event.booked_seats >= event.capacity ? 'bg-red-500' :
+                            event.booked_seats >= event.capacity * 0.8 ? 'bg-yellow-500' : 'bg-green-500'
                           }`}
-                          style={{ width: `${Math.min((event.booked_seats / event.capacity) * 100, 100)}%` }}
+                          style={{ width: `${Math.min((event.booked_seats / (event.capacity || 1)) * 100, 100)}%` }}
                         />
                       </div>
                     )}
                   </div>
                 </td>
-                <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                  <button
-                    onClick={() => setEditingEvent(event)}
-                    className="text-indigo-600 hover:text-indigo-900 mr-4"
-                  >
+                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <button onClick={() => handleOpenForm(event)} className="text-indigo-600 hover:text-indigo-900 mr-4">
                     <PencilIcon className="h-5 w-5" />
-                    <span className="sr-only">Edit</span>
                   </button>
-                  <button
-                    onClick={() => handleDeleteEvent(event)}
-                    className="text-red-600 hover:text-red-900"
-                  >
+                  <button onClick={() => handleDeleteEvent(event)} className="text-red-600 hover:text-red-900">
                     <TrashIcon className="h-5 w-5" />
-                    <span className="sr-only">Delete</span>
                   </button>
                 </td>
               </tr>
@@ -263,91 +195,83 @@ export default function EventsPage() {
           </tbody>
         </table>
       </div>
-
-      {/* Mobile Card View */}
-      <div className="md:hidden divide-y divide-gray-200">
-        {events.map((event) => (
-          <div key={event.id} className="p-4 space-y-3">
-            <div className="flex justify-between items-start">
-              <Link href={`/events/${event.id}`} className="flex-1">
-                <h3 className="text-base font-medium text-black hover:text-indigo-600">
-                  {event.name}
-                </h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  {formatDate(event.date)} at {event.time}
-                </p>
-              </Link>
-              <div className="flex space-x-2 ml-4">
-                <button
-                  onClick={() => setEditingEvent(event)}
-                  className="p-2 text-indigo-600 hover:text-indigo-900"
-                >
-                  <PencilIcon className="h-5 w-5" />
-                </button>
-                <button
-                  onClick={() => handleDeleteEvent(event)}
-                  className="p-2 text-red-600 hover:text-red-900"
-                >
-                  <TrashIcon className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="text-sm text-gray-700">
-                {event.booked_seats} {event.booked_seats === 1 ? 'seat' : 'seats'} booked
-                {event.capacity ? ` (${event.capacity - event.booked_seats} remaining)` : ''}
-              </div>
-              {event.capacity && (
-                <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${
-                      event.booked_seats >= event.capacity
-                        ? 'bg-red-500'
-                        : event.booked_seats >= event.capacity * 0.8
-                        ? 'bg-yellow-500'
-                        : 'bg-green-500'
-                    }`}
-                    style={{ width: `${Math.min((event.booked_seats / event.capacity) * 100, 100)}%` }}
-                  />
+       <div className="block md:hidden">
+        <ul className="divide-y divide-gray-200">
+          {events.map((event) => (
+            <li key={event.id} className="px-4 py-4 sm:px-6">
+               <div className="flex items-center justify-between">
+                 <Link href={`/events/${event.id}`} className="block hover:bg-gray-50 flex-1 min-w-0">
+                    <p className="text-sm font-medium text-indigo-600 truncate">{event.name}</p>
+                 </Link>
+                <div className="ml-2 flex-shrink-0 flex">
+                    <button onClick={() => handleOpenForm(event)} className="p-1 text-gray-500 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        <PencilIcon className="h-5 w-5" />
+                    </button>
+                    <button onClick={() => handleDeleteEvent(event)} className="p-1 text-red-500 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 ml-2">
+                        <TrashIcon className="h-5 w-5" />
+                    </button>
                 </div>
-              )}
-            </div>
-          </div>
-        ))}
+              </div>
+              <div className="mt-2 sm:flex sm:justify-between">
+                <div className="sm:flex">
+                  <p className="flex items-center text-sm text-gray-500">
+                    {formatDate(event.date)} at {event.time}
+                  </p>
+                </div>
+                <div className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
+                  <p>{event.booked_seats} / {event.capacity || '∞'} seats</p>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   )
 
   return (
-    <div className="py-6">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-2xl font-bold text-black">Events</h1>
-          <button
-            onClick={() => setShowForm(true)}
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-          >
-            <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
-            New Event
-          </button>
+    <div className="space-y-6">
+      <div className="bg-white shadow sm:rounded-lg">
+        <div className="px-4 py-5 sm:p-6">
+          <div className="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:justify-between sm:items-center">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Events</h1>
+              <p className="mt-1 text-sm text-gray-500">
+                Manage your upcoming and past events.
+              </p>
+            </div>
+            <div className="flex space-x-3">
+              <Button onClick={() => handleOpenForm()}>
+                <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
+                Add Event
+              </Button>
+            </div>
+          </div>
         </div>
-
-        {events.length === 0 ? (
-          <div className="text-center text-black bg-white shadow ring-1 ring-black ring-opacity-5 md:rounded-lg p-4">
-            No events found. Create one to get started.
-          </div>
-        ) : (
-          <div className="space-y-8">
-            {upcomingEvents.length > 0 && (
-              <EventsTable events={upcomingEvents} title="Upcoming Events" />
-            )}
-            {pastEvents.length > 0 && (
-              <EventsTable events={pastEvents} title="Past Events" />
-            )}
-          </div>
-        )}
       </div>
+
+      {upcomingEvents.length > 0 && (
+        <div>
+          <h2 className="text-lg font-medium text-gray-900 mb-2">Upcoming Events</h2>
+          <EventsList events={upcomingEvents} />
+        </div>
+      )}
+      
+      {pastEvents.length > 0 && (
+        <div>
+          <h2 className="text-lg font-medium text-gray-900 mb-2">Past Events</h2>
+          <EventsList events={pastEvents} />
+        </div>
+      )}
+      
+      {events.length === 0 && !isLoading && (
+         <div className="bg-white shadow sm:rounded-lg text-center py-12">
+            <h3 className="text-lg font-medium text-gray-900">No events found</h3>
+            <p className="mt-1 text-sm text-gray-500">
+                Get started by creating a new event.
+            </p>
+        </div>
+      )}
     </div>
   )
 }

@@ -71,7 +71,7 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
               required
-              className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-base md:text-sm py-3 md:py-2"
+              className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
             />
           </div>
         </div>
@@ -91,7 +91,7 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
               autoComplete="family-name"
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
-              className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-base md:text-sm py-3 md:py-2"
+              className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
             />
           </div>
         </div>
@@ -115,10 +115,10 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
               pattern="^(\+44|0)?[0-9]{10,11}$"
               autoComplete="tel"
               inputMode="tel"
-              className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-base md:text-sm py-3 md:py-2 pr-16"
+              className="block w-full rounded-lg border border-gray-300 px-3 py-2 pr-16 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
             />
             <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-              <span className="text-gray-500 text-base md:text-sm">UK</span>
+              <span className="text-gray-500 sm:text-sm">UK</span>
             </div>
           </div>
           <p className="mt-2 text-sm text-gray-500">
@@ -138,7 +138,7 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
         <button
           type="submit"
           disabled={isSubmitting}
-          className="inline-flex justify-center items-center rounded-lg border border-transparent bg-indigo-600 px-6 py-3 md:py-2 text-base md:text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 w-full sm:w-auto min-h-[44px]"
+          className="inline-flex justify-center items-center rounded-lg border border-transparent bg-green-600 px-6 py-3 md:py-2 text-base md:text-sm font-medium text-white shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 w-full sm:w-auto min-h-[44px]"
         >
           {isSubmitting
             ? 'Saving...'

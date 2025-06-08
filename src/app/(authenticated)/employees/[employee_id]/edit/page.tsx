@@ -1,10 +1,15 @@
+'use client'
+
 import EmployeeForm from '@/components/EmployeeForm';
-import { updateEmployee } from '@/app/actions/employeeActions';
+import { updateEmployee, ActionFormState } from '@/app/actions/employeeActions';
 import { supabase } from '@/lib/supabase';
-import type { Employee } from '@/types/database';
-import { notFound } from 'next/navigation';
+import type { Employee, EmployeeFinancialDetails, EmployeeHealthRecord } from '@/types/database';
+import { notFound, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeftIcon } from '@heroicons/react/24/outline';
+import { Tabs } from '@/components/ui/Tabs';
+import FinancialDetailsForm from '@/components/FinancialDetailsForm';
+import HealthRecordsForm from '@/components/HealthRecordsForm';
+import { use, useState, useEffect, useCallback } from 'react';
 
 async function getEmployee(id: string): Promise<Employee | null> {
   const { data, error } = await supabase
@@ -20,45 +25,128 @@ async function getEmployee(id: string): Promise<Employee | null> {
   return data;
 }
 
-// Ideal props definition (can be kept for clarity or removed if it causes issues with the workaround)
-// type EditEmployeePageProps = {
-//   params: { employee_id: string };
-//   searchParams: { [key: string]: string | string[] | undefined };
-// };
+async function getFinancialDetails(employeeId: string): Promise<EmployeeFinancialDetails | null> {
+    const { data, error } = await supabase
+        .from('employee_financial_details')
+        .select('*')
+        .eq('employee_id', employeeId)
+        .single();
+    if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching financial details:', error);
+    }
+    return data;
+}
 
-// Removed @ts-expect-error as build indicated it was unused with {params: any}
-export default async function EditEmployeePage({ params, searchParams }: { params: any, searchParams: any }) {
-  const employee_id = params?.employee_id as string;
+async function getHealthRecord(employeeId: string): Promise<EmployeeHealthRecord | null> {
+    const { data, error } = await supabase
+        .from('employee_health_records')
+        .select('*')
+        .eq('employee_id', employeeId)
+        .single();
+    if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching health record:', error);
+    }
+    return data;
+}
+
+export default function EditEmployeePage({ params: paramsPromise }: { params: Promise<{ employee_id: string }> }) {
+  const params = use(paramsPromise);
+  const [employee, setEmployee] = useState<Employee | null>(null);
+  const [financialDetails, setFinancialDetails] = useState<EmployeeFinancialDetails | null>(null);
+  const [healthRecord, setHealthRecord] = useState<EmployeeHealthRecord | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const router = useRouter();
+
+  const loadData = useCallback(async () => {
+      if (!params?.employee_id) {
+          console.error("Employee ID is missing from params");
+          return notFound();
+      }
+      
+      try {
+          setIsLoading(true);
+          const [employeeData, financialData, healthData] = await Promise.all([
+              getEmployee(params.employee_id),
+              getFinancialDetails(params.employee_id),
+              getHealthRecord(params.employee_id),
+          ]);
+
+          if (!employeeData) {
+              return notFound();
+          }
+
+          setEmployee(employeeData);
+          setFinancialDetails(financialData);
+          setHealthRecord(healthData);
+
+      } catch (error) {
+          console.error("Failed to load employee data", error);
+          // Optionally, redirect to an error page or show a toast
+      } finally {
+          setIsLoading(false);
+      }
+  }, [params]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+
+  if (isLoading) {
+    return <div>Loading employee details...</div>
+  }
   
-  if (!employee_id) {
-    console.error("Employee ID is missing from params");
-    notFound();
-  }
-
-  const employee = await getEmployee(employee_id);
-
   if (!employee) {
-    notFound();
+    // This can be a more user-friendly component than just returning null
+    return <div>Employee not found.</div>;
   }
 
-  // Bind the employee_id to the updateEmployee server action
-  const updateEmployeeWithId = updateEmployee.bind(null, employee.employee_id);
+  const tabs = [
+    {
+        label: 'Personal Details',
+        content: (
+            <EmployeeForm 
+                employee={employee} 
+                formAction={updateEmployee}
+                initialFormState={null}
+                showTitle={false}
+                showCancel={false}
+              />
+        )
+    },
+    {
+        label: 'Financial Details',
+        content: <FinancialDetailsForm employeeId={employee.employee_id} financialDetails={financialDetails} />
+    },
+    {
+        label: 'Health Records',
+        content: <HealthRecordsForm employeeId={employee.employee_id} healthRecord={healthRecord} />
+    }
+  ];
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-8">
-      <div className="max-w-3xl mx-auto">
-        <div className="mb-6">
-          <Link href={`/employees/${employee.employee_id}`} className="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-800">
-            <ArrowLeftIcon className="mr-2 h-5 w-5" />
-            Back to Employee Details
-          </Link>
+    <div className="space-y-6">
+       <div className="bg-white shadow sm:rounded-lg">
+        <div className="px-4 py-5 sm:p-6">
+          <div className="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:justify-between sm:items-center">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">
+                Edit: {employee.first_name} {employee.last_name}
+              </h1>
+              <p className="mt-1 text-sm text-gray-500">
+                Update details below or{' '}
+                <Link href={`/employees/${employee.employee_id}`} className="font-medium text-indigo-600 hover:text-indigo-500">
+                  cancel and return to view
+                </Link>
+              </p>
+            </div>
+          </div>
         </div>
-        <EmployeeForm 
-          employee={employee} 
-          formAction={updateEmployeeWithId} 
-          initialFormState={null} 
-        />
+      </div>
+
+      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+        <Tabs tabs={tabs} />
       </div>
     </div>
   );
-} 
+}
