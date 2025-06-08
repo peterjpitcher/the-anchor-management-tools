@@ -226,3 +226,30 @@ Located primarily in `src/app/actions/employeeActions.ts`:
 -   **Cascade Deletes:** The `employee_notes` and `employee_attachments` tables are set up with `ON DELETE CASCADE` for the `employee_id` foreign key. This means if an employee record is deleted, all their associated notes and attachment records will also be automatically deleted from the database. Files in Supabase Storage, however, are *not* automatically deleted by this database cascade and are handled by the `deleteEmployeeAttachment` action (and would need to be handled if an entire employee and their storage folder were to be bulk-deleted, which is not yet implemented).
 
 This concludes the main implementation of the employee management feature.
+
+### Recent Application Updates
+
+This section details recent changes and bug fixes implemented in the application.
+
+#### 1. Booking Form Data Loading Fix
+
+-   **Issue:** When editing a booking from a customer's page, the booking form modal would appear, but it would not be pre-populated with the booking's existing data.
+-   **Fix:** A `useEffect` hook was added to the `BookingForm` component. This hook observes the `booking` prop for changes and updates the form's internal state accordingly, ensuring that whenever a booking is selected for editing, its data is correctly loaded into the form fields.
+
+#### 2. Linking from Event Page to Booking Edit
+
+-   **Feature:** Clicking a customer's name on the event details page now navigates directly to that customer's page and automatically opens the edit modal for that specific booking.
+-   **Implementation:** The links on the event page were updated to include a `booking_id` query parameter. The customer page was then enhanced to read this parameter, find the corresponding booking, and trigger the edit modal on page load. The query parameter is also cleared from the URL when the modal is closed.
+
+#### 3. Next.js `params` Promise Handling
+
+-   **Issue:** A warning from Next.js indicated that page `params` (like a customer or event ID) were being accessed directly, which is deprecated. This could lead to race conditions and errors.
+-   **Fix:** The affected pages (`customers/[id]/page.tsx` and `events/[id]/page.tsx`) were updated to use the `React.use()` hook. This hook correctly unwraps the `params` promise, ensuring that the ID is resolved before it is used for data fetching, thus aligning with modern Next.js best practices.
+
+#### 4. Centralised Supabase Client & "Add Booking" Flow Rework
+
+-   **Issue:** The application was creating multiple Supabase client instances, leading to warnings and potential instability. Additionally, attempting to create a new booking from the customer page would cause a crash because the booking form required an `event` prop that was not being provided.
+-   **Fix:**
+    -   A `SupabaseProvider` using React Context was created to ensure a single, shared Supabase client instance is used across the entire application. All pages and components were refactored to use a `useSupabase` hook, eliminating the warning and improving stability.
+    -   The "Add Booking" functionality on the customer page was completely overhauled. Now, clicking "Add Booking" first opens a modal to select an event. Once an event is chosen, the `BookingForm` is displayed for that specific event, resolving the crash and providing a logical user flow.
+    -   Numerous related bugs and type errors were fixed during this refactoring, leading to a much more robust and error-free booking management experience.

@@ -1,10 +1,10 @@
 'use client'
 
 import { Customer } from '@/types/database'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { useEffect, useState, useMemo } from 'react'
 import toast from 'react-hot-toast'
 import { MagnifyingGlassIcon, XMarkIcon, StarIcon } from '@heroicons/react/24/solid'
+import { useSupabase } from '@/components/providers/SupabaseProvider'
 
 // Define a more specific type for currentBookings based on what EventViewPage uses
 // This assumes BookingWithCustomer has at least customer_id
@@ -26,7 +26,7 @@ export function AddAttendeesModal({
   onClose,
   onAddAttendees,
 }: AddAttendeesModalProps) {
-  const supabase = createClientComponentClient()
+  const supabase = useSupabase()
   const [allCustomers, setAllCustomers] = useState<Customer[]>([])
   const [recentBookerIds, setRecentBookerIds] = useState<Set<string>>(new Set())
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([])

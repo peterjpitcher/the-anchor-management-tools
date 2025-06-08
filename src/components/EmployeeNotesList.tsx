@@ -20,7 +20,7 @@ interface DisplayEmployeeNote extends EmployeeNote {
 }
 
 async function getNotesWithAuthorNames(employeeId: string): Promise<DisplayEmployeeNote[] | null> {
-  console.log(`[EmployeeNotesList] Fetching notes for employeeId: ${employeeId}`);
+  // console.log(`[EmployeeNotesList] Fetching notes for employeeId: ${employeeId}`);
   const { data: notes, error: notesError } = await supabase
     .from('employee_notes')
     .select('*')
@@ -28,41 +28,41 @@ async function getNotesWithAuthorNames(employeeId: string): Promise<DisplayEmplo
     .order('created_at', { ascending: false });
 
   if (notesError) {
-    console.error('[EmployeeNotesList] Error fetching employee notes:', notesError);
+    // console.error('[EmployeeNotesList] Error fetching employee notes:', notesError);
     return null;
   }
 
   if (!notes || notes.length === 0) {
-    console.log('[EmployeeNotesList] No notes found.');
+    // console.log('[EmployeeNotesList] No notes found.');
     return [];
   }
-  console.log('[EmployeeNotesList] Fetched notes:', notes);
+  // console.log('[EmployeeNotesList] Fetched notes:', notes);
 
   const authorIds = [...new Set(notes.map(note => note.created_by).filter(id => id !== null))] as string[];
-  console.log('[EmployeeNotesList] Extracted authorIds:', authorIds);
+  // console.log('[EmployeeNotesList] Extracted authorIds:', authorIds);
 
   if (authorIds.length === 0) {
-    console.log('[EmployeeNotesList] No authorIds to fetch profiles for.');
+    // console.log('[EmployeeNotesList] No authorIds to fetch profiles for.');
     return notes.map(note => ({ ...note, author_name: 'System' }));
   }
 
-  console.log('[EmployeeNotesList] Fetching profiles for authorIds:', authorIds);
+  // console.log('[EmployeeNotesList] Fetching profiles for authorIds:', authorIds);
   const { data: userProfiles, error: profilesError } = await supabase
     .from('profiles') 
     .select('id, full_name') 
     .in('id', authorIds);
 
   if (profilesError) {
-    console.error('[EmployeeNotesList] Error fetching user profiles:', profilesError);
+    // console.error('[EmployeeNotesList] Error fetching user profiles:', profilesError);
     return notes.map(note => ({ ...note, author_name: `User (${note.created_by?.substring(0,6)}...)`}));
   }
-  console.log('[EmployeeNotesList] Fetched userProfiles:', userProfiles);
+  // console.log('[EmployeeNotesList] Fetched userProfiles:', userProfiles);
 
   const authorMap = new Map<string, string | null>();
   userProfiles?.forEach(profile => {
     authorMap.set(profile.id, profile.full_name);
   });
-  console.log('[EmployeeNotesList] Constructed authorMap:', authorMap);
+  // console.log('[EmployeeNotesList] Constructed authorMap:', authorMap);
 
   const notesWithAuthors = notes.map(note => {
     const mappedName = note.created_by ? authorMap.get(note.created_by) : undefined;
@@ -73,7 +73,7 @@ async function getNotesWithAuthorNames(employeeId: string): Promise<DisplayEmplo
       author_name
     };
   });
-  console.log('[EmployeeNotesList] Final notesWithAuthors:', notesWithAuthors);
+  // console.log('[EmployeeNotesList] Final notesWithAuthors:', notesWithAuthors);
 
   return notesWithAuthors;
 }
