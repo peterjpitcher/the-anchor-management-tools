@@ -8,7 +8,7 @@ import Image from 'next/image'
 import React, { useState, useEffect } from 'react'
 import AddNoteModal from '@/components/modals/AddNoteModal'
 import { redirect } from 'next/navigation'
-import SupabaseProvider, { useSupabase } from '@/components/providers/SupabaseProvider'
+import { useSupabase } from '@/components/providers/SupabaseProvider'
 
 function AuthenticatedLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -73,7 +73,7 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
             <div className="flex min-h-0 flex-1 flex-col border-r border-gray-300 bg-sidebar">
               <div className="flex flex-1 flex-col overflow-y-auto pt-5 pb-4">
                 <div className="flex flex-col items-center px-4 space-y-2 mb-4">
-                  <Image src="/logo.png" alt="Management Tools Logo" width={192} height={192} />
+                  <Image src="/logo.png" alt="Management Tools Logo" width={192} height={192} priority style={{ height: 'auto' }} />
                   <h1 className="text-xl font-bold text-white text-center">Management Tools</h1>
                 </div>
                 <div className="mt-5 flex-1">
@@ -110,9 +110,5 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
 }
 
 export default function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <SupabaseProvider>
-      <AuthenticatedLayoutContent>{children}</AuthenticatedLayoutContent>
-    </SupabaseProvider>
-  )
+  return <AuthenticatedLayoutContent>{children}</AuthenticatedLayoutContent>
 } 
