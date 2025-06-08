@@ -32,35 +32,41 @@ This document summarises the features, bug fixes, and major improvements impleme
 
 ### Bug Fixes & Stability Improvements
 
-1.  **Employee Edit Page Errors**
+1.  **Application Stability & Performance**
+    -   **Async Client Components:** Fixed a critical error where some components (`EmployeeNotesList`) were incorrectly marked as `async`, causing page failures. They were refactored to fetch data correctly within client components.
+    -   **Database Queries:** Made database fetch calls more robust by using `.maybeSingle()` instead of `.single()`, preventing `406 Not Acceptable` errors when optional records are not found.
+    -   **Supabase Client Initialization:** Resolved a warning about multiple Supabase client instances by lifting the `SupabaseProvider` to the root layout, ensuring a single instance is used across the application.
+    -   **Image Optimization:** Added `priority` and correct styling to the primary logo to improve load performance (LCP) and eliminate console warnings.
+
+2.  **Employee Edit Page Errors**
     -   **Issue:** The employee edit page was throwing errors related to incorrect `params` access and passing server functions to client components.
     -   **Fix:** The page was refactored to pass the `employee_id` in a hidden form field instead of binding it to the server action, resolving both errors.
 
-2.  **Broken Employee Edit Button**
+3.  **Broken Employee Edit Button**
     -   **Issue:** The "Edit Employee" button on the employee detail page was wrapping onto two lines.
     -   **Fix:** The `whitespace-nowrap` utility class was added to the button's link to prevent the text from wrapping.
     
-3.  **Build & Type Safety Fixes**
+4.  **Build & Type Safety Fixes**
     -   **Issue:** A series of persistent build errors occurred due to incorrect prop types on dynamic pages (e.g., `/employees/[id]`) and in server actions.
     -   **Fix:** All dynamic pages were refactored to use the `'use client'` directive with the `use()` hook to correctly handle dynamic parameters. Server actions were updated to safely handle nullable state, resolving all type-related build failures.
 
-4.  **Centralised Supabase Client**
+5.  **Centralised Supabase Client**
     -   **Issue:** The application was creating multiple Supabase client instances, causing warnings and potential instability.
     -   **Fix:** A `SupabaseProvider` was implemented using React Context to ensure a single, shared Supabase client is used across the app. All components were refactored to use a `useSupabase` hook.
 
-5.  **"Add New Booking" Flow Rework**
+6.  **"Add New Booking" Flow Rework**
     -   **Issue:** The "Add Booking" feature on the customer page would crash because the booking form was missing a required `event` prop.
     -   **Fix:** The workflow was completely overhauled. Users now first select an event from a modal, which then correctly initialises the booking form, resolving the crash.
 
-6.  **Booking Form Data Loading**
+7.  **Booking Form Data Loading**
     -   **Issue:** The booking edit form failed to pre-populate with existing booking data.
     -   **Fix:** A `useEffect` hook was added to the `BookingForm` to correctly load the booking's data whenever the edit modal is opened.
 
-7.  **Reminder Note Validation**
+8.  **Reminder Note Validation**
     -   **Issue:** Users could not add a note to a reminder (a booking with 0 seats) due to a validation error requiring at least 1 seat.
     -   **Fix:** The `min="1"` validation was removed from the "Number of Seats" input field in the `BookingForm`, allowing notes to be added to reminders without error.
 
-8.  **Layout & UI Fixes**
+9.  **Layout & UI Fixes**
     -   **Issue:** The UI on the customer details page was simplified unintentionally during refactoring.
     -   **Fix:** The original, more detailed layout with a customer info header and separate tables for "Active Bookings" and "Reminders" was restored.
 

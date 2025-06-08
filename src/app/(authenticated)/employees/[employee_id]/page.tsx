@@ -50,8 +50,8 @@ async function getFinancialDetails(employeeId: string): Promise<EmployeeFinancia
         .from('employee_financial_details')
         .select('*')
         .eq('employee_id', employeeId)
-        .single();
-    if (error && error.code !== 'PGRST116') { // Ignore 'exact one row not found' error
+        .maybeSingle();
+    if (error) { 
         console.error('Error fetching financial details:', error);
     }
     return data;
@@ -62,8 +62,8 @@ async function getHealthRecord(employeeId: string): Promise<EmployeeHealthRecord
         .from('employee_health_records')
         .select('*')
         .eq('employee_id', employeeId)
-        .single();
-    if (error && error.code !== 'PGRST116') { // Ignore 'exact one row not found' error
+        .maybeSingle();
+    if (error) { 
         console.error('Error fetching health record:', error);
     }
     return data;
