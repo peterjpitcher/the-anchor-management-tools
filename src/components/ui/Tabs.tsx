@@ -16,22 +16,19 @@ export function Tabs({ tabs }: TabsProps) {
 
   return (
     <div>
+      {/* Mobile view: Stacked cards */}
       <div className="sm:hidden">
-        <label htmlFor="tabs" className="sr-only">
-          Select a tab
-        </label>
-        <select
-          id="tabs"
-          name="tabs"
-          className="block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
-          defaultValue={tabs[activeTab].label}
-          onChange={(e) => setActiveTab(tabs.findIndex(tab => tab.label === e.target.value))}
-        >
+        <div className="space-y-4">
           {tabs.map((tab) => (
-            <option key={tab.label}>{tab.label}</option>
+            <div key={tab.label} className="bg-gray-50 px-4 py-4 rounded-lg">
+              <h3 className="text-lg font-medium leading-6 text-gray-900 mb-2">{tab.label}</h3>
+              {tab.content}
+            </div>
           ))}
-        </select>
+        </div>
       </div>
+      
+      {/* Desktop view: Tabs */}
       <div className="hidden sm:block">
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-8 px-4 sm:px-6" aria-label="Tabs">
@@ -51,9 +48,9 @@ export function Tabs({ tabs }: TabsProps) {
             ))}
           </nav>
         </div>
-      </div>
-      <div className="px-4 py-4 sm:px-6">
-        {tabs[activeTab].content}
+        <div className="px-4 py-4 sm:px-6">
+            {tabs.length > 0 && tabs[activeTab].content}
+        </div>
       </div>
     </div>
   );
