@@ -76,6 +76,14 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
   }, [loadCustomers])
 
   useEffect(() => {
+    if (booking) {
+      setCustomerId(booking.customer_id ?? '')
+      setSeats(booking.seats?.toString() ?? '')
+      setNotes(booking.notes ?? '')
+    }
+  }, [booking])
+
+  useEffect(() => {
     if (searchTerm.trim() === '') {
       setCustomers(allCustomers)
       return
@@ -249,7 +257,6 @@ export function BookingForm({ booking, event, onSubmit, onCancel }: BookingFormP
           name="seats"
           value={seats}
           onChange={(e) => setSeats(e.target.value)}
-          min="1"
           inputMode="numeric"
           className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-base md:text-sm py-3 md:py-2 text-black"
         />

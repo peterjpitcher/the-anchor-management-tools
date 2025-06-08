@@ -1,30 +1,68 @@
 'use client'
 
 import { Navigation } from '@/components/Navigation'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
 import { useRouter } from 'next/navigation'
 import { BottomNavigation } from '@/components/BottomNavigation'
-import Image from 'next/image';
-import React, { useState } from 'react';
-import AddNoteModal from '@/components/modals/AddNoteModal';
+import Image from 'next/image'
+import React, { useState, useEffect } from 'react'
+import AddNoteModal from '@/components/modals/AddNoteModal'
+import { redirect } from 'next/navigation'
+import SupabaseProvider, { useSupabase } from '@/components/providers/SupabaseProvider'
 
-export default function AuthenticatedLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+function AuthenticatedLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter()
-  const supabase = createClientComponentClient()
-  const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false);
+  const supabase = useSupabase()
+  const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false)
+  const [user, setUser] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session) {
+        setUser(session.user)
+      }
+      setLoading(false)
+    })
+
+    async function getUser() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (user) {
+        setUser(user)
+      }
+      setLoading(false)
+    }
+
+    getUser()
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [supabase])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-100">
+        <p className="text-gray-500">Loading...</p>
+      </div>
+    )
+  }
+
+  if (!user) {
+    redirect('/login')
+  }
 
   async function handleSignOut() {
     await supabase.auth.signOut()
     router.push('/auth/login')
   }
 
-  const openAddNoteModal = () => setIsAddNoteModalOpen(true);
-  const closeAddNoteModal = () => setIsAddNoteModalOpen(false);
+  const openAddNoteModal = () => setIsAddNoteModalOpen(true)
+  const closeAddNoteModal = () => setIsAddNoteModalOpen(false)
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -68,5 +106,13 @@ export default function AuthenticatedLayout({
       </div>
       <AddNoteModal isOpen={isAddNoteModalOpen} onClose={closeAddNoteModal} />
     </div>
+  )
+}
+
+export default function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <SupabaseProvider>
+      <AuthenticatedLayoutContent>{children}</AuthenticatedLayoutContent>
+    </SupabaseProvider>
   )
 } 

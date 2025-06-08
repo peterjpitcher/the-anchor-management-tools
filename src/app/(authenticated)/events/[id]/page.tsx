@@ -1,99 +1,89 @@
 'use client'
 
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { formatDate } from '@/lib/dateUtils'
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { use, useEffect, useState, useCallback } from 'react'
 import { Event, Booking, Customer } from '@/types/database'
 import { PlusIcon, TrashIcon, UserGroupIcon } from '@heroicons/react/24/outline'
 import { BookingForm } from '@/components/BookingForm'
 import { AddAttendeesModal } from '@/components/AddAttendeesModal'
 import toast from 'react-hot-toast'
 import { sendBookingConfirmation } from '@/app/actions/sms'
+import { useSupabase } from '@/components/providers/SupabaseProvider'
 
 type BookingWithCustomer = Omit<Booking, 'customer'> & {
-  customer: Pick<Customer, 'first_name' | 'last_name'>
+  customer: Pick<Customer, 'first_name' | 'last_name' | 'id'>
 }
 
-// @ts-expect-error - Next.js will provide the correct params type
-export default function EventViewPage({ params }) {
+export const dynamic = 'force-dynamic'
+
+export default function EventViewPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
+  const params = use(paramsPromise)
+  const supabase = useSupabase()
   const [event, setEvent] = useState<Event | null>(null)
   const [bookings, setBookings] = useState<BookingWithCustomer[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showBookingForm, setShowBookingForm] = useState(false)
   const [showAddAttendeesModal, setShowAddAttendeesModal] = useState(false)
-  const supabase = createClientComponentClient()
 
-  useEffect(() => {
-    async function loadEvent() {
-      try {
-        const { data: eventData, error: eventError } = await supabase
-          .from('events')
-          .select('*')
-          .eq('id', params.id)
-          .single()
-
-        if (eventError) throw eventError
-
-        const { data: bookingsData, error: bookingsError } = await supabase
-          .from('bookings')
-          .select('*, customer:customers!inner(first_name, last_name)')
-          .eq('event_id', params.id)
-          .order('created_at', { ascending: true })
-
-        if (bookingsError) throw bookingsError
-
-        setEvent(eventData)
-        setBookings(bookingsData as BookingWithCustomer[])
-      } catch (error) {
-        console.error('Error loading event:', error)
-        toast.error('Failed to load event details.')
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    loadEvent()
-  }, [params.id, supabase])
-
-  const handleCreateBooking = async (data: Omit<Booking, 'id' | 'created_at'>) => {
+  const loadEventData = useCallback(async () => {
     try {
-      const { data: newBookingData, error } = await supabase
-        .from('bookings')
-        .insert([data])
-        .select('id')
+      setIsLoading(true)
+      const { data: eventData, error: eventError } = await supabase
+        .from('events')
+        .select('*')
+        .eq('id', params.id)
         .single()
 
-      if (error) throw error
-      if (!newBookingData) throw new Error('Failed to create booking or get its ID')
-
-      toast.success('Booking created successfully')
-      setShowBookingForm(false)
-
-      try {
-        await sendBookingConfirmation(newBookingData.id)
-      } catch (smsError) {
-        console.error('Failed to send booking confirmation SMS:', smsError)
-        toast.error('Booking created, but failed to send confirmation SMS.')
-      }
+      if (eventError) throw eventError
+      setEvent(eventData)
 
       const { data: bookingsData, error: bookingsError } = await supabase
         .from('bookings')
-        .select('*, customer:customers!inner(first_name, last_name)')
+        .select('*, customer:customers!inner(id, first_name, last_name)')
         .eq('event_id', params.id)
         .order('created_at', { ascending: true })
 
       if (bookingsError) throw bookingsError
       setBookings(bookingsData as BookingWithCustomer[])
     } catch (error) {
+      console.error('Error loading event:', error)
+      toast.error('Failed to load event details.')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [params.id, supabase])
+
+  useEffect(() => {
+    loadEventData()
+  }, [loadEventData])
+
+  const handleCreateBooking = async (data: Omit<Booking, 'id' | 'created_at'>) => {
+    try {
+      const { data: newBookingData, error } = await supabase.from('bookings').insert(data).select('id').single()
+
+      if (error || !newBookingData) {
+        throw error || new Error('Failed to create booking or get its ID')
+      }
+
+      toast.success('Booking created successfully')
+      setShowBookingForm(false)
+      await loadEventData() // Refresh data
+
+      // Send SMS confirmation in the background
+      sendBookingConfirmation(newBookingData.id).catch(smsError => {
+        console.error('Failed to send booking confirmation SMS:', smsError)
+        toast.error('Booking created, but failed to send confirmation SMS.')
+      })
+    } catch (error) {
       console.error('Error creating booking:', error)
       toast.error('Failed to create booking')
     }
   }
 
-  const handleAddMultipleAttendees = async (customerIds: string[]) => {
+  const handleAddMultipleAttendees = async (customerIds: string[]): Promise<void> => {
     if (!event) {
-      toast.error('Event details not loaded. Cannot add attendees.')
+      toast.error('Event details not loaded.')
       return
     }
     if (customerIds.length === 0) {
@@ -104,107 +94,58 @@ export default function EventViewPage({ params }) {
     const newBookingsToInsert = customerIds.map(customerId => ({
       event_id: event.id,
       customer_id: customerId,
-      seats: 0, // Default seats for multi-add
-      notes: null,
+      seats: 0,
+      notes: 'Added via bulk add',
     }))
-
-    let createdBookings: { id: string }[] | null = null; // To store IDs for SMS
 
     try {
       const { data: insertedBookings, error } = await supabase
         .from('bookings')
         .insert(newBookingsToInsert)
-        .select('id') // Select IDs of newly inserted bookings
+        .select('id')
 
-      if (error) {
-        console.error('Error inserting multiple bookings:', error)
-        throw error // Propagate error to main catch block
+      if (error || !insertedBookings) {
+        throw error || new Error('Failed to insert bookings or retrieve their IDs.')
       }
-      if (!insertedBookings) {
-        throw new Error('Failed to insert bookings or retrieve their IDs.');
-      }
-      
-      createdBookings = insertedBookings; // Store for SMS sending
 
       toast.success(`${customerIds.length} attendee(s) added successfully!`)
       setShowAddAttendeesModal(false)
+      await loadEventData() // Refresh data
 
-      // Refresh bookings list (moved before SMS sending for quicker UI update)
-      const { data: refreshedBookings, error: refreshError } = await supabase
-        .from('bookings')
-        .select('*, customer:customers!inner(first_name, last_name)')
-        .eq('event_id', params.id)
-        .order('created_at', { ascending: true })
-
-      if (refreshError) {
-        console.error('Error refreshing bookings after add:', refreshError)
-        toast.error('Attendees added, but failed to refresh list.')
-        // Still try to set bookings if some data came back
-        if (refreshedBookings) setBookings(refreshedBookings as BookingWithCustomer[])
-      } else {
-        setBookings(refreshedBookings as BookingWithCustomer[])
+      // Send SMS confirmations in the background
+      let smsErrorCount = 0
+      for (const booking of insertedBookings) {
+        sendBookingConfirmation(booking.id).catch(smsError => {
+          smsErrorCount++
+          console.error(`Failed to send SMS for booking ID ${booking.id}:`, smsError)
+          if (smsErrorCount === insertedBookings.length) {
+            toast.error('Attendees added, but all confirmation SMS failed to send.')
+          }
+        })
       }
-
     } catch (error) {
-      console.error('Failed to add multiple attendees during DB operation:', error)
+      console.error('Failed to add multiple attendees:', error)
       toast.error('An error occurred while adding attendees. Please try again.')
-      // No re-throw here, allow SMS part to be attempted if some bookings might have been made before error
-    }
-
-    // Send SMS confirmations if bookings were created
-    if (createdBookings && createdBookings.length > 0) {
-      let smsErrorCount = 0;
-
-      for (const booking of createdBookings) {
-        try {
-          await sendBookingConfirmation(booking.id);
-        } catch (smsError) {
-          smsErrorCount++;
-          console.error(`Failed to send booking confirmation SMS for booking ID ${booking.id}:`, smsError);
-          // Individual toast per error might be too noisy, consider a summary toast
-        }
-      }
-
-      if (smsErrorCount > 0) {
-        toast.error(`${smsErrorCount} SMS confirmation(s) failed to send. Bookings were created.`);
-      }
-      // Optionally, a success toast for SMS if all went well, e.g.:
-      // if (smsErrorCount === 0 && createdBookings.length > 0) {
-      //   toast.success('All booking confirmation SMS sent!');
-      // }
     }
   }
 
-  const handleDeleteBooking = async (booking: BookingWithCustomer) => {
-    if (!confirm('Are you sure you want to delete this booking?')) return
+  const handleDeleteBooking = async (bookingId: string) => {
+    if (!window.confirm('Are you sure you want to delete this booking?')) return
 
     try {
-      const { error } = await supabase
-        .from('bookings')
-        .delete()
-        .eq('id', booking.id)
-
+      const { error } = await supabase.from('bookings').delete().eq('id', bookingId)
       if (error) throw error
-
       toast.success('Booking deleted successfully')
-      
-      // Refresh bookings
-      const { data: bookingsData, error: bookingsError } = await supabase
-        .from('bookings')
-        .select('*, customer:customers!inner(first_name, last_name)')
-        .eq('event_id', params.id)
-        .order('created_at', { ascending: true })
-
-      if (bookingsError) throw bookingsError
-      setBookings(bookingsData as BookingWithCustomer[])
+      setBookings(bookings.filter(b => b.id !== bookingId)) // Optimistic update
     } catch (error) {
       console.error('Error deleting booking:', error)
       toast.error('Failed to delete booking')
+      await loadEventData() // Re-fetch on error
     }
   }
 
-  if (isLoading) return <div>Loading...</div>
-  if (!event) return <div>Event not found</div>
+  if (isLoading) return <div className="p-6 text-center">Loading event details...</div>
+  if (!event) return <div className="p-6 text-center">Event not found.</div>
 
   const activeBookings = bookings.filter(booking => booking.seats && booking.seats > 0)
   const reminders = bookings.filter(booking => !booking.seats || booking.seats === 0)
@@ -225,14 +166,22 @@ export default function EventViewPage({ params }) {
         </tr>
       </thead>
       <tbody className="bg-white divide-y divide-gray-200">
-        {items.map((booking) => (
+        {items.map(booking => (
           <tr key={booking.id} className="hover:bg-gray-50">
-            <td className="px-4 py-2 whitespace-nowrap">
-              <Link href={`/customers/${booking.customer_id}`} className="text-blue-600 hover:text-blue-800">
+            <td className="px-4 py-2 align-top whitespace-nowrap">
+              <Link
+                href={`/customers/${booking.customer.id}?booking_id=${booking.id}&return_to=/events/${params.id}`}
+                className="text-blue-600 hover:text-blue-800 font-medium"
+              >
                 {booking.customer.first_name} {booking.customer.last_name}
               </Link>
+              {booking.notes && (
+                <p className="text-xs text-gray-500 mt-1 italic whitespace-pre-wrap">
+                  {booking.notes}
+                </p>
+              )}
             </td>
-            <td className="px-4 py-2 whitespace-nowrap text-sm text-black">
+            <td className="px-4 py-2 align-top whitespace-nowrap text-sm text-black">
               {formatDate(booking.created_at)}
             </td>
             {type === 'booking' && (
@@ -244,19 +193,19 @@ export default function EventViewPage({ params }) {
             )}
             <td className="px-4 py-2 whitespace-nowrap text-right text-sm font-medium">
               <button
-                onClick={() => handleDeleteBooking(booking)}
+                onClick={() => handleDeleteBooking(booking.id)}
                 className="text-red-600 hover:text-red-900"
                 title="Delete Booking"
               >
                 <TrashIcon className="h-5 w-5" />
-                <span className="sr-only">Delete</span>
+                <span className="sr-only">Delete Booking</span>
               </button>
             </td>
           </tr>
         ))}
         {items.length === 0 && (
           <tr>
-            <td colSpan={type === 'booking' ? 4 : 3} className="px-4 py-2 text-center text-sm text-black">
+            <td colSpan={type === 'booking' ? 4 : 3} className="px-4 py-2 text-center text-sm text-gray-500">
               No {type === 'booking' ? 'bookings' : 'reminders'} found
             </td>
           </tr>
@@ -269,12 +218,8 @@ export default function EventViewPage({ params }) {
     <div className="p-6">
       {showBookingForm && event && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-auto">
-            <BookingForm
-              event={event}
-              onSubmit={handleCreateBooking}
-              onCancel={() => setShowBookingForm(false)}
-            />
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
+            <BookingForm event={event} onSubmit={handleCreateBooking} onCancel={() => setShowBookingForm(false)} />
           </div>
         </div>
       )}
