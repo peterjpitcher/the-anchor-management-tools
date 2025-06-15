@@ -18,9 +18,10 @@ export default async function MessagesPage() {
     <div className="container mx-auto px-4 py-8">
       <div className="mb-6 flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Messages</h1>
+          <h1 className="text-3xl font-bold mb-2">Inbound Messages</h1>
+          <p className="text-gray-600 mb-1">Messages received from customers</p>
           {unreadCount > 0 && (
-            <p className="text-gray-600">{unreadCount} unread message{unreadCount !== 1 ? 's' : ''}</p>
+            <p className="text-gray-600 font-medium">{unreadCount} unread message{unreadCount !== 1 ? 's' : ''}</p>
           )}
         </div>
         {unreadCount > 0 && (
@@ -37,7 +38,8 @@ export default async function MessagesPage() {
       
       {messages.length === 0 ? (
         <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-          No messages yet
+          <p className="text-lg">No inbound messages yet</p>
+          <p className="text-sm mt-2">When customers text your number, their messages will appear here</p>
         </div>
       ) : (
         <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -46,7 +48,7 @@ export default async function MessagesPage() {
               <div
                 key={message.id}
                 className={`p-4 hover:bg-gray-50 transition-colors ${
-                  message.direction === 'inbound' && !message.read_at ? 'bg-blue-50' : ''
+                  !message.read_at ? 'bg-blue-50' : ''
                 }`}
               >
                 <div className="flex items-start justify-between">
@@ -61,14 +63,7 @@ export default async function MessagesPage() {
                       <span className="text-sm text-gray-500">
                         {message.customer.mobile_number}
                       </span>
-                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                        message.direction === 'inbound' 
-                          ? 'bg-blue-100 text-blue-800' 
-                          : 'bg-green-100 text-green-800'
-                      }`}>
-                        {message.direction === 'inbound' ? 'Received' : 'Sent'}
-                      </span>
-                      {message.direction === 'inbound' && !message.read_at && (
+                      {!message.read_at && (
                         <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                           Unread
                         </span>
@@ -85,7 +80,7 @@ export default async function MessagesPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 ml-4">
-                    {message.direction === 'inbound' && !message.read_at && (
+                    {!message.read_at && (
                       <form action={markMessageAsRead.bind(null, message.id)}>
                         <button
                           type="submit"
