@@ -194,7 +194,17 @@ export async function addEmployeeAttachment(
   }
 
   // 2. Upload file to Supabase Storage
-  const uniqueFileName = `${employee_id}/${Date.now()}_${attachment_file.name.replace(/\s/g, '_')}`;
+  // Sanitize filename: remove special characters, keep only alphanumeric, dots, dashes, and underscores
+  const sanitizedFileName = attachment_file.name
+    .replace(/[^\w\s.-]/g, '') // Remove special characters except word chars, spaces, dots, and dashes
+    .replace(/\s+/g, '_') // Replace spaces with underscores
+    .replace(/_+/g, '_') // Replace multiple underscores with single
+    .replace(/^[._-]+|[._-]+$/g, ''); // Remove leading/trailing dots, underscores, or dashes
+  
+  // Ensure filename isn't empty after sanitization
+  const finalFileName = sanitizedFileName || 'unnamed_file';
+  
+  const uniqueFileName = `${employee_id}/${Date.now()}_${finalFileName}`;
   const { data: uploadData, error: uploadError } = await supabase.storage
     .from(ATTACHMENT_BUCKET_NAME)
     .upload(uniqueFileName, attachment_file, { upsert: false }); // upsert: false is crucial
