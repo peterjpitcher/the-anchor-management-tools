@@ -51,7 +51,7 @@ export async function sendBookingConfirmation(bookingId: string) {
 
     const { data: booking, error: bookingError } = await supabase
       .from('bookings')
-      .select('*, customer:customers(first_name, last_name, mobile_number), event:events(name, date, time)')
+      .select('*, customer:customers(id, first_name, last_name, mobile_number, sms_opt_in), event:events(name, date, time)')
       .eq('id', bookingId)
       .single()
 
@@ -182,7 +182,7 @@ export async function sendEventReminders() {
     console.log('Checking for reminders for events on:', { tomorrowStr, nextWeekStr })
     const { data: bookings, error: bookingsError } = await supabase
       .from('bookings')
-      .select('*, customer:customers(first_name, last_name, mobile_number), event:events(name, date, time)')
+      .select('*, customer:customers(id, first_name, last_name, mobile_number, sms_opt_in), event:events(name, date, time)')
       .in('event.date', [tomorrowStr, nextWeekStr])
       .not('customer.mobile_number', 'is', null)
       .eq('customer.sms_opt_in', true)
