@@ -119,8 +119,6 @@ export interface EmployeeEmergencyContact {
   created_at: string; // Timestamp
 }
 
-export type MessageStatus = 'queued' | 'sending' | 'sent' | 'delivered' | 'undelivered' | 'failed' | 'read' | 'received';
-
 export interface Message {
   id: string;
   customer_id: string;
@@ -131,7 +129,7 @@ export interface Message {
   created_at: string;
   updated_at: string;
   twilio_message_sid: string | null;
-  twilio_status: MessageStatus | null;
+  twilio_status: string | null;
   error_code: string | null;
   error_message: string | null;
   price: number | null;
@@ -144,7 +142,7 @@ export interface Message {
 export interface MessageDeliveryStatus {
   id: string;
   message_id: string;
-  status: MessageStatus;
+  status: string;
   error_code: string | null;
   error_message: string | null;
   created_at: string;
