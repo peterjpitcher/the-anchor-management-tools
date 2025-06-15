@@ -1,11 +1,29 @@
-import { supabase } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
 import Link from 'next/link';
 import type { Employee } from '@/types/database'; // Import Employee type
 import { Button } from '@/components/ui/Button';
 import { PlusIcon } from '@heroicons/react/24/outline';
 import { formatDate } from '@/lib/dateUtils';
 
+// Create admin client for server-side data fetching
+function getSupabaseAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    console.error('Missing Supabase URL or Service Role Key for admin client.');
+    return null;
+  }
+  return createClient(supabaseUrl, supabaseServiceRoleKey);
+}
+
 async function getEmployees(statusFilter?: string): Promise<Employee[] | null> {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) {
+    console.error('Failed to initialize Supabase admin client');
+    return null;
+  }
+
   let query = supabase.from('employees').select('*').order('last_name').order('first_name');
 
   if (statusFilter === 'Active' || statusFilter === 'Former') {
