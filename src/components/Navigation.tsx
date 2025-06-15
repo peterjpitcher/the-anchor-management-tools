@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, BuildingStorefrontIcon, PencilSquareIcon, CogIcon } from '@heroicons/react/24/outline'
+import { useEffect, useState } from 'react'
+import { getTotalUnreadCount } from '@/app/actions/messageActions'
 
 const primaryNavigation = [
   { name: 'Dashboard', href: '/', icon: HomeIcon },
@@ -24,6 +26,19 @@ interface NavigationProps {
 
 export function Navigation({ onQuickAddNoteClick }: NavigationProps) {
   const pathname = usePathname()
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  useEffect(() => {
+    // Load unread count on mount
+    getTotalUnreadCount().then(setUnreadCount)
+    
+    // Refresh every 30 seconds
+    const interval = setInterval(() => {
+      getTotalUnreadCount().then(setUnreadCount)
+    }, 30000)
+    
+    return () => clearInterval(interval)
+  }, [])
 
   type NavigationItem = {
     name: string;
@@ -79,6 +94,11 @@ export function Navigation({ onQuickAddNoteClick }: NavigationProps) {
           aria-hidden="true"
         />
         {item.name}
+        {item.name === 'Customers' && unreadCount > 0 && (
+          <span className="ml-auto inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+            {unreadCount}
+          </span>
+        )}
       </Link>
     );
   }
