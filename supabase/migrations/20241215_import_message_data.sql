@@ -1,6 +1,17 @@
 -- Auto-generated from Twilio export
 -- Insert data into temporary table for processing
 
+-- Create the temporary table first
+CREATE TEMP TABLE IF NOT EXISTS temp_message_import (
+  from_number TEXT,
+  to_number TEXT,
+  body TEXT,
+  status TEXT,
+  sent_date TEXT,
+  direction TEXT,
+  sid TEXT
+);
+
 INSERT INTO temp_message_import (from_number, to_number, body, status, sent_date, direction, sid) VALUES (
   '+447700106752',
   '+447990587315',

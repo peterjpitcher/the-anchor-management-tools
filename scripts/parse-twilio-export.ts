@@ -54,6 +54,18 @@ function generateSQL(messages: TwilioMessage[]): string {
   insertStatements.push('-- Auto-generated from Twilio export');
   insertStatements.push('-- Insert data into temporary table for processing\n');
   
+  // Create temp table
+  insertStatements.push('-- Create the temporary table first');
+  insertStatements.push(`CREATE TEMP TABLE IF NOT EXISTS temp_message_import (
+  from_number TEXT,
+  to_number TEXT,
+  body TEXT,
+  status TEXT,
+  sent_date TEXT,
+  direction TEXT,
+  sid TEXT
+);\n`);
+  
   // Generate insert statements
   for (const msg of messages) {
     const sql = `INSERT INTO temp_message_import (from_number, to_number, body, status, sent_date, direction, sid) VALUES (
