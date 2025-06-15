@@ -413,7 +413,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
                       Sent Time
                     </th>
                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">
-                      Type
+                      Direction
                     </th>
                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">
                       Status
@@ -432,12 +432,18 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
                         {new Date(message.created_at).toLocaleString()}
                       </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                        {message.message_type || 'SMS'}
+                      <td className="px-4 py-2 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                          ${message.direction === 'inbound' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
+                          <svg className={`-ml-0.5 mr-1.5 h-2 w-2 ${message.direction === 'inbound' ? 'text-blue-400' : 'text-gray-400'}`} fill="currentColor" viewBox="0 0 8 8">
+                            <circle cx="4" cy="4" r="3" />
+                          </svg>
+                          {message.direction === 'inbound' ? 'Received' : 'Sent'}
+                        </span>
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                          ${message.twilio_status === 'delivered' ? 'bg-green-100 text-green-800' : 
+                          ${message.twilio_status === 'delivered' || message.twilio_status === 'received' ? 'bg-green-100 text-green-800' : 
                             message.twilio_status === 'sent' || message.twilio_status === 'queued' ? 'bg-yellow-100 text-yellow-800' :
                             'bg-red-100 text-red-800'}`}>
                           {message.twilio_status || 'pending'}
