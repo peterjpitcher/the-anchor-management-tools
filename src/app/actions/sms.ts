@@ -123,7 +123,10 @@ export async function sendBookingConfirmation(bookingId: string) {
       twilio_message_sid: twilioMessage.sid,
       body: message,
       status: twilioMessage.status,
-      twilio_status: 'queued' as const
+      twilio_status: 'queued' as const,
+      from_number: twilioMessage.from || process.env.TWILIO_PHONE_NUMBER || '',
+      to_number: twilioMessage.to,
+      message_type: 'sms' as const
     };
     
     console.log('Attempting to store message in database:', messageData);
@@ -275,7 +278,10 @@ export async function sendEventReminders() {
             twilio_message_sid: twilioMessage.sid,
             body: message,
             status: twilioMessage.status,
-            twilio_status: 'queued' // Initial status
+            twilio_status: 'queued', // Initial status
+            from_number: twilioMessage.from || process.env.TWILIO_PHONE_NUMBER || '',
+            to_number: twilioMessage.to,
+            message_type: 'sms'
           });
 
         if (messageError) {
