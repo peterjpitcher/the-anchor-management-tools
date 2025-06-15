@@ -11,12 +11,15 @@ DROP FUNCTION IF EXISTS update_customer_sms_status();
 ALTER TABLE public.messages 
 DROP COLUMN IF EXISTS twilio_status;
 
--- Drop the enum type if it exists
-DROP TYPE IF EXISTS message_status_type;
-
--- Re-add twilio_status as TEXT
+-- Re-add twilio_status as TEXT first
 ALTER TABLE public.messages
 ADD COLUMN IF NOT EXISTS twilio_status TEXT;
+
+-- Drop the message_delivery_status table first (it depends on the enum)
+DROP TABLE IF EXISTS public.message_delivery_status CASCADE;
+
+-- Now we can drop the enum type
+DROP TYPE IF EXISTS message_status_type CASCADE;
 
 -- Ensure all other columns exist as TEXT
 ALTER TABLE public.messages
