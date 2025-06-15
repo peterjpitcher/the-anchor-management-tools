@@ -47,17 +47,24 @@ function verifyTwilioSignature(request: NextRequest, body: string): boolean {
 }
 
 export async function POST(request: NextRequest) {
+  console.log('=== TWILIO WEBHOOK RECEIVED ===');
+  console.log('Headers:', Object.fromEntries(request.headers.entries()));
+  
   try {
     // Get the raw body for signature verification
     const body = await request.text();
+    console.log('Raw body:', body);
     
     // Verify the webhook signature (in production)
     if (process.env.NODE_ENV === 'production') {
       const isValid = verifyTwilioSignature(request, body);
+      console.log('Signature validation:', { isValid, env: process.env.NODE_ENV });
       if (!isValid) {
         console.error('Invalid Twilio webhook signature');
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
+    } else {
+      console.log('Skipping signature validation in development');
     }
 
     // Parse the form data
@@ -67,10 +74,11 @@ export async function POST(request: NextRequest) {
       webhookData[key] = value;
     });
 
-    console.log('Twilio webhook received:', {
+    console.log('Twilio webhook data:', {
       MessageSid: webhookData.MessageSid,
       MessageStatus: webhookData.MessageStatus,
-      ErrorCode: webhookData.ErrorCode
+      ErrorCode: webhookData.ErrorCode,
+      allData: webhookData
     });
 
     const supabase = getSupabaseAdminClient();
@@ -99,8 +107,22 @@ export async function POST(request: NextRequest) {
 
     if (fetchError || !message) {
       console.error('Message not found for SID:', messageSid, fetchError);
-      // Don't return error - Twilio might retry. Just log and return success.
-      return NextResponse.json({ success: true });
+      console.log('Attempting to find by twilio_message_sid instead...');
+      
+      // Try finding by twilio_message_sid as well
+      const { data: messageAlt, error: fetchErrorAlt } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('twilio_message_sid', messageSid)
+        .single();
+      
+      if (fetchErrorAlt || !messageAlt) {
+        console.error('Message still not found by twilio_message_sid:', fetchErrorAlt);
+        // Don't return error - Twilio might retry. Just log and return success.
+        return NextResponse.json({ success: true });
+      }
+      
+      message = messageAlt;
     }
 
     // Map Twilio status to our enum
