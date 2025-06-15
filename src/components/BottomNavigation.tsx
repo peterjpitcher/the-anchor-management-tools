@@ -2,9 +2,9 @@
 
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
-import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, EnvelopeIcon } from '@heroicons/react/24/outline'
 import { useEffect, useState } from 'react'
-import { getTotalUnreadCount } from '@/app/actions/messageActions'
+import { getUnreadMessageCount } from '@/app/actions/messagesActions'
 
 // ADDED Props interface
 interface BottomNavigationProps {
@@ -17,11 +17,16 @@ export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps)
 
   useEffect(() => {
     // Load unread count on mount
-    getTotalUnreadCount().then(setUnreadCount)
+    async function loadUnreadCount() {
+      const result = await getUnreadMessageCount()
+      setUnreadCount(result.count)
+    }
+    
+    loadUnreadCount()
     
     // Refresh every 30 seconds
     const interval = setInterval(() => {
-      getTotalUnreadCount().then(setUnreadCount)
+      loadUnreadCount()
     }, 30000)
     
     return () => clearInterval(interval)
@@ -38,11 +43,11 @@ export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps)
   };
 
   const navigationItems: NavigationItem[] = [
-    { name: 'Dashboard', href: '/', icon: HomeIcon },
+    { name: 'Home', href: '/', icon: HomeIcon },
     { name: 'Events', href: '/events', icon: CalendarIcon },
     { name: 'Customers', href: '/customers', icon: UserGroupIcon },
+    { name: 'Messages', href: '/messages', icon: EnvelopeIcon },
     { name: 'Employees', href: '/employees', icon: IdentificationIcon },
-    { name: 'Add Note', href: '#', icon: PencilSquareIcon, action: true }, // Mark as action, href changed to #
   ]
 
   return (
@@ -73,8 +78,8 @@ export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps)
             >
               <div className="relative">
                 <item.icon className="w-5 h-5 sm:w-6 sm:h-6" />
-                {item.name === 'Customers' && unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-blue-600 rounded-full">
+                {item.name === 'Messages' && unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-red-600 rounded-full">
                     {unreadCount > 99 ? '99+' : unreadCount}
                   </span>
                 )}
