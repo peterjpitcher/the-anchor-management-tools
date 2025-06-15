@@ -62,17 +62,26 @@ async function handleInboundSMS(supabase: any, webhookData: Record<string, strin
     sid: messageSid
   });
 
-  // Clean phone number (remove + and country code if present)
-  let cleanedFromNumber = fromNumber.replace(/^\+/, '');
-  if (cleanedFromNumber.startsWith('44')) {
-    cleanedFromNumber = '0' + cleanedFromNumber.substring(2);
+  // Clean phone number - remove all non-digits, then format
+  let digitsOnly = fromNumber.replace(/\D/g, '');
+  if (digitsOnly.startsWith('44')) {
+    digitsOnly = '0' + digitsOnly.substring(2);
   }
   
-  // Look up customer by phone number
+  // Try multiple formats to match how numbers might be stored
+  const phoneVariants = [
+    fromNumber, // Original (might have +)
+    digitsOnly, // Just digits
+    digitsOnly.replace(/^(\d{5})(\d{6})$/, '$1 $2'), // 07990 587315
+    digitsOnly.replace(/^(\d{5})(\d{3})(\d{3})$/, '$1 $2 $3'), // 07990 587 315
+  ];
+  
+  // Look up customer with any variant
+  const orConditions = phoneVariants.map(variant => `mobile_number.eq.${variant}`).join(',');
   const { data: customers, error: customerError } = await supabase
     .from('customers')
     .select('*')
-    .or(`mobile_number.eq.${cleanedFromNumber},mobile_number.eq.${fromNumber}`)
+    .or(orConditions)
     .limit(1);
 
   if (customerError) {
