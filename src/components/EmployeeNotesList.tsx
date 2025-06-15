@@ -49,7 +49,7 @@ export default function EmployeeNotesList({ employeeId }: EmployeeNotesListProps
       return;
     }
 
-    const authorIds = [...new Set(notes.map(note => note.created_by).filter(Boolean))] as string[];
+    const authorIds = [...new Set(notes.map(note => note.created_by_user_id).filter(Boolean))] as string[];
 
     if (authorIds.length === 0) {
       const systemNotes = notes.map(note => ({ ...note, author_name: 'System' }));
@@ -68,7 +68,7 @@ export default function EmployeeNotesList({ employeeId }: EmployeeNotesListProps
       // Still show notes, but with a fallback name
       const fallbackNotes = notes.map(note => ({
         ...note,
-        author_name: note.created_by ? `User (${note.created_by.substring(0, 6)}...)` : 'System'
+        author_name: note.created_by_user_id ? `User (${note.created_by_user_id.substring(0, 6)}...)` : 'System'
       }));
       setNotesWithAuthors(fallbackNotes);
       setIsLoading(false);
@@ -81,8 +81,8 @@ export default function EmployeeNotesList({ employeeId }: EmployeeNotesListProps
     });
 
     const finalNotes = notes.map(note => {
-      const mappedName = note.created_by ? authorMap.get(note.created_by) : undefined;
-      const author_name = mappedName || (note.created_by ? `User (${note.created_by.substring(0, 6)}...)` : 'System');
+      const mappedName = note.created_by_user_id ? authorMap.get(note.created_by_user_id) : undefined;
+      const author_name = mappedName || (note.created_by_user_id ? `User (${note.created_by_user_id.substring(0, 6)}...)` : 'System');
       return { ...note, author_name };
     });
     

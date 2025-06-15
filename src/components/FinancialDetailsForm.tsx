@@ -2,7 +2,8 @@
 
 import { useActionState, useEffect } from 'react';
 import { useFormStatus } from 'react-dom';
-import { upsertFinancialDetails, type ActionFormState } from '@/app/actions/employeeActions';
+import { upsertFinancialDetails } from '@/app/actions/employeeActions';
+import type { ActionFormState } from '@/types/actions';
 import type { EmployeeFinancialDetails } from '@/types/database';
 
 interface FinancialDetailsFormProps {

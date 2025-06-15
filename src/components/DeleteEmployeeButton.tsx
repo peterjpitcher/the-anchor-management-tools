@@ -2,7 +2,8 @@
 
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
-import { deleteEmployee, type DeleteState } from '@/app/actions/employeeActions';
+import { deleteEmployee } from '@/app/actions/employeeActions';
+import type { DeleteState } from '@/types/actions';
 import { TrashIcon } from '@heroicons/react/24/outline';
 import { useState, useEffect } from 'react';
 
@@ -26,9 +27,8 @@ function SubmitDeleteButton() {
 
 export default function DeleteEmployeeButton({ employeeId, employeeName }: DeleteEmployeeButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const deleteEmployeeWithId = deleteEmployee.bind(null, employeeId);
   const initialState: DeleteState = null;
-  const [state, dispatch] = useActionState(deleteEmployeeWithId, initialState);
+  const [state, dispatch] = useActionState(deleteEmployee, initialState);
 
   useEffect(() => {
     if (state?.type === 'error') {
@@ -78,6 +78,7 @@ export default function DeleteEmployeeButton({ employeeId, employeeName }: Delet
                         {state.message}
                     </p>
                 )}
+                <input type="hidden" name="employee_id" value={employeeId} />
                 <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
                   <SubmitDeleteButton />
                   <button

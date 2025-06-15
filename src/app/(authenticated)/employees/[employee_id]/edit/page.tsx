@@ -1,7 +1,8 @@
 'use client'
 
 import EmployeeForm from '@/components/EmployeeForm';
-import { updateEmployee, ActionFormState } from '@/app/actions/employeeActions';
+import { updateEmployee } from '@/app/actions/employeeActions';
+import type { ActionFormState } from '@/types/actions';
 import { supabase } from '@/lib/supabase';
 import type { Employee, EmployeeFinancialDetails, EmployeeHealthRecord } from '@/types/database';
 import { notFound, useRouter } from 'next/navigation';

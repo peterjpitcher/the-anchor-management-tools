@@ -91,6 +91,7 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
               autoComplete="family-name"
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
+              required
               className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
             />
           </div>

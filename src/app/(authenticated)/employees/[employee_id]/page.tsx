@@ -272,6 +272,7 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
                 employeeId={employee.employee_id}
                 attachments={attachments}
                 categoriesMap={attachmentCategoriesMap}
+                onDelete={loadData}
               />
           </div>
         </div>
