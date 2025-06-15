@@ -1,14 +1,34 @@
 'use server'
 
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
 
+function getSupabaseAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    console.error('Missing Supabase URL or Service Role Key for admin client.')
+    return null
+  }
+  return createClient(supabaseUrl, supabaseServiceRoleKey)
+}
+
 export async function getMessages() {
+  console.log('=== Getting all messages ===')
+  
+  const supabase = getSupabaseAdminClient()
+  if (!supabase) {
+    return { error: 'Failed to initialize database connection' }
+  }
+  
   // First get all messages
   const { data: messages, error: messagesError } = await supabase
     .from('messages')
     .select('*')
     .order('created_at', { ascending: false })
+  
+  console.log('Messages query result:', { count: messages?.length, error: messagesError })
   
   if (messagesError) {
     console.error('Error fetching messages:', messagesError)
@@ -51,11 +71,20 @@ export async function getMessages() {
 }
 
 export async function getUnreadMessageCount() {
+  console.log('=== Getting unread message count ===')
+  
+  const supabase = getSupabaseAdminClient()
+  if (!supabase) {
+    return { count: 0 }
+  }
+  
   const { count, error } = await supabase
     .from('messages')
     .select('*', { count: 'exact', head: true })
     .eq('direction', 'inbound')
     .is('read_at', null)
+  
+  console.log('Unread count result:', { count, error })
   
   if (error) {
     console.error('Error fetching unread count:', error)
@@ -66,6 +95,11 @@ export async function getUnreadMessageCount() {
 }
 
 export async function markMessageAsRead(messageId: string) {
+  const supabase = getSupabaseAdminClient()
+  if (!supabase) {
+    throw new Error('Failed to initialize database connection')
+  }
+  
   const { error } = await supabase
     .from('messages')
     .update({ read_at: new Date().toISOString() })
@@ -82,6 +116,11 @@ export async function markMessageAsRead(messageId: string) {
 }
 
 export async function markAllMessagesAsRead() {
+  const supabase = getSupabaseAdminClient()
+  if (!supabase) {
+    throw new Error('Failed to initialize database connection')
+  }
+  
   const { error } = await supabase
     .from('messages')
     .update({ read_at: new Date().toISOString() })
