@@ -22,10 +22,11 @@ export async function getMessages() {
     return { error: 'Failed to initialize database connection' }
   }
   
-  // First get all messages
+  // Get only inbound messages
   const { data: messages, error: messagesError } = await supabase
     .from('messages')
     .select('*')
+    .eq('direction', 'inbound')
     .order('created_at', { ascending: false })
   
   console.log('Messages query result:', { count: messages?.length, error: messagesError })
