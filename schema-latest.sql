@@ -92,6 +92,70 @@ $$;
 ALTER FUNCTION "public"."handle_updated_at"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."update_customer_sms_status"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+  -- Only process if the message is outbound and has failed/undelivered status
+  IF NEW.direction = 'outbound' AND NEW.twilio_status IN ('failed', 'undelivered') THEN
+    -- Update customer's failure count and last failure reason
+    UPDATE public.customers
+    SET 
+      sms_delivery_failures = sms_delivery_failures + 1,
+      last_sms_failure_reason = NEW.error_message,
+      -- Auto-deactivate based on failure count and error type
+      sms_opt_in = CASE 
+        -- Invalid number: immediate deactivation
+        WHEN NEW.error_code IN ('21211', '21614', '21217') THEN false
+        -- Carrier violations: deactivate after 3 failures
+        WHEN NEW.error_code IN ('21610', '21612') AND sms_delivery_failures >= 2 THEN false
+        -- Other failures: deactivate after 5 failures
+        WHEN sms_delivery_failures >= 4 THEN false
+        ELSE sms_opt_in
+      END,
+      sms_deactivated_at = CASE
+        WHEN NEW.error_code IN ('21211', '21614', '21217') THEN NOW()
+        WHEN NEW.error_code IN ('21610', '21612') AND sms_delivery_failures >= 2 THEN NOW()
+        WHEN sms_delivery_failures >= 4 THEN NOW()
+        ELSE sms_deactivated_at
+      END,
+      sms_deactivation_reason = CASE
+        WHEN NEW.error_code IN ('21211', '21614', '21217') THEN 'Invalid phone number'
+        WHEN NEW.error_code IN ('21610', '21612') AND sms_delivery_failures >= 2 THEN 'Carrier violations'
+        WHEN sms_delivery_failures >= 4 THEN 'Too many delivery failures'
+        ELSE sms_deactivation_reason
+      END
+    WHERE id = NEW.customer_id;
+  -- Reset failure count on successful delivery
+  ELSIF NEW.direction = 'outbound' AND NEW.twilio_status = 'delivered' THEN
+    UPDATE public.customers
+    SET 
+      sms_delivery_failures = 0,
+      last_successful_sms_at = NOW()
+    WHERE id = NEW.customer_id;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."update_customer_sms_status"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."update_messages_updated_at"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."update_messages_updated_at"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."update_updated_at_column"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
@@ -175,11 +239,41 @@ CREATE TABLE IF NOT EXISTS "public"."customers" (
     "first_name" "text" NOT NULL,
     "last_name" "text" NOT NULL,
     "mobile_number" "text" NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL
+    "created_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL,
+    "sms_opt_in" boolean DEFAULT true,
+    "sms_delivery_failures" integer DEFAULT 0,
+    "last_sms_failure_reason" "text",
+    "last_successful_sms_at" timestamp with time zone,
+    "sms_deactivated_at" timestamp with time zone,
+    "sms_deactivation_reason" "text"
 );
 
 
 ALTER TABLE "public"."customers" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."customers"."sms_opt_in" IS 'Whether the customer has opted in to receive SMS messages';
+
+
+
+COMMENT ON COLUMN "public"."customers"."sms_delivery_failures" IS 'Count of consecutive SMS delivery failures';
+
+
+
+COMMENT ON COLUMN "public"."customers"."last_sms_failure_reason" IS 'The reason for the last SMS delivery failure';
+
+
+
+COMMENT ON COLUMN "public"."customers"."last_successful_sms_at" IS 'Timestamp of the last successful SMS delivery';
+
+
+
+COMMENT ON COLUMN "public"."customers"."sms_deactivated_at" IS 'When SMS was automatically deactivated for this customer';
+
+
+
+COMMENT ON COLUMN "public"."customers"."sms_deactivation_reason" IS 'Reason for automatic SMS deactivation';
+
 
 
 CREATE TABLE IF NOT EXISTS "public"."employee_attachments" (
@@ -311,6 +405,65 @@ COMMENT ON COLUMN "public"."events"."capacity" IS 'Maximum number of seats avail
 
 
 
+CREATE TABLE IF NOT EXISTS "public"."message_delivery_status" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "message_id" "uuid" NOT NULL,
+    "status" "text" NOT NULL,
+    "error_code" "text",
+    "error_message" "text",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "raw_webhook_data" "jsonb"
+);
+
+
+ALTER TABLE "public"."message_delivery_status" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."message_delivery_status" IS 'Tracks the full history of message delivery status changes from Twilio webhooks';
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."messages" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "customer_id" "uuid" NOT NULL,
+    "direction" "text" NOT NULL,
+    "message_sid" "text" NOT NULL,
+    "body" "text" NOT NULL,
+    "status" "text" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL,
+    "twilio_message_sid" "text",
+    "error_code" "text",
+    "error_message" "text",
+    "price" numeric(10,4),
+    "price_unit" "text",
+    "sent_at" timestamp with time zone,
+    "delivered_at" timestamp with time zone,
+    "failed_at" timestamp with time zone,
+    "twilio_status" "text",
+    CONSTRAINT "messages_direction_check" CHECK (("direction" = ANY (ARRAY['inbound'::"text", 'outbound'::"text"])))
+);
+
+
+ALTER TABLE "public"."messages" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."messages"."twilio_message_sid" IS 'Twilio message SID for tracking';
+
+
+
+COMMENT ON COLUMN "public"."messages"."error_code" IS 'Twilio error code if message failed';
+
+
+
+COMMENT ON COLUMN "public"."messages"."error_message" IS 'Human-readable error message if failed';
+
+
+
+COMMENT ON COLUMN "public"."messages"."twilio_status" IS 'Current status of the message from Twilio (queued, sent, delivered, failed, etc)';
+
+
+
 CREATE TABLE IF NOT EXISTS "public"."profiles" (
     "id" "uuid" NOT NULL,
     "full_name" "text",
@@ -390,6 +543,16 @@ ALTER TABLE ONLY "public"."events"
 
 
 
+ALTER TABLE ONLY "public"."message_delivery_status"
+    ADD CONSTRAINT "message_delivery_status_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."messages"
+    ADD CONSTRAINT "messages_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."profiles"
     ADD CONSTRAINT "profiles_pkey" PRIMARY KEY ("id");
 
@@ -400,6 +563,14 @@ CREATE INDEX "idx_bookings_customer_id" ON "public"."bookings" USING "btree" ("c
 
 
 CREATE INDEX "idx_bookings_event_id" ON "public"."bookings" USING "btree" ("event_id");
+
+
+
+CREATE INDEX "idx_customers_sms_delivery_failures" ON "public"."customers" USING "btree" ("sms_delivery_failures");
+
+
+
+CREATE INDEX "idx_customers_sms_opt_in" ON "public"."customers" USING "btree" ("sms_opt_in");
 
 
 
@@ -451,6 +622,26 @@ CREATE INDEX "idx_events_date" ON "public"."events" USING "btree" ("date");
 
 
 
+CREATE INDEX "idx_message_delivery_status_created_at" ON "public"."message_delivery_status" USING "btree" ("created_at");
+
+
+
+CREATE INDEX "idx_message_delivery_status_message_id" ON "public"."message_delivery_status" USING "btree" ("message_id");
+
+
+
+CREATE INDEX "idx_messages_created_at" ON "public"."messages" USING "btree" ("created_at");
+
+
+
+CREATE INDEX "idx_messages_customer_id" ON "public"."messages" USING "btree" ("customer_id");
+
+
+
+CREATE INDEX "idx_messages_twilio_message_sid" ON "public"."messages" USING "btree" ("twilio_message_sid");
+
+
+
 CREATE OR REPLACE TRIGGER "on_employees_updated" BEFORE UPDATE ON "public"."employees" FOR EACH ROW EXECUTE FUNCTION "public"."handle_updated_at"();
 
 
@@ -467,7 +658,15 @@ CREATE OR REPLACE TRIGGER "update_attachment_categories_updated_at" BEFORE UPDAT
 
 
 
+CREATE OR REPLACE TRIGGER "update_customer_sms_status_trigger" AFTER UPDATE OF "twilio_status" ON "public"."messages" FOR EACH ROW WHEN (("new"."twilio_status" IS DISTINCT FROM "old"."twilio_status")) EXECUTE FUNCTION "public"."update_customer_sms_status"();
+
+
+
 CREATE OR REPLACE TRIGGER "update_employees_updated_at" BEFORE UPDATE ON "public"."employees" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
+CREATE OR REPLACE TRIGGER "update_messages_updated_at" BEFORE UPDATE ON "public"."messages" FOR EACH ROW EXECUTE FUNCTION "public"."update_messages_updated_at"();
 
 
 
@@ -511,8 +710,34 @@ ALTER TABLE ONLY "public"."employee_notes"
 
 
 
+ALTER TABLE ONLY "public"."message_delivery_status"
+    ADD CONSTRAINT "message_delivery_status_message_id_fkey" FOREIGN KEY ("message_id") REFERENCES "public"."messages"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."messages"
+    ADD CONSTRAINT "messages_customer_id_fkey" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "public"."profiles"
     ADD CONSTRAINT "profiles_id_fkey" FOREIGN KEY ("id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+CREATE POLICY "Allow authenticated users to insert message delivery status" ON "public"."message_delivery_status" FOR INSERT TO "authenticated" WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow authenticated users to insert messages" ON "public"."messages" FOR INSERT TO "authenticated" WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow authenticated users to read message delivery status" ON "public"."message_delivery_status" FOR SELECT TO "authenticated" USING (true);
+
+
+
+CREATE POLICY "Allow authenticated users to read messages" ON "public"."messages" FOR SELECT TO "authenticated" USING (true);
 
 
 
@@ -604,6 +829,12 @@ ALTER TABLE "public"."employee_notes" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."employees" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."message_delivery_status" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."messages" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."profiles" ENABLE ROW LEVEL SECURITY;
@@ -814,6 +1045,18 @@ GRANT ALL ON FUNCTION "public"."handle_updated_at"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."update_customer_sms_status"() TO "anon";
+GRANT ALL ON FUNCTION "public"."update_customer_sms_status"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_customer_sms_status"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."update_messages_updated_at"() TO "anon";
+GRANT ALL ON FUNCTION "public"."update_messages_updated_at"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_messages_updated_at"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "anon";
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "service_role";
@@ -898,6 +1141,18 @@ GRANT ALL ON TABLE "public"."employees" TO "service_role";
 GRANT ALL ON TABLE "public"."events" TO "anon";
 GRANT ALL ON TABLE "public"."events" TO "authenticated";
 GRANT ALL ON TABLE "public"."events" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."message_delivery_status" TO "anon";
+GRANT ALL ON TABLE "public"."message_delivery_status" TO "authenticated";
+GRANT ALL ON TABLE "public"."message_delivery_status" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."messages" TO "anon";
+GRANT ALL ON TABLE "public"."messages" TO "authenticated";
+GRANT ALL ON TABLE "public"."messages" TO "service_role";
 
 
 
