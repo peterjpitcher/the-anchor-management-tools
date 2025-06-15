@@ -1,7 +1,13 @@
 -- Fix message status columns to use TEXT instead of enum
 -- This simplifies the schema and avoids type conflicts
 
--- First, drop the existing twilio_status column if it exists with enum type
+-- First, drop the trigger that depends on the column
+DROP TRIGGER IF EXISTS update_customer_sms_status_trigger ON public.messages;
+
+-- Drop the trigger function too
+DROP FUNCTION IF EXISTS update_customer_sms_status();
+
+-- Now we can safely drop the column
 ALTER TABLE public.messages 
 DROP COLUMN IF EXISTS twilio_status;
 
