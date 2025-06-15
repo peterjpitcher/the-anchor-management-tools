@@ -62,19 +62,33 @@ async function handleInboundSMS(supabase: any, webhookData: Record<string, strin
     sid: messageSid
   });
 
-  // Clean phone number - remove all non-digits, then format
+  // Clean phone number - remove all non-digits
   let digitsOnly = fromNumber.replace(/\D/g, '');
-  if (digitsOnly.startsWith('44')) {
-    digitsOnly = '0' + digitsOnly.substring(2);
+  
+  // Create variants for UK numbers - database stores as +447990587315
+  const phoneVariants = [
+    fromNumber, // Original from Twilio
+  ];
+  
+  // Twilio might send +447990587315, we need to match database format
+  if (fromNumber.startsWith('+44')) {
+    phoneVariants.push(fromNumber); // Already in correct format
+    phoneVariants.push(fromNumber.substring(1)); // 447990587315
+    phoneVariants.push('0' + fromNumber.substring(3)); // 07990587315
   }
   
-  // Try multiple formats to match how numbers might be stored
-  const phoneVariants = [
-    fromNumber, // Original (might have +)
-    digitsOnly, // Just digits
-    digitsOnly.replace(/^(\d{5})(\d{6})$/, '$1 $2'), // 07990 587315
-    digitsOnly.replace(/^(\d{5})(\d{3})(\d{3})$/, '$1 $2 $3'), // 07990 587 315
-  ];
+  // If Twilio sends without +
+  if (digitsOnly.startsWith('44')) {
+    phoneVariants.push('+' + digitsOnly); // +447990587315 (database format)
+    phoneVariants.push(digitsOnly); // 447990587315
+    phoneVariants.push('0' + digitsOnly.substring(2)); // 07990587315
+  }
+  
+  // If Twilio sends UK format starting with 0
+  if (fromNumber.startsWith('0')) {
+    phoneVariants.push('+44' + fromNumber.substring(1)); // +447990587315 (database format)
+    phoneVariants.push('44' + fromNumber.substring(1)); // 447990587315
+  }
   
   // Look up customer with any variant
   const orConditions = phoneVariants.map(variant => `mobile_number.eq.${variant}`).join(',');
