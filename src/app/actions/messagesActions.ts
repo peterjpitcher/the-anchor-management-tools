@@ -4,26 +4,50 @@ import { supabase } from '@/lib/supabase'
 import { revalidatePath } from 'next/cache'
 
 export async function getMessages() {
-  
-  const { data: messages, error } = await supabase
+  // First get all messages
+  const { data: messages, error: messagesError } = await supabase
     .from('messages')
-    .select(`
-      *,
-      customer:customers!messages_customer_id_fkey(
-        id,
-        first_name,
-        last_name,
-        mobile_number
-      )
-    `)
+    .select('*')
     .order('created_at', { ascending: false })
   
-  if (error) {
-    console.error('Error fetching messages:', error)
-    return { error: error.message }
+  if (messagesError) {
+    console.error('Error fetching messages:', messagesError)
+    return { error: messagesError.message }
   }
   
-  return { messages: messages || [] }
+  if (!messages || messages.length === 0) {
+    return { messages: [] }
+  }
+  
+  // Get unique customer IDs
+  const customerIds = [...new Set(messages.map(m => m.customer_id))]
+  
+  // Fetch customer details
+  const { data: customers, error: customersError } = await supabase
+    .from('customers')
+    .select('id, first_name, last_name, mobile_number')
+    .in('id', customerIds)
+  
+  if (customersError) {
+    console.error('Error fetching customers:', customersError)
+    return { error: customersError.message }
+  }
+  
+  // Create a map of customers by ID
+  const customerMap = new Map(customers?.map(c => [c.id, c]) || [])
+  
+  // Combine messages with customer data
+  const messagesWithCustomers = messages.map(message => ({
+    ...message,
+    customer: customerMap.get(message.customer_id) || {
+      id: message.customer_id,
+      first_name: 'Unknown',
+      last_name: '',
+      mobile_number: ''
+    }
+  }))
+  
+  return { messages: messagesWithCustomers }
 }
 
 export async function getUnreadMessageCount() {
