@@ -107,23 +107,39 @@ export async function sendBookingConfirmation(bookingId: string) {
     }
 
     const twilioMessage = await twilioClientInstance.messages.create(messageParams)
+    
+    console.log('Twilio message created:', {
+      sid: twilioMessage.sid,
+      status: twilioMessage.status,
+      to: twilioMessage.to,
+      from: twilioMessage.from
+    });
 
     // Store the message in the database for tracking
-    const { error: messageError } = await supabase
+    const messageData = {
+      customer_id: booking.customer.id,
+      direction: 'outbound' as const,
+      message_sid: twilioMessage.sid,
+      twilio_message_sid: twilioMessage.sid,
+      body: message,
+      status: twilioMessage.status,
+      twilio_status: 'queued' as const
+    };
+    
+    console.log('Attempting to store message in database:', messageData);
+    
+    const { data: insertedMessage, error: messageError } = await supabase
       .from('messages')
-      .insert({
-        customer_id: booking.customer.id,
-        direction: 'outbound',
-        message_sid: twilioMessage.sid,
-        twilio_message_sid: twilioMessage.sid,
-        body: message,
-        status: twilioMessage.status,
-        twilio_status: 'queued' // Initial status
-      });
+      .insert(messageData)
+      .select()
+      .single();
 
     if (messageError) {
       console.error('Failed to store message in database:', messageError);
+      console.error('Message data that failed:', messageData);
       // Don't throw - SMS was sent successfully
+    } else {
+      console.log('Message stored successfully:', insertedMessage);
     }
 
     console.log('SMS sent successfully for bookingId:', bookingId, 'using', 
