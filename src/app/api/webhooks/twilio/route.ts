@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Find the message by Twilio SID
-    const { data: message, error: fetchError } = await supabase
+    let { data: message, error: fetchError } = await supabase
       .from('messages')
       .select('*')
       .eq('message_sid', messageSid)
