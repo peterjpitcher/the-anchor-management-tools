@@ -72,7 +72,7 @@ async function handleInboundSMS(supabase: any, webhookData: Record<string, strin
   const { data: customers, error: customerError } = await supabase
     .from('customers')
     .select('*')
-    .or(`phone.eq.${cleanedFromNumber},phone.eq.${fromNumber}`)
+    .or(`mobile_number.eq.${cleanedFromNumber},mobile_number.eq.${fromNumber}`)
     .limit(1);
 
   if (customerError) {

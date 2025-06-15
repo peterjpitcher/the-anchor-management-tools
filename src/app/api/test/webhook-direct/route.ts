@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
   const { data: customers, error: customerError } = await supabase
     .from('customers')
     .select('*')
-    .or(`phone.eq.${cleanedPhoneNumber},phone.eq.${phoneNumber}`)
+    .or(`mobile_number.eq.${cleanedPhoneNumber},mobile_number.eq.${phoneNumber}`)
     .limit(1);
 
   if (customerError) {
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
         customer: { 
           id: customer.id, 
           name: `${customer.first_name} ${customer.last_name}`,
-          phone: customer.phone 
+          phone: customer.mobile_number 
         }
       });
     }
