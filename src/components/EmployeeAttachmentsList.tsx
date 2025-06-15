@@ -18,13 +18,15 @@ interface EmployeeAttachmentsListProps {
   employeeId: string;
   attachments: EmployeeAttachment[] | null; // Pass attachments as prop
   categoriesMap: Map<string, string>; // Pass categories map for display
+  onDelete?: () => void; // Callback when attachment is deleted
 }
 
-function DeleteAttachmentButton({ employeeId, attachmentId, storagePath, attachmentName }: {
+function DeleteAttachmentButton({ employeeId, attachmentId, storagePath, attachmentName, onDelete }: {
   employeeId: string;
   attachmentId: string;
   storagePath: string;
   attachmentName: string;
+  onDelete?: () => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [state, dispatch] = useActionState(deleteEmployeeAttachment, null);
@@ -32,13 +34,15 @@ function DeleteAttachmentButton({ employeeId, attachmentId, storagePath, attachm
   useEffect(() => {
     if (state?.type === 'success') {
       setIsOpen(false);
-      // Revalidation is handled by server action, list should update.
-      // toast.success(state.message); // Optional success message
+      // Call the onDelete callback if provided
+      if (onDelete) {
+        onDelete();
+      }
     } else if (state?.type === 'error') {
       setIsOpen(false);
       alert(`Error: ${state.message}`); // Simple alert for now
     }
-  }, [state]);
+  }, [state, onDelete]);
 
   // This Submit button is specific to the modal's form
   function SubmitActualDeleteButton() {
@@ -117,7 +121,7 @@ function DeleteAttachmentButton({ employeeId, attachmentId, storagePath, attachm
   );
 }
 
-export default function EmployeeAttachmentsList({ attachments, categoriesMap, employeeId }: EmployeeAttachmentsListProps) {
+export default function EmployeeAttachmentsList({ attachments, categoriesMap, employeeId, onDelete }: EmployeeAttachmentsListProps) {
   const [downloading, setDownloading] = useState<string | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
 
@@ -239,6 +243,7 @@ export default function EmployeeAttachmentsList({ attachments, categoriesMap, em
               attachmentId={attachment.attachment_id}
               storagePath={attachment.storage_path}
               attachmentName={attachment.file_name}
+              onDelete={onDelete}
             />
           </div>
         </li>

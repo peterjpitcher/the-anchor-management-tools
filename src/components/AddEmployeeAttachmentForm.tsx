@@ -6,7 +6,7 @@ import { useFormStatus } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { addEmployeeAttachment } from '@/app/actions/employeeActions';
 import type { AttachmentFormState } from '@/types/actions';
-import { supabase } from '@/lib/supabase'; // For fetching categories client-side
+import { useSupabase } from '@/components/providers/SupabaseProvider';
 import type { AttachmentCategory } from '@/types/database';
 import { Button } from '@/components/ui/Button';
 
@@ -25,11 +25,12 @@ function SubmitAttachmentButton() {
 }
 
 export default function AddEmployeeAttachmentForm({ employeeId, onSuccess }: AddEmployeeAttachmentFormProps) {
-  const initialState: AttachmentFormState = { type: 'success', message: '' };
+  const initialState: AttachmentFormState = null;
   const [state, dispatch] = useActionState(addEmployeeAttachment, initialState);
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+  const supabase = useSupabase();
 
   const [categories, setCategories] = useState<AttachmentCategory[]>([]);
   const [isLoadingCategories, setIsLoadingCategories] = useState(true);
@@ -47,7 +48,7 @@ export default function AddEmployeeAttachmentForm({ employeeId, onSuccess }: Add
       setIsLoadingCategories(false);
     }
     fetchCategories();
-  }, []);
+  }, [supabase]);
 
   useEffect(() => {
     if (state?.type === 'success' && state.message) {
