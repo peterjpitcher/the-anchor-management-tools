@@ -58,8 +58,7 @@ INSERT INTO messages (
   to_number,
   message_type,
   created_at,
-  updated_at,
-  read_at
+  updated_at
 )
 SELECT 
   CASE 
@@ -79,8 +78,7 @@ SELECT
   i.to_number,
   'sms',
   i.sent_date::timestamp with time zone,
-  i.sent_date::timestamp with time zone,
-  NOW() -- mark as read
+  i.sent_date::timestamp with time zone
 FROM message_import i
 WHERE CASE 
     WHEN i.direction = 'inbound' THEN find_customer_id(i.from_number)
