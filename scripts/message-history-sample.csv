@@ -1,0 +1,5 @@
+phone_number,direction,body,timestamp,status,message_sid
+07990587315,inbound,"Hi, I'd like to book for next Saturday",2024-12-01T10:30:00Z,received,
++447990587315,outbound,"Hello! I'd be happy to help you book. How many seats would you like?",2024-12-01T10:35:00Z,delivered,SM123456789
+07990587315,inbound,"2 seats please",2024-12-01T10:36:00Z,received,
++447990587315,outbound,"Perfect! I've reserved 2 seats for you for Saturday. You'll receive a confirmation shortly.",2024-12-01T10:40:00Z,delivered,SM123456790

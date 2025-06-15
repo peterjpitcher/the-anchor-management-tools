@@ -137,6 +137,10 @@ export interface Message {
   sent_at: string | null;
   delivered_at: string | null;
   failed_at: string | null;
+  from_number?: string | null;
+  to_number?: string | null;
+  message_type?: string | null;
+  read_at?: string | null;
 }
 
 export interface MessageDeliveryStatus {

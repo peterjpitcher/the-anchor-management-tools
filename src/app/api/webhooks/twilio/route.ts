@@ -137,26 +137,20 @@ async function handleInboundSMS(supabase: any, webhookData: Record<string, strin
   }
 
   // Save the inbound message
-  const messageData: any = {
+  const messageData = {
     customer_id: customer.id,
-    direction: 'inbound',
+    direction: 'inbound' as const,
     message_sid: messageSid,
     twilio_message_sid: messageSid,
     body: messageBody,
     status: 'received',
     twilio_status: 'received',
-    created_at: new Date().toISOString()
+    from_number: fromNumber,
+    to_number: toNumber,
+    message_type: 'sms'
   };
 
-  // Add optional fields that might not exist in the schema yet
-  // These will be ignored if the columns don't exist
-  try {
-    messageData.from_number = fromNumber;
-    messageData.to_number = toNumber;
-    messageData.message_type = 'sms';
-  } catch (e) {
-    console.log('Optional fields may not exist in schema yet');
-  }
+  console.log('Saving inbound message:', messageData);
 
   const { error: insertError } = await supabase
     .from('messages')
