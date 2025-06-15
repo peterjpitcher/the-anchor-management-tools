@@ -10,6 +10,7 @@ import {
   ArrowDownTrayIcon,
   TrashIcon,
   ExclamationTriangleIcon,
+  EyeIcon,
 } from '@heroicons/react/24/outline';
 import { formatBytes } from '@/lib/utils'; // Ensuring this path is correct
 
@@ -118,6 +119,7 @@ function DeleteAttachmentButton({ employeeId, attachmentId, storagePath, attachm
 
 export default function EmployeeAttachmentsList({ attachments, categoriesMap, employeeId }: EmployeeAttachmentsListProps) {
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<string | null>(null);
 
   const handleDownload = async (attachment: EmployeeAttachment) => {
     try {
@@ -148,6 +150,46 @@ export default function EmployeeAttachmentsList({ attachments, categoriesMap, em
     }
   };
 
+  const handleView = async (attachment: EmployeeAttachment) => {
+    try {
+      setViewing(attachment.attachment_id);
+      
+      const result = await getAttachmentSignedUrl(attachment.storage_path);
+      
+      if (result.error) {
+        alert(`Error: ${result.error}`);
+        return;
+      }
+      
+      if (result.url) {
+        // Open in new tab
+        window.open(result.url, '_blank');
+      } else {
+        alert('Could not generate view link. Please try again.');
+      }
+    } catch (error) {
+      console.error('View error:', error);
+      alert('An error occurred while viewing the file. Please try again.');
+    } finally {
+      setViewing(null);
+    }
+  };
+
+  // Check if file type is viewable in browser
+  const isViewable = (mimeType: string) => {
+    const viewableTypes = [
+      'application/pdf',
+      'image/png',
+      'image/jpeg',
+      'image/jpg',
+      'image/gif',
+      'image/webp',
+      'text/plain',
+      'text/html',
+    ];
+    return viewableTypes.includes(mimeType.toLowerCase());
+  };
+
   if (!attachments) {
     return <p className="text-sm text-red-500 mt-1">Could not load attachments.</p>;
   }
@@ -170,6 +212,18 @@ export default function EmployeeAttachmentsList({ attachments, categoriesMap, em
             </span>
           </div>
           <div className="ml-4 flex-shrink-0 flex items-center space-x-3">
+            {isViewable(attachment.mime_type) && (
+              <button 
+                  onClick={() => handleView(attachment)}
+                  type="button" 
+                  className="font-medium text-blue-600 hover:text-blue-500 disabled:opacity-50"
+                  title="View Attachment"
+                  disabled={viewing === attachment.attachment_id}
+              >
+                <EyeIcon className={`h-5 w-5 ${viewing === attachment.attachment_id ? 'animate-pulse' : ''}`}/>
+                <span className="sr-only">View {attachment.file_name}</span>
+              </button>
+            )}
             <button 
                 onClick={() => handleDownload(attachment)}
                 type="button" 

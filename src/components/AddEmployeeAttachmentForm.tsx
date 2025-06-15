@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
-import { addEmployeeAttachment, type AttachmentFormState } from '@/app/actions/employeeActions';
+import { useRouter } from 'next/navigation';
+import { addEmployeeAttachment } from '@/app/actions/employeeActions';
+import type { AttachmentFormState } from '@/types/actions';
 import { supabase } from '@/lib/supabase'; // For fetching categories client-side
 import type { AttachmentCategory } from '@/types/database';
 import { Button } from '@/components/ui/Button';
@@ -22,11 +24,11 @@ function SubmitAttachmentButton() {
 }
 
 export default function AddEmployeeAttachmentForm({ employeeId }: AddEmployeeAttachmentFormProps) {
-  const addAttachmentWithEmployeeId = addEmployeeAttachment.bind(null, employeeId);
-  const initialState: AttachmentFormState = null;
-  const [state, dispatch] = useActionState(addAttachmentWithEmployeeId, initialState);
+  const initialState: AttachmentFormState = { type: 'success', message: '' };
+  const [state, dispatch] = useActionState(addEmployeeAttachment, initialState);
   const formRef = useRef<HTMLFormElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null); 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
 
   const [categories, setCategories] = useState<AttachmentCategory[]>([]);
   const [isLoadingCategories, setIsLoadingCategories] = useState(true);
@@ -47,16 +49,18 @@ export default function AddEmployeeAttachmentForm({ employeeId }: AddEmployeeAtt
   }, []);
 
   useEffect(() => {
-    if (state?.type === 'success') {
+    if (state?.type === 'success' && state.message) {
       formRef.current?.reset();
       if (fileInputRef.current) fileInputRef.current.value = ''; // Explicitly clear file input
-      // Consider toast notification for success
+      // Refresh the page data to show the new attachment
+      router.refresh();
     }
     // Error messages are displayed inline via state.errors
-  }, [state]);
+  }, [state, router]);
 
   return (
     <form action={dispatch} ref={formRef} className="space-y-6 mt-4 border-t border-gray-200 pt-6">
+      <input type="hidden" name="employee_id" value={employeeId} />
       <div>
         <label htmlFor="attachment_file" className="block text-sm font-medium leading-6 text-gray-900">
           File
