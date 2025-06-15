@@ -93,6 +93,25 @@ export async function getCustomerSmsStats(customerId: string) {
   };
 }
 
+export async function getCustomerMessages(customerId: string) {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) {
+    return { error: 'Failed to initialize database connection' };
+  }
+
+  const { data: messages, error } = await supabase
+    .from('messages')
+    .select('*')
+    .eq('customer_id', customerId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  return { messages: messages || [] };
+}
+
 export async function getDeliveryFailureReport() {
   const supabase = getSupabaseAdminClient();
   if (!supabase) {
