@@ -2,7 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import twilio from 'twilio';
 
-// Create Supabase admin client
+// Create public Supabase client for logging (no auth required)
+function getPublicSupabaseClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.error('Missing Supabase URL or Anon Key');
+    return null;
+  }
+  return createClient(supabaseUrl, supabaseAnonKey);
+}
+
+// Create Supabase admin client for database operations
 function getSupabaseAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -12,6 +24,45 @@ function getSupabaseAdminClient() {
     return null;
   }
   return createClient(supabaseUrl, supabaseServiceRoleKey);
+}
+
+// Log webhook attempt to database
+async function logWebhookAttempt(
+  client: any,
+  status: string,
+  headers: Record<string, string>,
+  body: string,
+  params: Record<string, string>,
+  error?: string,
+  errorDetails?: any,
+  additionalData?: any
+) {
+  try {
+    const logEntry = {
+      webhook_type: 'twilio',
+      status,
+      headers,
+      body: body.substring(0, 10000), // Limit body size
+      params,
+      error_message: error,
+      error_details: errorDetails,
+      message_sid: params.MessageSid || params.SmsSid,
+      from_number: params.From,
+      to_number: params.To,
+      message_body: params.Body?.substring(0, 1000), // Limit message size
+      ...additionalData
+    };
+    
+    const { error: logError } = await client
+      .from('webhook_logs')
+      .insert(logEntry);
+      
+    if (logError) {
+      console.error('Failed to log webhook attempt:', logError);
+    }
+  } catch (e) {
+    console.error('Exception while logging webhook:', e);
+  }
 }
 
 // Verify Twilio webhook signature
@@ -28,11 +79,12 @@ function verifyTwilioSignature(request: NextRequest, body: string): boolean {
     return false;
   }
 
+  // Construct the full URL
   const url = request.url;
   
-  // Parse body to get parameters
+  // Parse form data for validation
   const params = new URLSearchParams(body);
-  const paramsObject: { [key: string]: string } = {};
+  const paramsObject: Record<string, string> = {};
   params.forEach((value, key) => {
     paramsObject[key] = value;
   });
@@ -46,321 +98,361 @@ function verifyTwilioSignature(request: NextRequest, body: string): boolean {
   );
 }
 
-// Handle inbound SMS messages from customers
-async function handleInboundSMS(supabase: any, webhookData: Record<string, string>) {
-  console.log('=== HANDLING INBOUND SMS ===');
-  
-  const messageBody = webhookData.Body.trim();
-  const fromNumber = webhookData.From;
-  const toNumber = webhookData.To;
-  const messageSid = webhookData.MessageSid || webhookData.SmsSid;
-  
-  console.log('Inbound message details:', {
-    from: fromNumber,
-    to: toNumber,
-    body: messageBody,
-    sid: messageSid
-  });
-
-  // Clean phone number - remove all non-digits
-  let digitsOnly = fromNumber.replace(/\D/g, '');
-  
-  // Create variants for UK numbers - database stores as +447990587315
-  const phoneVariants = [
-    fromNumber, // Original from Twilio
-  ];
-  
-  // Twilio might send +447990587315, we need to match database format
-  if (fromNumber.startsWith('+44')) {
-    phoneVariants.push(fromNumber); // Already in correct format
-    phoneVariants.push(fromNumber.substring(1)); // 447990587315
-    phoneVariants.push('0' + fromNumber.substring(3)); // 07990587315
-  }
-  
-  // If Twilio sends without +
-  if (digitsOnly.startsWith('44')) {
-    phoneVariants.push('+' + digitsOnly); // +447990587315 (database format)
-    phoneVariants.push(digitsOnly); // 447990587315
-    phoneVariants.push('0' + digitsOnly.substring(2)); // 07990587315
-  }
-  
-  // If Twilio sends UK format starting with 0
-  if (fromNumber.startsWith('0')) {
-    phoneVariants.push('+44' + fromNumber.substring(1)); // +447990587315 (database format)
-    phoneVariants.push('44' + fromNumber.substring(1)); // 447990587315
-  }
-  
-  // Look up customer with any variant
-  const orConditions = phoneVariants.map(variant => `mobile_number.eq.${variant}`).join(',');
-  const { data: customers, error: customerError } = await supabase
-    .from('customers')
-    .select('*')
-    .or(orConditions)
-    .limit(1);
-
-  if (customerError) {
-    console.error('Error looking up customer:', customerError);
-    return NextResponse.json({ error: 'Failed to lookup customer' }, { status: 500 });
-  }
-
-  let customer;
-  
-  if (!customers || customers.length === 0) {
-    console.log('No customer found for phone number:', fromNumber);
-    console.log('Creating new customer for unknown number');
-    
-    // Auto-create a customer for the unknown number
-    const { data: newCustomer, error: createError } = await supabase
-      .from('customers')
-      .insert({
-        first_name: 'Unknown',
-        last_name: `(${fromNumber})`,
-        mobile_number: fromNumber, // Store the original format from Twilio
-        sms_opt_in: true // They're texting us, so they're opted in
-      })
-      .select()
-      .single();
-    
-    if (createError) {
-      console.error('Failed to create customer:', createError);
-      return NextResponse.json({ error: 'Failed to create customer' }, { status: 500 });
-    }
-    
-    customer = newCustomer;
-    console.log('Created new customer:', { id: customer.id, mobile: customer.mobile_number });
-  } else {
-    customer = customers[0];
-    console.log('Found customer:', { id: customer.id, name: customer.first_name + ' ' + customer.last_name });
-  }
-
-  // Check for STOP/UNSUBSCRIBE keywords
-  const stopKeywords = ['STOP', 'UNSUBSCRIBE', 'QUIT', 'CANCEL', 'END', 'STOPALL'];
-  const messageUpper = messageBody.toUpperCase();
-  
-  if (stopKeywords.some(keyword => messageUpper === keyword || messageUpper.startsWith(keyword + ' '))) {
-    console.log('Processing opt-out request');
-    
-    // Update customer's SMS opt-in status
-    const { error: updateError } = await supabase
-      .from('customers')
-      .update({ 
-        sms_opt_in: false,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', customer.id);
-
-    if (updateError) {
-      console.error('Failed to update customer opt-in status:', updateError);
-    } else {
-      console.log('Customer opted out successfully');
-    }
-  }
-
-  // Save the inbound message
-  const messageData = {
-    customer_id: customer.id,
-    direction: 'inbound' as const,
-    message_sid: messageSid,
-    twilio_message_sid: messageSid,
-    body: messageBody,
-    status: 'received',
-    twilio_status: 'received',
-    from_number: fromNumber,
-    to_number: toNumber,
-    message_type: 'sms'
-  };
-
-  console.log('Saving inbound message:', messageData);
-
-  const { error: insertError } = await supabase
-    .from('messages')
-    .insert(messageData);
-
-  if (insertError) {
-    console.error('Failed to save inbound message:', insertError);
-    return NextResponse.json({ error: 'Failed to save message' }, { status: 500 });
-  }
-
-  console.log('Inbound message saved successfully');
-  
-  // TODO: Future enhancements
-  // - Send automated response for HELP keyword
-  // - Notify admin of inbound messages
-  // - Parse booking changes/cancellations
-  
-  return NextResponse.json({ success: true });
-}
-
 export async function POST(request: NextRequest) {
-  console.log('=== TWILIO WEBHOOK RECEIVED ===');
-  console.log('Headers:', Object.fromEntries(request.headers.entries()));
+  const startTime = Date.now();
+  console.log('=== TWILIO WEBHOOK START ===');
+  console.log('Time:', new Date().toISOString());
+  
+  // Initialize variables for logging
+  let body = '';
+  let headers: Record<string, string> = {};
+  let params: Record<string, string> = {};
+  let publicClient: any = null;
+  let adminClient: any = null;
   
   try {
-    // Get the raw body for signature verification
-    const body = await request.text();
-    console.log('Raw body:', body);
+    // Get headers
+    headers = Object.fromEntries(request.headers.entries());
+    console.log('Headers received:', headers);
     
-    // Verify the webhook signature (in production)
+    // Get public client for logging
+    publicClient = getPublicSupabaseClient();
+    if (!publicClient) {
+      console.error('Failed to create public Supabase client');
+    }
+    
+    // Get body
+    body = await request.text();
+    console.log('Body length:', body.length);
+    console.log('Body preview:', body.substring(0, 200));
+    
+    // Parse parameters
+    const formData = new URLSearchParams(body);
+    formData.forEach((value, key) => {
+      params[key] = value;
+    });
+    console.log('Parsed params:', params);
+    
+    // Log the initial webhook receipt
+    if (publicClient) {
+      await logWebhookAttempt(publicClient, 'received', headers, body, params);
+    }
+    
+    // Verify signature in production
     if (process.env.NODE_ENV === 'production') {
       const isValid = verifyTwilioSignature(request, body);
-      console.log('Signature validation:', { isValid, env: process.env.NODE_ENV });
+      console.log('Signature validation result:', isValid);
+      
       if (!isValid) {
-        console.error('Invalid Twilio webhook signature');
+        console.error('Invalid webhook signature');
+        if (publicClient) {
+          await logWebhookAttempt(publicClient, 'signature_failed', headers, body, params, 'Invalid Twilio signature');
+        }
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
     } else {
-      console.log('Skipping signature validation in development');
+      console.log('Skipping signature validation (not production)');
     }
-
-    // Parse the form data
-    const formData = new URLSearchParams(body);
-    const webhookData: Record<string, string> = {};
-    formData.forEach((value, key) => {
-      webhookData[key] = value;
-    });
-
-    console.log('Twilio webhook data:', {
-      MessageSid: webhookData.MessageSid,
-      MessageStatus: webhookData.MessageStatus,
-      Body: webhookData.Body,
-      From: webhookData.From,
-      To: webhookData.To,
-      ErrorCode: webhookData.ErrorCode,
-      allData: webhookData
-    });
-
-    const supabase = getSupabaseAdminClient();
-    if (!supabase) {
-      console.error('Failed to initialize Supabase admin client');
+    
+    // Get admin client for database operations
+    adminClient = getSupabaseAdminClient();
+    if (!adminClient) {
+      const error = 'Failed to create admin Supabase client';
+      console.error(error);
+      if (publicClient) {
+        await logWebhookAttempt(publicClient, 'error', headers, body, params, error);
+      }
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
-
-    // Check if this is an inbound message (has Body and From fields)
-    if (webhookData.Body && webhookData.From && webhookData.To) {
-      console.log('Processing INBOUND SMS message');
-      return handleInboundSMS(supabase, webhookData);
-    }
-
-    // Otherwise, process as a status update
-    console.log('Processing message status update');
     
-    // Extract key fields from webhook
-    const messageSid = webhookData.MessageSid || webhookData.SmsSid;
-    const messageStatus = webhookData.MessageStatus || webhookData.SmsStatus;
-    const errorCode = webhookData.ErrorCode;
-    const errorMessage = webhookData.ErrorMessage;
-
-    if (!messageSid || !messageStatus) {
-      console.error('Missing required fields in webhook data');
-      return NextResponse.json({ error: 'Bad request' }, { status: 400 });
-    }
-
-    // Find the message by Twilio SID
-    let { data: message, error: fetchError } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('message_sid', messageSid)
-      .single();
-
-    if (fetchError || !message) {
-      console.error('Message not found for SID:', messageSid, fetchError);
-      console.log('Attempting to find by twilio_message_sid instead...');
-      
-      // Try finding by twilio_message_sid as well
-      const { data: messageAlt, error: fetchErrorAlt } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('twilio_message_sid', messageSid)
-        .single();
-      
-      if (fetchErrorAlt || !messageAlt) {
-        console.error('Message still not found by twilio_message_sid:', fetchErrorAlt);
-        // Don't return error - Twilio might retry. Just log and return success.
-        return NextResponse.json({ success: true });
+    // Determine webhook type and process
+    if (params.Body && params.From && params.To) {
+      console.log('Detected INBOUND SMS');
+      return await handleInboundSMS(publicClient, adminClient, headers, body, params);
+    } else if (params.MessageStatus || params.SmsStatus) {
+      console.log('Detected STATUS UPDATE');
+      return await handleStatusUpdate(publicClient, adminClient, headers, body, params);
+    } else {
+      console.log('Unknown webhook type');
+      if (publicClient) {
+        await logWebhookAttempt(publicClient, 'unknown_type', headers, body, params, 'Could not determine webhook type');
       }
-      
-      message = messageAlt;
+      return NextResponse.json({ success: true, message: 'Unknown webhook type' });
     }
-
-    // Map Twilio status to our enum
-    const statusMap: Record<string, string> = {
-      'queued': 'queued',
-      'sending': 'sending',
-      'sent': 'sent',
-      'delivered': 'delivered',
-      'undelivered': 'undelivered',
-      'failed': 'failed',
-      'read': 'read',
-      'received': 'received'
-    };
-
-    const mappedStatus = statusMap[messageStatus.toLowerCase()] || messageStatus.toLowerCase();
-
-    // Update the message with the new status
-    const updateData: any = {
-      twilio_status: mappedStatus,
-      status: messageStatus,
-      updated_at: new Date().toISOString()
-    };
-
-    // Add timestamp based on status
-    if (mappedStatus === 'sent') {
-      updateData.sent_at = new Date().toISOString();
-    } else if (mappedStatus === 'delivered') {
-      updateData.delivered_at = new Date().toISOString();
-    } else if (mappedStatus === 'failed' || mappedStatus === 'undelivered') {
-      updateData.failed_at = new Date().toISOString();
-      updateData.error_code = errorCode || null;
-      updateData.error_message = errorMessage || null;
-    }
-
-    // Add price information if available
-    if (webhookData.Price) {
-      updateData.price = parseFloat(webhookData.Price);
-      updateData.price_unit = webhookData.PriceUnit || 'USD';
-    }
-
-    const { error: updateError } = await supabase
-      .from('messages')
-      .update(updateData)
-      .eq('id', message.id);
-
-    if (updateError) {
-      console.error('Failed to update message:', updateError);
-      return NextResponse.json({ error: 'Failed to update message' }, { status: 500 });
-    }
-
-    // Insert status history record
-    const { error: historyError } = await supabase
-      .from('message_delivery_status')
-      .insert({
-        message_id: message.id,
-        status: mappedStatus,
-        error_code: errorCode || null,
-        error_message: errorMessage || null,
-        raw_webhook_data: webhookData
-      });
-
-    if (historyError) {
-      console.error('Failed to insert status history:', historyError);
-      // Don't return error - main update succeeded
-    }
-
-    console.log('Successfully processed Twilio webhook for message:', message.id);
     
-    // Return success response to Twilio
-    return NextResponse.json({ success: true });
-
-  } catch (error) {
-    console.error('Error processing Twilio webhook:', error);
+  } catch (error: any) {
+    console.error('=== WEBHOOK ERROR ===');
+    console.error('Error:', error);
+    console.error('Stack:', error.stack);
+    
+    // Try to log the error
+    if (publicClient) {
+      await logWebhookAttempt(
+        publicClient, 
+        'exception', 
+        headers, 
+        body, 
+        params, 
+        error.message, 
+        { stack: error.stack, name: error.name }
+      );
+    }
+    
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } finally {
+    const duration = Date.now() - startTime;
+    console.log(`=== WEBHOOK END (${duration}ms) ===`);
   }
 }
 
-// Handle Twilio's webhook validation GET request
-export async function GET(request: NextRequest) {
-  return NextResponse.json({ 
-    message: 'Twilio webhook endpoint is active',
-    timestamp: new Date().toISOString()
-  });
+async function handleInboundSMS(
+  publicClient: any,
+  adminClient: any,
+  headers: Record<string, string>,
+  body: string,
+  params: Record<string, string>
+) {
+  console.log('=== PROCESSING INBOUND SMS ===');
+  
+  try {
+    const messageBody = params.Body.trim();
+    const fromNumber = params.From;
+    const toNumber = params.To;
+    const messageSid = params.MessageSid || params.SmsSid;
+    
+    console.log('Message details:', { from: fromNumber, to: toNumber, sid: messageSid, bodyLength: messageBody.length });
+    
+    // Look up or create customer
+    let customer;
+    
+    // Try to find existing customer
+    const phoneVariants = generatePhoneVariants(fromNumber);
+    console.log('Searching for customer with phone variants:', phoneVariants);
+    
+    const orConditions = phoneVariants.map(variant => `mobile_number.eq.${variant}`).join(',');
+    const { data: customers, error: customerError } = await adminClient
+      .from('customers')
+      .select('*')
+      .or(orConditions)
+      .limit(1);
+    
+    if (customerError) {
+      throw new Error(`Customer lookup failed: ${customerError.message}`);
+    }
+    
+    if (!customers || customers.length === 0) {
+      console.log('No existing customer found, creating new one');
+      
+      // Create new customer
+      const { data: newCustomer, error: createError } = await adminClient
+        .from('customers')
+        .insert({
+          first_name: 'Unknown',
+          last_name: `(${fromNumber})`,
+          mobile_number: fromNumber,
+          sms_opt_in: true
+        })
+        .select()
+        .single();
+      
+      if (createError) {
+        throw new Error(`Failed to create customer: ${createError.message}`);
+      }
+      
+      customer = newCustomer;
+      console.log('Created new customer:', customer.id);
+    } else {
+      customer = customers[0];
+      console.log('Found existing customer:', customer.id);
+    }
+    
+    // Check for opt-out keywords
+    const stopKeywords = ['STOP', 'UNSUBSCRIBE', 'QUIT', 'CANCEL', 'END', 'STOPALL'];
+    const messageUpper = messageBody.toUpperCase();
+    const isOptOut = stopKeywords.some(keyword => messageUpper === keyword || messageUpper.startsWith(keyword + ' '));
+    
+    if (isOptOut) {
+      console.log('Processing opt-out request');
+      const { error: optOutError } = await adminClient
+        .from('customers')
+        .update({ sms_opt_in: false })
+        .eq('id', customer.id);
+      
+      if (optOutError) {
+        console.error('Failed to update opt-out status:', optOutError);
+      }
+    }
+    
+    // Save the message
+    const messageData = {
+      customer_id: customer.id,
+      direction: 'inbound' as const,
+      message_sid: messageSid,
+      twilio_message_sid: messageSid,
+      body: messageBody,
+      status: 'received',
+      twilio_status: 'received',
+      from_number: fromNumber,
+      to_number: toNumber,
+      message_type: 'sms'
+    };
+    
+    console.log('Saving message with data:', messageData);
+    
+    const { data: savedMessage, error: messageError } = await adminClient
+      .from('messages')
+      .insert(messageData)
+      .select()
+      .single();
+    
+    if (messageError) {
+      throw new Error(`Failed to save message: ${messageError.message}`);
+    }
+    
+    console.log('Message saved successfully:', savedMessage.id);
+    
+    // Log success
+    if (publicClient) {
+      await logWebhookAttempt(
+        publicClient,
+        'success',
+        headers,
+        body,
+        params,
+        null,
+        null,
+        { customer_id: customer.id, message_id: savedMessage.id }
+      );
+    }
+    
+    return NextResponse.json({ success: true, messageId: savedMessage.id });
+    
+  } catch (error: any) {
+    console.error('Error in handleInboundSMS:', error);
+    
+    if (publicClient) {
+      await logWebhookAttempt(
+        publicClient,
+        'error',
+        headers,
+        body,
+        params,
+        error.message,
+        { stack: error.stack }
+      );
+    }
+    
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+async function handleStatusUpdate(
+  publicClient: any,
+  adminClient: any,
+  headers: Record<string, string>,
+  body: string,
+  params: Record<string, string>
+) {
+  console.log('=== PROCESSING STATUS UPDATE ===');
+  
+  try {
+    const messageSid = params.MessageSid || params.SmsSid;
+    const messageStatus = params.MessageStatus || params.SmsStatus;
+    const errorCode = params.ErrorCode;
+    const errorMessage = params.ErrorMessage;
+    
+    console.log('Status update:', { sid: messageSid, status: messageStatus, errorCode });
+    
+    if (!messageSid || !messageStatus) {
+      throw new Error('Missing required fields: MessageSid or MessageStatus');
+    }
+    
+    // Update message status
+    const { data: message, error: updateError } = await adminClient
+      .from('messages')
+      .update({
+        twilio_status: messageStatus,
+        error_code: errorCode,
+        error_message: errorMessage,
+        updated_at: new Date().toISOString(),
+        ...(messageStatus === 'delivered' && { delivered_at: new Date().toISOString() }),
+        ...(messageStatus === 'failed' && { failed_at: new Date().toISOString() }),
+        ...(messageStatus === 'sent' && { sent_at: new Date().toISOString() })
+      })
+      .eq('twilio_message_sid', messageSid)
+      .select()
+      .single();
+    
+    if (updateError) {
+      console.error('Failed to update message:', updateError);
+      // Don't throw - message might not exist yet
+    }
+    
+    // Save status history
+    const { error: historyError } = await adminClient
+      .from('message_delivery_status')
+      .insert({
+        message_id: message?.id,
+        status: messageStatus,
+        error_code: errorCode,
+        error_message: errorMessage,
+        raw_webhook_data: params
+      });
+    
+    if (historyError) {
+      console.error('Failed to save status history:', historyError);
+    }
+    
+    // Log success
+    if (publicClient) {
+      await logWebhookAttempt(
+        publicClient,
+        'success',
+        headers,
+        body,
+        params,
+        null,
+        null,
+        { message_id: message?.id }
+      );
+    }
+    
+    return NextResponse.json({ success: true });
+    
+  } catch (error: any) {
+    console.error('Error in handleStatusUpdate:', error);
+    
+    if (publicClient) {
+      await logWebhookAttempt(
+        publicClient,
+        'error',
+        headers,
+        body,
+        params,
+        error.message,
+        { stack: error.stack }
+      );
+    }
+    
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+function generatePhoneVariants(phone: string): string[] {
+  const variants = [phone];
+  const digitsOnly = phone.replace(/\D/g, '');
+  
+  // UK number handling
+  if (phone.startsWith('+44') || digitsOnly.startsWith('44')) {
+    variants.push('+44' + digitsOnly.substring(2));
+    variants.push('44' + digitsOnly.substring(2));
+    variants.push('0' + digitsOnly.substring(2));
+  }
+  
+  if (phone.startsWith('0')) {
+    variants.push('+44' + phone.substring(1));
+    variants.push('44' + phone.substring(1));
+  }
+  
+  return [...new Set(variants)];
 }
