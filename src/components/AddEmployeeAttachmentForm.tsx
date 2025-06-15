@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/Button';
 
 interface AddEmployeeAttachmentFormProps {
   employeeId: string;
+  onSuccess?: () => void;
 }
 
 function SubmitAttachmentButton() {
@@ -23,7 +24,7 @@ function SubmitAttachmentButton() {
   );
 }
 
-export default function AddEmployeeAttachmentForm({ employeeId }: AddEmployeeAttachmentFormProps) {
+export default function AddEmployeeAttachmentForm({ employeeId, onSuccess }: AddEmployeeAttachmentFormProps) {
   const initialState: AttachmentFormState = { type: 'success', message: '' };
   const [state, dispatch] = useActionState(addEmployeeAttachment, initialState);
   const formRef = useRef<HTMLFormElement>(null);
@@ -52,11 +53,18 @@ export default function AddEmployeeAttachmentForm({ employeeId }: AddEmployeeAtt
     if (state?.type === 'success' && state.message) {
       formRef.current?.reset();
       if (fileInputRef.current) fileInputRef.current.value = ''; // Explicitly clear file input
-      // Refresh the page data to show the new attachment
-      router.refresh();
+      // Call the onSuccess callback if provided
+      if (onSuccess) {
+        onSuccess();
+      } else {
+        // Fallback to router refresh if no callback provided
+        setTimeout(() => {
+          router.refresh();
+        }, 100);
+      }
     }
     // Error messages are displayed inline via state.errors
-  }, [state, router]);
+  }, [state, router, onSuccess]);
 
   return (
     <form action={dispatch} ref={formRef} className="space-y-6 mt-4 border-t border-gray-200 pt-6">
