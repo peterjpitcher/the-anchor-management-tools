@@ -12,7 +12,7 @@ import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { Button } from '@/components/ui/Button'
 import { toggleCustomerSmsOptIn, getCustomerSmsStats, getCustomerMessages } from '@/app/actions/customerSmsActions'
 import { markMessagesAsRead } from '@/app/actions/messageActions'
-import { SmsReplyForm } from '@/components/SmsReplyForm'
+import { MessageThread } from '@/components/MessageThread'
 
 type BookingWithEvent = Omit<Booking, 'event'> & {
   event: Pick<Event, 'id' | 'name' | 'date' | 'time' | 'capacity' | 'created_at'>
@@ -34,7 +34,6 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   const [togglingSmsSetting, setTogglingSmsSetting] = useState(false)
   const [messages, setMessages] = useState<any[]>([])
   const [showMessages, setShowMessages] = useState(false)
-  const [showReplyForm, setShowReplyForm] = useState(false)
 
   // Modal states
   const [editingBooking, setEditingBooking] = useState<BookingWithEvent | undefined>(undefined)
@@ -380,23 +379,14 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
                 </div>
               )}
               {messages.length > 0 && (
-                <div className="mt-4 space-x-2">
+                <div className="mt-4">
                   <Button
                     onClick={() => setShowMessages(!showMessages)}
                     variant="secondary"
                     size="sm"
                   >
-                    {showMessages ? 'Hide' : 'Show'} Message History ({messages.length})
+                    {showMessages ? 'Hide' : 'Show'} Messages ({messages.length})
                   </Button>
-                  {customer.sms_opt_in !== false && (
-                    <Button
-                      onClick={() => setShowReplyForm(!showReplyForm)}
-                      variant="primary"
-                      size="sm"
-                    >
-                      {showReplyForm ? 'Cancel Reply' : 'Send SMS'}
-                    </Button>
-                  )}
                 </div>
               )}
             </div>
@@ -414,79 +404,17 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
         </div>
       </div>
 
-      {/* Message History */}
+      {/* Message Thread */}
       {showMessages && messages.length > 0 && (
         <div className="bg-white shadow overflow-hidden sm:rounded-lg">
           <div className="px-4 py-5 sm:p-6">
-            <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">Message History</h3>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">
-                      Sent Time
-                    </th>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">
-                      Direction
-                    </th>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">
-                      Status
-                    </th>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">
-                      Message
-                    </th>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">
-                      Cost
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {messages.map((message) => (
-                    <tr key={message.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        {new Date(message.created_at).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                          ${message.direction === 'inbound' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
-                          <svg className={`-ml-0.5 mr-1.5 h-2 w-2 ${message.direction === 'inbound' ? 'text-blue-400' : 'text-gray-400'}`} fill="currentColor" viewBox="0 0 8 8">
-                            <circle cx="4" cy="4" r="3" />
-                          </svg>
-                          {message.direction === 'inbound' ? 'Received' : 'Sent'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                          ${message.twilio_status === 'delivered' || message.twilio_status === 'received' ? 'bg-green-100 text-green-800' : 
-                            message.twilio_status === 'sent' || message.twilio_status === 'queued' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-red-100 text-red-800'}`}>
-                          {message.twilio_status || 'pending'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 text-sm text-gray-900 max-w-md truncate">
-                        {message.body}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                        {message.price ? `$${message.price.toFixed(4)}` : '-'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SMS Reply Form */}
-      {showReplyForm && customer.sms_opt_in !== false && (
-        <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
-            <SmsReplyForm 
+            <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">Messages</h3>
+            <MessageThread
+              messages={messages}
               customerId={customer.id}
               customerName={`${customer.first_name} ${customer.last_name}`}
+              canReply={customer.sms_opt_in !== false}
               onMessageSent={async () => {
-                setShowReplyForm(false)
                 await loadData() // Refresh messages
               }}
             />
