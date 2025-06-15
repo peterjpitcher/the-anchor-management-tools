@@ -1,29 +1,22 @@
 -- Fix message status columns to use TEXT instead of enum
 -- This simplifies the schema and avoids type conflicts
 
--- First, drop the trigger that depends on the column
+-- Step 1: Drop all dependent objects
 DROP TRIGGER IF EXISTS update_customer_sms_status_trigger ON public.messages;
-
--- Drop the trigger function too
-DROP FUNCTION IF EXISTS update_customer_sms_status();
-
--- Now we can safely drop the column
-ALTER TABLE public.messages 
-DROP COLUMN IF EXISTS twilio_status;
-
--- Re-add twilio_status as TEXT first
-ALTER TABLE public.messages
-ADD COLUMN IF NOT EXISTS twilio_status TEXT;
-
--- Drop the message_delivery_status table first (it depends on the enum)
+DROP FUNCTION IF EXISTS update_customer_sms_status() CASCADE;
 DROP TABLE IF EXISTS public.message_delivery_status CASCADE;
 
--- Now we can drop the enum type
+-- Step 2: Drop the twilio_status column if it exists
+ALTER TABLE public.messages 
+DROP COLUMN IF EXISTS twilio_status CASCADE;
+
+-- Step 3: Drop the enum type
 DROP TYPE IF EXISTS message_status_type CASCADE;
 
--- Ensure all other columns exist as TEXT
+-- Step 4: Add all columns as TEXT type
 ALTER TABLE public.messages
 ADD COLUMN IF NOT EXISTS twilio_message_sid TEXT,
+ADD COLUMN IF NOT EXISTS twilio_status TEXT,
 ADD COLUMN IF NOT EXISTS error_code TEXT,
 ADD COLUMN IF NOT EXISTS error_message TEXT,
 ADD COLUMN IF NOT EXISTS price DECIMAL(10, 4),
@@ -32,9 +25,7 @@ ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP WITH TIME ZONE,
 ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP WITH TIME ZONE,
 ADD COLUMN IF NOT EXISTS failed_at TIMESTAMP WITH TIME ZONE;
 
--- Recreate the message_delivery_status table with TEXT status
-DROP TABLE IF EXISTS public.message_delivery_status;
-
+-- Step 5: Recreate the message_delivery_status table with TEXT status
 CREATE TABLE public.message_delivery_status (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   message_id UUID NOT NULL REFERENCES public.messages(id) ON DELETE CASCADE,
@@ -45,14 +36,14 @@ CREATE TABLE public.message_delivery_status (
   raw_webhook_data JSONB
 );
 
--- Recreate indexes
-CREATE INDEX IF NOT EXISTS idx_message_delivery_status_message_id ON public.message_delivery_status(message_id);
-CREATE INDEX IF NOT EXISTS idx_message_delivery_status_created_at ON public.message_delivery_status(created_at);
+-- Step 6: Create indexes
+CREATE INDEX idx_message_delivery_status_message_id ON public.message_delivery_status(message_id);
+CREATE INDEX idx_message_delivery_status_created_at ON public.message_delivery_status(created_at);
 
--- Enable RLS
+-- Step 7: Enable RLS
 ALTER TABLE public.message_delivery_status ENABLE ROW LEVEL SECURITY;
 
--- Recreate RLS policies
+-- Step 8: Create RLS policies
 CREATE POLICY "Allow authenticated users to read message delivery status" 
 ON public.message_delivery_status 
 FOR SELECT 
@@ -65,12 +56,12 @@ FOR INSERT
 TO authenticated 
 WITH CHECK (true);
 
--- Grant permissions
+-- Step 9: Grant permissions
 GRANT ALL ON TABLE public.message_delivery_status TO anon;
 GRANT ALL ON TABLE public.message_delivery_status TO authenticated;
 GRANT ALL ON TABLE public.message_delivery_status TO service_role;
 
--- Recreate the trigger function without enum type
+-- Step 10: Recreate the trigger function
 CREATE OR REPLACE FUNCTION update_customer_sms_status()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -117,12 +108,16 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Drop existing trigger if it exists
-DROP TRIGGER IF EXISTS update_customer_sms_status_trigger ON public.messages;
-
--- Recreate trigger
+-- Step 11: Create trigger
 CREATE TRIGGER update_customer_sms_status_trigger
 AFTER UPDATE OF twilio_status ON public.messages
 FOR EACH ROW
 WHEN (NEW.twilio_status IS DISTINCT FROM OLD.twilio_status)
 EXECUTE FUNCTION update_customer_sms_status();
+
+-- Add comments for documentation
+COMMENT ON COLUMN public.messages.twilio_status IS 'Current status of the message from Twilio (queued, sent, delivered, failed, etc)';
+COMMENT ON COLUMN public.messages.twilio_message_sid IS 'Twilio message SID for tracking';
+COMMENT ON COLUMN public.messages.error_code IS 'Twilio error code if message failed';
+COMMENT ON COLUMN public.messages.error_message IS 'Human-readable error message if failed';
+COMMENT ON TABLE public.message_delivery_status IS 'Tracks the full history of message delivery status changes from Twilio webhooks';
