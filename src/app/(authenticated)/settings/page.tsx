@@ -2,7 +2,8 @@ import Link from 'next/link';
 import { 
   TagIcon, 
   ChatBubbleLeftRightIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
+  WrenchScrewdriverIcon
 } from '@heroicons/react/24/outline';
 
 const settingsSections = [
@@ -17,6 +18,12 @@ const settingsSections = [
     description: 'Monitor SMS delivery performance and manage customer messaging',
     href: '/settings/sms-delivery',
     icon: ChatBubbleLeftRightIcon,
+  },
+  {
+    name: 'Webhook Configuration Test',
+    description: 'Test and troubleshoot Twilio webhook configuration',
+    href: '/settings/webhook-test',
+    icon: WrenchScrewdriverIcon,
   },
 ];
 
