@@ -90,6 +90,16 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION "public"."cleanup_import"() RETURNS "void"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+  DROP FUNCTION IF EXISTS import_message_history();
+  DROP FUNCTION IF EXISTS find_customer_by_phone(TEXT);
+  DROP FUNCTION IF EXISTS clean_phone_for_match(TEXT);
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION "public"."validate_employee_attachment_upload"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
@@ -209,8 +219,13 @@ CREATE TABLE IF NOT EXISTS "public"."messages" (
     "delivered_at" timestamp with time zone,
     "failed_at" timestamp with time zone,
     "twilio_status" "text",
+    "from_number" "text",
+    "to_number" "text",
+    "message_type" "text" DEFAULT 'sms'::"text",
+    "read_at" timestamp with time zone,
     CONSTRAINT "messages_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "messages_direction_check" CHECK (("direction" = ANY (ARRAY['inbound'::"text", 'outbound'::"text"]))),
+    CONSTRAINT "messages_message_type_check" CHECK (("message_type" = ANY (ARRAY['sms'::"text", 'mms'::"text", 'whatsapp'::"text"]))),
     CONSTRAINT "messages_customer_id_fkey" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE CASCADE
 );
 
@@ -350,6 +365,8 @@ CREATE INDEX "idx_message_delivery_status_created_at" ON "public"."message_deliv
 CREATE INDEX "idx_message_delivery_status_message_id" ON "public"."message_delivery_status" USING "btree" ("message_id");
 CREATE INDEX "idx_messages_created_at" ON "public"."messages" USING "btree" ("created_at");
 CREATE INDEX "idx_messages_customer_id" ON "public"."messages" USING "btree" ("customer_id");
+CREATE INDEX "idx_messages_direction" ON "public"."messages" USING "btree" ("direction");
+CREATE INDEX "idx_messages_from_number" ON "public"."messages" USING "btree" ("from_number");
 CREATE INDEX "idx_messages_twilio_message_sid" ON "public"."messages" USING "btree" ("twilio_message_sid");
 
 -- Create triggers
@@ -429,6 +446,10 @@ GRANT ALL ON FUNCTION "public"."update_messages_updated_at"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "anon";
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "service_role";
+
+GRANT ALL ON FUNCTION "public"."cleanup_import"() TO "anon";
+GRANT ALL ON FUNCTION "public"."cleanup_import"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."cleanup_import"() TO "service_role";
 
 GRANT ALL ON FUNCTION "public"."validate_employee_attachment_upload"() TO "anon";
 GRANT ALL ON FUNCTION "public"."validate_employee_attachment_upload"() TO "authenticated";

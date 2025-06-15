@@ -126,6 +126,9 @@ export async function sendSmsReply(customerId: string, message: string) {
         body: message,
         status: twilioMessage.status,
         twilio_status: twilioMessage.status,
+        from_number: fromNumber,
+        to_number: customer.mobile_number,
+        message_type: 'sms',
         created_at: new Date().toISOString(),
         read_at: new Date().toISOString() // Mark outbound as read
       })
