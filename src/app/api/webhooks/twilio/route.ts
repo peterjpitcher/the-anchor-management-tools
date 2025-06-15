@@ -319,8 +319,8 @@ async function handleInboundSMS(
         headers,
         body,
         params,
-        null,
-        null,
+        undefined,
+        undefined,
         { customer_id: customer.id, message_id: savedMessage.id }
       );
     }
@@ -411,8 +411,8 @@ async function handleStatusUpdate(
         headers,
         body,
         params,
-        null,
-        null,
+        undefined,
+        undefined,
         { message_id: message?.id }
       );
     }

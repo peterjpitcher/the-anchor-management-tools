@@ -1,3 +1,6 @@
+'use client'
+
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { formatDistanceToNow } from 'date-fns'
 import Link from 'next/link'
@@ -17,8 +20,20 @@ async function getWebhookLogs() {
   return data || []
 }
 
-export default async function WebhookMonitorPage() {
-  const logs = await getWebhookLogs()
+export default function WebhookMonitorPage() {
+  const [logs, setLogs] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  
+  useEffect(() => {
+    loadLogs()
+  }, [])
+  
+  async function loadLogs() {
+    setLoading(true)
+    const data = await getWebhookLogs()
+    setLogs(data)
+    setLoading(false)
+  }
   
   return (
     <div className="container mx-auto px-4 py-8">
@@ -32,7 +47,7 @@ export default async function WebhookMonitorPage() {
             Test Webhook
           </Link>
           <button
-            onClick={() => window.location.reload()}
+            onClick={() => loadLogs()}
             className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
           >
             Refresh
@@ -69,7 +84,13 @@ export default async function WebhookMonitorPage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {logs.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
+                    Loading webhook logs...
+                  </td>
+                </tr>
+              ) : logs.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
                     No webhook logs found
