@@ -3,6 +3,8 @@
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon } from '@heroicons/react/24/outline'
+import { useEffect, useState } from 'react'
+import { getTotalUnreadCount } from '@/app/actions/messageActions'
 
 // ADDED Props interface
 interface BottomNavigationProps {
@@ -11,6 +13,19 @@ interface BottomNavigationProps {
 
 export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps) { // ADDED onQuickAddNoteClick prop
   const pathname = usePathname()
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  useEffect(() => {
+    // Load unread count on mount
+    getTotalUnreadCount().then(setUnreadCount)
+    
+    // Refresh every 30 seconds
+    const interval = setInterval(() => {
+      getTotalUnreadCount().then(setUnreadCount)
+    }, 30000)
+    
+    return () => clearInterval(interval)
+  }, [])
 
   const isActive = (path: string) => path === '/' ? pathname === '/' : pathname.startsWith(path)
 
@@ -56,7 +71,14 @@ export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps)
                   : 'text-gray-500 hover:text-gray-900'
               }`}
             >
-              <item.icon className="w-5 h-5 sm:w-6 sm:h-6" />
+              <div className="relative">
+                <item.icon className="w-5 h-5 sm:w-6 sm:h-6" />
+                {item.name === 'Customers' && unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-blue-600 rounded-full">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </div>
               <span className="text-xs sm:text-sm">{item.name}</span>
             </Link>
           );

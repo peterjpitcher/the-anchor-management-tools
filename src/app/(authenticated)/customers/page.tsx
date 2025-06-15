@@ -11,6 +11,8 @@ import { CustomerName } from '@/components/CustomerName'
 import { CustomerWithLoyalty, getLoyalCustomers, sortCustomersByLoyalty } from '@/lib/customerUtils'
 import { Button } from '@/components/ui/Button'
 import Link from 'next/link'
+import { getUnreadMessageCounts } from '@/app/actions/messageActions'
+import { ChatBubbleLeftIcon } from '@heroicons/react/24/solid'
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<CustomerWithLoyalty[]>([])
@@ -20,6 +22,7 @@ export default function CustomersPage() {
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<CustomerWithLoyalty | null>(null)
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
 
   useEffect(() => {
     loadCustomers()
@@ -45,6 +48,10 @@ export default function CustomersPage() {
       }))
 
       setCustomers(sortCustomersByLoyalty(customersWithLoyalty))
+      
+      // Load unread message counts
+      const counts = await getUnreadMessageCounts()
+      setUnreadCounts(counts)
     } catch (error) {
       console.error('Error loading customers:', error)
       toast.error('Failed to load customers')
@@ -246,6 +253,14 @@ export default function CustomersPage() {
                            <Link href={`/customers/${customer.id}`} className="text-indigo-600 hover:text-indigo-900">
                             <CustomerName customer={customer} />
                           </Link>
+                          {unreadCounts[customer.id] > 0 && (
+                            <span className="ml-2 inline-flex items-center">
+                              <ChatBubbleLeftIcon className="h-5 w-5 text-blue-500" />
+                              <span className="ml-1 text-sm font-medium text-blue-600">
+                                {unreadCounts[customer.id]}
+                              </span>
+                            </span>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -290,6 +305,14 @@ export default function CustomersPage() {
                           <p className="text-sm font-medium text-indigo-600 truncate">
                               <CustomerName customer={customer} />
                           </p>
+                          {unreadCounts[customer.id] > 0 && (
+                            <span className="ml-2 inline-flex items-center flex-shrink-0">
+                              <ChatBubbleLeftIcon className="h-4 w-4 text-blue-500" />
+                              <span className="ml-1 text-xs font-medium text-blue-600">
+                                {unreadCounts[customer.id]}
+                              </span>
+                            </span>
+                          )}
                       </div>
                    </Link>
                    <div className="ml-2 flex-shrink-0 flex space-x-2">

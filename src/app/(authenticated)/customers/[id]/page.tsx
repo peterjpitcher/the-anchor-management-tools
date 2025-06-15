@@ -11,6 +11,8 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { Button } from '@/components/ui/Button'
 import { toggleCustomerSmsOptIn, getCustomerSmsStats, getCustomerMessages } from '@/app/actions/customerSmsActions'
+import { markMessagesAsRead } from '@/app/actions/messageActions'
+import { SmsReplyForm } from '@/components/SmsReplyForm'
 
 type BookingWithEvent = Omit<Booking, 'event'> & {
   event: Pick<Event, 'id' | 'name' | 'date' | 'time' | 'capacity' | 'created_at'>
@@ -32,6 +34,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   const [togglingSmsSetting, setTogglingSmsSetting] = useState(false)
   const [messages, setMessages] = useState<any[]>([])
   const [showMessages, setShowMessages] = useState(false)
+  const [showReplyForm, setShowReplyForm] = useState(false)
 
   // Modal states
   const [editingBooking, setEditingBooking] = useState<BookingWithEvent | undefined>(undefined)
@@ -77,6 +80,8 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
         console.error('Failed to load messages:', messagesResult.error)
       } else {
         setMessages(messagesResult.messages)
+        // Mark inbound messages as read
+        await markMessagesAsRead(params.id)
       }
     } catch (error) {
       console.error('Error loading customer details:', error)
@@ -375,7 +380,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
                 </div>
               )}
               {messages.length > 0 && (
-                <div className="mt-4">
+                <div className="mt-4 space-x-2">
                   <Button
                     onClick={() => setShowMessages(!showMessages)}
                     variant="secondary"
@@ -383,6 +388,15 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
                   >
                     {showMessages ? 'Hide' : 'Show'} Message History ({messages.length})
                   </Button>
+                  {customer.sms_opt_in !== false && (
+                    <Button
+                      onClick={() => setShowReplyForm(!showReplyForm)}
+                      variant="primary"
+                      size="sm"
+                    >
+                      {showReplyForm ? 'Cancel Reply' : 'Send SMS'}
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -460,6 +474,22 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* SMS Reply Form */}
+      {showReplyForm && customer.sms_opt_in !== false && (
+        <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+          <div className="px-4 py-5 sm:p-6">
+            <SmsReplyForm 
+              customerId={customer.id}
+              customerName={`${customer.first_name} ${customer.last_name}`}
+              onMessageSent={async () => {
+                setShowReplyForm(false)
+                await loadData() // Refresh messages
+              }}
+            />
           </div>
         </div>
       )}
