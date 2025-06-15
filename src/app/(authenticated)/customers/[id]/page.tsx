@@ -378,17 +378,6 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
                   )}
                 </div>
               )}
-              {messages.length > 0 && (
-                <div className="mt-4">
-                  <Button
-                    onClick={() => setShowMessages(!showMessages)}
-                    variant="secondary"
-                    size="sm"
-                  >
-                    {showMessages ? 'Hide' : 'Show'} Messages ({messages.length})
-                  </Button>
-                </div>
-              )}
             </div>
             <div className="ml-4">
               <Button
@@ -405,22 +394,20 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
       </div>
 
       {/* Message Thread */}
-      {showMessages && messages.length > 0 && (
-        <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
-            <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">Messages</h3>
-            <MessageThread
-              messages={messages}
-              customerId={customer.id}
-              customerName={`${customer.first_name} ${customer.last_name}`}
-              canReply={customer.sms_opt_in !== false}
-              onMessageSent={async () => {
-                await loadData() // Refresh messages
-              }}
-            />
-          </div>
+      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+        <div className="px-4 py-5 sm:p-6">
+          <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">Messages</h3>
+          <MessageThread
+            messages={messages}
+            customerId={customer.id}
+            customerName={`${customer.first_name} ${customer.last_name}`}
+            canReply={customer.sms_opt_in !== false}
+            onMessageSent={async () => {
+              await loadData() // Refresh messages
+            }}
+          />
         </div>
-      )}
+      </div>
 
       <div className="bg-white shadow overflow-hidden sm:rounded-lg">
         <div className="px-4 py-5 sm:p-6">

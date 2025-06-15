@@ -103,7 +103,7 @@ export async function getCustomerMessages(customerId: string) {
     .from('messages')
     .select('*')
     .eq('customer_id', customerId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: true });
 
   if (error) {
     return { error: error.message };
