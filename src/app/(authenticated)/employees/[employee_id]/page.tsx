@@ -247,12 +247,25 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
       {/* Employee Attachments Section */}
       <div className="bg-white shadow overflow-hidden sm:rounded-lg">
         <div className="px-4 py-5 sm:p-6">
-          <h3 className="text-xl leading-6 font-semibold text-gray-900 mb-1">
-            Employee Attachments
-          </h3>
-          <p className="text-sm text-gray-500 mb-4">Scanned documents and other attached files.</p>
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h3 className="text-xl leading-6 font-semibold text-gray-900 mb-1">
+                Employee Attachments
+              </h3>
+              <p className="text-sm text-gray-500">Scanned documents and other attached files.</p>
+            </div>
+            <Link
+              href="/settings/categories"
+              className="text-sm text-indigo-600 hover:text-indigo-500"
+            >
+              Manage Categories
+            </Link>
+          </div>
 
-          <AddEmployeeAttachmentForm employeeId={employee.employee_id} />
+          <AddEmployeeAttachmentForm 
+            employeeId={employee.employee_id} 
+            onSuccess={loadData}
+          />
 
           <div className="mt-6">
              <EmployeeAttachmentsList
