@@ -25,6 +25,12 @@ const settingsSections = [
     href: '/settings/webhook-test',
     icon: WrenchScrewdriverIcon,
   },
+  {
+    name: 'Webhook Monitor',
+    description: 'View real-time webhook logs and debug issues',
+    href: '/settings/webhook-monitor',
+    icon: ChatBubbleLeftRightIcon,
+  },
 ];
 
 export default function SettingsPage() {
