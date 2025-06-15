@@ -73,3 +73,6 @@ Required in `.env.local`:
 - Fixed form data passing pattern - use hidden fields instead of `.bind()`
 - Implemented proper bucket provisioning for file attachments
 - Added comprehensive employee management system with notes and attachments
+
+### Important Reminders
+**Database Migrations**: Always notify the user when creating new migrations in `/supabase/migrations/`. The user needs to run migrations manually in their Supabase dashboard or via CLI.
