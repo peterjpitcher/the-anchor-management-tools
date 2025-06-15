@@ -138,20 +138,34 @@ export async function POST(request: NextRequest) {
       await logWebhookAttempt(publicClient, 'received', headers, body, params);
     }
     
-    // Verify signature in production
-    if (process.env.NODE_ENV === 'production') {
+    // Verify signature in production (unless explicitly disabled)
+    const skipSignatureValidation = process.env.SKIP_TWILIO_SIGNATURE_VALIDATION === 'true';
+    
+    if (process.env.NODE_ENV === 'production' && !skipSignatureValidation) {
       const isValid = verifyTwilioSignature(request, body);
       console.log('Signature validation result:', isValid);
+      console.log('Auth token configured:', !!process.env.TWILIO_AUTH_TOKEN);
+      console.log('Signature header present:', !!headers['x-twilio-signature']);
       
       if (!isValid) {
         console.error('Invalid webhook signature');
+        console.error('Request URL:', request.url);
+        console.error('Headers:', headers);
+        
         if (publicClient) {
-          await logWebhookAttempt(publicClient, 'signature_failed', headers, body, params, 'Invalid Twilio signature');
+          await logWebhookAttempt(publicClient, 'signature_failed', headers, body, params, 'Invalid Twilio signature', {
+            url: request.url,
+            authTokenConfigured: !!process.env.TWILIO_AUTH_TOKEN,
+            signaturePresent: !!headers['x-twilio-signature']
+          });
         }
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
     } else {
-      console.log('Skipping signature validation (not production)');
+      console.log('Skipping signature validation:', { 
+        env: process.env.NODE_ENV, 
+        skipFlag: skipSignatureValidation 
+      });
     }
     
     // Get admin client for database operations
