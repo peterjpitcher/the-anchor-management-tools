@@ -23,14 +23,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to initialize database' }, { status: 500 });
   }
 
-  // Clean phone number
-  let cleanedPhoneNumber = phoneNumber.replace(/^\+44/, '0');
+  // Clean phone number - remove all non-digits, then format
+  let digitsOnly = phoneNumber.replace(/\D/g, '');
+  if (digitsOnly.startsWith('44')) {
+    digitsOnly = '0' + digitsOnly.substring(2);
+  }
   
-  // Look up customer
+  // Try multiple formats
+  const phoneVariants = [
+    phoneNumber, // Original
+    digitsOnly, // Just digits
+    digitsOnly.replace(/^(\d{5})(\d{6})$/, '$1 $2'), // 07990 587315
+    digitsOnly.replace(/^(\d{5})(\d{3})(\d{3})$/, '$1 $2 $3'), // 07990 587 315
+  ];
+  
+  // Look up customer with any variant
+  const orConditions = phoneVariants.map(variant => `mobile_number.eq.${variant}`).join(',');
   const { data: customers, error: customerError } = await supabase
     .from('customers')
     .select('*')
-    .or(`mobile_number.eq.${cleanedPhoneNumber},mobile_number.eq.${phoneNumber}`)
+    .or(orConditions)
     .limit(1);
 
   if (customerError) {
@@ -43,7 +55,8 @@ export async function POST(request: NextRequest) {
   if (!customers || customers.length === 0) {
     return NextResponse.json({ 
       error: 'No customer found',
-      searchedFor: [cleanedPhoneNumber, phoneNumber]
+      searchedFor: phoneVariants,
+      originalInput: phoneNumber
     }, { status: 404 });
   }
 
