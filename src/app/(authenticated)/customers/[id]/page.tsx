@@ -10,7 +10,7 @@ import toast from 'react-hot-toast'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { Button } from '@/components/ui/Button'
-import { toggleCustomerSmsOptIn, getCustomerSmsStats } from '@/app/actions/customerSmsActions'
+import { toggleCustomerSmsOptIn, getCustomerSmsStats, getCustomerMessages } from '@/app/actions/customerSmsActions'
 
 type BookingWithEvent = Omit<Booking, 'event'> & {
   event: Pick<Event, 'id' | 'name' | 'date' | 'time' | 'capacity' | 'created_at'>
@@ -30,6 +30,8 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   const [loading, setLoading] = useState(true)
   const [smsStats, setSmsStats] = useState<any>(null)
   const [togglingSmsSetting, setTogglingSmsSetting] = useState(false)
+  const [messages, setMessages] = useState<any[]>([])
+  const [showMessages, setShowMessages] = useState(false)
 
   // Modal states
   const [editingBooking, setEditingBooking] = useState<BookingWithEvent | undefined>(undefined)
@@ -67,6 +69,14 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
         console.error('Failed to load SMS stats:', stats.error)
       } else {
         setSmsStats(stats)
+      }
+
+      // Load messages
+      const messagesResult = await getCustomerMessages(params.id)
+      if ('error' in messagesResult) {
+        console.error('Failed to load messages:', messagesResult.error)
+      } else {
+        setMessages(messagesResult.messages)
       }
     } catch (error) {
       console.error('Error loading customer details:', error)
@@ -364,6 +374,17 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
                   )}
                 </div>
               )}
+              {messages.length > 0 && (
+                <div className="mt-4">
+                  <Button
+                    onClick={() => setShowMessages(!showMessages)}
+                    variant="secondary"
+                    size="sm"
+                  >
+                    {showMessages ? 'Hide' : 'Show'} Message History ({messages.length})
+                  </Button>
+                </div>
+              )}
             </div>
             <div className="ml-4">
               <Button
@@ -378,6 +399,64 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
           </div>
         </div>
       </div>
+
+      {/* Message History */}
+      {showMessages && messages.length > 0 && (
+        <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+          <div className="px-4 py-5 sm:p-6">
+            <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">Message History</h3>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">
+                      Sent Time
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">
+                      Type
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">
+                      Status
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">
+                      Message
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-black uppercase">
+                      Cost
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {messages.map((message) => (
+                    <tr key={message.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                        {new Date(message.created_at).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+                        {message.message_type || 'SMS'}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                          ${message.twilio_status === 'delivered' ? 'bg-green-100 text-green-800' : 
+                            message.twilio_status === 'sent' || message.twilio_status === 'queued' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-red-100 text-red-800'}`}>
+                          {message.twilio_status || 'pending'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-900 max-w-md truncate">
+                        {message.body}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+                        {message.price ? `$${message.price.toFixed(4)}` : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white shadow overflow-hidden sm:rounded-lg">
         <div className="px-4 py-5 sm:p-6">
