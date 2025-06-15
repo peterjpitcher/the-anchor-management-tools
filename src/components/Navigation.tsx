@@ -2,14 +2,15 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, BuildingStorefrontIcon, PencilSquareIcon, CogIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, BuildingStorefrontIcon, PencilSquareIcon, CogIcon, EnvelopeIcon } from '@heroicons/react/24/outline'
 import { useEffect, useState } from 'react'
-import { getTotalUnreadCount } from '@/app/actions/messageActions'
+import { getUnreadMessageCount } from '@/app/actions/messagesActions'
 
 const primaryNavigation = [
   { name: 'Dashboard', href: '/', icon: HomeIcon },
   { name: 'Events', href: '/events', icon: CalendarIcon },
   { name: 'Customers', href: '/customers', icon: UserGroupIcon },
+  { name: 'Messages', href: '/messages', icon: EnvelopeIcon },
 ];
 
 const secondaryNavigation = [
@@ -30,11 +31,16 @@ export function Navigation({ onQuickAddNoteClick }: NavigationProps) {
 
   useEffect(() => {
     // Load unread count on mount
-    getTotalUnreadCount().then(setUnreadCount)
+    async function loadUnreadCount() {
+      const result = await getUnreadMessageCount()
+      setUnreadCount(result.count)
+    }
+    
+    loadUnreadCount()
     
     // Refresh every 30 seconds
     const interval = setInterval(() => {
-      getTotalUnreadCount().then(setUnreadCount)
+      loadUnreadCount()
     }, 30000)
     
     return () => clearInterval(interval)
@@ -94,8 +100,8 @@ export function Navigation({ onQuickAddNoteClick }: NavigationProps) {
           aria-hidden="true"
         />
         {item.name}
-        {item.name === 'Customers' && unreadCount > 0 && (
-          <span className="ml-auto inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+        {item.name === 'Messages' && unreadCount > 0 && (
+          <span className="ml-auto inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
             {unreadCount}
           </span>
         )}
