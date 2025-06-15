@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react';
-import { useFormState, useFormStatus } from 'react-dom';
-import { supabase } from '@/lib/supabase';
+import { useEffect, useState, useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
 import type { EmployeeAttachment, AttachmentCategory } from '@/types/database';
-import { deleteEmployeeAttachment, type DeleteState } from '@/app/actions/employeeActions';
+import { deleteEmployeeAttachment, getAttachmentSignedUrl } from '@/app/actions/employeeActions';
+import type { DeleteState } from '@/types/actions';
 import {
   PaperClipIcon,
   ArrowDownTrayIcon,
@@ -26,9 +26,7 @@ function DeleteAttachmentButton({ employeeId, attachmentId, storagePath, attachm
   attachmentName: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  const deleteActionWithIds = deleteEmployeeAttachment.bind(null, employeeId, attachmentId, storagePath);
-  const [state, dispatch] = useFormState(deleteActionWithIds, null);
-  // const { pending } = useFormStatus(); // formStatus for the specific delete form is inside SubmitActualDeleteButton
+  const [state, dispatch] = useActionState(deleteEmployeeAttachment, null);
 
   useEffect(() => {
     if (state?.type === 'success') {
@@ -76,6 +74,9 @@ function DeleteAttachmentButton({ employeeId, attachmentId, storagePath, attachm
                 action={dispatch} // The form element for the modal
                 className="relative transform overflow-hidden rounded-lg bg-white px-4 pt-5 pb-4 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6"
               >
+                 <input type="hidden" name="employee_id" value={employeeId} />
+                 <input type="hidden" name="attachment_id" value={attachmentId} />
+                 <input type="hidden" name="storage_path" value={storagePath} />
                  <div className="sm:flex sm:items-start">
                   <div className="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
                     <ExclamationTriangleIcon className="h-6 w-6 text-red-600" aria-hidden="true" />
@@ -116,32 +117,34 @@ function DeleteAttachmentButton({ employeeId, attachmentId, storagePath, attachm
 }
 
 export default function EmployeeAttachmentsList({ attachments, categoriesMap, employeeId }: EmployeeAttachmentsListProps) {
-  
-  async function getSignedUrl(storagePath: string): Promise<string | null> {
-    const { data, error } = await supabase.storage
-      .from('employee-attachments') 
-      .createSignedUrl(storagePath, 60 * 5); // URL valid for 5 minutes
-    if (error) {
-      console.error('Error creating signed URL:', error);
-      return null;
-    }
-    return data.signedUrl;
-  }
+  const [downloading, setDownloading] = useState<string | null>(null);
 
   const handleDownload = async (attachment: EmployeeAttachment) => {
-    const url = await getSignedUrl(attachment.storage_path);
-    if (url) {
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', attachment.file_name || 'download');
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      // Revoke the object URL after download to free up resources if it were a blob URL
-      // For signed URLs, this is not strictly necessary but good practice for blob URLs.
-      // URL.revokeObjectURL(url); 
-    } else {
-      alert('Could not generate download link. Please try again.');
+    try {
+      setDownloading(attachment.attachment_id);
+      
+      const result = await getAttachmentSignedUrl(attachment.storage_path);
+      
+      if (result.error) {
+        alert(`Error: ${result.error}`);
+        return;
+      }
+      
+      if (result.url) {
+        const link = document.createElement('a');
+        link.href = result.url;
+        link.setAttribute('download', attachment.file_name || 'download');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        alert('Could not generate download link. Please try again.');
+      }
+    } catch (error) {
+      console.error('Download error:', error);
+      alert('An error occurred while downloading the file. Please try again.');
+    } finally {
+      setDownloading(null);
     }
   };
 
@@ -170,10 +173,11 @@ export default function EmployeeAttachmentsList({ attachments, categoriesMap, em
             <button 
                 onClick={() => handleDownload(attachment)}
                 type="button" 
-                className="font-medium text-secondary hover:text-secondary-emphasis"
+                className="font-medium text-secondary hover:text-secondary-emphasis disabled:opacity-50"
                 title="Download Attachment"
+                disabled={downloading === attachment.attachment_id}
             >
-              <ArrowDownTrayIcon className="h-5 w-5"/>
+              <ArrowDownTrayIcon className={`h-5 w-5 ${downloading === attachment.attachment_id ? 'animate-pulse' : ''}`}/>
               <span className="sr-only">Download {attachment.file_name}</span>
             </button>
             <DeleteAttachmentButton 

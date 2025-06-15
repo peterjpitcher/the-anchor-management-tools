@@ -8,225 +8,124 @@ import { cookies } from 'next/headers';
 import { createServerActionClient } from '@supabase/auth-helpers-nextjs';
 import { supabase } from '@/lib/supabase';
 import { z } from 'zod';
+import type { ActionFormState, NoteFormState, AttachmentFormState, DeleteState } from '@/types/actions';
 
-// Helper function to create Supabase client with Service Role Key for server-side actions
-// Ensure these ENV VARS are set in your Vercel/hosting environment
-function createAdminSupabaseClient() {
+function getSupabaseAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const testServerOnlyVar = process.env.TEST_SERVER_ONLY_VAR; // Added for testing
-
-  // Added logging to inspect the values of env vars at runtime
-  console.log('[employeeActions] TEST_SERVER_ONLY_VAR:', testServerOnlyVar ? `SET (value: ${testServerOnlyVar})` : 'NOT SET');
-  console.log('[employeeActions] NEXT_PUBLIC_SUPABASE_URL:', supabaseUrl ? 'SET' : 'NOT SET');
-  console.log('[employeeActions] SUPABASE_SERVICE_ROLE_KEY:', supabaseServiceRoleKey ? 'SET (length: ' + supabaseServiceRoleKey.length + ')' : 'NOT SET');
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
-    console.error('Missing Supabase URL or Service Role Key for admin client in employeeActions. Check .env file and restart dev server.'); // Changed .env.local to .env
-    console.error('Current process.env.NEXT_PUBLIC_SUPABASE_URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
-    console.error('Current process.env.SUPABASE_SERVICE_ROLE_KEY provided:', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+    console.error('Missing Supabase URL or Service Role Key for admin client.');
     return null;
   }
   return createClient(supabaseUrl, supabaseServiceRoleKey);
 }
 
-export type ActionFormState = {
-  message: string;
-  type: 'success' | 'error';
-  errors?: Record<string, string[]>;
-  employeeId?: string; // Optional employeeId for redirection
-};
+// Schemas
+const employeeSchema = z.object({
+  first_name: z.string().min(1, 'First name is required'),
+  last_name: z.string().min(1, 'Last name is required'),
+  email_address: z.string().email('Invalid email address'),
+  job_title: z.string().min(1, 'Job title is required'),
+  employment_start_date: z.string().min(1, 'Start date is required'),
+  status: z.enum(['Active', 'Former']),
+  date_of_birth: z.string().optional().nullable(),
+  address: z.string().optional().nullable(),
+  phone_number: z.string().optional().nullable(),
+  employment_end_date: z.string().optional().nullable(),
+});
 
-// Type for the data expected from the form, excluding auto-generated fields
-export type EmployeeFormData = Omit<Employee, 'employee_id' | 'created_at' | 'updated_at'>;
+const noteSchema = z.object({
+    note_text: z.string().min(1, 'Note text cannot be empty.'),
+    employee_id: z.string().uuid(),
+});
 
-export async function addEmployee(prevState: ActionFormState | null, formData: FormData): Promise<ActionFormState> {
-  const supabase = createAdminSupabaseClient();
-  if (!supabase) {
-    return { message: 'Database connection failed. Please try again.', type: 'error' };
-  }
+const attachmentSchema = z.object({
+  attachment_file: z.instanceof(File).refine(file => file.size > 0, "A file is required."),
+  category_id: z.string().uuid("A valid category must be selected."),
+  description: z.string().optional(),
+});
 
-  const rawFormData = {
-    first_name: formData.get('first_name') as string,
-    last_name: formData.get('last_name') as string,
-    date_of_birth: formData.get('date_of_birth') as string || null, // Handle empty string for optional date
-    address: formData.get('address') as string || null,
-    phone_number: formData.get('phone_number') as string || null,
-    email_address: formData.get('email_address') as string,
-    job_title: formData.get('job_title') as string,
-    employment_start_date: formData.get('employment_start_date') as string,
-    employment_end_date: formData.get('employment_end_date') as string || null, // Handle empty string
-    status: formData.get('status') as string || 'Active', // Default to 'Active' if not provided
-    emergency_contact_name: formData.get('emergency_contact_name') as string || null,
-    emergency_contact_phone: formData.get('emergency_contact_phone') as string || null,
-  };
+const deleteAttachmentSchema = z.object({
+    employee_id: z.string().uuid(),
+    attachment_id: z.string().uuid(),
+    storage_path: z.string().min(1),
+});
 
-  // Basic Validation (more comprehensive validation should be added)
-  const errors: Record<string, string[]> = {};
-  if (!rawFormData.first_name) errors.first_name = ['First name is required.'];
-  if (!rawFormData.last_name) errors.last_name = ['Last name is required.'];
-  if (!rawFormData.email_address) errors.email_address = ['Email is required.'];
-  if (!rawFormData.job_title) errors.job_title = ['Job title is required.'];
-  if (!rawFormData.employment_start_date) errors.employment_start_date = ['Start date is required.'];
+// Generic helper
+async function handleFormAction<T extends z.ZodType<any, any>>(
+    formData: FormData,
+    schema: T,
+    action: (data: z.infer<T>) => Promise<ActionFormState>
+): Promise<ActionFormState> {
+    const rawData = Object.fromEntries(formData.entries());
+    const result = schema.safeParse(rawData);
 
-  if (Object.keys(errors).length > 0) {
-    return { message: 'Please correct the errors below.', type: 'error', errors };
-  }
-
-  // Prepare data for Supabase (ensure correct types, e.g., dates)
-  const employeeData: Partial<EmployeeFormData> = {
-    ...rawFormData,
-    // Ensure date fields are correctly formatted or null if empty
-    date_of_birth: rawFormData.date_of_birth ? rawFormData.date_of_birth : null,
-    employment_start_date: rawFormData.employment_start_date,
-    employment_end_date: rawFormData.employment_end_date ? rawFormData.employment_end_date : null,
-  };
-
-  const { data: newEmployee, error } = await supabase
-    .from('employees')
-    .insert(employeeData as EmployeeFormData) // Cast as EmployeeFormData after validation
-    .select('employee_id') // Select the ID of the newly created employee
-    .single();
-
-  if (error) {
-    console.error('Error adding employee:', error);
-    return { message: `Failed to add employee: ${error.message}`, type: 'error', errors };
-  }
-
-  if (!newEmployee || !newEmployee.employee_id) {
-    console.error('Failed to add employee or retrieve ID.');
-    return { message: 'Failed to add employee or retrieve their ID. Please check the logs.', type: 'error' };
-  }
-
-  // Revalidate the employees list page to show the new employee
-  revalidatePath('/employees');
-
-  // Redirect to the new employee's detail page (once it exists)
-  // For now, redirecting back to the employees list
-  // redirect(`/employees/${newEmployee.employee_id}`);
-  // For now, return success and let the form redirect or update UI
-  return {
-    message: 'Employee added successfully!',
-    type: 'success',
-    employeeId: newEmployee.employee_id,
-  };
+    if (!result.success) {
+        return {
+            type: 'error',
+            message: 'Invalid form data.',
+            errors: result.error.flatten().fieldErrors,
+        };
+    }
+    return action(result.data);
 }
 
-export async function updateEmployee(prevState: ActionFormState | null, formData: FormData): Promise<ActionFormState> {
-  const supabase = createAdminSupabaseClient();
-  if (!supabase) {
-    return { message: 'Database connection failed. Please try again.', type: 'error' };
-  }
+// Employee Actions
+export async function addEmployee(prevState: ActionFormState, formData: FormData): Promise<ActionFormState> {
+    const result = employeeSchema.safeParse(Object.fromEntries(formData.entries()));
 
-  const employeeId = formData.get('employee_id') as string;
+    if (!result.success) {
+        return { type: 'error', message: 'Invalid form data.', errors: result.error.flatten().fieldErrors };
+    }
 
-  if (!employeeId) {
-    return { message: 'Employee ID is missing. Cannot update.', type: 'error' };
-  }
+    const supabase = getSupabaseAdminClient();
+    if (!supabase) return { type: 'error', message: 'Database connection failed.' };
 
-  const rawFormData = {
-    first_name: formData.get('first_name') as string,
-    last_name: formData.get('last_name') as string,
-    date_of_birth: formData.get('date_of_birth') as string || null,
-    address: formData.get('address') as string || null,
-    phone_number: formData.get('phone_number') as string || null,
-    email_address: formData.get('email_address') as string,
-    job_title: formData.get('job_title') as string,
-    employment_start_date: formData.get('employment_start_date') as string,
-    employment_end_date: formData.get('employment_end_date') as string || null,
-    status: formData.get('status') as string || 'Active',
-    emergency_contact_name: formData.get('emergency_contact_name') as string || null,
-    emergency_contact_phone: formData.get('emergency_contact_phone') as string || null,
-  };
-
-  // Basic Validation
-  const errors: Record<string, string[]> = {};
-  if (!rawFormData.first_name) errors.first_name = ['First name is required.'];
-  if (!rawFormData.last_name) errors.last_name = ['Last name is required.'];
-  if (!rawFormData.email_address) errors.email_address = ['Email is required.'];
-  if (!rawFormData.job_title) errors.job_title = ['Job title is required.'];
-  if (!rawFormData.employment_start_date) errors.employment_start_date = ['Start date is required.'];
-
-  if (Object.keys(errors).length > 0) {
-    return { message: 'Please correct the errors below.', type: 'error', errors, employeeId };
-  }
-
-  const employeeData: Partial<EmployeeFormData> = {
-    ...rawFormData,
-    date_of_birth: rawFormData.date_of_birth ? rawFormData.date_of_birth : null,
-    employment_start_date: rawFormData.employment_start_date,
-    employment_end_date: rawFormData.employment_end_date ? rawFormData.employment_end_date : null,
-    // updated_at will be handled by the database trigger if set up, or manually add here if not.
-  };
-
-  const { error } = await supabase
-    .from('employees')
-    .update(employeeData as EmployeeFormData)
-    .eq('employee_id', employeeId);
-
-  if (error) {
-    console.error('Error updating employee:', error);
-    return { message: `Failed to update employee: ${error.message}`, type: 'error', employeeId };
-  }
-
-  revalidatePath('/employees'); // Revalidate list page
-  revalidatePath(`/employees/${employeeId}`); // Revalidate detail page
-  revalidatePath(`/employees/${employeeId}/edit`); // Revalidate edit page itself
-
-  return {
-    message: 'Employee updated successfully!',
-    type: 'success',
-    employeeId,
-  };
+    const { error } = await supabase.from('employees').insert(result.data);
+    if (error) return { type: 'error', message: `Database error: ${error.message}` };
+    
+    revalidatePath('/employees');
+    redirect('/employees');
 }
 
-export type DeleteState = {
-  message: string;
-  type: 'success' | 'error';
-} | null;
+export async function updateEmployee(prevState: ActionFormState, formData: FormData): Promise<ActionFormState> {
+    const employeeId = formData.get('employee_id') as string;
+    const result = employeeSchema.safeParse(Object.fromEntries(formData.entries()));
+    
+    if (!result.success) {
+        return { type: 'error', message: 'Invalid form data.', errors: result.error.flatten().fieldErrors };
+    }
 
-export async function deleteEmployee(employeeId: string, prevState: DeleteState /* formData not needed */): Promise<DeleteState> {
-  const supabase = createAdminSupabaseClient();
-  if (!supabase) {
-    return { message: 'Database connection failed.', type: 'error' };
-  }
+    const supabase = getSupabaseAdminClient();
+    if (!supabase) return { type: 'error', message: 'Database connection failed.' };
 
-  if (!employeeId) {
-    return { message: 'Employee ID is missing. Cannot delete.', type: 'error' };
-  }
+    const { error } = await supabase.from('employees').update(result.data).eq('employee_id', employeeId);
+    
+    if (error) return { type: 'error', message: `Database error: ${error.message}` };
 
-  // Before deleting, consider implications: related notes and attachments might also be deleted due to CASCADE constraints.
-  // Or, they might be orphaned if CASCADE is not set. Ensure this is the desired behavior.
-  // Also, if files are stored in Supabase Storage, they are NOT automatically deleted when the DB record is deleted.
-  // You would need to manually delete them from storage using the storage_path.
-  // For this iteration, we are only deleting the DB record.
+    revalidatePath(`/employees`);
+    revalidatePath(`/employees/${employeeId}`);
+    return { type: 'success', message: 'Employee updated successfully.' };
+}
 
-  const { error } = await supabase
-    .from('employees')
-    .delete()
-    .eq('employee_id', employeeId);
+export async function deleteEmployee(prevState: DeleteState, formData: FormData): Promise<DeleteState> {
+    const employeeId = formData.get('employee_id') as string;
+    if (!employeeId) return { type: 'error', message: 'Employee ID is missing.' };
 
-  if (error) {
-    console.error('Error deleting employee:', error);
-    // It's possible the employee was already deleted, or RLS prevents deletion.
-    return { message: `Failed to delete employee: ${error.message}. Please try again or check permissions.`, type: 'error' };
-  }
+    const supabase = getSupabaseAdminClient();
+    if (!supabase) return { type: 'error', message: 'Database connection failed.' };
 
-  revalidatePath('/employees'); // Revalidate the main list page
-  // No need to revalidate the specific employee page as it will 404
-  
-  // Instead of returning a state, we will redirect to the employees list page
-  // as the current page (/employees/[id]) will no longer be valid.
-  redirect('/employees');
-  
-  // Note: redirect() must be called outside of a try/catch block.
-  // If we needed to return a state for some reason, it would be:
-  // return { message: 'Employee deleted successfully!', type: 'success' };
+    const { error } = await supabase.from('employees').delete().eq('employee_id', employeeId);
+    if (error) return { type: 'error', message: `Database error: ${error.message}` };
+    
+    revalidatePath('/employees');
+    redirect('/employees');
 }
 
 // Server action to get a simplified list of employees for dropdowns
 export async function getEmployeeList(): Promise<{ id: string; name: string; }[] | null> {
-  const supabase = createAdminSupabaseClient();
+  const supabase = getSupabaseAdminClient();
   if (!supabase) {
     console.error('getEmployeeList: Database connection failed.');
     return null;
@@ -246,202 +145,143 @@ export async function getEmployeeList(): Promise<{ id: string; name: string; }[]
   return data.map(emp => ({ id: emp.employee_id, name: `${emp.first_name} ${emp.last_name}` }));
 }
 
-// Types for Employee Notes
-export type EmployeeNoteFormData = Omit<EmployeeNote, 'note_id' | 'created_at' | 'created_by'>;
+// Note Actions
+export async function addEmployeeNote(prevState: NoteFormState, formData: FormData): Promise<NoteFormState> {
+    const result = noteSchema.safeParse(Object.fromEntries(formData.entries()));
+    if (!result.success) {
+        return { type: 'error', message: 'Invalid data', errors: result.error.flatten().fieldErrors };
+    }
+    
+    const supabase = getSupabaseAdminClient();
+    if (!supabase) return { type: 'error', message: 'Database connection failed.' };
+    
+    const { error } = await supabase.from('employee_notes').insert(result.data);
 
-export type NoteFormState = {
-  message: string;
-  type: 'success' | 'error';
-  errors?: {
-    note_text?: string;
-    general?: string;
-  };
-} | null;
+    if (error) return { type: 'error', message: `Database error: ${error.message}` };
 
-export async function addEmployeeNote(
-  employeeId: string, 
-  prevState: NoteFormState, 
-  formData: FormData
-): Promise<NoteFormState> {
-  const adminSupabase = createAdminSupabaseClient(); // Renamed for clarity
-  if (!adminSupabase) {
-    return { message: 'Database connection failed.', type: 'error' };
-  }
-
-  // Create a Supabase client with user context for getting user ID
-  const supabaseUserContext = createServerActionClient({ cookies });
-  const { data: { user } } = await supabaseUserContext.auth.getUser();
-
-  if (!user) {
-    return { message: 'User not authenticated.', type: 'error', errors: { general: 'Authentication required.' } };
-  }
-  const createdById = user.id;
-
-  if (!employeeId) {
-    return { message: 'Employee ID is missing.', type: 'error', errors: { general: 'Employee ID is missing.' } };
-  }
-
-  const noteText = formData.get('note_text') as string;
-
-  if (!noteText || noteText.trim().length === 0) {
-    return { message: 'Note text cannot be empty.', type: 'error', errors: { note_text: 'Note cannot be empty.' } };
-  }
-
-  const noteData: Omit<EmployeeNote, 'note_id' | 'created_at'> = {
-    employee_id: employeeId,
-    note_text: noteText.trim(),
-    created_by: createdById, // Set with authenticated user ID
-  };
-
-  // Use adminSupabase (service role) for the insert operation
-  // This assumes RLS allows service_role to insert notes and set created_by
-  const { error } = await adminSupabase.from('employee_notes').insert(noteData);
-
-  if (error) {
-    console.error('Error adding employee note:', error);
-    return { message: `Failed to add note: ${error.message}`, type: 'error', errors: { general: error.message } };
-  }
-
-  revalidatePath(`/employees/${employeeId}`);
-
-  return { message: 'Note added successfully!', type: 'success' };
+    revalidatePath(`/employees/${result.data.employee_id}`);
+    return { type: 'success', message: 'Note added successfully.' };
 }
 
-// Types for Employee Attachments
-// import type { EmployeeAttachment } from '@/types/database'; // Already imported at the top
-const ATTACHMENT_BUCKET_NAME = 'employee-attachments'; // Define your bucket name
+// Attachment Actions
+const ATTACHMENT_BUCKET_NAME = 'employee-attachments';
 
-export type AttachmentFormState = {
-  message: string;
-  type: 'success' | 'error';
-  errors?: {
-    file?: string;
-    category_id?: string;
-    description?: string;
-    general?: string;
-  };
-} | null;
+const addAttachmentSchema = z.object({
+  employee_id: z.string().uuid(),
+  attachment_file: z.instanceof(File)
+    .refine(file => file.size > 0, "A file is required.")
+    .refine(file => file.size < 10 * 1024 * 1024, "File size must be less than 10MB.")
+    .refine(file => ['application/pdf', 'image/jpeg', 'image/png', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'].includes(file.type), "Invalid file type. Only PDF, JPG, PNG, and Word documents are allowed."),
+  category_id: z.string().uuid("A valid category must be selected."),
+  description: z.string().optional(),
+});
 
 export async function addEmployeeAttachment(
-  employeeId: string,
   prevState: AttachmentFormState,
   formData: FormData
 ): Promise<AttachmentFormState> {
-  const supabase = createAdminSupabaseClient();
+  // 1. Validate form data
+  const result = addAttachmentSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!result.success) {
+    console.log('Validation failed:', result.error.flatten().fieldErrors);
+    return { type: 'error', message: "Validation failed.", errors: result.error.flatten().fieldErrors };
+  }
+
+  const { employee_id, attachment_file, category_id, description } = result.data;
+  const supabase = getSupabaseAdminClient();
   if (!supabase) {
-    return { message: 'Database connection failed.', type: 'error' };
+    return { type: 'error', message: 'Database connection failed.' };
   }
 
-  if (!employeeId) {
-    return { message: 'Employee ID is missing.', type: 'error', errors: { general: 'Employee ID missing'}};
-  }
-
-  const file = formData.get('attachment_file') as File | null;
-  const categoryId = formData.get('category_id') as string;
-  const description = formData.get('description') as string || null;
-
-  const errors: NonNullable<AttachmentFormState>['errors'] = {};
-  if (!file || file.size === 0) errors.file = 'A file is required.';
-  if (!categoryId) errors.category_id = 'Category is required.';
-  // Max file size (e.g., 10MB)
-  const MAX_FILE_SIZE = 10 * 1024 * 1024;
-  if (file && file.size > MAX_FILE_SIZE) errors.file = `File size cannot exceed ${MAX_FILE_SIZE / (1024*1024)}MB.`;
-  // Allowed file types (example) - uncomment and customize if needed
-  // const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-  // if (file && !ALLOWED_TYPES.includes(file.type)) errors.file = 'Invalid file type.';
-
-  if (Object.keys(errors).length > 0) {
-    return { message: 'Please correct the errors.', type: 'error', errors };
-  }
-
-  if (!file) { // Should be caught by above validation, but as a safeguard
-    return { message: 'File not found.', type: 'error', errors: { file: 'File not found.' } };
-  }
-
-  // Upload file to Supabase Storage
-  // Ensure the bucket `employee-attachments` exists and has appropriate policies.
-  const fileExt = file.name.split('.').pop() || 'bin'; // Default extension if none
-  const uniqueFileName = `${employeeId}/${Date.now()}_${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
-  // storagePath is just the uniqueFileName within the bucket
-
+  // 2. Upload file to Supabase Storage
+  const uniqueFileName = `${employee_id}/${Date.now()}_${attachment_file.name.replace(/\s/g, '_')}`;
   const { data: uploadData, error: uploadError } = await supabase.storage
     .from(ATTACHMENT_BUCKET_NAME)
-    .upload(uniqueFileName, file, { // use uniqueFileName as path
-      cacheControl: '3600',
-      upsert: false, // Don't upsert if file with same path exists (should be unique)
-    });
+    .upload(uniqueFileName, attachment_file, { upsert: false }); // upsert: false is crucial
 
   if (uploadError) {
     console.error('Error uploading file to storage:', uploadError);
-    return { message: `Storage upload failed: ${uploadError.message}`, type: 'error', errors: { general: uploadError.message }};
+    return { type: 'error', message: `Storage upload failed: ${uploadError.message}` };
   }
 
-  // Insert record into employee_attachments table
-  const attachmentData: Omit<EmployeeAttachment, 'attachment_id' | 'uploaded_at'> = {
-    employee_id: employeeId,
-    category_id: categoryId,
-    file_name: file.name,
-    storage_path: uploadData.path, // Use path from successful upload
-    mime_type: file.type,
-    file_size_bytes: file.size,
-    description: description,
-  };
+  // 3. Use the canonical path from the API response
+  const storagePath = uploadData.path;
+  console.log(`File successfully uploaded to storage at path: ${storagePath}`);
 
-  const { error: dbError } = await supabase.from('employee_attachments').insert(attachmentData);
+  // 4. Insert metadata into DB with orphan cleanup
+  try {
+    const { error: dbError } = await supabase.from('employee_attachments').insert({
+      employee_id: employee_id,
+      category_id: category_id,
+      file_name: attachment_file.name,
+      storage_path: storagePath, // Use the correct path
+      mime_type: attachment_file.type,
+      file_size_bytes: attachment_file.size,
+      description: description,
+    });
 
-  if (dbError) {
-    console.error('Error saving attachment record to DB:', dbError);
-    // Attempt to delete the orphaned file from storage if DB insert fails
-    await supabase.storage.from(ATTACHMENT_BUCKET_NAME).remove([uniqueFileName]);
-    return { message: `Failed to save attachment details: ${dbError.message}`, type: 'error', errors: { general: dbError.message } };
+    if (dbError) {
+      // This will be caught by the catch block
+      throw new Error(`Database insert failed: ${dbError.message}`);
+    }
+
+  } catch (error) {
+    console.error('Database insert failed after file upload. Initiating cleanup.', error);
+    const { error: removeError } = await supabase.storage.from(ATTACHMENT_BUCKET_NAME).remove([storagePath]);
+
+    if (removeError) {
+      console.error(`CRITICAL ALERT: Failed to remove orphaned file '${storagePath}'. Manual cleanup required.`, removeError);
+    } else {
+      console.log(`Orphaned file '${storagePath}' successfully removed.`);
+    }
+    
+    return { type: 'error', message: `Failed to save attachment details to the database.` };
   }
 
-  revalidatePath(`/employees/${employeeId}`);
-  return { message: 'Attachment uploaded successfully!', type: 'success' };
+  console.log(`Attachment metadata for '${storagePath}' successfully saved to DB.`);
+  revalidatePath(`/employees/${employee_id}`);
+  return { type: 'success', message: 'Attachment uploaded successfully!' };
 }
 
-export async function deleteEmployeeAttachment(
-  employeeId: string, 
-  attachmentId: string, 
-  storagePath: string,
-  prevState: DeleteState // Reusing DeleteState for simplicity in form handling
-): Promise<DeleteState> {
-  const supabase = createAdminSupabaseClient();
-  if (!supabase) return { message: 'Database connection failed.', type: 'error' };
-
-  if (!attachmentId || !storagePath || !employeeId) {
-    return { message: 'Missing required IDs for deletion.', type: 'error' };
+export async function getAttachmentSignedUrl(storagePath: string): Promise<{ url: string | null; error: string | null }> {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) {
+    return { url: null, error: 'Database connection failed.' };
   }
 
-  // 1. Delete file from Supabase Storage
-  const { error: storageError } = await supabase.storage
+  const { data, error } = await supabase.storage
     .from(ATTACHMENT_BUCKET_NAME)
-    .remove([storagePath]);
+    .createSignedUrl(storagePath, 60 * 5); // URL valid for 5 minutes
 
-  if (storageError) {
-    console.error('Error deleting file from storage:', storageError);
-    // Do not return immediately; still attempt to delete DB record.
+  if (error) {
+    console.error('Error creating signed URL:', error);
+    return { url: null, error: error.message };
   }
 
-  // 2. Delete record from employee_attachments table
-  const { error: dbError } = await supabase
-    .from('employee_attachments')
-    .delete()
-    .eq('attachment_id', attachmentId);
+  return { url: data.signedUrl, error: null };
+}
 
-  if (dbError) {
-    console.error('Error deleting attachment record from DB:', dbError);
-    return { message: `Failed to delete attachment record: ${dbError.message}. Storage error (if any): ${storageError?.message || 'None'}`, type: 'error' };
-  }
-  
-  if (storageError && !dbError) {
-    console.warn(`Attachment record ${attachmentId} deleted from DB, but file ${storagePath} might be orphaned in storage due to error: ${storageError.message}`);
-    revalidatePath(`/employees/${employeeId}`);
-    return { message: 'Attachment record deleted, but file may remain in storage. Check logs.', type: 'error' }; 
-  }
+export async function deleteEmployeeAttachment(prevState: DeleteState, formData: FormData): Promise<DeleteState> {
+    const result = deleteAttachmentSchema.safeParse(Object.fromEntries(formData.entries()));
+    if(!result.success){
+        return { type: 'error', message: 'Invalid IDs provided.', errors: result.error.flatten().fieldErrors };
+    }
 
-  revalidatePath(`/employees/${employeeId}`);
-  return { message: 'Attachment deleted successfully!', type: 'success' };
+    const { employee_id, attachment_id, storage_path } = result.data;
+    const supabase = getSupabaseAdminClient();
+    if (!supabase) return { type: 'error', message: 'Database connection failed.' };
+
+    const { error: storageError } = await supabase.storage
+        .from(ATTACHMENT_BUCKET_NAME)
+        .remove([storage_path]);
+    
+    if (storageError) return { type: 'error', message: `Storage error: ${storageError.message}` };
+
+    const { error: dbError } = await supabase.from('employee_attachments').delete().eq('attachment_id', attachment_id);
+    if (dbError) return { type: 'error', message: `Database error: ${dbError.message}` };
+
+    revalidatePath(`/employees/${employee_id}`);
+    return { type: 'success', message: 'Attachment deleted successfully.' };
 }
 
 const EmergencyContactSchema = z.object({
@@ -609,4 +449,4 @@ export async function upsertHealthRecord(
     type: 'success',
     message: 'Health record saved successfully.',
   };
-} 
+}
