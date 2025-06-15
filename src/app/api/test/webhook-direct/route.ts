@@ -23,19 +23,36 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to initialize database' }, { status: 500 });
   }
 
-  // Clean phone number - remove all non-digits, then format
+  // Clean phone number - remove all non-digits
   let digitsOnly = phoneNumber.replace(/\D/g, '');
-  if (digitsOnly.startsWith('44')) {
-    digitsOnly = '0' + digitsOnly.substring(2);
+  
+  // Create variants for UK numbers
+  const phoneVariants = [
+    phoneNumber, // Original input
+  ];
+  
+  // If it starts with 0, also try with +44
+  if (phoneNumber.startsWith('0')) {
+    phoneVariants.push('+44' + phoneNumber.substring(1)); // +447990587315
+    phoneVariants.push('44' + phoneNumber.substring(1));  // 447990587315
   }
   
-  // Try multiple formats
-  const phoneVariants = [
-    phoneNumber, // Original
-    digitsOnly, // Just digits
-    digitsOnly.replace(/^(\d{5})(\d{6})$/, '$1 $2'), // 07990 587315
-    digitsOnly.replace(/^(\d{5})(\d{3})(\d{3})$/, '$1 $2 $3'), // 07990 587 315
-  ];
+  // If it's just digits starting with 0
+  if (digitsOnly.startsWith('0')) {
+    phoneVariants.push('+44' + digitsOnly.substring(1)); // +447990587315
+  }
+  
+  // If it starts with 44, try with + and with 0
+  if (digitsOnly.startsWith('44')) {
+    phoneVariants.push('+' + digitsOnly); // +447990587315
+    phoneVariants.push('0' + digitsOnly.substring(2)); // 07990587315
+  }
+  
+  // If it starts with +44, also try without + and with 0
+  if (phoneNumber.startsWith('+44')) {
+    phoneVariants.push(phoneNumber.substring(1)); // 447990587315
+    phoneVariants.push('0' + phoneNumber.substring(3)); // 07990587315
+  }
   
   // Look up customer with any variant
   const orConditions = phoneVariants.map(variant => `mobile_number.eq.${variant}`).join(',');
