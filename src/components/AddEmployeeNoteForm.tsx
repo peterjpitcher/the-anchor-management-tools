@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
-import { addEmployeeNote, type NoteFormState } from '@/app/actions/employeeActions';
+import { addEmployeeNote } from '@/app/actions/employeeActions';
+import type { NoteFormState } from '@/types/actions';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'; 
 import type { User } from '@supabase/supabase-js';
 import { Button } from '@/components/ui/Button';
@@ -26,9 +27,8 @@ export default function AddEmployeeNoteForm({ employeeId }: AddEmployeeNoteFormP
   const supabase = createClientComponentClient(); // Create client instance
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  const addNoteWithEmployeeId = addEmployeeNote.bind(null, employeeId);
   const initialState: NoteFormState = null;
-  const [state, dispatch] = useActionState(addNoteWithEmployeeId, initialState);
+  const [state, dispatch] = useActionState(addEmployeeNote, initialState);
   const formRef = useRef<HTMLFormElement>(null); // To reset the form
 
   useEffect(() => {
@@ -70,7 +70,8 @@ export default function AddEmployeeNoteForm({ employeeId }: AddEmployeeNoteFormP
         )}
       </div>
       
-      {/* Hidden field for created_by_user_id */}
+      {/* Hidden fields */}
+      <input type="hidden" name="employee_id" value={employeeId} />
       {currentUser?.id && (
         <input type="hidden" name="created_by_user_id" value={currentUser.id} />
       )}

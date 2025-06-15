@@ -65,6 +65,12 @@ export async function sendBookingConfirmation(bookingId: string) {
       return
     }
 
+    // Check if customer has opted out of SMS
+    if (booking.customer.sms_opt_in === false) {
+      console.log('Skipping SMS - Customer has opted out:', booking.customer.id)
+      return
+    }
+
     const twilioClientInstance = twilio(
       process.env.TWILIO_ACCOUNT_SID,
       process.env.TWILIO_AUTH_TOKEN
@@ -100,7 +106,25 @@ export async function sendBookingConfirmation(bookingId: string) {
       return;
     }
 
-    await twilioClientInstance.messages.create(messageParams)
+    const twilioMessage = await twilioClientInstance.messages.create(messageParams)
+
+    // Store the message in the database for tracking
+    const { error: messageError } = await supabase
+      .from('messages')
+      .insert({
+        customer_id: booking.customer.id,
+        direction: 'outbound',
+        message_sid: twilioMessage.sid,
+        twilio_message_sid: twilioMessage.sid,
+        body: message,
+        status: twilioMessage.status,
+        twilio_status: 'queued' // Initial status
+      });
+
+    if (messageError) {
+      console.error('Failed to store message in database:', messageError);
+      // Don't throw - SMS was sent successfully
+    }
 
     console.log('SMS sent successfully for bookingId:', bookingId, 'using', 
       process.env.TWILIO_MESSAGING_SERVICE_SID ? 'MessagingServiceSID' : 'FromNumber');
@@ -145,6 +169,7 @@ export async function sendEventReminders() {
       .select('*, customer:customers(first_name, last_name, mobile_number), event:events(name, date, time)')
       .in('event.date', [tomorrowStr, nextWeekStr])
       .not('customer.mobile_number', 'is', null)
+      .eq('customer.sms_opt_in', true)
 
     if (bookingsError) {
       console.error('Database error fetching reminders:', bookingsError)
@@ -163,6 +188,11 @@ export async function sendEventReminders() {
           hasEvent: !!booking.event,
           hasCustomer: !!booking.customer
         })
+        return false
+      }
+      // Double-check SMS opt-in status
+      if (booking.customer.sms_opt_in === false) {
+        console.log('Skipping reminder - Customer has opted out:', booking.customer.id)
         return false
       }
       return true
@@ -217,7 +247,26 @@ export async function sendEventReminders() {
         console.log('Sending reminder SMS to:', booking.customer.mobile_number, 'for event:', booking.event.name, 'using', 
           process.env.TWILIO_MESSAGING_SERVICE_SID ? 'MessagingServiceSID' : 'FromNumber');
 
-        await twilioClientInstance.messages.create(messageParams)
+        const twilioMessage = await twilioClientInstance.messages.create(messageParams)
+        
+        // Store the message in the database for tracking
+        const { error: messageError } = await supabase
+          .from('messages')
+          .insert({
+            customer_id: booking.customer.id,
+            direction: 'outbound',
+            message_sid: twilioMessage.sid,
+            twilio_message_sid: twilioMessage.sid,
+            body: message,
+            status: twilioMessage.status,
+            twilio_status: 'queued' // Initial status
+          });
+
+        if (messageError) {
+          console.error('Failed to store reminder message in database:', messageError);
+          // Don't throw - SMS was sent successfully
+        }
+        
         console.log(`Reminder sent to ${booking.customer.first_name} for ${booking.event.name}`)
       } catch (error) {
         console.error(`Failed to send reminder for booking ${booking.id}:`, error)

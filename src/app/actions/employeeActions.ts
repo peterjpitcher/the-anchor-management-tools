@@ -38,6 +38,7 @@ const employeeSchema = z.object({
 const noteSchema = z.object({
     note_text: z.string().min(1, 'Note text cannot be empty.'),
     employee_id: z.string().uuid(),
+    created_by_user_id: z.string().uuid().optional(),
 });
 
 const attachmentSchema = z.object({

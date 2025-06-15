@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, FormEvent } from 'react';
-import { getEmployeeList, addEmployeeNote, NoteFormState } from '@/app/actions/employeeActions';
+import { getEmployeeList, addEmployeeNote } from '@/app/actions/employeeActions';
+import type { NoteFormState } from '@/types/actions';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { Button } from '@/components/ui/Button'; // Assuming your Button component path
 
@@ -53,11 +54,11 @@ export default function AddNoteModal({ isOpen, onClose, defaultEmployeeId }: Add
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!selectedEmployeeId) {
-      setFormState({ message: 'Please select an employee.', type: 'error', errors: { general: 'Employee selection is required.' } });
+      setFormState({ message: 'Please select an employee.', type: 'error', errors: { general: ['Employee selection is required.'] } });
       return;
     }
     if (!noteText.trim()) {
-      setFormState({ message: 'Note text cannot be empty.', type: 'error', errors: { note_text: 'Note cannot be empty.' } });
+      setFormState({ message: 'Note text cannot be empty.', type: 'error', errors: { note_text: ['Note cannot be empty.'] } });
       return;
     }
 
@@ -66,8 +67,9 @@ export default function AddNoteModal({ isOpen, onClose, defaultEmployeeId }: Add
 
     const formData = new FormData();
     formData.append('note_text', noteText);
+    formData.append('employee_id', selectedEmployeeId);
 
-    const result = await addEmployeeNote(selectedEmployeeId, null, formData);
+    const result = await addEmployeeNote(null, formData);
     setFormState(result);
     setIsSubmitting(false);
 

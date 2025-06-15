@@ -13,6 +13,12 @@ export interface Customer {
   last_name: string;
   mobile_number: string;
   created_at: string;
+  sms_opt_in?: boolean;
+  sms_delivery_failures?: number;
+  last_sms_failure_reason?: string | null;
+  last_successful_sms_at?: string | null;
+  sms_deactivated_at?: string | null;
+  sms_deactivation_reason?: string | null;
 }
 
 export interface Booking {
@@ -81,7 +87,7 @@ export interface EmployeeNote {
   employee_id: string; // UUID, Foreign Key to Employee
   note_text: string;
   created_at: string; // Timestamp
-  created_by?: string | null; // UUID, Foreign Key to auth.users (optional)
+  created_by_user_id?: string | null; // UUID, Foreign Key to auth.users (optional)
 }
 
 export interface AttachmentCategory {
@@ -98,7 +104,7 @@ export interface EmployeeAttachment {
   file_name: string;
   storage_path: string;
   mime_type: string;
-  file_size_bytes: number; // Supabase uses bigint, which is string in JS, but number is often fine for client
+  file_size_bytes: number; // Supabase uses bigint, but we use number for files up to ~9PB (Number.MAX_SAFE_INTEGER)
   description?: string | null;
   uploaded_at: string; // Timestamp
 }
@@ -113,6 +119,38 @@ export interface EmployeeEmergencyContact {
   created_at: string; // Timestamp
 }
 
+export type MessageStatus = 'queued' | 'sending' | 'sent' | 'delivered' | 'undelivered' | 'failed' | 'read' | 'received';
+
+export interface Message {
+  id: string;
+  customer_id: string;
+  direction: 'inbound' | 'outbound';
+  message_sid: string;
+  body: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  twilio_message_sid: string | null;
+  twilio_status: MessageStatus | null;
+  error_code: string | null;
+  error_message: string | null;
+  price: number | null;
+  price_unit: string | null;
+  sent_at: string | null;
+  delivered_at: string | null;
+  failed_at: string | null;
+}
+
+export interface MessageDeliveryStatus {
+  id: string;
+  message_id: string;
+  status: MessageStatus;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  raw_webhook_data: any;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -123,7 +161,7 @@ export interface Database {
       };
       customers: {
         Row: Customer;
-        Insert: Omit<Customer, 'id' | 'created_at'>;
+        Insert: Omit<Customer, 'id' | 'created_at' | 'sms_opt_in' | 'sms_delivery_failures' | 'last_sms_failure_reason' | 'last_successful_sms_at' | 'sms_deactivated_at' | 'sms_deactivation_reason'>;
         Update: Partial<Omit<Customer, 'id' | 'created_at'>>;
       };
       bookings: {
@@ -165,6 +203,16 @@ export interface Database {
         Row: EmployeeEmergencyContact;
         Insert: Omit<EmployeeEmergencyContact, 'id' | 'created_at'>;
         Update: Partial<Omit<EmployeeEmergencyContact, 'id' | 'created_at' | 'employee_id'>>;
+      };
+      messages: {
+        Row: Message;
+        Insert: Omit<Message, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<Message, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      message_delivery_status: {
+        Row: MessageDeliveryStatus;
+        Insert: Omit<MessageDeliveryStatus, 'id' | 'created_at'>;
+        Update: Partial<Omit<MessageDeliveryStatus, 'id' | 'created_at'>>;
       };
     };
   };

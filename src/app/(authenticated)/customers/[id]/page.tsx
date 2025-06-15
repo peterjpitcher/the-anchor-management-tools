@@ -4,12 +4,13 @@ import { formatDate } from '@/lib/dateUtils'
 import Link from 'next/link'
 import { use, useEffect, useState, useCallback } from 'react'
 import { Customer, Booking, Event } from '@/types/database'
-import { PencilIcon, TrashIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
+import { PencilIcon, TrashIcon, ArrowLeftIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline'
 import { BookingForm } from '@/components/BookingForm'
 import toast from 'react-hot-toast'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { Button } from '@/components/ui/Button'
+import { toggleCustomerSmsOptIn, getCustomerSmsStats } from '@/app/actions/customerSmsActions'
 
 type BookingWithEvent = Omit<Booking, 'event'> & {
   event: Pick<Event, 'id' | 'name' | 'date' | 'time' | 'capacity' | 'created_at'>
@@ -27,6 +28,8 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   const [bookings, setBookings] = useState<BookingWithEvent[]>([])
   const [allEvents, setAllEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
+  const [smsStats, setSmsStats] = useState<any>(null)
+  const [togglingSmsSetting, setTogglingSmsSetting] = useState(false)
 
   // Modal states
   const [editingBooking, setEditingBooking] = useState<BookingWithEvent | undefined>(undefined)
@@ -57,6 +60,14 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
       const { data: eventsData, error: eventsError } = await supabase.from('events').select('*').order('date')
       if (eventsError) throw eventsError
       setAllEvents(eventsData)
+
+      // Load SMS stats
+      const stats = await getCustomerSmsStats(params.id)
+      if ('error' in stats) {
+        console.error('Failed to load SMS stats:', stats.error)
+      } else {
+        setSmsStats(stats)
+      }
     } catch (error) {
       console.error('Error loading customer details:', error)
       toast.error('Failed to load customer details.')
@@ -68,6 +79,22 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  const handleToggleSms = async () => {
+    if (!customer) return
+    
+    setTogglingSmsSetting(true)
+    const newOptIn = customer.sms_opt_in === false
+    const result = await toggleCustomerSmsOptIn(customer.id, newOptIn)
+    
+    if ('error' in result) {
+      toast.error(`Failed to update SMS settings: ${result.error}`)
+    } else {
+      toast.success(`SMS ${newOptIn ? 'activated' : 'deactivated'} for customer`)
+      await loadData() // Reload data to get updated customer and stats
+    }
+    setTogglingSmsSetting(false)
+  }
 
   useEffect(() => {
     const bookingId = searchParams.get('booking_id')
@@ -260,6 +287,19 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
                   {customer.mobile_number}
                 </a>
               </p>
+              <div className="mt-2 flex items-center space-x-4">
+                <div className="flex items-center">
+                  <ChatBubbleLeftRightIcon className="h-4 w-4 text-gray-400 mr-1" />
+                  <span className={`text-sm font-medium ${customer.sms_opt_in !== false ? 'text-green-600' : 'text-red-600'}`}>
+                    SMS {customer.sms_opt_in !== false ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+                {customer.sms_delivery_failures && customer.sms_delivery_failures > 0 && (
+                  <span className="text-sm text-orange-600">
+                    {customer.sms_delivery_failures} failed deliveries
+                  </span>
+                )}
+              </div>
             </div>
             <div className="flex items-center space-x-3">
                <Link href="/customers" className="text-sm font-medium text-gray-600 hover:text-gray-900 flex items-center">
@@ -269,6 +309,60 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
                 <Button onClick={() => setIsAddingBooking(true)}>
                   Add Booking
                 </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* SMS Status Card */}
+      <div className="bg-white shadow sm:rounded-lg">
+        <div className="px-4 py-5 sm:p-6">
+          <div className="flex justify-between items-start">
+            <div className="flex-1">
+              <h3 className="text-lg font-medium leading-6 text-gray-900">SMS Messaging Status</h3>
+              <div className="mt-2 max-w-xl text-sm text-gray-500">
+                <p>Control whether this customer receives SMS notifications for bookings and reminders.</p>
+              </div>
+              {smsStats && (
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <dt className="text-sm font-medium text-gray-500">Total Messages</dt>
+                    <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.totalMessages || 0}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm font-medium text-gray-500">Delivered</dt>
+                    <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.deliveredMessages || 0}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm font-medium text-gray-500">Failed</dt>
+                    <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.failedMessages || 0}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm font-medium text-gray-500">Delivery Rate</dt>
+                    <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.deliveryRate || 0}%</dd>
+                  </div>
+                </div>
+              )}
+              {customer.sms_deactivation_reason && (
+                <div className="mt-4 rounded-md bg-red-50 p-3">
+                  <p className="text-sm text-red-800">
+                    <span className="font-medium">Auto-deactivated:</span> {customer.sms_deactivation_reason}
+                  </p>
+                  {customer.last_sms_failure_reason && (
+                    <p className="text-sm text-red-700 mt-1">Last error: {customer.last_sms_failure_reason}</p>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="ml-4">
+              <Button
+                onClick={handleToggleSms}
+                disabled={togglingSmsSetting}
+                variant={customer.sms_opt_in !== false ? 'secondary' : 'primary'}
+                size="sm"
+              >
+                {togglingSmsSetting ? 'Updating...' : (customer.sms_opt_in !== false ? 'Deactivate SMS' : 'Activate SMS')}
+              </Button>
             </div>
           </div>
         </div>

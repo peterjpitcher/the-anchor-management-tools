@@ -2,7 +2,8 @@
 
 import { useActionState, useEffect, useState } from 'react';
 import { useFormStatus } from 'react-dom';
-import { upsertHealthRecord, type ActionFormState } from '@/app/actions/employeeActions';
+import { upsertHealthRecord } from '@/app/actions/employeeActions';
+import type { ActionFormState } from '@/types/actions';
 import type { EmployeeHealthRecord } from '@/types/database';
 
 interface HealthRecordsFormProps {

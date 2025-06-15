@@ -14,13 +14,6 @@ export async function GET(request: Request) {
     }
 
     console.log('Starting reminder check...')
-    console.log('Environment check:', {
-      hasTwilioSid: !!process.env.TWILIO_ACCOUNT_SID,
-      hasTwilioToken: !!process.env.TWILIO_AUTH_TOKEN,
-      hasTwilioPhone: !!process.env.TWILIO_PHONE_NUMBER,
-      hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-      hasSupabaseKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    })
 
     await sendEventReminders()
     console.log('Reminder check completed')
