@@ -135,12 +135,23 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   }
 
   const handleAddBooking = async (data: Omit<Booking, 'id' | 'created_at'>) => {
-    const { error } = await supabase.from('bookings').insert(data)
+    const { data: newBooking, error } = await supabase.from('bookings').insert(data).select().single()
 
     if (error) {
       toast.error(`Failed to add booking: ${error.message}`)
     } else {
       toast.success('Booking added successfully!')
+      
+      // Send SMS confirmation in the background
+      if (newBooking?.id) {
+        import('@/app/actions/sms').then(({ sendBookingConfirmation }) => {
+          sendBookingConfirmation(newBooking.id).catch((error) => {
+            console.error('Failed to send SMS confirmation:', error)
+            toast.error('SMS notification could not be sent')
+          })
+        })
+      }
+      
       const returnTo = searchParams.get('return_to')
       if (returnTo) {
         router.push(returnTo)

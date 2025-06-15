@@ -76,3 +76,5 @@ Required in `.env.local`:
 
 ### Important Reminders
 **Database Migrations**: Always notify the user when creating new migrations in `/supabase/migrations/`. The user needs to run migrations manually in their Supabase dashboard or via CLI.
+
+**Before Committing**: Always run `npm run build` locally to ensure the build passes before committing changes to GitHub.
