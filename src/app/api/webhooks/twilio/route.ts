@@ -103,15 +103,35 @@ async function handleInboundSMS(supabase: any, webhookData: Record<string, strin
     return NextResponse.json({ error: 'Failed to lookup customer' }, { status: 500 });
   }
 
+  let customer;
+  
   if (!customers || customers.length === 0) {
     console.log('No customer found for phone number:', fromNumber);
-    // Note: customer_id is required, so we'll skip saving unmatched messages for now
-    console.log('Skipping save for unmatched inbound message (no customer_id)');
-    return NextResponse.json({ success: true, message: 'Message received but not saved (no customer match)' });
+    console.log('Creating new customer for unknown number');
+    
+    // Auto-create a customer for the unknown number
+    const { data: newCustomer, error: createError } = await supabase
+      .from('customers')
+      .insert({
+        first_name: 'Unknown',
+        last_name: `(${fromNumber})`,
+        mobile_number: fromNumber, // Store the original format from Twilio
+        sms_opt_in: true // They're texting us, so they're opted in
+      })
+      .select()
+      .single();
+    
+    if (createError) {
+      console.error('Failed to create customer:', createError);
+      return NextResponse.json({ error: 'Failed to create customer' }, { status: 500 });
+    }
+    
+    customer = newCustomer;
+    console.log('Created new customer:', { id: customer.id, mobile: customer.mobile_number });
+  } else {
+    customer = customers[0];
+    console.log('Found customer:', { id: customer.id, name: customer.first_name + ' ' + customer.last_name });
   }
-
-  const customer = customers[0];
-  console.log('Found customer:', { id: customer.id, name: customer.first_name + ' ' + customer.last_name });
 
   // Check for STOP/UNSUBSCRIBE keywords
   const stopKeywords = ['STOP', 'UNSUBSCRIBE', 'QUIT', 'CANCEL', 'END', 'STOPALL'];
