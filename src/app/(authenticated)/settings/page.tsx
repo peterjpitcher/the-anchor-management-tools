@@ -4,7 +4,8 @@ import {
   ChatBubbleLeftRightIcon,
   ChevronRightIcon,
   WrenchScrewdriverIcon,
-  ShieldCheckIcon
+  ShieldCheckIcon,
+  DocumentTextIcon
 } from '@heroicons/react/24/outline';
 
 const settingsSections = [
@@ -19,6 +20,12 @@ const settingsSections = [
     description: 'Monitor SMS delivery performance and manage customer messaging',
     href: '/settings/sms-delivery',
     icon: ChatBubbleLeftRightIcon,
+  },
+  {
+    name: 'SMS Health Dashboard',
+    description: 'Advanced delivery tracking with automatic deactivation management',
+    href: '/settings/sms-health',
+    icon: ShieldCheckIcon,
   },
   {
     name: 'Webhook Configuration Test',
@@ -37,6 +44,12 @@ const settingsSections = [
     description: 'View system audit logs for security and compliance',
     href: '/settings/audit-logs',
     icon: ShieldCheckIcon,
+  },
+  {
+    name: 'Message Templates',
+    description: 'Manage SMS message templates and customize content',
+    href: '/settings/message-templates',
+    icon: DocumentTextIcon,
   },
 ];
 

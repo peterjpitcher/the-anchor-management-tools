@@ -2,9 +2,8 @@
 
 import { useEffect, useState, useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
-import type { EmployeeAttachment, AttachmentCategory } from '@/types/database';
+import type { EmployeeAttachment } from '@/types/database';
 import { deleteEmployeeAttachment, getAttachmentSignedUrl } from '@/app/actions/employeeActions';
-import type { DeleteState } from '@/types/actions';
 import {
   PaperClipIcon,
   ArrowDownTrayIcon,
@@ -92,7 +91,7 @@ function DeleteAttachmentButton({ employeeId, attachmentId, storagePath, attachm
                     </h3>
                     <div className="mt-2">
                       <p className="text-sm text-gray-500">
-                        Are you sure you want to delete the attachment "{attachmentName}"? This action cannot be undone.
+                        Are you sure you want to delete the attachment &quot;{attachmentName}&quot;? This action cannot be undone.
                       </p>
                     </div>
                   </div>

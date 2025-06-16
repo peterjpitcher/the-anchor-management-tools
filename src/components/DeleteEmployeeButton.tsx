@@ -3,7 +3,6 @@
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { deleteEmployee } from '@/app/actions/employeeActions';
-import type { DeleteState } from '@/types/actions';
 import { TrashIcon } from '@heroicons/react/24/outline';
 import { useState, useEffect } from 'react';
 
@@ -27,7 +26,7 @@ function SubmitDeleteButton() {
 
 export default function DeleteEmployeeButton({ employeeId, employeeName }: DeleteEmployeeButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const initialState: DeleteState = null;
+  const initialState = null;
   const [state, dispatch] = useActionState(deleteEmployee, initialState);
 
   useEffect(() => {

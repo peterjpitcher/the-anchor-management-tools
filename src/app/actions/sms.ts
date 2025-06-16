@@ -2,7 +2,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import twilio from 'twilio'
-import { smsTemplates } from '@/lib/smsTemplates'
+import { smsTemplates, getMessageTemplate } from '@/lib/smsTemplates'
 
 // Define an interface for Twilio message creation parameters
 interface TwilioMessageCreateParams {
@@ -76,20 +76,43 @@ export async function sendBookingConfirmation(bookingId: string) {
       process.env.TWILIO_AUTH_TOKEN
     )
 
-    const message = booking.seats
-      ? smsTemplates.bookingConfirmation({
-          firstName: booking.customer.first_name,
-          seats: booking.seats,
-          eventName: booking.event.name,
-          eventDate: new Date(booking.event.date),
-          eventTime: booking.event.time,
-        })
-      : smsTemplates.reminderOnly({
-          firstName: booking.customer.first_name,
-          eventName: booking.event.name,
-          eventDate: new Date(booking.event.date),
-          eventTime: booking.event.time,
-        })
+    // Prepare variables for template
+    const templateVariables = {
+      customer_name: `${booking.customer.first_name} ${booking.customer.last_name}`,
+      first_name: booking.customer.first_name,
+      event_name: booking.event.name,
+      event_date: new Date(booking.event.date).toLocaleDateString('en-GB', {
+        month: 'long',
+        day: 'numeric',
+      }),
+      event_time: booking.event.time,
+      seats: booking.seats?.toString() || '0',
+      venue_name: 'The Anchor',
+      contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707',
+      booking_reference: booking.id.substring(0, 8).toUpperCase()
+    };
+
+    // Try to get template from database
+    const templateType = booking.seats ? 'bookingConfirmation' : 'reminderOnly';
+    let message = await getMessageTemplate(booking.event.id, templateType, templateVariables);
+    
+    // Fall back to legacy templates if database template not found
+    if (!message) {
+      message = booking.seats
+        ? smsTemplates.bookingConfirmation({
+            firstName: booking.customer.first_name,
+            seats: booking.seats,
+            eventName: booking.event.name,
+            eventDate: new Date(booking.event.date),
+            eventTime: booking.event.time,
+          })
+        : smsTemplates.reminderOnly({
+            firstName: booking.customer.first_name,
+            eventName: booking.event.name,
+            eventDate: new Date(booking.event.date),
+            eventTime: booking.event.time,
+          });
+    }
     
     const messageParams: TwilioMessageCreateParams = {
       body: message,
@@ -115,6 +138,11 @@ export async function sendBookingConfirmation(bookingId: string) {
       from: twilioMessage.from
     });
 
+    // Calculate segments (SMS is 160 chars, or 153 for multi-part)
+    const messageLength = message.length;
+    const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153);
+    const costUsd = segments * 0.04; // Approximate UK SMS cost per segment
+    
     // Store the message in the database for tracking
     const messageData = {
       customer_id: booking.customer.id,
@@ -126,7 +154,9 @@ export async function sendBookingConfirmation(bookingId: string) {
       twilio_status: 'queued' as const,
       from_number: twilioMessage.from || process.env.TWILIO_PHONE_NUMBER || '',
       to_number: twilioMessage.to,
-      message_type: 'sms' as const
+      message_type: 'sms' as const,
+      segments: segments,
+      cost_usd: costUsd
     };
     
     console.log('Attempting to store message in database:', messageData);
@@ -234,20 +264,42 @@ export async function sendEventReminders() {
         const eventDate = new Date(booking.event.date)
         const isNextDay = eventDate.toISOString().split('T')[0] === tomorrowStr
         
-        const message = isNextDay
-          ? smsTemplates.dayBeforeReminder({
-              firstName: booking.customer.first_name,
-              eventName: booking.event.name,
-              eventTime: booking.event.time,
-              seats: booking.seats,
-            })
-          : smsTemplates.weekBeforeReminder({
-              firstName: booking.customer.first_name,
-              eventName: booking.event.name,
-              eventDate: eventDate,
-              eventTime: booking.event.time,
-              seats: booking.seats,
-            })
+        // Prepare variables for template
+        const templateVariables = {
+          customer_name: `${booking.customer.first_name} ${booking.customer.last_name}`,
+          first_name: booking.customer.first_name,
+          event_name: booking.event.name,
+          event_date: eventDate.toLocaleDateString('en-GB', {
+            month: 'long',
+            day: 'numeric',
+          }),
+          event_time: booking.event.time,
+          seats: booking.seats?.toString() || '0',
+          venue_name: 'The Anchor',
+          contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'
+        };
+
+        // Try to get template from database
+        const templateType = isNextDay ? 'dayBeforeReminder' : 'weekBeforeReminder';
+        let message = await getMessageTemplate(booking.event.id, templateType, templateVariables);
+        
+        // Fall back to legacy templates if database template not found
+        if (!message) {
+          message = isNextDay
+            ? smsTemplates.dayBeforeReminder({
+                firstName: booking.customer.first_name,
+                eventName: booking.event.name,
+                eventTime: booking.event.time,
+                seats: booking.seats,
+              })
+            : smsTemplates.weekBeforeReminder({
+                firstName: booking.customer.first_name,
+                eventName: booking.event.name,
+                eventDate: eventDate,
+                eventTime: booking.event.time,
+                seats: booking.seats,
+              });
+        }
         
         const messageParams: TwilioMessageCreateParams = {
           body: message,

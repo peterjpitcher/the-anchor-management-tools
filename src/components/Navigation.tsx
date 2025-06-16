@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, BuildingStorefrontIcon, PencilSquareIcon, CogIcon, EnvelopeIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, BuildingStorefrontIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, UserCircleIcon } from '@heroicons/react/24/outline'
 import { useEffect, useState } from 'react'
 import { getUnreadMessageCount } from '@/app/actions/messagesActions'
 
@@ -16,6 +16,7 @@ const primaryNavigation = [
 const secondaryNavigation = [
   { name: 'Employees', href: '/employees', icon: IdentificationIcon },
   { name: 'Quick Add Note', href: '#', icon: PencilSquareIcon, action: true },
+  { name: 'Profile', href: '/profile', icon: UserCircleIcon },
   { name: 'Settings', href: '/settings', icon: CogIcon },
   // Example of another section if needed in future
   // { name: 'The Anchor Mgmt', href: '/anchor', icon: BuildingStorefrontIcon }, 
