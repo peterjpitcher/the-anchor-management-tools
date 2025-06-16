@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@supabase/supabase-js'
+import { revalidatePath } from 'next/cache'
 
 function getSupabaseAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -67,6 +68,12 @@ export async function markMessagesAsRead(customerId: string) {
     console.error('Error marking messages as read:', error)
     return { error: error.message }
   }
+  
+  // Revalidate all relevant pages
+  revalidatePath('/messages')
+  revalidatePath('/customers')
+  revalidatePath(`/customers/${customerId}`)
+  revalidatePath('/', 'layout') // This revalidates the navigation with unread counts
   
   return { success: true }
 }
