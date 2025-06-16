@@ -11,6 +11,7 @@ import toast from 'react-hot-toast'
 import { sendBookingConfirmation } from '@/app/actions/sms'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { Button } from '@/components/ui/Button'
+import { EventTemplateManager } from '@/components/EventTemplateManager'
 
 type BookingWithCustomer = Omit<Booking, 'customer'> & {
   customer: Pick<Customer, 'first_name' | 'last_name' | 'id'>
@@ -336,6 +337,12 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="bg-white shadow sm:rounded-lg">
+        <div className="px-4 py-5 sm:p-6">
+          <EventTemplateManager eventId={event.id} eventName={event.name} />
         </div>
       </div>
     </div>

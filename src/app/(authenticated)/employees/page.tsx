@@ -242,7 +242,7 @@ export default function EmployeesPage() {
           {/* Search Results Count */}
           {searchTerm && (
             <div className="mt-2 text-sm text-gray-500">
-              Found {filteredEmployees.length} employee{filteredEmployees.length !== 1 ? 's' : ''} matching "{searchTerm}"
+              Found {filteredEmployees.length} employee{filteredEmployees.length !== 1 ? 's' : ''} matching &quot;{searchTerm}&quot;
             </div>
           )}
         </div>
@@ -252,7 +252,7 @@ export default function EmployeesPage() {
             <h3 className="text-lg font-medium text-gray-900">No employees found</h3>
             <p className="mt-1 text-sm text-gray-500">
               {searchTerm 
-                ? `No employees match your search for "${searchTerm}"`
+                ? <>No employees match your search for &quot;{searchTerm}&quot;</>
                 : 'Get started by adding a new employee.'}
             </p>
           </div>

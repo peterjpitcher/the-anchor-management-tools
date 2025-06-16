@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Clean phone number - remove all non-digits
-  let digitsOnly = phoneNumber.replace(/\D/g, '');
+  const digitsOnly = phoneNumber.replace(/\D/g, '');
   
   // Create variants for UK numbers
   const phoneVariants = [

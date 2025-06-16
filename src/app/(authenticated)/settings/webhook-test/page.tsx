@@ -94,8 +94,8 @@ export default function WebhookTestPage() {
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <h2 className="text-xl font-semibold mb-4">Test Webhook Endpoint</h2>
         <p className="mb-4">
-          This will send a test message to your webhook endpoint to verify it's working correctly.
-          The test will create a new "Unknown" customer if the phone number doesn't exist.
+          This will send a test message to your webhook endpoint to verify it&apos;s working correctly.
+          The test will create a new &quot;Unknown&quot; customer if the phone number doesn&apos;t exist.
         </p>
         <button
           onClick={testWebhook}

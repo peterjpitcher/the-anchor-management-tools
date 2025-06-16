@@ -113,14 +113,19 @@ export async function sendSmsReply(customerId: string, message: string) {
   }
 
   try {
-    const twilio = require('twilio')
-    const client = twilio(accountSid, authToken)
+    const { Twilio } = await import('twilio')
+    const client = new Twilio(accountSid, authToken)
     
     const twilioMessage = await client.messages.create({
       body: message,
       from: fromNumber,
       to: customer.mobile_number
     })
+    
+    // Calculate segments and cost
+    const messageLength = message.length
+    const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153)
+    const costUsd = segments * 0.04 // Approximate UK SMS cost per segment
     
     // Save the message to database
     const { error: saveError } = await supabase
@@ -136,6 +141,8 @@ export async function sendSmsReply(customerId: string, message: string) {
         from_number: fromNumber,
         to_number: customer.mobile_number,
         message_type: 'sms',
+        segments: segments,
+        cost_usd: costUsd,
         created_at: new Date().toISOString(),
         read_at: new Date().toISOString() // Mark outbound as read
       })
