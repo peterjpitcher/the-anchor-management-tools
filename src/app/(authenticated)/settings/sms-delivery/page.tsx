@@ -252,7 +252,7 @@ export default function SmsDeliveryStatsPage() {
                 To enable delivery tracking, configure your Twilio webhook URL to:
               </p>
               <code className="mt-1 block bg-blue-100 rounded px-2 py-1 text-xs">
-                {process.env.NEXT_PUBLIC_APP_URL || 'https://your-domain.com'}/api/webhooks/twilio
+                {process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'}/api/webhooks/twilio
               </code>
             </div>
           </div>
