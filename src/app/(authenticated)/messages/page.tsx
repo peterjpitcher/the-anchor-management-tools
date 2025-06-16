@@ -1,18 +1,67 @@
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
 import { getMessages, markMessageAsRead, markAllMessagesAsRead } from '@/app/actions/messagesActions'
 import { formatDistanceToNow } from 'date-fns'
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
+import { useRouter } from 'next/navigation'
+import toast from 'react-hot-toast'
 
-export default async function MessagesPage() {
-  const result = await getMessages()
-  
-  if ('error' in result) {
-    console.error('Failed to load messages:', result.error)
-    redirect('/dashboard')
+export default function MessagesPage() {
+  const router = useRouter()
+  const [conversations, setConversations] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [totalUnreadCount, setTotalUnreadCount] = useState(0)
+
+  const loadMessages = useCallback(async () => {
+    try {
+      const result = await getMessages()
+      
+      if ('error' in result) {
+        console.error('Failed to load messages:', result.error)
+        toast.error('Failed to load messages')
+        return
+      }
+      
+      const convs = result.conversations || []
+      setConversations(convs)
+      setTotalUnreadCount(convs.reduce((sum, conv) => sum + conv.unreadCount, 0))
+    } catch (error) {
+      console.error('Error loading messages:', error)
+      toast.error('Failed to load messages')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadMessages()
+
+    // Set up periodic refresh every 5 seconds
+    const interval = setInterval(() => {
+      loadMessages()
+    }, 5000)
+
+    return () => clearInterval(interval)
+  }, [loadMessages])
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      await markAllMessagesAsRead()
+      toast.success('All messages marked as read')
+      await loadMessages() // Refresh the list
+    } catch (error) {
+      toast.error('Failed to mark messages as read')
+    }
   }
-  
-  const conversations = result.conversations || []
-  const totalUnreadCount = conversations.reduce((sum, conv) => sum + conv.unreadCount, 0)
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="text-center text-gray-500">Loading messages...</div>
+      </div>
+    )
+  }
   
   return (
     <div className="container mx-auto px-4 py-8">
@@ -25,14 +74,12 @@ export default async function MessagesPage() {
           )}
         </div>
         {totalUnreadCount > 0 && (
-          <form action={markAllMessagesAsRead}>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-            >
-              Mark all as read
-            </button>
-          </form>
+          <button
+            onClick={handleMarkAllAsRead}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+          >
+            Mark all as read
+          </button>
         )}
       </div>
       

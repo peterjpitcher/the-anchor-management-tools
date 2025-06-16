@@ -9,6 +9,8 @@ import { createServerActionClient } from '@supabase/auth-helpers-nextjs';
 import { supabase } from '@/lib/supabase';
 import { z } from 'zod';
 import type { ActionFormState, NoteFormState, AttachmentFormState, DeleteState } from '@/types/actions';
+import { getConstraintErrorMessage, isPostgrestError } from '@/lib/dbErrorHandler';
+import { logAuditEvent, getCurrentUserForAudit } from '@/lib/auditLog';
 
 function getSupabaseAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -83,8 +85,32 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
     const supabase = getSupabaseAdminClient();
     if (!supabase) return { type: 'error', message: 'Database connection failed.' };
 
-    const { error } = await supabase.from('employees').insert(result.data);
-    if (error) return { type: 'error', message: `Database error: ${error.message}` };
+    const { data: newEmployee, error } = await supabase.from('employees').insert(result.data).select().single();
+    
+    // Audit log
+    const userInfo = await getCurrentUserForAudit(supabase);
+    
+    if (error) {
+        const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error';
+        await logAuditEvent({
+            ...userInfo,
+            operationType: 'create',
+            resourceType: 'employee',
+            operationStatus: 'failure',
+            errorMessage: message,
+            newValues: result.data
+        });
+        return { type: 'error', message };
+    }
+    
+    await logAuditEvent({
+        ...userInfo,
+        operationType: 'create',
+        resourceType: 'employee',
+        resourceId: newEmployee.employee_id,
+        operationStatus: 'success',
+        newValues: newEmployee
+    });
     
     revalidatePath('/employees');
     redirect('/employees');
@@ -101,9 +127,42 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
     const supabase = getSupabaseAdminClient();
     if (!supabase) return { type: 'error', message: 'Database connection failed.' };
 
+    // Get old values for audit
+    const { data: oldEmployee } = await supabase
+        .from('employees')
+        .select('*')
+        .eq('employee_id', employeeId)
+        .single();
+    
     const { error } = await supabase.from('employees').update(result.data).eq('employee_id', employeeId);
     
-    if (error) return { type: 'error', message: `Database error: ${error.message}` };
+    // Audit log
+    const userInfo = await getCurrentUserForAudit(supabase);
+    
+    if (error) {
+        const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error';
+        await logAuditEvent({
+            ...userInfo,
+            operationType: 'update',
+            resourceType: 'employee',
+            resourceId: employeeId,
+            operationStatus: 'failure',
+            errorMessage: message,
+            oldValues: oldEmployee,
+            newValues: result.data
+        });
+        return { type: 'error', message };
+    }
+    
+    await logAuditEvent({
+        ...userInfo,
+        operationType: 'update',
+        resourceType: 'employee',
+        resourceId: employeeId,
+        operationStatus: 'success',
+        oldValues: oldEmployee,
+        newValues: result.data
+    });
 
     revalidatePath(`/employees`);
     revalidatePath(`/employees/${employeeId}`);
@@ -117,8 +176,40 @@ export async function deleteEmployee(prevState: DeleteState, formData: FormData)
     const supabase = getSupabaseAdminClient();
     if (!supabase) return { type: 'error', message: 'Database connection failed.' };
 
+    // Get employee details for audit
+    const { data: employee } = await supabase
+        .from('employees')
+        .select('*')
+        .eq('employee_id', employeeId)
+        .single();
+    
     const { error } = await supabase.from('employees').delete().eq('employee_id', employeeId);
-    if (error) return { type: 'error', message: `Database error: ${error.message}` };
+    
+    // Audit log
+    const userInfo = await getCurrentUserForAudit(supabase);
+    
+    if (error) {
+        const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error';
+        await logAuditEvent({
+            ...userInfo,
+            operationType: 'delete',
+            resourceType: 'employee',
+            resourceId: employeeId,
+            operationStatus: 'failure',
+            errorMessage: message,
+            oldValues: employee
+        });
+        return { type: 'error', message };
+    }
+    
+    await logAuditEvent({
+        ...userInfo,
+        operationType: 'delete',
+        resourceType: 'employee',
+        resourceId: employeeId,
+        operationStatus: 'success',
+        oldValues: employee
+    });
     
     revalidatePath('/employees');
     redirect('/employees');
@@ -249,6 +340,22 @@ export async function addEmployeeAttachment(
     return { type: 'error', message: `Failed to save attachment details to the database.` };
   }
 
+  // Audit log success
+  const userInfo = await getCurrentUserForAudit(supabase);
+  await logAuditEvent({
+    ...userInfo,
+    operationType: 'upload',
+    resourceType: 'attachment',
+    resourceId: employee_id,
+    operationStatus: 'success',
+    newValues: {
+      fileName: attachment_file.name,
+      category_id,
+      fileSize: attachment_file.size
+    },
+    additionalInfo: { storagePath }
+  });
+  
   console.log(`Attachment metadata for '${storagePath}' successfully saved to DB.`);
   revalidatePath(`/employees/${employee_id}`);
   return { type: 'success', message: 'Attachment uploaded successfully!' };
@@ -269,6 +376,16 @@ export async function getAttachmentSignedUrl(storagePath: string): Promise<{ url
     return { url: null, error: error.message };
   }
 
+  // Audit log attachment access
+  const userInfo = await getCurrentUserForAudit(supabase);
+  await logAuditEvent({
+    ...userInfo,
+    operationType: 'view',
+    resourceType: 'attachment',
+    operationStatus: 'success',
+    additionalInfo: { storagePath }
+  });
+  
   return { url: data.signedUrl, error: null };
 }
 

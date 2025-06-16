@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/Button'
 import Link from 'next/link'
 import { getUnreadMessageCounts } from '@/app/actions/messageActions'
 import { ChatBubbleLeftIcon } from '@heroicons/react/24/solid'
+import { getConstraintErrorMessage, isPostgrestError } from '@/lib/dbErrorHandler'
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<CustomerWithLoyalty[]>([])
@@ -88,7 +89,11 @@ export default function CustomersPage() {
   ) {
     try {
       const { error } = await supabase.from('customers').insert([customerData])
-      if (error) throw error
+      if (error) {
+        const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Failed to create customer';
+        toast.error(message)
+        return
+      }
       toast.success('Customer created successfully')
       setShowForm(false)
       await loadCustomers()
@@ -109,7 +114,11 @@ export default function CustomersPage() {
         .update(customerData)
         .eq('id', editingCustomer.id)
 
-      if (error) throw error
+      if (error) {
+        const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Failed to update customer';
+        toast.error(message)
+        return
+      }
       toast.success('Customer updated successfully')
       setEditingCustomer(null)
       setShowForm(false)
@@ -142,7 +151,11 @@ export default function CustomersPage() {
   async function handleImportCustomers(customersData: Omit<Customer, 'id' | 'created_at'>[]) {
     try {
       const { error } = await supabase.from('customers').insert(customersData)
-      if (error) throw error
+      if (error) {
+        const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Failed to import customers';
+        toast.error(message)
+        return
+      }
       toast.success('Customers imported successfully')
       setShowImport(false)
       await loadCustomers()

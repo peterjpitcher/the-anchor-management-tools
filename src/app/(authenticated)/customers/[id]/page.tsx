@@ -92,6 +92,13 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
 
   useEffect(() => {
     loadData()
+
+    // Set up periodic refresh for messages every 5 seconds
+    const interval = setInterval(() => {
+      loadData()
+    }, 5000)
+
+    return () => clearInterval(interval)
   }, [loadData])
 
   const handleToggleSms = async () => {

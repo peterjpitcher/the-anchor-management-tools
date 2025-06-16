@@ -3,7 +3,8 @@ import {
   TagIcon, 
   ChatBubbleLeftRightIcon,
   ChevronRightIcon,
-  WrenchScrewdriverIcon
+  WrenchScrewdriverIcon,
+  ShieldCheckIcon
 } from '@heroicons/react/24/outline';
 
 const settingsSections = [
@@ -30,6 +31,12 @@ const settingsSections = [
     description: 'View real-time webhook logs and debug issues',
     href: '/settings/webhook-monitor',
     icon: ChatBubbleLeftRightIcon,
+  },
+  {
+    name: 'Audit Logs',
+    description: 'View system audit logs for security and compliance',
+    href: '/settings/audit-logs',
+    icon: ShieldCheckIcon,
   },
 ];
 
