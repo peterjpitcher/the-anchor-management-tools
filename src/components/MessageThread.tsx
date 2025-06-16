@@ -33,9 +33,12 @@ export function MessageThread({ messages, customerId, customerName, canReply, on
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
+  // Only scroll when a new message is sent, not on initial load or refresh
   useEffect(() => {
-    scrollToBottom()
-  }, [messages])
+    if (sending) {
+      scrollToBottom()
+    }
+  }, [sending])
 
   const handleSend = async () => {
     if (!newMessage.trim() || sending) return
