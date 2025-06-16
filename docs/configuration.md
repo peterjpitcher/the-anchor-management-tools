@@ -32,7 +32,7 @@ TWILIO_PHONE_NUMBER=+1234567890
 
 #### Application Configuration
 ```env
-NEXT_PUBLIC_APP_URL=https://your-domain.com
+NEXT_PUBLIC_APP_URL=https://management.orangejelly.co.uk
 CRON_SECRET=your-very-secure-random-string
 ```
 

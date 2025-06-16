@@ -66,7 +66,7 @@ TWILIO_AUTH_TOKEN=your-auth-token
 TWILIO_PHONE_NUMBER=+44xxxxxxxxxx
 
 # Application
-NEXT_PUBLIC_APP_URL=https://your-domain.vercel.app
+NEXT_PUBLIC_APP_URL=https://management.orangejelly.co.uk
 CRON_SECRET=generate-a-secure-random-string
 ```
 

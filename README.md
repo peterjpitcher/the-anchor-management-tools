@@ -2,6 +2,8 @@
 
 A comprehensive venue management system for The Anchor, featuring event scheduling, customer management, employee records, and automated SMS notifications.
 
+**Production URL**: https://management.orangejelly.co.uk
+
 ## Quick Start
 
 ```bash
