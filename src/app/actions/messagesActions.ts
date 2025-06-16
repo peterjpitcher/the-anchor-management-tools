@@ -37,7 +37,7 @@ export async function getMessages() {
   }
   
   if (!messages || messages.length === 0) {
-    return { messages: [] }
+    return { conversations: [] }
   }
   
   // Get unique customer IDs
@@ -57,18 +57,46 @@ export async function getMessages() {
   // Create a map of customers by ID
   const customerMap = new Map(customers?.map(c => [c.id, c]) || [])
   
-  // Combine messages with customer data
-  const messagesWithCustomers = messages.map(message => ({
-    ...message,
-    customer: customerMap.get(message.customer_id) || {
-      id: message.customer_id,
-      first_name: 'Unknown',
-      last_name: '',
-      mobile_number: ''
-    }
-  }))
+  // Group messages by customer
+  const conversationMap = new Map<string, {
+    customer: any,
+    messages: any[],
+    unreadCount: number,
+    lastMessageAt: string
+  }>()
   
-  return { messages: messagesWithCustomers }
+  messages.forEach(message => {
+    const customerId = message.customer_id
+    if (!conversationMap.has(customerId)) {
+      conversationMap.set(customerId, {
+        customer: customerMap.get(customerId) || {
+          id: customerId,
+          first_name: 'Unknown',
+          last_name: '',
+          mobile_number: ''
+        },
+        messages: [],
+        unreadCount: 0,
+        lastMessageAt: message.created_at
+      })
+    }
+    
+    const conversation = conversationMap.get(customerId)!
+    conversation.messages.push(message)
+    if (!message.read_at) {
+      conversation.unreadCount++
+    }
+    // Update last message time if this is more recent
+    if (message.created_at > conversation.lastMessageAt) {
+      conversation.lastMessageAt = message.created_at
+    }
+  })
+  
+  // Convert to array and sort by last message time
+  const conversations = Array.from(conversationMap.values())
+    .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())
+  
+  return { conversations }
 }
 
 export async function getUnreadMessageCount() {
@@ -135,4 +163,27 @@ export async function markAllMessagesAsRead() {
   
   revalidatePath('/messages')
   revalidatePath('/', 'layout')
+}
+
+export async function markConversationAsRead(customerId: string) {
+  const supabase = getSupabaseAdminClient()
+  if (!supabase) {
+    throw new Error('Failed to initialize database connection')
+  }
+  
+  const { error } = await supabase
+    .from('messages')
+    .update({ read_at: new Date().toISOString() })
+    .eq('customer_id', customerId)
+    .eq('direction', 'inbound')
+    .is('read_at', null)
+  
+  if (error) {
+    console.error('Error marking conversation as read:', error)
+    throw new Error(error.message)
+  }
+  
+  revalidatePath('/messages')
+  revalidatePath('/', 'layout')
+  revalidatePath(`/customers/${customerId}`)
 }

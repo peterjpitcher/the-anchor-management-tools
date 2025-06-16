@@ -11,20 +11,20 @@ export default async function MessagesPage() {
     redirect('/dashboard')
   }
   
-  const messages = result.messages || []
-  const unreadCount = messages.filter(m => m.direction === 'inbound' && !m.read_at).length
+  const conversations = result.conversations || []
+  const totalUnreadCount = conversations.reduce((sum, conv) => sum + conv.unreadCount, 0)
   
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-6 flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Inbound Messages</h1>
-          <p className="text-gray-600 mb-1">Messages received from customers</p>
-          {unreadCount > 0 && (
-            <p className="text-gray-600 font-medium">{unreadCount} unread message{unreadCount !== 1 ? 's' : ''}</p>
+          <h1 className="text-3xl font-bold mb-2">Messages</h1>
+          <p className="text-gray-600 mb-1">Conversations with customers</p>
+          {totalUnreadCount > 0 && (
+            <p className="text-gray-600 font-medium">{totalUnreadCount} unread message{totalUnreadCount !== 1 ? 's' : ''}</p>
           )}
         </div>
-        {unreadCount > 0 && (
+        {totalUnreadCount > 0 && (
           <form action={markAllMessagesAsRead}>
             <button
               type="submit"
@@ -36,69 +36,48 @@ export default async function MessagesPage() {
         )}
       </div>
       
-      {messages.length === 0 ? (
+      {conversations.length === 0 ? (
         <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-          <p className="text-lg">No inbound messages yet</p>
-          <p className="text-sm mt-2">When customers text your number, their messages will appear here</p>
+          <p className="text-lg">No messages yet</p>
+          <p className="text-sm mt-2">When customers text your number, their conversations will appear here</p>
         </div>
       ) : (
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="divide-y divide-gray-200">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`p-4 hover:bg-gray-50 transition-colors ${
-                  !message.read_at ? 'bg-blue-50' : ''
+            {conversations.map((conversation) => (
+              <Link
+                key={conversation.customer.id}
+                href={`/customers/${conversation.customer.id}`}
+                className={`block p-4 hover:bg-gray-50 transition-colors ${
+                  conversation.unreadCount > 0 ? 'bg-blue-50 hover:bg-blue-100' : ''
                 }`}
               >
-                <div className="flex items-start justify-between">
+                <div className="flex items-center justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-1">
-                      <Link
-                        href={`/customers/${message.customer_id}`}
-                        className="font-medium text-green-600 hover:underline"
-                      >
-                        {message.customer.first_name} {message.customer.last_name}
-                      </Link>
-                      <span className="text-sm text-gray-500">
-                        {message.customer.mobile_number}
-                      </span>
-                      {!message.read_at && (
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                          Unread
+                    <div className="flex items-center gap-4 mb-1">
+                      <h3 className="font-medium text-gray-900">
+                        {conversation.customer.first_name} {conversation.customer.last_name}
+                      </h3>
+                      {conversation.unreadCount > 0 && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          {conversation.unreadCount} unread
                         </span>
                       )}
                     </div>
-                    <p className="text-gray-900 mb-2">{message.body}</p>
-                    <div className="flex items-center gap-4 text-sm text-gray-500">
-                      <span>
-                        {formatDistanceToNow(new Date(message.created_at), { addSuffix: true })}
-                      </span>
-                      {message.twilio_status && (
-                        <span>Status: {message.twilio_status}</span>
-                      )}
-                    </div>
+                    <p className="text-sm text-gray-600">
+                      {conversation.customer.mobile_number}
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2 ml-4">
-                    {!message.read_at && (
-                      <form action={markMessageAsRead.bind(null, message.id)}>
-                        <button
-                          type="submit"
-                          className="text-sm text-green-600 hover:text-green-700 font-medium"
-                        >
-                          Mark as read
-                        </button>
-                      </form>
-                    )}
-                    <Link
-                      href={`/customers/${message.customer_id}`}
-                      className="text-sm text-gray-600 hover:text-gray-900"
-                    >
-                      View customer →
-                    </Link>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-500">
+                      {formatDistanceToNow(new Date(conversation.lastMessageAt), { addSuffix: true })}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {conversation.messages.length} message{conversation.messages.length !== 1 ? 's' : ''}
+                    </p>
                   </div>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         </div>
