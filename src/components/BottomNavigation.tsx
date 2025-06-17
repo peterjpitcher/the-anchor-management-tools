@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
-import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, EnvelopeIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, UserGroupIcon, IdentificationIcon, PencilSquareIcon, EnvelopeIcon } from '@heroicons/react/24/outline'
 import { useEffect, useState, useMemo } from 'react'
 import { getUnreadMessageCount } from '@/app/actions/messagesActions'
 import { usePermissions } from '@/contexts/PermissionContext'
@@ -48,29 +48,29 @@ export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps)
   const { hasPermission, loading: permissionsLoading } = usePermissions()
 
   const allNavigationItems: NavigationItem[] = [
-    { name: 'Home', href: '/', icon: HomeIcon, permission: { module: 'dashboard', action: 'view' } },
     { name: 'Events', href: '/events', icon: CalendarIcon, permission: { module: 'events', action: 'view' } },
     { name: 'Customers', href: '/customers', icon: UserGroupIcon, permission: { module: 'customers', action: 'view' } },
     { name: 'Messages', href: '/messages', icon: EnvelopeIcon, permission: { module: 'messages', action: 'view' } },
     { name: 'Employees', href: '/employees', icon: IdentificationIcon, permission: { module: 'employees', action: 'view' } },
+    { name: 'Quick Notes', href: '#', icon: PencilSquareIcon, action: true },
   ]
 
   // Filter navigation items based on permissions
   const navigationItems = useMemo(() => {
     if (permissionsLoading) return [];
     return allNavigationItems.filter(item => 
-      !item.permission || hasPermission(item.permission.module, item.permission.action)
+      item.action || !item.permission || hasPermission(item.permission.module, item.permission.action)
     );
   }, [hasPermission, permissionsLoading])
 
   if (permissionsLoading) {
     return (
-      <nav className="fixed bottom-0 left-0 right-0 z-50 h-16 bg-white border-t border-gray-200 md:hidden">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 h-16 bg-sidebar border-t border-gray-300 md:hidden">
         <div className="grid h-full max-w-lg grid-cols-5 mx-auto">
           {[...Array(5)].map((_, i) => (
             <div key={i} className="inline-flex flex-col items-center justify-center px-2 sm:px-5">
-              <div className="w-6 h-6 bg-gray-200 rounded animate-pulse"></div>
-              <div className="w-12 h-3 bg-gray-200 rounded mt-1 animate-pulse"></div>
+              <div className="w-6 h-6 bg-white/20 rounded animate-pulse"></div>
+              <div className="w-12 h-3 bg-white/20 rounded mt-1 animate-pulse"></div>
             </div>
           ))}
         </div>
@@ -79,18 +79,18 @@ export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps)
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 h-16 bg-white border-t border-gray-200 md:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 h-16 bg-sidebar border-t border-gray-300 md:hidden">
       <div className={`grid h-full max-w-lg grid-cols-${navigationItems.length} mx-auto`}>
         {navigationItems.map((item) => {
-          if (item.action && item.name === 'Add Note') {
+          if (item.action && item.name === 'Quick Notes') {
             return (
               <button
                 key={item.name}
-                onClick={onQuickAddNoteClick} // Use the passed prop
-                className={`inline-flex flex-col items-center justify-center px-2 sm:px-5 hover:bg-gray-50 text-gray-500 hover:text-gray-900 w-full h-full`}
+                onClick={onQuickAddNoteClick}
+                className={`inline-flex flex-col items-center justify-center px-2 sm:px-5 hover:bg-white/10 text-white/80 hover:text-white w-full h-full transition-colors`}
               >
                 <item.icon className="w-5 h-5 sm:w-6 sm:h-6" />
-                <span className="text-xs sm:text-sm">{item.name}</span>
+                <span className="text-xs sm:text-sm mt-1">{item.name}</span>
               </button>
             );
           }
@@ -98,10 +98,10 @@ export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps)
             <Link
               key={item.name}
               href={item.href}
-              className={`inline-flex flex-col items-center justify-center px-2 sm:px-5 hover:bg-gray-50 ${
+              className={`inline-flex flex-col items-center justify-center px-2 sm:px-5 transition-colors ${
                 isActive(item.href)
-                  ? 'text-blue-600'
-                  : 'text-gray-500 hover:text-gray-900'
+                  ? 'bg-white/20 text-white'
+                  : 'text-white/80 hover:text-white hover:bg-white/10'
               }`}
             >
               <div className="relative">
@@ -112,7 +112,7 @@ export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps)
                   </span>
                 )}
               </div>
-              <span className="text-xs sm:text-sm">{item.name}</span>
+              <span className="text-xs sm:text-sm mt-1">{item.name}</span>
             </Link>
           );
         })}
