@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is "The Anchor - Management Tools" (EventPlanner 3.0), a Next.js 15 application for managing events, customers, and employees for a venue. The application includes automated SMS notifications, file attachments, and comprehensive CRUD operations for all entities.
 
+Production URL: https://management.orangejelly.co.uk
+
 ## Commands
 
 ### Development
@@ -22,8 +24,8 @@ No test runner is currently configured. When adding tests, check with the user f
 ### Technology Stack
 - **Framework**: Next.js 15.3.3 with App Router and React 19.1.0
 - **Database**: Supabase (PostgreSQL) with Row Level Security
-- **Authentication**: Supabase Auth
-- **Styling**: Tailwind CSS with custom theme colors (sidebar green: #005131)
+- **Authentication**: Supabase Auth with JWT tokens
+- **Styling**: Tailwind CSS with custom theme colors
 - **SMS**: Twilio integration for automated notifications
 - **File Storage**: Supabase Storage for employee attachments
 - **Deployment**: Vercel with cron jobs for scheduled tasks
@@ -48,9 +50,11 @@ No test runner is currently configured. When adding tests, check with the user f
    - Employee system includes notes (timestamped) and attachments (categorized)
    - All tables use UUID primary keys and cascade deletes
    - Row Level Security enabled on all tables
+   - Custom database functions for triggers and business logic
 
-5. **Cron Jobs**: Automated SMS reminders run daily at 9 AM via Vercel cron
-   - Endpoint: `/api/cron/send-reminders`
+5. **Cron Jobs**: Automated SMS reminders run daily at 9 AM
+   - Primary: Vercel cron at `/api/cron/send-reminders`
+   - Backup: GitHub Actions workflow
    - Sends 7-day and 24-hour booking reminders
    - Secured with `CRON_SECRET_KEY` environment variable
 
@@ -81,12 +85,25 @@ Required in `.env.local`:
 - `NEXT_PUBLIC_CONTACT_PHONE_NUMBER` - Displayed contact number
 - `CRON_SECRET_KEY` - For securing cron job endpoints
 
+### UI/UX Conventions
+- **Color Palette**: 
+  - Primary Blue: `#2563eb`
+  - Sidebar Green: `#005131`
+  - Success Green: `#10b981`
+  - Warning Yellow: `#f59e0b`
+  - Error Red: `#ef4444`
+- **Component Patterns**: Always check existing components before creating new ones
+- **Loading States**: Use skeleton loaders for better UX
+- **Error Handling**: Display user-friendly error messages with recovery actions
+- **Responsive Design**: Mobile-first approach with Tailwind breakpoints
+
 ### Recent Architectural Decisions
 - Migrated from `useFormState` to `useActionState` (React 19)
 - Fixed form data passing pattern - use hidden fields instead of `.bind()`
 - Implemented proper bucket provisioning for file attachments
 - Added comprehensive employee management system with notes and attachments
 - Webhook logging for Twilio SMS status tracking
+- Domain updated to management.orangejelly.co.uk
 
 ### Important Reminders
 1. **Database Migrations**: Always notify the user when creating new migrations in `/supabase/migrations/`. The user needs to run migrations manually in their Supabase dashboard or via CLI.
@@ -104,3 +121,16 @@ Required in `.env.local`:
    ```
 
 5. **TypeScript Path Aliases**: Use `@/` for imports (configured in tsconfig.json)
+
+6. **Performance Considerations**:
+   - Use React Suspense for async components
+   - Implement proper caching strategies with `revalidatePath`
+   - Optimize images with Next.js Image component
+   - Minimize client-side JavaScript with server components
+
+7. **Security Best Practices**:
+   - All routes under `/(authenticated)` require authentication
+   - Use Row Level Security for all database operations
+   - Generate signed URLs for file access (24-hour expiry)
+   - Never expose service role key to client
+   - Validate all user inputs with Zod schemas

@@ -22,11 +22,12 @@ export async function getMessages() {
     return { error: 'Failed to initialize database connection' }
   }
   
-  // Get only inbound messages
+  // Get only unread inbound messages
   const { data: messages, error: messagesError } = await supabase
     .from('messages')
     .select('*')
     .eq('direction', 'inbound')
+    .is('read_at', null)
     .order('created_at', { ascending: false })
   
   console.log('Messages query result:', { count: messages?.length, error: messagesError })
@@ -83,9 +84,7 @@ export async function getMessages() {
     
     const conversation = conversationMap.get(customerId)!
     conversation.messages.push(message)
-    if (!message.read_at) {
-      conversation.unreadCount++
-    }
+    conversation.unreadCount++ // All messages are unread since we're only fetching unread ones
     // Update last message time if this is more recent
     if (message.created_at > conversation.lastMessageAt) {
       conversation.lastMessageAt = message.created_at

@@ -3,8 +3,10 @@
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, EnvelopeIcon } from '@heroicons/react/24/outline'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { getUnreadMessageCount } from '@/app/actions/messagesActions'
+import { usePermissions } from '@/contexts/PermissionContext'
+import type { ModuleName, ActionType } from '@/types/rbac'
 
 // ADDED Props interface
 interface BottomNavigationProps {
@@ -40,19 +42,45 @@ export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps)
     href: string;
     icon: React.ElementType;
     action?: boolean; // Optional: to identify items that trigger actions
+    permission?: { module: ModuleName; action: ActionType };
   };
 
-  const navigationItems: NavigationItem[] = [
-    { name: 'Home', href: '/', icon: HomeIcon },
-    { name: 'Events', href: '/events', icon: CalendarIcon },
-    { name: 'Customers', href: '/customers', icon: UserGroupIcon },
-    { name: 'Messages', href: '/messages', icon: EnvelopeIcon },
-    { name: 'Employees', href: '/employees', icon: IdentificationIcon },
+  const { hasPermission, loading: permissionsLoading } = usePermissions()
+
+  const allNavigationItems: NavigationItem[] = [
+    { name: 'Home', href: '/', icon: HomeIcon, permission: { module: 'dashboard', action: 'view' } },
+    { name: 'Events', href: '/events', icon: CalendarIcon, permission: { module: 'events', action: 'view' } },
+    { name: 'Customers', href: '/customers', icon: UserGroupIcon, permission: { module: 'customers', action: 'view' } },
+    { name: 'Messages', href: '/messages', icon: EnvelopeIcon, permission: { module: 'messages', action: 'view' } },
+    { name: 'Employees', href: '/employees', icon: IdentificationIcon, permission: { module: 'employees', action: 'view' } },
   ]
+
+  // Filter navigation items based on permissions
+  const navigationItems = useMemo(() => {
+    if (permissionsLoading) return [];
+    return allNavigationItems.filter(item => 
+      !item.permission || hasPermission(item.permission.module, item.permission.action)
+    );
+  }, [hasPermission, permissionsLoading])
+
+  if (permissionsLoading) {
+    return (
+      <nav className="fixed bottom-0 left-0 right-0 z-50 h-16 bg-white border-t border-gray-200 md:hidden">
+        <div className="grid h-full max-w-lg grid-cols-5 mx-auto">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="inline-flex flex-col items-center justify-center px-2 sm:px-5">
+              <div className="w-6 h-6 bg-gray-200 rounded animate-pulse"></div>
+              <div className="w-12 h-3 bg-gray-200 rounded mt-1 animate-pulse"></div>
+            </div>
+          ))}
+        </div>
+      </nav>
+    );
+  }
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 h-16 bg-white border-t border-gray-200 md:hidden">
-      <div className="grid h-full max-w-lg grid-cols-5 mx-auto">
+      <div className={`grid h-full max-w-lg grid-cols-${navigationItems.length} mx-auto`}>
         {navigationItems.map((item) => {
           if (item.action && item.name === 'Add Note') {
             return (

@@ -87,7 +87,10 @@ const TEMPLATE_TYPE_MAP: Record<string, string> = {
   bookingConfirmation: 'booking_confirmation',
   weekBeforeReminder: 'reminder_7_day', 
   dayBeforeReminder: 'reminder_24_hour',
-  reminderOnly: 'custom'
+  reminderOnly: 'booking_reminder_confirmation',
+  // Direct mappings for new template types
+  booking_reminder_24_hour: 'booking_reminder_24_hour',
+  booking_reminder_7_day: 'booking_reminder_7_day'
 };
 
 // Get template from database or fallback to legacy

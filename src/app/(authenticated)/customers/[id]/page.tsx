@@ -40,6 +40,21 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   const [isAddingBooking, setIsAddingBooking] = useState(false)
   const [eventForNewBooking, setEventForNewBooking] = useState<Event | undefined>(undefined)
 
+  const loadMessages = useCallback(async () => {
+    try {
+      const messagesResult = await getCustomerMessages(params.id)
+      if ('error' in messagesResult) {
+        console.error('Failed to load messages:', messagesResult.error)
+      } else {
+        setMessages(messagesResult.messages)
+        // Mark inbound messages as read
+        await markMessagesAsRead(params.id)
+      }
+    } catch (error) {
+      console.error('Error loading messages:', error)
+    }
+  }, [params.id])
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true)
@@ -61,7 +76,11 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
       if (bookingsError) throw bookingsError
       setBookings(bookingsData as BookingWithEvent[])
 
-      const { data: eventsData, error: eventsError } = await supabase.from('events').select('*').order('date')
+      const { data: eventsData, error: eventsError } = await supabase
+        .from('events')
+        .select('*')
+        .gte('date', new Date().toISOString().split('T')[0]) // Only future events
+        .order('date')
       if (eventsError) throw eventsError
       setAllEvents(eventsData)
 
@@ -73,33 +92,28 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
         setSmsStats(stats)
       }
 
-      // Load messages
-      const messagesResult = await getCustomerMessages(params.id)
-      if ('error' in messagesResult) {
-        console.error('Failed to load messages:', messagesResult.error)
-      } else {
-        setMessages(messagesResult.messages)
-        // Mark inbound messages as read
-        await markMessagesAsRead(params.id)
-      }
+      // Load messages initially
+      await loadMessages()
     } catch (error) {
       console.error('Error loading customer details:', error)
       toast.error('Failed to load customer details.')
     } finally {
       setLoading(false)
     }
-  }, [params.id, supabase])
+  }, [params.id, supabase, loadMessages])
 
   useEffect(() => {
     loadData()
+  }, [loadData])
 
-    // Set up periodic refresh for messages every 5 seconds
+  useEffect(() => {
+    // Set up periodic refresh for messages only
     const interval = setInterval(() => {
-      loadData()
+      loadMessages()
     }, 5000)
 
     return () => clearInterval(interval)
-  }, [loadData])
+  }, [loadMessages])
 
   const handleToggleSms = async () => {
     if (!customer) return
@@ -112,7 +126,15 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
       toast.error(`Failed to update SMS settings: ${result.error}`)
     } else {
       toast.success(`SMS ${newOptIn ? 'activated' : 'deactivated'} for customer`)
-      await loadData() // Reload data to get updated customer and stats
+      
+      // Update customer state locally
+      setCustomer({ ...customer, sms_opt_in: newOptIn })
+      
+      // Reload SMS stats only
+      const stats = await getCustomerSmsStats(customer.id)
+      if (!('error' in stats)) {
+        setSmsStats(stats)
+      }
     }
     setTogglingSmsSetting(false)
   }
@@ -410,7 +432,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
             customerName={`${customer.first_name} ${customer.last_name}`}
             canReply={customer.sms_opt_in !== false}
             onMessageSent={async () => {
-              await loadData() // Refresh messages
+              await loadMessages() // Only refresh messages
             }}
           />
         </div>
