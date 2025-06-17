@@ -2,24 +2,31 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, BuildingStorefrontIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, UserCircleIcon } from '@heroicons/react/24/outline'
-import { useEffect, useState } from 'react'
+import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, BuildingStorefrontIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, UserCircleIcon, ShieldCheckIcon, UsersIcon } from '@heroicons/react/24/outline'
+import { useEffect, useState, useMemo } from 'react'
 import { getUnreadMessageCount } from '@/app/actions/messagesActions'
+import { usePermissions } from '@/contexts/PermissionContext'
+import type { ModuleName, ActionType } from '@/types/rbac'
 
-const primaryNavigation = [
-  { name: 'Dashboard', href: '/', icon: HomeIcon },
-  { name: 'Events', href: '/events', icon: CalendarIcon },
-  { name: 'Customers', href: '/customers', icon: UserGroupIcon },
-  { name: 'Messages', href: '/messages', icon: EnvelopeIcon },
+type NavigationItemWithPermission = {
+  name: string;
+  href: string;
+  icon: React.ElementType;
+  action?: boolean;
+  permission?: { module: ModuleName; action: ActionType };
+};
+
+const primaryNavigation: NavigationItemWithPermission[] = [
+  { name: 'Dashboard', href: '/', icon: HomeIcon, permission: { module: 'dashboard', action: 'view' } },
+  { name: 'Events', href: '/events', icon: CalendarIcon, permission: { module: 'events', action: 'view' } },
+  { name: 'Customers', href: '/customers', icon: UserGroupIcon, permission: { module: 'customers', action: 'view' } },
+  { name: 'Messages', href: '/messages', icon: EnvelopeIcon, permission: { module: 'messages', action: 'view' } },
 ];
 
-const secondaryNavigation = [
-  { name: 'Employees', href: '/employees', icon: IdentificationIcon },
+const secondaryNavigation: NavigationItemWithPermission[] = [
+  { name: 'Employees', href: '/employees', icon: IdentificationIcon, permission: { module: 'employees', action: 'view' } },
   { name: 'Quick Add Note', href: '#', icon: PencilSquareIcon, action: true },
-  { name: 'Profile', href: '/profile', icon: UserCircleIcon },
-  { name: 'Settings', href: '/settings', icon: CogIcon },
-  // Example of another section if needed in future
-  // { name: 'The Anchor Mgmt', href: '/anchor', icon: BuildingStorefrontIcon }, 
+  { name: 'Settings', href: '/settings', icon: CogIcon, permission: { module: 'settings', action: 'view' } },
 ];
 
 interface NavigationProps {
@@ -29,6 +36,7 @@ interface NavigationProps {
 export function Navigation({ onQuickAddNoteClick }: NavigationProps) {
   const pathname = usePathname()
   const [unreadCount, setUnreadCount] = useState(0)
+  const { hasPermission, loading: permissionsLoading } = usePermissions()
 
   useEffect(() => {
     // Load unread count on mount
@@ -47,14 +55,22 @@ export function Navigation({ onQuickAddNoteClick }: NavigationProps) {
     return () => clearInterval(interval)
   }, [])
 
-  type NavigationItem = {
-    name: string;
-    href: string;
-    icon: React.ElementType;
-    action?: boolean;
-  };
+  // Filter navigation items based on permissions
+  const filteredPrimaryNav = useMemo(() => {
+    if (permissionsLoading) return [];
+    return primaryNavigation.filter(item => 
+      !item.permission || hasPermission(item.permission.module, item.permission.action)
+    );
+  }, [hasPermission, permissionsLoading]);
 
-  const renderNavItem = (item: NavigationItem) => {
+  const filteredSecondaryNav = useMemo(() => {
+    if (permissionsLoading) return [];
+    return secondaryNavigation.filter(item => 
+      !item.permission || hasPermission(item.permission.module, item.permission.action)
+    );
+  }, [hasPermission, permissionsLoading]);
+
+  const renderNavItem = (item: NavigationItemWithPermission) => {
     const isActive = !item.action && item.href === '/' 
       ? pathname === '/'
       : !item.action && pathname.startsWith(item.href);
@@ -110,16 +126,30 @@ export function Navigation({ onQuickAddNoteClick }: NavigationProps) {
     );
   }
 
+  if (permissionsLoading) {
+    return (
+      <nav className="space-y-1 px-2">
+        <div className="animate-pulse space-y-2">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-9 bg-green-700 rounded opacity-50"></div>
+          ))}
+        </div>
+      </nav>
+    );
+  }
+
   return (
     <nav className="space-y-1 px-2">
-      {(primaryNavigation as NavigationItem[]).map(renderNavItem)}
+      {filteredPrimaryNav.map(renderNavItem)}
       
-      {/* Divider */}
-      <div className="pt-2 pb-1">
-        <hr className="border-t border-green-600 opacity-75" />
-      </div>
+      {/* Only show divider if there are items in both sections */}
+      {filteredPrimaryNav.length > 0 && filteredSecondaryNav.length > 0 && (
+        <div className="pt-2 pb-1">
+          <hr className="border-t border-green-600 opacity-75" />
+        </div>
+      )}
       
-      {(secondaryNavigation as NavigationItem[]).map(renderNavItem)}
+      {filteredSecondaryNav.map(renderNavItem)}
     </nav>
   )
 } 

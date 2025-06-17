@@ -279,8 +279,14 @@ export async function sendEventReminders() {
           contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'
         };
 
+        // Determine template type based on whether it's a booking (with seats) or reminder (0 seats)
+        const isBookingReminder = !booking.seats || booking.seats === 0;
+        const baseTemplateType = isNextDay ? 'dayBeforeReminder' : 'weekBeforeReminder';
+        const templateType = isBookingReminder 
+          ? (isNextDay ? 'booking_reminder_24_hour' : 'booking_reminder_7_day')
+          : baseTemplateType;
+        
         // Try to get template from database
-        const templateType = isNextDay ? 'dayBeforeReminder' : 'weekBeforeReminder';
         let message = await getMessageTemplate(booking.event.id, templateType, templateVariables);
         
         // Fall back to legacy templates if database template not found
@@ -352,5 +358,111 @@ export async function sendEventReminders() {
     } else {
         throw error; 
     }
+  }
+}
+
+export async function sendBulkSMS(customerId: string, message: string) {
+  'use server'
+  
+  try {
+    // Check for essential Twilio credentials
+    if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
+      console.log('Skipping SMS - Twilio Account SID or Auth Token not configured')
+      return { error: 'SMS service not configured' }
+    }
+    if (!process.env.TWILIO_PHONE_NUMBER && !process.env.TWILIO_MESSAGING_SERVICE_SID) {
+      console.log('Skipping SMS - Neither Twilio Phone Number nor Messaging Service SID is configured')
+      return { error: 'SMS service not configured' }
+    }
+
+    const supabase = createAdminSupabaseClient()
+    if (!supabase) {
+      console.error('Failed to initialize Supabase admin client for bulk SMS.')
+      return { error: 'Database connection failed' }
+    }
+
+    // Get customer details
+    const { data: customer, error: customerError } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('id', customerId)
+      .single()
+
+    if (customerError || !customer) {
+      return { error: 'Customer not found' }
+    }
+
+    // Check if customer has opted out
+    if (customer.sms_opt_in === false) {
+      return { error: 'Customer has opted out of SMS' }
+    }
+
+    // Check if customer has a mobile number
+    if (!customer.mobile_number) {
+      return { error: 'Customer has no mobile number' }
+    }
+
+    const twilioClientInstance = twilio(
+      process.env.TWILIO_ACCOUNT_SID,
+      process.env.TWILIO_AUTH_TOKEN
+    )
+
+    // Prepare message parameters
+    const messageParams: TwilioMessageCreateParams = {
+      body: message,
+      to: customer.mobile_number,
+    }
+
+    if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
+      messageParams.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID
+    } else if (process.env.TWILIO_PHONE_NUMBER) {
+      messageParams.from = process.env.TWILIO_PHONE_NUMBER
+    }
+
+    // Send the SMS
+    const twilioMessage = await twilioClientInstance.messages.create(messageParams)
+    
+    console.log('Bulk SMS sent:', {
+      sid: twilioMessage.sid,
+      status: twilioMessage.status,
+      to: twilioMessage.to,
+      from: twilioMessage.from
+    })
+
+    // Calculate segments
+    const messageLength = message.length
+    const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153)
+    const costUsd = segments * 0.04 // Approximate UK SMS cost per segment
+
+    // Store the message in the database
+    const messageData = {
+      customer_id: customerId,
+      direction: 'outbound' as const,
+      message_sid: twilioMessage.sid,
+      twilio_message_sid: twilioMessage.sid,
+      body: message,
+      status: twilioMessage.status,
+      twilio_status: 'queued' as const,
+      from_number: twilioMessage.from || process.env.TWILIO_PHONE_NUMBER || '',
+      to_number: twilioMessage.to,
+      message_type: 'sms' as const,
+      segments: segments,
+      cost_usd: costUsd,
+      is_read: true // Mark as read since it's outbound
+    }
+    
+    const { error: messageError } = await supabase
+      .from('messages')
+      .insert(messageData)
+
+    if (messageError) {
+      console.error('Error recording message:', messageError)
+      // Don't fail the action if recording fails
+    }
+
+    return { success: true, messageSid: twilioMessage.sid }
+  } catch (error) {
+    console.error('Error in sendBulkSMS:', error)
+    return { error: 'Failed to send message' }
   }
 } 

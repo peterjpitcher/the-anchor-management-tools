@@ -9,6 +9,7 @@ import React, { useState, useEffect } from 'react'
 import AddNoteModal from '@/components/modals/AddNoteModal'
 import { redirect } from 'next/navigation'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
+import { PermissionProvider } from '@/contexts/PermissionContext'
 
 function AuthenticatedLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -72,9 +73,18 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
           <div className="flex w-64 flex-col">
             <div className="flex min-h-0 flex-1 flex-col border-r border-gray-300 bg-sidebar">
               <div className="flex flex-1 flex-col overflow-y-auto pt-5 pb-4">
-                <div className="flex flex-col items-center px-4 space-y-2 mb-4">
-                  <Image src="/logo.png" alt="Management Tools Logo" width={192} height={192} priority style={{ height: 'auto' }} />
-                  <h1 className="text-xl font-bold text-white text-center">Management Tools</h1>
+                <div className="px-4">
+                  <div className="w-full mb-2">
+                    <Image 
+                      src="/logo.png" 
+                      alt="Management Tools Logo" 
+                      width={192}
+                      height={192}
+                      className="w-full h-auto"
+                      priority 
+                    />
+                  </div>
+                  <h1 className="text-xl font-bold text-white text-center w-full">Management Tools</h1>
                 </div>
                 <div className="mt-5 flex-1">
                   <Navigation onQuickAddNoteClick={openAddNoteModal} />
@@ -110,5 +120,9 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
 }
 
 export default function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
-  return <AuthenticatedLayoutContent>{children}</AuthenticatedLayoutContent>
+  return (
+    <PermissionProvider>
+      <AuthenticatedLayoutContent>{children}</AuthenticatedLayoutContent>
+    </PermissionProvider>
+  )
 } 

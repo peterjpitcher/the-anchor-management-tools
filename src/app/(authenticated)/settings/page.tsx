@@ -3,57 +3,107 @@ import {
   TagIcon, 
   ChatBubbleLeftRightIcon,
   ChevronRightIcon,
-  WrenchScrewdriverIcon,
   ShieldCheckIcon,
-  DocumentTextIcon
+  DocumentTextIcon,
+  UserCircleIcon,
+  UsersIcon,
+  KeyIcon
 } from '@heroicons/react/24/outline';
+import { checkUserPermission } from '@/app/actions/rbac';
 
 const settingsSections = [
+  // User Management Section
+  {
+    name: 'My Profile',
+    description: 'View and edit your personal profile information',
+    href: '/profile',
+    icon: UserCircleIcon,
+    permission: null, // Everyone can access their profile
+  },
+  {
+    name: 'User Management',
+    description: 'Manage users and their role assignments',
+    href: '/users',
+    icon: UsersIcon,
+    permission: { module: 'users', action: 'view' },
+  },
+  {
+    name: 'Role Management',
+    description: 'Create and manage roles and permissions',
+    href: '/roles',
+    icon: KeyIcon,
+    permission: { module: 'roles', action: 'view' },
+  },
+  // System Settings Section
   {
     name: 'Attachment Categories',
     description: 'Manage categories for employee file attachments',
     href: '/settings/categories',
     icon: TagIcon,
-  },
-  {
-    name: 'SMS Delivery Statistics',
-    description: 'Monitor SMS delivery performance and manage customer messaging',
-    href: '/settings/sms-delivery',
-    icon: ChatBubbleLeftRightIcon,
-  },
-  {
-    name: 'SMS Health Dashboard',
-    description: 'Advanced delivery tracking with automatic deactivation management',
-    href: '/settings/sms-health',
-    icon: ShieldCheckIcon,
-  },
-  {
-    name: 'Webhook Configuration Test',
-    description: 'Test and troubleshoot Twilio webhook configuration',
-    href: '/settings/webhook-test',
-    icon: WrenchScrewdriverIcon,
-  },
-  {
-    name: 'Webhook Monitor',
-    description: 'View real-time webhook logs and debug issues',
-    href: '/settings/webhook-monitor',
-    icon: ChatBubbleLeftRightIcon,
-  },
-  {
-    name: 'Audit Logs',
-    description: 'View system audit logs for security and compliance',
-    href: '/settings/audit-logs',
-    icon: ShieldCheckIcon,
+    permission: { module: 'settings', action: 'manage' },
   },
   {
     name: 'Message Templates',
     description: 'Manage SMS message templates and customize content',
     href: '/settings/message-templates',
     icon: DocumentTextIcon,
+    permission: { module: 'messages', action: 'manage_templates' },
+  },
+  // Monitoring Section
+  {
+    name: 'SMS Delivery Statistics',
+    description: 'Monitor SMS delivery performance and manage customer messaging',
+    href: '/settings/sms-delivery',
+    icon: ChatBubbleLeftRightIcon,
+    permission: { module: 'sms_health', action: 'view' },
+  },
+  {
+    name: 'SMS Health Dashboard',
+    description: 'Advanced delivery tracking with automatic deactivation management',
+    href: '/settings/sms-health',
+    icon: ShieldCheckIcon,
+    permission: { module: 'sms_health', action: 'view' },
+  },
+  {
+    name: 'Audit Logs',
+    description: 'View system audit logs for security and compliance',
+    href: '/settings/audit-logs',
+    icon: ShieldCheckIcon,
+    permission: { module: 'settings', action: 'manage' },
   },
 ];
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  // Filter sections based on user permissions
+  const visibleSections = [];
+  
+  for (const section of settingsSections) {
+    if (!section.permission) {
+      // No permission required (like profile)
+      visibleSections.push(section);
+    } else {
+      // Check if user has permission
+      const hasPermission = await checkUserPermission(
+        section.permission.module as any,
+        section.permission.action as any
+      );
+      if (hasPermission) {
+        visibleSections.push(section);
+      }
+    }
+  }
+
+  // Group sections by category
+  const userManagementSections = visibleSections.filter(s => 
+    s.href === '/profile' || s.href === '/users' || s.href === '/roles'
+  );
+  const systemSettingsSections = visibleSections.filter(s => 
+    s.href.includes('/settings/') && !s.name.includes('SMS') && !s.name.includes('Audit')
+  );
+  const monitoringSections = visibleSections.filter(s => 
+    s.name.includes('SMS') || s.name.includes('Audit')
+  );
+
   return (
     <div className="space-y-6">
       <div className="bg-white shadow sm:rounded-lg">
@@ -65,28 +115,89 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <div className="bg-white shadow sm:rounded-lg">
-        <ul role="list" className="divide-y divide-gray-200">
-          {settingsSections.map((section) => (
-            <li key={section.href}>
-              <Link href={section.href} className="block hover:bg-gray-50 px-4 py-4 sm:px-6">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <section.icon className="h-6 w-6 text-gray-400" aria-hidden="true" />
+      {userManagementSections.length > 0 && (
+        <div className="bg-white shadow sm:rounded-lg">
+          <div className="px-4 py-3 border-b border-gray-200">
+            <h2 className="text-lg font-medium text-gray-900">User Management</h2>
+          </div>
+          <ul role="list" className="divide-y divide-gray-200">
+            {userManagementSections.map((section) => (
+              <li key={section.href}>
+                <Link href={section.href} className="block hover:bg-gray-50 px-4 py-4 sm:px-6">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <section.icon className="h-6 w-6 text-gray-400" aria-hidden="true" />
+                    </div>
+                    <div className="ml-4 flex-1">
+                      <p className="text-sm font-medium text-gray-900">{section.name}</p>
+                      <p className="text-sm text-gray-500">{section.description}</p>
+                    </div>
+                    <div>
+                      <ChevronRightIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
+                    </div>
                   </div>
-                  <div className="ml-4 flex-1">
-                    <p className="text-sm font-medium text-gray-900">{section.name}</p>
-                    <p className="text-sm text-gray-500">{section.description}</p>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {systemSettingsSections.length > 0 && (
+        <div className="bg-white shadow sm:rounded-lg">
+          <div className="px-4 py-3 border-b border-gray-200">
+            <h2 className="text-lg font-medium text-gray-900">System Settings</h2>
+          </div>
+          <ul role="list" className="divide-y divide-gray-200">
+            {systemSettingsSections.map((section) => (
+              <li key={section.href}>
+                <Link href={section.href} className="block hover:bg-gray-50 px-4 py-4 sm:px-6">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <section.icon className="h-6 w-6 text-gray-400" aria-hidden="true" />
+                    </div>
+                    <div className="ml-4 flex-1">
+                      <p className="text-sm font-medium text-gray-900">{section.name}</p>
+                      <p className="text-sm text-gray-500">{section.description}</p>
+                    </div>
+                    <div>
+                      <ChevronRightIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
+                    </div>
                   </div>
-                  <div>
-                    <ChevronRightIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {monitoringSections.length > 0 && (
+        <div className="bg-white shadow sm:rounded-lg">
+          <div className="px-4 py-3 border-b border-gray-200">
+            <h2 className="text-lg font-medium text-gray-900">Monitoring & Logs</h2>
+          </div>
+          <ul role="list" className="divide-y divide-gray-200">
+            {monitoringSections.map((section) => (
+              <li key={section.href}>
+                <Link href={section.href} className="block hover:bg-gray-50 px-4 py-4 sm:px-6">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <section.icon className="h-6 w-6 text-gray-400" aria-hidden="true" />
+                    </div>
+                    <div className="ml-4 flex-1">
+                      <p className="text-sm font-medium text-gray-900">{section.name}</p>
+                      <p className="text-sm text-gray-500">{section.description}</p>
+                    </div>
+                    <div>
+                      <ChevronRightIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
+                    </div>
                   </div>
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

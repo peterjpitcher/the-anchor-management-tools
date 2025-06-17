@@ -2,6 +2,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
+import { checkUserPermission } from './rbac';
 
 function getSupabaseAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -15,6 +16,12 @@ function getSupabaseAdminClient() {
 }
 
 export async function toggleCustomerSmsOptIn(customerId: string, optIn: boolean) {
+  // Check permission
+  const hasPermission = await checkUserPermission('customers', 'edit');
+  if (!hasPermission) {
+    return { error: 'Insufficient permissions' };
+  }
+
   const supabase = getSupabaseAdminClient();
   if (!supabase) {
     return { error: 'Failed to initialize database connection' };
@@ -47,6 +54,12 @@ export async function toggleCustomerSmsOptIn(customerId: string, optIn: boolean)
 }
 
 export async function getCustomerSmsStats(customerId: string) {
+  // Check permission
+  const hasPermission = await checkUserPermission('customers', 'view');
+  if (!hasPermission) {
+    return { error: 'Insufficient permissions' };
+  }
+
   const supabase = getSupabaseAdminClient();
   if (!supabase) {
     return { error: 'Failed to initialize database connection' };

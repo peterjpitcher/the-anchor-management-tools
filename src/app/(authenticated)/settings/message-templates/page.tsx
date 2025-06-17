@@ -9,19 +9,24 @@ interface MessageTemplate {
   id: string
   name: string
   description: string | null
-  template_type: 'booking_confirmation' | 'reminder_7_day' | 'reminder_24_hour' | 'custom'
+  template_type: 'booking_confirmation' | 'reminder_7_day' | 'reminder_24_hour' | 'booking_reminder_confirmation' | 'booking_reminder_7_day' | 'booking_reminder_24_hour' | 'custom'
   content: string
   variables: string[]
   is_default: boolean
   is_active: boolean
   character_count: number
   estimated_segments: number
+  send_timing?: 'immediate' | '1_hour' | '12_hours' | '24_hours' | '7_days' | 'custom'
+  custom_timing_hours?: number | null
 }
 
 const TEMPLATE_TYPES = {
   booking_confirmation: 'Booking Confirmation',
   reminder_7_day: '7-Day Reminder',
   reminder_24_hour: '24-Hour Reminder',
+  booking_reminder_confirmation: 'Booking Reminder Confirmation (0 seats)',
+  booking_reminder_7_day: '7-Day Booking Reminder (0 seats)',
+  booking_reminder_24_hour: '24-Hour Booking Reminder (0 seats)',
   custom: 'Custom'
 }
 
@@ -37,6 +42,15 @@ const AVAILABLE_VARIABLES = {
   booking_reference: 'Booking reference number'
 }
 
+const TIMING_OPTIONS = {
+  immediate: 'Send immediately',
+  '1_hour': '1 hour before event',
+  '12_hours': '12 hours before event',
+  '24_hours': '24 hours before event',
+  '7_days': '7 days before event',
+  custom: 'Custom timing'
+}
+
 export default function MessageTemplatesPage() {
   const supabase = useSupabase()
   const [templates, setTemplates] = useState<MessageTemplate[]>([])
@@ -46,9 +60,11 @@ export default function MessageTemplatesPage() {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    template_type: 'custom' as 'booking_confirmation' | 'reminder_7_day' | 'reminder_24_hour' | 'custom',
+    template_type: 'custom' as 'booking_confirmation' | 'reminder_7_day' | 'reminder_24_hour' | 'booking_reminder_confirmation' | 'booking_reminder_7_day' | 'booking_reminder_24_hour' | 'custom',
     content: '',
-    variables: [] as string[]
+    variables: [] as string[],
+    send_timing: 'immediate' as 'immediate' | '1_hour' | '12_hours' | '24_hours' | '7_days' | 'custom',
+    custom_timing_hours: null as number | null
   })
   const [preview, setPreview] = useState('')
 
@@ -108,7 +124,9 @@ export default function MessageTemplatesPage() {
             name: formData.name,
             description: formData.description,
             content: formData.content,
-            variables: extractVariables(formData.content)
+            variables: extractVariables(formData.content),
+            send_timing: formData.send_timing,
+            custom_timing_hours: formData.send_timing === 'custom' ? formData.custom_timing_hours : null
           })
           .eq('id', editingTemplate.id)
 
@@ -123,7 +141,9 @@ export default function MessageTemplatesPage() {
             template_type: formData.template_type,
             content: formData.content,
             variables: extractVariables(formData.content),
-            is_default: false
+            is_default: false,
+            send_timing: formData.send_timing,
+            custom_timing_hours: formData.send_timing === 'custom' ? formData.custom_timing_hours : null
           })
 
         if (error) throw error
@@ -184,9 +204,11 @@ export default function MessageTemplatesPage() {
     setFormData({
       name: '',
       description: '',
-      template_type: 'custom' as 'booking_confirmation' | 'reminder_7_day' | 'reminder_24_hour' | 'custom',
+      template_type: 'custom' as 'booking_confirmation' | 'reminder_7_day' | 'reminder_24_hour' | 'booking_reminder_confirmation' | 'booking_reminder_7_day' | 'booking_reminder_24_hour' | 'custom',
       content: '',
-      variables: []
+      variables: [],
+      send_timing: 'immediate',
+      custom_timing_hours: null
     })
   }
 
@@ -196,7 +218,9 @@ export default function MessageTemplatesPage() {
       description: template.description || '',
       template_type: template.template_type,
       content: template.content,
-      variables: template.variables
+      variables: template.variables,
+      send_timing: template.send_timing || 'immediate',
+      custom_timing_hours: template.custom_timing_hours || null
     })
     setEditingTemplate(template)
     setShowForm(true)
@@ -285,6 +309,35 @@ export default function MessageTemplatesPage() {
                       <option key={key} value={key}>{label}</option>
                     ))}
                   </select>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Send Timing</label>
+                <select
+                  value={formData.send_timing}
+                  onChange={(e) => setFormData({ ...formData, send_timing: e.target.value as any })}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                >
+                  {Object.entries(TIMING_OPTIONS).map(([key, label]) => (
+                    <option key={key} value={key}>{label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {formData.send_timing === 'custom' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Hours before event</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="720"
+                    value={formData.custom_timing_hours || ''}
+                    onChange={(e) => setFormData({ ...formData, custom_timing_hours: e.target.value ? parseInt(e.target.value) : null })}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                    placeholder="Enter hours (1-720)"
+                  />
+                  <p className="mt-1 text-sm text-gray-500">Maximum 30 days (720 hours)</p>
                 </div>
               )}
 
@@ -395,35 +448,44 @@ export default function MessageTemplatesPage() {
                               <span>{template.character_count} characters</span>
                               <span>{template.estimated_segments} segment{template.estimated_segments !== 1 ? 's' : ''}</span>
                               <span>Variables: {template.variables.join(', ')}</span>
+                              {template.send_timing && (
+                                <span>
+                                  Timing: {
+                                    template.send_timing === 'custom' && template.custom_timing_hours 
+                                      ? `${template.custom_timing_hours} hours before`
+                                      : TIMING_OPTIONS[template.send_timing] || 'Not set'
+                                  }
+                                </span>
+                              )}
                             </div>
                           </div>
                           
-                          {!template.is_default && (
-                            <div className="flex items-center space-x-2 ml-4">
-                              <button
-                                onClick={() => toggleActive(template)}
-                                className={`text-sm ${
-                                  template.is_active
-                                    ? 'text-yellow-600 hover:text-yellow-700'
-                                    : 'text-green-600 hover:text-green-700'
-                                }`}
-                              >
-                                {template.is_active ? 'Deactivate' : 'Activate'}
-                              </button>
-                              <button
-                                onClick={() => editTemplate(template)}
-                                className="text-indigo-600 hover:text-indigo-900"
-                              >
-                                <PencilIcon className="h-5 w-5" />
-                              </button>
+                          <div className="flex items-center space-x-2 ml-4">
+                            <button
+                              onClick={() => toggleActive(template)}
+                              className={`text-sm ${
+                                template.is_active
+                                  ? 'text-yellow-600 hover:text-yellow-700'
+                                  : 'text-green-600 hover:text-green-700'
+                              }`}
+                            >
+                              {template.is_active ? 'Deactivate' : 'Activate'}
+                            </button>
+                            <button
+                              onClick={() => editTemplate(template)}
+                              className="text-indigo-600 hover:text-indigo-900"
+                            >
+                              <PencilIcon className="h-5 w-5" />
+                            </button>
+                            {!template.is_default && (
                               <button
                                 onClick={() => handleDelete(template.id)}
                                 className="text-red-600 hover:text-red-900"
                               >
                                 <TrashIcon className="h-5 w-5" />
                               </button>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))}

@@ -23,7 +23,10 @@ interface Props {
 const TEMPLATE_TYPES = {
   booking_confirmation: 'Booking Confirmation',
   reminder_7_day: '7-Day Reminder',
-  reminder_24_hour: '24-Hour Reminder'
+  reminder_24_hour: '24-Hour Reminder',
+  booking_reminder_confirmation: 'Booking Reminder Confirmation (0 seats)',
+  booking_reminder_7_day: '7-Day Booking Reminder (0 seats)',
+  booking_reminder_24_hour: '24-Hour Booking Reminder (0 seats)'
 }
 
 const AVAILABLE_VARIABLES = {

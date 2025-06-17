@@ -67,26 +67,34 @@ export default function MessagesPage() {
     <div className="container mx-auto px-4 py-8">
       <div className="mb-6 flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Messages</h1>
-          <p className="text-gray-600 mb-1">Conversations with customers</p>
+          <h1 className="text-3xl font-bold mb-2">Unread Messages</h1>
+          <p className="text-gray-600 mb-1">New conversations from customers</p>
           {totalUnreadCount > 0 && (
             <p className="text-gray-600 font-medium">{totalUnreadCount} unread message{totalUnreadCount !== 1 ? 's' : ''}</p>
           )}
         </div>
-        {totalUnreadCount > 0 && (
-          <button
-            onClick={handleMarkAllAsRead}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+        <div className="flex gap-2">
+          <Link
+            href="/messages/bulk"
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
           >
-            Mark all as read
-          </button>
-        )}
+            Send Bulk Message
+          </Link>
+          {totalUnreadCount > 0 && (
+            <button
+              onClick={handleMarkAllAsRead}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              Mark all as read
+            </button>
+          )}
+        </div>
       </div>
       
       {conversations.length === 0 ? (
         <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-          <p className="text-lg">No messages yet</p>
-          <p className="text-sm mt-2">When customers text your number, their conversations will appear here</p>
+          <p className="text-lg">No unread messages</p>
+          <p className="text-sm mt-2">All customer messages have been read</p>
         </div>
       ) : (
         <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -95,9 +103,7 @@ export default function MessagesPage() {
               <Link
                 key={conversation.customer.id}
                 href={`/customers/${conversation.customer.id}`}
-                className={`block p-4 hover:bg-gray-50 transition-colors ${
-                  conversation.unreadCount > 0 ? 'bg-blue-50 hover:bg-blue-100' : ''
-                }`}
+                className="block p-4 bg-blue-50 hover:bg-blue-100 transition-colors"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex-1">

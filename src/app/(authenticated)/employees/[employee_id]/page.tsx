@@ -1,6 +1,5 @@
 'use client'
 
-import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { Employee, EmployeeAttachment, AttachmentCategory, EmployeeEmergencyContact, EmployeeFinancialDetails, EmployeeHealthRecord } from '@/types/database';
@@ -17,79 +16,81 @@ import EmergencyContactsTab from '@/components/EmergencyContactsTab';
 import FinancialDetailsTab from '@/components/FinancialDetailsTab';
 import HealthRecordsTab from '@/components/HealthRecordsTab';
 import { formatDate } from '@/lib/dateUtils';
-
-async function getEmployee(id: string): Promise<Employee | null> {
-  const { data, error } = await supabase
-    .from('employees')
-    .select('*')
-    .eq('employee_id', id)
-    .single();
-
-  if (error) {
-    console.error('Error fetching employee:', error);
-    return null;
-  }
-  return data;
-}
-
-async function getEmployeeAttachments(employeeId: string): Promise<EmployeeAttachment[] | null> {
-  const { data, error } = await supabase
-    .from('employee_attachments')
-    .select('*')
-    .eq('employee_id', employeeId)
-    .order('uploaded_at', { ascending: false });
-  if (error) {
-    console.error('Error fetching employee attachments:', error);
-    return null;
-  }
-  return data;
-}
-
-async function getFinancialDetails(employeeId: string): Promise<EmployeeFinancialDetails | null> {
-    const { data, error } = await supabase
-        .from('employee_financial_details')
-        .select('*')
-        .eq('employee_id', employeeId)
-        .maybeSingle();
-    if (error) { 
-        console.error('Error fetching financial details:', error);
-    }
-    return data;
-}
-
-async function getHealthRecord(employeeId: string): Promise<EmployeeHealthRecord | null> {
-    const { data, error } = await supabase
-        .from('employee_health_records')
-        .select('*')
-        .eq('employee_id', employeeId)
-        .maybeSingle();
-    if (error) { 
-        console.error('Error fetching health record:', error);
-    }
-    return data;
-}
-
-async function getAttachmentCategories(): Promise<Map<string, string>> {
-  const { data, error } = await supabase.from('attachment_categories').select('category_id, category_name');
-  const map = new Map<string, string>();
-  if (error) {
-    console.error('Error fetching attachment categories:', error);
-    return map;
-  }
-  data?.forEach(cat => map.set(cat.category_id, cat.category_name));
-  return map;
-}
+import { useSupabase } from '@/components/providers/SupabaseProvider';
 
 export const dynamic = 'force-dynamic';
 
 export default function EmployeeDetailPage({ params: paramsPromise }: { params: Promise<{ employee_id: string }> }) {
   const params = use(paramsPromise);
+  const supabase = useSupabase();
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [attachments, setAttachments] = useState<EmployeeAttachment[] | null>(null);
   const [attachmentCategoriesMap, setAttachmentCategoriesMap] = useState<Map<string, string>>(new Map());
   const [financialDetails, setFinancialDetails] = useState<EmployeeFinancialDetails | null>(null);
   const [healthRecord, setHealthRecord] = useState<EmployeeHealthRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const getEmployee = async (id: string): Promise<Employee | null> => {
+    const { data, error } = await supabase
+      .from('employees')
+      .select('*')
+      .eq('employee_id', id)
+      .single();
+
+    if (error) {
+      console.error('Error fetching employee:', error);
+      return null;
+    }
+    return data;
+  };
+
+  const getEmployeeAttachments = async (employeeId: string): Promise<EmployeeAttachment[] | null> => {
+    const { data, error } = await supabase
+      .from('employee_attachments')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .order('uploaded_at', { ascending: false });
+    if (error) {
+      console.error('Error fetching employee attachments:', error);
+      return null;
+    }
+    return data;
+  };
+
+  const getFinancialDetails = async (employeeId: string): Promise<EmployeeFinancialDetails | null> => {
+    const { data, error } = await supabase
+      .from('employee_financial_details')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .maybeSingle();
+    if (error) { 
+      console.error('Error fetching financial details:', error);
+    }
+    return data;
+  };
+
+  const getHealthRecord = async (employeeId: string): Promise<EmployeeHealthRecord | null> => {
+    const { data, error } = await supabase
+      .from('employee_health_records')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .maybeSingle();
+    if (error) { 
+      console.error('Error fetching health record:', error);
+    }
+    return data;
+  };
+
+  const getAttachmentCategories = async (): Promise<Map<string, string>> => {
+    const { data, error } = await supabase.from('attachment_categories').select('category_id, category_name');
+    const map = new Map<string, string>();
+    if (error) {
+      console.error('Error fetching attachment categories:', error);
+      return map;
+    }
+    data?.forEach(cat => map.set(cat.category_id, cat.category_name));
+    return map;
+  };
 
   const loadData = useCallback(async () => {
     if (!params.employee_id) {
@@ -120,7 +121,7 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
     } finally {
         setIsLoading(false);
     }
-  }, [params.employee_id]);
+  }, [params.employee_id, supabase]);
 
   useEffect(() => {
     loadData();

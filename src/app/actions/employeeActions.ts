@@ -11,6 +11,7 @@ import { z } from 'zod';
 import type { ActionFormState, NoteFormState, AttachmentFormState, DeleteState } from '@/types/actions';
 import { getConstraintErrorMessage, isPostgrestError } from '@/lib/dbErrorHandler';
 import { logAuditEvent, getCurrentUserForAudit } from '@/lib/auditLog';
+import { checkUserPermission } from './rbac';
 
 function getSupabaseAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -76,6 +77,12 @@ async function handleFormAction<T extends z.ZodType<any, any>>(
 
 // Employee Actions
 export async function addEmployee(prevState: ActionFormState, formData: FormData): Promise<ActionFormState> {
+    // Check permission
+    const hasPermission = await checkUserPermission('employees', 'create');
+    if (!hasPermission) {
+        return { type: 'error', message: 'Insufficient permissions to create employees.' };
+    }
+
     const result = employeeSchema.safeParse(Object.fromEntries(formData.entries()));
 
     if (!result.success) {
@@ -117,6 +124,12 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
 }
 
 export async function updateEmployee(prevState: ActionFormState, formData: FormData): Promise<ActionFormState> {
+    // Check permission
+    const hasPermission = await checkUserPermission('employees', 'edit');
+    if (!hasPermission) {
+        return { type: 'error', message: 'Insufficient permissions to update employees.' };
+    }
+
     const employeeId = formData.get('employee_id') as string;
     const result = employeeSchema.safeParse(Object.fromEntries(formData.entries()));
     
@@ -170,6 +183,12 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
 }
 
 export async function deleteEmployee(prevState: DeleteState, formData: FormData): Promise<DeleteState> {
+    // Check permission
+    const hasPermission = await checkUserPermission('employees', 'delete');
+    if (!hasPermission) {
+        return { type: 'error', message: 'Insufficient permissions to delete employees.' };
+    }
+
     const employeeId = formData.get('employee_id') as string;
     if (!employeeId) return { type: 'error', message: 'Employee ID is missing.' };
 
@@ -239,6 +258,12 @@ export async function getEmployeeList(): Promise<{ id: string; name: string; }[]
 
 // Note Actions
 export async function addEmployeeNote(prevState: NoteFormState, formData: FormData): Promise<NoteFormState> {
+    // Check permission
+    const hasPermission = await checkUserPermission('employees', 'edit');
+    if (!hasPermission) {
+        return { type: 'error', message: 'Insufficient permissions to add employee notes.' };
+    }
+
     const result = noteSchema.safeParse(Object.fromEntries(formData.entries()));
     if (!result.success) {
         return { type: 'error', message: 'Invalid data', errors: result.error.flatten().fieldErrors };
@@ -272,6 +297,12 @@ export async function addEmployeeAttachment(
   prevState: AttachmentFormState,
   formData: FormData
 ): Promise<AttachmentFormState> {
+  // Check permission
+  const hasPermission = await checkUserPermission('employees', 'upload_documents');
+  if (!hasPermission) {
+    return { type: 'error', message: 'Insufficient permissions to upload employee documents.' };
+  }
+
   // 1. Validate form data
   const result = addAttachmentSchema.safeParse(Object.fromEntries(formData.entries()));
   if (!result.success) {
@@ -362,6 +393,12 @@ export async function addEmployeeAttachment(
 }
 
 export async function getAttachmentSignedUrl(storagePath: string): Promise<{ url: string | null; error: string | null }> {
+  // Check permission
+  const hasPermission = await checkUserPermission('employees', 'view_documents');
+  if (!hasPermission) {
+    return { url: null, error: 'Insufficient permissions to view employee documents.' };
+  }
+
   const supabase = getSupabaseAdminClient();
   if (!supabase) {
     return { url: null, error: 'Database connection failed.' };
@@ -390,6 +427,12 @@ export async function getAttachmentSignedUrl(storagePath: string): Promise<{ url
 }
 
 export async function deleteEmployeeAttachment(prevState: DeleteState, formData: FormData): Promise<DeleteState> {
+    // Check permission
+    const hasPermission = await checkUserPermission('employees', 'delete_documents');
+    if (!hasPermission) {
+        return { type: 'error', message: 'Insufficient permissions to delete employee documents.' };
+    }
+
     const result = deleteAttachmentSchema.safeParse(Object.fromEntries(formData.entries()));
     if(!result.success){
         return { type: 'error', message: 'Invalid IDs provided.', errors: result.error.flatten().fieldErrors };
@@ -424,6 +467,15 @@ export async function addEmergencyContact(
   prevState: ActionFormState | null,
   formData: FormData
 ): Promise<ActionFormState | null> {
+  // Check permission
+  const hasPermission = await checkUserPermission('employees', 'edit');
+  if (!hasPermission) {
+    return {
+      type: 'error',
+      message: 'Insufficient permissions to add emergency contacts.',
+    };
+  }
+
   const validatedFields = EmergencyContactSchema.safeParse(
     Object.fromEntries(formData.entries())
   );
@@ -475,6 +527,15 @@ export async function upsertFinancialDetails(
   prevState: ActionFormState | null,
   formData: FormData
 ): Promise<ActionFormState | null> {
+  // Check permission
+  const hasPermission = await checkUserPermission('employees', 'edit');
+  if (!hasPermission) {
+    return {
+      type: 'error',
+      message: 'Insufficient permissions to update financial details.',
+    };
+  }
+
   const validatedFields = FinancialDetailsSchema.safeParse(
     Object.fromEntries(formData.entries())
   );
@@ -534,6 +595,15 @@ export async function upsertHealthRecord(
   prevState: ActionFormState | null,
   formData: FormData
 ): Promise<ActionFormState | null> {
+  // Check permission
+  const hasPermission = await checkUserPermission('employees', 'edit');
+  if (!hasPermission) {
+    return {
+      type: 'error',
+      message: 'Insufficient permissions to update health records.',
+    };
+  }
+
   const data: any = Object.fromEntries(formData.entries());
 
   // Convert checkbox values from 'on' to boolean
