@@ -46,19 +46,41 @@ No test runner is currently configured. When adding tests, check with the user f
    - Categories: legal_records, health_records, certifications, other
 
 4. **Database Schema**: 
-   - Core entities: events, customers, bookings, employees
+   - Core entities: events, customers, bookings, employees, messages
    - Employee system includes notes (timestamped) and attachments (categorized)
    - All tables use UUID primary keys and cascade deletes
    - Row Level Security enabled on all tables
-   - Custom database functions for triggers and business logic
+   - Important views: `customer_messaging_health`, `message_templates_with_timing`
+   - Key functions: `user_has_permission()`, `get_message_template()`, `log_audit_event()`
 
-5. **Cron Jobs**: Automated SMS reminders run daily at 9 AM
+5. **RBAC System**: Comprehensive role-based access control
+   - System roles: `super_admin`, `manager`, `staff`
+   - Module-based permissions (view, create, edit, delete, manage)
+   - Permission checks via `PermissionContext` (client) and `user_has_permission()` (server)
+   - Middleware integration for route-level protection
+
+6. **Messaging Architecture**: Advanced SMS system with templates
+   - Dynamic message templates with variable substitution
+   - Configurable timing: immediate, 1hr, 12hr, 24hr, 7 days, custom
+   - Event-specific template overrides
+   - Two-way SMS support with reply handling
+   - Automatic customer creation from unknown numbers
+   - SMS health monitoring with automatic suspension rules
+
+7. **Audit Logging**: Comprehensive tracking for compliance
+   - Immutable `audit_logs` table (no updates/deletes allowed)
+   - Tracks: login/logout, CRUD operations, exports, document access
+   - Automatic redaction of sensitive data
+   - Client info tracking (IP, user agent)
+   - Integration via `logAuditEvent()` in server actions
+
+8. **Cron Jobs**: Automated SMS reminders run daily at 9 AM
    - Primary: Vercel cron at `/api/cron/send-reminders`
    - Backup: GitHub Actions workflow
-   - Sends 7-day and 24-hour booking reminders
+   - Sends reminders based on template timing configuration
    - Secured with `CRON_SECRET_KEY` environment variable
 
-6. **Form Data Pattern**: When passing data to server actions:
+9. **Form Data Pattern**: When passing data to server actions:
    - Use hidden input fields for additional data
    - Avoid `.bind()` pattern (deprecated in React 19)
    - Example: `<input type="hidden" name="customerId" value={customerId} />`
@@ -104,6 +126,16 @@ Required in `.env.local`:
 - Added comprehensive employee management system with notes and attachments
 - Webhook logging for Twilio SMS status tracking
 - Domain updated to management.orangejelly.co.uk
+- RBAC system with granular permissions
+- Two-way SMS messaging with reply handling
+- Audit logging system with immutable records
+- SMS health monitoring dashboard
+
+### Monitoring & Debugging Tools
+- **SMS Health Dashboard**: `/settings/sms-health` - Monitor delivery rates and customer messaging status
+- **Webhook Logs**: Database table for debugging webhook issues
+- **Audit Logs**: Comprehensive activity tracking for compliance
+- **Messages Interface**: View and reply to SMS conversations at `/messages`
 
 ### Important Reminders
 1. **Database Migrations**: Always notify the user when creating new migrations in `/supabase/migrations/`. The user needs to run migrations manually in their Supabase dashboard or via CLI.
@@ -134,3 +166,9 @@ Required in `.env.local`:
    - Generate signed URLs for file access (24-hour expiry)
    - Never expose service role key to client
    - Validate all user inputs with Zod schemas
+
+### Webhook Endpoints
+- `/api/webhooks/twilio/status` - SMS delivery status updates
+- `/api/webhooks/twilio/reply` - Incoming SMS messages
+- `/api/webhooks/debug/*` - Debug endpoints for testing webhook functionality
+- All webhook activity logged to `webhook_logs` table for debugging

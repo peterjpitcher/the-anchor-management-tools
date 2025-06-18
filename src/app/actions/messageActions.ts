@@ -113,8 +113,8 @@ export async function sendSmsReply(customerId: string, message: string) {
   }
 
   try {
-    const { Twilio } = await import('twilio')
-    const client = new Twilio(accountSid, authToken)
+    const twilio = (await import('twilio')).default
+    const client = twilio(accountSid, authToken)
     
     const twilioMessage = await client.messages.create({
       body: message,

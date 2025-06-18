@@ -19,6 +19,7 @@ export default function EventsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingEvent, setEditingEvent] = useState<Event | null>(null)
+  const [showPastEvents, setShowPastEvents] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -252,23 +253,33 @@ export default function EventsPage() {
 
       {upcomingEvents.length > 0 && (
         <div>
-          <h2 className="text-lg font-medium text-gray-900 mb-2">Upcoming Events</h2>
+          <h2 className="text-lg font-medium text-gray-900 mb-2">Upcoming Events ({upcomingEvents.length})</h2>
           <EventsList events={upcomingEvents} />
         </div>
       )}
       
       {pastEvents.length > 0 && (
         <div>
-          <h2 className="text-lg font-medium text-gray-900 mb-2">Past Events</h2>
-          <EventsList events={pastEvents} />
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-lg font-medium text-gray-900">Past Events ({pastEvents.length})</h2>
+            <button
+              onClick={() => setShowPastEvents(!showPastEvents)}
+              className="text-sm text-indigo-600 hover:text-indigo-900 font-medium"
+            >
+              {showPastEvents ? 'Hide' : 'Show'} Past Events
+            </button>
+          </div>
+          {showPastEvents && <EventsList events={pastEvents} />}
         </div>
       )}
       
-      {events.length === 0 && !isLoading && (
+      {upcomingEvents.length === 0 && !showPastEvents && !isLoading && (
          <div className="bg-white shadow sm:rounded-lg text-center py-12">
-            <h3 className="text-lg font-medium text-gray-900">No events found</h3>
+            <h3 className="text-lg font-medium text-gray-900">No upcoming events</h3>
             <p className="mt-1 text-sm text-gray-500">
-                Get started by creating a new event.
+                {pastEvents.length > 0 
+                  ? 'All events are in the past. Click "Show Past Events" above to view them.'
+                  : 'Get started by creating a new event.'}
             </p>
         </div>
       )}
