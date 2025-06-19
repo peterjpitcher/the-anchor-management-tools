@@ -37,7 +37,6 @@ async function importMissedMessages() {
     // Filter for inbound messages only
     const inboundMessages = messages.filter(msg => 
       msg.direction === 'inbound' || 
-      msg.direction === 'inbound-api' ||
       (msg.to === TWILIO_PHONE_NUMBER && msg.from !== TWILIO_PHONE_NUMBER)
     );
 
