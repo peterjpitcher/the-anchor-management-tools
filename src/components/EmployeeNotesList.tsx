@@ -1,6 +1,6 @@
 'use client';
 
-import { supabase } from '@/lib/supabase';
+import { useSupabase } from '@/components/providers/SupabaseProvider';
 import type { EmployeeNote } from '@/types/database';
 import { UserCircleIcon } from '@heroicons/react/24/solid';
 import { useEffect, useState, useCallback } from 'react';
@@ -22,6 +22,7 @@ interface DisplayEmployeeNote extends EmployeeNote {
 }
 
 export default function EmployeeNotesList({ employeeId }: EmployeeNotesListProps) {
+  const supabase = useSupabase();
   const [notesWithAuthors, setNotesWithAuthors] = useState<DisplayEmployeeNote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

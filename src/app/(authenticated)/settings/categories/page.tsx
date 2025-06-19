@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { PlusIcon, TrashIcon, PencilIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 
@@ -13,6 +13,7 @@ interface AttachmentCategory {
 }
 
 export default function CategoriesPage() {
+  const supabase = useSupabase();
   const [categories, setCategories] = useState<AttachmentCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

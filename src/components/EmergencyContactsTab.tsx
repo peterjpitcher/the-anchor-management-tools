@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition } from 'react';
 import type { EmployeeEmergencyContact } from '@/types/database';
-import { supabase } from '@/lib/supabase';
+import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { Button } from '@/components/ui/Button';
 import AddEmergencyContactModal from '@/components/modals/AddEmergencyContactModal';
 
@@ -10,25 +10,26 @@ interface EmergencyContactsTabProps {
   employeeId: string;
 }
 
-async function getEmergencyContacts(employeeId: string): Promise<EmployeeEmergencyContact[]> {
-  const { data, error } = await supabase
-    .from('employee_emergency_contacts')
-    .select('*')
-    .eq('employee_id', employeeId)
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.error('Error fetching emergency contacts:', error);
-    return [];
-  }
-  return data || [];
-}
-
 export default function EmergencyContactsTab({ employeeId }: EmergencyContactsTabProps) {
+  const supabase = useSupabase();
   const [contacts, setContacts] = useState<EmployeeEmergencyContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+
+  async function getEmergencyContacts(employeeId: string): Promise<EmployeeEmergencyContact[]> {
+    const { data, error } = await supabase
+      .from('employee_emergency_contacts')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching emergency contacts:', error);
+      return [];
+    }
+    return data || [];
+  }
 
   const fetchContacts = async () => {
     setLoading(true);
@@ -95,4 +96,4 @@ export default function EmergencyContactsTab({ employeeId }: EmergencyContactsTa
       )}
     </div>
   );
-} 
+}
