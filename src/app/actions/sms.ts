@@ -263,6 +263,20 @@ export async function sendEventReminders() {
       try {
         const eventDate = new Date(booking.event.date)
         const isNextDay = eventDate.toISOString().split('T')[0] === tomorrowStr
+        const reminderType = isNextDay ? '24_hour' : '7_day'
+        
+        // Check if reminder has already been sent
+        const { data: existingReminder } = await supabase
+          .from('booking_reminders')
+          .select('id')
+          .eq('booking_id', booking.id)
+          .eq('reminder_type', reminderType)
+          .single()
+        
+        if (existingReminder) {
+          console.log(`Skipping ${reminderType} reminder for booking ${booking.id} - already sent`)
+          continue
+        }
         
         // Prepare variables for template
         const templateVariables = {
@@ -327,7 +341,7 @@ export async function sendEventReminders() {
         const twilioMessage = await twilioClientInstance.messages.create(messageParams)
         
         // Store the message in the database for tracking
-        const { error: messageError } = await supabase
+        const { data: insertedMessage, error: messageError } = await supabase
           .from('messages')
           .insert({
             customer_id: booking.customer.id,
@@ -340,14 +354,30 @@ export async function sendEventReminders() {
             from_number: twilioMessage.from || process.env.TWILIO_PHONE_NUMBER || '',
             to_number: twilioMessage.to,
             message_type: 'sms'
-          });
+          })
+          .select()
+          .single();
 
         if (messageError) {
           console.error('Failed to store reminder message in database:', messageError);
           // Don't throw - SMS was sent successfully
         }
         
-        console.log(`Reminder sent to ${booking.customer.first_name} for ${booking.event.name}`)
+        // Record that this reminder has been sent
+        const { error: reminderError } = await supabase
+          .from('booking_reminders')
+          .insert({
+            booking_id: booking.id,
+            reminder_type: reminderType,
+            message_id: insertedMessage?.id || null
+          })
+        
+        if (reminderError) {
+          console.error('Failed to record sent reminder:', reminderError);
+          // Don't throw - SMS was sent successfully
+        }
+        
+        console.log(`${reminderType} reminder sent to ${booking.customer.first_name} for ${booking.event.name}`)
       } catch (error) {
         console.error(`Failed to send reminder for booking ${booking.id}:`, error)
       }
