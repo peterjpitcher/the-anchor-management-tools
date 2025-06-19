@@ -1,6 +1,6 @@
 import { Booking, Event, Customer } from '@/types/database'
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useSupabase } from '@/components/providers/SupabaseProvider'
 import toast from 'react-hot-toast'
 import { MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import { formatDate } from '@/lib/dateUtils'
@@ -16,6 +16,7 @@ interface BookingFormProps {
 }
 
 export function BookingForm({ booking, event, customer: preselectedCustomer, onSubmit, onCancel }: BookingFormProps) {
+  const supabase = useSupabase()
   const [customerId, setCustomerId] = useState(booking?.customer_id ?? preselectedCustomer?.id ?? '')
   const [seats, setSeats] = useState(booking?.seats?.toString() ?? '')
   const [notes, setNotes] = useState(booking?.notes ?? '')

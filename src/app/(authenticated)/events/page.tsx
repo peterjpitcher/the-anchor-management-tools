@@ -1,7 +1,7 @@
 'use client'
 
 import { Event } from '@/types/database'
-import { supabase } from '@/lib/supabase'
+import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { useEffect, useState } from 'react'
 import { EventForm } from '@/components/EventForm'
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
@@ -15,6 +15,7 @@ type EventWithBookings = Event & {
 }
 
 export default function EventsPage() {
+  const supabase = useSupabase()
   const [events, setEvents] = useState<EventWithBookings[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)

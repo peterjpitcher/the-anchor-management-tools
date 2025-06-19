@@ -1,6 +1,6 @@
 'use client'
 
-import { supabase } from '@/lib/supabase'
+import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { useEffect, useState, useMemo } from 'react'
 import type { Customer } from '@/types/database'
 import { CustomerForm } from '@/components/CustomerForm'
@@ -16,6 +16,7 @@ import { ChatBubbleLeftIcon } from '@heroicons/react/24/solid'
 import { getConstraintErrorMessage, isPostgrestError } from '@/lib/dbErrorHandler'
 
 export default function CustomersPage() {
+  const supabase = useSupabase()
   const [customers, setCustomers] = useState<CustomerWithLoyalty[]>([])
   const [filteredCustomers, setFilteredCustomers] = useState<CustomerWithLoyalty[]>([])
   const [isLoading, setIsLoading] = useState(true)

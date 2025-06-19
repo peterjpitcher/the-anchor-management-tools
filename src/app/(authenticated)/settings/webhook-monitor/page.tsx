@@ -1,32 +1,29 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { formatDistanceToNow } from 'date-fns'
 import Link from 'next/link'
 
-async function getWebhookLogs() {
-  const { data, error } = await supabase
-    .from('webhook_logs')
-    .select('*')
-    .order('processed_at', { ascending: false })
-    .limit(100)
-  
-  if (error) {
-    console.error('Error fetching webhook logs:', error)
-    return []
-  }
-  
-  return data || []
-}
-
 export default function WebhookMonitorPage() {
+  const supabase = useSupabase()
   const [logs, setLogs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   
-  useEffect(() => {
-    loadLogs()
-  }, [])
+  async function getWebhookLogs() {
+    const { data, error } = await supabase
+      .from('webhook_logs')
+      .select('*')
+      .order('processed_at', { ascending: false })
+      .limit(100)
+    
+    if (error) {
+      console.error('Error fetching webhook logs:', error)
+      return []
+    }
+    
+    return data || []
+  }
   
   async function loadLogs() {
     setLoading(true)
@@ -34,6 +31,10 @@ export default function WebhookMonitorPage() {
     setLogs(data)
     setLoading(false)
   }
+  
+  useEffect(() => {
+    loadLogs()
+  }, [])
   
   return (
     <div className="container mx-auto px-4 py-8">
