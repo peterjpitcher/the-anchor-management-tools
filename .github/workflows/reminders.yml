@@ -11,10 +11,6 @@ jobs:
     steps:
       - name: Check Required Secrets
         run: |
-          if [ -z "${{ secrets.VERCEL_URL }}" ]; then
-            echo "Error: VERCEL_URL secret is not set"
-            exit 1
-          fi
           if [ -z "${{ secrets.CRON_SECRET_KEY }}" ]; then
             echo "Error: CRON_SECRET_KEY secret is not set"
             exit 1
@@ -23,13 +19,8 @@ jobs:
 
       - name: Send Reminders
         run: |
-          # Normalize URL (ensure it starts with https:// and has no double slashes)
-          VERCEL_URL="${{ secrets.VERCEL_URL }}"
-          if [[ ! $VERCEL_URL =~ ^https:// ]]; then
-            VERCEL_URL="https://${VERCEL_URL}"
-          fi
-          # Remove any double slashes in the path portion (after the host)
-          VERCEL_URL=$(echo "$VERCEL_URL" | sed 's#\([^:]\)//\+#\1/#g')
+          # Use production URL directly
+          VERCEL_URL="https://management.orangejelly.co.uk"
           
           echo "Making request to: ${VERCEL_URL}/api/cron/reminders"
           echo "Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"

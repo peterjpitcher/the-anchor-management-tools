@@ -33,6 +33,15 @@ export interface Booking {
   event?: Event;
 }
 
+export interface BookingReminder {
+  id: string;
+  booking_id: string;
+  reminder_type: '24_hour' | '7_day' | '1_hour' | '12_hour' | 'custom';
+  sent_at: string;
+  message_id: string | null;
+  created_at: string;
+}
+
 export interface Employee {
   employee_id: string; // UUID
   first_name: string;
