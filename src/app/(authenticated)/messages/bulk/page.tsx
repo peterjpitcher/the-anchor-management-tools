@@ -5,6 +5,7 @@ import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { sendBulkSMS } from '@/app/actions/sms'
 import toast from 'react-hot-toast'
 import Link from 'next/link'
+import { formatDate } from '@/lib/dateUtils'
 import { 
   UserGroupIcon, 
   FunnelIcon,
@@ -13,7 +14,8 @@ import {
   XCircleIcon,
   ExclamationTriangleIcon,
   ArrowLeftIcon,
-  MagnifyingGlassIcon
+  MagnifyingGlassIcon,
+  CalendarIcon
 } from '@heroicons/react/24/outline'
 
 interface Customer {
@@ -24,8 +26,18 @@ interface Customer {
   sms_opt_in: boolean | null
   created_at: string
   total_bookings?: number
+  event_bookings?: {
+    event_id: string
+    seats: number | null
+  }[]
 }
 
+interface Event {
+  id: string
+  name: string
+  date: string
+  time: string
+}
 
 interface FilterOptions {
   smsOptIn: 'all' | 'opted_in' | 'not_opted_out'
@@ -33,6 +45,9 @@ interface FilterOptions {
   createdAfter: string
   createdBefore: string
   searchTerm: string
+  eventId: string
+  eventAttendance: 'all' | 'attending' | 'not_attending'
+  bookingType: 'all' | 'bookings_only' | 'reminders_only'
 }
 
 export default function BulkMessagePage() {
@@ -43,12 +58,16 @@ export default function BulkMessagePage() {
   const [customMessage, setCustomMessage] = useState('')
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
+  const [events, setEvents] = useState<Event[]>([])
   const [filters, setFilters] = useState<FilterOptions>({
     smsOptIn: 'opted_in',
     hasBookings: 'all',
     createdAfter: '',
     createdBefore: '',
-    searchTerm: ''
+    searchTerm: '',
+    eventId: '',
+    eventAttendance: 'all',
+    bookingType: 'all'
   })
   const [showPreview, setShowPreview] = useState(false)
 
@@ -62,25 +81,37 @@ export default function BulkMessagePage() {
 
   async function loadData() {
     try {
-      // Load customers with booking count
+      // Load customers with booking count and event bookings
       const { data: customersData, error: customersError } = await supabase
         .from('customers')
         .select(`
           *,
-          bookings(count)
+          bookings(count),
+          event_bookings:bookings(event_id, seats)
         `)
         .order('first_name', { ascending: true })
         .order('last_name', { ascending: true })
 
       if (customersError) throw customersError
 
-      // Process customer data to include booking count
+      // Load events
+      const { data: eventsData, error: eventsError } = await supabase
+        .from('events')
+        .select('*')
+        .order('date', { ascending: false })
+        .order('time', { ascending: false })
+
+      if (eventsError) throw eventsError
+
+      // Process customer data to include booking count and event bookings
       const processedCustomers = customersData?.map(customer => ({
         ...customer,
-        total_bookings: customer.bookings?.[0]?.count || 0
+        total_bookings: customer.bookings?.[0]?.count || 0,
+        event_bookings: customer.event_bookings || []
       })) || []
 
       setCustomers(processedCustomers)
+      setEvents(eventsData || [])
     } catch (error) {
       console.error('Error loading data:', error)
       toast.error('Failed to load data')
@@ -104,6 +135,34 @@ export default function BulkMessagePage() {
       filtered = filtered.filter(c => (c.total_bookings || 0) > 0)
     } else if (filters.hasBookings === 'without_bookings') {
       filtered = filtered.filter(c => (c.total_bookings || 0) === 0)
+    }
+
+    // Event attendance filter
+    if (filters.eventId && filters.eventAttendance !== 'all') {
+      if (filters.eventAttendance === 'attending') {
+        filtered = filtered.filter(c => 
+          c.event_bookings?.some(b => b.event_id === filters.eventId)
+        )
+        
+        // Further filter by booking type if attending an event
+        if (filters.bookingType !== 'all') {
+          filtered = filtered.filter(c => {
+            const eventBooking = c.event_bookings?.find(b => b.event_id === filters.eventId)
+            if (!eventBooking) return false
+            
+            if (filters.bookingType === 'bookings_only') {
+              return eventBooking.seats !== null && eventBooking.seats > 0
+            } else if (filters.bookingType === 'reminders_only') {
+              return eventBooking.seats === null || eventBooking.seats === 0
+            }
+            return true
+          })
+        }
+      } else if (filters.eventAttendance === 'not_attending') {
+        filtered = filtered.filter(c => 
+          !c.event_bookings?.some(b => b.event_id === filters.eventId)
+        )
+      }
     }
 
     // Date filters
@@ -150,11 +209,16 @@ export default function BulkMessagePage() {
 
   function getPreviewMessage() {
     let content = getMessageContent()
+    const selectedEvent = events.find(e => e.id === filters.eventId)
+    
     // Replace variables with sample data for preview
     content = content.replace(/{{customer_name}}/g, 'John Smith')
     content = content.replace(/{{first_name}}/g, 'John')
     content = content.replace(/{{venue_name}}/g, 'The Anchor')
     content = content.replace(/{{contact_phone}}/g, process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '+44 1234 567890')
+    content = content.replace(/{{event_name}}/g, selectedEvent?.name || 'Sample Event')
+    content = content.replace(/{{event_date}}/g, selectedEvent ? formatDate(selectedEvent.date) : '25th December')
+    content = content.replace(/{{event_time}}/g, selectedEvent?.time || '7:00 PM')
     return content
   }
 
@@ -180,6 +244,7 @@ export default function BulkMessagePage() {
     try {
       // Send messages to selected customers
       const selectedCustomersList = customers.filter(c => selectedCustomers.has(c.id))
+      const selectedEvent = events.find(e => e.id === filters.eventId)
       
       for (const customer of selectedCustomersList) {
         try {
@@ -189,6 +254,13 @@ export default function BulkMessagePage() {
           personalizedContent = personalizedContent.replace(/{{first_name}}/g, customer.first_name)
           personalizedContent = personalizedContent.replace(/{{venue_name}}/g, 'The Anchor')
           personalizedContent = personalizedContent.replace(/{{contact_phone}}/g, process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '')
+          
+          // Add event-specific variables if an event is selected
+          if (selectedEvent) {
+            personalizedContent = personalizedContent.replace(/{{event_name}}/g, selectedEvent.name)
+            personalizedContent = personalizedContent.replace(/{{event_date}}/g, formatDate(selectedEvent.date))
+            personalizedContent = personalizedContent.replace(/{{event_time}}/g, selectedEvent.time)
+          }
 
           const result = await sendBulkSMS(customer.id, personalizedContent)
           
@@ -310,6 +382,54 @@ export default function BulkMessagePage() {
               </div>
 
               <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Event Filter</label>
+                <select
+                  value={filters.eventId}
+                  onChange={(e) => setFilters({ ...filters, eventId: e.target.value })}
+                  className="block w-full rounded-md border-gray-300 shadow-sm"
+                >
+                  <option value="">All Events</option>
+                  {events.map(event => (
+                    <option key={event.id} value={event.id}>
+                      {event.name} - {new Date(event.date).toLocaleDateString()} {event.time}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {filters.eventId && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Event Attendance</label>
+                    <select
+                      value={filters.eventAttendance}
+                      onChange={(e) => setFilters({ ...filters, eventAttendance: e.target.value as any })}
+                      className="block w-full rounded-md border-gray-300 shadow-sm"
+                    >
+                      <option value="all">All Customers</option>
+                      <option value="attending">Attending Event</option>
+                      <option value="not_attending">Not Attending Event</option>
+                    </select>
+                  </div>
+
+                  {filters.eventAttendance === 'attending' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Booking Type</label>
+                      <select
+                        value={filters.bookingType}
+                        onChange={(e) => setFilters({ ...filters, bookingType: e.target.value as any })}
+                        className="block w-full rounded-md border-gray-300 shadow-sm"
+                      >
+                        <option value="all">All Types</option>
+                        <option value="bookings_only">Bookings Only (With Seats)</option>
+                        <option value="reminders_only">Reminders Only (No Seats)</option>
+                      </select>
+                    </div>
+                  )}
+                </>
+              )}
+
+              <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
                 <div className="relative">
                   <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -340,6 +460,32 @@ export default function BulkMessagePage() {
                   {selectedCustomers.size === filteredCustomers.length ? 'Deselect All' : 'Select All'}
                 </button>
               </div>
+              
+              {/* Active filters summary */}
+              {(filters.eventId || filters.smsOptIn !== 'all' || filters.hasBookings !== 'all') && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {filters.eventId && (
+                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                      <CalendarIcon className="h-3 w-3 mr-1" />
+                      {events.find(e => e.id === filters.eventId)?.name}
+                      {filters.eventAttendance === 'attending' && ' - Attending'}
+                      {filters.eventAttendance === 'not_attending' && ' - Not Attending'}
+                      {filters.bookingType === 'bookings_only' && ' (Bookings)'}
+                      {filters.bookingType === 'reminders_only' && ' (Reminders)'}
+                    </span>
+                  )}
+                  {filters.smsOptIn === 'opted_in' && (
+                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                      SMS Opted In
+                    </span>
+                  )}
+                  {filters.hasBookings === 'with_bookings' && (
+                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      Has Bookings
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             
             <div className="max-h-96 overflow-y-auto">
@@ -370,6 +516,15 @@ export default function BulkMessagePage() {
                         )}
                         {customer.sms_opt_in === false && (
                           <XCircleIcon className="h-5 w-5 text-red-500" title="SMS Opted Out" />
+                        )}
+                        {filters.eventId && customer.event_bookings?.some(b => b.event_id === filters.eventId) && (
+                          <span className="text-xs bg-indigo-100 text-indigo-800 px-2 py-1 rounded flex items-center">
+                            <CalendarIcon className="h-3 w-3 mr-1" />
+                            {(() => {
+                              const booking = customer.event_bookings?.find(b => b.event_id === filters.eventId)
+                              return booking?.seats ? `${booking.seats} seats` : 'Reminder'
+                            })()}
+                          </span>
                         )}
                         {customer.total_bookings && customer.total_bookings > 0 && (
                           <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
@@ -407,6 +562,9 @@ export default function BulkMessagePage() {
                 />
                 <p className="mt-2 text-xs text-gray-500">
                   Available variables: {"{{customer_name}}"}, {"{{first_name}}"}, {"{{venue_name}}"}, {"{{contact_phone}}"}
+                  {filters.eventId && (
+                    <>, {"{{event_name}}"}, {"{{event_date}}"}, {"{{event_time}}"}</>
+                  )}
                 </p>
               </div>
 
