@@ -56,20 +56,31 @@ BEGIN
   END LOOP;
 END $$;
 
--- Update the messages table to match standardized customer numbers
--- This ensures existing messages are linked to the correct customers
+-- Update the messages table phone numbers to match standardized format
+-- For outbound messages, update to_number
 UPDATE messages m
-SET customer_phone_number = c.mobile_number
+SET to_number = c.mobile_number
 FROM customers c
-WHERE (
-  -- Match various formats
-  m.customer_phone_number = REPLACE(c.mobile_number, '+44', '0') OR
-  m.customer_phone_number = REPLACE(c.mobile_number, '+44', '44') OR
-  m.customer_phone_number = c.mobile_number OR
-  m.customer_phone_number = '+' || c.mobile_number OR
-  m.customer_phone_number = '0' || SUBSTRING(c.mobile_number FROM 4) -- +447 -> 07
-)
-AND m.customer_id = c.id;
+WHERE m.direction = 'outbound'
+  AND m.customer_id = c.id
+  AND m.to_number != c.mobile_number;
+
+-- For inbound messages, update from_number
+UPDATE messages m
+SET from_number = c.mobile_number
+FROM customers c
+WHERE m.direction = 'inbound'
+  AND m.customer_id = c.id
+  AND m.from_number != c.mobile_number;
+
+-- Log messages update results
+DO $$
+DECLARE
+  messages_updated INTEGER;
+BEGIN
+  GET DIAGNOSTICS messages_updated = ROW_COUNT;
+  RAISE NOTICE 'Updated % message phone numbers to match standardized customer numbers', messages_updated;
+END $$;
 
 -- Final validation
 DO $$
