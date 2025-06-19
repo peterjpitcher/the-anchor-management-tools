@@ -121,19 +121,24 @@ END $$;
 -- Create an audit log entry for this migration
 INSERT INTO audit_logs (
   user_id,
-  action,
-  entity_type,
-  entity_id,
+  user_email,
+  operation_type,
+  resource_type,
+  resource_id,
+  operation_status,
   old_values,
   new_values,
   ip_address,
-  user_agent
+  user_agent,
+  additional_info
 )
 SELECT 
-  (SELECT auth.uid()),
+  auth.uid(),
+  'migration@system',
   'merge_duplicate_customers',
   'customer',
-  existing_customer_id,
+  existing_customer_id::TEXT,
+  'success',
   jsonb_build_object(
     'unknown_customer_id', unknown_customer_id,
     'phone_number', phone_number
@@ -142,8 +147,12 @@ SELECT
     'merged_at', NOW(),
     'merge_count', COUNT(*) OVER()
   ),
-  'migration',
-  'standardize_phone_numbers_migration'
+  '127.0.0.1'::INET,
+  'database_migration',
+  jsonb_build_object(
+    'migration_name', 'standardize_phone_numbers',
+    'total_merges', COUNT(*) OVER()
+  )
 FROM customer_merges
 LIMIT 1; -- Just one summary entry
 
