@@ -58,3 +58,67 @@ After running all migrations:
 2. Verify employee notes still display correctly
 3. Test file attachments upload/download
 4. Ensure all CRUD operations work as expected
+
+---
+
+# Phone Number Standardization Migrations (NEW - 2025-06-19)
+
+## Overview
+These migrations fix the issue where customers appear as "Unknown" due to inconsistent phone number formats in the database.
+
+## The Problem
+- Some customers have phone numbers stored as `07990587315` (UK format)
+- Others have `+447990587315` (E.164 international format)
+- When Twilio sends SMS webhooks with `+447990587315`, it doesn't match `07990587315` in the database
+- This creates duplicate "Unknown" customers
+
+## Migration Files
+
+### 7. `20250619_standardize_phone_numbers.sql` (HIGH PRIORITY)
+**Run this FIRST before the merge migration**
+
+This migration:
+- Converts all UK mobile numbers from `07...` to `+447...` format
+- Fixes malformed numbers (e.g., numbers with extra digits)
+- Updates the messages table to maintain correct links
+- Logs any numbers that couldn't be automatically fixed
+
+### 8. `20250619_merge_duplicate_customers.sql` (HIGH PRIORITY)
+**Run this SECOND (after the standardization migration)**
+
+This migration:
+- Finds "Unknown" customers that match existing customers by phone number
+- Merges their data (messages, bookings) into the existing customer
+- Deletes the duplicate "Unknown" customers
+- Creates audit log entries for the merges
+- Cleans up unused "Unknown" customers
+
+## How to Run These Phone Number Migrations
+
+1. Go to your Supabase dashboard
+2. Navigate to SQL Editor
+3. Copy and paste the content of `20250619_standardize_phone_numbers.sql`
+4. Run the migration
+5. Check the output messages for any warnings
+6. Copy and paste the content of `20250619_merge_duplicate_customers.sql`
+7. Run the second migration
+8. Check the output messages for merge details
+
+## What to Expect
+
+After running these migrations:
+- All customer phone numbers will be in `+447...` format
+- Duplicate "Unknown" customers will be merged with their real records
+- Messages and bookings will be correctly linked
+- Future SMS messages will match existing customers correctly
+
+## Manual Review
+
+The migrations will log any phone numbers that couldn't be automatically fixed. You may need to manually update these in the Customers page.
+
+## Verification
+
+To verify the migrations worked:
+1. Check the Customers page - you should see fewer "Unknown" customers
+2. Check the Messages page - messages should be linked to the correct customers
+3. Send a test SMS - it should match existing customers instead of creating "Unknown" ones
