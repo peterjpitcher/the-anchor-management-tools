@@ -58,6 +58,7 @@ No test runner is currently configured. When adding tests, check with the user f
    - Module-based permissions (view, create, edit, delete, manage)
    - Permission checks via `PermissionContext` (client) and `user_has_permission()` (server)
    - Middleware integration for route-level protection
+   - See `/docs/rbac.md` for detailed implementation guide
 
 6. **Messaging Architecture**: Advanced SMS system with templates
    - Dynamic message templates with variable substitution
@@ -75,7 +76,7 @@ No test runner is currently configured. When adding tests, check with the user f
    - Integration via `logAuditEvent()` in server actions
 
 8. **Cron Jobs**: Automated SMS reminders run daily at 9 AM
-   - Primary: Vercel cron at `/api/cron/send-reminders`
+   - Primary: Vercel cron at `/api/cron/reminders`
    - Backup: GitHub Actions workflow
    - Sends reminders based on template timing configuration
    - Secured with `CRON_SECRET_KEY` environment variable
@@ -106,6 +107,7 @@ Required in `.env.local`:
 - `NEXT_PUBLIC_APP_URL` - Application URL for links in SMS
 - `NEXT_PUBLIC_CONTACT_PHONE_NUMBER` - Displayed contact number
 - `CRON_SECRET_KEY` - For securing cron job endpoints
+- `SKIP_TWILIO_SIGNATURE_VALIDATION` - Optional, for testing only (NEVER set to true in production)
 
 ### UI/UX Conventions
 - **Color Palette**: 
@@ -138,7 +140,7 @@ Required in `.env.local`:
 - **Messages Interface**: View and reply to SMS conversations at `/messages`
 
 ### Important Reminders
-1. **Database Migrations**: Always notify the user when creating new migrations in `/supabase/migrations/`. The user needs to run migrations manually in their Supabase dashboard or via CLI.
+1. **Database Migrations**: Always notify the user when creating new migrations in `/supabase/migrations/`. The user needs to run migrations manually in their Supabase dashboard or via CLI. Check `supabase/migrations/README_MIGRATIONS.md` for any pending migrations.
 
 2. **Before Committing**: Always run `npm run build` locally to ensure the build passes before committing changes to GitHub.
 
@@ -166,6 +168,7 @@ Required in `.env.local`:
    - Generate signed URLs for file access (24-hour expiry)
    - Never expose service role key to client
    - Validate all user inputs with Zod schemas
+   - Always enable webhook signature validation in production
 
 ### Webhook Endpoints
 - `/api/webhooks/twilio/status` - SMS delivery status updates
