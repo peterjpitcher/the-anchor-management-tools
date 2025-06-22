@@ -341,7 +341,6 @@ export async function deleteCalendarEvent(eventId: string): Promise<boolean> {
 function getEventColor(status: string): string {
   const colors: Record<string, string> = {
     'draft': '8', // Gray
-    'tentative': '5', // Yellow
     'confirmed': '10', // Green
     'completed': '9', // Blue
     'cancelled': '11', // Red

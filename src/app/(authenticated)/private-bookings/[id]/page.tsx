@@ -105,13 +105,6 @@ const statusConfig: Record<BookingStatus, {
     borderColor: 'border-gray-200',
     icon: PencilIcon 
   },
-  tentative: { 
-    label: 'Tentative', 
-    color: 'text-amber-700', 
-    bgColor: 'bg-amber-50', 
-    borderColor: 'border-amber-200',
-    icon: ExclamationCircleIcon 
-  },
   confirmed: { 
     label: 'Confirmed', 
     color: 'text-green-700', 
@@ -274,8 +267,7 @@ function StatusModal({ isOpen, onClose, bookingId, currentStatus, onSuccess }: S
   if (!isOpen) return null
 
   const statusFlow: Record<BookingStatus, BookingStatus[]> = {
-    draft: ['tentative', 'cancelled'],
-    tentative: ['confirmed', 'cancelled'],
+    draft: ['confirmed', 'cancelled'],
     confirmed: ['completed', 'cancelled'],
     completed: [],
     cancelled: ['draft']
