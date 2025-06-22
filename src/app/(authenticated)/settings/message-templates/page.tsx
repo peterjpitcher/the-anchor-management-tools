@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import toast from 'react-hot-toast'
 import { PencilIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline'
@@ -68,15 +68,7 @@ export default function MessageTemplatesPage() {
   })
   const [preview, setPreview] = useState('')
 
-  useEffect(() => {
-    loadTemplates()
-  }, [])
-
-  useEffect(() => {
-    updatePreview()
-  }, [formData.content])
-
-  async function loadTemplates() {
+  const loadTemplates = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('message_templates')
@@ -92,9 +84,9 @@ export default function MessageTemplatesPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [supabase])
 
-  function updatePreview() {
+  const updatePreview = useCallback(() => {
     let preview = formData.content
     const sampleData: Record<string, string> = {
       customer_name: 'John Smith',
@@ -113,7 +105,15 @@ export default function MessageTemplatesPage() {
     })
 
     setPreview(preview)
-  }
+  }, [formData.content])
+
+  useEffect(() => {
+    loadTemplates()
+  }, [loadTemplates])
+
+  useEffect(() => {
+    updatePreview()
+  }, [updatePreview])
 
   async function handleSave() {
     try {
@@ -302,7 +302,7 @@ export default function MessageTemplatesPage() {
                   <label className="block text-sm font-medium text-gray-700">Type</label>
                   <select
                     value={formData.template_type}
-                    onChange={(e) => setFormData({ ...formData, template_type: e.target.value as any })}
+                    onChange={(e) => setFormData({ ...formData, template_type: e.target.value as MessageTemplate['template_type'] })}
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
                   >
                     {Object.entries(TEMPLATE_TYPES).map(([key, label]) => (
@@ -316,7 +316,7 @@ export default function MessageTemplatesPage() {
                 <label className="block text-sm font-medium text-gray-700">Send Timing</label>
                 <select
                   value={formData.send_timing}
-                  onChange={(e) => setFormData({ ...formData, send_timing: e.target.value as any })}
+                  onChange={(e) => setFormData({ ...formData, send_timing: e.target.value as 'immediate' | '1_hour' | '12_hours' | '24_hours' | '7_days' | 'custom' })}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
                 >
                   {Object.entries(TIMING_OPTIONS).map(([key, label]) => (

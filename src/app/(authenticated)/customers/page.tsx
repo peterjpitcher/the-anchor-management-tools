@@ -8,82 +8,101 @@ import { CustomerImport } from '@/components/CustomerImport'
 import { PlusIcon, ArrowUpOnSquareIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 import { CustomerName } from '@/components/CustomerName'
-import { CustomerWithLoyalty, getLoyalCustomers, sortCustomersByLoyalty } from '@/lib/customerUtils'
+import { CustomerWithLoyalty, getLoyalCustomers } from '@/lib/customerUtils'
 import { Button } from '@/components/ui/Button'
 import Link from 'next/link'
 import { getUnreadMessageCounts } from '@/app/actions/messageActions'
 import { ChatBubbleLeftIcon } from '@heroicons/react/24/solid'
 import { getConstraintErrorMessage, isPostgrestError } from '@/lib/dbErrorHandler'
+import { usePagination } from '@/hooks/usePagination'
+import { Pagination } from '@/components/Pagination'
+import { PageLoadingSkeleton } from '@/components/ui/SkeletonLoader'
 
 export default function CustomersPage() {
   const supabase = useSupabase()
-  const [customers, setCustomers] = useState<CustomerWithLoyalty[]>([])
-  const [filteredCustomers, setFilteredCustomers] = useState<CustomerWithLoyalty[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<CustomerWithLoyalty | null>(null)
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
+  const [loyalCustomerIds, setLoyalCustomerIds] = useState<string[]>([])
 
+  // Memoize query configuration to prevent unnecessary re-renders
+  const queryConfig = useMemo(() => ({
+    select: '*',
+    orderBy: { column: 'first_name', ascending: true }
+  }), [])
+
+  const paginationOptions = useMemo(() => ({
+    pageSize: 50,
+    searchTerm: searchTerm,
+    searchColumns: ['first_name', 'last_name', 'mobile_number']
+  }), [searchTerm])
+
+  // Use pagination hook with search
+  const {
+    data: customers,
+    currentPage,
+    totalPages,
+    totalCount,
+    pageSize,
+    isLoading,
+    setPage,
+    refresh: loadCustomers
+  } = usePagination<Customer>(
+    supabase,
+    'customers',
+    queryConfig,
+    paginationOptions
+  )
+
+  // Load loyal customer IDs once on mount
   useEffect(() => {
-    loadCustomers()
+    async function loadLoyalCustomers() {
+      try {
+        const loyalIds = await getLoyalCustomers(supabase)
+        setLoyalCustomerIds(loyalIds)
+      } catch (error) {
+        console.error('Error loading loyal customers:', error)
+      }
+    }
+    loadLoyalCustomers()
+  }, [supabase])
+
+  // Load unread message counts separately with a slight delay to avoid blocking initial render
+  useEffect(() => {
+    let mounted = true
+    
+    async function loadUnreadCounts() {
+      try {
+        // Small delay to let the main content render first
+        await new Promise(resolve => setTimeout(resolve, 100))
+        
+        if (!mounted) return
+        
+        const counts = await getUnreadMessageCounts()
+        if (mounted) {
+          setUnreadCounts(counts)
+        }
+      } catch (error) {
+        console.error('Error loading unread counts:', error)
+      }
+    }
+    
+    loadUnreadCounts()
+    
+    return () => {
+      mounted = false
+    }
   }, [])
 
-  async function loadCustomers() {
-    setIsLoading(true)
-    try {
-      const { data: customersData, error } = await supabase
-        .from('customers')
-        .select('*')
-        .order('first_name', { ascending: true })
-
-      if (error) throw error
-
-      // Get loyal customer IDs
-      const loyalCustomerIds = await getLoyalCustomers(supabase)
-
-      // Mark loyal customers
-      const customersWithLoyalty = (customersData || []).map(customer => ({
-        ...customer,
-        isLoyal: loyalCustomerIds.includes(customer.id)
-      }))
-
-      setCustomers(sortCustomersByLoyalty(customersWithLoyalty))
-      
-      // Load unread message counts
-      const counts = await getUnreadMessageCounts()
-      setUnreadCounts(counts)
-    } catch (error) {
-      console.error('Error loading customers:', error)
-      toast.error('Failed to load customers')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  // A memoized version of the filtered customers
-  useEffect(() => {
-    if (!searchTerm) {
-      setFilteredCustomers(customers)
-    } else {
-      const searchTermLower = searchTerm.toLowerCase()
-      const filtered = customers.filter(customer => {
-        const fullName = `${customer.first_name} ${customer.last_name}`.toLowerCase()
-        const reversedFullName = `${customer.last_name} ${customer.first_name}`.toLowerCase()
-        const mobileDigits = customer.mobile_number ? customer.mobile_number.replace(/\D/g, '') : ''
-        return (
-          fullName.includes(searchTermLower) ||
-          reversedFullName.includes(searchTermLower) ||
-          (customer.mobile_number && mobileDigits.includes(searchTermLower)) ||
-          (customer.first_name &&
-            customer.first_name.toLowerCase().includes(searchTermLower)) ||
-          (customer.last_name && customer.last_name.toLowerCase().includes(searchTermLower))
-        )
-      })
-      setFilteredCustomers(filtered)
-    }
-  }, [searchTerm, customers])
+  // Process customers with loyalty status
+  const customersWithLoyalty = useMemo(() => {
+    return customers.map(customer => ({
+      ...customer,
+      isLoyal: loyalCustomerIds.includes(customer.id)
+    }))
+  }, [customers, loyalCustomerIds])
 
   async function handleCreateCustomer(
     customerData: Omit<Customer, 'id' | 'created_at'>
@@ -167,7 +186,7 @@ export default function CustomersPage() {
   }
 
   if (isLoading) {
-    return <div className="text-black pb-20 sm:pb-6">Loading customers...</div>
+    return <PageLoadingSkeleton />
   }
 
   if (showForm || editingCustomer) {
@@ -228,13 +247,13 @@ export default function CustomersPage() {
               placeholder="Search customers..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
             />
           </div>
         </div>
       </div>
 
-      {filteredCustomers.length === 0 ? (
+      {customersWithLoyalty.length === 0 ? (
         <div className="bg-white shadow sm:rounded-lg text-center py-12">
             <h3 className="text-lg font-medium text-gray-900">No customers found</h3>
             <p className="mt-1 text-sm text-gray-500">
@@ -259,12 +278,12 @@ export default function CustomersPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredCustomers.map((customer) => (
+                {customersWithLoyalty.map((customer) => (
                   <tr key={customer.id}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="font-medium text-gray-900">
-                           <Link href={`/customers/${customer.id}`} className="text-indigo-600 hover:text-indigo-900">
+                           <Link href={`/customers/${customer.id}`} className="text-blue-600 hover:text-blue-700">
                             <CustomerName customer={customer} />
                           </Link>
                           {unreadCounts[customer.id] > 0 && (
@@ -280,7 +299,7 @@ export default function CustomersPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {customer.mobile_number ? (
-                        <a href={`tel:${customer.mobile_number}`} className="text-indigo-600 hover:text-indigo-900">
+                        <a href={`tel:${customer.mobile_number}`} className="text-blue-600 hover:text-blue-700">
                           {customer.mobile_number}
                         </a>
                       ) : (
@@ -293,13 +312,15 @@ export default function CustomersPage() {
                           setEditingCustomer(customer)
                           setShowForm(true)
                         }}
-                        className="text-indigo-600 hover:text-indigo-900"
+                        className="text-blue-600 hover:text-blue-700"
+                        aria-label="Edit customer"
                       >
                         <PencilIcon className="h-5 w-5" />
                       </button>
                       <button
                         onClick={() => handleDeleteCustomer(customer)}
                         className="text-red-600 hover:text-red-900 ml-4"
+                        aria-label="Delete customer"
                       >
                         <TrashIcon className="h-5 w-5" />
                       </button>
@@ -309,14 +330,28 @@ export default function CustomersPage() {
               </tbody>
             </table>
           </div>
+          
+          {/* Pagination for desktop */}
+          {totalPages > 1 && (
+            <div className="hidden md:block">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalCount}
+                itemsPerPage={pageSize}
+                onPageChange={setPage}
+              />
+            </div>
+          )}
+          
           <div className="block md:hidden">
             <ul className="divide-y divide-gray-200 bg-white shadow overflow-hidden sm:rounded-lg">
-            {filteredCustomers.map(customer => (
+            {customersWithLoyalty.map(customer => (
               <li key={customer.id} className="px-4 py-4 sm:px-6">
                  <div className="flex items-center justify-between">
                    <Link href={`/customers/${customer.id}`} className="block hover:bg-gray-50 flex-1 min-w-0">
                       <div className="flex items-center">
-                          <p className="text-sm font-medium text-indigo-600 truncate">
+                          <p className="text-sm font-medium text-blue-600 truncate">
                               <CustomerName customer={customer} />
                           </p>
                           {unreadCounts[customer.id] > 0 && (
@@ -335,13 +370,15 @@ export default function CustomersPage() {
                           setEditingCustomer(customer)
                           setShowForm(true)
                         }}
-                        className="p-1 text-gray-500 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                        className="p-1 text-gray-500 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                        aria-label="Edit customer"
                       >
                         <PencilIcon className="h-5 w-5" />
                       </button>
                       <button
                         onClick={() => handleDeleteCustomer(customer)}
                         className="p-1 text-red-500 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                        aria-label="Delete customer"
                       >
                         <TrashIcon className="h-5 w-5" />
                       </button>
@@ -351,7 +388,7 @@ export default function CustomersPage() {
                   <div className="sm:flex">
                     <p className="flex items-center text-sm text-gray-500">
                       {customer.mobile_number ? (
-                        <a href={`tel:${customer.mobile_number}`} className="text-indigo-600 hover:text-indigo-900">
+                        <a href={`tel:${customer.mobile_number}`} className="text-blue-600 hover:text-blue-700">
                           {customer.mobile_number}
                         </a>
                       ) : (
@@ -364,6 +401,17 @@ export default function CustomersPage() {
             ))}
             </ul>
           </div>
+          
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={totalCount}
+              itemsPerPage={pageSize}
+              onPageChange={setPage}
+            />
+          )}
         </>
       )}
     </div>

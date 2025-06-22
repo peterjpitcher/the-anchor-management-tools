@@ -39,7 +39,8 @@ export type ModuleName =
   | 'settings'
   | 'reports'
   | 'users'
-  | 'roles';
+  | 'roles'
+  | 'private_bookings';
 
 export type ActionType = 
   | 'view'
@@ -54,7 +55,16 @@ export type ActionType =
   | 'delete_documents'
   | 'view_templates'
   | 'manage_templates'
-  | 'manage_roles';
+  | 'manage_roles'
+  | 'view_pricing'
+  | 'manage_deposits'
+  | 'view_vendor_costs'
+  | 'manage_spaces'
+  | 'manage_catering'
+  | 'manage_vendors'
+  | 'generate_contracts'
+  | 'view_sms_queue'
+  | 'approve_sms';
 
 export type UserPermission = {
   module_name: ModuleName;

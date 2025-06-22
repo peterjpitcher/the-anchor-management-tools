@@ -1,9 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { formatDate } from '@/lib/dateUtils'
 import toast from 'react-hot-toast'
+import { usePagination } from '@/hooks/usePagination'
+import { Pagination } from '@/components/Pagination'
 
 interface AuditLog {
   id: string
@@ -15,16 +17,14 @@ interface AuditLog {
   operation_status: 'success' | 'failure'
   ip_address: string | null
   error_message: string | null
-  old_values: any
-  new_values: any
-  additional_info: any
+  old_values: Record<string, unknown> | null
+  new_values: Record<string, unknown> | null
+  additional_info: Record<string, unknown> | null
 }
 
 export default function AuditLogsPage() {
   const supabase = useSupabase()
-  const [logs, setLogs] = useState<AuditLog[]>([])
-  const [loading, setLoading] = useState(true)
-  const [filters, setFilters] = useState({
+  const [filterState, setFilterState] = useState({
     operationType: '',
     resourceType: '',
     status: '',
@@ -33,50 +33,49 @@ export default function AuditLogsPage() {
   })
   const [expandedLog, setExpandedLog] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadAuditLogs()
-  }, [filters])
-
-  async function loadAuditLogs() {
-    try {
-      let query = supabase
-        .from('audit_logs')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(100)
-
-      // Apply filters
-      if (filters.operationType) {
-        query = query.eq('operation_type', filters.operationType)
-      }
-      if (filters.resourceType) {
-        query = query.eq('resource_type', filters.resourceType)
-      }
-      if (filters.status) {
-        query = query.eq('operation_status', filters.status)
-      }
-      if (filters.dateFrom) {
-        query = query.gte('created_at', filters.dateFrom)
-      }
-      if (filters.dateTo) {
-        query = query.lte('created_at', filters.dateTo + 'T23:59:59')
-      }
-
-      const { data, error } = await query
-
-      if (error) {
-        console.error('Error loading audit logs:', error)
-        toast.error('Failed to load audit logs')
-      } else {
-        setLogs(data || [])
-      }
-    } catch (error) {
-      console.error('Error:', error)
-      toast.error('Failed to load audit logs')
-    } finally {
-      setLoading(false)
+  // Build filters for pagination
+  const paginationFilters = useMemo(() => {
+    const filters: Array<{ column: string; operator: string; value: unknown }> = []
+    
+    if (filterState.operationType) {
+      filters.push({ column: 'operation_type', operator: 'eq', value: filterState.operationType })
     }
-  }
+    if (filterState.resourceType) {
+      filters.push({ column: 'resource_type', operator: 'eq', value: filterState.resourceType })
+    }
+    if (filterState.status) {
+      filters.push({ column: 'operation_status', operator: 'eq', value: filterState.status })
+    }
+    if (filterState.dateFrom) {
+      filters.push({ column: 'created_at', operator: 'gte', value: filterState.dateFrom })
+    }
+    if (filterState.dateTo) {
+      filters.push({ column: 'created_at', operator: 'lte', value: filterState.dateTo + 'T23:59:59' })
+    }
+    
+    return filters
+  }, [filterState])
+
+  // Use pagination hook
+  const {
+    data: logs,
+    currentPage,
+    totalPages,
+    totalCount,
+    pageSize,
+    isLoading: loading,
+    setPage,
+    refresh: loadAuditLogs
+  } = usePagination<AuditLog>(
+    supabase,
+    'audit_logs',
+    {
+      select: '*',
+      orderBy: { column: 'created_at', ascending: false },
+      filters: paginationFilters
+    },
+    { pageSize: 50 }
+  )
 
   const getOperationIcon = (type: string) => {
     switch (type) {
@@ -110,8 +109,8 @@ export default function AuditLogsPage() {
         <h2 className="text-lg font-semibold mb-4">Filters</h2>
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <select
-            value={filters.operationType}
-            onChange={(e) => setFilters({ ...filters, operationType: e.target.value })}
+            value={filterState.operationType}
+            onChange={(e) => setFilterState({ ...filterState, operationType: e.target.value })}
             className="rounded-md border-gray-300"
           >
             <option value="">All Operations</option>
@@ -127,8 +126,8 @@ export default function AuditLogsPage() {
           </select>
 
           <select
-            value={filters.resourceType}
-            onChange={(e) => setFilters({ ...filters, resourceType: e.target.value })}
+            value={filterState.resourceType}
+            onChange={(e) => setFilterState({ ...filterState, resourceType: e.target.value })}
             className="rounded-md border-gray-300"
           >
             <option value="">All Resources</option>
@@ -143,8 +142,8 @@ export default function AuditLogsPage() {
           </select>
 
           <select
-            value={filters.status}
-            onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+            value={filterState.status}
+            onChange={(e) => setFilterState({ ...filterState, status: e.target.value })}
             className="rounded-md border-gray-300"
           >
             <option value="">All Statuses</option>
@@ -154,16 +153,16 @@ export default function AuditLogsPage() {
 
           <input
             type="date"
-            value={filters.dateFrom}
-            onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
+            value={filterState.dateFrom}
+            onChange={(e) => setFilterState({ ...filterState, dateFrom: e.target.value })}
             className="rounded-md border-gray-300"
             placeholder="From date"
           />
 
           <input
             type="date"
-            value={filters.dateTo}
-            onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
+            value={filterState.dateTo}
+            onChange={(e) => setFilterState({ ...filterState, dateTo: e.target.value })}
             className="rounded-md border-gray-300"
             placeholder="To date"
           />
@@ -310,6 +309,19 @@ export default function AuditLogsPage() {
               </div>
             )
           })()}
+        </div>
+      )}
+      
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="mt-6">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalCount}
+            itemsPerPage={pageSize}
+            onPageChange={setPage}
+          />
         </div>
       )}
     </div>

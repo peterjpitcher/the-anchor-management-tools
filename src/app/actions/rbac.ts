@@ -2,7 +2,19 @@
 
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
 import type { Role, Permission, UserPermission, ModuleName, ActionType } from '@/types/rbac';
+
+// Role validation schemas
+const roleSchema = z.object({
+  name: z.string()
+    .min(1, 'Role name is required')
+    .max(50, 'Role name too long')
+    .regex(/^[a-zA-Z0-9_\s-]+$/, 'Role name can only contain letters, numbers, spaces, hyphens and underscores'),
+  description: z.string()
+    .max(500, 'Description too long')
+    .optional()
+})
 
 export async function getUserPermissions(userId?: string) {
   const supabase = await createClient();
@@ -132,7 +144,7 @@ export async function getRolePermissions(roleId: string) {
   return { success: true, data };
 }
 
-export async function createRole(prevState: any, formData: FormData) {
+export async function createRole(prevState: unknown, formData: FormData) {
   if (!formData) {
     return { error: 'No form data provided' };
   }
@@ -144,12 +156,18 @@ export async function createRole(prevState: any, formData: FormData) {
     return { error: 'Insufficient permissions' };
   }
   
-  const name = formData.get('name') as string;
-  const description = formData.get('description') as string;
-  
-  if (!name) {
-    return { error: 'Role name is required' };
+  // Parse and validate form data
+  const rawData = {
+    name: formData.get('name') as string,
+    description: formData.get('description') as string || undefined
   }
+
+  const validationResult = roleSchema.safeParse(rawData)
+  if (!validationResult.success) {
+    return { error: validationResult.error.errors[0].message }
+  }
+
+  const { name, description } = validationResult.data
   
   const { data, error } = await supabase
     .from('roles')
@@ -166,7 +184,7 @@ export async function createRole(prevState: any, formData: FormData) {
   return { success: true, data };
 }
 
-export async function updateRole(prevState: any, formData: FormData) {
+export async function updateRole(prevState: unknown, formData: FormData) {
   const supabase = await createClient();
   
   const hasPermission = await checkUserPermission('roles', 'manage');
@@ -175,8 +193,23 @@ export async function updateRole(prevState: any, formData: FormData) {
   }
   
   const roleId = formData.get('roleId') as string;
-  const name = formData.get('name') as string;
-  const description = formData.get('description') as string;
+  
+  if (!roleId) {
+    return { error: 'Role ID is required' };
+  }
+
+  // Parse and validate form data
+  const rawData = {
+    name: formData.get('name') as string,
+    description: formData.get('description') as string || undefined
+  }
+
+  const validationResult = roleSchema.safeParse(rawData)
+  if (!validationResult.success) {
+    return { error: validationResult.error.errors[0].message }
+  }
+
+  const { name, description } = validationResult.data
   
   const { error } = await supabase
     .from('roles')

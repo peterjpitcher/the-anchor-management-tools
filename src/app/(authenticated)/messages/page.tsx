@@ -1,15 +1,27 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { getMessages, markMessageAsRead, markAllMessagesAsRead } from '@/app/actions/messagesActions'
+import { getMessages, markAllMessagesAsRead } from '@/app/actions/messagesActions'
 import { formatDistanceToNow } from 'date-fns'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
+import { Message } from '@/types/database'
+import { PageLoadingSkeleton } from '@/components/ui/SkeletonLoader'
+
+interface Conversation {
+  customer: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    mobile_number: string;
+  };
+  messages: any[];
+  unreadCount: number;
+  lastMessageAt: string;
+}
 
 export default function MessagesPage() {
-  const router = useRouter()
-  const [conversations, setConversations] = useState<any[]>([])
+  const [conversations, setConversations] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
   const [totalUnreadCount, setTotalUnreadCount] = useState(0)
 
@@ -50,33 +62,33 @@ export default function MessagesPage() {
       await markAllMessagesAsRead()
       toast.success('All messages marked as read')
       await loadMessages() // Refresh the list
-    } catch (error) {
+    } catch {
       toast.error('Failed to mark messages as read')
     }
   }
 
   if (loading) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center text-gray-500">Loading messages...</div>
-      </div>
-    )
+    return <PageLoadingSkeleton />
   }
   
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-6 flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Unread Messages</h1>
-          <p className="text-gray-600 mb-1">New conversations from customers</p>
-          {totalUnreadCount > 0 && (
-            <p className="text-gray-600 font-medium">{totalUnreadCount} unread message{totalUnreadCount !== 1 ? 's' : ''}</p>
-          )}
-        </div>
-        <div className="flex gap-2">
+    <div className="space-y-6">
+      <div className="bg-white shadow sm:rounded-lg">
+        <div className="px-4 py-5 sm:p-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Unread Messages</h1>
+              <p className="mt-1 text-sm text-gray-500">
+                New conversations from customers
+                {totalUnreadCount > 0 && (
+                  <span className="ml-2 font-medium">({totalUnreadCount} unread message{totalUnreadCount !== 1 ? 's' : ''})</span>
+                )}
+              </p>
+            </div>
+            <div className="flex gap-2">
           <Link
             href="/messages/bulk"
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            className="px-6 py-3 md:py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 min-h-[44px]"
           >
             Send Bulk Message
           </Link>
@@ -88,6 +100,8 @@ export default function MessagesPage() {
               Mark all as read
             </button>
           )}
+            </div>
+          </div>
         </div>
       </div>
       

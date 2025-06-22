@@ -1,471 +1,639 @@
 # API Reference
 
-This document provides a comprehensive reference for all server actions, API routes, and database operations in The Anchor Management Tools.
-
 ## Overview
+The Anchor Management Tools uses a hybrid API architecture combining traditional REST endpoints for webhooks/cron jobs and Next.js Server Actions for data mutations. All APIs follow consistent response patterns and include comprehensive security measures.
 
-The application primarily uses Next.js Server Actions for data mutations, with a few API routes for specific purposes like cron jobs. All operations require authentication unless specified otherwise.
+## Response Format
+
+### Standard Success Response
+```json
+{
+  "success": true,
+  "data": {} // Optional data payload
+}
+```
+
+### Standard Error Response
+```json
+{
+  "error": "Error message",
+  "details": "Additional context" // Optional
+}
+```
+
+### Form State Response (Server Actions)
+```json
+{
+  "type": "success" | "error",
+  "message": "User-friendly message",
+  "errors": {} // Optional field-specific errors
+}
+```
+
+## Authentication & Authorization
+
+### Authentication Methods
+1. **Supabase JWT**: For user-authenticated requests (automatic in browser)
+2. **Service Role Key**: For admin/system operations
+3. **CRON Secret**: For scheduled job authentication
+4. **Twilio Signature**: For webhook validation
+
+### Permission System
+- **Module-based**: `events`, `customers`, `employees`, `messages`, `roles`, `users`
+- **Action-based**: `view`, `create`, `edit`, `delete`, `manage`
+- **Special permissions**: `view_documents`, `upload_documents`, `manage_roles`
+
+## REST API Endpoints
+
+### Cron Jobs
+
+#### Send Event Reminders
+```
+GET /api/cron/reminders
+Authorization: Bearer {CRON_SECRET_KEY}
+```
+
+**Description**: Processes SMS reminders for events happening in 24 hours and 7 days
+
+**Response**:
+- `200 OK`: "Reminders processed successfully"
+- `401 Unauthorized`: Invalid or missing CRON secret
+- `500 Internal Server Error`: Processing error
+
+**Security**: Requires valid `CRON_SECRET_KEY` in Authorization header
+
+---
+
+### Webhooks
+
+#### Twilio SMS Webhook
+```
+POST /api/webhooks/twilio
+Content-Type: application/x-www-form-urlencoded
+X-Twilio-Signature: {signature}
+```
+
+**Description**: Handles inbound SMS messages and delivery status updates
+
+**Request Body (Inbound SMS)**:
+```
+Body={message text}
+From={sender phone}
+To={twilio number}
+MessageSid={unique id}
+```
+
+**Request Body (Status Update)**:
+```
+MessageSid={unique id}
+MessageStatus=queued|sending|sent|delivered|failed|undelivered
+ErrorCode={code} // Optional
+ErrorMessage={message} // Optional
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "messageId": "msg_123",
+  "type": "inbound_message" | "status_update"
+}
+```
+
+**Security**: 
+- Validates Twilio signature in production
+- Can be disabled with `SKIP_TWILIO_SIGNATURE_VALIDATION=true` (testing only)
+- All attempts logged to `webhook_logs` table
+
+---
+
+### Debug Endpoints (Development Only)
+
+#### Check Employees
+```
+GET /api/check-employees
+```
+
+**Description**: Diagnostic endpoint to verify employee table structure and data
+
+**Response**:
+```json
+{
+  "success": true,
+  "summary": {
+    "totalEmployees": 15,
+    "tablesExist": {
+      "employees": true,
+      "employee_notes": true,
+      "employee_attachments": true,
+      "employee_emergency_contacts": true,
+      "employee_financial_details": true,
+      "employee_health_records": true
+    },
+    "hasRLSPolicies": true,
+    "recentEmployees": 5
+  },
+  "details": {
+    "employees": [...],
+    "policies": [...]
+  }
+}
+```
+
+#### Reset Customer SMS Settings
+```
+GET /api/reset-customer-sms?customerId={uuid}
+```
+
+**Description**: Resets a customer's SMS opt-in status and clears failure counts
+
+**Query Parameters**:
+- `customerId` (optional): Customer UUID, defaults to test customer
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Customer SMS settings reset successfully",
+  "customer": {
+    "id": "123",
+    "name": "John Smith",
+    "mobile_number": "+447123456789",
+    "sms_opt_in": true,
+    "sms_delivery_failures": 0
+  }
+}
+```
+
+#### Test SMS Database
+```
+GET /api/test-sms-db
+```
+
+**Description**: Tests SMS database functionality and triggers
+
+**Response**:
+```json
+{
+  "success": true,
+  "tests": {
+    "tableExists": true,
+    "customerFound": true,
+    "customer": {...},
+    "testMessageInserted": true,
+    "insertedMessage": {...},
+    "totalMessageCount": 156
+  }
+}
+```
+
+---
 
 ## Server Actions
 
-Server actions are located in `/src/app/actions/` and provide type-safe server-side operations.
+Server Actions are Next.js functions that handle data mutations. They require authentication and check permissions automatically.
 
-### Event Actions
+### Customer SMS Actions
 
-#### `addEvent(formData: FormData)`
-Creates a new event.
-
-**Parameters:**
-- `name` (string, required): Event name
-- `date` (string, required): Event date (YYYY-MM-DD)
-- `time` (string, required): Event time (e.g., "7:00pm")
-- `capacity` (number, optional): Maximum attendees
-
-**Returns:**
+#### Toggle SMS Opt-in
 ```typescript
-Promise<void>
+toggleCustomerSmsOptIn(customerId: string, optIn: boolean)
 ```
 
-**Example:**
-```typescript
-const formData = new FormData();
-formData.append('name', 'Quiz Night');
-formData.append('date', '2024-01-20');
-formData.append('time', '7:00pm');
-formData.append('capacity', '50');
-await addEvent(formData);
+**Permission**: `customers:edit`
+
+**Parameters**:
+- `customerId`: UUID of the customer
+- `optIn`: New opt-in status
+
+**Response**:
+```json
+{
+  "success": true
+}
 ```
 
-#### `updateEvent(id: string, formData: FormData)`
-Updates an existing event.
-
-**Parameters:**
-- `id` (string, required): Event UUID
-- Same form fields as `addEvent`
-
-**Returns:**
+#### Get Customer Messages
 ```typescript
-Promise<void>
+getCustomerMessages(customerId: string)
 ```
 
-#### `deleteEvent(id: string)`
-Deletes an event and all associated bookings.
+**Permission**: None required (checks customer exists)
 
-**Parameters:**
-- `id` (string, required): Event UUID
+**Parameters**:
+- `customerId`: UUID of the customer
 
-**Returns:**
-```typescript
-Promise<void>
+**Response**:
+```json
+{
+  "messages": [
+    {
+      "id": "msg_123",
+      "direction": "inbound" | "outbound",
+      "body": "Message text",
+      "created_at": "2024-01-01T10:00:00Z",
+      "twilio_status": "delivered",
+      "read_at": null
+    }
+  ]
+}
 ```
 
-### Customer Actions
-
-#### `addCustomer(formData: FormData)`
-Creates a new customer.
-
-**Parameters:**
-- `first_name` (string, required): First name
-- `last_name` (string, required): Last name
-- `mobile_number` (string, required): Mobile phone number
-
-**Returns:**
+#### Send SMS Reply
 ```typescript
-Promise<void>
+sendSmsReply(customerId: string, message: string)
 ```
 
-#### `updateCustomer(id: string, formData: FormData)`
-Updates customer information.
+**Permission**: None required (checks opt-in status)
 
-**Parameters:**
-- `id` (string, required): Customer UUID
-- Same form fields as `addCustomer`
+**Parameters**:
+- `customerId`: UUID of the customer
+- `message`: Message text to send
 
-**Returns:**
-```typescript
-Promise<void>
+**Response**:
+```json
+{
+  "success": true,
+  "messageSid": "SM123",
+  "status": "queued"
+}
 ```
 
-#### `deleteCustomer(id: string)`
-Deletes a customer and all their bookings.
+**Error Cases**:
+- Customer not found
+- SMS not enabled for customer
+- Twilio API error
 
-**Parameters:**
-- `id` (string, required): Customer UUID
-
-**Returns:**
-```typescript
-Promise<void>
-```
-
-### Booking Actions
-
-#### `addBooking(formData: FormData)`
-Creates a new booking and sends confirmation SMS.
-
-**Parameters:**
-- `customer_id` (string, required): Customer UUID
-- `event_id` (string, required): Event UUID
-- `seats` (number, optional): Number of seats (0 or null for reminder only)
-- `notes` (string, optional): Booking notes
-
-**Returns:**
-```typescript
-Promise<void>
-```
-
-#### `updateBooking(id: string, formData: FormData)`
-Updates a booking and sends confirmation SMS.
-
-**Parameters:**
-- `id` (string, required): Booking UUID
-- `seats` (number, optional): Updated seat count
-- `notes` (string, optional): Updated notes
-
-**Returns:**
-```typescript
-Promise<void>
-```
-
-#### `deleteBooking(id: string)`
-Deletes a booking.
-
-**Parameters:**
-- `id` (string, required): Booking UUID
-
-**Returns:**
-```typescript
-Promise<void>
-```
+---
 
 ### Employee Actions
 
-#### `addEmployee(formData: FormData)`
-Creates a new employee record.
-
-**Parameters:**
-- `first_name` (string, required)
-- `last_name` (string, required)
-- `email_address` (string, required, unique)
-- `job_title` (string, required)
-- `employment_start_date` (string, required)
-- `date_of_birth` (string, optional)
-- `address` (string, optional)
-- `phone_number` (string, optional)
-- `employment_end_date` (string, optional)
-- `status` (string, optional): 'Active' or 'Former'
-- `emergency_contact_name` (string, optional)
-- `emergency_contact_phone` (string, optional)
-
-**Returns:**
+#### Create Employee
 ```typescript
-Promise<void>
+addEmployee(prevState: any, formData: FormData)
 ```
 
-#### `updateEmployee(employeeId: string, formData: FormData)`
-Updates employee information.
+**Permission**: `employees:create`
 
-**Parameters:**
-- `employeeId` (string, required): Employee UUID
-- Same form fields as `addEmployee`
+**Form Fields**:
+- `first_name` (required)
+- `last_name` (required)
+- `email_address` (required, unique)
+- `job_title` (required)
+- `employment_start_date` (required)
+- `status` (optional, default: "Active")
+- `date_of_birth` (optional)
+- `address` (optional)
+- `phone_number` (optional)
 
-**Returns:**
+**Response**: Redirects to employee detail page on success
+
+**Validation**: Zod schema validation with detailed error messages
+
+#### Update Employee
 ```typescript
-Promise<void>
+updateEmployee(prevState: any, formData: FormData)
 ```
 
-#### `deleteEmployee(employeeId: string)`
-Deletes an employee and all related data.
+**Permission**: `employees:edit`
 
-**Parameters:**
-- `employeeId` (string, required): Employee UUID
+**Form Fields**: Same as create employee
 
-**Returns:**
-```typescript
-Promise<void>
-```
-
-#### `addEmployeeNote(formData: FormData)`
-Adds a time-stamped note to an employee.
-
-**Parameters:**
-- `employee_id` (string, required): Employee UUID
-- `note_text` (string, required): Note content
-- `created_by` (string, optional): User UUID
-
-**Returns:**
-```typescript
-Promise<{ error?: string }>
-```
-
-#### `addEmployeeAttachment(formData: FormData)`
-Uploads a file attachment for an employee.
-
-**Parameters:**
-- `employee_id` (string, required): Employee UUID
-- `file` (File, required): File to upload (max 10MB)
-- `category_id` (string, required): Attachment category UUID
-- `description` (string, optional): File description
-
-**Returns:**
-```typescript
-Promise<{ error?: string }>
-```
-
-#### `deleteEmployeeAttachment(attachmentId: string, storagePath: string)`
-Deletes an employee attachment.
-
-**Parameters:**
-- `attachmentId` (string, required): Attachment UUID
-- `storagePath` (string, required): File path in storage
-
-**Returns:**
-```typescript
-Promise<{ error?: string }>
-```
-
-### SMS Actions
-
-#### `sendEventReminders()`
-Sends automated SMS reminders for upcoming events.
-
-**Behavior:**
-- Sends 7-day reminders to all customers with bookings
-- Sends 24-hour reminders to customers with seat reservations
-- Called automatically via cron job
-
-**Returns:**
-```typescript
-Promise<{
-  sent: number;
-  errors: string[];
-}>
-```
-
-## API Routes
-
-### Cron Routes
-
-#### `POST /api/cron/reminders`
-Triggers the SMS reminder system.
-
-**Headers:**
-```typescript
+**Response**:
+```json
 {
-  'Authorization': `Bearer ${CRON_SECRET}`
+  "type": "success",
+  "message": "Employee updated successfully"
 }
 ```
 
-**Response:**
+#### Add Employee Note
 ```typescript
+addEmployeeNote(prevState: any, formData: FormData)
+```
+
+**Permission**: `employees:edit`
+
+**Form Fields**:
+- `employee_id` (required, hidden)
+- `note_text` (required)
+
+**Response**:
+```json
 {
-  success: boolean;
-  message: string;
-  details?: {
-    sent: number;
-    errors: string[];
-  };
+  "type": "success",
+  "message": "Note added successfully"
 }
 ```
 
-**Status Codes:**
-- 200: Success
-- 401: Unauthorized (invalid secret)
-- 500: Server error
-
-## Database Operations
-
-### Query Patterns
-
-#### Basic Select
+#### Upload Employee Attachment
 ```typescript
-const { data, error } = await supabase
-  .from('table_name')
-  .select('*')
-  .order('created_at', { ascending: false });
+addEmployeeAttachment(prevState: any, formData: FormData)
 ```
 
-#### Select with Relations
-```typescript
-const { data, error } = await supabase
-  .from('events')
-  .select(`
-    *,
-    bookings (
-      *,
-      customer:customers (*)
-    )
-  `)
-  .eq('id', eventId)
-  .single();
+**Permission**: `employees:upload_documents`
+
+**Form Fields**:
+- `employee_id` (required, hidden)
+- `attachment_file` (required, max 10MB)
+- `category_id` (required)
+- `description` (optional)
+
+**Allowed File Types**:
+- PDF
+- JPEG/JPG
+- PNG
+- DOC/DOCX
+
+**Response**:
+```json
+{
+  "type": "success",
+  "message": "Attachment uploaded successfully"
+}
 ```
 
-#### Insert
+#### Get Attachment Signed URL
 ```typescript
-const { data, error } = await supabase
-  .from('table_name')
-  .insert({
-    field1: value1,
-    field2: value2
-  })
-  .select()
-  .single();
+getAttachmentSignedUrl(storagePath: string)
 ```
 
-#### Update
-```typescript
-const { error } = await supabase
-  .from('table_name')
-  .update({ field: newValue })
-  .eq('id', recordId);
+**Permission**: `employees:view_documents`
+
+**Parameters**:
+- `storagePath`: Path to file in storage bucket
+
+**Response**:
+```json
+{
+  "url": "https://signed-url...",
+  "error": null
+}
 ```
 
-#### Delete
+**Note**: URLs expire after 5 minutes
+
+#### Export Employees
 ```typescript
-const { error } = await supabase
-  .from('table_name')
-  .delete()
-  .eq('id', recordId);
+exportEmployees(options: ExportOptions)
 ```
 
-### Storage Operations
+**Permission**: Checked in UI component
 
-#### Upload File
+**Options**:
 ```typescript
-const { data, error } = await supabase.storage
-  .from('bucket-name')
-  .upload(`path/to/file`, file, {
-    contentType: file.type,
-    upsert: false
-  });
-
-// Always use data.path for storage reference
+{
+  format: 'csv' | 'json',
+  includeFields?: string[],
+  statusFilter?: 'all' | 'Active' | 'Former'
+}
 ```
 
-#### Get Signed URL
-```typescript
-const { data } = await supabase.storage
-  .from('bucket-name')
-  .createSignedUrl(storagePath, 3600); // 1 hour expiry
+**Response**:
+```json
+{
+  "data": "exported data string",
+  "filename": "employees_2024-01-01.csv"
+}
 ```
 
-#### Delete File
+---
+
+### Booking Actions
+
+#### Create Booking
 ```typescript
-const { error } = await supabase.storage
-  .from('bucket-name')
-  .remove([storagePath]);
+createBooking(formData: FormData)
 ```
+
+**Permission**: None required (authenticated users)
+
+**Form Fields**:
+- `event_id` (required)
+- `customer_id` (required)
+- `seats` (optional, default: 0)
+- `notes` (optional)
+
+**Response**: Varies based on existing booking status
+
+**Features**:
+- Sends SMS confirmation automatically
+- Handles existing booking updates
+- Supports reminder-only bookings (0 seats)
+
+#### Update Booking
+```typescript
+updateBooking(formData: FormData)
+```
+
+**Permission**: None required (authenticated users)
+
+**Form Fields**:
+- `booking_id` (required)
+- `seats` (required)
+- `notes` (optional)
+
+**Response**: Redirects to event page
+
+#### Delete Booking
+```typescript
+deleteBooking(bookingId: string)
+```
+
+**Permission**: None required (authenticated users)
+
+**Parameters**:
+- `bookingId`: UUID of the booking
+
+**Response**: Revalidates event page
+
+---
+
+### Message Actions
+
+#### Send Bulk SMS
+```typescript
+sendBulkSMS(customerIds: string[], message: string)
+```
+
+**Permission**: None required (checks individual opt-ins)
+
+**Parameters**:
+- `customerIds`: Array of customer UUIDs
+- `message`: Message text with optional variables
+
+**Response**:
+```json
+{
+  "success": true,
+  "sent": 45,
+  "failed": 2,
+  "results": [
+    {
+      "customerId": "123",
+      "success": true,
+      "messageSid": "SM123"
+    }
+  ]
+}
+```
+
+**Variables Supported**:
+- `{{customer_name}}`
+- `{{first_name}}`
+- `{{venue_name}}`
+- `{{contact_phone}}`
+
+#### Mark Messages as Read
+```typescript
+markMessagesAsRead(customerId: string)
+```
+
+**Permission**: None required
+
+**Parameters**:
+- `customerId`: UUID of the customer
+
+**Response**:
+```json
+{
+  "success": true
+}
+```
+
+---
+
+### RBAC Actions
+
+#### Get User Permissions
+```typescript
+getUserPermissions(userId?: string)
+```
+
+**Permission**: Must be authenticated
+
+**Parameters**:
+- `userId` (optional): Defaults to current user
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "module_name": "events",
+      "action": "view"
+    }
+  ]
+}
+```
+
+#### Check Permission
+```typescript
+checkUserPermission(module: string, action: string, userId?: string)
+```
+
+**Permission**: Must be authenticated
+
+**Parameters**:
+- `module`: Module name (e.g., "events")
+- `action`: Action name (e.g., "edit")
+- `userId` (optional): Defaults to current user
+
+**Response**: `true` or `false`
+
+#### Create Role
+```typescript
+createRole(prevState: any, formData: FormData)
+```
+
+**Permission**: `roles:manage`
+
+**Form Fields**:
+- `name` (required, unique)
+- `description` (optional)
+- `permissions` (array of permission IDs)
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "id": "role_123",
+    "name": "Event Manager",
+    "description": "Can manage events"
+  }
+}
+```
+
+---
 
 ## Error Handling
 
-### Server Action Errors
-```typescript
-try {
-  // Operation
-} catch (error) {
-  console.error('Operation failed:', error);
-  // Return error to client
-  return { error: error.message };
+### Common Error Responses
+
+#### Authentication Error
+```json
+{
+  "error": "Not authenticated"
 }
 ```
 
-### Database Errors
-```typescript
-const { data, error } = await supabase
-  .from('table')
-  .select()
-  .single();
+#### Permission Error
+```json
+{
+  "error": "Permission denied",
+  "details": "Requires events:edit permission"
+}
+```
 
-if (error) {
-  if (error.code === 'PGRST116') {
-    // No rows returned
-    return null;
+#### Validation Error
+```json
+{
+  "type": "error",
+  "message": "Validation failed",
+  "errors": {
+    "email_address": "Invalid email format",
+    "employment_start_date": "Date is required"
   }
-  throw error;
 }
 ```
 
-## Type Definitions
-
-### Core Types
-```typescript
-interface Event {
-  id: string;
-  name: string;
-  date: string;
-  time: string;
-  capacity: number | null;
-  created_at: string;
-}
-
-interface Customer {
-  id: string;
-  first_name: string;
-  last_name: string;
-  mobile_number: string;
-  created_at: string;
-}
-
-interface Booking {
-  id: string;
-  customer_id: string;
-  event_id: string;
-  seats: number | null;
-  notes: string | null;
-  created_at: string;
-}
-
-interface Employee {
-  employee_id: string;
-  first_name: string;
-  last_name: string;
-  email_address: string;
-  job_title: string;
-  employment_start_date: string;
-  status: 'Active' | 'Former';
-  // ... other fields
+#### Database Error
+```json
+{
+  "error": "Database error",
+  "details": "Unique constraint violation"
 }
 ```
 
-## Authentication
-
-All server actions and API routes require authentication via Supabase Auth. The middleware automatically handles authentication checks.
-
-### Getting Current User
-```typescript
-const supabase = createClient();
-const { data: { user } } = await supabase.auth.getUser();
-```
-
-### Checking Authentication
-```typescript
-if (!user) {
-  redirect('/auth/login');
+#### External Service Error
+```json
+{
+  "error": "SMS send failed",
+  "details": "Twilio error: Invalid phone number"
 }
 ```
 
 ## Rate Limiting
+- No explicit rate limiting implemented at application level
+- Twilio enforces its own rate limits
+- Database connection pooling via Supabase
+- Consider implementing rate limiting for production
 
-Currently, no explicit rate limiting is implemented. Consider adding for production:
-- SMS operations: Limit per phone number
-- File uploads: Limit per user
-- API calls: General rate limiting
+## Security Best Practices
+1. Always validate Twilio webhooks in production
+2. Use service role key only for admin operations
+3. Check permissions before data operations
+4. Audit log all sensitive operations
+5. Sanitize file uploads and names
+6. Use signed URLs for file access
+7. Implement CSRF protection (handled by Next.js)
+8. Never expose sensitive keys to client
 
-## Best Practices
-
-1. **Always validate inputs** before database operations
-2. **Use transactions** for multi-step operations
-3. **Handle errors gracefully** with user-friendly messages
-4. **Log important operations** for debugging
-5. **Revalidate paths** after mutations
-6. **Use proper TypeScript types** for all operations
-7. **Implement optimistic updates** where appropriate
-8. **Cache frequently accessed data** when possible
-
-## Testing
-
-When testing API operations:
-1. Use test database/project
-2. Mock external services (Twilio)
-3. Test error scenarios
-4. Verify data integrity
-5. Check performance
+## Monitoring & Debugging
+- All webhook attempts logged to `webhook_logs`
+- API errors logged with context
+- Audit trail for compliance
+- Message delivery tracking
+- Consider adding APM for production

@@ -157,8 +157,8 @@ export async function sendSmsReply(customerId: string, message: string) {
       status: twilioMessage.status 
     }
     
-  } catch (error: any) {
+  } catch (error) {
     console.error('Failed to send SMS:', error)
-    return { error: error.message || 'Failed to send message' }
+    return { error: error instanceof Error ? error.message : 'Failed to send message' }
   }
 }

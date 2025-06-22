@@ -5,7 +5,7 @@ import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { addEmployeeNote } from '@/app/actions/employeeActions';
 import type { NoteFormState } from '@/types/actions';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'; 
+import { createClient } from '@/lib/supabase/client'; 
 import type { User } from '@supabase/supabase-js';
 import { Button } from '@/components/ui/Button';
 
@@ -24,7 +24,7 @@ function SubmitNoteButton() {
 }
 
 export default function AddEmployeeNoteForm({ employeeId }: AddEmployeeNoteFormProps) {
-  const supabase = createClientComponentClient(); // Create client instance
+  const supabase = createClient(); // Create client instance
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const initialState: NoteFormState = null;

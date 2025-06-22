@@ -10,12 +10,13 @@ import AddNoteModal from '@/components/modals/AddNoteModal'
 import { redirect } from 'next/navigation'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { PermissionProvider } from '@/contexts/PermissionContext'
+import type { User } from '@supabase/supabase-js'
 
 function AuthenticatedLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const supabase = useSupabase()
   const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false)
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -108,9 +109,25 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
 
         {/* Main content */}
         <div className="flex flex-1 flex-col overflow-hidden">
-          <main className="flex-1 overflow-y-auto bg-gray-50 p-6">
+          <main className="flex-1 overflow-y-auto bg-gray-50 p-6 pb-20 md:pb-6">
             {children}
           </main>
+          
+          {/* Footer - Desktop only */}
+          <footer className="hidden md:block bg-gray-100 border-t border-gray-200 py-4 px-6">
+            <div className="flex justify-between items-center text-sm text-gray-600">
+              <p>&copy; 2024 The Anchor. All rights reserved.</p>
+              <div className="flex space-x-4">
+                <a href="/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-gray-900">
+                  Privacy Policy
+                </a>
+                <a href="/terms" className="hover:text-gray-900">
+                  Terms of Service
+                </a>
+              </div>
+            </div>
+          </footer>
+          
           <BottomNavigation onQuickAddNoteClick={openAddNoteModal} />
         </div>
       </div>

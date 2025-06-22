@@ -38,5 +38,5 @@ export type AttachmentFormState = {
 export type DeleteState = {
   type: 'success' | 'error';
   message: string;
-  errors?: Record<string, any>;
+  errors?: Record<string, unknown>;
 } | null; 

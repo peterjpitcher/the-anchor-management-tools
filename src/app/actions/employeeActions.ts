@@ -4,8 +4,6 @@ import { createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import type { Employee, EmployeeNote, EmployeeAttachment } from '@/types/database';
-import { cookies } from 'next/headers';
-import { createServerActionClient } from '@supabase/auth-helpers-nextjs';
 import { supabase } from '@/lib/supabase';
 import { z } from 'zod';
 import type { ActionFormState, NoteFormState, AttachmentFormState, DeleteState } from '@/types/actions';
@@ -297,6 +295,16 @@ export async function addEmployeeAttachment(
   prevState: AttachmentFormState,
   formData: FormData
 ): Promise<AttachmentFormState> {
+  // Rate limit file uploads
+  try {
+    const { checkRateLimit } = await import('@/lib/rate-limit-server')
+    await checkRateLimit('api', 10) // 10 uploads per minute
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Too many requests')) {
+      return { type: 'error', message: 'Too many file uploads. Please try again later.' };
+    }
+  }
+
   // Check permission
   const hasPermission = await checkUserPermission('employees', 'upload_documents');
   if (!hasPermission) {

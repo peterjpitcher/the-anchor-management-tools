@@ -28,6 +28,7 @@ yarn-error.log*
 # local env files
 .env*.local
 .env
+.env.google-calendar-example
 
 # vercel
 .vercel
@@ -39,3 +40,8 @@ next-env.d.ts
 # temp files
 temp/
 *.tmp
+
+# sql data dumps
+data.sql
+*.sql.dump
+supabase/dumps/*.sql

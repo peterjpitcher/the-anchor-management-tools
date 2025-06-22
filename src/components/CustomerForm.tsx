@@ -113,7 +113,7 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
               onChange={(e) => setMobileNumber(e.target.value)}
               placeholder="07700 900000"
               required
-              pattern="^(\+44|0)?[0-9]{10,11}$"
+              pattern="^(\+?44|0)?[0-9]{10,11}$"
               autoComplete="tel"
               inputMode="tel"
               className="block w-full rounded-lg border border-gray-300 px-3 py-2 pr-16 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"

@@ -1,19 +1,11 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { formatDate } from '@/lib/dateUtils'
 import { sendSmsReply } from '@/app/actions/messageActions'
 import toast from 'react-hot-toast'
 import { PaperAirplaneIcon } from '@heroicons/react/24/solid'
 
-interface Message {
-  id: string
-  body: string
-  created_at: string
-  direction: 'inbound' | 'outbound'
-  twilio_status?: string
-  read_at?: string | null
-}
+import { Message } from '@/types/database'
 
 interface MessageThreadProps {
   messages: Message[]
@@ -23,7 +15,7 @@ interface MessageThreadProps {
   onMessageSent?: () => void
 }
 
-export function MessageThread({ messages, customerId, customerName, canReply, onMessageSent }: MessageThreadProps) {
+export function MessageThread({ messages, customerId, canReply, onMessageSent }: MessageThreadProps) {
   const [newMessage, setNewMessage] = useState('')
   const [sending, setSending] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -47,14 +39,14 @@ export function MessageThread({ messages, customerId, customerName, canReply, on
     try {
       const result = await sendSmsReply(customerId, newMessage)
       
-      if ('error' in result) {
+      if ('error' in result && result.error) {
         toast.error(result.error)
       } else {
         toast.success('Message sent')
         setNewMessage('')
         onMessageSent?.()
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to send message')
     } finally {
       setSending(false)
@@ -169,9 +161,9 @@ export function MessageThread({ messages, customerId, customerName, canReply, on
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="iMessage"
+                placeholder="Message"
                 rows={1}
-                className="w-full px-4 py-2.5 pr-12 text-sm bg-gray-100 border border-gray-300 rounded-full resize-none focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                className="w-full px-4 py-2.5 pr-12 text-sm bg-gray-100 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                 style={{ minHeight: '40px', maxHeight: '120px' }}
                 onInput={(e) => {
                   e.currentTarget.style.height = 'auto'

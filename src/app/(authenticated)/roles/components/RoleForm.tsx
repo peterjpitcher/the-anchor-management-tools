@@ -6,7 +6,7 @@ import { useEffect } from 'react';
 import Link from 'next/link';
 
 interface RoleFormProps {
-  action: (prevState: any, formData: FormData) => Promise<{ error?: string; success?: boolean }>;
+  action: (prevState: unknown, formData: FormData) => Promise<{ error?: string; success?: boolean }>;
   initialData?: {
     id?: string;
     name?: string;

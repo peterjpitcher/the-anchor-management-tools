@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import twilio from 'twilio';
+import { checkRateLimit } from '@/lib/upstash-rate-limit';
+import { retry, RetryConfigs } from '@/lib/retry';
+import { logger } from '@/lib/logger';
 
 // Create public Supabase client for logging (no auth required)
 function getPublicSupabaseClient() {
@@ -28,14 +31,14 @@ function getSupabaseAdminClient() {
 
 // Log webhook attempt to database
 async function logWebhookAttempt(
-  client: any,
+  client: ReturnType<typeof createClient>,
   status: string,
   headers: Record<string, string>,
   body: string,
   params: Record<string, string>,
   error?: string,
-  errorDetails?: any,
-  additionalData?: any
+  errorDetails?: unknown,
+  additionalData?: Record<string, unknown>
 ) {
   try {
     const logEntry = {
@@ -115,6 +118,28 @@ export async function POST(request: NextRequest) {
     headers = Object.fromEntries(request.headers.entries());
     console.log('Headers received:', headers);
     
+    // Apply rate limiting if Upstash is configured
+    if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+      const identifier = headers['x-forwarded-for'] || headers['x-real-ip'] || 'webhook';
+      const rateLimitResult = await checkRateLimit(identifier, 'webhook');
+      
+      if (!rateLimitResult.success) {
+        console.log(`Webhook rate limit exceeded for ${identifier}`);
+        return NextResponse.json(
+          { error: 'Rate limit exceeded' },
+          { 
+            status: 429,
+            headers: {
+              'Retry-After': Math.ceil((rateLimitResult.reset.getTime() - Date.now()) / 1000).toString(),
+              'X-RateLimit-Limit': rateLimitResult.limit.toString(),
+              'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
+              'X-RateLimit-Reset': rateLimitResult.reset.toISOString()
+            }
+          }
+        );
+      }
+    }
+    
     // Get public client for logging
     publicClient = getPublicSupabaseClient();
     if (!publicClient) {
@@ -138,10 +163,15 @@ export async function POST(request: NextRequest) {
       await logWebhookAttempt(publicClient, 'received', headers, body, params);
     }
     
-    // Verify signature in production (unless explicitly disabled)
-    const skipSignatureValidation = process.env.SKIP_TWILIO_SIGNATURE_VALIDATION === 'true';
+    // Always verify signature unless explicitly disabled (NEVER disable in production)
+    const skipValidation = process.env.SKIP_TWILIO_SIGNATURE_VALIDATION === 'true';
     
-    if (process.env.NODE_ENV === 'production' && !skipSignatureValidation) {
+    if (skipValidation && process.env.NODE_ENV === 'production') {
+      console.error('CRITICAL: Twilio signature validation is disabled in production!');
+      // Force validation in production regardless of environment variable
+    }
+    
+    if (!skipValidation || process.env.NODE_ENV === 'production') {
       const isValid = verifyTwilioSignature(request, body);
       console.log('Signature validation result:', isValid);
       console.log('Auth token configured:', !!process.env.TWILIO_AUTH_TOKEN);
@@ -162,10 +192,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
     } else {
-      console.log('Skipping signature validation:', { 
-        env: process.env.NODE_ENV, 
-        skipFlag: skipSignatureValidation 
-      });
+      console.warn('⚠️ Skipping Twilio signature validation - ONLY for local development/testing');
     }
     
     // Get admin client for database operations
@@ -257,17 +284,30 @@ async function handleInboundSMS(
     if (!customers || customers.length === 0) {
       console.log('No existing customer found, creating new one');
       
-      // Create new customer
-      const { data: newCustomer, error: createError } = await adminClient
-        .from('customers')
-        .insert({
-          first_name: 'Unknown',
-          last_name: `(${fromNumber})`,
-          mobile_number: fromNumber,
-          sms_opt_in: true
-        })
-        .select()
-        .single();
+      // Create new customer with retry
+      const { data: newCustomer, error: createError } = await retry(
+        async () => {
+          return await adminClient
+            .from('customers')
+            .insert({
+              first_name: 'Unknown',
+              last_name: `(${fromNumber})`,
+              mobile_number: fromNumber,
+              sms_opt_in: true
+            })
+            .select()
+            .single();
+        },
+        {
+          ...RetryConfigs.database,
+          onRetry: (error, attempt) => {
+            logger.warn(`Retry creating customer for webhook`, {
+              error,
+              metadata: { attempt, fromNumber }
+            });
+          }
+        }
+      );
       
       if (createError) {
         throw new Error(`Failed to create customer: ${createError.message}`);
@@ -313,11 +353,24 @@ async function handleInboundSMS(
     
     console.log('Saving message with data:', messageData);
     
-    const { data: savedMessage, error: messageError } = await adminClient
-      .from('messages')
-      .insert(messageData)
-      .select()
-      .single();
+    const { data: savedMessage, error: messageError } = await retry(
+      async () => {
+        return await adminClient
+          .from('messages')
+          .insert(messageData)
+          .select()
+          .single();
+      },
+      {
+        ...RetryConfigs.database,
+        onRetry: (error, attempt) => {
+          logger.warn(`Retry saving inbound message`, {
+            error,
+            metadata: { attempt, messageSid }
+          });
+        }
+      }
+    );
     
     if (messageError) {
       throw new Error(`Failed to save message: ${messageError.message}`);

@@ -59,9 +59,23 @@ export async function getMessages() {
   const customerMap = new Map(customers?.map(c => [c.id, c]) || [])
   
   // Group messages by customer
+  interface Customer {
+    id: string
+    first_name: string
+    last_name: string
+    mobile_number: string
+  }
+  
+  interface Message {
+    id: string
+    customer_id: string
+    created_at: string
+    [key: string]: unknown
+  }
+  
   const conversationMap = new Map<string, {
-    customer: any,
-    messages: any[],
+    customer: Customer,
+    messages: Message[],
     unreadCount: number,
     lastMessageAt: string
   }>()

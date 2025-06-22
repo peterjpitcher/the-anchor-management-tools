@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useState, useCallback } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { User } from '@supabase/supabase-js';
@@ -26,21 +26,21 @@ export default function UserRolesModal({
   const [saving, setSaving] = useState(false);
   const router = useRouter();
 
+  const loadUserRoles = useCallback(async () => {
+    setLoading(true);
+    const result = await getUserRoles(user.id);
+    if (result.success && result.data) {
+      const roleIds = result.data.map((r: { role_id: string }) => r.role_id);
+      setSelectedRoles(new Set(roleIds));
+    }
+    setLoading(false);
+  }, [user.id]);
+
   useEffect(() => {
     if (isOpen) {
       loadUserRoles();
     }
-  }, [isOpen, user.id]);
-
-  const loadUserRoles = async () => {
-    setLoading(true);
-    const result = await getUserRoles(user.id);
-    if (result.success && result.data) {
-      const roleIds = result.data.map((r: any) => r.role_id);
-      setSelectedRoles(new Set(roleIds));
-    }
-    setLoading(false);
-  };
+  }, [isOpen, loadUserRoles]);
 
   const handleSave = async () => {
     setSaving(true);

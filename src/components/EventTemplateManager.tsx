@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import toast from 'react-hot-toast'
 import { DocumentTextIcon } from '@heroicons/react/24/outline'
@@ -40,7 +40,7 @@ const AVAILABLE_VARIABLES = {
   contact_phone: 'Contact phone number'
 }
 
-export function EventTemplateManager({ eventId, eventName }: Props) {
+export function EventTemplateManager({ eventId }: Props) {
   const supabase = useSupabase()
   const [templates, setTemplates] = useState<EventTemplate[]>([])
   const [defaultTemplates, setDefaultTemplates] = useState<Record<string, string>>({})
@@ -48,44 +48,54 @@ export function EventTemplateManager({ eventId, eventName }: Props) {
   const [content, setContent] = useState('')
   const [showHelp, setShowHelp] = useState(false)
 
-  useEffect(() => {
-    loadTemplates()
-    loadDefaultTemplates()
-  }, [eventId])
-
-  async function loadTemplates() {
+  const loadTemplates = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('event_message_templates')
         .select('*')
         .eq('event_id', eventId)
+        .order('template_type')
 
       if (error) throw error
       setTemplates(data || [])
     } catch (error) {
-      console.error('Error loading event templates:', error)
+      console.error('Error loading templates:', error)
+      toast.error('Failed to load templates')
     }
-  }
+  }, [eventId, supabase])
 
-  async function loadDefaultTemplates() {
+  const loadDefaultTemplates = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('message_templates')
-        .select('template_type, content')
-        .eq('is_default', true)
+        .select('name, content')
         .eq('is_active', true)
+        .in('type', ['confirmation', 'reminder_24h', 'reminder_7d'])
 
       if (error) throw error
       
       const defaults: Record<string, string> = {}
       data?.forEach(template => {
-        defaults[template.template_type] = template.content
+        if (template.name.includes('24 Hour')) {
+          defaults['reminder_24h'] = template.content
+        } else if (template.name.includes('7 Day')) {
+          defaults['reminder_7d'] = template.content
+        } else if (template.name.includes('Confirmation')) {
+          defaults['confirmation'] = template.content
+        }
       })
+      
       setDefaultTemplates(defaults)
     } catch (error) {
       console.error('Error loading default templates:', error)
     }
-  }
+  }, [supabase])
+
+  useEffect(() => {
+    loadTemplates()
+    loadDefaultTemplates()
+  }, [eventId, loadTemplates, loadDefaultTemplates])
+
 
   async function saveTemplate(templateType: string) {
     try {

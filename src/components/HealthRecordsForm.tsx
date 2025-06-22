@@ -3,7 +3,6 @@
 import { useActionState, useEffect, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { upsertHealthRecord } from '@/app/actions/employeeActions';
-import type { ActionFormState } from '@/types/actions';
 import type { EmployeeHealthRecord } from '@/types/database';
 
 interface HealthRecordsFormProps {
@@ -34,7 +33,19 @@ export default function HealthRecordsForm({ employeeId, healthRecord }: HealthRe
     }
   }, [state]);
 
-  const renderField = (field: any) => {
+  interface FieldConfig {
+    name: string;
+    label: string;
+    type?: 'textarea' | 'checkbox' | 'text' | 'email' | 'select' | 'date';
+    defaultValue?: string | null;
+    defaultChecked?: boolean;
+    rows?: number;
+    helpText?: string;
+    options?: Array<{ value: string; label: string }>;
+    onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  }
+  
+  const renderField = (field: FieldConfig) => {
     const error = state?.errors?.[field.name];
     
     return (
@@ -47,7 +58,7 @@ export default function HealthRecordsForm({ employeeId, healthRecord }: HealthRe
             <textarea
               name={field.name}
               id={field.name}
-              defaultValue={field.defaultValue || ''}
+              defaultValue={typeof field.defaultValue === 'string' ? field.defaultValue : ''}
               rows={3}
               className="block w-full max-w-lg rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
             />
@@ -77,27 +88,27 @@ export default function HealthRecordsForm({ employeeId, healthRecord }: HealthRe
     );
   };
   
-  const generalFields = [
+  const generalFields: FieldConfig[] = [
       { name: 'doctor_name', label: 'Doctor Name', defaultValue: healthRecord?.doctor_name },
       { name: 'doctor_address', label: 'Doctor Address', defaultValue: healthRecord?.doctor_address },
-      { name: 'allergies', label: 'Allergies', type: 'textarea', defaultValue: healthRecord?.allergies },
-      { name: 'illness_history', label: 'History of Illness', type: 'textarea', defaultValue: healthRecord?.illness_history },
-      { name: 'recent_treatment', label: 'Recent Treatment (last 3 months)', type: 'textarea', defaultValue: healthRecord?.recent_treatment },
+      { name: 'allergies', label: 'Allergies', type: 'textarea' as const, defaultValue: healthRecord?.allergies },
+      { name: 'illness_history', label: 'History of Illness', type: 'textarea' as const, defaultValue: healthRecord?.illness_history },
+      { name: 'recent_treatment', label: 'Recent Treatment (last 3 months)', type: 'textarea' as const, defaultValue: healthRecord?.recent_treatment },
   ];
   
-  const conditionFields = [
-      { name: 'has_diabetes', label: 'Suffer with Diabetes?', type: 'checkbox', defaultChecked: healthRecord?.has_diabetes },
-      { name: 'has_epilepsy', label: 'Suffer with Epilepsy/Fits/Blackouts?', type: 'checkbox', defaultChecked: healthRecord?.has_epilepsy },
-      { name: 'has_skin_condition', label: 'Suffer with Eczema/Dermatitis/Skin Disease?', type: 'checkbox', defaultChecked: healthRecord?.has_skin_condition },
-      { name: 'has_depressive_illness', label: 'Suffer with Depressive Illness?', type: 'checkbox', defaultChecked: healthRecord?.has_depressive_illness },
-      { name: 'has_bowel_problems', label: 'Suffer with Bowel Problems?', type: 'checkbox', defaultChecked: healthRecord?.has_bowel_problems },
-      { name: 'has_ear_problems', label: 'Suffer with Earache or Infection?', type: 'checkbox', defaultChecked: healthRecord?.has_ear_problems },
+  const conditionFields: FieldConfig[] = [
+      { name: 'has_diabetes', label: 'Suffer with Diabetes?', type: 'checkbox' as const, defaultChecked: healthRecord?.has_diabetes },
+      { name: 'has_epilepsy', label: 'Suffer with Epilepsy/Fits/Blackouts?', type: 'checkbox' as const, defaultChecked: healthRecord?.has_epilepsy },
+      { name: 'has_skin_condition', label: 'Suffer with Eczema/Dermatitis/Skin Disease?', type: 'checkbox' as const, defaultChecked: healthRecord?.has_skin_condition },
+      { name: 'has_depressive_illness', label: 'Suffer with Depressive Illness?', type: 'checkbox' as const, defaultChecked: healthRecord?.has_depressive_illness },
+      { name: 'has_bowel_problems', label: 'Suffer with Bowel Problems?', type: 'checkbox' as const, defaultChecked: healthRecord?.has_bowel_problems },
+      { name: 'has_ear_problems', label: 'Suffer with Earache or Infection?', type: 'checkbox' as const, defaultChecked: healthRecord?.has_ear_problems },
   ];
   
-  const disabilityFields = [
+  const disabilityFields: FieldConfig[] = [
       { name: 'disability_reg_number', label: 'Disability Registration Number', defaultValue: healthRecord?.disability_reg_number },
-      { name: 'disability_reg_expiry_date', label: 'Registration Expiry Date', type: 'date', defaultValue: healthRecord?.disability_reg_expiry_date?.split('T')[0] },
-      { name: 'disability_details', label: 'Disability Details', type: 'textarea', defaultValue: healthRecord?.disability_details },
+      { name: 'disability_reg_expiry_date', label: 'Registration Expiry Date', type: 'date' as const, defaultValue: healthRecord?.disability_reg_expiry_date?.split('T')[0] },
+      { name: 'disability_details', label: 'Disability Details', type: 'textarea' as const, defaultValue: healthRecord?.disability_details },
   ];
 
   return (

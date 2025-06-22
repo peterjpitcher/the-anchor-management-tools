@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, Fragment } from 'react'
+import { useState, Fragment, useMemo } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import Link from 'next/link'
 import type { Employee } from '@/types/database'
@@ -10,61 +10,46 @@ import { Menu, Transition } from '@headlessui/react'
 import { formatDate } from '@/lib/dateUtils'
 import toast from 'react-hot-toast'
 import { exportEmployees } from '@/app/actions/employeeExport'
+import { usePagination } from '@/hooks/usePagination'
+import { Pagination } from '@/components/Pagination'
+import { PageLoadingSkeleton } from '@/components/ui/SkeletonLoader'
 
 export default function EmployeesPage() {
   const supabase = useSupabase()
-  const [employees, setEmployees] = useState<Employee[]>([])
-  const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Former'>('all')
 
-  useEffect(() => {
-    loadEmployees()
-  }, [])
+  // Memoize query configuration to prevent unnecessary re-renders
+  const queryConfig = useMemo(() => ({
+    select: '*',
+    orderBy: { column: 'last_name', ascending: true },
+    filters: statusFilter === 'all' ? [] : [
+      { column: 'status', operator: 'eq', value: statusFilter }
+    ]
+  }), [statusFilter])
 
-  async function loadEmployees() {
-    try {
-      const { data, error } = await supabase
-        .from('employees')
-        .select('*')
-        .order('last_name')
-        .order('first_name')
+  const paginationOptions = useMemo(() => ({
+    pageSize: 50,
+    searchTerm: searchTerm,
+    searchColumns: ['first_name', 'last_name', 'email_address', 'job_title']
+  }), [searchTerm])
 
-      if (error) throw error
-      setEmployees(data || [])
-    } catch (error) {
-      console.error('Error loading employees:', error)
-      toast.error('Failed to load employees')
-    } finally {
-      setLoading(false)
-    }
-  }
+  // Use pagination hook with search and filters
+  const {
+    data: employees,
+    currentPage,
+    totalPages,
+    totalCount,
+    pageSize,
+    isLoading: loading,
+    setPage
+  } = usePagination<Employee>(
+    supabase,
+    'employees',
+    queryConfig,
+    paginationOptions
+  )
 
-  // Filter employees based on search term and status
-  const filteredEmployees = useMemo(() => {
-    return employees.filter(employee => {
-      // Status filter
-      if (statusFilter !== 'all' && employee.status !== statusFilter) {
-        return false
-      }
-
-      // Search filter
-      if (searchTerm) {
-        const searchLower = searchTerm.toLowerCase()
-        const fullName = `${employee.first_name} ${employee.last_name}`.toLowerCase()
-        const email = employee.email_address?.toLowerCase() || ''
-        const jobTitle = employee.job_title?.toLowerCase() || ''
-
-        return (
-          fullName.includes(searchLower) ||
-          email.includes(searchLower) ||
-          jobTitle.includes(searchLower)
-        )
-      }
-
-      return true
-    })
-  }, [employees, searchTerm, statusFilter])
 
   const activeCount = employees.filter(e => e.status === 'Active').length
   const formerCount = employees.filter(e => e.status === 'Former').length
@@ -95,7 +80,7 @@ export default function EmployeesPage() {
         window.URL.revokeObjectURL(url)
         document.body.removeChild(a)
         
-        toast.success(`Exported ${filteredEmployees.length} employees`)
+        toast.success(`Exported ${employees.length} employees`)
       }
     } catch (error) {
       console.error('Export error:', error)
@@ -104,7 +89,7 @@ export default function EmployeesPage() {
   }
 
   if (loading) {
-    return <div className="p-4">Loading employees...</div>
+    return <PageLoadingSkeleton />
   }
 
   return (
@@ -122,8 +107,8 @@ export default function EmployeesPage() {
               <Menu as="div" className="relative inline-block text-left">
                 <div>
                   <Menu.Button
-                    className="inline-flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={filteredEmployees.length === 0}
+                    className="inline-flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={employees.length === 0}
                   >
                     <ArrowDownTrayIcon className="-ml-1 mr-2 h-5 w-5" />
                     Export
@@ -195,7 +180,7 @@ export default function EmployeesPage() {
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-green-500 focus:border-green-500 sm:text-sm"
                   placeholder="Search by name, email, or job title..."
                 />
               </div>
@@ -242,12 +227,12 @@ export default function EmployeesPage() {
           {/* Search Results Count */}
           {searchTerm && (
             <div className="mt-2 text-sm text-gray-500">
-              Found {filteredEmployees.length} employee{filteredEmployees.length !== 1 ? 's' : ''} matching &quot;{searchTerm}&quot;
+              Found {employees.length} employee{employees.length !== 1 ? 's' : ''} matching &quot;{searchTerm}&quot;
             </div>
           )}
         </div>
         
-        {filteredEmployees.length === 0 && (
+        {employees.length === 0 && (
           <div className="text-center py-12">
             <h3 className="text-lg font-medium text-gray-900">No employees found</h3>
             <p className="mt-1 text-sm text-gray-500">
@@ -258,7 +243,7 @@ export default function EmployeesPage() {
           </div>
         )}
         
-        {filteredEmployees.length > 0 && (
+        {employees.length > 0 && (
           <div>
             {/* Desktop Table */}
             <div className="overflow-x-auto hidden md:block">
@@ -283,16 +268,16 @@ export default function EmployeesPage() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredEmployees.map((employee) => (
+                  {employees.map((employee) => (
                     <tr key={employee.employee_id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <Link href={`/employees/${employee.employee_id}`} className="text-indigo-600 hover:text-indigo-900">
+                        <Link href={`/employees/${employee.employee_id}`} className="text-blue-600 hover:text-blue-700">
                           {employee.first_name} {employee.last_name}
                         </Link>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{employee.job_title}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <a href={`mailto:${employee.email_address}`} className="text-indigo-600 hover:text-indigo-900">
+                        <a href={`mailto:${employee.email_address}`} className="text-blue-600 hover:text-blue-700">
                           {employee.email_address}
                         </a>
                       </td>
@@ -318,11 +303,11 @@ export default function EmployeesPage() {
             {/* Mobile List */}
             <div className="block md:hidden">
               <ul className="divide-y divide-gray-200">
-                {filteredEmployees.map((employee) => (
+                {employees.map((employee) => (
                   <li key={employee.employee_id} className="px-4 py-4 sm:px-6">
                     <Link href={`/employees/${employee.employee_id}`} className="block hover:bg-gray-50">
                       <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium text-indigo-600 truncate">{employee.first_name} {employee.last_name}</p>
+                        <p className="text-sm font-medium text-blue-600 truncate">{employee.first_name} {employee.last_name}</p>
                         <div className="ml-2 flex-shrink-0 flex">
                           <span
                             className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium 
@@ -350,6 +335,17 @@ export default function EmployeesPage() {
               </ul>
             </div>
           </div>
+        )}
+        
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalCount}
+            itemsPerPage={pageSize}
+            onPageChange={setPage}
+          />
         )}
       </div>
     </div>

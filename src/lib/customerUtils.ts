@@ -29,7 +29,7 @@ export async function getLoyalCustomers(supabase: SupabaseClient): Promise<strin
   }
 
   // Get unique customer IDs who have bookings in the date range
-  const loyalCustomerIds = [...new Set((bookings as unknown as BookingWithEvent[])?.map(booking => booking.customer_id) || [])]
+  const loyalCustomerIds = Array.from(new Set((bookings as unknown as BookingWithEvent[])?.map(booking => booking.customer_id) || []))
   return loyalCustomerIds
 }
 

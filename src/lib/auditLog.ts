@@ -25,16 +25,16 @@ export type AuditResourceType =
   | 'auth';
 
 interface AuditLogOptions {
-  userId?: string;
-  userEmail?: string;
+  userId?: string | null;
+  userEmail?: string | null;
   operationType: AuditOperationType;
   resourceType: AuditResourceType;
   resourceId?: string;
   operationStatus: 'success' | 'failure';
-  oldValues?: any;
-  newValues?: any;
+  oldValues?: Record<string, unknown>;
+  newValues?: Record<string, unknown>;
   errorMessage?: string;
-  additionalInfo?: any;
+  additionalInfo?: Record<string, unknown>;
 }
 
 function getSupabaseServiceClient() {
@@ -62,7 +62,7 @@ async function getClientInfo() {
       ipAddress,
       userAgent
     };
-  } catch (error) {
+  } catch {
     // Headers might not be available in all contexts
     return {
       ipAddress: null,
@@ -112,7 +112,7 @@ export async function logAuditEvent(options: AuditLogOptions): Promise<void> {
 /**
  * Remove sensitive fields from data before logging
  */
-function sanitizeForAudit(data: any): any {
+function sanitizeForAudit(data: unknown): unknown {
   if (!data) return null;
   
   // Fields to exclude from audit logs
@@ -158,7 +158,7 @@ export async function getCurrentUserForAudit(supabase: any) {
       userId: user?.id || null,
       userEmail: user?.email || null
     };
-  } catch (error) {
+  } catch {
     return {
       userId: null,
       userEmail: null

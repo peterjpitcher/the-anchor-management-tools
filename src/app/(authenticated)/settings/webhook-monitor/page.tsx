@@ -1,16 +1,20 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { formatDistanceToNow } from 'date-fns'
 import Link from 'next/link'
+import { WebhookLog } from '@/types/database'
 
 export default function WebhookMonitorPage() {
   const supabase = useSupabase()
-  const [logs, setLogs] = useState<any[]>([])
+  
+  const [logs, setLogs] = useState<WebhookLog[]>([])
   const [loading, setLoading] = useState(true)
   
-  async function getWebhookLogs() {
+  const loadLogs = useCallback(async () => {
+    setLoading(true)
+    
     const { data, error } = await supabase
       .from('webhook_logs')
       .select('*')
@@ -19,22 +23,17 @@ export default function WebhookMonitorPage() {
     
     if (error) {
       console.error('Error fetching webhook logs:', error)
-      return []
+      setLogs([])
+    } else {
+      setLogs(data || [])
     }
     
-    return data || []
-  }
-  
-  async function loadLogs() {
-    setLoading(true)
-    const data = await getWebhookLogs()
-    setLogs(data)
     setLoading(false)
-  }
+  }, [supabase])
   
   useEffect(() => {
     loadLogs()
-  }, [])
+  }, [loadLogs])
   
   return (
     <div className="container mx-auto px-4 py-8">

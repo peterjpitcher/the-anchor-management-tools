@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useState, useCallback } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { Role, Permission } from '@/types/rbac';
@@ -29,21 +29,21 @@ export default function RolePermissionsModal({
   const [saving, setSaving] = useState(false);
   const router = useRouter();
 
+  const loadRolePermissions = useCallback(async () => {
+    setLoading(true);
+    const result = await getRolePermissions(role.id);
+    if (result.success && result.data) {
+      const permissionIds = result.data.map((rp: { permission_id: string }) => rp.permission_id);
+      setSelectedPermissions(new Set(permissionIds));
+    }
+    setLoading(false);
+  }, [role.id]);
+
   useEffect(() => {
     if (isOpen) {
       loadRolePermissions();
     }
-  }, [isOpen, role.id]);
-
-  const loadRolePermissions = async () => {
-    setLoading(true);
-    const result = await getRolePermissions(role.id);
-    if (result.success && result.data) {
-      const permissionIds = result.data.map((rp: any) => rp.permission_id);
-      setSelectedPermissions(new Set(permissionIds));
-    }
-    setLoading(false);
-  };
+  }, [isOpen, loadRolePermissions]);
 
   const handleSave = async () => {
     setSaving(true);
