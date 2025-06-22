@@ -32,6 +32,9 @@ NEXT_PUBLIC_CONTACT_PHONE_NUMBER=+447700106752
 ```bash
 # Generate with: openssl rand -hex 32
 CRON_SECRET_KEY=your_cron_secret_key
+
+# Temporarily disable rate limiting if needed (emergency use only)
+# DISABLE_RATE_LIMITING=true
 ```
 
 ### Google Calendar Integration
