@@ -62,10 +62,12 @@ export async function middleware(request: NextRequest) {
       limiter = rateLimiters.webhook
     }
 
-    // Apply rate limiting
-    const rateLimitResponse = await limiter(request)
-    if (rateLimitResponse) {
-      return rateLimitResponse
+    // Apply rate limiting (skip if disabled via environment variable)
+    if (process.env.DISABLE_RATE_LIMITING !== 'true') {
+      const rateLimitResponse = await limiter(request)
+      if (rateLimitResponse) {
+        return rateLimitResponse
+      }
     }
   }
 

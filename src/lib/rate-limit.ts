@@ -91,10 +91,10 @@ export const rateLimiters = {
     message: 'Too many bulk operations. Please wait before performing more bulk actions.'
   }),
   
-  // Authentication: 5 attempts per 15 minutes per IP
+  // Authentication: 20 attempts per 15 minutes per IP (increased for production issues)
   auth: createRateLimiter({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5,
+    max: 20, // Increased from 5 to handle shared IPs
     message: 'Too many login attempts. Please try again later.'
   }),
   
