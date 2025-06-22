@@ -3,8 +3,8 @@
 import { formatDate } from '@/lib/dateUtils'
 import Link from 'next/link'
 import { use, useEffect, useState, useCallback } from 'react'
-import { Customer, Booking, Event } from '@/types/database'
-import { PencilIcon, TrashIcon, ArrowLeftIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline'
+import { Customer, Booking, Event, Message } from '@/types/database'
+import { PencilIcon, TrashIcon, ArrowLeftIcon, ChatBubbleLeftRightIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { BookingForm } from '@/components/BookingForm'
 import toast from 'react-hot-toast'
 import { useSearchParams, useRouter } from 'next/navigation'
@@ -13,6 +13,8 @@ import { Button } from '@/components/ui/Button'
 import { toggleCustomerSmsOptIn, getCustomerSmsStats, getCustomerMessages } from '@/app/actions/customerSmsActions'
 import { markMessagesAsRead } from '@/app/actions/messageActions'
 import { MessageThread } from '@/components/MessageThread'
+import { CustomerCategoryPreferences } from '@/components/CustomerCategoryPreferences'
+import { PageLoadingSkeleton } from '@/components/ui/SkeletonLoader'
 
 type BookingWithEvent = Omit<Booking, 'event'> & {
   event: Pick<Event, 'id' | 'name' | 'date' | 'time' | 'capacity' | 'created_at'>
@@ -30,10 +32,24 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   const [bookings, setBookings] = useState<BookingWithEvent[]>([])
   const [allEvents, setAllEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
-  const [smsStats, setSmsStats] = useState<any>(null)
+  const [smsStats, setSmsStats] = useState<{
+    customer: {
+      sms_opt_in: boolean;
+      sms_delivery_failures: number;
+      last_sms_failure_reason: string | null;
+      last_successful_sms_at: string | null;
+      sms_deactivated_at: string | null;
+      sms_deactivation_reason: string | null;
+    };
+    stats: {
+      totalMessages: number;
+      deliveredMessages: number;
+      failedMessages: number;
+      deliveryRate: string;
+    };
+  } | null>(null)
   const [togglingSmsSetting, setTogglingSmsSetting] = useState(false)
-  const [messages, setMessages] = useState<any[]>([])
-  const [showMessages, setShowMessages] = useState(false)
+  const [messages, setMessages] = useState<Message[]>([])
 
   // Modal states
   const [editingBooking, setEditingBooking] = useState<BookingWithEvent | undefined>(undefined)
@@ -69,7 +85,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
 
       const { data: bookingsData, error: bookingsError } = await supabase
         .from('bookings')
-        .select('*, event:events(id, name, date, time, capacity, created_at)')
+        .select('*, event:events(id, name, date, time, capacity, created_at, category:event_categories(*))')
         .eq('customer_id', params.id)
         .order('created_at', { ascending: false })
 
@@ -217,7 +233,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
     }
   }
 
-  if (loading) return <div className="text-center p-4">Loading customer details...</div>
+  if (loading) return <PageLoadingSkeleton />
   if (!customer) return <div className="text-center p-4">Customer not found.</div>
 
   const showModal = !!editingBooking || isAddingBooking
@@ -267,7 +283,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
               <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                 <button
                   onClick={() => setEditingBooking(booking)}
-                  className="text-indigo-600 hover:text-indigo-900 mr-4"
+                  className="text-blue-600 hover:text-blue-700 mr-4"
                 >
                   <PencilIcon className="h-5 w-5" />
                   <span className="sr-only">Edit</span>
@@ -298,35 +314,54 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
     <div className="space-y-6">
       {showModal && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
-            {isAddingBooking && (
-              <div>
-                <h3 className="text-lg font-medium mb-4">Select an Event</h3>
-                <select
-                  onChange={e => {
-                    const event = allEvents.find(event => event.id === e.target.value)
-                    setEventForNewBooking(event)
-                  }}
-                  className="w-full p-2 border rounded-md mb-4"
-                >
-                  <option>Select an event</option>
-                  {allEvents.map(event => (
-                    <option key={event.id} value={event.id}>
-                      {event.name} ({formatDate(event.date)})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-            {(editingBooking || (isAddingBooking && eventForNewBooking)) && (
-              <BookingForm
-                event={editingBooking?.event ?? eventForNewBooking!}
-                booking={editingBooking}
-                customer={customer}
-                onSubmit={editingBooking ? handleUpdateBooking : handleAddBooking}
-                onCancel={closeModal}
-              />
-            )}
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex justify-between items-center px-6 py-4 border-b">
+              <h2 className="text-xl font-semibold">
+                {editingBooking ? 'Edit Booking' : 'Add New Booking'}
+              </h2>
+              <button 
+                className="p-1 rounded-full hover:bg-gray-100"
+                onClick={closeModal}
+                aria-label="Close modal"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+            
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              {isAddingBooking && !eventForNewBooking && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Select an Event
+                  </label>
+                  <select
+                    onChange={e => {
+                      const event = allEvents.find(event => event.id === e.target.value)
+                      setEventForNewBooking(event)
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  >
+                    <option value="">Select an event</option>
+                    {allEvents.map(event => (
+                      <option key={event.id} value={event.id}>
+                        {event.name} ({formatDate(event.date)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {(editingBooking || (isAddingBooking && eventForNewBooking)) && (
+                <BookingForm
+                  event={editingBooking?.event ?? eventForNewBooking!}
+                  booking={editingBooking}
+                  customer={customer}
+                  onSubmit={editingBooking ? handleUpdateBooking : handleAddBooking}
+                  onCancel={closeModal}
+                />
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -337,7 +372,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{customer.first_name} {customer.last_name}</h1>
               <p className="mt-1 text-sm text-gray-500">
-                <a href={`tel:${customer.mobile_number}`} className="text-indigo-600 hover:text-indigo-900">
+                <a href={`tel:${customer.mobile_number}`} className="text-blue-600 hover:text-blue-700">
                   {customer.mobile_number}
                 </a>
               </p>
@@ -421,6 +456,9 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
           </div>
         </div>
       </div>
+
+      {/* Category Preferences */}
+      <CustomerCategoryPreferences customerId={customer.id} />
 
       {/* Message Thread */}
       <div className="bg-white shadow overflow-hidden sm:rounded-lg">

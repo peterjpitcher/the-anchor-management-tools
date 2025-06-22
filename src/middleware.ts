@@ -1,6 +1,7 @@
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
+import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { rateLimiters } from '@/lib/rate-limit'
 
 // Map routes to required permissions
 const routePermissions: Record<string, { module: string; action: string }> = {
@@ -23,8 +24,69 @@ const routePermissions: Record<string, { module: string; action: string }> = {
 };
 
 export async function middleware(request: NextRequest) {
+  // Apply rate limiting to API and auth routes
+  if (request.nextUrl.pathname.startsWith('/api/') || 
+      request.nextUrl.pathname.startsWith('/auth/')) {
+    
+    // Cron endpoints should only be called by Vercel
+    if (request.nextUrl.pathname.startsWith('/api/cron/')) {
+      const cronSecret = request.headers.get('x-cron-secret')
+      if (cronSecret !== process.env.CRON_SECRET_KEY) {
+        return NextResponse.json(
+          { error: 'Unauthorized' },
+          { status: 401 }
+        )
+      }
+      // Skip rate limiting for valid cron requests
+      return NextResponse.next()
+    }
+
+    // Select appropriate rate limiter
+    let limiter = rateLimiters.api
+
+    // Auth endpoints get strict limits
+    if (request.nextUrl.pathname.startsWith('/auth/')) {
+      limiter = rateLimiters.auth
+    }
+    // SMS endpoints get stricter limits
+    else if (request.nextUrl.pathname.includes('/sms') || 
+        request.nextUrl.pathname.includes('/message')) {
+      limiter = rateLimiters.sms
+    }
+    // Bulk operations get special limits
+    else if (request.nextUrl.pathname.includes('/bulk')) {
+      limiter = rateLimiters.bulk
+    }
+    // Webhook endpoints get higher limits
+    else if (request.nextUrl.pathname.startsWith('/api/webhooks/')) {
+      limiter = rateLimiters.webhook
+    }
+
+    // Apply rate limiting
+    const rateLimitResponse = await limiter(request)
+    if (rateLimitResponse) {
+      return rateLimitResponse
+    }
+  }
+
   const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req: request, res })
+  
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            res.cookies.set(name, value, options)
+          )
+        },
+      },
+    }
+  )
 
   // Refresh session if expired - required for Server Components
   const { data: { session } } = await supabase.auth.getSession()
@@ -80,6 +142,8 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    // API routes (for rate limiting)
+    '/api/:path*',
     // Protected routes that require authentication
     '/dashboard/:path*',
     '/events/:path*',

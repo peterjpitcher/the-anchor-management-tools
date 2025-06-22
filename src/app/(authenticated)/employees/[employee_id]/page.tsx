@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import type { Employee, EmployeeAttachment, AttachmentCategory, EmployeeEmergencyContact, EmployeeFinancialDetails, EmployeeHealthRecord } from '@/types/database';
-import { ArrowLeftIcon, PencilSquareIcon } from '@heroicons/react/24/outline';
+import type { Employee, EmployeeAttachment, EmployeeFinancialDetails, EmployeeHealthRecord } from '@/types/database';
+import { PencilSquareIcon } from '@heroicons/react/24/outline';
 import DeleteEmployeeButton from '@/components/DeleteEmployeeButton';
 import EmployeeNotesList from '@/components/EmployeeNotesList';
 import AddEmployeeNoteForm from '@/components/AddEmployeeNoteForm';
@@ -17,6 +17,8 @@ import FinancialDetailsTab from '@/components/FinancialDetailsTab';
 import HealthRecordsTab from '@/components/HealthRecordsTab';
 import { formatDate } from '@/lib/dateUtils';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
+import { EmployeeVersionHistory } from '@/components/EmployeeVersionHistory';
+import { EmployeeRecentChanges } from '@/components/EmployeeRecentChanges';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,67 +32,6 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
   const [healthRecord, setHealthRecord] = useState<EmployeeHealthRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const getEmployee = async (id: string): Promise<Employee | null> => {
-    const { data, error } = await supabase
-      .from('employees')
-      .select('*')
-      .eq('employee_id', id)
-      .single();
-
-    if (error) {
-      console.error('Error fetching employee:', error);
-      return null;
-    }
-    return data;
-  };
-
-  const getEmployeeAttachments = async (employeeId: string): Promise<EmployeeAttachment[] | null> => {
-    const { data, error } = await supabase
-      .from('employee_attachments')
-      .select('*')
-      .eq('employee_id', employeeId)
-      .order('uploaded_at', { ascending: false });
-    if (error) {
-      console.error('Error fetching employee attachments:', error);
-      return null;
-    }
-    return data;
-  };
-
-  const getFinancialDetails = async (employeeId: string): Promise<EmployeeFinancialDetails | null> => {
-    const { data, error } = await supabase
-      .from('employee_financial_details')
-      .select('*')
-      .eq('employee_id', employeeId)
-      .maybeSingle();
-    if (error) { 
-      console.error('Error fetching financial details:', error);
-    }
-    return data;
-  };
-
-  const getHealthRecord = async (employeeId: string): Promise<EmployeeHealthRecord | null> => {
-    const { data, error } = await supabase
-      .from('employee_health_records')
-      .select('*')
-      .eq('employee_id', employeeId)
-      .maybeSingle();
-    if (error) { 
-      console.error('Error fetching health record:', error);
-    }
-    return data;
-  };
-
-  const getAttachmentCategories = async (): Promise<Map<string, string>> => {
-    const { data, error } = await supabase.from('attachment_categories').select('category_id, category_name');
-    const map = new Map<string, string>();
-    if (error) {
-      console.error('Error fetching attachment categories:', error);
-      return map;
-    }
-    data?.forEach(cat => map.set(cat.category_id, cat.category_name));
-    return map;
-  };
 
   const loadData = useCallback(async () => {
     if (!params.employee_id) {
@@ -98,6 +39,70 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
     }
     try {
         setIsLoading(true);
+        
+        // Define functions inline to avoid dependency issues
+        const getEmployee = async (id: string): Promise<Employee | null> => {
+          const { data, error } = await supabase
+            .from('employees')
+            .select('*')
+            .eq('employee_id', id)
+            .single();
+
+          if (error) {
+            console.error('Error fetching employee:', error);
+            return null;
+          }
+          return data;
+        };
+
+        const getEmployeeAttachments = async (employeeId: string): Promise<EmployeeAttachment[] | null> => {
+          const { data, error } = await supabase
+            .from('employee_attachments')
+            .select('*')
+            .eq('employee_id', employeeId)
+            .order('uploaded_at', { ascending: false });
+          if (error) {
+            console.error('Error fetching employee attachments:', error);
+            return null;
+          }
+          return data;
+        };
+
+        const getFinancialDetails = async (employeeId: string): Promise<EmployeeFinancialDetails | null> => {
+          const { data, error } = await supabase
+            .from('employee_financial_details')
+            .select('*')
+            .eq('employee_id', employeeId)
+            .maybeSingle();
+          if (error) { 
+            console.error('Error fetching financial details:', error);
+          }
+          return data;
+        };
+
+        const getHealthRecord = async (employeeId: string): Promise<EmployeeHealthRecord | null> => {
+          const { data, error } = await supabase
+            .from('employee_health_records')
+            .select('*')
+            .eq('employee_id', employeeId)
+            .maybeSingle();
+          if (error) { 
+            console.error('Error fetching health record:', error);
+          }
+          return data;
+        };
+
+        const getAttachmentCategories = async (): Promise<Map<string, string>> => {
+          const { data, error } = await supabase.from('attachment_categories').select('category_id, category_name');
+          const map = new Map<string, string>();
+          if (error) {
+            console.error('Error fetching attachment categories:', error);
+            return map;
+          }
+          data?.forEach(cat => map.set(cat.category_id, cat.category_name));
+          return map;
+        };
+        
         const [emp, att, catMap, fin, health] = await Promise.all([
             getEmployee(params.employee_id),
             getEmployeeAttachments(params.employee_id),
@@ -191,6 +196,13 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
     {
       label: 'Health Records',
       content: <HealthRecordsTab healthRecord={healthRecord} />
+    },
+    {
+      label: 'Version History',
+      content: <EmployeeVersionHistory 
+        employeeId={employee.employee_id} 
+        employeeName={`${employee.first_name} ${employee.last_name}`} 
+      />
     }
   ];
 
@@ -222,6 +234,8 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
           </div>
         </div>
       </div>
+
+      <EmployeeRecentChanges employeeId={employee.employee_id} />
 
       <div className="bg-white shadow overflow-hidden sm:rounded-lg">
         <Tabs tabs={tabs} />

@@ -7,7 +7,7 @@ export default async function UsersPage() {
   if (!hasPermission) {
     return (
       <div className="text-center py-12">
-        <p className="text-red-600">You don't have permission to view this page.</p>
+        <p className="text-red-600">You don&apos;t have permission to view this page.</p>
       </div>
     );
   }

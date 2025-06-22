@@ -25,6 +25,31 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [allCustomers, setAllCustomers] = useState<CustomerWithLoyalty[]>([])
+  const [availableCapacity, setAvailableCapacity] = useState<number | null>(null)
+
+  // Calculate available capacity
+  const calculateAvailableCapacity = useCallback(async () => {
+    if (!event.capacity) {
+      setAvailableCapacity(null)
+      return
+    }
+
+    try {
+      const { data: bookings, error } = await supabase
+        .from('bookings')
+        .select('seats')
+        .eq('event_id', event.id)
+        .not('id', 'eq', booking?.id || '00000000-0000-0000-0000-000000000000')
+
+      if (error) throw error
+
+      const totalBooked = bookings?.reduce((sum, b) => sum + (b.seats || 0), 0) || 0
+      setAvailableCapacity(event.capacity - totalBooked)
+    } catch (error) {
+      console.error('Error calculating capacity:', error)
+      toast.error('Failed to calculate available capacity')
+    }
+  }, [event.id, event.capacity, booking?.id, supabase])
 
   const loadCustomers = useCallback(async () => {
     if (preselectedCustomer) {
@@ -79,11 +104,12 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
     } finally {
       setIsLoading(false)
     }
-  }, [booking?.customer_id, event.id, preselectedCustomer])
+  }, [booking?.customer_id, event.id, preselectedCustomer, supabase])
 
   useEffect(() => {
     loadCustomers()
-  }, [loadCustomers])
+    calculateAvailableCapacity()
+  }, [loadCustomers, calculateAvailableCapacity])
 
   useEffect(() => {
     if (booking) {
@@ -112,6 +138,25 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
   const handleSubmit = async (e: React.FormEvent, addAnother: boolean = false) => {
     e.preventDefault()
 
+    // Validate seats is not negative
+    const seatCount = seats ? parseInt(seats, 10) : null
+    if (seatCount !== null && seatCount < 0) {
+      toast.error('Number of seats cannot be negative')
+      return
+    }
+
+    // Check capacity if event has capacity limit
+    if (event.capacity && availableCapacity !== null && seatCount) {
+      // If editing, add back the original seats to available capacity
+      const originalSeats = booking?.seats || 0
+      const actualAvailable = availableCapacity + originalSeats
+      
+      if (seatCount > actualAvailable) {
+        toast.error(`Only ${actualAvailable} seats available for this event`)
+        return
+      }
+    }
+
     // Check if customer already has a booking for this event
     const { data: existingBooking } = await supabase
       .from('bookings')
@@ -135,7 +180,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
           await onSubmit({
             customer_id: customerId,
             event_id: event.id,
-            seats: seats ? parseInt(seats, 10) : null,
+            seats: seatCount,
             notes: notes || null,
           })
 
@@ -164,7 +209,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
       await onSubmit({
         customer_id: customerId,
         event_id: event.id,
-        seats: seats ? parseInt(seats, 10) : null,
+        seats: seatCount,
         notes: notes || null,
       })
 
@@ -269,6 +314,8 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
           type="number"
           id="seats"
           name="seats"
+          min="0"
+          max={event.capacity ? (availableCapacity !== null ? availableCapacity + (booking?.seats || 0) : event.capacity) : undefined}
           className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-green-500 focus:ring-green-500 sm:text-sm"
           value={seats}
           onChange={(e) => setSeats(e.target.value)}
@@ -277,6 +324,11 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
         <p className="mt-2 text-sm text-gray-500">
           Leave empty if this is just a reminder
         </p>
+        {event.capacity && availableCapacity !== null && (
+          <p className="mt-1 text-sm text-gray-600">
+            Available: {availableCapacity + (booking?.seats || 0)} of {event.capacity} seats
+          </p>
+        )}
       </div>
 
       <div>

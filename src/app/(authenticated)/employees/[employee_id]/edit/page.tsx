@@ -2,10 +2,9 @@
 
 import EmployeeForm from '@/components/EmployeeForm';
 import { updateEmployee } from '@/app/actions/employeeActions';
-import type { ActionFormState } from '@/types/actions';
 import { supabase } from '@/lib/supabase';
 import type { Employee, EmployeeFinancialDetails, EmployeeHealthRecord } from '@/types/database';
-import { notFound, useRouter } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Tabs } from '@/components/ui/Tabs';
 import FinancialDetailsForm from '@/components/FinancialDetailsForm';
@@ -56,7 +55,6 @@ export default function EditEmployeePage({ params: paramsPromise }: { params: Pr
   const [financialDetails, setFinancialDetails] = useState<EmployeeFinancialDetails | null>(null);
   const [healthRecord, setHealthRecord] = useState<EmployeeHealthRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const router = useRouter();
 
   const loadData = useCallback(async () => {
       if (!params?.employee_id) {

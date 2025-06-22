@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
-import { CalendarIcon, UserGroupIcon, IdentificationIcon, PencilSquareIcon, EnvelopeIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, UserGroupIcon, PencilSquareIcon, EnvelopeIcon, BuildingOfficeIcon } from '@heroicons/react/24/outline'
 import { useEffect, useState, useMemo } from 'react'
 import { getUnreadMessageCount } from '@/app/actions/messagesActions'
 import { usePermissions } from '@/contexts/PermissionContext'
@@ -47,16 +47,16 @@ export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps)
 
   const { hasPermission, loading: permissionsLoading } = usePermissions()
 
-  const allNavigationItems: NavigationItem[] = [
-    { name: 'Events', href: '/events', icon: CalendarIcon, permission: { module: 'events', action: 'view' } },
-    { name: 'Customers', href: '/customers', icon: UserGroupIcon, permission: { module: 'customers', action: 'view' } },
-    { name: 'Messages', href: '/messages', icon: EnvelopeIcon, permission: { module: 'messages', action: 'view' } },
-    { name: 'Employees', href: '/employees', icon: IdentificationIcon, permission: { module: 'employees', action: 'view' } },
-    { name: 'Quick Notes', href: '#', icon: PencilSquareIcon, action: true },
-  ]
-
   // Filter navigation items based on permissions
   const navigationItems = useMemo(() => {
+    const allNavigationItems: NavigationItem[] = [
+      { name: 'Events', href: '/events', icon: CalendarIcon, permission: { module: 'events', action: 'view' } },
+      { name: 'Private', href: '/private-bookings', icon: BuildingOfficeIcon, permission: { module: 'private_bookings', action: 'view' } },
+      { name: 'Customers', href: '/customers', icon: UserGroupIcon, permission: { module: 'customers', action: 'view' } },
+      { name: 'Messages', href: '/messages', icon: EnvelopeIcon, permission: { module: 'messages', action: 'view' } },
+      { name: 'Notes', href: '#', icon: PencilSquareIcon, action: true },
+    ]
+    
     if (permissionsLoading) return [];
     return allNavigationItems.filter(item => 
       item.action || !item.permission || hasPermission(item.permission.module, item.permission.action)
@@ -82,7 +82,7 @@ export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps)
     <nav className="fixed bottom-0 left-0 right-0 z-50 h-16 bg-sidebar border-t border-gray-300 md:hidden">
       <div className={`grid h-full max-w-lg grid-cols-${navigationItems.length} mx-auto`}>
         {navigationItems.map((item) => {
-          if (item.action && item.name === 'Quick Notes') {
+          if (item.action && item.name === 'Notes') {
             return (
               <button
                 key={item.name}

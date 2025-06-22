@@ -19,6 +19,16 @@ Production URL: https://management.orangejelly.co.uk
 ### Testing
 No test runner is currently configured. When adding tests, check with the user for the preferred testing framework.
 
+### Utility Scripts
+The `/scripts/` directory contains various maintenance and analysis scripts:
+- **Data Analysis**: `analyze-api-surface.ts`, `analyze-performance.ts`, `analyze-schema-consistency.ts`, `analyze-user-flows.ts`
+- **Data Validation**: `check-booking-discount.ts`, `check-supabase-clients.ts`, `validate-business-logic.ts`
+- **Migration Tools**: `fix-supabase-imports.sh` 
+- **Testing**: `test-connectivity.ts`, `test-critical-flows.ts`, `load-test-critical-paths.ts`
+- **Security**: `security-scan.ts`
+
+Run TypeScript scripts with `tsx scripts/[script-name].ts` (tsx is included as a dev dependency).
+
 ## Architecture Overview
 
 ### Technology Stack
@@ -31,6 +41,8 @@ No test runner is currently configured. When adding tests, check with the user f
 - **Deployment**: Vercel with cron jobs for scheduled tasks
 - **Type Safety**: TypeScript with strict mode
 - **Form Validation**: Zod schema validation
+- **Error Tracking**: Sentry integration (optional)
+- **Rate Limiting**: Upstash Redis (optional)
 
 ### Key Architectural Patterns
 
@@ -46,7 +58,7 @@ No test runner is currently configured. When adding tests, check with the user f
    - Categories: legal_records, health_records, certifications, other
 
 4. **Database Schema**: 
-   - Core entities: events, customers, bookings, employees, messages
+   - Core entities: events, customers, bookings, employees, messages, private_bookings, event_categories
    - Employee system includes notes (timestamped) and attachments (categorized)
    - All tables use UUID primary keys and cascade deletes
    - Row Level Security enabled on all tables
@@ -67,6 +79,7 @@ No test runner is currently configured. When adding tests, check with the user f
    - Two-way SMS support with reply handling
    - Automatic customer creation from unknown numbers
    - SMS health monitoring with automatic suspension rules
+   - Webhook endpoints for status updates and inbound messages
 
 7. **Audit Logging**: Comprehensive tracking for compliance
    - Immutable `audit_logs` table (no updates/deletes allowed)
@@ -86,6 +99,46 @@ No test runner is currently configured. When adding tests, check with the user f
    - Avoid `.bind()` pattern (deprecated in React 19)
    - Example: `<input type="hidden" name="customerId" value={customerId} />`
 
+10. **Multi-Layer Authentication Pattern**:
+    - Client-side: `SupabaseProvider` context provides single client instance
+    - Server Actions: Use `createClient()` for authenticated operations
+    - RBAC checks via `checkUserPermission()` in server actions
+    - All auth events logged via `logAuditEvent()`
+
+11. **Phone Number Standardization**:
+    - UK phone numbers validated with `UK_PHONE_PATTERN`
+    - Convert to E.164 format (+44...) in server actions
+    - `generatePhoneVariants()` handles different formats when searching
+    - Always store in standardized format in database
+
+12. **Customer Loyalty Pattern**:
+    - `getLoyalCustomers()` identifies frequent customers
+    - Loyal customers marked with ★ in selection dropdowns
+    - `sortCustomersByLoyalty()` puts loyal customers at top
+    - Considers existing bookings when showing available customers
+
+13. **Event-based Filtering Pattern**:
+    - Bulk messaging supports event-based customer filtering
+    - `getEventCustomers()` retrieves attendees for specific events
+    - Enables targeted communications to event participants
+
+### Recent Features
+
+1. **Private Bookings Module**: Complete venue hire management
+   - Draft/tentative/confirmed workflow
+   - Comprehensive pricing and contract management
+   - Integration with event calendar
+
+2. **Event Categories**: Event categorization system
+   - Visual identity with colors and icons
+   - Smart customer suggestions based on category preferences
+   - Category-based filtering throughout the app
+
+3. **Enhanced Dashboard**: Role-based widgets
+   - Configurable based on user permissions
+   - Real-time statistics and activity monitoring
+   - Quick action buttons for common tasks
+
 ### Project Structure
 - `/src/app/(authenticated)/` - Protected routes requiring login
 - `/src/app/actions/` - Server actions for data operations
@@ -95,6 +148,7 @@ No test runner is currently configured. When adding tests, check with the user f
 - `/src/types/` - TypeScript type definitions
 - `/supabase/migrations/` - Database schema migrations
 - `/docs/` - Comprehensive documentation for all features
+- `/scripts/` - Utility scripts for maintenance and analysis
 
 ### Environment Variables
 Required in `.env.local`:
@@ -109,6 +163,11 @@ Required in `.env.local`:
 - `CRON_SECRET_KEY` - For securing cron job endpoints
 - `SKIP_TWILIO_SIGNATURE_VALIDATION` - Optional, for testing only (NEVER set to true in production)
 
+Optional for enhanced features:
+- `NEXT_PUBLIC_SENTRY_DSN` - Error tracking
+- `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` - Sentry configuration
+- `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` - Rate limiting
+
 ### UI/UX Conventions
 - **Color Palette**: 
   - Primary Blue: `#2563eb`
@@ -120,26 +179,21 @@ Required in `.env.local`:
 - **Loading States**: Use skeleton loaders for better UX
 - **Error Handling**: Display user-friendly error messages with recovery actions
 - **Responsive Design**: Mobile-first approach with Tailwind breakpoints
+- **Everything-on-one-page**: For complex forms, show all fields on one page
+- **Progressive Disclosure**: Use for complex workflows (e.g., private bookings)
+- **Status-driven UI**: UI changes based on entity status
 
-### Recent Architectural Decisions
-- Migrated from `useFormState` to `useActionState` (React 19)
-- Fixed form data passing pattern - use hidden fields instead of `.bind()`
-- Implemented proper bucket provisioning for file attachments
-- Added comprehensive employee management system with notes and attachments
-- Webhook logging for Twilio SMS status tracking
-- Domain updated to management.orangejelly.co.uk
-- RBAC system with granular permissions
-- Two-way SMS messaging with reply handling
-- Audit logging system with immutable records
-- SMS health monitoring dashboard
-
-### Monitoring & Debugging Tools
-- **SMS Health Dashboard**: `/settings/sms-health` - Monitor delivery rates and customer messaging status
-- **Webhook Logs**: Database table for debugging webhook issues
-- **Audit Logs**: Comprehensive activity tracking for compliance
-- **Messages Interface**: View and reply to SMS conversations at `/messages`
+### Build Configuration
+- **TypeScript**: Strict mode enabled with ES2017 target
+- **Path Aliases**: `@/` maps to `./src/` directory
+- **ESLint**: Configured but errors ignored during builds
+- **Server Actions**: Body size limit set to 10MB for file uploads
+- **No Prettier**: Project doesn't use Prettier for code formatting
+- **Next.js Configuration**: Uses experimental features for enhanced performance
+- **Sentry Integration**: Configured with source map upload and tree shaking
 
 ### Important Reminders
+
 1. **Database Migrations**: Always notify the user when creating new migrations in `/supabase/migrations/`. The user needs to run migrations manually in their Supabase dashboard or via CLI. Check `supabase/migrations/README_MIGRATIONS.md` for any pending migrations.
 
 2. **Before Committing**: Always run `npm run build` locally to ensure the build passes before committing changes to GitHub.
@@ -170,8 +224,55 @@ Required in `.env.local`:
    - Validate all user inputs with Zod schemas
    - Always enable webhook signature validation in production
 
+8. **Rate Limiting**: Server-side rate limiting implemented
+   - Login attempts: 5/minute
+   - Signups: 2/minute
+   - Use `checkRateLimit()` in server actions
+
+### Monitoring & Debugging Tools
+- **SMS Health Dashboard**: `/settings/sms-health` - Monitor delivery rates and customer messaging status
+- **Webhook Logs**: Database table for debugging webhook issues
+- **Audit Logs**: Comprehensive activity tracking for compliance
+- **Messages Interface**: View and reply to SMS conversations at `/messages`
+- **Webhook Test Tool**: `/settings/webhook-test` - Test webhook connectivity
+- **Import Messages Tool**: `/settings/import-messages` - Bulk import messaging data
+
 ### Webhook Endpoints
-- `/api/webhooks/twilio/status` - SMS delivery status updates
-- `/api/webhooks/twilio/reply` - Incoming SMS messages
-- `/api/webhooks/debug/*` - Debug endpoints for testing webhook functionality
+- `/api/webhooks/twilio/route` - Main webhook endpoint for SMS
+- `/api/cron/reminders` - Daily reminder cron job
 - All webhook activity logged to `webhook_logs` table for debugging
+
+### Common Development Tasks
+
+1. **Adding a New Entity**: 
+   - Create migration in `/supabase/migrations/`
+   - Add types in `/src/types/`
+   - Create server actions in `/src/app/actions/`
+   - Build UI components and pages
+   - Add RBAC permissions if needed
+
+2. **Working with SMS Templates**:
+   - Templates stored in `message_templates` table
+   - Use `{{variable}}` syntax for dynamic content
+   - Test with different timing configurations
+   - Monitor delivery via SMS health dashboard
+
+3. **File Uploads**:
+   - Use the employee attachments pattern as reference
+   - Always store the returned path from Supabase
+   - Generate signed URLs for access
+   - Implement proper error handling
+
+4. **Permission Checks**:
+   - Client-side: Use `PermissionContext`
+   - Server-side: Use `checkUserPermission()` in actions
+   - Always check permissions before sensitive operations
+
+### Documentation Structure
+Comprehensive documentation available in `/docs/`:
+- **Setup**: installation.md, configuration.md, deployment.md
+- **Features**: feature-*.md files for each major module
+- **Technical**: architecture.md, database-schema.md, api-reference.md
+- **Security**: security.md, rbac.md
+- **Monitoring**: monitoring.md, troubleshooting.md
+- **Standards**: development.md, style-guide.md, ui-standards.md

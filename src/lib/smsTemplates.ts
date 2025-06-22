@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { cache } from './cache';
 
 // Get Supabase admin client
 function getSupabaseAdminClient() {
@@ -94,44 +95,121 @@ const TEMPLATE_TYPE_MAP: Record<string, string> = {
 };
 
 // Get template from database or fallback to legacy
+/**
+ * Get multiple message templates in a single batch query
+ */
+export async function getMessageTemplatesBatch(
+  requests: Array<{ eventId: string; templateType: string }>
+): Promise<Map<string, string | null>> {
+  const results = new Map<string, string | null>();
+  
+  try {
+    const supabase = getSupabaseAdminClient();
+    if (!supabase) {
+      console.error('Failed to get Supabase client for templates');
+      return results;
+    }
+
+    // Get all unique event IDs and template types
+    const uniqueEventIds = Array.from(new Set(requests.map(r => r.eventId)));
+    const uniqueTemplateTypes = Array.from(new Set(requests.map(r => TEMPLATE_TYPE_MAP[r.templateType] || r.templateType)));
+
+    // Fetch all templates for these events and types
+    const { data: templates, error } = await supabase
+      .from('message_templates_with_timing')
+      .select('event_id, template_type, template_content')
+      .in('event_id', uniqueEventIds)
+      .in('template_type', uniqueTemplateTypes);
+
+    if (error) {
+      console.error('Error fetching templates batch:', error);
+      return results;
+    }
+
+    // Also fetch global templates
+    const { data: globalTemplates } = await supabase
+      .from('message_templates_with_timing')
+      .select('template_type, template_content')
+      .is('event_id', null)
+      .in('template_type', uniqueTemplateTypes);
+
+    // Build the results map
+    for (const request of requests) {
+      const mappedType = TEMPLATE_TYPE_MAP[request.templateType] || request.templateType;
+      const key = `${request.eventId}-${request.templateType}`;
+      
+      // First try event-specific template
+      const eventTemplate = templates?.find(
+        t => t.event_id === request.eventId && t.template_type === mappedType
+      );
+      
+      if (eventTemplate?.template_content) {
+        results.set(key, eventTemplate.template_content);
+      } else {
+        // Fall back to global template
+        const globalTemplate = globalTemplates?.find(
+          t => t.template_type === mappedType
+        );
+        if (globalTemplate?.template_content) {
+          results.set(key, globalTemplate.template_content);
+        } else {
+          results.set(key, null);
+        }
+      }
+    }
+
+    return results;
+  } catch (error) {
+    console.error('Error in getMessageTemplatesBatch:', error);
+    return results;
+  }
+}
+
 export async function getMessageTemplate(
   eventId: string,
   templateType: string,
   variables: Record<string, string>
 ): Promise<string | null> {
   try {
-    const supabase = getSupabaseAdminClient();
-    if (!supabase) {
-      console.error('Failed to get Supabase client for templates');
+    // Build cache key
+    const cacheKey = cache.buildKey('TEMPLATE', eventId, templateType);
+    
+    // Try to get template content from cache
+    const cachedTemplate = await cache.getOrSet(
+      cacheKey,
+      async () => {
+        const supabase = getSupabaseAdminClient();
+        if (!supabase) {
+          console.error('Failed to get Supabase client for templates');
+          return null;
+        }
+
+        // Map legacy template type to new type
+        const mappedType = TEMPLATE_TYPE_MAP[templateType] || templateType;
+
+        // Try to get template from database
+        const { data, error } = await supabase
+          .rpc('get_message_template', {
+            p_event_id: eventId,
+            p_template_type: mappedType
+          })
+          .single<{ template_content: string; send_timing: string; custom_timing_hours: number | null }>();
+          
+        if (error || !data?.template_content) {
+          return null;
+        }
+        
+        return data.template_content;
+      },
+      'LONG' // Cache templates for 1 hour
+    );
+
+    if (!cachedTemplate) {
       return null;
     }
 
-    // Map legacy template type to new type
-    const mappedType = TEMPLATE_TYPE_MAP[templateType] || templateType;
-
-    // Try to get template from database
-    const { data, error } = await supabase
-      .rpc('get_message_template', {
-        p_event_id: eventId,
-        p_template_type: mappedType
-      })
-      .single();
-
-    if (error) {
-      console.error('Error fetching template:', error);
-      return null;
-    }
-
-    // Type guard to ensure data has content property
-    if (data && typeof data === 'object' && 'content' in data) {
-      const templateData = data as { content: string | null };
-      if (templateData.content) {
-        // Render the template with variables
-        return renderTemplate(templateData.content, variables);
-      }
-    }
-
-    return null;
+    // Render the template with variables
+    return renderTemplate(cachedTemplate, variables);
   } catch (error) {
     console.error('Error in getMessageTemplate:', error);
     return null;

@@ -3,10 +3,15 @@
 import { formatDate } from '@/lib/dateUtils'
 import Link from 'next/link'
 import { use, useEffect, useState, useCallback } from 'react'
-import { Event, Booking, Customer } from '@/types/database'
-import { PlusIcon, TrashIcon, UserGroupIcon } from '@heroicons/react/24/outline'
+import { Event as BaseEvent, Booking, Customer } from '@/types/database'
+import { EventCategory } from '@/types/event-categories'
+
+type Event = BaseEvent & {
+  category?: EventCategory | null
+}
+import { PlusIcon, TrashIcon, UserGroupIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline'
 import { BookingForm } from '@/components/BookingForm'
-import { AddAttendeesModal } from '@/components/AddAttendeesModal'
+import { AddAttendeesModalWithCategories } from '@/components/AddAttendeesModalWithCategories'
 import toast from 'react-hot-toast'
 import { sendBookingConfirmation } from '@/app/actions/sms'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
@@ -33,7 +38,7 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
       setIsLoading(true)
       const { data: eventData, error: eventError } = await supabase
         .from('events')
-        .select('*')
+        .select('*, category:event_categories(*)')
         .eq('id', params.id)
         .single()
 
@@ -144,6 +149,41 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
       toast.error('Failed to delete booking')
       await loadEventData() // Re-fetch on error
     }
+  }
+
+  const handleCopyAttendeeList = () => {
+    if (!event) return
+
+    // Format event details
+    let text = `Event: ${event.name}\n`
+    text += `Date: ${formatDate(event.date)}\n`
+    text += `Time: ${event.time}\n`
+    text += `\n`
+
+    // Add active bookings
+    if (activeBookings.length > 0) {
+      text += `Attendees (${totalSeats} seats):\n`
+      activeBookings.forEach((booking, index) => {
+        text += `${index + 1}. ${booking.customer.first_name} ${booking.customer.last_name} - ${booking.seats} ${booking.seats === 1 ? 'seat' : 'seats'}\n`
+      })
+    } else {
+      text += 'No attendees yet.\n'
+    }
+
+    // Add reminders section
+    if (reminders.length > 0) {
+      text += `\nReminder List (${reminders.length}):\n`
+      reminders.forEach((booking, index) => {
+        text += `${index + 1}. ${booking.customer.first_name} ${booking.customer.last_name}\n`
+      })
+    }
+
+    // Copy to clipboard
+    navigator.clipboard.writeText(text).then(() => {
+      toast.success('Attendee list copied to clipboard!')
+    }).catch(() => {
+      toast.error('Failed to copy to clipboard')
+    })
   }
 
   if (isLoading) return <div className="p-6 text-center">Loading event details...</div>
@@ -280,8 +320,8 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
       )}
 
       {showAddAttendeesModal && event && (
-        <AddAttendeesModal
-          eventName={event.name}
+        <AddAttendeesModalWithCategories
+          event={event}
           currentBookings={bookings}
           onClose={() => setShowAddAttendeesModal(false)}
           onAddAttendees={handleAddMultipleAttendees}
@@ -292,12 +332,31 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
         <div className="px-4 py-5 sm:p-6">
           <div className="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:justify-between sm:items-center">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{event.name}</h1>
-              <p className="mt-1 text-sm text-gray-500">
-                {formatDate(event.date)} at {event.time}
-              </p>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">{event.name}</h1>
+                <div className="mt-1 flex items-center space-x-2">
+                  <p className="text-sm text-gray-500">
+                    {formatDate(event.date)} at {event.time}
+                  </p>
+                  {event.category && (
+                    <span 
+                      className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                      style={{ 
+                        backgroundColor: event.category.color + '20',
+                        color: event.category.color 
+                      }}
+                    >
+                      {event.category.name}
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
-            <div className="flex space-x-3">
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={handleCopyAttendeeList} variant="secondary">
+                <ClipboardDocumentIcon className="h-5 w-5 mr-2" />
+                Copy List
+              </Button>
               <Button onClick={() => setShowAddAttendeesModal(true)}>
                 <UserGroupIcon className="h-5 w-5 mr-2" />
                 Add Attendees

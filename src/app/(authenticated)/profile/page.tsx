@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
@@ -9,7 +9,6 @@ import {
   CameraIcon,
   KeyIcon,
   BellIcon,
-  ShieldCheckIcon,
   TrashIcon,
   ArrowDownTrayIcon
 } from '@heroicons/react/24/outline'
@@ -35,11 +34,7 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false)
   const [fullName, setFullName] = useState('')
 
-  useEffect(() => {
-    loadProfile()
-  }, [])
-
-  async function loadProfile() {
+  const loadProfile = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
@@ -82,7 +77,11 @@ export default function ProfilePage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [supabase, router])
+
+  useEffect(() => {
+    loadProfile()
+  }, [loadProfile])
 
   async function updateProfile() {
     if (!profile) return
@@ -266,8 +265,9 @@ export default function ProfilePage() {
                 <div className="relative">
                   <div className="h-24 w-24 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
                     {profile.avatar_url ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
                       <img
-                        src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/avatars/${profile.avatar_url}`}
+                        src={`${process.env.NEXT_PUBLIC_SUPABASE_URL || ''}/storage/v1/object/public/avatars/${profile.avatar_url}`}
                         alt="Avatar"
                         className="h-full w-full object-cover"
                       />

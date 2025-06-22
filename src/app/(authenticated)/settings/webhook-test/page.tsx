@@ -1,28 +1,70 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSupabase } from '@/components/providers/SupabaseProvider'
+import { usePermissions } from '@/contexts/PermissionContext'
+import { ExclamationTriangleIcon } from '@heroicons/react/24/outline'
+import Link from 'next/link'
 
 export default function WebhookTestPage() {
   const [testResult, setTestResult] = useState<string>('')
   const [loading, setLoading] = useState(false)
-  const [useUnsecured, setUseUnsecured] = useState(false)
+  const supabase = useSupabase()
+  const [isAuthorized, setIsAuthorized] = useState(false)
   
   const webhookUrl = typeof window !== 'undefined' 
     ? `${window.location.origin}/api/webhooks/twilio`
     : ''
-    
-  const unsecuredWebhookUrl = typeof window !== 'undefined' 
-    ? `${window.location.origin}/api/webhooks/twilio-unsecured`
-    : ''
+
+  useEffect(() => {
+    // Only super admins can access this page
+    const checkAuth = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const { data: userRole } = await supabase
+        .from('user_roles')
+        .select('roles(name)')
+        .eq('user_id', user.id)
+        .single()
+
+      if (userRole && userRole.roles && typeof userRole.roles === 'object' && 'name' in userRole.roles) {
+        setIsAuthorized(userRole.roles.name === 'super_admin')
+      } else {
+        setIsAuthorized(false)
+      }
+    }
+    checkAuth()
+  }, [supabase])
+
+  if (!isAuthorized) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+          <div className="flex">
+            <ExclamationTriangleIcon className="h-6 w-6 text-red-400 mr-3" />
+            <div>
+              <h3 className="text-lg font-medium text-red-800">Access Denied</h3>
+              <p className="mt-2 text-sm text-red-700">
+                This page is restricted to super administrators only.
+              </p>
+              <Link href="/dashboard" className="mt-4 inline-block text-sm text-blue-600 hover:text-blue-800">
+                Return to Dashboard
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
   
   async function testWebhook() {
     setLoading(true)
     setTestResult('Testing webhook...')
     
     try {
-      // Simulate a Twilio webhook request
-      const endpoint = useUnsecured ? '/api/webhooks/twilio-unsecured' : '/api/webhooks/twilio'
-      const response = await fetch(endpoint, {
+      // Note: This will fail in production due to signature validation
+      const response = await fetch('/api/webhooks/twilio', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -48,104 +90,77 @@ export default function WebhookTestPage() {
         setTestResult(`❌ Error ${response.status}: ${JSON.stringify(result, null, 2)}`)
       }
     } catch (error) {
-      setTestResult(`❌ Network error: ${error}`)
+      setTestResult(`❌ Network error: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setLoading(false)
     }
   }
   
   return (
-    <div className="container mx-auto px-4 py-8 max-w-4xl">
-      <h1 className="text-3xl font-bold mb-8">Webhook Configuration Test</h1>
+    <div className="container mx-auto px-4 py-8">
+      <h1 className="text-3xl font-bold mb-8">Webhook Test Tool</h1>
       
-      <div className="bg-white rounded-lg shadow p-6 mb-6">
-        <h2 className="text-xl font-semibold mb-4">Twilio Webhook URLs</h2>
-        
-        <div className="mb-6">
-          <h3 className="font-medium mb-2">Production URL (with signature validation):</h3>
-          <div className="bg-gray-100 p-4 rounded font-mono text-sm break-all mb-2">
-            {webhookUrl}
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+        <div className="flex">
+          <ExclamationTriangleIcon className="h-5 w-5 text-yellow-400 mr-3 flex-shrink-0" />
+          <div>
+            <h3 className="text-sm font-medium text-yellow-800">Production Security Notice</h3>
+            <p className="mt-1 text-sm text-yellow-700">
+              This test will fail in production due to Twilio signature validation. 
+              To properly test webhooks in production, use Twilio&apos;s webhook debugger or configure a proper test number.
+            </p>
           </div>
-          <p className="text-sm text-gray-600">Use this in your Twilio console for production.</p>
-        </div>
-        
-        <div className="mb-6">
-          <h3 className="font-medium mb-2">Testing URL (NO security - testing only!):</h3>
-          <div className="bg-red-50 border border-red-200 p-4 rounded font-mono text-sm break-all mb-2">
-            {unsecuredWebhookUrl}
-          </div>
-          <p className="text-sm text-red-600">⚠️ WARNING: This endpoint has no security. Use only for debugging!</p>
-        </div>
-        
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="useUnsecured"
-            checked={useUnsecured}
-            onChange={(e) => setUseUnsecured(e.target.checked)}
-            className="rounded border-gray-300"
-          />
-          <label htmlFor="useUnsecured" className="text-sm">
-            Use unsecured endpoint for testing (bypasses signature validation)
-          </label>
         </div>
       </div>
-      
-      <div className="bg-white rounded-lg shadow p-6 mb-6">
-        <h2 className="text-xl font-semibold mb-4">Test Webhook Endpoint</h2>
-        <p className="mb-4">
-          This will send a test message to your webhook endpoint to verify it&apos;s working correctly.
-          The test will create a new &quot;Unknown&quot; customer if the phone number doesn&apos;t exist.
-        </p>
-        <button
-          onClick={testWebhook}
-          disabled={loading}
-          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
-        >
-          {loading ? 'Testing...' : 'Send Test Message'}
-        </button>
+
+      <div className="bg-white shadow rounded-lg p-6">
+        <h2 className="text-lg font-medium mb-4">Webhook Configuration</h2>
         
-        {testResult && (
-          <div className="mt-4 p-4 bg-gray-100 rounded">
-            <pre className="whitespace-pre-wrap text-sm">{testResult}</pre>
-          </div>
-        )}
-      </div>
-      
-      <div className="bg-white rounded-lg shadow p-6 mb-6">
-        <h2 className="text-xl font-semibold mb-4">Troubleshooting 401 Errors</h2>
         <div className="space-y-4">
           <div>
-            <h3 className="font-medium mb-1">1. Check TWILIO_AUTH_TOKEN</h3>
-            <p className="text-sm text-gray-600">Ensure your Vercel environment variable matches your Twilio Auth Token exactly.</p>
+            <label className="block text-sm font-medium text-gray-700">Webhook URL</label>
+            <input
+              type="text"
+              value={webhookUrl}
+              readOnly
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-50"
+            />
+            <p className="mt-1 text-sm text-gray-500">
+              Configure this URL in your Twilio console for SMS webhooks.
+            </p>
           </div>
           
-          <div>
-            <h3 className="font-medium mb-1">2. Verify Webhook URL</h3>
-            <p className="text-sm text-gray-600">In Twilio console, make sure the webhook URL matches exactly (including https://).</p>
+          <div className="pt-4">
+            <button
+              onClick={testWebhook}
+              disabled={loading}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+            >
+              {loading ? 'Testing...' : 'Test Webhook'}
+            </button>
           </div>
           
-          <div>
-            <h3 className="font-medium mb-1">3. Temporary Bypass (Testing Only)</h3>
-            <p className="text-sm text-gray-600">Add this environment variable in Vercel: <code className="bg-gray-100 px-1">SKIP_TWILIO_SIGNATURE_VALIDATION=true</code></p>
-            <p className="text-sm text-red-600">⚠️ Remove this after testing!</p>
-          </div>
-          
-          <div>
-            <h3 className="font-medium mb-1">4. Use Unsecured Endpoint</h3>
-            <p className="text-sm text-gray-600">For debugging only, you can temporarily use the unsecured endpoint in Twilio.</p>
-          </div>
+          {testResult && (
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Test Result</label>
+              <pre className="bg-gray-100 p-4 rounded-md text-sm overflow-x-auto whitespace-pre-wrap">
+                {testResult}
+              </pre>
+            </div>
+          )}
         </div>
       </div>
       
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">General Troubleshooting</h2>
-        <ol className="list-decimal list-inside space-y-2">
-          <li>Check the Webhook Monitor at Settings → Webhook Monitor</li>
-          <li>Look for webhook_logs entries in your Supabase database</li>
-          <li>Check Vercel function logs for detailed error messages</li>
-          <li>Ensure all environment variables are set in Vercel</li>
-          <li>Messages from unknown numbers will auto-create a customer record</li>
+      <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
+        <h3 className="text-lg font-medium text-blue-900 mb-2">Testing in Development</h3>
+        <p className="text-sm text-blue-700 mb-4">
+          For local development testing, you can use ngrok to expose your local server:
+        </p>
+        <ol className="list-decimal list-inside space-y-2 text-sm text-blue-700">
+          <li>Install ngrok: <code className="bg-blue-100 px-1 py-0.5 rounded">brew install ngrok</code></li>
+          <li>Start your dev server: <code className="bg-blue-100 px-1 py-0.5 rounded">npm run dev</code></li>
+          <li>In another terminal: <code className="bg-blue-100 px-1 py-0.5 rounded">ngrok http 3000</code></li>
+          <li>Use the ngrok URL + <code className="bg-blue-100 px-1 py-0.5 rounded">/api/webhooks/twilio</code> in Twilio</li>
         </ol>
       </div>
     </div>

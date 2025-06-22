@@ -4,7 +4,7 @@ import { PostgrestError } from '@supabase/supabase-js';
  * Maps database constraint errors to user-friendly messages
  */
 export function getConstraintErrorMessage(error: PostgrestError): string {
-  const { code, message, details } = error;
+  const { code, message } = error;
 
   // Check constraint violations
   if (code === '23514') {
@@ -80,6 +80,6 @@ export function getConstraintErrorMessage(error: PostgrestError): string {
 /**
  * Checks if an error is a PostgreSQL error
  */
-export function isPostgrestError(error: any): error is PostgrestError {
-  return error && typeof error === 'object' && 'code' in error && 'message' in error;
+export function isPostgrestError(error: unknown): error is PostgrestError {
+  return error !== null && typeof error === 'object' && 'code' in error && 'message' in error;
 }

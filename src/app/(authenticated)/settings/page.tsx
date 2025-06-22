@@ -7,9 +7,14 @@ import {
   DocumentTextIcon,
   UserCircleIcon,
   UsersIcon,
-  KeyIcon
+  KeyIcon,
+  ArrowDownTrayIcon,
+  CalendarDaysIcon,
+  CpuChipIcon
 } from '@heroicons/react/24/outline';
 import { checkUserPermission } from '@/app/actions/rbac';
+import { SentryTestButton } from '@/components/SentryTestButton';
+import type { ModuleName, ActionType } from '@/types/rbac';
 
 const settingsSections = [
   // User Management Section
@@ -36,6 +41,13 @@ const settingsSections = [
   },
   // System Settings Section
   {
+    name: 'Event Categories',
+    description: 'Manage event categories and standardize event types',
+    href: '/settings/event-categories',
+    icon: CalendarDaysIcon,
+    permission: { module: 'events', action: 'manage' },
+  },
+  {
     name: 'Attachment Categories',
     description: 'Manage categories for employee file attachments',
     href: '/settings/categories',
@@ -48,6 +60,13 @@ const settingsSections = [
     href: '/settings/message-templates',
     icon: DocumentTextIcon,
     permission: { module: 'messages', action: 'manage_templates' },
+  },
+  {
+    name: 'Import Messages from Twilio',
+    description: 'Import historical SMS messages from your Twilio account',
+    href: '/settings/import-messages',
+    icon: ArrowDownTrayIcon,
+    permission: { module: 'messages', action: 'manage' },
   },
   // Monitoring Section
   {
@@ -71,6 +90,27 @@ const settingsSections = [
     icon: ShieldCheckIcon,
     permission: { module: 'settings', action: 'manage' },
   },
+  {
+    name: 'Background Jobs',
+    description: 'Monitor and manage background job processing',
+    href: '/settings/background-jobs',
+    icon: CpuChipIcon,
+    permission: { module: 'settings', action: 'manage' },
+  },
+  {
+    name: 'Calendar Test',
+    description: 'Test Google Calendar integration and debug connection issues',
+    href: '/settings/calendar-test',
+    icon: CalendarDaysIcon,
+    permission: { module: 'settings', action: 'manage' },
+  },
+  {
+    name: 'GDPR & Privacy',
+    description: 'Export your data or manage privacy settings',
+    href: '/settings/gdpr',
+    icon: ShieldCheckIcon,
+    permission: null, // Everyone can access their own data
+  },
 ];
 
 export default async function SettingsPage() {
@@ -84,8 +124,8 @@ export default async function SettingsPage() {
     } else {
       // Check if user has permission
       const hasPermission = await checkUserPermission(
-        section.permission.module as any,
-        section.permission.action as any
+        section.permission.module as ModuleName,
+        section.permission.action as ActionType
       );
       if (hasPermission) {
         visibleSections.push(section);
@@ -196,6 +236,25 @@ export default async function SettingsPage() {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {process.env.NODE_ENV === 'development' && (
+        <div className="bg-white shadow sm:rounded-lg">
+          <div className="px-4 py-3 border-b border-gray-200">
+            <h2 className="text-lg font-medium text-gray-900">Development Tools</h2>
+          </div>
+          <div className="px-4 py-4 sm:px-6">
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-sm font-medium text-gray-900 mb-2">Error Monitoring</h3>
+                <p className="text-sm text-gray-500 mb-3">
+                  Test Sentry error tracking integration. This will send a test error to your Sentry dashboard.
+                </p>
+                <SentryTestButton />
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

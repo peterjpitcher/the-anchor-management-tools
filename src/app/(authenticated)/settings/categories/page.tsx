@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { PlusIcon, TrashIcon, PencilIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
@@ -21,11 +21,7 @@ export default function CategoriesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
 
-  useEffect(() => {
-    loadCategories();
-  }, []);
-
-  async function loadCategories() {
+  const loadCategories = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('attachment_categories')
@@ -39,7 +35,11 @@ export default function CategoriesPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [supabase]);
+
+  useEffect(() => {
+    loadCategories();
+  }, [loadCategories]);
 
   async function handleAddCategory(e: React.FormEvent) {
     e.preventDefault();

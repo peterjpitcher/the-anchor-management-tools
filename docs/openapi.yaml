@@ -1,0 +1,510 @@
+openapi: 3.0.0
+info:
+  title: The Anchor Management Tools API
+  version: 3.0.0
+  description: |
+    API documentation for The Anchor Management Tools (EventPlanner 3.0).
+    This API provides endpoints for managing events, customers, bookings, employees, and SMS communications.
+    
+    ## Authentication
+    Most endpoints require authentication via JWT tokens obtained from Supabase Auth.
+    Include the token in the Authorization header: `Bearer {token}`
+    
+    ## Rate Limiting
+    API endpoints are rate limited to prevent abuse:
+    - General API: 100 requests per minute
+    - SMS endpoints: 10 requests per minute
+    - Bulk operations: 5 requests per minute
+    
+  contact:
+    email: manager@the-anchor.pub
+    name: The Anchor Support
+  license:
+    name: Proprietary
+    
+servers:
+  - url: https://management.orangejelly.co.uk/api
+    description: Production server
+  - url: http://localhost:3000/api
+    description: Development server
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Authentication
+    description: User authentication and authorization
+  - name: Events
+    description: Event management operations
+  - name: Customers
+    description: Customer management operations
+  - name: Bookings
+    description: Booking management operations
+  - name: Employees
+    description: Employee management operations
+  - name: Messages
+    description: SMS messaging operations
+  - name: Jobs
+    description: Background job processing
+  - name: Webhooks
+    description: External webhook endpoints
+  - name: GDPR
+    description: GDPR and privacy operations
+  - name: Private Bookings
+    description: Private event and venue hire management
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from Supabase authentication
+    
+    cronSecret:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: Bearer token with CRON_SECRET_KEY for cron job endpoints
+    
+    twilioSignature:
+      type: apiKey
+      in: header
+      name: X-Twilio-Signature
+      description: Twilio request signature for webhook validation
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        details:
+          type: object
+          description: Additional error details
+      required:
+        - error
+        
+    Success:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+          
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        date:
+          type: string
+          format: date
+        time:
+          type: string
+        capacity:
+          type: integer
+        category_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - name
+        - date
+        - time
+        - capacity
+        
+    Customer:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        first_name:
+          type: string
+        last_name:
+          type: string
+        email:
+          type: string
+          format: email
+        mobile_number:
+          type: string
+          pattern: '^\+44[1-9]\d{9}$'
+        sms_opt_in:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - first_name
+        - last_name
+        
+    Booking:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+        seats:
+          type: integer
+          minimum: 1
+        notes:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - event_id
+        - customer_id
+        - seats
+        
+    Employee:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        first_name:
+          type: string
+        last_name:
+          type: string
+        job_role:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive]
+        start_date:
+          type: string
+          format: date
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - first_name
+        - last_name
+        - job_role
+        - status
+        
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+        direction:
+          type: string
+          enum: [inbound, outbound]
+        body:
+          type: string
+        status:
+          type: string
+          enum: [sent, delivered, failed, received]
+        from_number:
+          type: string
+        to_number:
+          type: string
+        message_sid:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - direction
+        - body
+        - status
+        - from_number
+        - to_number
+        
+    BackgroundJob:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [send_sms, send_bulk_sms, process_reminder, sync_customer_stats, cleanup_old_messages, update_sms_health]
+        payload:
+          type: object
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        priority:
+          type: integer
+        attempts:
+          type: integer
+        max_attempts:
+          type: integer
+        scheduled_for:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        error:
+          type: string
+        result:
+          type: object
+      required:
+        - type
+        - payload
+        - status
+    WebhookStatus:
+      type: object
+      properties:
+        MessageSid:
+          type: string
+        MessageStatus:
+          type: string
+          enum: [queued, sent, delivered, failed, undelivered]
+        ErrorCode:
+          type: string
+        ErrorMessage:
+          type: string
+    InboundSMS:
+      type: object
+      properties:
+        MessageSid:
+          type: string
+        From:
+          type: string
+        To:
+          type: string
+        Body:
+          type: string
+    PrivateBookingContract:
+      type: object
+      properties:
+        html:
+          type: string
+          description: HTML content of the contract
+paths:
+  # Webhook Endpoints
+  /webhooks/twilio:
+    post:
+      tags:
+        - Webhooks
+      summary: Twilio SMS webhook
+      description: Handles incoming SMS messages and delivery status updates from Twilio
+      security:
+        - twilioSignature: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                MessageSid:
+                  type: string
+                From:
+                  type: string
+                To:
+                  type: string
+                Body:
+                  type: string
+                MessageStatus:
+                  type: string
+                  enum: [queued, sent, delivered, failed, undelivered]
+      responses:
+        '200':
+          description: Webhook processed successfully
+          content:
+            text/xml:
+              schema:
+                type: string
+                example: '<?xml version="1.0" encoding="UTF-8"?><Response></Response>'
+        '401':
+          description: Invalid Twilio signature
+        '500':
+          description: Internal server error
+          
+  # Cron Job Endpoints
+  /cron/reminders:
+    post:
+      tags:
+        - Jobs
+      summary: Process event reminders
+      description: Cron endpoint to send SMS reminders for upcoming events
+      security:
+        - cronSecret: []
+      responses:
+        '200':
+          description: Reminders processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '401':
+          description: Unauthorized - Invalid cron secret
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  # Private Bookings
+  /private-bookings/contract:
+    post:
+      tags:
+        - Private Bookings
+      summary: Generate booking contract
+      description: Generate a PDF contract for a private booking
+      parameters:
+        - in: query
+          name: bookingId
+          required: true
+          schema:
+            type: string
+          description: ID of the booking
+      responses:
+        '200':
+          description: Contract generated successfully
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Booking not found
+        '500':
+          description: Failed to generate contract
+          
+  /private-bookings/send-contract:
+    post:
+      tags:
+        - Private Bookings
+      summary: Send booking contract via email
+      description: Generate and send a booking contract to the customer via email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                bookingId:
+                  type: string
+                email:
+                  type: string
+                  format: email
+              required:
+                - bookingId
+                - email
+      responses:
+        '200':
+          description: Contract sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '400':
+          description: Invalid request
+        '404':
+          description: Booking not found
+        '500':
+          description: Failed to send contract
+  # Job Processing
+  /jobs/process:
+    post:
+      tags:
+        - Jobs
+      summary: Process background jobs
+      description: Process pending background jobs from the queue
+      security:
+        - cronSecret: []
+      parameters:
+        - in: query
+          name: batch
+          schema:
+            type: integer
+            default: 10
+          description: Number of jobs to process in this batch
+      responses:
+        '200':
+          description: Job processing started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+    get:
+      tags:
+        - Jobs
+      summary: Job processor health check
+      description: Check the health status of the job processor
+      security:
+        - cronSecret: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: job-processor
+                  timestamp:
+                    type: string
+                    format: date-time
+        '401':
+          description: Unauthorized
+        '500':
+          description: Health check failed

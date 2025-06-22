@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, BuildingStorefrontIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, UserCircleIcon, ShieldCheckIcon, UsersIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, ShieldCheckIcon, UsersIcon, BuildingOfficeIcon } from '@heroicons/react/24/outline'
 import { useEffect, useState, useMemo } from 'react'
 import { getUnreadMessageCount } from '@/app/actions/messagesActions'
 import { usePermissions } from '@/contexts/PermissionContext'
@@ -19,6 +19,7 @@ type NavigationItemWithPermission = {
 const primaryNavigation: NavigationItemWithPermission[] = [
   { name: 'Dashboard', href: '/', icon: HomeIcon, permission: { module: 'dashboard', action: 'view' } },
   { name: 'Events', href: '/events', icon: CalendarIcon, permission: { module: 'events', action: 'view' } },
+  { name: 'Private Bookings', href: '/private-bookings', icon: BuildingOfficeIcon, permission: { module: 'private_bookings', action: 'view' } },
   { name: 'Customers', href: '/customers', icon: UserGroupIcon, permission: { module: 'customers', action: 'view' } },
   { name: 'Messages', href: '/messages', icon: EnvelopeIcon, permission: { module: 'messages', action: 'view' } },
 ];

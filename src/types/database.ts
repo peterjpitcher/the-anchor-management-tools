@@ -4,6 +4,7 @@ export interface Event {
   date: string;
   time: string;
   capacity: number | null;
+  category_id?: string | null;
   created_at: string;
 }
 
@@ -150,6 +151,8 @@ export interface Message {
   to_number?: string | null;
   message_type?: string | null;
   read_at?: string | null;
+  segments?: number;
+  cost_usd?: number;
 }
 
 export interface MessageDeliveryStatus {
@@ -159,7 +162,75 @@ export interface MessageDeliveryStatus {
   error_code: string | null;
   error_message: string | null;
   created_at: string;
-  raw_webhook_data: any;
+  raw_webhook_data: Record<string, unknown>;
+}
+
+export interface WebhookLog {
+  id: string;
+  webhook_type: string;
+  status: string;
+  headers: Record<string, unknown> | null;
+  body: string | null;
+  params: Record<string, unknown> | null;
+  error_message: string | null;
+  error_details: Record<string, unknown> | null;
+  processed_at: string;
+  message_sid: string | null;
+  from_number: string | null;
+  to_number: string | null;
+  message_body: string | null;
+  customer_id: string | null;
+  message_id: string | null;
+}
+
+export interface AuditLog {
+  id: string;
+  user_id: string;
+  action: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  changes: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
+}
+
+export interface MessageTemplate {
+  id: string;
+  name: string;
+  type: string;
+  content: string;
+  variables: string[] | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EventMessageTemplate {
+  id: string;
+  event_id: string;
+  template_type: string;
+  custom_content: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Role {
+  id: string;
+  name: string;
+  description: string | null;
+  is_system_role: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserRole {
+  id: string;
+  user_id: string;
+  role_id: string;
+  created_at: string;
 }
 
 export interface Database {
@@ -224,6 +295,36 @@ export interface Database {
         Row: MessageDeliveryStatus;
         Insert: Omit<MessageDeliveryStatus, 'id' | 'created_at'>;
         Update: Partial<Omit<MessageDeliveryStatus, 'id' | 'created_at'>>;
+      };
+      webhook_logs: {
+        Row: WebhookLog;
+        Insert: Omit<WebhookLog, 'id' | 'created_at'>;
+        Update: Partial<Omit<WebhookLog, 'id' | 'created_at'>>;
+      };
+      audit_logs: {
+        Row: AuditLog;
+        Insert: Omit<AuditLog, 'id' | 'created_at'>;
+        Update: Partial<Omit<AuditLog, 'id' | 'created_at'>>;
+      };
+      message_templates: {
+        Row: MessageTemplate;
+        Insert: Omit<MessageTemplate, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<MessageTemplate, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      event_message_templates: {
+        Row: EventMessageTemplate;
+        Insert: Omit<EventMessageTemplate, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<EventMessageTemplate, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      roles: {
+        Row: Role;
+        Insert: Omit<Role, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<Role, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      user_roles: {
+        Row: UserRole;
+        Insert: Omit<UserRole, 'id' | 'created_at'>;
+        Update: Partial<Omit<UserRole, 'id' | 'created_at'>>;
       };
     };
   };

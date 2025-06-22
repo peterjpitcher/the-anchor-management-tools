@@ -1,8 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { sendBulkSMS } from '@/app/actions/sms'
+import { JobQueue } from '@/lib/job-queue'
+import { getActiveEventCategories } from '@/app/actions/event-categories'
 import toast from 'react-hot-toast'
 import Link from 'next/link'
 import { formatDate } from '@/lib/dateUtils'
@@ -15,8 +17,11 @@ import {
   ExclamationTriangleIcon,
   ArrowLeftIcon,
   MagnifyingGlassIcon,
-  CalendarIcon
+  CalendarIcon,
+  TagIcon
 } from '@heroicons/react/24/outline'
+import { EventCategory } from '@/types/event-categories'
+import { PageLoadingSkeleton } from '@/components/ui/SkeletonLoader'
 
 interface Customer {
   id: string
@@ -30,6 +35,10 @@ interface Customer {
     event_id: string
     seats: number | null
   }[]
+  category_preferences?: {
+    category_id: string
+    times_attended: number
+  }[]
 }
 
 interface Event {
@@ -37,6 +46,7 @@ interface Event {
   name: string
   date: string
   time: string
+  category_id?: string | null
 }
 
 interface FilterOptions {
@@ -48,6 +58,8 @@ interface FilterOptions {
   eventId: string
   eventAttendance: 'all' | 'attending' | 'not_attending'
   bookingType: 'all' | 'bookings_only' | 'reminders_only'
+  categoryId: string
+  categoryAttendance: 'all' | 'regulars' | 'never_attended'
 }
 
 export default function BulkMessagePage() {
@@ -59,6 +71,7 @@ export default function BulkMessagePage() {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [events, setEvents] = useState<Event[]>([])
+  const [categories, setCategories] = useState<EventCategory[]>([])
   const [filters, setFilters] = useState<FilterOptions>({
     smsOptIn: 'opted_in',
     hasBookings: 'all',
@@ -67,27 +80,21 @@ export default function BulkMessagePage() {
     searchTerm: '',
     eventId: '',
     eventAttendance: 'all',
-    bookingType: 'all'
+    bookingType: 'all',
+    categoryId: '',
+    categoryAttendance: 'all'
   })
-  const [showPreview, setShowPreview] = useState(false)
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  useEffect(() => {
-    applyFilters()
-  }, [customers, filters])
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     try {
-      // Load customers with booking count and event bookings
+      // Load customers with booking count, event bookings, and category preferences
       const { data: customersData, error: customersError } = await supabase
         .from('customers')
         .select(`
           *,
           bookings(count),
-          event_bookings:bookings(event_id, seats)
+          event_bookings:bookings(event_id, seats),
+          category_preferences:customer_category_stats(category_id, times_attended)
         `)
         .order('first_name', { ascending: true })
         .order('last_name', { ascending: true })
@@ -97,30 +104,40 @@ export default function BulkMessagePage() {
       // Load events
       const { data: eventsData, error: eventsError } = await supabase
         .from('events')
-        .select('*')
+        .select('*, category:event_categories(*)')
         .order('date', { ascending: false })
         .order('time', { ascending: false })
 
       if (eventsError) throw eventsError
 
-      // Process customer data to include booking count and event bookings
+      // Load categories
+      const categoriesResult = await getActiveEventCategories()
+      if (!categoriesResult.data) throw new Error('Failed to load categories')
+
+      // Process customer data to include booking count, event bookings, and category preferences
       const processedCustomers = customersData?.map(customer => ({
         ...customer,
         total_bookings: customer.bookings?.[0]?.count || 0,
-        event_bookings: customer.event_bookings || []
+        event_bookings: customer.event_bookings || [],
+        category_preferences: customer.category_preferences || []
       })) || []
 
       setCustomers(processedCustomers)
       setEvents(eventsData || [])
+      setCategories(categoriesResult.data)
     } catch (error) {
       console.error('Error loading data:', error)
       toast.error('Failed to load data')
     } finally {
       setLoading(false)
     }
-  }
+  }, [supabase])
 
-  function applyFilters() {
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  const applyFilters = useCallback(() => {
     let filtered = [...customers]
 
     // SMS opt-in filter
@@ -165,6 +182,23 @@ export default function BulkMessagePage() {
       }
     }
 
+    // Category filter
+    if (filters.categoryId && filters.categoryAttendance !== 'all') {
+      if (filters.categoryAttendance === 'regulars') {
+        filtered = filtered.filter(c => 
+          c.category_preferences?.some(p => 
+            p.category_id === filters.categoryId && p.times_attended > 0
+          )
+        )
+      } else if (filters.categoryAttendance === 'never_attended') {
+        filtered = filtered.filter(c => 
+          !c.category_preferences?.some(p => 
+            p.category_id === filters.categoryId && p.times_attended > 0
+          )
+        )
+      }
+    }
+
     // Date filters
     if (filters.createdAfter) {
       filtered = filtered.filter(c => new Date(c.created_at) >= new Date(filters.createdAfter))
@@ -183,7 +217,11 @@ export default function BulkMessagePage() {
     }
 
     setFilteredCustomers(filtered)
-  }
+  }, [customers, filters, events, categories])
+
+  useEffect(() => {
+    applyFilters()
+  }, [applyFilters])
 
   function toggleCustomer(customerId: string) {
     const newSelected = new Set(selectedCustomers)
@@ -210,6 +248,7 @@ export default function BulkMessagePage() {
   function getPreviewMessage() {
     let content = getMessageContent()
     const selectedEvent = events.find(e => e.id === filters.eventId)
+    const selectedCategory = categories.find(c => c.id === filters.categoryId)
     
     // Replace variables with sample data for preview
     content = content.replace(/{{customer_name}}/g, 'John Smith')
@@ -219,6 +258,7 @@ export default function BulkMessagePage() {
     content = content.replace(/{{event_name}}/g, selectedEvent?.name || 'Sample Event')
     content = content.replace(/{{event_date}}/g, selectedEvent ? formatDate(selectedEvent.date) : '25th December')
     content = content.replace(/{{event_time}}/g, selectedEvent?.time || '7:00 PM')
+    content = content.replace(/{{category_name}}/g, selectedCategory?.name || 'Sample Category')
     return content
   }
 
@@ -239,52 +279,89 @@ export default function BulkMessagePage() {
     }
 
     setSending(true)
-    const results = { success: 0, failed: 0 }
 
     try {
-      // Send messages to selected customers
       const selectedCustomersList = customers.filter(c => selectedCustomers.has(c.id))
-      const selectedEvent = events.find(e => e.id === filters.eventId)
+      const selectedCustomerIds = selectedCustomersList.map(c => c.id)
       
-      for (const customer of selectedCustomersList) {
-        try {
-          // Personalize the message
-          let personalizedContent = messageContent
-          personalizedContent = personalizedContent.replace(/{{customer_name}}/g, `${customer.first_name} ${customer.last_name}`)
-          personalizedContent = personalizedContent.replace(/{{first_name}}/g, customer.first_name)
-          personalizedContent = personalizedContent.replace(/{{venue_name}}/g, 'The Anchor')
-          personalizedContent = personalizedContent.replace(/{{contact_phone}}/g, process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '')
-          
-          // Add event-specific variables if an event is selected
-          if (selectedEvent) {
-            personalizedContent = personalizedContent.replace(/{{event_name}}/g, selectedEvent.name)
-            personalizedContent = personalizedContent.replace(/{{event_date}}/g, formatDate(selectedEvent.date))
-            personalizedContent = personalizedContent.replace(/{{event_time}}/g, selectedEvent.time)
-          }
-
-          const result = await sendBulkSMS(customer.id, personalizedContent)
-          
-          if ('error' in result) {
-            console.error(`Failed to send to ${customer.first_name} ${customer.last_name}:`, result.error)
-            results.failed++
-          } else {
-            results.success++
-          }
-        } catch (error) {
-          console.error(`Error sending to ${customer.first_name} ${customer.last_name}:`, error)
-          results.failed++
+      // For large batches (>50), use job queue
+      if (selectedCustomerIds.length > 50) {
+        const jobQueue = new JobQueue()
+        
+        // Get current user
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        const { success, jobId, error } = await jobQueue.enqueue(
+          'send_bulk_sms',
+          { 
+            customerIds: selectedCustomerIds, 
+            message: messageContent,
+            eventId: filters.eventId,
+            categoryId: filters.categoryId
+          },
+          user?.id
+        )
+        
+        if (success && jobId) {
+          toast.success(`Bulk SMS job queued successfully. Processing ${selectedCustomerIds.length} messages in background.`)
+          setSelectedCustomers(new Set())
+        } else {
+          toast.error(error || 'Failed to queue bulk SMS job')
         }
-      }
-
-      // Show results
-      if (results.success > 0 && results.failed === 0) {
-        toast.success(`Successfully sent ${results.success} messages`)
-        // Clear selection
-        setSelectedCustomers(new Set())
-      } else if (results.failed > 0 && results.success === 0) {
-        toast.error(`Failed to send all ${results.failed} messages`)
       } else {
-        toast.error(`Sent ${results.success} messages, ${results.failed} failed`)
+        // For smaller batches, send immediately
+        const results = { success: 0, failed: 0 }
+        const selectedEvent = events.find(e => e.id === filters.eventId)
+        const selectedCategory = categories.find(c => c.id === filters.categoryId)
+        
+        for (const customer of selectedCustomersList) {
+          try {
+            // Personalize the message
+            let personalizedContent = messageContent
+            personalizedContent = personalizedContent.replace(/{{customer_name}}/g, `${customer.first_name} ${customer.last_name}`)
+            personalizedContent = personalizedContent.replace(/{{first_name}}/g, customer.first_name)
+            personalizedContent = personalizedContent.replace(/{{venue_name}}/g, 'The Anchor')
+            personalizedContent = personalizedContent.replace(/{{contact_phone}}/g, process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '')
+            
+            // Add event-specific variables if an event is selected
+            if (selectedEvent) {
+              personalizedContent = personalizedContent.replace(/{{event_name}}/g, selectedEvent.name)
+              personalizedContent = personalizedContent.replace(/{{event_date}}/g, formatDate(selectedEvent.date))
+              personalizedContent = personalizedContent.replace(/{{event_time}}/g, selectedEvent.time)
+            }
+            
+            // Add category-specific variables if a category is selected
+            if (selectedCategory) {
+              personalizedContent = personalizedContent.replace(/{{category_name}}/g, selectedCategory.name)
+            }
+
+            const result = await sendBulkSMS([customer.id], personalizedContent)
+            
+            if (result && 'error' in result) {
+              console.error(`Failed to send to ${customer.first_name} ${customer.last_name}:`, result.error)
+              results.failed++
+            } else if (result && 'success' in result && result.success) {
+              results.success++
+            } else {
+              console.error(`Unexpected response for ${customer.first_name} ${customer.last_name}:`, result)
+              results.failed++
+            }
+          } catch (error) {
+            console.error(`Error sending to ${customer.first_name} ${customer.last_name}:`, error)
+            results.failed++
+          }
+        }
+
+        // Show results
+        if (results.success > 0 && results.failed === 0) {
+          toast.success(`Successfully sent ${results.success} messages`)
+          // Clear selection
+          setSelectedCustomers(new Set())
+        } else if (results.failed > 0 && results.success === 0) {
+          toast.error(`Failed to send all ${results.failed} messages`)
+        } else {
+          toast.error(`Sent ${results.success} messages, ${results.failed} failed`)
+        }
       }
     } catch (error) {
       console.error('Error sending bulk messages:', error)
@@ -303,6 +380,10 @@ export default function BulkMessagePage() {
         </div>
       </div>
     )
+  }
+
+  if (loading) {
+    return <PageLoadingSkeleton />
   }
 
   return (
@@ -339,7 +420,7 @@ export default function BulkMessagePage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">SMS Status</label>
                 <select
                   value={filters.smsOptIn}
-                  onChange={(e) => setFilters({ ...filters, smsOptIn: e.target.value as any })}
+                  onChange={(e) => setFilters({ ...filters, smsOptIn: e.target.value as 'all' | 'opted_in' | 'not_opted_out' })}
                   className="block w-full rounded-md border-gray-300 shadow-sm"
                 >
                   <option value="all">All Customers</option>
@@ -352,7 +433,7 @@ export default function BulkMessagePage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Booking Status</label>
                 <select
                   value={filters.hasBookings}
-                  onChange={(e) => setFilters({ ...filters, hasBookings: e.target.value as any })}
+                  onChange={(e) => setFilters({ ...filters, hasBookings: e.target.value as 'all' | 'with_bookings' | 'without_bookings' })}
                   className="block w-full rounded-md border-gray-300 shadow-sm"
                 >
                   <option value="all">All Customers</option>
@@ -382,6 +463,37 @@ export default function BulkMessagePage() {
               </div>
 
               <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Category Filter</label>
+                <select
+                  value={filters.categoryId}
+                  onChange={(e) => setFilters({ ...filters, categoryId: e.target.value })}
+                  className="block w-full rounded-md border-gray-300 shadow-sm"
+                >
+                  <option value="">All Categories</option>
+                  {categories.map(category => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {filters.categoryId && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Category Attendance</label>
+                  <select
+                    value={filters.categoryAttendance}
+                    onChange={(e) => setFilters({ ...filters, categoryAttendance: e.target.value as 'all' | 'regulars' | 'never_attended' })}
+                    className="block w-full rounded-md border-gray-300 shadow-sm"
+                  >
+                    <option value="all">All Customers</option>
+                    <option value="regulars">Category Regulars</option>
+                    <option value="never_attended">Never Attended Category</option>
+                  </select>
+                </div>
+              )}
+
+              <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Event Filter</label>
                 <select
                   value={filters.eventId}
@@ -403,7 +515,7 @@ export default function BulkMessagePage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Event Attendance</label>
                     <select
                       value={filters.eventAttendance}
-                      onChange={(e) => setFilters({ ...filters, eventAttendance: e.target.value as any })}
+                      onChange={(e) => setFilters({ ...filters, eventAttendance: e.target.value as 'all' | 'attending' | 'not_attending' })}
                       className="block w-full rounded-md border-gray-300 shadow-sm"
                     >
                       <option value="all">All Customers</option>
@@ -417,7 +529,7 @@ export default function BulkMessagePage() {
                       <label className="block text-sm font-medium text-gray-700 mb-1">Booking Type</label>
                       <select
                         value={filters.bookingType}
-                        onChange={(e) => setFilters({ ...filters, bookingType: e.target.value as any })}
+                        onChange={(e) => setFilters({ ...filters, bookingType: e.target.value as 'all' | 'bookings_only' | 'reminders_only' })}
                         className="block w-full rounded-md border-gray-300 shadow-sm"
                       >
                         <option value="all">All Types</option>
@@ -462,8 +574,16 @@ export default function BulkMessagePage() {
               </div>
               
               {/* Active filters summary */}
-              {(filters.eventId || filters.smsOptIn !== 'all' || filters.hasBookings !== 'all') && (
+              {(filters.eventId || filters.categoryId || filters.smsOptIn !== 'all' || filters.hasBookings !== 'all') && (
                 <div className="mt-2 flex flex-wrap gap-2">
+                  {filters.categoryId && (
+                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                      <TagIcon className="h-3 w-3 mr-1" />
+                      {categories.find(c => c.id === filters.categoryId)?.name}
+                      {filters.categoryAttendance === 'regulars' && ' - Regulars'}
+                      {filters.categoryAttendance === 'never_attended' && ' - Never Attended'}
+                    </span>
+                  )}
                   {filters.eventId && (
                     <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
                       <CalendarIcon className="h-3 w-3 mr-1" />
@@ -504,7 +624,7 @@ export default function BulkMessagePage() {
                         type="checkbox"
                         checked={selectedCustomers.has(customer.id)}
                         onChange={() => toggleCustomer(customer.id)}
-                        className="h-4 w-4 text-indigo-600 rounded border-gray-300"
+                        className="h-4 w-4 text-green-600 rounded border-gray-300 focus:ring-green-500"
                       />
                       <div className="ml-3 flex-1">
                         <div className="text-sm font-medium text-gray-900">{customer.first_name} {customer.last_name}</div>
@@ -517,8 +637,17 @@ export default function BulkMessagePage() {
                         {customer.sms_opt_in === false && (
                           <XCircleIcon className="h-5 w-5 text-red-500" title="SMS Opted Out" />
                         )}
+                        {filters.categoryId && customer.category_preferences?.some(p => p.category_id === filters.categoryId) && (
+                          <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded flex items-center">
+                            <TagIcon className="h-3 w-3 mr-1" />
+                            {(() => {
+                              const pref = customer.category_preferences?.find(p => p.category_id === filters.categoryId)
+                              return pref ? `${pref.times_attended}x` : ''
+                            })()}
+                          </span>
+                        )}
                         {filters.eventId && customer.event_bookings?.some(b => b.event_id === filters.eventId) && (
-                          <span className="text-xs bg-indigo-100 text-indigo-800 px-2 py-1 rounded flex items-center">
+                          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded flex items-center">
                             <CalendarIcon className="h-3 w-3 mr-1" />
                             {(() => {
                               const booking = customer.event_bookings?.find(b => b.event_id === filters.eventId)
@@ -557,13 +686,16 @@ export default function BulkMessagePage() {
                   value={customMessage}
                   onChange={(e) => setCustomMessage(e.target.value)}
                   rows={6}
-                  className="block w-full rounded-md border-gray-300 shadow-sm"
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                   placeholder="Type your message here..."
                 />
                 <p className="mt-2 text-xs text-gray-500">
                   Available variables: {"{{customer_name}}"}, {"{{first_name}}"}, {"{{venue_name}}"}, {"{{contact_phone}}"}
                   {filters.eventId && (
                     <>, {"{{event_name}}"}, {"{{event_date}}"}, {"{{event_time}}"}</>
+                  )}
+                  {filters.categoryId && (
+                    <>, {"{{category_name}}"}</>
                   )}
                 </p>
               </div>
@@ -599,7 +731,7 @@ export default function BulkMessagePage() {
                 className={`w-full flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white ${
                   sending || selectedCustomers.size === 0 || !getMessageContent()
                     ? 'bg-gray-400 cursor-not-allowed'
-                    : 'bg-indigo-600 hover:bg-indigo-700'
+                    : 'bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2'
                 }`}
               >
                 {sending ? (

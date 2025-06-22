@@ -3,7 +3,6 @@
 import { useActionState, useEffect } from 'react';
 import { useFormStatus } from 'react-dom';
 import { addEmergencyContact } from '@/app/actions/employeeActions';
-import type { ActionFormState } from '@/types/actions';
 
 interface AddEmergencyContactModalProps {
   employeeId: string;

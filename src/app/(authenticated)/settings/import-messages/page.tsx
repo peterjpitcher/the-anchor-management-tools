@@ -7,7 +7,7 @@ export default function ImportMessagesPage() {
   const [startDate, setStartDate] = useState('2025-06-18')
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0])
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<any>(null)
+  const [result, setResult] = useState<{ error?: string; success?: boolean; summary?: { totalFound: number; inboundMessages: number; outboundMessages: number; alreadyInDatabase: number; imported: number; failed: number }; errors?: string[] } | null>(null)
 
   async function handleImport() {
     setLoading(true)
@@ -29,8 +29,8 @@ export default function ImportMessagesPage() {
       
       <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 mb-6">
         <p className="text-sm text-yellow-800">
-          <strong>Note:</strong> This will import all inbound SMS messages from Twilio that are not already in the database.
-          Messages will be matched to existing customers or new customers will be created.
+          <strong>Note:</strong> This will import all SMS messages (both inbound and outbound) from Twilio that are not already in the database.
+          Messages will be matched to existing customers or new customers will be created for unknown numbers.
         </p>
       </div>
 
@@ -83,11 +83,12 @@ export default function ImportMessagesPage() {
             <div className="bg-green-50 border border-green-200 rounded-md p-4">
               <h3 className="text-green-800 font-semibold mb-2">Import Complete</h3>
               <div className="text-green-700 space-y-1">
-                <p>Total messages found: {result.summary.totalFound}</p>
-                <p>Inbound messages: {result.summary.inboundMessages}</p>
-                <p>Already in database: {result.summary.alreadyInDatabase}</p>
-                <p>Successfully imported: {result.summary.imported}</p>
-                {result.summary.failed > 0 && (
+                <p>Total messages found: {result.summary?.totalFound}</p>
+                <p>Inbound messages: {result.summary?.inboundMessages}</p>
+                <p>Outbound messages: {result.summary?.outboundMessages}</p>
+                <p>Already in database: {result.summary?.alreadyInDatabase}</p>
+                <p>Successfully imported: {result.summary?.imported}</p>
+                {result.summary && result.summary.failed > 0 && (
                   <p className="text-red-600">Failed to import: {result.summary.failed}</p>
                 )}
               </div>
@@ -96,7 +97,7 @@ export default function ImportMessagesPage() {
                 <div className="mt-4">
                   <h4 className="text-red-800 font-semibold">Errors:</h4>
                   <ul className="text-red-700 text-sm mt-2 space-y-1">
-                    {result.errors.map((error: string, index: number) => (
+                    {result.errors.map((error, index) => (
                       <li key={index}>{error}</li>
                     ))}
                   </ul>
@@ -110,11 +111,12 @@ export default function ImportMessagesPage() {
       <div className="mt-8 text-sm text-gray-600">
         <h3 className="font-semibold mb-2">How this works:</h3>
         <ul className="list-disc list-inside space-y-1">
-          <li>Fetches all messages sent to your Twilio number within the date range</li>
-          <li>Filters for inbound messages only</li>
+          <li>Fetches all messages (inbound and outbound) from your Twilio account within the date range</li>
+          <li>Imports both messages you sent and messages you received</li>
           <li>Skips messages that already exist in the database</li>
           <li>Creates new customers for unknown phone numbers</li>
           <li>Preserves the original timestamp from when the message was sent</li>
+          <li>Calculates cost estimates for outbound messages</li>
         </ul>
       </div>
     </div>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import toast from 'react-hot-toast'
 import { formatDate } from '@/lib/dateUtils'
@@ -39,11 +39,7 @@ export default function SMSHealthDashboard() {
     overallDeliveryRate: 0
   })
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('customer_messaging_health')
@@ -70,7 +66,11 @@ export default function SMSHealthDashboard() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [supabase])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   function calculateOverallDeliveryRate(customers: CustomerHealth[]) {
     const totalSent = customers.reduce((sum, c) => sum + c.total_messages_sent, 0)
