@@ -1,4 +1,4 @@
-export type BookingStatus = 'draft' | 'tentative' | 'confirmed' | 'completed' | 'cancelled'
+export type BookingStatus = 'draft' | 'confirmed' | 'completed' | 'cancelled'
 export type PaymentMethod = 'cash' | 'card' | 'invoice'
 export type ItemType = 'space' | 'catering' | 'vendor' | 'other'
 export type DiscountType = 'percent' | 'fixed'

@@ -26,7 +26,6 @@ interface CalendarViewProps {
 
 const statusColors: Record<BookingStatus, string> = {
   draft: 'bg-gray-100 text-gray-800 border-gray-300',
-  tentative: 'bg-amber-100 text-amber-800 border-amber-300',
   confirmed: 'bg-green-100 text-green-800 border-green-300',
   completed: 'bg-blue-100 text-blue-800 border-blue-300',
   cancelled: 'bg-red-100 text-red-800 border-red-300'
