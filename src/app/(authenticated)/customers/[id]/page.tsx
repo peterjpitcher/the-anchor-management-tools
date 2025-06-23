@@ -201,10 +201,10 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
     } else {
       toast.success('Booking added successfully!')
       
-      // Send SMS confirmation in the background
+      // Send SMS confirmation immediately
       if (newBooking?.id) {
-        import('@/app/actions/sms').then(({ sendBookingConfirmation }) => {
-          sendBookingConfirmation(newBooking.id).catch((error) => {
+        import('@/app/actions/sms').then(({ sendBookingConfirmationSync }) => {
+          sendBookingConfirmationSync(newBooking.id).catch((error) => {
             console.error('Failed to send SMS confirmation:', error)
             toast.error('SMS notification could not be sent')
           })
