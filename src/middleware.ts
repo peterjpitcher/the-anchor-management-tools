@@ -3,29 +3,27 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  // Skip middleware for static assets
   const path = request.nextUrl.pathname
+  
+  // Skip middleware for:
+  // - Static assets
+  // - API routes (especially webhooks)
+  // - Auth pages
+  // - Public pages
   if (
     path.startsWith('/_next') ||
     path.startsWith('/static') ||
     path.includes('.') ||
-    path.startsWith('/api/webhooks') // Allow webhooks without auth
+    path.startsWith('/api') || // Allow ALL API routes without auth check
+    path.startsWith('/auth') ||
+    path.startsWith('/error') ||
+    path.startsWith('/privacy')
   ) {
     return NextResponse.next()
   }
 
   // Create response that we can modify
   const res = NextResponse.next()
-
-  // Only check auth for protected routes
-  const isProtectedRoute = !path.startsWith('/auth') && 
-    !path.startsWith('/error') &&
-    !path.startsWith('/privacy') &&
-    !path.startsWith('/api')
-
-  if (!isProtectedRoute) {
-    return res
-  }
 
   // Create Supabase client with proper cookie handling
   const supabase = createServerClient(
@@ -66,9 +64,10 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
+     * - api (ALL API routes should bypass auth middleware)
      * - auth (authentication pages)
-     * - api/webhooks (webhook endpoints)
+     * - privacy (public pages)
      */
-    '/((?!_next/static|_next/image|favicon.ico|auth|api/webhooks).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api|auth|privacy).*)',
   ],
 }
