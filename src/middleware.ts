@@ -2,119 +2,73 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-// Cache for session checks (5 minute TTL)
-const sessionCache = new Map<string, { session: any, timestamp: number }>()
-const SESSION_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
-
 export async function middleware(request: NextRequest) {
-  const response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  })
-
-  // Skip middleware for static assets and API routes
+  // Skip middleware for static assets
   const path = request.nextUrl.pathname
   if (
     path.startsWith('/_next') ||
-    path.startsWith('/api') ||
     path.startsWith('/static') ||
-    path.includes('.')
+    path.includes('.') ||
+    path.startsWith('/api/webhooks') // Allow webhooks without auth
   ) {
-    return response
+    return NextResponse.next()
   }
+
+  // Create response that we can modify
+  const res = NextResponse.next()
 
   // Only check auth for protected routes
-  const isProtectedRoute = path.startsWith('/') && 
-    !path.startsWith('/login') && 
+  const isProtectedRoute = !path.startsWith('/auth') && 
     !path.startsWith('/error') &&
-    !path.startsWith('/privacy')
+    !path.startsWith('/privacy') &&
+    !path.startsWith('/api')
 
   if (!isProtectedRoute) {
-    return response
+    return res
   }
 
-  // Get session from cookies
-  const cookieStore = request.cookies
-  const sessionCookie = cookieStore.get('sb-auth-token')
-  
-  if (!sessionCookie) {
-    return NextResponse.redirect(new URL('/login', request.url))
-  }
-
-  // Check cache first
-  const cacheKey = sessionCookie.value
-  const cached = sessionCache.get(cacheKey)
-  
-  if (cached && Date.now() - cached.timestamp < SESSION_CACHE_TTL) {
-    // Use cached session - no database call!
-    if (!cached.session) {
-      return NextResponse.redirect(new URL('/login', request.url))
-    }
-    return response
-  }
-
-  // Only create Supabase client if not in cache
+  // Create Supabase client with proper cookie handling
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value
+        getAll() {
+          return request.cookies.getAll()
         },
-        set(name: string, value: string, options: CookieOptions) {
-          response.cookies.set({
-            name,
-            value,
-            ...options,
-          })
-        },
-        remove(name: string, options: CookieOptions) {
-          response.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            res.cookies.set(name, value, options)
+          )
         },
       },
     }
   )
 
+  // Get the session
   const { data: { session } } = await supabase.auth.getSession()
-  
-  // Cache the result
-  sessionCache.set(cacheKey, { session, timestamp: Date.now() })
-  
-  // Clean old cache entries periodically
-  if (sessionCache.size > 100) {
-    const now = Date.now()
-    for (const [key, value] of sessionCache.entries()) {
-      if (now - value.timestamp > SESSION_CACHE_TTL) {
-        sessionCache.delete(key)
-      }
-    }
-  }
 
+  // If no session and trying to access protected route, redirect to login
   if (!session) {
-    return NextResponse.redirect(new URL('/login', request.url))
+    const redirectUrl = request.nextUrl.clone()
+    redirectUrl.pathname = '/auth/login'
+    redirectUrl.searchParams.set('redirectedFrom', request.nextUrl.pathname)
+    return NextResponse.redirect(redirectUrl)
   }
 
-  // Skip permission checks in middleware - move to page level
-  // This saves another database query
-
-  return response
+  return res
 }
 
 export const config = {
   matcher: [
     /*
      * Match all request paths except for the ones starting with:
-     * - api (API routes)
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
+     * - auth (authentication pages)
+     * - api/webhooks (webhook endpoints)
      */
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    '/((?!_next/static|_next/image|favicon.ico|auth|api/webhooks).*)',
   ],
 }
