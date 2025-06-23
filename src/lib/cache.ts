@@ -1,10 +1,8 @@
 /**
  * Caching utilities for improving performance
- * Provides in-memory and Redis-based caching strategies
+ * Provides in-memory caching strategy
  */
 
-import { Redis } from '@upstash/redis'
-import { isFeatureConfigured } from './env-validation'
 import { logger } from './logger'
 
 // Cache key prefixes
@@ -30,7 +28,7 @@ export type CachePrefix = keyof typeof CACHE_PREFIXES
 export type CacheTTL = keyof typeof DEFAULT_TTL
 
 /**
- * In-memory cache for development and fallback
+ * In-memory cache
  */
 class InMemoryCache {
   private cache = new Map<string, { value: any; expires: number }>()
@@ -76,73 +74,14 @@ class InMemoryCache {
 }
 
 /**
- * Redis-based cache for production
- */
-class RedisCache {
-  private redis: Redis
-  
-  constructor() {
-    this.redis = new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL!,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-    })
-  }
-  
-  async get<T>(key: string): Promise<T | null> {
-    try {
-      const value = await this.redis.get(key)
-      return value as T | null
-    } catch (error) {
-      logger.error('Redis get error', { error: error as Error, metadata: { key } })
-      return null
-    }
-  }
-  
-  async set(key: string, value: any, ttl: number): Promise<void> {
-    try {
-      await this.redis.setex(key, ttl, JSON.stringify(value))
-    } catch (error) {
-      logger.error('Redis set error', { error: error as Error, metadata: { key } })
-    }
-  }
-  
-  async delete(key: string): Promise<void> {
-    try {
-      await this.redis.del(key)
-    } catch (error) {
-      logger.error('Redis delete error', { error: error as Error, metadata: { key } })
-    }
-  }
-  
-  async flush(pattern?: string): Promise<void> {
-    try {
-      if (!pattern) {
-        await this.redis.flushdb()
-        return
-      }
-      
-      // Find and delete keys matching pattern
-      const keys = await this.redis.keys(`*${pattern}*`)
-      if (keys.length > 0) {
-        await this.redis.del(...keys)
-      }
-    } catch (error) {
-      logger.error('Redis flush error', { error: error as Error, metadata: { pattern } })
-    }
-  }
-}
-
-/**
- * Cache manager that handles both in-memory and Redis caching
+ * Cache manager that handles in-memory caching
  */
 export class CacheManager {
   private static instance: CacheManager
   private memoryCache: InMemoryCache
-  private redisCache: RedisCache | null
   
   private constructor() {
     this.memoryCache = new InMemoryCache()
-    this.redisCache = isFeatureConfigured('redis') ? new RedisCache() : null
   }
   
   static getInstance(): CacheManager {
@@ -163,23 +102,7 @@ export class CacheManager {
    * Get a value from cache
    */
   async get<T>(key: string): Promise<T | null> {
-    // Try memory cache first
-    const memoryValue = await this.memoryCache.get<T>(key)
-    if (memoryValue !== null) {
-      return memoryValue
-    }
-    
-    // Try Redis if available
-    if (this.redisCache) {
-      const redisValue = await this.redisCache.get<T>(key)
-      if (redisValue !== null) {
-        // Populate memory cache
-        await this.memoryCache.set(key, redisValue, DEFAULT_TTL.SHORT)
-        return redisValue
-      }
-    }
-    
-    return null
+    return await this.memoryCache.get<T>(key)
   }
   
   /**
@@ -187,12 +110,7 @@ export class CacheManager {
    */
   async set(key: string, value: any, ttl: CacheTTL | number): Promise<void> {
     const ttlSeconds = typeof ttl === 'number' ? ttl : DEFAULT_TTL[ttl]
-    
-    // Set in both caches
     await this.memoryCache.set(key, value, ttlSeconds)
-    if (this.redisCache) {
-      await this.redisCache.set(key, value, ttlSeconds)
-    }
   }
   
   /**
@@ -200,9 +118,6 @@ export class CacheManager {
    */
   async delete(key: string): Promise<void> {
     await this.memoryCache.delete(key)
-    if (this.redisCache) {
-      await this.redisCache.delete(key)
-    }
   }
   
   /**
@@ -211,9 +126,6 @@ export class CacheManager {
   async flush(prefix?: CachePrefix): Promise<void> {
     const pattern = prefix ? CACHE_PREFIXES[prefix] : undefined
     await this.memoryCache.flush(pattern)
-    if (this.redisCache) {
-      await this.redisCache.flush(pattern)
-    }
   }
   
   /**
@@ -269,7 +181,6 @@ export class CacheManager {
   getStats() {
     return {
       memorySize: this.memoryCache.getSize(),
-      redisEnabled: !!this.redisCache,
     }
   }
 }

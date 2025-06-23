@@ -4,21 +4,15 @@ import Link from 'next/link'
 import { 
   PlusIcon, 
   CalendarIcon, 
-  PencilIcon, 
-  TrashIcon,
   CurrencyPoundIcon,
-  ClockIcon,
   UserGroupIcon,
   PhoneIcon,
   EnvelopeIcon,
   CheckCircleIcon,
-  ExclamationCircleIcon,
-  BanknotesIcon,
   MapPinIcon,
   SparklesIcon,
   ChatBubbleLeftRightIcon
 } from '@heroicons/react/24/outline'
-import { CalendarDaysIcon } from '@heroicons/react/24/solid'
 import { deletePrivateBooking } from '@/app/actions/privateBookingActions'
 import DeleteBookingButton from '@/components/private-bookings/DeleteBookingButton'
 import type { PrivateBookingWithDetails, BookingStatus, PrivateBookingItem } from '@/types/private-bookings'
@@ -41,227 +35,27 @@ const statusConfig: Record<BookingStatus, {
   label: string
   color: string
   bgColor: string
-  borderColor: string
-  icon: React.ComponentType<{ className?: string }>
 }> = {
   draft: { 
     label: 'Draft', 
     color: 'text-gray-700', 
-    bgColor: 'bg-gray-50', 
-    borderColor: 'border-gray-200',
-    icon: PencilIcon 
+    bgColor: 'bg-gray-100'
   },
   confirmed: { 
     label: 'Confirmed', 
     color: 'text-green-700', 
-    bgColor: 'bg-green-50', 
-    borderColor: 'border-green-200',
-    icon: CheckCircleIcon 
+    bgColor: 'bg-green-100'
   },
   completed: { 
     label: 'Completed', 
     color: 'text-blue-700', 
-    bgColor: 'bg-blue-50', 
-    borderColor: 'border-blue-200',
-    icon: SparklesIcon 
+    bgColor: 'bg-blue-100'
   },
   cancelled: { 
     label: 'Cancelled', 
     color: 'text-red-700', 
-    bgColor: 'bg-red-50', 
-    borderColor: 'border-red-200',
-    icon: TrashIcon 
+    bgColor: 'bg-red-100'
   }
-}
-
-// Stats Card Component
-function StatsCard({ 
-  title, 
-  value, 
-  subtitle, 
-  icon: Icon, 
-  trend 
-}: { 
-  title: string
-  value: string | number
-  subtitle?: string
-  icon: React.ComponentType<{ className?: string }>
-  trend?: { value: number; isPositive: boolean }
-}) {
-  return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-gray-600">{title}</p>
-          <p className="text-3xl font-bold text-gray-900 mt-2">{value}</p>
-          {subtitle && (
-            <p className="text-sm text-gray-500 mt-1">{subtitle}</p>
-          )}
-        </div>
-        <div className={`p-3 rounded-lg ${trend?.isPositive ? 'bg-green-50' : 'bg-gray-50'}`}>
-          <Icon className={`h-6 w-6 ${trend?.isPositive ? 'text-green-600' : 'text-gray-600'}`} />
-        </div>
-      </div>
-      {trend && (
-        <div className="mt-4 flex items-center">
-          <span className={`text-sm font-medium ${trend.isPositive ? 'text-green-600' : 'text-red-600'}`}>
-            {trend.isPositive ? '+' : ''}{trend.value}%
-          </span>
-          <span className="text-sm text-gray-500 ml-2">from last month</span>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Booking Card Component
-function BookingCard({ 
-  booking, 
-  hasEditPermission: _hasEditPermission, 
-  hasDeletePermission 
-}: { 
-  booking: PrivateBookingWithDetails
-  hasEditPermission: boolean
-  hasDeletePermission: boolean
-}) {
-  const status = statusConfig[booking.status]
-  const StatusIcon = status.icon
-  
-  const formatDate = (date: string) => {
-    return new Date(date).toLocaleDateString('en-GB', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric'
-    })
-  }
-
-  const formatTime = (time: string) => {
-    return time.substring(0, 5)
-  }
-
-  const getDaysUntilEvent = () => {
-    const days = Math.ceil((new Date(booking.event_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
-    if (days < 0) return { text: 'Past event', color: 'text-gray-500' }
-    if (days === 0) return { text: 'Today!', color: 'text-red-600 font-bold' }
-    if (days === 1) return { text: 'Tomorrow', color: 'text-orange-600 font-semibold' }
-    if (days <= 7) return { text: `In ${days} days`, color: 'text-orange-600' }
-    if (days <= 30) return { text: `In ${days} days`, color: 'text-yellow-600' }
-    return { text: `In ${days} days`, color: 'text-gray-600' }
-  }
-
-  const daysInfo = getDaysUntilEvent()
-
-  return (
-    <div className={`bg-white rounded-xl shadow-sm border-2 ${status.borderColor} hover:shadow-lg transition-all duration-200 overflow-hidden group`}>
-      {/* Status Header */}
-      <div className={`${status.bgColor} px-6 py-3 border-b ${status.borderColor}`}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <StatusIcon className={`h-5 w-5 ${status.color}`} />
-            <span className={`text-sm font-semibold ${status.color}`}>{status.label}</span>
-          </div>
-          <span className={`text-sm ${daysInfo.color}`}>{daysInfo.text}</span>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="p-6">
-        <div className="flex items-start justify-between mb-4">
-          <Link href={`/private-bookings/${booking.id}`} className="flex-1">
-            <h3 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors cursor-pointer">
-              {booking.customer_full_name || booking.customer_name}
-            </h3>
-            {booking.event_type && (
-              <p className="text-sm text-gray-600 mt-1 flex items-center gap-1">
-                <SparklesIcon className="h-4 w-4" />
-                {booking.event_type}
-              </p>
-            )}
-          </Link>
-          {hasDeletePermission && (
-            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-              <DeleteBookingButton 
-                bookingId={booking.id}
-                bookingName={booking.customer_full_name || booking.customer_name}
-                deleteAction={handleDeleteBooking}
-                eventDate={booking.event_date}
-                status={booking.status}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Event Details Grid */}
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div className="flex items-center gap-2 text-sm">
-            <CalendarDaysIcon className="h-4 w-4 text-gray-400" />
-            <span className="text-gray-900 font-medium">{formatDate(booking.event_date)}</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <ClockIcon className="h-4 w-4 text-gray-400" />
-            <span className="text-gray-900">
-              {formatTime(booking.start_time)}
-              {booking.end_time && ` - ${formatTime(booking.end_time)}`}
-            </span>
-          </div>
-          {booking.guest_count && (
-            <div className="flex items-center gap-2 text-sm">
-              <UserGroupIcon className="h-4 w-4 text-gray-400" />
-              <span className="text-gray-900">{booking.guest_count} guests</span>
-            </div>
-          )}
-          <div className="flex items-center gap-2 text-sm">
-            <CurrencyPoundIcon className="h-4 w-4 text-gray-400" />
-            <span className="text-gray-900 font-medium">£{(booking.calculated_total || 0).toFixed(2)}</span>
-          </div>
-        </div>
-
-        {/* Contact Info */}
-        {(booking.contact_phone || booking.contact_email) && (
-          <div className="flex flex-wrap gap-3 pt-3 border-t border-gray-100">
-            {booking.contact_phone && (
-              <a 
-                href={`tel:${booking.contact_phone}`}
-                className="flex items-center gap-1 text-sm text-gray-600 hover:text-blue-600 transition-colors"
-              >
-                <PhoneIcon className="h-4 w-4" />
-                {booking.contact_phone}
-              </a>
-            )}
-            {booking.contact_email && (
-              <a 
-                href={`mailto:${booking.contact_email}`}
-                className="flex items-center gap-1 text-sm text-gray-600 hover:text-blue-600 transition-colors"
-              >
-                <EnvelopeIcon className="h-4 w-4" />
-                {booking.contact_email}
-              </a>
-            )}
-          </div>
-        )}
-
-        {/* Deposit Status */}
-        {booking.status !== 'draft' && (
-          <div className="mt-3 pt-3 border-t border-gray-100">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">Deposit Status</span>
-              <span className={`text-sm font-medium ${
-                booking.deposit_status === 'Paid' 
-                  ? 'text-green-600' 
-                  : booking.deposit_status === 'Required' 
-                    ? 'text-amber-600' 
-                    : 'text-gray-600'
-              }`}>
-                {booking.deposit_status === 'Paid' && <CheckCircleIcon className="h-4 w-4 inline mr-1" />}
-                {booking.deposit_status}
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
 }
 
 export default async function PrivateBookingsPage() {
@@ -301,6 +95,27 @@ export default async function PrivateBookingsPage() {
     p_action: 'delete'
   })
 
+  // Check management permissions
+  const { data: hasManageSpacesPermission } = await supabase.rpc('user_has_permission', {
+    p_user_id: user.id,
+    p_module_name: 'private_bookings',
+    p_action: 'manage_spaces'
+  })
+
+  const { data: hasManageCateringPermission } = await supabase.rpc('user_has_permission', {
+    p_user_id: user.id,
+    p_module_name: 'private_bookings',
+    p_action: 'manage_catering'
+  })
+
+  const { data: hasManageVendorsPermission } = await supabase.rpc('user_has_permission', {
+    p_user_id: user.id,
+    p_module_name: 'private_bookings',
+    p_action: 'manage_vendors'
+  })
+
+  const hasAnyManagementPermission = hasManageSpacesPermission || hasManageCateringPermission || hasManageVendorsPermission
+
   // Fetch bookings with customer details
   const { data: bookings, error } = await supabase
     .from('private_bookings')
@@ -327,23 +142,22 @@ export default async function PrivateBookingsPage() {
     days_until_event: Math.ceil((new Date(booking.event_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
   })) || []
 
-  // Calculate statistics
-  const upcomingBookings = enrichedBookings.filter(b => (b.days_until_event ?? 0) >= 0)
-  const thisMonthBookings = enrichedBookings.filter(b => {
-    const bookingMonth = new Date(b.event_date).getMonth()
-    const currentMonth = new Date().getMonth()
-    const bookingYear = new Date(b.event_date).getFullYear()
-    const currentYear = new Date().getFullYear()
-    return bookingMonth === currentMonth && bookingYear === currentYear
-  })
-  
-  const totalRevenue = enrichedBookings
-    .filter(b => b.status === 'confirmed' || b.status === 'completed')
-    .reduce((sum, b) => sum + (b.calculated_total || 0), 0)
+  const today = new Date().toISOString().split('T')[0]
+  const completedBookings = enrichedBookings.filter(b => b.status === 'completed' || b.event_date < today)
+  const upcomingBookings = enrichedBookings.filter(b => b.status !== 'completed' && b.event_date >= today)
 
-  const pendingDeposits = enrichedBookings.filter(
-    b => b.status === 'confirmed' && b.deposit_status === 'Required'
-  ).length
+  const formatDate = (date: string) => {
+    return new Date(date).toLocaleDateString('en-GB', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    })
+  }
+
+  const formatTime = (time: string) => {
+    return time.substring(0, 5)
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -385,119 +199,252 @@ export default async function PrivateBookingsPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Statistics Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <StatsCard
-            title="Upcoming Events"
-            value={upcomingBookings.length}
-            subtitle="Active bookings"
-            icon={CalendarDaysIcon}
-            trend={{ value: 12, isPositive: true }}
-          />
-          <StatsCard
-            title="This Month"
-            value={thisMonthBookings.length}
-            subtitle={`${new Date().toLocaleDateString('en-GB', { month: 'long' })} bookings`}
-            icon={CalendarIcon}
-          />
-          <StatsCard
-            title="Total Revenue"
-            value={`£${totalRevenue.toFixed(0)}`}
-            subtitle="Confirmed bookings"
-            icon={CurrencyPoundIcon}
-            trend={{ value: 8, isPositive: true }}
-          />
-          <StatsCard
-            title="Pending Deposits"
-            value={pendingDeposits}
-            subtitle="Awaiting payment"
-            icon={BanknotesIcon}
-          />
-        </div>
-
-        {/* Bookings Grid */}
-        {bookings?.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-            <div className="mx-auto w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-              <CalendarDaysIcon className="h-12 w-12 text-gray-400" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">No bookings yet</h3>
-            <p className="text-gray-600 mb-6 max-w-md mx-auto">
-              Start managing your private events and venue hire bookings. Create your first booking to get started.
-            </p>
-            {hasCreatePermission && (
-              <Link
-                href="/private-bookings/new"
-                className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-              >
-                <PlusIcon className="h-5 w-5" />
-                Create First Booking
-              </Link>
+        {/* Upcoming Bookings Table */}
+        <div className="bg-white shadow overflow-hidden sm:rounded-lg mb-8">
+          <div className="px-4 py-5 sm:px-6 bg-gray-50">
+            <h2 className="text-lg font-medium text-gray-900">Upcoming Bookings ({upcomingBookings.length})</h2>
+          </div>
+          <div className="border-t border-gray-200">
+            {upcomingBookings.length === 0 ? (
+              <div className="px-4 py-12 text-center">
+                <CalendarIcon className="mx-auto h-12 w-12 text-gray-400" />
+                <h3 className="mt-2 text-sm font-medium text-gray-900">No upcoming bookings</h3>
+                <p className="mt-1 text-sm text-gray-500">Get started by creating a new booking.</p>
+                {hasCreatePermission && (
+                  <div className="mt-6">
+                    <Link href="/private-bookings/new">
+                      <span className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
+                        <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
+                        New Booking
+                      </span>
+                    </Link>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Customer
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Event Details
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Date & Time
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Total
+                    </th>
+                    <th scope="col" className="relative px-6 py-3">
+                      <span className="sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {upcomingBookings.map((booking) => {
+                    const status = statusConfig[booking.status]
+                    const daysUntil = Math.ceil((new Date(booking.event_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+                    const isToday = booking.event_date === today
+                    const isTomorrow = daysUntil === 1
+                    const isThisWeek = daysUntil >= 0 && daysUntil <= 7
+                    
+                    return (
+                      <tr key={booking.id} className={isToday ? 'bg-yellow-50' : ''}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div>
+                            <Link href={`/private-bookings/${booking.id}`} className="text-sm font-medium text-blue-600 hover:text-blue-900">
+                              {booking.customer_full_name || booking.customer_name}
+                            </Link>
+                            {booking.contact_phone && (
+                              <div className="text-sm text-gray-500">
+                                <PhoneIcon className="inline h-3 w-3 mr-1" />
+                                {booking.contact_phone}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {booking.event_type || 'Private Event'}
+                          </div>
+                          {booking.guest_count && (
+                            <div className="text-sm text-gray-500">
+                              <UserGroupIcon className="inline h-3 w-3 mr-1" />
+                              {booking.guest_count} guests
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {formatDate(booking.event_date)}
+                            {isToday && <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">Today</span>}
+                            {isTomorrow && <span className="ml-2 text-xs bg-orange-100 text-orange-800 px-2 py-0.5 rounded">Tomorrow</span>}
+                            {!isToday && !isTomorrow && isThisWeek && <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">This week</span>}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {formatTime(booking.start_time)}
+                            {booking.end_time && ` - ${formatTime(booking.end_time)}`}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${status.bgColor} ${status.color}`}>
+                              {status.label}
+                            </span>
+                            {booking.deposit_status === 'Paid' && (
+                              <CheckCircleIcon className="ml-2 h-4 w-4 text-green-600" />
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div className="flex items-center">
+                            <CurrencyPoundIcon className="h-4 w-4 text-gray-400 mr-1" />
+                            £{(booking.calculated_total || 0).toFixed(2)}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <div className="flex items-center justify-end space-x-2">
+                            <Link href={`/private-bookings/${booking.id}`} className="text-blue-600 hover:text-blue-900">
+                              View
+                            </Link>
+                            {hasDeletePermission && (
+                              <DeleteBookingButton 
+                                bookingId={booking.id}
+                                bookingName={booking.customer_full_name || booking.customer_name}
+                                deleteAction={handleDeleteBooking}
+                                eventDate={booking.event_date}
+                                status={booking.status}
+                              />
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             )}
           </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-            {enrichedBookings.map((booking) => (
-              <BookingCard
-                key={booking.id}
-                booking={booking}
-                hasEditPermission={hasEditPermission || false}
-                hasDeletePermission={hasDeletePermission || false}
-              />
-            ))}
-          </div>
+        </div>
+
+        {/* Completed Bookings */}
+        {completedBookings.length > 0 && (
+          <details className="bg-white shadow overflow-hidden sm:rounded-lg mb-8">
+            <summary className="px-4 py-5 sm:px-6 bg-gray-50 cursor-pointer hover:bg-gray-100">
+              <h2 className="text-lg font-medium text-gray-900 inline">Completed Bookings ({completedBookings.length})</h2>
+            </summary>
+            <div className="border-t border-gray-200">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Customer
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Event Type
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Date
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Total
+                    </th>
+                    <th scope="col" className="relative px-6 py-3">
+                      <span className="sr-only">View</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {completedBookings.slice(-20).reverse().map((booking) => (
+                    <tr key={booking.id} className="text-gray-500">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {booking.customer_full_name || booking.customer_name}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {booking.event_type || 'Private Event'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {formatDate(booking.event_date)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        £{(booking.calculated_total || 0).toFixed(2)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <Link href={`/private-bookings/${booking.id}`} className="text-blue-600 hover:text-blue-900">
+                          View
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
         )}
 
         {/* Quick Links Section */}
-        <div className="mt-12">
-          <h2 className="text-xl font-semibold text-gray-900 mb-6">Quick Links</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Link
-              href="/private-bookings/settings/spaces"
-              className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all group"
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
-                    Manage Spaces
-                  </h3>
-                  <p className="text-sm text-gray-600 mt-1">Configure venue spaces and pricing</p>
-                </div>
-                <MapPinIcon className="h-8 w-8 text-gray-400 group-hover:text-blue-500 transition-colors" />
-              </div>
-            </Link>
-            
-            <Link
-              href="/private-bookings/settings/catering"
-              className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all group"
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
-                    Catering Packages
-                  </h3>
-                  <p className="text-sm text-gray-600 mt-1">Manage food and drink options</p>
-                </div>
-                <SparklesIcon className="h-8 w-8 text-gray-400 group-hover:text-blue-500 transition-colors" />
-              </div>
-            </Link>
-            
-            <Link
-              href="/private-bookings/settings/vendors"
-              className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all group"
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
-                    Vendor Database
-                  </h3>
-                  <p className="text-sm text-gray-600 mt-1">Maintain preferred vendor list</p>
-                </div>
-                <UserGroupIcon className="h-8 w-8 text-gray-400 group-hover:text-blue-500 transition-colors" />
-              </div>
-            </Link>
+        {hasAnyManagementPermission && (
+          <div className="mt-12">
+            <h2 className="text-xl font-semibold text-gray-900 mb-6">Quick Links</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {hasManageSpacesPermission && (
+                <Link
+                  href="/private-bookings/settings/spaces"
+                  className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all group"
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
+                        Manage Spaces
+                      </h3>
+                      <p className="text-sm text-gray-600 mt-1">Configure venue spaces and pricing</p>
+                    </div>
+                    <MapPinIcon className="h-8 w-8 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                  </div>
+                </Link>
+              )}
+              
+              {hasManageCateringPermission && (
+                <Link
+                  href="/private-bookings/settings/catering"
+                  className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all group"
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
+                        Catering Packages
+                      </h3>
+                      <p className="text-sm text-gray-600 mt-1">Manage food and drink options</p>
+                    </div>
+                    <SparklesIcon className="h-8 w-8 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                  </div>
+                </Link>
+              )}
+              
+              {hasManageVendorsPermission && (
+                <Link
+                  href="/private-bookings/settings/vendors"
+                  className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all group"
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
+                        Vendor Database
+                      </h3>
+                      <p className="text-sm text-gray-600 mt-1">Maintain preferred vendor list</p>
+                    </div>
+                    <UserGroupIcon className="h-8 w-8 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                  </div>
+                </Link>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Contact Footer */}
         <div className="mt-12 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl p-8 text-white text-center">

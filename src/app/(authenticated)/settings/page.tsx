@@ -13,7 +13,6 @@ import {
   CpuChipIcon
 } from '@heroicons/react/24/outline';
 import { checkUserPermission } from '@/app/actions/rbac';
-import { SentryTestButton } from '@/components/SentryTestButton';
 import type { ModuleName, ActionType } from '@/types/rbac';
 
 const settingsSections = [
@@ -239,24 +238,6 @@ export default async function SettingsPage() {
         </div>
       )}
 
-      {process.env.NODE_ENV === 'development' && (
-        <div className="bg-white shadow sm:rounded-lg">
-          <div className="px-4 py-3 border-b border-gray-200">
-            <h2 className="text-lg font-medium text-gray-900">Development Tools</h2>
-          </div>
-          <div className="px-4 py-4 sm:px-6">
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-sm font-medium text-gray-900 mb-2">Error Monitoring</h3>
-                <p className="text-sm text-gray-500 mb-3">
-                  Test Sentry error tracking integration. This will send a test error to your Sentry dashboard.
-                </p>
-                <SentryTestButton />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

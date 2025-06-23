@@ -13,7 +13,9 @@ export function withApiLogging(
       const response = await handler(req);
       const duration = Date.now() - start;
       
-      logger.logApiCall(url, method, response.status, duration);
+      logger.info(`API: ${method} ${url} - ${response.status} (${duration}ms)`, {
+        metadata: { method, url, status: response.status, duration }
+      });
       
       return response;
     } catch (error) {

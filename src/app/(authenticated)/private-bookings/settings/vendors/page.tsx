@@ -80,7 +80,7 @@ export default async function VendorsPage() {
   const { data: hasPermission } = await supabase.rpc('user_has_permission', {
     p_user_id: user.id,
     p_module_name: 'private_bookings',
-    p_action: 'manage'
+    p_action: 'manage_vendors'
   })
 
   if (!hasPermission) {
