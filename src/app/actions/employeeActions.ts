@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdminClient } from '@/lib/supabase-singleton';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import type { Employee, EmployeeNote, EmployeeAttachment } from '@/types/database';
@@ -10,17 +10,6 @@ import type { ActionFormState, NoteFormState, AttachmentFormState, DeleteState }
 import { getConstraintErrorMessage, isPostgrestError } from '@/lib/dbErrorHandler';
 import { logAuditEvent, getCurrentUserForAudit } from '@/lib/auditLog';
 import { checkUserPermission } from './rbac';
-
-function getSupabaseAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    console.error('Missing Supabase URL or Service Role Key for admin client.');
-    return null;
-  }
-  return createClient(supabaseUrl, supabaseServiceRoleKey);
-}
 
 // Schemas
 const employeeSchema = z.object({
@@ -88,7 +77,6 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
     }
 
     const supabase = getSupabaseAdminClient();
-    if (!supabase) return { type: 'error', message: 'Database connection failed.' };
 
     const { data: newEmployee, error } = await supabase.from('employees').insert(result.data).select().single();
     
@@ -136,7 +124,6 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
     }
 
     const supabase = getSupabaseAdminClient();
-    if (!supabase) return { type: 'error', message: 'Database connection failed.' };
 
     // Get old values for audit
     const { data: oldEmployee } = await supabase
@@ -191,7 +178,6 @@ export async function deleteEmployee(prevState: DeleteState, formData: FormData)
     if (!employeeId) return { type: 'error', message: 'Employee ID is missing.' };
 
     const supabase = getSupabaseAdminClient();
-    if (!supabase) return { type: 'error', message: 'Database connection failed.' };
 
     // Get employee details for audit
     const { data: employee } = await supabase
@@ -235,10 +221,6 @@ export async function deleteEmployee(prevState: DeleteState, formData: FormData)
 // Server action to get a simplified list of employees for dropdowns
 export async function getEmployeeList(): Promise<{ id: string; name: string; }[] | null> {
   const supabase = getSupabaseAdminClient();
-  if (!supabase) {
-    console.error('getEmployeeList: Database connection failed.');
-    return null;
-  }
 
   const { data, error } = await supabase
     .from('employees')
@@ -268,7 +250,6 @@ export async function addEmployeeNote(prevState: NoteFormState, formData: FormDa
     }
     
     const supabase = getSupabaseAdminClient();
-    if (!supabase) return { type: 'error', message: 'Database connection failed.' };
     
     const { error } = await supabase.from('employee_notes').insert(result.data);
 
@@ -320,9 +301,6 @@ export async function addEmployeeAttachment(
 
   const { employee_id, attachment_file, category_id, description } = result.data;
   const supabase = getSupabaseAdminClient();
-  if (!supabase) {
-    return { type: 'error', message: 'Database connection failed.' };
-  }
 
   // 2. Upload file to Supabase Storage
   // Sanitize filename: remove special characters, keep only alphanumeric, dots, dashes, and underscores
@@ -408,9 +386,6 @@ export async function getAttachmentSignedUrl(storagePath: string): Promise<{ url
   }
 
   const supabase = getSupabaseAdminClient();
-  if (!supabase) {
-    return { url: null, error: 'Database connection failed.' };
-  }
 
   const { data, error } = await supabase.storage
     .from(ATTACHMENT_BUCKET_NAME)
@@ -448,7 +423,6 @@ export async function deleteEmployeeAttachment(prevState: DeleteState, formData:
 
     const { employee_id, attachment_id, storage_path } = result.data;
     const supabase = getSupabaseAdminClient();
-    if (!supabase) return { type: 'error', message: 'Database connection failed.' };
 
     const { error: storageError } = await supabase.storage
         .from(ATTACHMENT_BUCKET_NAME)
