@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdminClient, getSupabaseAnonClient } from '@/lib/supabase-singleton';
 import { createClient } from '@supabase/supabase-js';
 import twilio from 'twilio';
-import { checkRateLimit } from '@/lib/upstash-rate-limit';
 import { retry, RetryConfigs } from '@/lib/retry';
 import { logger } from '@/lib/logger';
 
@@ -100,27 +99,6 @@ export async function POST(request: NextRequest) {
     headers = Object.fromEntries(request.headers.entries());
     console.log('Headers received:', headers);
     
-    // Apply rate limiting if Upstash is configured
-    if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
-      const identifier = headers['x-forwarded-for'] || headers['x-real-ip'] || 'webhook';
-      const rateLimitResult = await checkRateLimit(identifier, 'webhook');
-      
-      if (!rateLimitResult.success) {
-        console.log(`Webhook rate limit exceeded for ${identifier}`);
-        return NextResponse.json(
-          { error: 'Rate limit exceeded' },
-          { 
-            status: 429,
-            headers: {
-              'Retry-After': Math.ceil((rateLimitResult.reset.getTime() - Date.now()) / 1000).toString(),
-              'X-RateLimit-Limit': rateLimitResult.limit.toString(),
-              'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
-              'X-RateLimit-Reset': rateLimitResult.reset.toISOString()
-            }
-          }
-        );
-      }
-    }
     
     // Get public client for logging
     publicClient = getPublicSupabaseClient();

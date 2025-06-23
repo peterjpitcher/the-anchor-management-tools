@@ -33,16 +33,6 @@ const envSchema = z.object({
   ]).optional(),
   SKIP_TWILIO_SIGNATURE_VALIDATION: z.enum(['true', 'false']).optional(),
   
-  // Redis/Upstash (Optional)
-  UPSTASH_REDIS_REST_URL: z.string().url().optional(),
-  UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
-  
-  // Sentry (Optional)
-  NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
-  SENTRY_ORG: z.string().optional(),
-  SENTRY_PROJECT: z.string().optional(),
-  SENTRY_AUTH_TOKEN: z.string().optional(),
-  
   // Vercel
   VERCEL: z.enum(['1']).optional(),
   VERCEL_ENV: z.enum(['development', 'preview', 'production']).optional(),
@@ -74,30 +64,6 @@ const refinedEnvSchema = envSchema
     },
     {
       message: 'Either TWILIO_PHONE_NUMBER or TWILIO_MESSAGING_SERVICE_SID must be set when Twilio is configured',
-    }
-  )
-  .refine(
-    (data) => {
-      // Redis tokens must be set together
-      if (data.UPSTASH_REDIS_REST_URL || data.UPSTASH_REDIS_REST_TOKEN) {
-        return !!(data.UPSTASH_REDIS_REST_URL && data.UPSTASH_REDIS_REST_TOKEN)
-      }
-      return true
-    },
-    {
-      message: 'Both UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set together',
-    }
-  )
-  .refine(
-    (data) => {
-      // Sentry config must be complete if DSN is set
-      if (data.NEXT_PUBLIC_SENTRY_DSN && data.NODE_ENV === 'production') {
-        return !!(data.SENTRY_ORG && data.SENTRY_PROJECT)
-      }
-      return true
-    },
-    {
-      message: 'SENTRY_ORG and SENTRY_PROJECT must be set when Sentry is configured in production',
     }
   )
 
@@ -141,7 +107,7 @@ function formatZodError(error: z.ZodError): string {
 /**
  * Checks if a feature is properly configured
  */
-export function isFeatureConfigured(feature: 'twilio' | 'redis' | 'sentry'): boolean {
+export function isFeatureConfigured(feature: 'twilio'): boolean {
   const env = validateEnv()
   
   switch (feature) {
@@ -151,10 +117,6 @@ export function isFeatureConfigured(feature: 'twilio' | 'redis' | 'sentry'): boo
         env.TWILIO_AUTH_TOKEN &&
         (env.TWILIO_PHONE_NUMBER || env.TWILIO_MESSAGING_SERVICE_SID)
       )
-    case 'redis':
-      return !!(env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN)
-    case 'sentry':
-      return !!env.NEXT_PUBLIC_SENTRY_DSN
     default:
       return false
   }
@@ -171,8 +133,6 @@ export function getEnvInfo(): Record<string, string> {
     APP_URL: env.NEXT_PUBLIC_APP_URL,
     SUPABASE_CONFIGURED: 'Yes',
     TWILIO_CONFIGURED: isFeatureConfigured('twilio') ? 'Yes' : 'No',
-    REDIS_CONFIGURED: isFeatureConfigured('redis') ? 'Yes' : 'No',
-    SENTRY_CONFIGURED: isFeatureConfigured('sentry') ? 'Yes' : 'No',
     VERCEL_ENV: env.VERCEL_ENV || 'Not on Vercel',
   }
 }
@@ -191,12 +151,6 @@ export function checkEnvironment(): void {
     // Warnings for optional features
     if (!isFeatureConfigured('twilio')) {
       console.warn('⚠️  Twilio not configured - SMS features will be disabled')
-    }
-    if (!isFeatureConfigured('redis')) {
-      console.warn('⚠️  Redis not configured - rate limiting will be disabled')
-    }
-    if (!isFeatureConfigured('sentry') && env.NODE_ENV === 'production') {
-      console.warn('⚠️  Sentry not configured - error tracking will be disabled')
     }
   } catch (error) {
     console.error('❌ Environment check failed:', error)

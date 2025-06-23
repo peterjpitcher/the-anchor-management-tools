@@ -1,5 +1,4 @@
 import twilio from 'twilio';
-import { checkRateLimit } from './upstash-rate-limit';
 import { retry, RetryConfigs } from './retry';
 import { logger } from './logger';
 
@@ -11,20 +10,6 @@ export const twilioClient = twilio(accountSid, authToken);
 
 export const sendSMS = async (to: string, body: string) => {
   try {
-    // Check rate limit for SMS sending (per phone number)
-    if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
-      const rateLimitResult = await checkRateLimit(to, 'sms');
-      if (!rateLimitResult.success) {
-        logger.warn(`Rate limit exceeded for ${to}`, {
-          metadata: { remaining: rateLimitResult.remaining }
-        });
-        return { 
-          success: false, 
-          error: `Rate limit exceeded. Try again at ${rateLimitResult.reset.toLocaleTimeString()}` 
-        };
-      }
-    }
-
     // Send SMS with retry logic
     const message = await retry(
       async () => {
