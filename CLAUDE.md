@@ -88,11 +88,13 @@ Run TypeScript scripts with `tsx scripts/[script-name].ts` (tsx is included as a
    - Client info tracking (IP, user agent)
    - Integration via `logAuditEvent()` in server actions
 
-8. **Cron Jobs**: Automated SMS reminders run daily at 9 AM
-   - Primary: Vercel cron at `/api/cron/reminders`
-   - Backup: GitHub Actions workflow
-   - Sends reminders based on template timing configuration
-   - Secured with `CRON_SECRET_KEY` environment variable
+8. **Cron Jobs**: 
+   - **SMS Reminders**: Daily at 9 AM via `/api/cron/reminders`
+   - **Job Processor**: Every 5 minutes via `/api/jobs/process`
+     - Processes background jobs for SMS sending
+     - Required for booking confirmations and bulk SMS
+   - Both secured with `CRON_SECRET_KEY` environment variable
+   - Manual trigger available at `/api/jobs/process-now` for testing
 
 9. **Form Data Pattern**: When passing data to server actions:
    - Use hidden input fields for additional data
