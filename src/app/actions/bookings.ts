@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { logAuditEvent } from './audit'
-import { sendBookingConfirmation } from './sms'
+import { sendBookingConfirmationSync } from './sms'
 import { withRetry, withTransaction } from '@/lib/supabase-retry'
 import { logger } from '@/lib/logger'
 import { getEventAvailableCapacity, invalidateEventCache } from '@/lib/events'
@@ -110,8 +110,8 @@ export async function createBooking(formData: FormData) {
       seats: data.seats
     })
 
-    // Send SMS confirmation in the background
-    sendBookingConfirmation(booking.id).catch(error => {
+    // Send SMS confirmation immediately
+    sendBookingConfirmationSync(booking.id).catch(error => {
       console.error('Failed to send booking confirmation:', error)
     })
 
@@ -190,9 +190,9 @@ export async function createBulkBookings(eventId: string, customerIds: string[])
       customerCount: bookings.length
     })
 
-    // Send SMS confirmations in the background
+    // Send SMS confirmations immediately
     bookings.forEach(booking => {
-      sendBookingConfirmation(booking.id).catch(error => {
+      sendBookingConfirmationSync(booking.id).catch(error => {
         console.error(`Failed to send confirmation for booking ${booking.id}:`, error)
       })
     })

@@ -13,7 +13,7 @@ import { PlusIcon, TrashIcon, UserGroupIcon, ClipboardDocumentIcon } from '@hero
 import { BookingForm } from '@/components/BookingForm'
 import { AddAttendeesModalWithCategories } from '@/components/AddAttendeesModalWithCategories'
 import toast from 'react-hot-toast'
-import { sendBookingConfirmation } from '@/app/actions/sms'
+import { sendBookingConfirmationSync } from '@/app/actions/sms'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { Button } from '@/components/ui/Button'
 import { EventTemplateManager } from '@/components/EventTemplateManager'
@@ -67,6 +67,19 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
 
   const handleCreateBooking = async (data: Omit<Booking, 'id' | 'created_at'>) => {
     try {
+      // First check if booking already exists
+      const { data: existingBooking } = await supabase
+        .from('bookings')
+        .select('id')
+        .eq('event_id', data.event_id)
+        .eq('customer_id', data.customer_id)
+        .single()
+
+      if (existingBooking) {
+        toast.error('This customer already has a booking for this event')
+        return
+      }
+
       const { data: newBookingData, error } = await supabase.from('bookings').insert(data).select('id').single()
 
       if (error || !newBookingData) {
@@ -77,14 +90,18 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
       setShowBookingForm(false)
       await loadEventData() // Refresh data
 
-      // Send SMS confirmation in the background
-      sendBookingConfirmation(newBookingData.id).catch(smsError => {
+      // Send SMS confirmation immediately
+      sendBookingConfirmationSync(newBookingData.id).catch(smsError => {
         console.error('Failed to send booking confirmation SMS:', smsError)
         toast.error('Booking created, but failed to send confirmation SMS.')
       })
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating booking:', error)
-      toast.error('Failed to create booking')
+      if (error?.code === '23505') {
+        toast.error('This customer already has a booking for this event')
+      } else {
+        toast.error(error?.message || 'Failed to create booking')
+      }
     }
   }
 
@@ -119,10 +136,10 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
       setShowAddAttendeesModal(false)
       await loadEventData() // Refresh data
 
-      // Send SMS confirmations in the background
+      // Send SMS confirmations immediately
       let smsErrorCount = 0
       for (const booking of insertedBookings) {
-        sendBookingConfirmation(booking.id).catch(smsError => {
+        sendBookingConfirmationSync(booking.id).catch(smsError => {
           smsErrorCount++
           console.error(`Failed to send SMS for booking ID ${booking.id}:`, smsError)
           if (smsErrorCount === insertedBookings.length) {
