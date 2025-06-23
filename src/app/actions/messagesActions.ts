@@ -1,26 +1,12 @@
 'use server'
 
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
 import { revalidatePath } from 'next/cache'
-
-function getSupabaseAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    console.error('Missing Supabase URL or Service Role Key for admin client.')
-    return null
-  }
-  return createClient(supabaseUrl, supabaseServiceRoleKey)
-}
 
 export async function getMessages() {
   console.log('=== Getting all messages ===')
   
   const supabase = getSupabaseAdminClient()
-  if (!supabase) {
-    return { error: 'Failed to initialize database connection' }
-  }
   
   // Get only unread inbound messages
   const { data: messages, error: messagesError } = await supabase

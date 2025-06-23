@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
 
 export type JobType = 
   | 'export_employees' 
@@ -20,12 +20,9 @@ export interface Job {
 }
 
 export class JobQueue {
-  private supabase: ReturnType<typeof createClient>
+  private supabase = getSupabaseAdminClient()
 
   constructor() {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-    this.supabase = createClient(supabaseUrl, supabaseServiceRoleKey)
   }
 
   async enqueue(type: JobType, payload?: any, userId?: string): Promise<{ success: boolean; jobId?: string; error?: string }> {

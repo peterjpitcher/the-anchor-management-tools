@@ -1,17 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdminClient } from '@/lib/supabase-singleton';
 import { cache } from './cache';
-
-// Get Supabase admin client
-function getSupabaseAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    console.error('Missing Supabase URL or Service Role Key for admin client.');
-    return null;
-  }
-  return createClient(supabaseUrl, supabaseServiceRoleKey);
-}
 
 // Legacy templates for fallback
 export const smsTemplates = {
@@ -105,10 +93,6 @@ export async function getMessageTemplatesBatch(
   
   try {
     const supabase = getSupabaseAdminClient();
-    if (!supabase) {
-      console.error('Failed to get Supabase client for templates');
-      return results;
-    }
 
     // Get all unique event IDs and template types
     const uniqueEventIds = Array.from(new Set(requests.map(r => r.eventId)));
@@ -179,10 +163,6 @@ export async function getMessageTemplate(
       cacheKey,
       async () => {
         const supabase = getSupabaseAdminClient();
-        if (!supabase) {
-          console.error('Failed to get Supabase client for templates');
-          return null;
-        }
 
         // Map legacy template type to new type
         const mappedType = TEMPLATE_TYPE_MAP[templateType] || templateType;

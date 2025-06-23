@@ -331,18 +331,6 @@ export default function CustomersPage() {
             </table>
           </div>
           
-          {/* Pagination for desktop */}
-          {totalPages > 1 && (
-            <div className="hidden md:block">
-              <Pagination
-                currentPage={currentPage}
-                totalPages={totalPages}
-                totalItems={totalCount}
-                itemsPerPage={pageSize}
-                onPageChange={setPage}
-              />
-            </div>
-          )}
           
           <div className="block md:hidden">
             <ul className="divide-y divide-gray-200 bg-white shadow overflow-hidden sm:rounded-lg">

@@ -1,19 +1,8 @@
 'use server'
 
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdminClient } from '@/lib/supabase-singleton';
 import { revalidatePath } from 'next/cache';
 import { checkUserPermission } from './rbac';
-
-function getSupabaseAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    console.error('Missing Supabase URL or Service Role Key for admin client.');
-    return null;
-  }
-  return createClient(supabaseUrl, supabaseServiceRoleKey);
-}
 
 export async function toggleCustomerSmsOptIn(customerId: string, optIn: boolean) {
   // Check permission
@@ -23,9 +12,6 @@ export async function toggleCustomerSmsOptIn(customerId: string, optIn: boolean)
   }
 
   const supabase = getSupabaseAdminClient();
-  if (!supabase) {
-    return { error: 'Failed to initialize database connection' };
-  }
 
   const updateData: any = {
     sms_opt_in: optIn
@@ -61,9 +47,6 @@ export async function getCustomerSmsStats(customerId: string) {
   }
 
   const supabase = getSupabaseAdminClient();
-  if (!supabase) {
-    return { error: 'Failed to initialize database connection' };
-  }
 
   // Get customer SMS status
   const { data: customer, error: customerError } = await supabase
@@ -108,9 +91,6 @@ export async function getCustomerSmsStats(customerId: string) {
 
 export async function getCustomerMessages(customerId: string) {
   const supabase = getSupabaseAdminClient();
-  if (!supabase) {
-    return { error: 'Failed to initialize database connection' };
-  }
 
   const { data: messages, error } = await supabase
     .from('messages')
@@ -127,9 +107,6 @@ export async function getCustomerMessages(customerId: string) {
 
 export async function getDeliveryFailureReport() {
   const supabase = getSupabaseAdminClient();
-  if (!supabase) {
-    return { error: 'Failed to initialize database connection' };
-  }
 
   // Get customers with delivery failures
   const { data: customers, error } = await supabase
@@ -147,9 +124,6 @@ export async function getDeliveryFailureReport() {
 
 export async function getSmsDeliveryStats() {
   const supabase = getSupabaseAdminClient();
-  if (!supabase) {
-    return { error: 'Failed to initialize database connection' };
-  }
 
   // Get overall message statistics for the last 30 days
   const thirtyDaysAgo = new Date();

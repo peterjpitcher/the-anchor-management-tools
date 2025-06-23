@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getSupabaseAdminClient, getSupabaseAnonClient } from '@/lib/supabase-singleton';
 import { createClient } from '@supabase/supabase-js';
 import twilio from 'twilio';
 import { checkRateLimit } from '@/lib/upstash-rate-limit';
@@ -7,26 +8,7 @@ import { logger } from '@/lib/logger';
 
 // Create public Supabase client for logging (no auth required)
 function getPublicSupabaseClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  
-  if (!supabaseUrl || !supabaseAnonKey) {
-    console.error('Missing Supabase URL or Anon Key');
-    return null;
-  }
-  return createClient(supabaseUrl, supabaseAnonKey);
-}
-
-// Create Supabase admin client for database operations
-function getSupabaseAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    console.error('Missing Supabase URL or Service Role Key for admin client.');
-    return null;
-  }
-  return createClient(supabaseUrl, supabaseServiceRoleKey);
+  return getSupabaseAnonClient();
 }
 
 // Log webhook attempt to database
@@ -197,14 +179,6 @@ export async function POST(request: NextRequest) {
     
     // Get admin client for database operations
     adminClient = getSupabaseAdminClient();
-    if (!adminClient) {
-      const error = 'Failed to create admin Supabase client';
-      console.error(error);
-      if (publicClient) {
-        await logWebhookAttempt(publicClient, 'error', headers, body, params, error);
-      }
-      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-    }
     
     // Determine webhook type and process
     if (params.Body && params.From && params.To) {
@@ -507,18 +481,32 @@ async function handleStatusUpdate(
 
 function generatePhoneVariants(phone: string): string[] {
   const variants = [phone];
-  const digitsOnly = phone.replace(/\D/g, '');
+  
+  // Clean the phone number - remove all non-digits except leading +
+  const cleaned = phone.replace(/[^\d+]/g, '').replace(/\+/g, (match, offset) => offset === 0 ? match : '');
+  const digitsOnly = cleaned.replace(/^\+/, '');
   
   // UK number handling
-  if (phone.startsWith('+44') || digitsOnly.startsWith('44')) {
-    variants.push('+44' + digitsOnly.substring(2));
-    variants.push('44' + digitsOnly.substring(2));
-    variants.push('0' + digitsOnly.substring(2));
+  if (cleaned.startsWith('+44') && digitsOnly.length >= 12) {
+    const ukNumber = digitsOnly.substring(2); // Remove 44 from the digits
+    variants.push('+44' + ukNumber);
+    variants.push('44' + ukNumber);
+    variants.push('0' + ukNumber);
+  } else if (digitsOnly.startsWith('44') && digitsOnly.length >= 12) {
+    const ukNumber = digitsOnly.substring(2); // Remove 44
+    variants.push('+44' + ukNumber);
+    variants.push('44' + ukNumber);
+    variants.push('0' + ukNumber);
+  } else if (digitsOnly.startsWith('0') && digitsOnly.length === 11) {
+    const ukNumber = digitsOnly.substring(1); // Remove 0
+    variants.push('+44' + ukNumber);
+    variants.push('44' + ukNumber);
+    variants.push('0' + ukNumber);
   }
   
-  if (phone.startsWith('0')) {
-    variants.push('+44' + phone.substring(1));
-    variants.push('44' + phone.substring(1));
+  // Also add the cleaned version if different from original
+  if (cleaned !== phone) {
+    variants.push(cleaned);
   }
   
   return [...new Set(variants)];

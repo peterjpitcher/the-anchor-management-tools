@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
 import twilio from 'twilio'
 
 export async function importMissedMessages(startDate: string, endDate: string) {
@@ -29,10 +29,7 @@ export async function importMissedMessages(startDate: string, endDate: string) {
       process.env.TWILIO_AUTH_TOKEN
     )
     
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_ROLE_KEY
-    )
+    const supabase = getSupabaseAdminClient()
 
     console.log(`Fetching messages from ${startDate} to ${endDate}`)
 
@@ -211,7 +208,7 @@ export async function importMissedMessages(startDate: string, endDate: string) {
           sent_at: twilioMessage.dateSent,
           segments: segments,
           cost_usd: costUsd,
-          is_read: !isInbound // Mark outbound as read
+          read_at: !isInbound ? new Date().toISOString() : null // Mark outbound as read
         })
 
       } catch (error) {

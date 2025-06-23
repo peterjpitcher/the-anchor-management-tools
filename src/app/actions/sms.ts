@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
 import twilio from 'twilio'
 import { smsTemplates, getMessageTemplate, getMessageTemplatesBatch, renderTemplate } from '@/lib/smsTemplates'
 import { rateLimiters } from '@/lib/rate-limit'
@@ -15,18 +15,6 @@ interface TwilioMessageCreateParams {
   from?: string;
   messagingServiceSid?: string;
   // Add other potential parameters from Twilio.MessageListInstanceCreateOptions if needed
-}
-
-// Helper function to create Supabase client with Service Role Key for server-side actions
-function createAdminSupabaseClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    console.error('Missing Supabase URL or Service Role Key for admin client')
-    return null
-  }
-  return createClient(supabaseUrl, supabaseServiceRoleKey)
 }
 
 export async function sendBookingConfirmation(bookingId: string) {
@@ -69,11 +57,7 @@ export async function sendBookingConfirmationSync(bookingId: string) {
       return
     }
 
-    const supabase = createAdminSupabaseClient()
-    if (!supabase) {
-        logger.error('Failed to initialize Supabase admin client for booking confirmation.')
-        return;
-    }
+    const supabase = getSupabaseAdminClient()
 
     const { data: booking, error: bookingError } = await supabase
       .from('bookings')
@@ -218,11 +202,7 @@ export async function sendEventReminders() {
       throw new Error('Supabase Admin configuration missing for reminders')
     }
 
-    const supabase = createAdminSupabaseClient()
-    if (!supabase) {
-        console.error('Failed to initialize Supabase admin client for event reminders.')
-        throw new Error('Supabase admin client initialization failed for reminders');
-    }
+    const supabase = getSupabaseAdminClient()
 
     const today = new Date()
     const tomorrow = new Date(today)
@@ -506,7 +486,7 @@ export async function sendSms(params: { to: string; body: string; bookingId?: st
     console.log('SMS sent successfully')
 
     // If we have access to the database, store the message
-    const supabase = createAdminSupabaseClient()
+    const supabase = getSupabaseAdminClient()
     if (supabase) {
       // Calculate segments
       const messageLength = params.body.length
@@ -526,7 +506,7 @@ export async function sendSms(params: { to: string; body: string; bookingId?: st
         message_type: 'sms' as const,
         segments: segments,
         cost_usd: costUsd,
-        is_read: true, // Mark as read since it's outbound
+        read_at: new Date().toISOString(), // Mark as read since it's outbound
         // Store booking reference if provided
         metadata: params.bookingId ? { private_booking_id: params.bookingId } : undefined
       }
@@ -610,11 +590,7 @@ async function sendBulkSMSInternal(customerIds: string[], message: string, skipR
       return { error: 'SMS service not configured' }
     }
 
-    const supabase = createAdminSupabaseClient()
-    if (!supabase) {
-      console.error('Failed to initialize Supabase admin client for bulk SMS.')
-      return { error: 'Database connection failed' }
-    }
+    const supabase = getSupabaseAdminClient()
 
     // Get customer details for all provided IDs
     const { data: customers, error: customerError } = await supabase
@@ -691,7 +667,7 @@ async function sendBulkSMSInternal(customerIds: string[], message: string, skipR
           message_type: 'sms' as const,
           segments: segments,
           cost_usd: costUsd,
-          is_read: true // Mark as read since it's outbound
+          read_at: new Date().toISOString() // Mark as read since it's outbound
         })
 
         results.push({
