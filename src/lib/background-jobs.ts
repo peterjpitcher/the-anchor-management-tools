@@ -273,13 +273,113 @@ export class JobQueue {
       return { skipped: true, reason: 'Reminder already sent' }
     }
     
-    // Send reminder (implementation would go here)
-    // For now, just log it
-    logger.info('Would send reminder', {
-      metadata: { bookingId, reminderType }
+    // Import SMS templates and send the confirmation
+    const { smsTemplates, getMessageTemplate, renderTemplate } = await import('./smsTemplates')
+    const { sendSMS } = await import('./twilio')
+    
+    // Prepare template variables
+    const templateVariables = {
+      customer_name: `${booking.customer.first_name} ${booking.customer.last_name}`,
+      first_name: booking.customer.first_name,
+      event_name: booking.event.name,
+      event_date: new Date(booking.event.date).toLocaleDateString('en-GB', {
+        month: 'long',
+        day: 'numeric',
+      }),
+      event_time: booking.event.time,
+      seats: booking.seats?.toString() || '0',
+      venue_name: 'The Anchor',
+      contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707',
+      booking_reference: bookingId.substring(0, 8).toUpperCase()
+    }
+    
+    // Try to get template from database
+    const templateType = booking.seats ? 'bookingConfirmation' : 'reminderOnly'
+    let message = await getMessageTemplate(booking.event.id, templateType, templateVariables)
+    
+    // Fall back to legacy templates if database template not found
+    if (!message) {
+      message = booking.seats
+        ? smsTemplates.bookingConfirmation({
+            firstName: booking.customer.first_name,
+            seats: booking.seats,
+            eventName: booking.event.name,
+            eventDate: new Date(booking.event.date),
+            eventTime: booking.event.time,
+          })
+        : smsTemplates.reminderOnly({
+            firstName: booking.customer.first_name,
+            eventName: booking.event.name,
+            eventDate: new Date(booking.event.date),
+            eventTime: booking.event.time,
+          })
+    }
+    
+    // Send the SMS
+    const result = await sendSMS(booking.customer.mobile_number, message)
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to send SMS')
+    }
+    
+    // Calculate segments and cost
+    const messageLength = message.length
+    const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153)
+    const costUsd = segments * 0.04
+    
+    // Log message to database
+    const { error: messageError } = await this.supabase
+      .from('messages')
+      .insert({
+        customer_id: booking.customer.id,
+        direction: 'outbound',
+        message_sid: result.sid,
+        twilio_message_sid: result.sid,
+        body: message,
+        status: 'sent',
+        twilio_status: 'queued',
+        from_number: process.env.TWILIO_PHONE_NUMBER || '',
+        to_number: booking.customer.mobile_number,
+        message_type: 'sms',
+        segments: segments,
+        cost_usd: costUsd
+      })
+      .select('id')
+      .single()
+    
+    if (messageError) {
+      logger.error('Failed to store message in database', {
+        error: messageError,
+        metadata: { bookingId, customerId: booking.customer.id }
+      })
+    }
+    
+    // Record the reminder as sent (using 24_hour for confirmations)
+    const actualReminderType = reminderType === '24_hour' ? '24_hour' : reminderType
+    const { error: reminderError } = await this.supabase
+      .from('booking_reminders')
+      .insert({
+        booking_id: bookingId,
+        reminder_type: actualReminderType,
+        message_id: messageError ? null : result.sid
+      })
+    
+    if (reminderError) {
+      logger.error('Failed to record reminder', {
+        error: reminderError,
+        metadata: { bookingId, reminderType: actualReminderType }
+      })
+    }
+    
+    logger.info('Booking confirmation SMS sent', {
+      metadata: { 
+        bookingId, 
+        customerId: booking.customer.id,
+        messageSid: result.sid 
+      }
     })
     
-    return { sent: true }
+    return { sent: true, messageSid: result.sid }
   }
   
   private async syncCustomerStats(payload: JobPayload['sync_customer_stats']) {
