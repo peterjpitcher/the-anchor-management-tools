@@ -57,8 +57,21 @@ export function EventForm({ event, onSubmit, onCancel }: EventFormProps) {
         if (!time && selectedCategory.default_start_time) {
           setTime(selectedCategory.default_start_time)
         }
+        if (!endTime && selectedCategory.default_end_time) {
+          setEndTime(selectedCategory.default_end_time)
+        }
         if (!capacity && selectedCategory.default_capacity) {
           setCapacity(selectedCategory.default_capacity.toString())
+        }
+        if (!price && selectedCategory.default_price !== undefined) {
+          setPrice(selectedCategory.default_price.toString())
+          setIsFree(selectedCategory.default_is_free || selectedCategory.default_price === 0)
+        }
+        if (!performerType && selectedCategory.default_performer_type) {
+          setPerformerType(selectedCategory.default_performer_type)
+        }
+        if (!eventStatus && selectedCategory.default_event_status) {
+          setEventStatus(selectedCategory.default_event_status)
         }
       }
     }
