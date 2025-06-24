@@ -17,7 +17,7 @@ import { CustomerCategoryPreferences } from '@/components/CustomerCategoryPrefer
 import { PageLoadingSkeleton } from '@/components/ui/SkeletonLoader'
 
 type BookingWithEvent = Omit<Booking, 'event'> & {
-  event: Pick<Event, 'id' | 'name' | 'date' | 'time' | 'capacity' | 'created_at'>
+  event: Pick<Event, 'id' | 'name' | 'date' | 'time' | 'capacity' | 'created_at' | 'slug'>
 }
 
 export const dynamic = 'force-dynamic'
@@ -85,7 +85,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
 
       const { data: bookingsData, error: bookingsError } = await supabase
         .from('bookings')
-        .select('*, event:events(id, name, date, time, capacity, created_at, category:event_categories(*))')
+        .select('*, event:events(id, name, date, time, capacity, created_at, slug, category:event_categories(*))')
         .eq('customer_id', params.id)
         .order('created_at', { ascending: false })
 

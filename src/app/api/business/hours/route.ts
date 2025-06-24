@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { format, isAfter, isBefore, startOfDay, parse } from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
 
 const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
@@ -63,11 +64,14 @@ export async function GET(request: NextRequest) {
     note: special.note,
   })) || [];
 
-  // Calculate current status
+  // Calculate current status in London timezone
+  const timeZone = 'Europe/London';
   const now = new Date();
-  const currentDay = now.getDay();
-  const currentTime = format(now, 'HH:mm:ss');
-  const todayDate = format(now, 'yyyy-MM-dd');
+  const nowInLondon = toZonedTime(now, timeZone);
+  const currentDay = nowInLondon.getDay();
+  const currentTime = format(nowInLondon, 'HH:mm:ss');
+  const todayDate = format(nowInLondon, 'yyyy-MM-dd');
+  
 
   // Check if today has special hours
   const todaySpecial = specialHours?.find(s => s.date === todayDate);
@@ -81,8 +85,8 @@ export async function GET(request: NextRequest) {
   if (todaySpecial) {
     if (!todaySpecial.is_closed && todaySpecial.opens && todaySpecial.closes) {
       const isCurrentlyOpen = currentTime >= todaySpecial.opens && currentTime < todaySpecial.closes;
-      const isKitchenOpen = todaySpecial.kitchen_opens && todaySpecial.kitchen_closes &&
-        currentTime >= todaySpecial.kitchen_opens && currentTime < todaySpecial.kitchen_closes;
+      const isKitchenOpen = !!(todaySpecial.kitchen_opens && todaySpecial.kitchen_closes &&
+        currentTime >= todaySpecial.kitchen_opens && currentTime < todaySpecial.kitchen_closes);
 
       currentStatus = {
         isOpen: isCurrentlyOpen,
@@ -96,8 +100,11 @@ export async function GET(request: NextRequest) {
     const todayHours = regularHours?.find(h => h.day_of_week === currentDay);
     if (todayHours && !todayHours.is_closed && todayHours.opens && todayHours.closes) {
       const isCurrentlyOpen = currentTime >= todayHours.opens && currentTime < todayHours.closes;
-      const isKitchenOpen = todayHours.kitchen_opens && todayHours.kitchen_closes &&
-        currentTime >= todayHours.kitchen_opens && currentTime < todayHours.kitchen_closes;
+      
+      let isKitchenOpen = false;
+      if (todayHours.kitchen_opens && todayHours.kitchen_closes) {
+        isKitchenOpen = currentTime >= todayHours.kitchen_opens && currentTime < todayHours.kitchen_closes;
+      }
 
       currentStatus = {
         isOpen: isCurrentlyOpen,

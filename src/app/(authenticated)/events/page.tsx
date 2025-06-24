@@ -1,7 +1,7 @@
 import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
 import { formatDate } from '@/lib/dateUtils'
 import Link from 'next/link'
-import { PlusIcon, CalendarIcon, Cog6ToothIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, CalendarIcon, Cog6ToothIcon, PencilSquareIcon } from '@heroicons/react/24/outline'
 import { Button } from '@/components/ui/Button'
 
 async function getEvents() {
@@ -55,11 +55,20 @@ export default async function EventsPage() {
                 <Cog6ToothIcon className="-ml-1 mr-2 h-5 w-5 text-gray-500" />
                 Manage Categories
               </Link>
-              <Link href="/events/new">
-                <Button>
-                  <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
-                  Create Event
-                </Button>
+              <div className="relative inline-block text-left">
+                <Link href="/events/new">
+                  <Button>
+                    <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
+                    Create Event
+                  </Button>
+                </Link>
+              </div>
+              <Link
+                href="/events/new-enhanced"
+                className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+              >
+                <PlusIcon className="-ml-1 mr-2 h-5 w-5 text-gray-500" />
+                Enhanced Event
               </Link>
             </div>
           </div>
@@ -100,7 +109,7 @@ export default async function EventsPage() {
                     Bookings
                   </th>
                   <th scope="col" className="relative px-6 py-3">
-                    <span className="sr-only">View</span>
+                    <span className="sr-only">Actions</span>
                   </th>
                 </tr>
               </thead>
@@ -114,9 +123,9 @@ export default async function EventsPage() {
                     <tr key={event.id} className={isToday ? 'bg-yellow-50' : ''}>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div>
-                          <div className="text-sm font-medium text-gray-900">
+                          <Link href={`/events/${event.id}`} className="text-sm font-medium text-gray-900 hover:text-blue-600">
                             {event.name}
-                          </div>
+                          </Link>
                           {event.category && (
                             <div className="text-sm text-gray-500">
                               <span 
@@ -157,9 +166,22 @@ export default async function EventsPage() {
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <Link href={`/events/${event.id}`} className="text-blue-600 hover:text-blue-900">
-                          View
-                        </Link>
+                        <div className="flex items-center justify-end space-x-2">
+                          <Link 
+                            href={`/events/${event.id}`} 
+                            className="text-blue-600 hover:text-blue-900"
+                          >
+                            View
+                          </Link>
+                          <span className="text-gray-300">|</span>
+                          <Link 
+                            href={`/events/${event.id}/edit`} 
+                            className="inline-flex items-center text-gray-600 hover:text-gray-900"
+                          >
+                            <PencilSquareIcon className="h-4 w-4 mr-1" />
+                            Edit
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -190,7 +212,7 @@ export default async function EventsPage() {
                     Attendance
                   </th>
                   <th scope="col" className="relative px-6 py-3">
-                    <span className="sr-only">View</span>
+                    <span className="sr-only">Actions</span>
                   </th>
                 </tr>
               </thead>
@@ -198,7 +220,9 @@ export default async function EventsPage() {
                 {pastEvents.slice(-20).reverse().map((event) => (
                   <tr key={event.id} className="text-gray-500">
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {event.name}
+                      <Link href={`/events/${event.id}`} className="text-gray-600 hover:text-gray-900">
+                        {event.name}
+                      </Link>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       {formatDate(new Date(event.date))}
@@ -207,9 +231,22 @@ export default async function EventsPage() {
                       {event.booked_seats}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <Link href={`/events/${event.id}`} className="text-blue-600 hover:text-blue-900">
-                        View
-                      </Link>
+                      <div className="flex items-center justify-end space-x-2">
+                        <Link 
+                          href={`/events/${event.id}`} 
+                          className="text-blue-600 hover:text-blue-900"
+                        >
+                          View
+                        </Link>
+                        <span className="text-gray-300">|</span>
+                        <Link 
+                          href={`/events/${event.id}/edit`} 
+                          className="inline-flex items-center text-gray-600 hover:text-gray-900"
+                        >
+                          <PencilSquareIcon className="h-4 w-4 mr-1" />
+                          Edit
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}

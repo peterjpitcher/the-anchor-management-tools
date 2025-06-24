@@ -42,8 +42,19 @@ const eventSchema = z.object({
     (val) => val === '' ? 0 : Number(val),
     z.number().min(0).max(99999.99).default(0)
   ),
+  price_currency: z.string().default('GBP'),
   is_free: z.boolean().default(false),
   booking_url: z.string().nullable().optional().transform(val => {
+    if (!val || val.trim() === '') return null
+    // Basic URL validation
+    try {
+      new URL(val)
+      return val
+    } catch {
+      return null
+    }
+  }),
+  hero_image_url: z.string().nullable().optional().transform(val => {
     if (!val || val.trim() === '') return null
     // Basic URL validation
     try {
@@ -90,8 +101,10 @@ export async function createEvent(formData: FormData) {
       performer_name: formData.get('performer_name') as string || null,
       performer_type: formData.get('performer_type') as string || null,
       price: formData.get('price') as string || '0',
+      price_currency: formData.get('price_currency') as string || 'GBP',
       is_free: formData.get('is_free') === 'true',
       booking_url: formData.get('booking_url') as string || null,
+      hero_image_url: formData.get('hero_image_url') as string || null,
       image_urls: (() => {
         try {
           const urls = formData.get('image_urls') as string
@@ -178,8 +191,10 @@ export async function updateEvent(id: string, formData: FormData) {
       performer_name: formData.get('performer_name') as string || null,
       performer_type: formData.get('performer_type') as string || null,
       price: formData.get('price') as string || '0',
+      price_currency: formData.get('price_currency') as string || 'GBP',
       is_free: formData.get('is_free') === 'true',
       booking_url: formData.get('booking_url') as string || null,
+      hero_image_url: formData.get('hero_image_url') as string || null,
       image_urls: (() => {
         try {
           const urls = formData.get('image_urls') as string

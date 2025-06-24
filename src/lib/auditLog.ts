@@ -22,7 +22,8 @@ export type AuditResourceType =
   | 'health_records'
   | 'attachment'
   | 'message'
-  | 'auth';
+  | 'auth'
+  | 'settings';
 
 interface AuditLogOptions {
   userId?: string | null;

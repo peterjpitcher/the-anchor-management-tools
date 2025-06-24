@@ -25,6 +25,7 @@ export default function NewEventPage() {
       formData.append('price', data.price?.toString() || '0')
       formData.append('is_free', data.is_free?.toString() || 'false')
       formData.append('booking_url', data.booking_url || '')
+      formData.append('hero_image_url', data.hero_image_url || '')
       formData.append('image_urls', JSON.stringify(data.image_urls || []))
 
       const result = await createEvent(formData)
