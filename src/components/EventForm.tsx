@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/Button'
 import toast from 'react-hot-toast'
 import { getActiveEventCategories } from '@/app/actions/event-categories'
+import { EventImageSection } from './EventImageSection'
 
 interface EventFormProps {
   event?: Event
@@ -14,25 +15,34 @@ interface EventFormProps {
 }
 
 export function EventForm({ event, onSubmit, onCancel }: EventFormProps) {
+  // Helper function to format time to HH:MM
+  const formatTimeToHHMM = (timeStr: string) => {
+    if (!timeStr) return ''
+    // If time includes seconds (HH:MM:SS), remove them
+    return timeStr.substring(0, 5)
+  }
+
   const [name, setName] = useState(event?.name ?? '')
   const [date, setDate] = useState(event?.date ?? '')
-  const [time, setTime] = useState(event?.time ?? '')
+  const [time, setTime] = useState(formatTimeToHHMM(event?.time ?? ''))
   const [capacity, setCapacity] = useState(event?.capacity?.toString() ?? '')
   const [categoryId, setCategoryId] = useState(event?.category_id ?? '')
   const [categories, setCategories] = useState<EventCategory[]>([])
+  const selectedCategory = categories.find(c => c.id === categoryId)
   const [isSubmitting, setIsSubmitting] = useState(false)
   
   // New fields
   const [description, setDescription] = useState(event?.description ?? '')
-  const [endTime, setEndTime] = useState(event?.end_time ?? '')
+  const [endTime, setEndTime] = useState(formatTimeToHHMM(event?.end_time ?? ''))
   const [eventStatus, setEventStatus] = useState(event?.event_status ?? 'scheduled')
   const [performerName, setPerformerName] = useState(event?.performer_name ?? '')
   const [performerType, setPerformerType] = useState(event?.performer_type ?? '')
   const [price, setPrice] = useState(event?.price?.toString() ?? '0')
-  const [isFree, setIsFree] = useState(event?.is_free ?? (event?.price === 0))
+  const [isFree, setIsFree] = useState(event?.is_free !== undefined ? event.is_free : (event?.price === 0 || event?.price === undefined))
   const [bookingUrl, setBookingUrl] = useState(event?.booking_url ?? '')
   const [imageUrls, setImageUrls] = useState<string[]>(event?.image_urls ?? [])
   const [newImageUrl, setNewImageUrl] = useState('')
+  const [heroImageUrl, setHeroImageUrl] = useState(event?.hero_image_url ?? '')
 
   // Calculate date constraints
   const today = new Date()
@@ -55,10 +65,10 @@ export function EventForm({ event, onSubmit, onCancel }: EventFormProps) {
       if (selectedCategory) {
         // Only update fields if they're currently empty
         if (!time && selectedCategory.default_start_time) {
-          setTime(selectedCategory.default_start_time)
+          setTime(formatTimeToHHMM(selectedCategory.default_start_time))
         }
         if (!endTime && selectedCategory.default_end_time) {
-          setEndTime(selectedCategory.default_end_time)
+          setEndTime(formatTimeToHHMM(selectedCategory.default_end_time))
         }
         if (!capacity && selectedCategory.default_capacity) {
           setCapacity(selectedCategory.default_capacity.toString())
@@ -91,7 +101,7 @@ export function EventForm({ event, onSubmit, onCancel }: EventFormProps) {
             setCategoryId(defaultCategory.id)
             // Auto-fill defaults if empty
             if (!time && defaultCategory.default_start_time) {
-              setTime(defaultCategory.default_start_time)
+              setTime(formatTimeToHHMM(defaultCategory.default_start_time))
             }
             if (!capacity && defaultCategory.default_capacity) {
               setCapacity(defaultCategory.default_capacity.toString())
@@ -124,6 +134,7 @@ export function EventForm({ event, onSubmit, onCancel }: EventFormProps) {
         name, 
         date, 
         time,
+        slug: event?.slug || '', // Will be generated server-side if empty
         capacity: capacity ? parseInt(capacity, 10) : null,
         category_id: categoryId || null,
         description: description || null,
@@ -135,10 +146,26 @@ export function EventForm({ event, onSubmit, onCancel }: EventFormProps) {
         price_currency: 'GBP',
         is_free: isFree,
         booking_url: bookingUrl || null,
+        hero_image_url: heroImageUrl || null,
         image_urls: imageUrls.length > 0 ? imageUrls : [],
         is_recurring: false,
         recurrence_rule: null,
-        parent_event_id: null
+        parent_event_id: null,
+        // Phase 1 SEO fields - defaults for now
+        short_description: event?.short_description || null,
+        long_description: event?.long_description || null,
+        highlights: event?.highlights || [],
+        meta_title: event?.meta_title || null,
+        meta_description: event?.meta_description || null,
+        keywords: event?.keywords || [],
+        gallery_image_urls: event?.gallery_image_urls || [],
+        poster_image_url: event?.poster_image_url || null,
+        thumbnail_image_url: event?.thumbnail_image_url || null,
+        promo_video_url: event?.promo_video_url || null,
+        highlight_video_urls: event?.highlight_video_urls || [],
+        doors_time: event?.doors_time || null,
+        duration_minutes: event?.duration_minutes || null,
+        last_entry_time: event?.last_entry_time || null
       })
     } finally {
       setIsSubmitting(false)
@@ -337,67 +364,88 @@ export function EventForm({ event, onSubmit, onCancel }: EventFormProps) {
         </div>
       </div>
 
-      <div>
-        <div className="flex items-center mb-2">
-          <input
-            type="checkbox"
-            id="is_free"
-            name="is_free"
-            checked={isFree}
-            onChange={(e) => {
-              setIsFree(e.target.checked)
-              if (e.target.checked) {
-                setPrice('0')
-              }
-            }}
-            className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
-          />
-          <label htmlFor="is_free" className="ml-2 block text-sm font-medium text-gray-900">
-            Free Event
-          </label>
-        </div>
+      <div className="border-t border-gray-200 pt-6">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Pricing & Booking</h3>
         
-        {!isFree && (
-          <div>
-            <label htmlFor="price" className="block text-sm font-medium text-gray-900 mb-2">
-              Ticket Price (£)
-            </label>
-            <input
-              type="number"
-              id="price"
-              name="price"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              min="0"
-              step="0.01"
-              className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-              placeholder="0.00"
-            />
+        {event && (
+          <div className="mb-4 p-3 bg-gray-50 rounded-md">
+            <p className="text-sm text-gray-600">
+              Current pricing: {event.is_free ? 'Free Event' : `£${event.price || 0}`}
+            </p>
           </div>
         )}
+        
+        <div className="space-y-4">
+          <div>
+            <div className="flex items-center mb-2">
+              <input
+                type="checkbox"
+                id="is_free"
+                name="is_free"
+                checked={isFree}
+                onChange={(e) => {
+                  setIsFree(e.target.checked)
+                  if (e.target.checked) {
+                    setPrice('0')
+                  }
+                }}
+                className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+              />
+              <label htmlFor="is_free" className="ml-2 block text-sm font-medium text-gray-900">
+                Free Event
+              </label>
+            </div>
+            
+            {!isFree && (
+              <div className="mt-4">
+                <label htmlFor="price" className="block text-sm font-medium text-gray-900 mb-2">
+                  Ticket Price (£)
+                </label>
+                <input
+                  type="number"
+                  id="price"
+                  name="price"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  min="0"
+                  step="0.01"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  placeholder="0.00"
+                />
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label htmlFor="booking_url" className="block text-sm font-medium text-gray-900 mb-2">
+              External Booking URL (Optional)
+            </label>
+            <input
+              type="url"
+              id="booking_url"
+              name="booking_url"
+              value={bookingUrl}
+              onChange={(e) => setBookingUrl(e.target.value)}
+              className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+              placeholder="https://example.com/book-tickets"
+            />
+            <p className="mt-2 text-sm text-gray-500">
+              External URL for ticket booking if not using internal system
+            </p>
+          </div>
+        </div>
       </div>
 
-      <div>
-        <label htmlFor="booking_url" className="block text-sm font-medium text-gray-900 mb-2">
-          External Booking URL (Optional)
-        </label>
-        <input
-          type="url"
-          id="booking_url"
-          name="booking_url"
-          value={bookingUrl}
-          onChange={(e) => setBookingUrl(e.target.value)}
-          className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-          placeholder="https://example.com/book-tickets"
-        />
-        <p className="mt-2 text-sm text-gray-500">
-          External URL for ticket booking if not using internal system
-        </p>
-      </div>
+      {/* Event Image Upload */}
+      <EventImageSection
+        eventId={event?.id}
+        heroImageUrl={heroImageUrl || selectedCategory?.default_image_url || undefined}
+        onHeroImageChange={setHeroImageUrl}
+      />
 
       <div>
         <label className="block text-sm font-medium text-gray-900 mb-2">
-          Event Images (Optional)
+          Additional Images (Optional)
         </label>
         <div className="space-y-2">
           {imageUrls.map((url, index) => (

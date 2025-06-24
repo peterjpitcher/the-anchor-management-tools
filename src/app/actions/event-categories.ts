@@ -20,10 +20,12 @@ const categorySchema = z.object({
   default_is_free: z.boolean().optional(),
   default_performer_type: z.enum(['MusicGroup', 'Person', 'TheaterGroup', 'DanceGroup', 'ComedyGroup', 'Organization', '']).optional(),
   default_event_status: z.enum(['scheduled', 'cancelled', 'postponed', 'rescheduled']).optional(),
+  default_image_url: z.string().url().optional().nullable(),
   slug: z.string().regex(/^[a-z0-9-]*$/, 'Invalid slug format').optional(),
   meta_description: z.string().max(160, 'Meta description too long').optional(),
   is_active: z.boolean(),
-  is_default: z.boolean().optional()
+  is_default: z.boolean().optional(),
+  sort_order: z.number().min(0).optional()
 })
 
 export async function getEventCategories(): Promise<{ data?: EventCategory[], error?: string }> {

@@ -376,6 +376,12 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
                   Edit Event
                 </Button>
               </Link>
+              <Link href={`/events/${event.id}/edit-enhanced`}>
+                <Button variant="secondary">
+                  <PencilSquareIcon className="h-5 w-5 mr-2" />
+                  Edit (Enhanced)
+                </Button>
+              </Link>
               <Button onClick={handleCopyAttendeeList} variant="secondary">
                 <ClipboardDocumentIcon className="h-5 w-5 mr-2" />
                 Copy List

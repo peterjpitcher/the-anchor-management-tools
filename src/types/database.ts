@@ -19,6 +19,33 @@ export interface Event {
   is_recurring?: boolean;
   recurrence_rule?: string | null;
   parent_event_id?: string | null;
+  // Phase 1 SEO fields
+  slug: string;
+  short_description?: string | null;
+  long_description?: string | null;
+  highlights?: string[];
+  meta_title?: string | null;
+  meta_description?: string | null;
+  keywords?: string[];
+  hero_image_url?: string | null;
+  gallery_image_urls?: string[];
+  poster_image_url?: string | null;
+  thumbnail_image_url?: string | null;
+  promo_video_url?: string | null;
+  highlight_video_urls?: string[];
+  doors_time?: string | null;
+  duration_minutes?: number | null;
+  last_entry_time?: string | null;
+}
+
+export interface EventFAQ {
+  id: string;
+  event_id: string;
+  question: string;
+  answer: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Customer {

@@ -1,0 +1,28 @@
+export interface BusinessHours {
+  id: string
+  day_of_week: number // 0 = Sunday, 6 = Saturday
+  opens: string | null
+  closes: string | null
+  kitchen_opens: string | null
+  kitchen_closes: string | null
+  is_closed: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface SpecialHours {
+  id: string
+  date: string
+  opens: string | null
+  closes: string | null
+  kitchen_opens: string | null
+  kitchen_closes: string | null
+  is_closed: boolean
+  note: string | null
+  created_at: string
+  updated_at: string
+}
+
+export const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+export const DAY_ABBREVIATIONS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']

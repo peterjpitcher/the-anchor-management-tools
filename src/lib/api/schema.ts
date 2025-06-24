@@ -17,6 +17,17 @@ export interface SchemaEvent {
   isAccessibleForFree?: boolean;
   maximumAttendeeCapacity?: number;
   remainingAttendeeCapacity?: number;
+  // Enhanced SEO fields
+  url?: string;
+  identifier?: string;
+  keywords?: string;
+  about?: string;
+  duration?: string;
+  doorTime?: string;
+  video?: string[];
+  review?: SchemaReview[];
+  aggregateRating?: SchemaAggregateRating;
+  faq?: SchemaFAQ[];
 }
 
 export interface SchemaPlace {
@@ -92,6 +103,34 @@ export interface SchemaNutritionInfo {
   sodiumContent?: string;
 }
 
+export interface SchemaReview {
+  '@type': 'Review';
+  author: string;
+  reviewRating: {
+    '@type': 'Rating';
+    ratingValue: number;
+  };
+  reviewBody?: string;
+  datePublished?: string;
+}
+
+export interface SchemaAggregateRating {
+  '@type': 'AggregateRating';
+  ratingValue: number;
+  reviewCount: number;
+  bestRating?: number;
+  worstRating?: number;
+}
+
+export interface SchemaFAQ {
+  '@type': 'Question';
+  name: string;
+  acceptedAnswer: {
+    '@type': 'Answer';
+    text: string;
+  };
+}
+
 // Constants for Schema.org URLs
 export const SCHEMA_EVENT_STATUS = {
   SCHEDULED: 'https://schema.org/EventScheduled',
@@ -150,7 +189,7 @@ export function createOrganizer(): SchemaOrganization {
 }
 
 // Convert database event to Schema.org format
-export function eventToSchema(event: any, bookingCount: number = 0): SchemaEvent {
+export function eventToSchema(event: any, bookingCount: number = 0, faqs?: any[]): SchemaEvent {
   const startDateTime = `${event.date}T${event.time}+00:00`;
   const endDateTime = event.end_time 
     ? `${event.date}T${event.end_time}+00:00`
@@ -159,23 +198,44 @@ export function eventToSchema(event: any, bookingCount: number = 0): SchemaEvent
   const capacity = event.capacity || 100; // Default capacity
   const remainingSeats = capacity - bookingCount;
   
-  return {
+  // Build image array from various image fields
+  const images: string[] = []
+  if (event.hero_image_url) images.push(event.hero_image_url)
+  if (event.thumbnail_image_url) images.push(event.thumbnail_image_url)
+  if (event.poster_image_url) images.push(event.poster_image_url)
+  if (event.gallery_image_urls?.length > 0) images.push(...event.gallery_image_urls)
+  if (event.image_urls?.length > 0) images.push(...event.image_urls)
+  
+  // Build video array
+  const videos: string[] = []
+  if (event.promo_video_url) videos.push(event.promo_video_url)
+  if (event.highlight_video_urls?.length > 0) videos.push(...event.highlight_video_urls)
+  
+  // Calculate duration if provided
+  let duration: string | undefined
+  if (event.duration_minutes) {
+    const hours = Math.floor(event.duration_minutes / 60)
+    const minutes = event.duration_minutes % 60
+    duration = `PT${hours}H${minutes}M`
+  }
+  
+  const schema: SchemaEvent = {
     '@type': 'Event',
     name: event.name,
-    description: event.description,
+    description: event.short_description || event.description,
     startDate: startDateTime,
     endDate: endDateTime,
     eventStatus: getEventStatus(event.event_status),
     eventAttendanceMode: SCHEMA_ATTENDANCE_MODE.OFFLINE,
     location: createVenueLocation(),
-    image: event.image_urls || [],
+    image: images.length > 0 ? images : undefined,
     performer: event.performer_name ? {
       '@type': event.performer_type === 'Organization' ? 'Organization' : 'Person',
       name: event.performer_name,
     } : undefined,
     offers: {
       '@type': 'Offer',
-      url: event.booking_url || `${process.env.NEXT_PUBLIC_APP_URL}/events/${event.id}`,
+      url: event.booking_url || `${process.env.NEXT_PUBLIC_APP_URL}/events/${event.slug || event.id}`,
       price: event.price?.toString() || '0',
       priceCurrency: event.price_currency || 'GBP',
       availability: remainingSeats > 0 
@@ -188,10 +248,32 @@ export function eventToSchema(event: any, bookingCount: number = 0): SchemaEvent
       } : undefined,
     },
     organizer: createOrganizer(),
-    isAccessibleForFree: event.is_free !== false,
+    isAccessibleForFree: event.is_free === true,
     maximumAttendeeCapacity: capacity,
     remainingAttendeeCapacity: remainingSeats,
+    // Enhanced SEO fields
+    url: `${process.env.NEXT_PUBLIC_APP_URL}/events/${event.slug || event.id}`,
+    identifier: event.id,
+    keywords: event.keywords?.join(', '),
+    about: event.long_description || event.description,
+    duration,
+    doorTime: event.doors_time ? `${event.date}T${event.doors_time}+00:00` : undefined,
+    video: videos.length > 0 ? videos : undefined,
   };
+  
+  // Add FAQs if provided
+  if (faqs && faqs.length > 0) {
+    schema.faq = faqs.map(faq => ({
+      '@type': 'Question',
+      name: faq.question,
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: faq.answer
+      }
+    }))
+  }
+  
+  return schema;
 }
 
 function getEventStatus(status: string): string {

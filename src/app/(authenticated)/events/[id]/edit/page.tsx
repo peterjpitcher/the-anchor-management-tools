@@ -57,8 +57,10 @@ export default function EditEventPage({ params: paramsPromise }: { params: Promi
       formData.append('performer_name', data.performer_name || '')
       formData.append('performer_type', data.performer_type || '')
       formData.append('price', data.price?.toString() || '0')
+      formData.append('price_currency', data.price_currency || 'GBP')
       formData.append('is_free', data.is_free?.toString() || 'false')
       formData.append('booking_url', data.booking_url || '')
+      formData.append('hero_image_url', data.hero_image_url || '')
       formData.append('image_urls', JSON.stringify(data.image_urls || []))
 
       const result = await updateEvent(params.id, formData)

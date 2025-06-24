@@ -12,6 +12,7 @@ export interface EventCategory {
   default_is_free: boolean
   default_performer_type: string | null
   default_event_status: string
+  default_image_url: string | null
   slug: string
   meta_description: string | null
   sort_order: number
@@ -64,10 +65,12 @@ export interface CategoryFormData {
   default_is_free?: boolean
   default_performer_type?: string
   default_event_status?: string
+  default_image_url?: string
   slug?: string
   meta_description?: string
   is_active: boolean
   is_default?: boolean
+  sort_order?: number
 }
 
 // Icon options for categories

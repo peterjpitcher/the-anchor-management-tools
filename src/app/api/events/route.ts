@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     const supabase = createAdminClient();
     
-    // Build query
+    // Build query with all enhanced fields
     let query = supabase
       .from('events')
       .select(`
@@ -41,7 +41,13 @@ export async function GET(request: NextRequest) {
           color,
           icon
         ),
-        bookings(count)
+        bookings(count),
+        event_faqs(
+          id,
+          question,
+          answer,
+          sort_order
+        )
       `)
       .eq('event_status', 'scheduled')
       .order('date', { ascending: true })
@@ -70,7 +76,7 @@ export async function GET(request: NextRequest) {
       return createErrorResponse('Failed to fetch events', 'DATABASE_ERROR', 500);
     }
 
-    // Transform events to Schema.org format
+    // Transform events to Schema.org format with FAQs
     const schemaEvents = events?.map(event => {
       const bookingCount = event.bookings?.[0]?.count || 0;
       
@@ -79,9 +85,14 @@ export async function GET(request: NextRequest) {
         return null;
       }
       
+      // Sort FAQs by sort_order
+      const faqs = event.event_faqs?.sort((a: any, b: any) => a.sort_order - b.sort_order) || [];
+      
       return {
         id: event.id,
-        ...eventToSchema(event, bookingCount),
+        slug: event.slug,
+        highlights: event.highlights || [],
+        ...eventToSchema(event, bookingCount, faqs),
       };
     }).filter(Boolean) || [];
 

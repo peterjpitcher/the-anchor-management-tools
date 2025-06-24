@@ -69,6 +69,64 @@ All responses are JSON-encoded and include Schema.org structured data for improv
 
 ### Events
 
+#### Event Object Fields
+
+The API returns comprehensive event data with the following fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique event identifier (UUID) |
+| `slug` | string | URL-friendly identifier for the event |
+| `@type` | string | Always "Event" (Schema.org type) |
+| `name` | string | Event name/title |
+| `description` | string/null | Detailed event description |
+| `shortDescription` | string/null | Brief description (50-150 chars) |
+| `longDescription` | string/null | Extended description |
+| `highlights` | array | Array of key highlights/bullet points |
+| `keywords` | array | Array of SEO keywords |
+| `startDate` | string | ISO 8601 start date and time |
+| `endDate` | string/null | ISO 8601 end date and time (optional) |
+| `lastEntryTime` | string/null | Last entry time for the event |
+| `eventStatus` | string | Schema.org status URL (EventScheduled, EventCancelled, EventPostponed, EventRescheduled) |
+| `eventAttendanceMode` | string | Always "https://schema.org/OfflineEventAttendanceMode" |
+| `location` | object | Venue location details (Schema.org Place) |
+| `performer` | object/null | Performer details (Person or Organization type) |
+| `offers` | object | Pricing and availability information |
+| `image` | array | Array of image URLs |
+| `heroImageUrl` | string/null | Main hero/banner image URL |
+| `thumbnailImageUrl` | string/null | Thumbnail image URL |
+| `posterImageUrl` | string/null | Poster/flyer image URL |
+| `galleryImages` | array | Array of gallery image URLs |
+| `promoVideoUrl` | string/null | Promotional video URL |
+| `highlightVideos` | array | Array of highlight video URLs |
+| `organizer` | object | Event organizer (always The Anchor) |
+| `isAccessibleForFree` | boolean | Whether the event is free |
+| `maximumAttendeeCapacity` | number | Total venue capacity for the event |
+| `remainingAttendeeCapacity` | number | Available seats remaining |
+| `metaTitle` | string/null | SEO meta title |
+| `metaDescription` | string/null | SEO meta description |
+| `category` | object/null | Event category details |
+
+**Performer Object** (when present):
+- `@type`: "Person" or "Organization" or "MusicGroup" etc.
+- `name`: Performer name
+
+**Offers Object**:
+- `@type`: Always "Offer"
+- `url`: Booking URL (internal or external)
+- `price`: Price as string (e.g., "15.00")
+- `priceCurrency`: Currency code (typically "GBP")
+- `availability`: Schema.org availability status
+- `validFrom`: When tickets go on sale
+- `inventoryLevel`: Object with remaining capacity value
+
+**Category Object** (when present):
+- `id`: Category UUID
+- `name`: Category name
+- `slug`: URL-friendly category identifier
+- `color`: Category color hex code
+- `icon`: Category icon identifier
+
 #### List Events
 
 Get a paginated list of events with optional filtering.
@@ -76,44 +134,50 @@ Get a paginated list of events with optional filtering.
 **Endpoint**: `GET /api/events`
 
 **Query Parameters**:
-- `page` (integer, optional): Page number (default: 1)
-- `per_page` (integer, optional): Items per page (default: 20, max: 100)
-- `status` (string, optional): Filter by status (`scheduled`, `cancelled`, `postponed`)
-- `category` (string, optional): Filter by category ID
-- `from_date` (string, optional): Start date (YYYY-MM-DD)
+- `from_date` (string, optional): Start date (YYYY-MM-DD) - defaults to today
 - `to_date` (string, optional): End date (YYYY-MM-DD)
-- `performer` (string, optional): Search by performer name
-- `sort` (string, optional): Sort field (`date`, `name`, `created_at`)
-- `order` (string, optional): Sort order (`asc`, `desc`)
+- `category_id` (string, optional): Filter by category UUID
+- `available_only` (boolean, optional): Only show events with available capacity
+- `limit` (integer, optional): Items per page (default: 20, max: 100)
+- `offset` (integer, optional): Number of items to skip (for pagination)
 
 **Example Request**:
 ```bash
 curl -H "X-API-Key: your-api-key" \
-  "https://management.orangejelly.co.uk/api/events?status=scheduled&from_date=2024-01-01"
+  "https://management.orangejelly.co.uk/api/events?from_date=2024-01-01&available_only=true"
 ```
 
 **Example Response**:
 ```json
 {
-  "@context": "https://schema.org",
-  "@type": "ItemList",
-  "itemListElement": [
+  "events": [
     {
-      "@type": "Event",
       "id": "550e8400-e29b-41d4-a716-446655440000",
+      "slug": "live-jazz-night-2024-02-15",
+      "@type": "Event",
       "name": "Live Jazz Night",
       "description": "An evening of smooth jazz with local musicians",
-      "startDate": "2024-02-15T19:30:00Z",
-      "endDate": "2024-02-15T23:00:00Z",
+      "shortDescription": "Smooth jazz evening with The Jazz Collective",
+      "highlights": [
+        "Live performance by The Jazz Collective",
+        "Full bar service available",
+        "Early bird tickets available"
+      ],
+      "keywords": ["jazz", "live music", "the anchor", "jazz collective"],
+      "startDate": "2024-02-15T19:00:00+00:00",
+      "endDate": "2024-02-15T23:00:00+00:00",
+      "lastEntryTime": "2024-02-15T22:00:00+00:00",
       "eventStatus": "https://schema.org/EventScheduled",
+      "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
       "location": {
         "@type": "Place",
-        "name": "The Anchor",
+        "name": "The Anchor Pub",
         "address": {
           "@type": "PostalAddress",
-          "streetAddress": "123 High Street",
-          "addressLocality": "London",
-          "postalCode": "SW1A 1AA",
+          "streetAddress": "Horton Road",
+          "addressLocality": "Stanwell Moor",
+          "addressRegion": "Surrey",
+          "postalCode": "TW19 6AQ",
           "addressCountry": "GB"
         }
       },
@@ -123,84 +187,189 @@ curl -H "X-API-Key: your-api-key" \
       },
       "offers": {
         "@type": "Offer",
+        "url": "https://management.orangejelly.co.uk/events/550e8400-e29b-41d4-a716-446655440000",
         "price": "15.00",
         "priceCurrency": "GBP",
         "availability": "https://schema.org/InStock",
         "validFrom": "2024-01-01T00:00:00Z",
-        "url": "https://management.orangejelly.co.uk/events/550e8400-e29b-41d4-a716-446655440000"
+        "inventoryLevel": {
+          "@type": "QuantitativeValue",
+          "value": 45
+        }
       },
       "image": [
-        "https://example.com/event-image-1.jpg",
-        "https://example.com/event-image-2.jpg"
+        "https://example.com/event-hero.jpg",
+        "https://example.com/event-thumbnail.jpg"
       ],
+      "heroImageUrl": "https://example.com/event-hero.jpg",
+      "thumbnailImageUrl": "https://example.com/event-thumbnail.jpg",
+      "organizer": {
+        "@type": "Organization",
+        "name": "The Anchor",
+        "url": "https://management.orangejelly.co.uk"
+      },
+      "isAccessibleForFree": false,
+      "maximumAttendeeCapacity": 100,
       "remainingAttendeeCapacity": 45,
-      "maximumAttendeeCapacity": 100
+      "category": {
+        "id": "music-events",
+        "name": "Live Music",
+        "slug": "live-music",
+        "color": "#FF6B6B",
+        "icon": "MusicalNoteIcon"
+      }
     }
   ],
   "meta": {
     "total": 25,
-    "page": 1,
-    "per_page": 20,
-    "last_page": 2
+    "limit": 20,
+    "offset": 0,
+    "has_more": true,
+    "lastUpdated": "2024-01-15T10:30:00Z"
   }
 }
 ```
 
 #### Get Single Event
 
-Get detailed information about a specific event.
+Get detailed information about a specific event. You can retrieve an event by either its UUID or its slug.
 
 **Endpoint**: `GET /api/events/{id}`
 
-**Example Request**:
+**Parameters**:
+- `id`: Either the event UUID or the event slug
+
+**Example Requests**:
 ```bash
+# By UUID
 curl -H "X-API-Key: your-api-key" \
   "https://management.orangejelly.co.uk/api/events/550e8400-e29b-41d4-a716-446655440000"
+
+# By slug
+curl -H "X-API-Key: your-api-key" \
+  "https://management.orangejelly.co.uk/api/events/live-jazz-night-2024-02-15"
 ```
 
 **Example Response**:
 ```json
 {
-  "@context": "https://schema.org",
-  "@type": "Event",
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "name": "Live Jazz Night",
-  "description": "An evening of smooth jazz featuring The Jazz Collective...",
-  "startDate": "2024-02-15T19:30:00Z",
-  "endDate": "2024-02-15T23:00:00Z",
-  "eventStatus": "https://schema.org/EventScheduled",
-  "location": {
-    "@type": "Place",
-    "name": "The Anchor",
-    "address": {
-      "@type": "PostalAddress",
-      "streetAddress": "123 High Street",
-      "addressLocality": "London",
-      "postalCode": "SW1A 1AA",
-      "addressCountry": "GB"
+  "event": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "slug": "live-jazz-night-2024-02-15",
+    "@type": "Event",
+    "name": "Live Jazz Night",
+    "description": "An evening of smooth jazz featuring The Jazz Collective...",
+    "shortDescription": "Smooth jazz evening with The Jazz Collective",
+    "longDescription": "Join us for an unforgettable evening of smooth jazz...",
+    "highlights": [
+      "Live performance by The Jazz Collective",
+      "Full bar service available",
+      "Early bird tickets available"
+    ],
+    "keywords": ["jazz", "live music", "the anchor", "jazz collective"],
+    "startDate": "2024-02-15T19:30:00Z",
+    "endDate": "2024-02-15T23:00:00Z",
+    "lastEntryTime": "2024-02-15T22:00:00Z",
+    "eventStatus": "https://schema.org/EventScheduled",
+    "location": {
+      "@type": "Place",
+      "name": "The Anchor",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "123 High Street",
+        "addressLocality": "London",
+        "postalCode": "SW1A 1AA",
+        "addressCountry": "GB"
+      }
+    },
+    "performer": {
+      "@type": "MusicGroup",
+      "name": "The Jazz Collective"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "15.00",
+      "priceCurrency": "GBP",
+      "availability": "https://schema.org/InStock",
+      "validFrom": "2024-01-01T00:00:00Z",
+      "url": "https://example.com/book-tickets"
+    },
+    "image": [
+      "https://example.com/event-hero.jpg"
+    ],
+    "heroImageUrl": "https://example.com/event-hero.jpg",
+    "thumbnailImageUrl": "https://example.com/event-thumbnail.jpg",
+    "posterImageUrl": "https://example.com/event-poster.jpg",
+    "galleryImages": [
+      "https://example.com/gallery-1.jpg",
+      "https://example.com/gallery-2.jpg"
+    ],
+    "promoVideoUrl": "https://youtube.com/watch?v=example",
+    "highlightVideos": [
+      "https://youtube.com/watch?v=highlight1",
+      "https://youtube.com/watch?v=highlight2"
+    ],
+    "remainingAttendeeCapacity": 45,
+    "maximumAttendeeCapacity": 100,
+    "metaTitle": "Live Jazz Night at The Anchor - February 15",
+    "metaDescription": "Experience smooth jazz with The Jazz Collective at The Anchor pub. Book your tickets now for an unforgettable evening.",
+    "category": {
+      "id": "music-events",
+      "name": "Live Music",
+      "slug": "live-music",
+      "color": "#FF6B6B",
+      "icon": "MusicalNoteIcon"
+    },
+    "booking_rules": {
+      "max_seats_per_booking": 6,
+      "requires_customer_details": true,
+      "allows_notes": true,
+      "sms_confirmation_enabled": true
+    },
+    "custom_messages": {
+      "confirmation": "Custom confirmation message for this event",
+      "reminder": "Custom reminder message for this event"
+    },
+    "mainEntityOfPage": {
+      "@type": "WebPage",
+      "@id": "https://management.orangejelly.co.uk/events/live-jazz-night-2024-02-15"
+    },
+    "potentialAction": {
+      "@type": "ReserveAction",
+      "target": {
+        "@type": "EntryPoint",
+        "urlTemplate": "https://management.orangejelly.co.uk/events/550e8400-e29b-41d4-a716-446655440000",
+        "inLanguage": "en-GB"
+      },
+      "result": {
+        "@type": "Reservation",
+        "name": "Book tickets"
+      }
+    },
+    "faqPage": {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What time should I arrive?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Doors open at 7:00 PM. We recommend arriving 15-30 minutes early to get a good seat."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is there parking available?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes, we have a free car park with 50 spaces available on a first-come, first-served basis."
+          }
+        }
+      ]
     }
   },
-  "performer": {
-    "@type": "MusicGroup",
-    "name": "The Jazz Collective"
-  },
-  "offers": {
-    "@type": "Offer",
-    "price": "15.00",
-    "priceCurrency": "GBP",
-    "availability": "https://schema.org/InStock",
-    "validFrom": "2024-01-01T00:00:00Z",
-    "url": "https://example.com/book-tickets"
-  },
-  "image": [
-    "https://example.com/event-image-1.jpg"
-  ],
-  "remainingAttendeeCapacity": 45,
-  "maximumAttendeeCapacity": 100,
-  "category": {
-    "id": "music-events",
-    "name": "Live Music",
-    "color": "#FF6B6B"
+  "meta": {
+    "lastUpdated": "2024-01-15T10:30:00Z"
   }
 }
 ```
@@ -617,9 +786,9 @@ const AnchorAPI = {
     return this.request(`/events?${query}`);
   },
 
-  // Get single event
-  async getEvent(id) {
-    return this.request(`/events/${id}`);
+  // Get single event by ID or slug
+  async getEvent(idOrSlug) {
+    return this.request(`/events/${idOrSlug}`);
   },
 
   // Create booking
@@ -633,10 +802,18 @@ const AnchorAPI = {
 
 // Usage
 try {
+  // Get events by various methods
   const events = await AnchorAPI.getEvents({ 
     status: 'scheduled',
     from_date: '2024-02-01' 
   });
+  
+  // Get event by slug
+  const eventBySlug = await AnchorAPI.getEvent('live-jazz-night-2024-02-15');
+  
+  // Get event by ID
+  const eventById = await AnchorAPI.getEvent('550e8400-e29b-41d4-a716-446655440000');
+  
   console.log(events);
 } catch (error) {
   console.error('API Error:', error);
@@ -688,8 +865,8 @@ class AnchorAPI {
         return $this->request('/events?' . $query);
     }
 
-    public function getEvent($id) {
-        return $this->request('/events/' . $id);
+    public function getEvent($idOrSlug) {
+        return $this->request('/events/' . $idOrSlug);
     }
 
     public function createBooking($data) {
@@ -701,10 +878,18 @@ class AnchorAPI {
 $api = new AnchorAPI('your-api-key');
 
 try {
+    // Get events
     $events = $api->getEvents([
         'status' => 'scheduled',
         'from_date' => '2024-02-01'
     ]);
+    
+    // Get event by slug
+    $eventBySlug = $api->getEvent('live-jazz-night-2024-02-15');
+    
+    // Get event by ID
+    $eventById = $api->getEvent('550e8400-e29b-41d4-a716-446655440000');
+    
     print_r($events);
 } catch (Exception $e) {
     echo 'Error: ' . $e->getMessage();
@@ -746,9 +931,9 @@ class AnchorAPI:
         """Get list of events with optional filters"""
         return self._request("/events", params=params)
     
-    def get_event(self, event_id: str) -> Dict:
-        """Get single event by ID"""
-        return self._request(f"/events/{event_id}")
+    def get_event(self, id_or_slug: str) -> Dict:
+        """Get single event by ID or slug"""
+        return self._request(f"/events/{id_or_slug}")
     
     def create_booking(self, booking_data: Dict) -> Dict:
         """Create a new booking"""
@@ -769,9 +954,15 @@ try:
         per_page=10
     )
     
-    # Check availability for first event
-    if events["itemListElement"]:
-        event_id = events["itemListElement"][0]["id"]
+    # Get event by slug
+    event_by_slug = api.get_event("live-jazz-night-2024-02-15")
+    
+    # Get event by ID
+    event_by_id = api.get_event("550e8400-e29b-41d4-a716-446655440000")
+    
+    # Check availability
+    if events["events"]:
+        event_id = events["events"][0]["id"]
         availability = api.check_availability(event_id)
         print(f"Available seats: {availability['remaining_capacity']}")
     
@@ -800,6 +991,38 @@ For API support, please contact:
 - Status Page: https://status.orangejelly.co.uk
 
 ## Changelog
+
+### Version 1.2.0 (January 2025)
+- **Major Enhancement**: Complete SEO field expansion for events
+  - Added `slug` field for URL-friendly event identifiers
+  - Added `shortDescription` and `longDescription` fields
+  - Added `highlights` array for bullet-point features
+  - Added `keywords` array for SEO optimization
+  - Added multiple image fields: `heroImageUrl`, `thumbnailImageUrl`, `posterImageUrl`, `galleryImages`
+  - Added video fields: `promoVideoUrl`, `highlightVideos`
+  - Added `lastEntryTime` for event timing control
+  - Added `metaTitle` and `metaDescription` for SEO meta tags
+  - Added FAQ support with `faqPage` structured data
+- **API Improvements**:
+  - Events can now be retrieved by either UUID or slug
+  - Enhanced Schema.org compliance with FAQ, mainEntityOfPage, and potentialAction
+  - Improved category information in responses
+  - Added booking rules and custom messages to event responses
+- **Breaking Changes**: None - all new fields are optional and backward compatible
+
+### Version 1.1.0 (January 2025)
+- Enhanced event data with new fields:
+  - `description` - Detailed event descriptions
+  - `endDate` - Event end times
+  - `eventStatus` - Granular status tracking (scheduled, cancelled, postponed, rescheduled)
+  - `performer` - Performer/artist information with type classification
+  - `image` - Multiple event images support
+  - `isAccessibleForFree` - Free event indicator
+  - `eventAttendanceMode` - Event attendance mode (Schema.org compliant)
+  - `organizer` - Event organizer details
+  - `inventoryLevel` - Real-time capacity tracking
+- Improved Schema.org compliance across all endpoints
+- Enhanced filtering options for event queries
 
 ### Version 1.0.0 (January 2024)
 - Initial public API release

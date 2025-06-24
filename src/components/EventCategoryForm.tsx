@@ -27,10 +27,12 @@ export function EventCategoryForm({ category, onSuccess, onCancel }: EventCatego
     default_is_free: category?.default_is_free ?? true,
     default_performer_type: category?.default_performer_type || '',
     default_event_status: category?.default_event_status || 'scheduled',
+    default_image_url: category?.default_image_url || '',
     slug: category?.slug || '',
     meta_description: category?.meta_description || '',
     is_active: category?.is_active ?? true,
-    is_default: category?.is_default ?? false
+    is_default: category?.is_default ?? false,
+    sort_order: category?.sort_order || 0
   })
 
   async function handleSubmit(e: React.FormEvent) {
@@ -259,6 +261,41 @@ export function EventCategoryForm({ category, onSuccess, onCancel }: EventCatego
           />
           <p className="mt-1 text-xs text-gray-500">Used in URLs. Leave empty to auto-generate.</p>
         </div>
+
+        {/* Sort Order */}
+        <div>
+          <label htmlFor="sort_order" className="block text-sm font-medium text-gray-700">
+            Sort Order
+          </label>
+          <input
+            type="number"
+            id="sort_order"
+            value={formData.sort_order || 0}
+            onChange={(e) => setFormData({ 
+              ...formData, 
+              sort_order: parseInt(e.target.value) || 0 
+            })}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+            placeholder="0"
+          />
+          <p className="mt-1 text-xs text-gray-500">Lower numbers appear first</p>
+        </div>
+      </div>
+
+      {/* Default Image URL */}
+      <div>
+        <label htmlFor="default_image_url" className="block text-sm font-medium text-gray-700">
+          Default Event Image URL
+        </label>
+        <input
+          type="url"
+          id="default_image_url"
+          value={formData.default_image_url || ''}
+          onChange={(e) => setFormData({ ...formData, default_image_url: e.target.value })}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          placeholder="https://example.com/default-event-image.jpg"
+        />
+        <p className="mt-1 text-xs text-gray-500">Default image used for events in this category when they don't have their own image</p>
       </div>
 
       {/* Description */}

@@ -11,7 +11,8 @@ import {
   ArrowDownTrayIcon,
   CalendarDaysIcon,
   CpuChipIcon,
-  CommandLineIcon
+  CommandLineIcon,
+  ClockIcon
 } from '@heroicons/react/24/outline';
 import { checkUserPermission } from '@/app/actions/rbac';
 import type { ModuleName, ActionType } from '@/types/rbac';
@@ -46,6 +47,13 @@ const settingsSections = [
     href: '/settings/event-categories',
     icon: CalendarDaysIcon,
     permission: { module: 'events', action: 'manage' },
+  },
+  {
+    name: 'Business Hours',
+    description: 'Manage regular opening hours and special dates',
+    href: '/settings/business-hours',
+    icon: ClockIcon,
+    permission: { module: 'settings', action: 'manage' },
   },
   {
     name: 'Attachment Categories',
