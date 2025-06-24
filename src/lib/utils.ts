@@ -43,4 +43,10 @@ export function generatePhoneVariants(phone: string): string[] {
   return [...new Set(variants)];
 }
 
-// Add other utility functions here as needed 
+export function generateSlug(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-+/g, '-')
+}

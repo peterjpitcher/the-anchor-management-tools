@@ -25,7 +25,27 @@ const categorySchema = z.object({
   meta_description: z.string().max(160, 'Meta description too long').optional(),
   is_active: z.boolean(),
   is_default: z.boolean().optional(),
-  sort_order: z.number().min(0).optional()
+  sort_order: z.number().min(0).optional(),
+  // Additional SEO and content fields
+  short_description: z.string().max(150).optional(),
+  long_description: z.string().optional(),
+  highlights: z.array(z.string()).optional(),
+  meta_title: z.string().max(60).optional(),
+  keywords: z.array(z.string()).optional(),
+  gallery_image_urls: z.array(z.string().url()).optional(),
+  poster_image_url: z.string().url().optional(),
+  thumbnail_image_url: z.string().url().optional(),
+  promo_video_url: z.string().url().optional(),
+  highlight_video_urls: z.array(z.string().url()).optional(),
+  default_duration_minutes: z.number().min(1).max(1440).optional(), // Max 24 hours
+  default_doors_time: z.string().optional(),
+  default_last_entry_time: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format').optional(),
+  default_booking_url: z.string().url().optional(),
+  faqs: z.array(z.object({
+    question: z.string(),
+    answer: z.string(),
+    sort_order: z.number()
+  })).optional()
 })
 
 export async function getEventCategories(): Promise<{ data?: EventCategory[], error?: string }> {

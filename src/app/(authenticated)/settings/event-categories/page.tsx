@@ -11,7 +11,7 @@ import { EventCategory } from '@/types/event-categories'
 import { PlusIcon, PencilIcon, TrashIcon, SparklesIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/Button'
-import { EventCategoryForm } from '@/components/EventCategoryForm'
+import { EventCategoryFormEnhanced } from '@/components/EventCategoryFormEnhanced'
 
 export default function EventCategoriesPage() {
   const [categories, setCategories] = useState<EventCategory[]>([])
@@ -159,7 +159,7 @@ export default function EventCategoriesPage() {
             <h2 className="text-xl font-semibold mb-4">
               {editingCategory ? 'Edit Event Category' : 'Create Event Category'}
             </h2>
-            <EventCategoryForm
+            <EventCategoryFormEnhanced
               category={editingCategory}
               onSuccess={handleCloseForm}
               onCancel={handleCloseForm}
