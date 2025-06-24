@@ -123,7 +123,7 @@ async function verifyApiKey(apiKey: string) {
     }
   } catch (err) {
     console.log('\n⚠️  Could not test authentication (is the server running?)')
-    console.log('   Error:', err.message)
+    console.log('   Error:', err instanceof Error ? err.message : String(err))
   }
 }
 
