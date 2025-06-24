@@ -4,6 +4,19 @@ import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/a
 import { eventToSchema } from '@/lib/api/schema';
 import { startOfDay, endOfDay, parseISO } from 'date-fns';
 
+// Handle CORS preflight
+export async function OPTIONS(request: NextRequest) {
+  return new Response(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
+      'Access-Control-Max-Age': '86400',
+    },
+  });
+}
+
 export async function GET(request: NextRequest) {
   return withApiAuth(async (req, apiKey) => {
     const { searchParams } = new URL(request.url);
