@@ -98,6 +98,3 @@ export async function GET(request: NextRequest) {
   }, ['read:events']);
 }
 
-export async function OPTIONS(request: NextRequest) {
-  return createApiResponse({}, 200);
-}
