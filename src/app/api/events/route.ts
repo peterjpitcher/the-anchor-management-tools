@@ -1,0 +1,90 @@
+import { NextRequest } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
+import { eventToSchema } from '@/lib/api/schema';
+import { startOfDay, endOfDay, parseISO } from 'date-fns';
+
+export async function GET(request: NextRequest) {
+  return withApiAuth(async (req, apiKey) => {
+    const { searchParams } = new URL(request.url);
+    const fromDate = searchParams.get('from_date');
+    const toDate = searchParams.get('to_date');
+    const categoryId = searchParams.get('category_id');
+    const availableOnly = searchParams.get('available_only') === 'true';
+    const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100);
+    const offset = parseInt(searchParams.get('offset') || '0');
+
+    const supabase = await createClient();
+    
+    // Build query
+    let query = supabase
+      .from('events')
+      .select(`
+        *,
+        category:event_categories(
+          id,
+          name,
+          description,
+          color,
+          icon
+        ),
+        bookings(count)
+      `)
+      .eq('event_status', 'scheduled')
+      .order('date', { ascending: true })
+      .order('time', { ascending: true })
+      .range(offset, offset + limit - 1);
+
+    // Apply filters
+    if (fromDate) {
+      query = query.gte('date', fromDate);
+    } else {
+      // Default to today
+      query = query.gte('date', new Date().toISOString().split('T')[0]);
+    }
+    
+    if (toDate) {
+      query = query.lte('date', toDate);
+    }
+    
+    if (categoryId) {
+      query = query.eq('category_id', categoryId);
+    }
+
+    const { data: events, error, count } = await query;
+
+    if (error) {
+      return createErrorResponse('Failed to fetch events', 'DATABASE_ERROR', 500);
+    }
+
+    // Transform events to Schema.org format
+    const schemaEvents = events?.map(event => {
+      const bookingCount = event.bookings?.[0]?.count || 0;
+      
+      // Filter out sold out events if requested
+      if (availableOnly && event.capacity && bookingCount >= event.capacity) {
+        return null;
+      }
+      
+      return {
+        id: event.id,
+        ...eventToSchema(event, bookingCount),
+      };
+    }).filter(Boolean) || [];
+
+    return createApiResponse({
+      events: schemaEvents,
+      meta: {
+        total: count || 0,
+        limit,
+        offset,
+        has_more: (count || 0) > offset + limit,
+        lastUpdated: new Date().toISOString(),
+      },
+    });
+  }, ['read:events']);
+}
+
+export async function OPTIONS(request: NextRequest) {
+  return createApiResponse({}, 200);
+}

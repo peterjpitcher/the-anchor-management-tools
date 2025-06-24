@@ -1,0 +1,269 @@
+// Schema.org structured data helpers
+import { format } from 'date-fns';
+
+export interface SchemaEvent {
+  '@type': 'Event';
+  name: string;
+  description?: string;
+  startDate: string;
+  endDate?: string;
+  eventStatus: string;
+  eventAttendanceMode: string;
+  location: SchemaPlace;
+  image?: string[];
+  performer?: SchemaPerson | SchemaOrganization;
+  offers?: SchemaOffer;
+  organizer: SchemaOrganization;
+  isAccessibleForFree?: boolean;
+  maximumAttendeeCapacity?: number;
+  remainingAttendeeCapacity?: number;
+}
+
+export interface SchemaPlace {
+  '@type': 'Place';
+  name: string;
+  address: SchemaPostalAddress;
+}
+
+export interface SchemaPostalAddress {
+  '@type': 'PostalAddress';
+  streetAddress: string;
+  addressLocality: string;
+  addressRegion: string;
+  postalCode: string;
+  addressCountry: string;
+}
+
+export interface SchemaPerson {
+  '@type': 'Person';
+  name: string;
+}
+
+export interface SchemaOrganization {
+  '@type': 'Organization';
+  name: string;
+  url?: string;
+}
+
+export interface SchemaOffer {
+  '@type': 'Offer';
+  url?: string;
+  price: string;
+  priceCurrency: string;
+  availability: string;
+  validFrom?: string;
+  inventoryLevel?: {
+    '@type': 'QuantitativeValue';
+    value: number;
+  };
+}
+
+export interface SchemaMenu {
+  '@type': 'Menu';
+  name: string;
+  hasMenuSection: SchemaMenuSection[];
+  lastUpdated?: string;
+}
+
+export interface SchemaMenuSection {
+  '@type': 'MenuSection';
+  name: string;
+  description?: string;
+  hasMenuItem: SchemaMenuItem[];
+}
+
+export interface SchemaMenuItem {
+  '@type': 'MenuItem';
+  name: string;
+  description?: string;
+  offers: SchemaOffer;
+  nutrition?: SchemaNutritionInfo;
+  suitableForDiet?: string[];
+}
+
+export interface SchemaNutritionInfo {
+  '@type': 'NutritionInformation';
+  calories?: string;
+  fatContent?: string;
+  saturatedFatContent?: string;
+  carbohydrateContent?: string;
+  sugarContent?: string;
+  proteinContent?: string;
+  sodiumContent?: string;
+}
+
+// Constants for Schema.org URLs
+export const SCHEMA_EVENT_STATUS = {
+  SCHEDULED: 'https://schema.org/EventScheduled',
+  RESCHEDULED: 'https://schema.org/EventRescheduled',
+  CANCELLED: 'https://schema.org/EventCancelled',
+  POSTPONED: 'https://schema.org/EventPostponed',
+} as const;
+
+export const SCHEMA_ATTENDANCE_MODE = {
+  OFFLINE: 'https://schema.org/OfflineEventAttendanceMode',
+  ONLINE: 'https://schema.org/OnlineEventAttendanceMode',
+  MIXED: 'https://schema.org/MixedEventAttendanceMode',
+} as const;
+
+export const SCHEMA_AVAILABILITY = {
+  IN_STOCK: 'https://schema.org/InStock',
+  SOLD_OUT: 'https://schema.org/SoldOut',
+  LIMITED: 'https://schema.org/LimitedAvailability',
+} as const;
+
+export const SCHEMA_DIET = {
+  VEGETARIAN: 'https://schema.org/VegetarianDiet',
+  VEGAN: 'https://schema.org/VeganDiet',
+  GLUTEN_FREE: 'https://schema.org/GlutenFreeDiet',
+  HALAL: 'https://schema.org/HalalDiet',
+  KOSHER: 'https://schema.org/KosherDiet',
+  LOW_CALORIE: 'https://schema.org/LowCalorieDiet',
+  LOW_FAT: 'https://schema.org/LowFatDiet',
+  LOW_LACTOSE: 'https://schema.org/LowLactoseDiet',
+  LOW_SALT: 'https://schema.org/LowSaltDiet',
+} as const;
+
+// Helper to create venue location
+export function createVenueLocation(): SchemaPlace {
+  return {
+    '@type': 'Place',
+    name: 'The Anchor Pub',
+    address: {
+      '@type': 'PostalAddress',
+      streetAddress: 'Horton Road',
+      addressLocality: 'Stanwell Moor',
+      addressRegion: 'Surrey',
+      postalCode: 'TW19 6AQ',
+      addressCountry: 'GB',
+    },
+  };
+}
+
+// Helper to create organizer
+export function createOrganizer(): SchemaOrganization {
+  return {
+    '@type': 'Organization',
+    name: 'The Anchor',
+    url: process.env.NEXT_PUBLIC_APP_URL || 'https://the-anchor.pub',
+  };
+}
+
+// Convert database event to Schema.org format
+export function eventToSchema(event: any, bookingCount: number = 0): SchemaEvent {
+  const startDateTime = `${event.date}T${event.time}+00:00`;
+  const endDateTime = event.end_time 
+    ? `${event.date}T${event.end_time}+00:00`
+    : undefined;
+  
+  const capacity = event.capacity || 100; // Default capacity
+  const remainingSeats = capacity - bookingCount;
+  
+  return {
+    '@type': 'Event',
+    name: event.name,
+    description: event.description,
+    startDate: startDateTime,
+    endDate: endDateTime,
+    eventStatus: getEventStatus(event.event_status),
+    eventAttendanceMode: SCHEMA_ATTENDANCE_MODE.OFFLINE,
+    location: createVenueLocation(),
+    image: event.image_urls || [],
+    performer: event.performer_name ? {
+      '@type': event.performer_type === 'Organization' ? 'Organization' : 'Person',
+      name: event.performer_name,
+    } : undefined,
+    offers: {
+      '@type': 'Offer',
+      url: event.booking_url || `${process.env.NEXT_PUBLIC_APP_URL}/events/${event.id}`,
+      price: event.price?.toString() || '0',
+      priceCurrency: event.price_currency || 'GBP',
+      availability: remainingSeats > 0 
+        ? (remainingSeats < 10 ? SCHEMA_AVAILABILITY.LIMITED : SCHEMA_AVAILABILITY.IN_STOCK)
+        : SCHEMA_AVAILABILITY.SOLD_OUT,
+      validFrom: new Date().toISOString(),
+      inventoryLevel: capacity ? {
+        '@type': 'QuantitativeValue',
+        value: remainingSeats,
+      } : undefined,
+    },
+    organizer: createOrganizer(),
+    isAccessibleForFree: event.is_free !== false,
+    maximumAttendeeCapacity: capacity,
+    remainingAttendeeCapacity: remainingSeats,
+  };
+}
+
+function getEventStatus(status: string): string {
+  switch (status) {
+    case 'cancelled':
+      return SCHEMA_EVENT_STATUS.CANCELLED;
+    case 'postponed':
+      return SCHEMA_EVENT_STATUS.POSTPONED;
+    case 'rescheduled':
+      return SCHEMA_EVENT_STATUS.RESCHEDULED;
+    default:
+      return SCHEMA_EVENT_STATUS.SCHEDULED;
+  }
+}
+
+// Convert menu data to Schema.org format
+export function menuToSchema(sections: any[]): SchemaMenu {
+  return {
+    '@type': 'Menu',
+    name: 'The Anchor Menu',
+    hasMenuSection: sections.map(section => ({
+      '@type': 'MenuSection',
+      name: section.name,
+      description: section.description,
+      hasMenuItem: section.items?.map((item: any) => ({
+        '@type': 'MenuItem',
+        name: item.name,
+        description: item.description,
+        offers: {
+          '@type': 'Offer',
+          price: item.price.toString(),
+          priceCurrency: item.price_currency || 'GBP',
+          availability: SCHEMA_AVAILABILITY.IN_STOCK,
+        },
+        nutrition: item.calories ? {
+          '@type': 'NutritionInformation',
+          calories: `${item.calories} calories`,
+        } : undefined,
+        suitableForDiet: mapDietaryInfo(item.dietary_info || []),
+      })) || [],
+    })),
+    lastUpdated: new Date().toISOString(),
+  };
+}
+
+function mapDietaryInfo(dietaryInfo: string[]): string[] {
+  const mapped: string[] = [];
+  
+  dietaryInfo.forEach(diet => {
+    const normalized = diet.toLowerCase().replace(/[^a-z]/g, '');
+    switch (normalized) {
+      case 'vegetarian':
+      case 'v':
+        mapped.push(SCHEMA_DIET.VEGETARIAN);
+        break;
+      case 'vegan':
+      case 'vg':
+      case 've':
+        mapped.push(SCHEMA_DIET.VEGAN);
+        break;
+      case 'glutenfree':
+      case 'gf':
+        mapped.push(SCHEMA_DIET.GLUTEN_FREE);
+        break;
+      case 'halal':
+        mapped.push(SCHEMA_DIET.HALAL);
+        break;
+      case 'kosher':
+        mapped.push(SCHEMA_DIET.KOSHER);
+        break;
+    }
+  });
+  
+  return mapped;
+}

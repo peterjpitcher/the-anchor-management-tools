@@ -10,7 +10,8 @@ import {
   KeyIcon,
   ArrowDownTrayIcon,
   CalendarDaysIcon,
-  CpuChipIcon
+  CpuChipIcon,
+  CommandLineIcon
 } from '@heroicons/react/24/outline';
 import { checkUserPermission } from '@/app/actions/rbac';
 import type { ModuleName, ActionType } from '@/types/rbac';
@@ -104,6 +105,13 @@ const settingsSections = [
     permission: { module: 'settings', action: 'manage' },
   },
   {
+    name: 'API Keys',
+    description: 'Manage API keys for external integrations',
+    href: '/settings/api-keys',
+    icon: CommandLineIcon,
+    permission: { module: 'settings', action: 'manage' },
+  },
+  {
     name: 'GDPR & Privacy',
     description: 'Export your data or manage privacy settings',
     href: '/settings/gdpr',
@@ -137,10 +145,10 @@ export default async function SettingsPage() {
     s.href === '/profile' || s.href === '/users' || s.href === '/roles'
   );
   const systemSettingsSections = visibleSections.filter(s => 
-    s.href.includes('/settings/') && !s.name.includes('SMS') && !s.name.includes('Audit')
+    s.href.includes('/settings/') && !s.name.includes('SMS') && !s.name.includes('Audit') && !s.name.includes('API Keys')
   );
   const monitoringSections = visibleSections.filter(s => 
-    s.name.includes('SMS') || s.name.includes('Audit')
+    s.name.includes('SMS') || s.name.includes('Audit') || s.name.includes('API Keys')
   );
 
   return (

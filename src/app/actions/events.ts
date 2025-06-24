@@ -26,7 +26,45 @@ const eventSchema = z.object({
     (val) => val === '' ? null : Number(val),
     z.number().min(1, 'Capacity must be at least 1').max(10000, 'Capacity too large').nullable()
   ),
-  category_id: z.string().uuid().nullable().optional()
+  category_id: z.string().uuid().nullable().optional(),
+  // New fields
+  description: z.string().max(2000).nullable().optional(),
+  end_time: z.string().optional().nullable().transform(val => {
+    if (!val || val.trim() === '') return null
+    // Validate time format if provided
+    if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(val)) return null
+    return val
+  }),
+  event_status: z.enum(['scheduled', 'cancelled', 'postponed', 'rescheduled']).default('scheduled'),
+  performer_name: z.string().max(255).nullable().optional(),
+  performer_type: z.string().max(50).nullable().optional(),
+  price: z.preprocess(
+    (val) => val === '' ? 0 : Number(val),
+    z.number().min(0).max(99999.99).default(0)
+  ),
+  is_free: z.boolean().default(false),
+  booking_url: z.string().nullable().optional().transform(val => {
+    if (!val || val.trim() === '') return null
+    // Basic URL validation
+    try {
+      new URL(val)
+      return val
+    } catch {
+      return null
+    }
+  }),
+  image_urls: z.array(z.string()).default([]).transform(urls => {
+    // Filter out empty strings and validate URLs
+    return urls.filter(url => {
+      if (!url || url.trim() === '') return false
+      try {
+        new URL(url)
+        return true
+      } catch {
+        return false
+      }
+    })
+  })
 })
 
 export async function createEvent(formData: FormData) {
@@ -45,7 +83,23 @@ export async function createEvent(formData: FormData) {
       date: formData.get('date') as string,
       time: formData.get('time') as string,
       capacity: formData.get('capacity') as string,
-      category_id: formData.get('category_id') as string || null
+      category_id: formData.get('category_id') as string || null,
+      description: formData.get('description') as string || null,
+      end_time: formData.get('end_time') as string || null,
+      event_status: formData.get('event_status') as string || 'scheduled',
+      performer_name: formData.get('performer_name') as string || null,
+      performer_type: formData.get('performer_type') as string || null,
+      price: formData.get('price') as string || '0',
+      is_free: formData.get('is_free') === 'true',
+      booking_url: formData.get('booking_url') as string || null,
+      image_urls: (() => {
+        try {
+          const urls = formData.get('image_urls') as string
+          return urls ? JSON.parse(urls) : []
+        } catch {
+          return []
+        }
+      })()
     }
 
     const validationResult = eventSchema.safeParse(rawData)
@@ -117,7 +171,23 @@ export async function updateEvent(id: string, formData: FormData) {
       date: formData.get('date') as string,
       time: formData.get('time') as string,
       capacity: formData.get('capacity') as string,
-      category_id: formData.get('category_id') as string || null
+      category_id: formData.get('category_id') as string || null,
+      description: formData.get('description') as string || null,
+      end_time: formData.get('end_time') as string || null,
+      event_status: formData.get('event_status') as string || 'scheduled',
+      performer_name: formData.get('performer_name') as string || null,
+      performer_type: formData.get('performer_type') as string || null,
+      price: formData.get('price') as string || '0',
+      is_free: formData.get('is_free') === 'true',
+      booking_url: formData.get('booking_url') as string || null,
+      image_urls: (() => {
+        try {
+          const urls = formData.get('image_urls') as string
+          return urls ? JSON.parse(urls) : []
+        } catch {
+          return []
+        }
+      })()
     }
 
     // Use a modified schema for past events
