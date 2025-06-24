@@ -5,8 +5,15 @@ export interface EventCategory {
   color: string
   icon: string
   default_start_time: string | null
+  default_end_time: string | null
   default_capacity: number | null
   default_reminder_hours: number
+  default_price: number
+  default_is_free: boolean
+  default_performer_type: string | null
+  default_event_status: string
+  slug: string
+  meta_description: string | null
   sort_order: number
   is_active: boolean
   is_default?: boolean
@@ -50,8 +57,15 @@ export interface CategoryFormData {
   color: string
   icon: string
   default_start_time?: string
+  default_end_time?: string
   default_capacity?: number
   default_reminder_hours: number
+  default_price?: number
+  default_is_free?: boolean
+  default_performer_type?: string
+  default_event_status?: string
+  slug?: string
+  meta_description?: string
   is_active: boolean
   is_default?: boolean
 }

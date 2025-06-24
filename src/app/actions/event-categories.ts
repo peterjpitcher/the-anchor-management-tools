@@ -13,9 +13,17 @@ const categorySchema = z.object({
   color: z.string().regex(/^#[0-9A-F]{6}$/i, 'Invalid color format'),
   icon: z.string().min(1, 'Icon is required'),
   default_start_time: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format').optional(),
+  default_end_time: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format').optional(),
   default_capacity: z.number().min(1).max(10000).optional(),
   default_reminder_hours: z.number().min(1).max(168), // Max 1 week
-  is_active: z.boolean()
+  default_price: z.number().min(0).max(99999.99).optional(),
+  default_is_free: z.boolean().optional(),
+  default_performer_type: z.enum(['MusicGroup', 'Person', 'TheaterGroup', 'DanceGroup', 'ComedyGroup', 'Organization', '']).optional(),
+  default_event_status: z.enum(['scheduled', 'cancelled', 'postponed', 'rescheduled']).optional(),
+  slug: z.string().regex(/^[a-z0-9-]*$/, 'Invalid slug format').optional(),
+  meta_description: z.string().max(160, 'Meta description too long').optional(),
+  is_active: z.boolean(),
+  is_default: z.boolean().optional()
 })
 
 export async function getEventCategories(): Promise<{ data?: EventCategory[], error?: string }> {
@@ -85,12 +93,19 @@ export async function createEventCategory(formData: CategoryFormData) {
 
     const nextSortOrder = (maxSortOrder?.sort_order || 0) + 1
 
+    // Generate slug if not provided
+    const slug = data.slug || data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+
     // Create category
     const { data: category, error } = await supabase
       .from('event_categories')
       .insert({
         ...data,
-        sort_order: nextSortOrder
+        slug,
+        sort_order: nextSortOrder,
+        default_price: data.default_price ?? 0,
+        default_is_free: data.default_is_free ?? true,
+        default_event_status: data.default_event_status || 'scheduled'
       })
       .select()
       .single()
@@ -145,10 +160,19 @@ export async function updateEventCategory(id: string, formData: CategoryFormData
       .eq('id', id)
       .single()
 
+    // Generate slug if not provided
+    const slug = data.slug || data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+
     // Update category
     const { data: category, error } = await supabase
       .from('event_categories')
-      .update(data)
+      .update({
+        ...data,
+        slug,
+        default_price: data.default_price ?? oldCategory?.default_price ?? 0,
+        default_is_free: data.default_is_free ?? oldCategory?.default_is_free ?? true,
+        default_event_status: data.default_event_status || oldCategory?.default_event_status || 'scheduled'
+      })
       .eq('id', id)
       .select()
       .single()

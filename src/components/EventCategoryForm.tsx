@@ -20,8 +20,15 @@ export function EventCategoryForm({ category, onSuccess, onCancel }: EventCatego
     color: category?.color || '#9333EA',
     icon: category?.icon || 'CalendarIcon',
     default_start_time: category?.default_start_time || '',
+    default_end_time: category?.default_end_time || '',
     default_capacity: category?.default_capacity || undefined,
     default_reminder_hours: category?.default_reminder_hours || 24,
+    default_price: category?.default_price || 0,
+    default_is_free: category?.default_is_free ?? true,
+    default_performer_type: category?.default_performer_type || '',
+    default_event_status: category?.default_event_status || 'scheduled',
+    slug: category?.slug || '',
+    meta_description: category?.meta_description || '',
     is_active: category?.is_active ?? true,
     is_default: category?.is_default ?? false
   })
@@ -126,6 +133,20 @@ export function EventCategoryForm({ category, onSuccess, onCancel }: EventCatego
           />
         </div>
 
+        {/* Default End Time */}
+        <div>
+          <label htmlFor="default_end_time" className="block text-sm font-medium text-gray-700">
+            Default End Time
+          </label>
+          <input
+            type="time"
+            id="default_end_time"
+            value={formData.default_end_time || ''}
+            onChange={(e) => setFormData({ ...formData, default_end_time: e.target.value })}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          />
+        </div>
+
         {/* Default Capacity */}
         <div>
           <label htmlFor="default_capacity" className="block text-sm font-medium text-gray-700">
@@ -165,6 +186,79 @@ export function EventCategoryForm({ category, onSuccess, onCancel }: EventCatego
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
           />
         </div>
+        {/* Default Price */}
+        <div>
+          <label htmlFor="default_price" className="block text-sm font-medium text-gray-700">
+            Default Price (£)
+          </label>
+          <input
+            type="number"
+            id="default_price"
+            min="0"
+            step="0.01"
+            value={formData.default_price || 0}
+            onChange={(e) => setFormData({ 
+              ...formData, 
+              default_price: parseFloat(e.target.value) || 0 
+            })}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          />
+        </div>
+
+        {/* Default Event Status */}
+        <div>
+          <label htmlFor="default_event_status" className="block text-sm font-medium text-gray-700">
+            Default Event Status
+          </label>
+          <select
+            id="default_event_status"
+            value={formData.default_event_status || 'scheduled'}
+            onChange={(e) => setFormData({ ...formData, default_event_status: e.target.value })}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          >
+            <option value="scheduled">Scheduled</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="postponed">Postponed</option>
+            <option value="rescheduled">Rescheduled</option>
+          </select>
+        </div>
+
+        {/* Default Performer Type */}
+        <div>
+          <label htmlFor="default_performer_type" className="block text-sm font-medium text-gray-700">
+            Default Performer Type
+          </label>
+          <select
+            id="default_performer_type"
+            value={formData.default_performer_type || ''}
+            onChange={(e) => setFormData({ ...formData, default_performer_type: e.target.value })}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          >
+            <option value="">No default</option>
+            <option value="MusicGroup">Music Group/Band</option>
+            <option value="Person">Solo Artist</option>
+            <option value="TheaterGroup">Theater Group</option>
+            <option value="DanceGroup">Dance Group</option>
+            <option value="ComedyGroup">Comedy Group</option>
+            <option value="Organization">Organization</option>
+          </select>
+        </div>
+
+        {/* URL Slug */}
+        <div>
+          <label htmlFor="slug" className="block text-sm font-medium text-gray-700">
+            URL Slug
+          </label>
+          <input
+            type="text"
+            id="slug"
+            value={formData.slug || ''}
+            onChange={(e) => setFormData({ ...formData, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+            placeholder="auto-generated-from-name"
+          />
+          <p className="mt-1 text-xs text-gray-500">Used in URLs. Leave empty to auto-generate.</p>
+        </div>
       </div>
 
       {/* Description */}
@@ -180,6 +274,37 @@ export function EventCategoryForm({ category, onSuccess, onCancel }: EventCatego
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
           placeholder="Optional description of this event category"
         />
+      </div>
+
+      {/* Meta Description */}
+      <div>
+        <label htmlFor="meta_description" className="block text-sm font-medium text-gray-700">
+          SEO Meta Description
+        </label>
+        <textarea
+          id="meta_description"
+          rows={2}
+          value={formData.meta_description || ''}
+          onChange={(e) => setFormData({ ...formData, meta_description: e.target.value })}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          placeholder="Description for search engines (150-160 characters)"
+          maxLength={160}
+        />
+        <p className="mt-1 text-xs text-gray-500">{formData.meta_description?.length || 0}/160 characters</p>
+      </div>
+
+      {/* Default Free Event */}
+      <div className="flex items-center">
+        <input
+          type="checkbox"
+          id="default_is_free"
+          checked={formData.default_is_free || false}
+          onChange={(e) => setFormData({ ...formData, default_is_free: e.target.checked })}
+          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+        />
+        <label htmlFor="default_is_free" className="ml-2 block text-sm text-gray-900">
+          Events in this category are free by default
+        </label>
       </div>
 
       {/* Active Status */}
