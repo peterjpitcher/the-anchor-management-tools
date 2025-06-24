@@ -9,7 +9,7 @@ import { EventCategory } from '@/types/event-categories'
 type Event = BaseEvent & {
   category?: EventCategory | null
 }
-import { PlusIcon, TrashIcon, UserGroupIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, TrashIcon, UserGroupIcon, ClipboardDocumentIcon, PencilSquareIcon } from '@heroicons/react/24/outline'
 import { BookingForm } from '@/components/BookingForm'
 import { AddAttendeesModalWithCategories } from '@/components/AddAttendeesModalWithCategories'
 import toast from 'react-hot-toast'
@@ -370,6 +370,12 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Link href={`/events/${event.id}/edit`}>
+                <Button variant="secondary">
+                  <PencilSquareIcon className="h-5 w-5 mr-2" />
+                  Edit Event
+                </Button>
+              </Link>
               <Button onClick={handleCopyAttendeeList} variant="secondary">
                 <ClipboardDocumentIcon className="h-5 w-5 mr-2" />
                 Copy List

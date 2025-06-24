@@ -278,3 +278,41 @@ Comprehensive documentation available in `/docs/`:
 - **Security**: security.md, rbac.md
 - **Monitoring**: monitoring.md, troubleshooting.md
 - **Standards**: development.md, style-guide.md, ui-standards.md
+
+### Debugging & Development Tips
+
+1. **When the build fails**: 
+   - Check for TypeScript errors: `npm run build` shows detailed error messages
+   - Common issues: missing imports, type mismatches, unused variables
+   - ESLint errors are ignored during build but shown for awareness
+
+2. **Supabase Connection Issues**:
+   - Verify environment variables are set correctly
+   - Check if RLS policies are blocking queries
+   - Use Supabase dashboard SQL editor to test queries directly
+   - Server actions need service role key, client needs anon key
+
+3. **SMS/Twilio Issues**:
+   - Check webhook logs in database for debugging
+   - Use `/settings/webhook-test` to verify connectivity
+   - Ensure phone numbers are in E.164 format
+   - Check SMS health dashboard for delivery rates
+
+4. **File Upload Problems**:
+   - Verify Supabase Storage bucket exists and has proper policies
+   - Check file size limits (10MB for server actions)
+   - Always use the returned path from upload response
+   - Generate signed URLs for secure access
+
+### Code Patterns to Follow
+
+1. **Component Naming**: Use PascalCase for components (e.g., `CustomerList.tsx`)
+2. **Server Action Naming**: Use camelCase with action verbs (e.g., `createCustomer`, `updateEvent`)
+3. **Type Definitions**: Always define types in `/src/types/` and import them
+4. **Loading States**: Use `loading` prop or Suspense boundaries, not custom states
+5. **Error Messages**: User-facing errors should be clear and actionable
+6. **Date Handling**: Use `format` from date-fns for consistent date formatting
+7. **Modal/Dialog Pattern**: Use the existing Dialog component from `/src/components/ui/`
+8. **Table Pattern**: Use the DataTable component for consistent table UI
+9. **Form Pattern**: Use react-hook-form with Zod validation
+10. **Icons**: Use lucide-react icons consistently throughout the app
