@@ -12,16 +12,28 @@ const categorySchema = z.object({
   description: z.string().max(500, 'Description too long').optional(),
   color: z.string().regex(/^#[0-9A-F]{6}$/i, 'Invalid color format'),
   icon: z.string().min(1, 'Icon is required'),
-  default_start_time: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format').optional(),
-  default_end_time: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format').optional(),
+  default_start_time: z.preprocess(
+    (val) => (val === '' ? undefined : val),
+    z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format').optional()
+  ),
+  default_end_time: z.preprocess(
+    (val) => (val === '' ? undefined : val),
+    z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format').optional()
+  ),
   default_capacity: z.number().min(1).max(10000).optional(),
   default_reminder_hours: z.number().min(1).max(168), // Max 1 week
   default_price: z.number().min(0).max(99999.99).optional(),
   default_is_free: z.boolean().optional(),
   default_performer_type: z.enum(['MusicGroup', 'Person', 'TheaterGroup', 'DanceGroup', 'ComedyGroup', 'Organization', '']).optional(),
   default_event_status: z.enum(['scheduled', 'cancelled', 'postponed', 'rescheduled']).optional(),
-  default_image_url: z.string().url().optional().nullable(),
-  slug: z.string().regex(/^[a-z0-9-]*$/, 'Invalid slug format').optional(),
+  default_image_url: z.preprocess(
+    (val) => (val === '' ? undefined : val),
+    z.string().url().optional().nullable()
+  ),
+  slug: z.preprocess(
+    (val) => (val === '' ? undefined : val),
+    z.string().regex(/^[a-z0-9-]*$/, 'Invalid slug format').optional()
+  ),
   meta_description: z.string().max(160, 'Meta description too long').optional(),
   is_active: z.boolean(),
   is_default: z.boolean().optional(),
@@ -33,14 +45,29 @@ const categorySchema = z.object({
   meta_title: z.string().max(60).optional(),
   keywords: z.array(z.string()).optional(),
   gallery_image_urls: z.array(z.string().url()).optional(),
-  poster_image_url: z.string().url().optional(),
-  thumbnail_image_url: z.string().url().optional(),
-  promo_video_url: z.string().url().optional(),
+  poster_image_url: z.preprocess(
+    (val) => (val === '' ? undefined : val),
+    z.string().url().optional()
+  ),
+  thumbnail_image_url: z.preprocess(
+    (val) => (val === '' ? undefined : val),
+    z.string().url().optional()
+  ),
+  promo_video_url: z.preprocess(
+    (val) => (val === '' ? undefined : val),
+    z.string().url().optional()
+  ),
   highlight_video_urls: z.array(z.string().url()).optional(),
   default_duration_minutes: z.number().min(1).max(1440).optional(), // Max 24 hours
   default_doors_time: z.string().optional(),
-  default_last_entry_time: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format').optional(),
-  default_booking_url: z.string().url().optional(),
+  default_last_entry_time: z.preprocess(
+    (val) => (val === '' ? undefined : val),
+    z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format').optional()
+  ),
+  default_booking_url: z.preprocess(
+    (val) => (val === '' ? undefined : val),
+    z.string().url().optional()
+  ),
   faqs: z.array(z.object({
     question: z.string(),
     answer: z.string(),
