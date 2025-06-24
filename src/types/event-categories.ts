@@ -20,6 +20,26 @@ export interface EventCategory {
   is_default?: boolean
   created_at: string
   updated_at: string
+  // Additional SEO and content fields
+  short_description?: string | null
+  long_description?: string | null
+  highlights?: string[]
+  meta_title?: string | null
+  keywords?: string[]
+  gallery_image_urls?: string[]
+  poster_image_url?: string | null
+  thumbnail_image_url?: string | null
+  promo_video_url?: string | null
+  highlight_video_urls?: string[]
+  default_duration_minutes?: number | null
+  default_doors_time?: string | null
+  default_last_entry_time?: string | null
+  default_booking_url?: string | null
+  faqs?: Array<{
+    question: string
+    answer: string
+    sort_order: number
+  }>
 }
 
 export interface CustomerCategoryStats {
@@ -71,6 +91,26 @@ export interface CategoryFormData {
   is_active: boolean
   is_default?: boolean
   sort_order?: number
+  // Additional SEO and content fields
+  short_description?: string
+  long_description?: string
+  highlights?: string[]
+  meta_title?: string
+  keywords?: string[]
+  gallery_image_urls?: string[]
+  poster_image_url?: string
+  thumbnail_image_url?: string
+  promo_video_url?: string
+  highlight_video_urls?: string[]
+  default_duration_minutes?: number
+  default_doors_time?: string
+  default_last_entry_time?: string
+  default_booking_url?: string
+  faqs?: Array<{
+    question: string
+    answer: string
+    sort_order: number
+  }>
 }
 
 // Icon options for categories

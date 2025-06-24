@@ -108,25 +108,87 @@ export function EventFormEnhanced({ event, eventFAQs = [], onSubmit, onCancel }:
     if (newCategoryId) {
       const selectedCategory = categories.find(c => c.id === newCategoryId)
       if (selectedCategory) {
-        // Only update fields if they're currently empty
-        if (!time && selectedCategory.default_start_time) {
-          setTime(formatTimeToHHMM(selectedCategory.default_start_time))
-        }
-        if (!endTime && selectedCategory.default_end_time) {
-          setEndTime(formatTimeToHHMM(selectedCategory.default_end_time))
-        }
-        if (!capacity && selectedCategory.default_capacity) {
-          setCapacity(selectedCategory.default_capacity.toString())
-        }
-        if (!price && selectedCategory.default_price !== undefined) {
-          setPrice(selectedCategory.default_price.toString())
-          setIsFree(selectedCategory.default_is_free || selectedCategory.default_price === 0)
-        }
-        if (!performerType && selectedCategory.default_performer_type) {
-          setPerformerType(selectedCategory.default_performer_type)
-        }
-        if (!eventStatus && selectedCategory.default_event_status) {
-          setEventStatus(selectedCategory.default_event_status)
+        // Only update fields if they're currently empty (for new events) or if it's a category change
+        if (!event || event.category_id !== newCategoryId) {
+          // Basic event settings
+          if (!time && selectedCategory.default_start_time) {
+            setTime(formatTimeToHHMM(selectedCategory.default_start_time))
+          }
+          if (!endTime && selectedCategory.default_end_time) {
+            setEndTime(formatTimeToHHMM(selectedCategory.default_end_time))
+          }
+          if (!capacity && selectedCategory.default_capacity) {
+            setCapacity(selectedCategory.default_capacity.toString())
+          }
+          if (!price && selectedCategory.default_price !== undefined) {
+            setPrice(selectedCategory.default_price.toString())
+            setIsFree(selectedCategory.default_is_free || selectedCategory.default_price === 0)
+          }
+          if (!performerType && selectedCategory.default_performer_type) {
+            setPerformerType(selectedCategory.default_performer_type)
+          }
+          if (!eventStatus && selectedCategory.default_event_status) {
+            setEventStatus(selectedCategory.default_event_status)
+          }
+          if (!bookingUrl && selectedCategory.default_booking_url) {
+            setBookingUrl(selectedCategory.default_booking_url)
+          }
+          
+          // SEO and content fields
+          if (!shortDescription && selectedCategory.short_description) {
+            setShortDescription(selectedCategory.short_description)
+          }
+          if (!longDescription && selectedCategory.long_description) {
+            setLongDescription(selectedCategory.long_description)
+          }
+          if (!metaTitle && selectedCategory.meta_title) {
+            setMetaTitle(selectedCategory.meta_title)
+          }
+          if (!metaDescription && selectedCategory.meta_description) {
+            setMetaDescription(selectedCategory.meta_description)
+          }
+          
+          // Arrays - only set if current is empty
+          if (highlights.length === 0 && selectedCategory.highlights) {
+            setHighlights(selectedCategory.highlights)
+          }
+          if (keywords.length === 0 && selectedCategory.keywords) {
+            setKeywords(selectedCategory.keywords)
+          }
+          if (galleryImageUrls.length === 0 && selectedCategory.gallery_image_urls) {
+            setGalleryImageUrls(selectedCategory.gallery_image_urls)
+          }
+          if (highlightVideoUrls.length === 0 && selectedCategory.highlight_video_urls) {
+            setHighlightVideoUrls(selectedCategory.highlight_video_urls)
+          }
+          if (faqs.length === 0 && selectedCategory.faqs) {
+            setFaqs(selectedCategory.faqs)
+          }
+          
+          // Media fields
+          if (!heroImageUrl && selectedCategory.default_image_url) {
+            setHeroImageUrl(selectedCategory.default_image_url)
+          }
+          if (!thumbnailImageUrl && selectedCategory.thumbnail_image_url) {
+            setThumbnailImageUrl(selectedCategory.thumbnail_image_url)
+          }
+          if (!posterImageUrl && selectedCategory.poster_image_url) {
+            setPosterImageUrl(selectedCategory.poster_image_url)
+          }
+          if (!promoVideoUrl && selectedCategory.promo_video_url) {
+            setPromoVideoUrl(selectedCategory.promo_video_url)
+          }
+          
+          // Timing fields
+          if (!durationMinutes && selectedCategory.default_duration_minutes) {
+            setDurationMinutes(selectedCategory.default_duration_minutes.toString())
+          }
+          if (!doorsTime && selectedCategory.default_doors_time) {
+            setDoorsTime(selectedCategory.default_doors_time)
+          }
+          if (!lastEntryTime && selectedCategory.default_last_entry_time) {
+            setLastEntryTime(formatTimeToHHMM(selectedCategory.default_last_entry_time))
+          }
         }
       }
     }
