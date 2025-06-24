@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { eventToSchema } from '@/lib/api/schema';
 
@@ -9,7 +9,7 @@ export async function GET(
 ) {
   return withApiAuth(async (req, apiKey) => {
     const params = await context.params;
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     
     const { data: event, error } = await supabase
       .from('events')
@@ -56,7 +56,7 @@ export async function GET(
     return createApiResponse({
       ...extendedEvent,
     });
-  }, ['read:events']);
+  }, ['read:events'], request);
 }
 
 export async function OPTIONS(request: NextRequest) {

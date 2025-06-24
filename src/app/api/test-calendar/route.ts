@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server'
 import { testCalendarConnection, isCalendarConfigured } from '@/lib/google-calendar'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 
 export async function GET(request: Request) {
   try {
     // Check authentication
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data: { user } } = await supabase.auth.getUser()
     
     if (!user) {

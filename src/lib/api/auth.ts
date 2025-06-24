@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import { headers } from 'next/headers';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
 export interface ApiKey {
@@ -22,31 +22,53 @@ export async function generateApiKey(): Promise<string> {
 }
 
 export async function validateApiKey(apiKey: string | null): Promise<ApiKey | null> {
-  if (!apiKey) return null;
+  if (!apiKey) {
+    console.log('[API Auth] No API key provided');
+    return null;
+  }
   
-  const supabase = await createClient();
+  console.log('[API Auth] Validating API key:', apiKey.substring(0, 10) + '...');
+  
+  // Use admin client for API key validation since api_keys table requires elevated permissions
+  const supabase = createAdminClient();
   const keyHash = await hashApiKey(apiKey);
+  console.log('[API Auth] Key hash:', keyHash);
   
   const { data, error } = await supabase
     .from('api_keys')
     .select('id, name, permissions, rate_limit, is_active')
     .eq('key_hash', keyHash)
-    .eq('is_active', true)
-    .single();
+    .eq('is_active', true);
   
-  if (error || !data) return null;
+  if (error) {
+    console.log('[API Auth] Database query error:', error.message);
+    return null;
+  }
+  
+  if (!data || data.length === 0) {
+    console.log('[API Auth] No matching key found');
+    return null;
+  }
+  
+  if (data.length > 1) {
+    console.log('[API Auth] Multiple keys found with same hash, using first one');
+  }
+  
+  const keyData = data[0];
+  
+  console.log('[API Auth] Key validated:', keyData.name);
   
   // Update last used timestamp
   await supabase
     .from('api_keys')
     .update({ last_used_at: new Date().toISOString() })
-    .eq('id', data.id);
+    .eq('id', keyData.id);
   
-  return data as ApiKey;
+  return keyData as ApiKey;
 }
 
 export async function checkRateLimit(apiKeyId: string, limit: number): Promise<boolean> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   
   // Count requests in the last hour
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -67,7 +89,7 @@ export async function logApiUsage(
   statusCode: number,
   responseTime: number
 ) {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const headersList = await headers();
   
   await supabase.from('api_usage').insert({
@@ -121,14 +143,29 @@ export function createErrorResponse(
 
 export async function withApiAuth(
   handler: (req: Request, apiKey: ApiKey) => Promise<Response>,
-  requiredPermissions: string[] = ['read:events']
+  requiredPermissions: string[] = ['read:events'],
+  request?: Request
 ): Promise<Response> {
   const startTime = Date.now();
   const headersList = await headers();
   
+  console.log('[API Auth] Headers received:');
+  headersList.forEach((value, key) => {
+    if (key.toLowerCase().includes('api') || key.toLowerCase().includes('auth')) {
+      console.log(`  ${key}: ${value.substring(0, 20)}...`);
+    }
+  });
+  
   // Check both X-API-Key and Authorization headers
-  const apiKey = headersList.get('x-api-key') || 
-                 headersList.get('authorization')?.replace('Bearer ', '');
+  const xApiKey = headersList.get('x-api-key');
+  const authHeader = headersList.get('authorization');
+  
+  console.log('[API Auth] X-API-Key header:', xApiKey ? xApiKey.substring(0, 10) + '...' : 'Not found');
+  console.log('[API Auth] Authorization header:', authHeader ? authHeader.substring(0, 20) + '...' : 'Not found');
+  
+  const apiKey = xApiKey || authHeader?.replace('Bearer ', '');
+  
+  console.log('[API Auth] Final API key to validate:', apiKey ? apiKey.substring(0, 10) + '...' : 'None');
   
   const validatedKey = await validateApiKey(apiKey || null);
   
@@ -157,14 +194,16 @@ export async function withApiAuth(
   }
   
   try {
-    const response = await handler(new Request(''), validatedKey);
+    const req = request || new Request(headersList.get('x-url') || '');
+    const response = await handler(req, validatedKey);
     const responseTime = Date.now() - startTime;
     
     // Log usage
+    const url = new URL(req.url || headersList.get('x-url') || '');
     await logApiUsage(
       validatedKey.id,
-      new URL(headersList.get('x-url') || '').pathname,
-      headersList.get('x-method') || 'GET',
+      url.pathname,
+      req.method || headersList.get('x-method') || 'GET',
       response.status,
       responseTime
     );

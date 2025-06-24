@@ -1,11 +1,11 @@
 import { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { SCHEMA_AVAILABILITY } from '@/lib/api/schema';
 
 export async function GET(request: NextRequest) {
   return withApiAuth(async (req, apiKey) => {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const now = new Date().toISOString();
     
     const { data: specials, error } = await supabase
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
         lastUpdated: new Date().toISOString(),
       },
     });
-  }, ['read:menu']);
+  }, ['read:menu'], request);
 }
 
 export async function OPTIONS(request: NextRequest) {

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { format, isAfter, isBefore, startOfDay, parse } from 'date-fns';
 
@@ -7,7 +7,7 @@ const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'frid
 
 export async function GET(request: NextRequest) {
   // This endpoint can be public for SEO purposes
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   
   // Get regular hours
   const { data: regularHours, error: hoursError } = await supabase
