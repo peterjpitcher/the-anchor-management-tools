@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { SCHEMA_AVAILABILITY, SCHEMA_DIET } from '@/lib/api/schema';
 
@@ -21,7 +21,7 @@ export async function GET(
       );
     }
 
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     
     const { data: items, error } = await supabase
       .from('menu_items')
@@ -94,7 +94,7 @@ export async function GET(
         lastUpdated: new Date().toISOString(),
       },
     });
-  }, ['read:menu']);
+  }, ['read:menu'], request);
 }
 
 export async function OPTIONS(request: NextRequest) {

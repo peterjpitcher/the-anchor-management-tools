@@ -1,10 +1,10 @@
 import { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { createApiResponse, createErrorResponse } from '@/lib/api/auth';
 
 export async function GET(request: NextRequest) {
   // This endpoint can be public for SEO purposes
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   
   const { data: amenities, error } = await supabase
     .from('business_amenities')

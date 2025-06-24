@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { z } from 'zod';
 
@@ -26,7 +26,7 @@ export async function POST(
     }
 
     const { seats } = validation.data;
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     
     // Get event details with booking count
     const { data: event, error } = await supabase
@@ -82,7 +82,7 @@ export async function POST(
         time: event.time,
       },
     });
-  }, ['read:events']);
+  }, ['read:events'], request);
 }
 
 export async function OPTIONS(request: NextRequest) {

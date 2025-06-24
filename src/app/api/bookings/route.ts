@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { z } from 'zod';
 import { ukPhoneRegex } from '@/lib/validation';
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { event_id, customer, seats, notes } = validation.data;
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     
     // Start transaction
     // Check event availability
@@ -173,7 +173,7 @@ export async function POST(request: NextRequest) {
       seats,
       sms_opt_in: customer.sms_opt_in,
     }, 201);
-  }, ['write:bookings']);
+  }, ['write:bookings'], request);
 }
 
 export async function OPTIONS(request: NextRequest) {

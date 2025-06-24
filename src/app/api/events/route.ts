@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { eventToSchema } from '@/lib/api/schema';
 import { startOfDay, endOfDay, parseISO } from 'date-fns';
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100);
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     
     // Build query
     let query = supabase
@@ -95,6 +95,6 @@ export async function GET(request: NextRequest) {
         lastUpdated: new Date().toISOString(),
       },
     });
-  }, ['read:events']);
+  }, ['read:events'], request);
 }
 
