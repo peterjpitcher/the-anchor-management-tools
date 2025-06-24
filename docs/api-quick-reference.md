@@ -1,8 +1,13 @@
 # The Anchor API Quick Reference
 
 ## Authentication
+Both methods are supported:
 ```bash
+# Method 1: X-API-Key header (recommended)
 curl -H "X-API-Key: your-api-key" https://management.orangejelly.co.uk/api/events
+
+# Method 2: Authorization Bearer
+curl -H "Authorization: Bearer your-api-key" https://management.orangejelly.co.uk/api/events
 ```
 
 ## Common Endpoints

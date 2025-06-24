@@ -90,9 +90,9 @@ export function createApiResponse(data: any, status: number = 200, headers: Reco
     headers: {
       'Content-Type': 'application/json',
       'Cache-Control': 'public, max-age=60, stale-while-revalidate=120',
-      'Access-Control-Allow-Origin': process.env.NEXT_PUBLIC_APP_URL || '*',
+      'Access-Control-Allow-Origin': '*', // Allow all origins for public API
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
       'X-Powered-By': 'The Anchor API',
       'ETag': etag,
       ...headers,
@@ -125,7 +125,10 @@ export async function withApiAuth(
 ): Promise<Response> {
   const startTime = Date.now();
   const headersList = await headers();
-  const apiKey = headersList.get('authorization')?.replace('Bearer ', '');
+  
+  // Check both X-API-Key and Authorization headers
+  const apiKey = headersList.get('x-api-key') || 
+                 headersList.get('authorization')?.replace('Bearer ', '');
   
   const validatedKey = await validateApiKey(apiKey || null);
   
