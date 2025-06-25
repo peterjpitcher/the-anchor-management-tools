@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { getEventImages, deleteEventImage, updateImageMetadata } from '@/app/actions/event-images'
-import { EventImageUpload } from './EventImageUpload'
+import { EventImageUploadFixed } from './EventImageUploadFixed'
 import { TrashIcon, PencilIcon, XMarkIcon, CheckIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 
@@ -94,7 +94,7 @@ export function EventImageGallery({ eventId, onImagesChange }: EventImageGallery
         <h3 className="text-lg font-medium text-gray-900 mb-4">Gallery Images</h3>
         
         {/* Upload new gallery image */}
-        <EventImageUpload
+        <EventImageUploadFixed
           eventId={eventId}
           imageType="gallery"
           label="Add Gallery Image"
