@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button'
 import toast from 'react-hot-toast'
 import { getActiveEventCategories } from '@/app/actions/event-categories'
 import { PlusIcon, TrashIcon } from '@heroicons/react/24/outline'
-import { EventImageUpload } from './EventImageUpload'
+import { EventImageUploadFixed } from './EventImageUploadFixed'
 import { EventImageGallery } from './EventImageGallery'
 
 interface EventFormProps {
@@ -710,7 +710,7 @@ export function EventFormEnhanced({ event, eventFAQs = [], onSubmit, onCancel }:
           {/* Image Upload Section */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             <div>
-              <EventImageUpload
+              <EventImageUploadFixed
                 eventId={event?.id || 'temp-id'}
                 imageType="hero"
                 currentImageUrl={heroImageUrl}
@@ -722,7 +722,7 @@ export function EventFormEnhanced({ event, eventFAQs = [], onSubmit, onCancel }:
             </div>
 
             <div>
-              <EventImageUpload
+              <EventImageUploadFixed
                 eventId={event?.id || 'temp-id'}
                 imageType="thumbnail"
                 currentImageUrl={thumbnailImageUrl}
@@ -734,7 +734,7 @@ export function EventFormEnhanced({ event, eventFAQs = [], onSubmit, onCancel }:
             </div>
 
             <div>
-              <EventImageUpload
+              <EventImageUploadFixed
                 eventId={event?.id || 'temp-id'}
                 imageType="poster"
                 currentImageUrl={posterImageUrl}
