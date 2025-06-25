@@ -20,7 +20,10 @@ export default function NewEnhancedEventPage() {
       formData.append('name', data.name)
       formData.append('date', data.date)
       formData.append('time', data.time)
-      formData.append('capacity', data.capacity?.toString() || '')
+      // Only append capacity if it has a value, otherwise let server handle null
+      if (data.capacity !== null && data.capacity !== undefined) {
+        formData.append('capacity', data.capacity.toString())
+      }
       formData.append('category_id', data.category_id || '')
       
       // Enhanced SEO fields
