@@ -13,6 +13,7 @@ import {
   StarIcon
 } from '@heroicons/react/24/outline'
 import { createVendor, updateVendor, deleteVendor } from '@/app/actions/privateBookingActions'
+import { VendorDeleteButton } from '@/components/VendorDeleteButton'
 
 async function handleCreateVendor(formData: FormData) {
   'use server'
@@ -326,37 +327,21 @@ export default async function VendorsPage() {
                       <form action={handleUpdateVendor} className="space-y-4">
                         <input type="hidden" name="vendorId" value={vendor.id} />
                         
-                        <div className="flex items-start justify-between mb-4">
-                          <div className="flex items-center gap-3">
-                            <h4 className="text-lg font-medium text-gray-900">{vendor.name}</h4>
-                            {vendor.preferred && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                <StarIcon className="h-3 w-3 mr-1" />
-                                Preferred
-                              </span>
-                            )}
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                              vendor.active 
-                                ? 'bg-green-100 text-green-800' 
-                                : 'bg-gray-100 text-gray-800'
-                            }`}>
-                              {vendor.active ? 'Active' : 'Inactive'}
+                        <div className="flex items-center gap-3 mb-4">
+                          <h4 className="text-lg font-medium text-gray-900">{vendor.name}</h4>
+                          {vendor.preferred && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                              <StarIcon className="h-3 w-3 mr-1" />
+                              Preferred
                             </span>
-                          </div>
-                          <form action={handleDeleteVendor} className="inline">
-                            <input type="hidden" name="vendorId" value={vendor.id} />
-                            <button
-                              type="submit"
-                              className="text-red-600 hover:text-red-700 transition-colors"
-                              onClick={(e) => {
-                                if (!confirm(`Are you sure you want to delete "${vendor.name}"? This action cannot be undone.`)) {
-                                  e.preventDefault()
-                                }
-                              }}
-                            >
-                              <TrashIcon className="h-5 w-5" />
-                            </button>
-                          </form>
+                          )}
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                            vendor.active 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {vendor.active ? 'Active' : 'Inactive'}
+                          </span>
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -507,6 +492,14 @@ export default async function VendorsPage() {
                           Update Vendor
                         </button>
                       </form>
+                      
+                      <div className="mt-4 flex justify-end">
+                        <VendorDeleteButton 
+                          vendorName={vendor.name}
+                          vendorId={vendor.id}
+                          deleteAction={handleDeleteVendor}
+                        />
+                      </div>
                     </div>
                   ))}
                 </div>

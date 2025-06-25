@@ -12,6 +12,7 @@ import {
   UserGroupIcon
 } from '@heroicons/react/24/outline'
 import { createCateringPackage, updateCateringPackage, deleteCateringPackage } from '@/app/actions/privateBookingActions'
+import { CateringPackageDeleteButton } from '@/components/CateringPackageDeleteButton'
 
 async function handleCreatePackage(formData: FormData) {
   'use server'
@@ -366,40 +367,31 @@ export default async function CateringPackagesPage() {
                           />
                         </div>
                         
-                        <div className="flex justify-between items-center">
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="submit"
-                              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-1"
-                            >
-                              <CheckIcon className="h-4 w-4" />
-                              Update
-                            </button>
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              pkg.active 
-                                ? 'bg-green-100 text-green-800' 
-                                : 'bg-gray-100 text-gray-800'
-                            }`}>
-                              {pkg.active ? 'Active' : 'Inactive'}
-                            </span>
-                          </div>
-                          
-                          <form action={handleDeletePackage} className="inline">
-                            <input type="hidden" name="packageId" value={pkg.id} />
-                            <button
-                              type="submit"
-                              className="text-red-600 hover:text-red-700 transition-colors"
-                              onClick={(e) => {
-                                if (!confirm(`Are you sure you want to delete "${pkg.name}"? This action cannot be undone.`)) {
-                                  e.preventDefault()
-                                }
-                              }}
-                            >
-                              <TrashIcon className="h-5 w-5" />
-                            </button>
-                          </form>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="submit"
+                            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-1"
+                          >
+                            <CheckIcon className="h-4 w-4" />
+                            Update
+                          </button>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            pkg.active 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {pkg.active ? 'Active' : 'Inactive'}
+                          </span>
                         </div>
                       </form>
+                      
+                      <div className="mt-4 flex justify-end">
+                        <CateringPackageDeleteButton 
+                          packageName={pkg.name}
+                          packageId={pkg.id}
+                          deleteAction={handleDeletePackage}
+                        />
+                      </div>
                     </div>
                   ))}
                 </div>
