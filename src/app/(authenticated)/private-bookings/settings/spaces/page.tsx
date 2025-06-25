@@ -12,6 +12,7 @@ import {
   XMarkIcon
 } from '@heroicons/react/24/outline'
 import { createVenueSpace, updateVenueSpace, deleteVenueSpace } from '@/app/actions/privateBookingActions'
+import { VenueSpaceDeleteButton } from '@/components/VenueSpaceDeleteButton'
 
 async function handleCreateSpace(formData: FormData) {
   'use server'
@@ -131,7 +132,7 @@ export default async function VenueSpacesPage() {
             </div>
             <div>
               <label htmlFor="capacity" className="block text-sm font-medium text-gray-700 mb-1">
-                Capacity
+                Seated Capacity
               </label>
               <input
                 type="number"
@@ -145,7 +146,7 @@ export default async function VenueSpacesPage() {
             </div>
             <div>
               <label htmlFor="hire_cost" className="block text-sm font-medium text-gray-700 mb-1">
-                Hire Cost (£)
+                Hourly Rate (£)
               </label>
               <input
                 type="number"
@@ -155,7 +156,7 @@ export default async function VenueSpacesPage() {
                 min="0"
                 step="0.01"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="250.00"
+                placeholder="50.00"
               />
             </div>
             <div>
@@ -232,12 +233,12 @@ export default async function VenueSpacesPage() {
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           <UserGroupIcon className="h-4 w-4 inline mr-1" />
-                          Capacity
+                          Seated Capacity
                         </label>
                         <input
                           type="number"
                           name="capacity"
-                          defaultValue={space.capacity}
+                          defaultValue={space.capacity_seated}
                           required
                           min="1"
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -246,12 +247,12 @@ export default async function VenueSpacesPage() {
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           <CurrencyPoundIcon className="h-4 w-4 inline mr-1" />
-                          Hire Cost
+                          Hourly Rate
                         </label>
                         <input
                           type="number"
                           name="hire_cost"
-                          defaultValue={space.hire_cost}
+                          defaultValue={space.rate_per_hour}
                           required
                           min="0"
                           step="0.01"
@@ -264,7 +265,7 @@ export default async function VenueSpacesPage() {
                         </label>
                         <select
                           name="is_active"
-                          defaultValue={space.is_active ? 'true' : 'false'}
+                          defaultValue={space.active ? 'true' : 'false'}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
                           <option value="true">Active</option>
@@ -298,11 +299,11 @@ export default async function VenueSpacesPage() {
                   <div className="mt-4 flex justify-between items-center">
                     <div className="flex items-center gap-2">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        space.is_active 
+                        space.active 
                           ? 'bg-green-100 text-green-800' 
                           : 'bg-gray-100 text-gray-800'
                       }`}>
-                        {space.is_active ? (
+                        {space.active ? (
                           <>
                             <CheckIcon className="h-3 w-3 mr-1" />
                             Active
@@ -319,20 +320,11 @@ export default async function VenueSpacesPage() {
                       </span>
                     </div>
                     
-                    <form action={handleDeleteSpace} className="inline">
-                      <input type="hidden" name="spaceId" value={space.id} />
-                      <button
-                        type="submit"
-                        className="text-red-600 hover:text-red-700 transition-colors"
-                        onClick={(e) => {
-                          if (!confirm(`Are you sure you want to delete "${space.name}"? This action cannot be undone.`)) {
-                            e.preventDefault()
-                          }
-                        }}
-                      >
-                        <TrashIcon className="h-5 w-5" />
-                      </button>
-                    </form>
+                    <VenueSpaceDeleteButton 
+                      spaceName={space.name}
+                      spaceId={space.id}
+                      deleteAction={handleDeleteSpace}
+                    />
                   </div>
                 </div>
               ))}
