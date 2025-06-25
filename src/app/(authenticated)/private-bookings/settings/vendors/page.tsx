@@ -91,8 +91,8 @@ export default async function VendorsPage() {
   const { data: vendors, error } = await supabase
     .from('vendors')
     .select('*')
-    .order('vendor_type', { ascending: true })
-    .order('is_preferred', { ascending: false })
+    .order('service_type', { ascending: true })
+    .order('preferred', { ascending: false })
     .order('name', { ascending: true })
 
   if (error) {
@@ -101,7 +101,7 @@ export default async function VendorsPage() {
 
   // Group vendors by type
   const vendorsByType = vendors?.reduce((acc, vendor) => {
-    const type = vendor.vendor_type
+    const type = vendor.service_type
     if (!acc[type]) acc[type] = []
     acc[type].push(vendor)
     return acc
@@ -329,18 +329,18 @@ export default async function VendorsPage() {
                         <div className="flex items-start justify-between mb-4">
                           <div className="flex items-center gap-3">
                             <h4 className="text-lg font-medium text-gray-900">{vendor.name}</h4>
-                            {vendor.is_preferred && (
+                            {vendor.preferred && (
                               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                                 <StarIcon className="h-3 w-3 mr-1" />
                                 Preferred
                               </span>
                             )}
                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                              vendor.is_active 
+                              vendor.active 
                                 ? 'bg-green-100 text-green-800' 
                                 : 'bg-gray-100 text-gray-800'
                             }`}>
-                              {vendor.is_active ? 'Active' : 'Inactive'}
+                              {vendor.active ? 'Active' : 'Inactive'}
                             </span>
                           </div>
                           <form action={handleDeleteVendor} className="inline">
@@ -378,7 +378,7 @@ export default async function VendorsPage() {
                             </label>
                             <select
                               name="vendor_type"
-                              defaultValue={vendor.vendor_type}
+                              defaultValue={vendor.service_type}
                               required
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             >
@@ -415,7 +415,7 @@ export default async function VendorsPage() {
                             <input
                               type="tel"
                               name="phone"
-                              defaultValue={vendor.phone || ''}
+                              defaultValue={vendor.contact_phone || ''}
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             />
                           </div>
@@ -465,7 +465,7 @@ export default async function VendorsPage() {
                             </label>
                             <select
                               name="is_preferred"
-                              defaultValue={vendor.is_preferred ? 'true' : 'false'}
+                              defaultValue={vendor.preferred ? 'true' : 'false'}
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             >
                               <option value="false">Regular Vendor</option>
@@ -478,7 +478,7 @@ export default async function VendorsPage() {
                             </label>
                             <select
                               name="is_active"
-                              defaultValue={vendor.is_active ? 'true' : 'false'}
+                              defaultValue={vendor.active ? 'true' : 'false'}
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             >
                               <option value="true">Active</option>

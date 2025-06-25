@@ -85,7 +85,7 @@ export default async function CateringPackagesPage() {
     .from('catering_packages')
     .select('*')
     .order('package_type', { ascending: true })
-    .order('per_head_cost', { ascending: true })
+    .order('cost_per_head', { ascending: true })
 
   if (error) {
     console.error('Error fetching catering packages:', error)
@@ -304,7 +304,7 @@ export default async function CateringPackagesPage() {
                             <input
                               type="number"
                               name="per_head_cost"
-                              defaultValue={pkg.per_head_cost}
+                              defaultValue={pkg.cost_per_head}
                               required
                               min="0"
                               step="0.01"
@@ -319,7 +319,7 @@ export default async function CateringPackagesPage() {
                             <input
                               type="number"
                               name="minimum_order"
-                              defaultValue={pkg.minimum_order || ''}
+                              defaultValue={pkg.minimum_guests || ''}
                               min="0"
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             />
@@ -333,7 +333,7 @@ export default async function CateringPackagesPage() {
                             </label>
                             <select
                               name="is_active"
-                              defaultValue={pkg.is_active ? 'true' : 'false'}
+                              defaultValue={pkg.active ? 'true' : 'false'}
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             >
                               <option value="true">Active</option>
@@ -376,11 +376,11 @@ export default async function CateringPackagesPage() {
                               Update
                             </button>
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              pkg.is_active 
+                              pkg.active 
                                 ? 'bg-green-100 text-green-800' 
                                 : 'bg-gray-100 text-gray-800'
                             }`}>
-                              {pkg.is_active ? 'Active' : 'Inactive'}
+                              {pkg.active ? 'Active' : 'Inactive'}
                             </span>
                           </div>
                           

@@ -15,6 +15,12 @@ interface EventCategoryFormEnhancedProps {
 }
 
 export function EventCategoryFormEnhanced({ category, onSuccess, onCancel }: EventCategoryFormEnhancedProps) {
+  // Helper function to format time to HH:MM
+  const formatTimeToHHMM = (timeStr: string | null | undefined) => {
+    if (!timeStr) return ''
+    return timeStr.substring(0, 5)
+  }
+
   // Basic fields
   const [name, setName] = useState(category?.name ?? '')
   const [slug, setSlug] = useState(category?.slug ?? '')
@@ -25,8 +31,8 @@ export function EventCategoryFormEnhanced({ category, onSuccess, onCancel }: Eve
   const [sortOrder, setSortOrder] = useState(category?.sort_order?.toString() ?? '0')
   
   // Default event settings
-  const [defaultStartTime, setDefaultStartTime] = useState(category?.default_start_time ?? '19:00')
-  const [defaultEndTime, setDefaultEndTime] = useState(category?.default_end_time ?? '22:00')
+  const [defaultStartTime, setDefaultStartTime] = useState(formatTimeToHHMM(category?.default_start_time))
+  const [defaultEndTime, setDefaultEndTime] = useState(formatTimeToHHMM(category?.default_end_time))
   const [defaultCapacity, setDefaultCapacity] = useState(category?.default_capacity?.toString() ?? '')
   const [defaultReminderHours, setDefaultReminderHours] = useState(category?.default_reminder_hours?.toString() ?? '24')
   const [defaultPrice, setDefaultPrice] = useState(category?.default_price?.toString() ?? '0')
@@ -61,7 +67,7 @@ export function EventCategoryFormEnhanced({ category, onSuccess, onCancel }: Eve
     category?.default_duration_minutes?.toString() ?? ''
   )
   const [defaultDoorsTime, setDefaultDoorsTime] = useState(category?.default_doors_time ?? '')
-  const [defaultLastEntryTime, setDefaultLastEntryTime] = useState(category?.default_last_entry_time ?? '')
+  const [defaultLastEntryTime, setDefaultLastEntryTime] = useState(formatTimeToHHMM(category?.default_last_entry_time))
   
   // Form state
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -149,7 +155,7 @@ export function EventCategoryFormEnhanced({ category, onSuccess, onCancel }: Eve
     try {
       const formData: CategoryFormData = {
         name: name.trim(),
-        slug: slug.trim(),
+        slug: slug.trim() || undefined,
         description: description.trim() || undefined,
         color,
         icon,
@@ -165,10 +171,11 @@ export function EventCategoryFormEnhanced({ category, onSuccess, onCancel }: Eve
         default_event_status: defaultEventStatus,
         default_booking_url: defaultBookingUrl || undefined,
         default_image_url: defaultImageUrl || undefined,
+        meta_description: metaDescription || undefined,
+        // Now including the new fields since migration is applied
         short_description: shortDescription || undefined,
         long_description: longDescription || undefined,
         meta_title: metaTitle || undefined,
-        meta_description: metaDescription || undefined,
         highlights: highlights.length > 0 ? highlights : undefined,
         keywords: keywords.length > 0 ? keywords : undefined,
         gallery_image_urls: galleryImageUrls.length > 0 ? galleryImageUrls : undefined,
@@ -281,6 +288,17 @@ export function EventCategoryFormEnhanced({ category, onSuccess, onCancel }: Eve
             </label>
           </div>
         </div>
+
+        <div className="sm:col-span-2">
+          <label className="block text-sm font-medium text-gray-700">Standard Description</label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={3}
+            placeholder="Standard category description"
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          />
+        </div>
       </div>
 
       {/* Content & SEO */}
@@ -288,49 +306,55 @@ export function EventCategoryFormEnhanced({ category, onSuccess, onCancel }: Eve
         <h3 className="text-lg font-medium text-gray-900">Content & SEO</h3>
         
         <div>
-          <label className="block text-sm font-medium text-gray-700">Short Description</label>
-          <input
-            type="text"
+          <label className="block text-sm font-medium text-gray-700">Short Description (50-150 characters)</label>
+          <textarea
             value={shortDescription}
             onChange={(e) => setShortDescription(e.target.value)}
-            placeholder="Brief description (50-150 characters)"
+            rows={2}
             maxLength={150}
+            placeholder="Brief description for list views and search results"
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
           />
-          <p className="mt-1 text-sm text-gray-500">{shortDescription.length}/150 characters</p>
+          <p className="mt-1 text-xs text-gray-500">{shortDescription.length}/150 characters</p>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">Long Description</label>
+          <label className="block text-sm font-medium text-gray-700">Full Description (HTML/Markdown)</label>
           <textarea
             value={longDescription}
             onChange={(e) => setLongDescription(e.target.value)}
-            rows={4}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+            rows={6}
+            placeholder="<p>Full HTML content for the event category page...</p>"
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm font-mono text-xs"
           />
+          <p className="mt-1 text-xs text-gray-500">Supports HTML and Markdown for rich content</p>
         </div>
 
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           <div>
-            <label className="block text-sm font-medium text-gray-700">Meta Title</label>
+            <label className="block text-sm font-medium text-gray-700">SEO Page Title</label>
             <input
               type="text"
               value={metaTitle}
               onChange={(e) => setMetaTitle(e.target.value)}
-              placeholder="SEO page title"
+              maxLength={60}
+              placeholder="Custom page title (defaults to category name)"
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
             />
+            <p className="mt-1 text-xs text-gray-500">{metaTitle.length}/60 characters</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Meta Description</label>
+            <label className="block text-sm font-medium text-gray-700">SEO Meta Description</label>
             <textarea
               value={metaDescription}
               onChange={(e) => setMetaDescription(e.target.value)}
-              placeholder="SEO page description"
+              placeholder="Custom meta description for search engines"
               rows={2}
+              maxLength={160}
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
             />
+            <p className="mt-1 text-xs text-gray-500">{metaDescription.length}/160 characters</p>
           </div>
         </div>
 
@@ -356,7 +380,7 @@ export function EventCategoryFormEnhanced({ category, onSuccess, onCancel }: Eve
                 value={newHighlight}
                 onChange={(e) => setNewHighlight(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addHighlight())}
-                placeholder="Add a highlight"
+                placeholder="Add a highlight (e.g., 'Family-friendly atmosphere')"
                 className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
               />
               <button
@@ -397,7 +421,7 @@ export function EventCategoryFormEnhanced({ category, onSuccess, onCancel }: Eve
                 value={newKeyword}
                 onChange={(e) => setNewKeyword(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addKeyword())}
-                placeholder="Add a keyword"
+                placeholder="Add a keyword (e.g., 'quiz night stanwell moor')"
                 className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
               />
               <button
@@ -454,6 +478,8 @@ export function EventCategoryFormEnhanced({ category, onSuccess, onCancel }: Eve
               type="number"
               value={defaultCapacity}
               onChange={(e) => setDefaultCapacity(e.target.value)}
+              min="1"
+              placeholder="Leave empty for unlimited"
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
             />
           </div>
@@ -467,6 +493,7 @@ export function EventCategoryFormEnhanced({ category, onSuccess, onCancel }: Eve
               placeholder="e.g., 30 minutes before"
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
             />
+            <p className="mt-1 text-xs text-gray-500">Descriptive text like "30 minutes before" or "1 hour before start"</p>
           </div>
 
           <div>
@@ -484,8 +511,10 @@ export function EventCategoryFormEnhanced({ category, onSuccess, onCancel }: Eve
             <input
               type="number"
               step="0.01"
+              min="0"
               value={defaultPrice}
               onChange={(e) => setDefaultPrice(e.target.value)}
+              placeholder="0.00"
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
             />
           </div>
@@ -509,11 +538,13 @@ export function EventCategoryFormEnhanced({ category, onSuccess, onCancel }: Eve
               onChange={(e) => setDefaultPerformerType(e.target.value)}
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
             >
-              <option value="">None</option>
-              <option value="Person">Person</option>
-              <option value="MusicGroup">Music Group</option>
+              <option value="">Select type...</option>
+              <option value="MusicGroup">Music Group/Band</option>
+              <option value="Person">Solo Artist</option>
+              <option value="TheaterGroup">Theater Group</option>
+              <option value="DanceGroup">Dance Group</option>
+              <option value="ComedyGroup">Comedy Group</option>
               <option value="Organization">Organization</option>
-              <option value="PerformingGroup">Performing Group</option>
             </select>
           </div>
 
@@ -546,14 +577,15 @@ export function EventCategoryFormEnhanced({ category, onSuccess, onCancel }: Eve
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Default Booking URL</label>
+            <label className="block text-sm font-medium text-gray-700">Default External Booking URL</label>
             <input
               type="url"
               value={defaultBookingUrl}
               onChange={(e) => setDefaultBookingUrl(e.target.value)}
-              placeholder="External booking link"
+              placeholder="https://example.com/book-tickets"
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
             />
+            <p className="mt-1 text-xs text-gray-500">External URL for ticket booking if not using internal system</p>
           </div>
         </div>
       </div>
@@ -569,6 +601,7 @@ export function EventCategoryFormEnhanced({ category, onSuccess, onCancel }: Eve
               type="url"
               value={defaultImageUrl}
               onChange={(e) => setDefaultImageUrl(e.target.value)}
+              placeholder="https://example.com/hero.jpg (1200x630 minimum for Open Graph)"
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
             />
           </div>
@@ -579,16 +612,18 @@ export function EventCategoryFormEnhanced({ category, onSuccess, onCancel }: Eve
               type="url"
               value={thumbnailImageUrl}
               onChange={(e) => setThumbnailImageUrl(e.target.value)}
+              placeholder="https://example.com/thumbnail.jpg (400x400 square for list views)"
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Poster Image URL</label>
+            <label className="block text-sm font-medium text-gray-700">Poster/Flyer Image URL</label>
             <input
               type="url"
               value={posterImageUrl}
               onChange={(e) => setPosterImageUrl(e.target.value)}
+              placeholder="https://example.com/poster.jpg (event poster or flyer)"
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
             />
           </div>
@@ -599,6 +634,7 @@ export function EventCategoryFormEnhanced({ category, onSuccess, onCancel }: Eve
               type="url"
               value={promoVideoUrl}
               onChange={(e) => setPromoVideoUrl(e.target.value)}
+              placeholder="https://youtube.com/watch?v=..."
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
             />
           </div>
@@ -626,7 +662,7 @@ export function EventCategoryFormEnhanced({ category, onSuccess, onCancel }: Eve
                 value={newGalleryUrl}
                 onChange={(e) => setNewGalleryUrl(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addGalleryImage())}
-                placeholder="Add gallery image URL"
+                placeholder="https://example.com/gallery-image.jpg"
                 className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
               />
               <button
@@ -662,7 +698,7 @@ export function EventCategoryFormEnhanced({ category, onSuccess, onCancel }: Eve
                 value={newVideoUrl}
                 onChange={(e) => setNewVideoUrl(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addHighlightVideo())}
-                placeholder="Add video URL"
+                placeholder="https://youtube.com/watch?v=... or vimeo.com/..."
                 className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
               />
               <button
@@ -693,20 +729,28 @@ export function EventCategoryFormEnhanced({ category, onSuccess, onCancel }: Eve
         
         <div className="space-y-4">
           {faqs.map((faq, index) => (
-            <div key={index} className="bg-gray-50 p-4 rounded-lg space-y-3">
-              <div className="flex items-start gap-3">
-                <div className="flex-1 space-y-3">
+            <div key={index} className="p-4 border border-gray-200 rounded-lg">
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-900 mb-1">
+                    Question {index + 1}
+                  </label>
                   <input
                     type="text"
                     value={faq.question}
                     onChange={(e) => updateFaq(index, 'question', e.target.value)}
-                    placeholder="Question"
+                    placeholder="e.g., What is the minimum age for this type of event?"
                     className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-900 mb-1">
+                    Answer
+                  </label>
                   <textarea
                     value={faq.answer}
                     onChange={(e) => updateFaq(index, 'answer', e.target.value)}
-                    placeholder="Answer"
+                    placeholder="Provide a helpful answer..."
                     rows={2}
                     className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                   />
@@ -714,9 +758,10 @@ export function EventCategoryFormEnhanced({ category, onSuccess, onCancel }: Eve
                 <button
                   type="button"
                   onClick={() => removeFaq(index)}
-                  className="text-red-600 hover:text-red-800"
+                  className="text-red-600 hover:text-red-800 text-sm flex items-center"
                 >
-                  <TrashIcon className="h-5 w-5" />
+                  <TrashIcon className="h-4 w-4 mr-1" />
+                  Remove FAQ
                 </button>
               </div>
             </div>

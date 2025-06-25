@@ -969,9 +969,21 @@ export async function createVenueSpace(data: {
 }) {
   const supabase = await createClient()
   
+  // Map to correct database columns
+  const dbData = {
+    name: data.name,
+    capacity_seated: data.capacity,
+    rate_per_hour: data.hire_cost,
+    description: data.description,
+    active: data.is_active,
+    minimum_hours: 1, // Default value
+    setup_fee: 0, // Default value
+    display_order: 0 // Default value
+  }
+  
   const { error } = await supabase
     .from('venue_spaces')
-    .insert(data)
+    .insert(dbData)
   
   if (error) {
     console.error('Error creating venue space:', error)
@@ -991,9 +1003,18 @@ export async function updateVenueSpace(id: string, data: {
 }) {
   const supabase = await createClient()
   
+  // Map to correct database columns
+  const dbData = {
+    name: data.name,
+    capacity_seated: data.capacity,
+    rate_per_hour: data.hire_cost,
+    description: data.description,
+    active: data.is_active
+  }
+  
   const { error } = await supabase
     .from('venue_spaces')
-    .update(data)
+    .update(dbData)
     .eq('id', id)
   
   if (error) {
@@ -1034,9 +1055,21 @@ export async function createCateringPackage(data: {
 }) {
   const supabase = await createClient()
   
+  // Map to correct database columns
+  const dbData = {
+    name: data.name,
+    package_type: data.package_type,
+    cost_per_head: data.per_head_cost,
+    minimum_guests: data.minimum_order,
+    description: data.description,
+    includes: data.includes,
+    active: data.is_active,
+    display_order: 0 // Default value
+  }
+  
   const { error } = await supabase
     .from('catering_packages')
-    .insert(data)
+    .insert(dbData)
   
   if (error) {
     console.error('Error creating catering package:', error)
@@ -1058,9 +1091,20 @@ export async function updateCateringPackage(id: string, data: {
 }) {
   const supabase = await createClient()
   
+  // Map to correct database columns
+  const dbData = {
+    name: data.name,
+    package_type: data.package_type,
+    cost_per_head: data.per_head_cost,
+    minimum_guests: data.minimum_order,
+    description: data.description,
+    includes: data.includes,
+    active: data.is_active
+  }
+  
   const { error } = await supabase
     .from('catering_packages')
-    .update(data)
+    .update(dbData)
     .eq('id', id)
   
   if (error) {
@@ -1245,9 +1289,23 @@ export async function createVendor(data: {
 }) {
   const supabase = await createClient()
   
+  // Map to correct database columns
+  const dbData = {
+    name: data.name,
+    service_type: data.vendor_type,
+    contact_name: data.contact_name,
+    contact_phone: data.phone,
+    email: data.email,
+    website: data.website,
+    typical_rate: data.typical_rate,
+    notes: data.notes,
+    preferred: data.is_preferred,
+    active: data.is_active
+  }
+  
   const { error } = await supabase
     .from('vendors')
-    .insert(data)
+    .insert(dbData)
   
   if (error) {
     console.error('Error creating vendor:', error)
@@ -1272,9 +1330,23 @@ export async function updateVendor(id: string, data: {
 }) {
   const supabase = await createClient()
   
+  // Map to correct database columns
+  const dbData = {
+    name: data.name,
+    service_type: data.vendor_type,
+    contact_name: data.contact_name,
+    contact_phone: data.phone,
+    email: data.email,
+    website: data.website,
+    typical_rate: data.typical_rate,
+    notes: data.notes,
+    preferred: data.is_preferred,
+    active: data.is_active
+  }
+  
   const { error } = await supabase
     .from('vendors')
-    .update(data)
+    .update(dbData)
     .eq('id', id)
   
   if (error) {
