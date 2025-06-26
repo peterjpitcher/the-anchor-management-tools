@@ -26,51 +26,57 @@ ADD COLUMN IF NOT EXISTS image_url TEXT;
 ALTER TABLE event_categories
 ADD COLUMN IF NOT EXISTS image_url TEXT;
 
--- Step 3: Migrate existing image data to new image_url field
--- For events: use hero_image_url first, then thumbnail, then poster
-UPDATE events
-SET image_url = COALESCE(
-    hero_image_url,
-    thumbnail_image_url,
-    poster_image_url,
-    CASE 
-        WHEN gallery_image_urls IS NOT NULL AND array_length(gallery_image_urls, 1) > 0 
-        THEN gallery_image_urls[1] 
-        ELSE NULL 
-    END
-)
-WHERE image_url IS NULL;
+-- Step 3: Migrate existing image data only if old columns exist
+DO $$
+BEGIN
+    -- Check if old columns exist in events table
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'events' AND column_name = 'hero_image_url') THEN
+        -- Migrate events image data
+        UPDATE events
+        SET image_url = COALESCE(
+            hero_image_url,
+            thumbnail_image_url,
+            poster_image_url,
+            CASE 
+                WHEN gallery_image_urls IS NOT NULL AND jsonb_typeof(gallery_image_urls) = 'array' AND jsonb_array_length(gallery_image_urls) > 0 
+                THEN gallery_image_urls->>0 
+                ELSE NULL 
+            END
+        )
+        WHERE image_url IS NULL;
+        
+        -- Drop old columns from events
+        ALTER TABLE events
+        DROP COLUMN IF EXISTS hero_image_url,
+        DROP COLUMN IF EXISTS thumbnail_image_url,
+        DROP COLUMN IF EXISTS poster_image_url,
+        DROP COLUMN IF EXISTS gallery_image_urls;
+    END IF;
+    
+    -- Check if old columns exist in event_categories table
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'event_categories' AND column_name = 'default_image_url') THEN
+        -- Migrate categories image data
+        UPDATE event_categories
+        SET image_url = COALESCE(
+            default_image_url,
+            thumbnail_image_url,
+            poster_image_url
+        )
+        WHERE image_url IS NULL;
+        
+        -- Drop old columns from event_categories
+        ALTER TABLE event_categories
+        DROP COLUMN IF EXISTS default_image_url,
+        DROP COLUMN IF EXISTS thumbnail_image_url,
+        DROP COLUMN IF EXISTS poster_image_url,
+        DROP COLUMN IF EXISTS gallery_image_urls;
+    END IF;
+END $$;
 
--- For event_categories: use default_image_url first, then thumbnail, then poster
-UPDATE event_categories
-SET image_url = COALESCE(
-    default_image_url,
-    thumbnail_image_url,
-    poster_image_url
-)
-WHERE image_url IS NULL;
-
--- Step 4: Drop old image columns from events table
-ALTER TABLE events
-DROP COLUMN IF EXISTS hero_image_url,
-DROP COLUMN IF EXISTS thumbnail_image_url,
-DROP COLUMN IF EXISTS poster_image_url,
-DROP COLUMN IF EXISTS gallery_image_urls;
-
--- Step 5: Drop old image columns from event_categories table
-ALTER TABLE event_categories
-DROP COLUMN IF EXISTS default_image_url,
-DROP COLUMN IF EXISTS thumbnail_image_url,
-DROP COLUMN IF EXISTS poster_image_url,
-DROP COLUMN IF EXISTS gallery_image_urls;
-
--- Step 6: Add comments for clarity
+-- Step 4: Add comments for clarity
 COMMENT ON COLUMN events.image_url IS 'Single square image for the event';
 COMMENT ON COLUMN event_categories.image_url IS 'Default square image for events in this category';
 
--- Step 7: Update any views that might reference old columns
--- None found in current schema
-
--- Step 8: Create index on new image_url columns for performance
+-- Step 5: Create indexes on new image_url columns for performance
 CREATE INDEX IF NOT EXISTS idx_events_image_url ON events(image_url) WHERE image_url IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_event_categories_image_url ON event_categories(image_url) WHERE image_url IS NOT NULL;
