@@ -113,20 +113,41 @@ export interface CategoryFormData {
   }>
 }
 
+import {
+  AcademicCapIcon,
+  BeakerIcon,
+  SquaresPlusIcon,
+  SparklesIcon,
+  MusicalNoteIcon,
+  CakeIcon,
+  GlobeAltIcon,
+  HeartIcon,
+  StarIcon,
+  TrophyIcon,
+  CalendarIcon,
+  UsersIcon,
+  MicrophoneIcon,
+  FilmIcon,
+  PaintBrushIcon
+} from '@heroicons/react/24/outline'
+
 // Icon options for categories
 export const CATEGORY_ICONS = [
-  { value: 'AcademicCapIcon', label: '🎓 Academic', icon: 'AcademicCapIcon' },
-  { value: 'BeakerIcon', label: '🧪 Science', icon: 'BeakerIcon' },
-  { value: 'SquaresPlusIcon', label: '🎯 Games', icon: 'SquaresPlusIcon' },
-  { value: 'SparklesIcon', label: '✨ Sparkles', icon: 'SparklesIcon' },
-  { value: 'MusicalNoteIcon', label: '🎵 Music', icon: 'MusicalNoteIcon' },
-  { value: 'CakeIcon', label: '🎂 Party', icon: 'CakeIcon' },
-  { value: 'GlobeAltIcon', label: '🌍 Global', icon: 'GlobeAltIcon' },
-  { value: 'HeartIcon', label: '❤️ Love', icon: 'HeartIcon' },
-  { value: 'StarIcon', label: '⭐ Star', icon: 'StarIcon' },
-  { value: 'TrophyIcon', label: '🏆 Trophy', icon: 'TrophyIcon' },
-  { value: 'FilmIcon', label: '🎬 Film', icon: 'FilmIcon' },
-  { value: 'MicrophoneIcon', label: '🎤 Microphone', icon: 'MicrophoneIcon' },
+  { value: 'AcademicCapIcon', label: 'Academic', icon: AcademicCapIcon },
+  { value: 'BeakerIcon', label: 'Science', icon: BeakerIcon },
+  { value: 'SquaresPlusIcon', label: 'Games', icon: SquaresPlusIcon },
+  { value: 'SparklesIcon', label: 'Special', icon: SparklesIcon },
+  { value: 'MusicalNoteIcon', label: 'Music', icon: MusicalNoteIcon },
+  { value: 'CakeIcon', label: 'Party', icon: CakeIcon },
+  { value: 'GlobeAltIcon', label: 'Global', icon: GlobeAltIcon },
+  { value: 'HeartIcon', label: 'Love', icon: HeartIcon },
+  { value: 'StarIcon', label: 'Featured', icon: StarIcon },
+  { value: 'TrophyIcon', label: 'Competition', icon: TrophyIcon },
+  { value: 'CalendarIcon', label: 'Calendar', icon: CalendarIcon },
+  { value: 'UsersIcon', label: 'Community', icon: UsersIcon },
+  { value: 'MicrophoneIcon', label: 'Microphone', icon: MicrophoneIcon },
+  { value: 'FilmIcon', label: 'Film', icon: FilmIcon },
+  { value: 'PaintBrushIcon', label: 'Art', icon: PaintBrushIcon },
 ] as const
 
 // Color presets for categories

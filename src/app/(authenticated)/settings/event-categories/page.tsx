@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { 
   getEventCategories, 
+  createEventCategoryFromFormData,
+  updateEventCategoryFromFormData,
   deleteEventCategory,
   categorizeHistoricalEvents,
   rebuildCustomerCategoryStats 
@@ -11,7 +13,7 @@ import { EventCategory } from '@/types/event-categories'
 import { PlusIcon, PencilIcon, TrashIcon, SparklesIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/Button'
-import { EventCategoryFormEnhanced } from '@/components/EventCategoryFormEnhanced'
+import { EventCategoryFormSimple } from '@/components/EventCategoryFormSimple'
 
 export default function EventCategoriesPage() {
   const [categories, setCategories] = useState<EventCategory[]>([])
@@ -159,9 +161,33 @@ export default function EventCategoriesPage() {
             <h2 className="text-xl font-semibold mb-4">
               {editingCategory ? 'Edit Event Category' : 'Create Event Category'}
             </h2>
-            <EventCategoryFormEnhanced
+            <EventCategoryFormSimple
               category={editingCategory}
-              onSuccess={handleCloseForm}
+              onSubmit={async (data) => {
+                try {
+                  const formData = new FormData()
+                  Object.entries(data).forEach(([key, value]) => {
+                    if (value !== null && value !== undefined) {
+                      if (typeof value === 'object') {
+                        formData.append(key, JSON.stringify(value))
+                      } else {
+                        formData.append(key, value.toString())
+                      }
+                    }
+                  })
+                  
+                  if (editingCategory) {
+                    await updateEventCategoryFromFormData(editingCategory.id, formData)
+                    toast.success('Category updated successfully')
+                  } else {
+                    await createEventCategoryFromFormData(formData)
+                    toast.success('Category created successfully')
+                  }
+                  handleCloseForm()
+                } catch (error) {
+                  toast.error('Failed to save category')
+                }
+              }}
               onCancel={handleCloseForm}
             />
           </div>

@@ -12,8 +12,9 @@ const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'
 
 // Schema for image upload
 const uploadImageSchema = z.object({
-  event_id: z.string().uuid(),
-  image_type: z.enum(['hero', 'thumbnail', 'poster', 'gallery']),
+  event_id: z.string().uuid().optional(), // Optional for categories
+  category_id: z.string().uuid().optional(), // For category images
+  image_type: z.enum(['hero', 'thumbnail', 'poster', 'gallery', 'primary']), // Added 'primary' for single image
   alt_text: z.string().optional(),
   caption: z.string().optional(),
   display_order: z.number().int().min(0).optional()
@@ -23,7 +24,6 @@ export type ImageUploadState = {
   type: 'idle' | 'success' | 'error'
   message?: string
   imageUrl?: string
-  imageId?: string
 }
 
 export async function uploadEventImage(
@@ -56,6 +56,7 @@ export async function uploadEventImage(
     // Validate other fields
     const fields = {
       event_id: formData.get('event_id') as string,
+      category_id: formData.get('category_id') as string,
       image_type: formData.get('image_type') as string,
       alt_text: formData.get('alt_text') as string,
       caption: formData.get('caption') as string,
@@ -67,7 +68,12 @@ export async function uploadEventImage(
       return { type: 'error', message: 'Invalid form data.' }
     }
 
-    const { event_id, image_type, alt_text, caption, display_order } = validationResult.data
+    const { event_id, category_id, image_type, alt_text, caption, display_order } = validationResult.data
+    
+    // Ensure we have either event_id or category_id
+    if (!event_id && !category_id) {
+      return { type: 'error', message: 'Either event_id or category_id is required.' }
+    }
     const supabase = await createClient()
 
     // Get authenticated user
@@ -84,7 +90,8 @@ export async function uploadEventImage(
       .replace(/^[._-]+|[._-]+$/g, '')
     
     const finalFileName = sanitizedFileName || 'unnamed_image'
-    const uniqueFileName = `${event_id}/${image_type}/${Date.now()}_${finalFileName}`
+    const folder = event_id ? `events/${event_id}` : `categories/${category_id}`
+    const uniqueFileName = `${folder}/${image_type}/${Date.now()}_${finalFileName}`
 
     // Upload to storage
     const { data: uploadData, error: uploadError } = await supabase.storage
@@ -106,64 +113,91 @@ export async function uploadEventImage(
       .from(BUCKET_NAME)
       .getPublicUrl(storagePath)
 
-    // Save metadata to database
-    const { data: imageRecord, error: dbError } = await supabase
-      .from('event_images')
-      .insert({
-        event_id,
-        storage_path: storagePath,
-        file_name: file.name,
-        mime_type: file.type,
-        file_size_bytes: file.size,
-        image_type,
-        alt_text,
-        caption,
-        display_order: display_order || 0,
-        uploaded_by: user.id
-      })
-      .select()
-      .single()
+    // Save metadata to database if it's an event image
+    if (event_id) {
+      const { data: imageRecord, error: dbError } = await supabase
+        .from('event_images')
+        .insert({
+          event_id,
+          storage_path: storagePath,
+          file_name: file.name,
+          mime_type: file.type,
+          file_size_bytes: file.size,
+          image_type,
+          alt_text,
+          caption,
+          display_order: display_order || 0,
+          uploaded_by: user.id
+        })
+        .select()
+        .single()
 
-    if (dbError) {
-      // Clean up uploaded file on database error
-      console.error('Database insert error:', dbError)
-      await supabase.storage.from(BUCKET_NAME).remove([storagePath])
-      return { type: 'error', message: 'Failed to save image metadata.' }
+      if (dbError) {
+        // Clean up uploaded file on database error
+        console.error('Database insert error:', dbError)
+        await supabase.storage.from(BUCKET_NAME).remove([storagePath])
+        return { type: 'error', message: 'Failed to save image metadata.' }
+      }
     }
 
-    // Update the event's image URL fields based on image type
-    const updateData: any = {}
-    switch (image_type) {
-      case 'hero':
+    // Update the appropriate table based on whether it's an event or category
+    if (event_id) {
+      // For events, update all image fields with the same URL for simplicity
+      const updateData: any = {}
+      if (image_type === 'primary' || image_type === 'hero') {
         updateData.hero_image_url = publicUrl
-        break
-      case 'thumbnail':
         updateData.thumbnail_image_url = publicUrl
-        break
-      case 'poster':
         updateData.poster_image_url = publicUrl
-        break
-      case 'gallery':
-        // For gallery images, we need to append to the array
-        const { data: event } = await supabase
-          .from('events')
-          .select('gallery_image_urls')
-          .eq('id', event_id)
-          .single()
-        
-        const currentGallery = event?.gallery_image_urls || []
-        updateData.gallery_image_urls = [...currentGallery, publicUrl]
-        break
-    }
+      } else {
+        // Handle specific image types if needed
+        switch (image_type) {
+          case 'thumbnail':
+            updateData.thumbnail_image_url = publicUrl
+            break
+          case 'poster':
+            updateData.poster_image_url = publicUrl
+            break
+          case 'gallery':
+            // For gallery images, we need to append to the array
+            const { data: event } = await supabase
+              .from('events')
+              .select('gallery_image_urls')
+              .eq('id', event_id)
+              .single()
+            
+            const currentGallery = event?.gallery_image_urls || []
+            updateData.gallery_image_urls = [...currentGallery, publicUrl]
+            break
+        }
+      }
 
-    if (Object.keys(updateData).length > 0) {
+      if (Object.keys(updateData).length > 0) {
+        const { error: updateError } = await supabase
+          .from('events')
+          .update(updateData)
+          .eq('id', event_id)
+
+        if (updateError) {
+          console.error('Event update error:', updateError)
+        }
+      }
+    } else if (category_id) {
+      // For categories, update all image fields with the same URL
+      const updateData = {
+        default_image_url: publicUrl,
+        thumbnail_image_url: publicUrl,
+        poster_image_url: publicUrl
+      }
+
       const { error: updateError } = await supabase
-        .from('events')
+        .from('event_categories')
         .update(updateData)
-        .eq('id', event_id)
+        .eq('id', category_id)
 
       if (updateError) {
-        console.error('Event update error:', updateError)
+        console.error('Category update error:', updateError)
+        await supabase.storage.from(BUCKET_NAME).remove([storagePath])
+        return { type: 'error', message: 'Failed to update category image.' }
       }
     }
 
@@ -173,24 +207,31 @@ export async function uploadEventImage(
       userEmail: user.email!,
       operationType: 'upload',
       resourceType: 'event',
-      resourceId: event_id,
+      resourceId: event_id || category_id || '',
       operationStatus: 'success',
       newValues: {
         imageType: image_type,
         fileName: file.name,
         fileSize: file.size
       },
-      additionalInfo: { storagePath }
+      additionalInfo: { 
+        storagePath,
+        entityType: event_id ? 'event' : 'event_category'
+      }
     })
 
-    revalidatePath(`/events/${event_id}`)
-    revalidatePath(`/events/${event_id}/edit`)
+    // Revalidate appropriate paths
+    if (event_id) {
+      revalidatePath(`/events/${event_id}`)
+      revalidatePath(`/events/${event_id}/edit`)
+    } else if (category_id) {
+      revalidatePath('/settings/event-categories')
+    }
     
     return { 
       type: 'success', 
       message: 'Image uploaded successfully!',
-      imageUrl: publicUrl,
-      imageId: imageRecord.id
+      imageUrl: publicUrl
     }
   } catch (error) {
     console.error('Unexpected error in uploadEventImage:', error)

@@ -185,9 +185,9 @@ export default async function SimpleDashboardPage() {
           </div>
           <p className="text-sm font-medium text-gray-900">Messages</p>
         </Link>
-        <Link href="/bookings/new" className="bg-white shadow rounded-lg p-4 text-center hover:shadow-md transition-shadow">
+        <Link href="/private-bookings/new" className="bg-white shadow rounded-lg p-4 text-center hover:shadow-md transition-shadow">
           <PlusIcon className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-          <p className="text-sm font-medium text-gray-900">New Booking</p>
+          <p className="text-sm font-medium text-gray-900">Private Booking</p>
         </Link>
       </div>
     </div>

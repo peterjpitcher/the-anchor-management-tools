@@ -1,121 +1,81 @@
 'use client'
 
-import { use, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { EventFormEnhanced } from '@/components/EventFormEnhanced'
-import { updateEventEnhanced } from '@/app/actions/eventsEnhanced'
-import { useSupabase } from '@/components/providers/SupabaseProvider'
-import { Event as BaseEvent, EventFAQ } from '@/types/database'
-import { EventCategory } from '@/types/event-categories'
+import { EventFormSimple } from '@/components/EventFormSimple'
+import { updateEvent } from '@/app/actions/events'
+import { Event } from '@/types/database'
 import toast from 'react-hot-toast'
+import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { use } from 'react'
 
-type Event = BaseEvent & {
-  category?: EventCategory | null
+interface PageProps {
+  params: Promise<{ id: string }>
 }
 
-export default function EditEnhancedEventPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
-  const params = use(paramsPromise)
+export default function EditEventPage({ params }: PageProps) {
   const router = useRouter()
-  const supabase = useSupabase()
+  const resolvedParams = use(params)
   const [event, setEvent] = useState<Event | null>(null)
-  const [eventFAQs, setEventFAQs] = useState<EventFAQ[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [categories, setCategories] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const loadEvent = async () => {
-      try {
-        // Load event with category
-        const { data: eventData, error: eventError } = await supabase
+    async function loadData() {
+      const supabase = createClient()
+      
+      // Load event and categories in parallel
+      const [eventResult, categoriesResult] = await Promise.all([
+        supabase
           .from('events')
-          .select('*, category:event_categories(*)')
-          .eq('id', params.id)
-          .single()
-
-        if (eventError) throw eventError
-        setEvent(eventData)
-
-        // Load FAQs
-        const { data: faqData, error: faqError } = await supabase
-          .from('event_faqs')
           .select('*')
-          .eq('event_id', params.id)
+          .eq('id', resolvedParams.id)
+          .single(),
+        supabase
+          .from('event_categories')
+          .select('*')
+          .eq('is_active', true)
           .order('sort_order')
-
-        if (faqError) {
-          console.error('Error loading FAQs:', faqError)
-        } else {
-          setEventFAQs(faqData || [])
-        }
-      } catch (error) {
-        console.error('Error loading event:', error)
-        toast.error('Failed to load event details')
+      ])
+      
+      if (eventResult.error) {
+        toast.error('Event not found')
         router.push('/events')
-      } finally {
-        setIsLoading(false)
+        return
       }
+      
+      setEvent(eventResult.data)
+      setCategories(categoriesResult.data || [])
+      setLoading(false)
     }
+    
+    loadData()
+  }, [resolvedParams.id, router])
 
-    loadEvent()
-  }, [params.id, supabase, router])
+  const handleSubmit = async (data: Partial<Event>) => {
+    if (!event) return
 
-  const handleSubmit = async (
-    data: Omit<Event, 'id' | 'created_at'>, 
-    faqs: Omit<EventFAQ, 'id' | 'event_id' | 'created_at' | 'updated_at'>[]
-  ) => {
     try {
       const formData = new FormData()
       
-      // Basic fields
-      formData.append('name', data.name)
-      formData.append('date', data.date)
-      formData.append('time', data.time)
-      // Only append capacity if it has a value, otherwise let server handle null
-      if (data.capacity !== null && data.capacity !== undefined) {
-        formData.append('capacity', data.capacity.toString())
-      }
-      formData.append('category_id', data.category_id || '')
-      
-      // Enhanced SEO fields
-      formData.append('slug', data.slug || '')
-      formData.append('short_description', data.short_description || '')
-      formData.append('long_description', data.long_description || '')
-      formData.append('highlights', JSON.stringify(data.highlights || []))
-      formData.append('keywords', JSON.stringify(data.keywords || []))
-      formData.append('meta_title', data.meta_title || '')
-      formData.append('meta_description', data.meta_description || '')
-      
-      // Additional fields
-      formData.append('description', data.description || '')
-      formData.append('end_time', data.end_time || '')
-      formData.append('last_entry_time', data.last_entry_time || '')
-      formData.append('event_status', data.event_status || 'scheduled')
-      formData.append('performer_name', data.performer_name || '')
-      formData.append('performer_type', data.performer_type || '')
-      formData.append('price', data.price?.toString() || '0')
-      formData.append('price_currency', data.price_currency || 'GBP')
-      formData.append('is_free', data.is_free?.toString() || 'false')
-      formData.append('booking_url', data.booking_url || '')
-      
-      // Image URLs
-      formData.append('hero_image_url', data.hero_image_url || '')
-      formData.append('thumbnail_image_url', data.thumbnail_image_url || '')
-      formData.append('poster_image_url', data.poster_image_url || '')
-      formData.append('gallery_image_urls', JSON.stringify(data.gallery_image_urls || []))
-      
-      // Video URLs
-      formData.append('promo_video_url', data.promo_video_url || '')
-      formData.append('highlight_video_urls', JSON.stringify(data.highlight_video_urls || []))
-      
-      // Legacy image_urls for backward compatibility
-      formData.append('image_urls', JSON.stringify(data.image_urls || []))
+      // Add all fields to formData
+      Object.entries(data).forEach(([key, value]) => {
+        if (value !== null && value !== undefined) {
+          if (typeof value === 'object') {
+            formData.append(key, JSON.stringify(value))
+          } else {
+            formData.append(key, value.toString())
+          }
+        }
+      })
 
-      const result = await updateEventEnhanced(params.id, formData, faqs)
+      const result = await updateEvent(event.id, formData)
       
       if (result.error) {
         toast.error(result.error)
       } else {
         toast.success('Event updated successfully')
-        router.push(`/events/${params.id}`)
+        router.push(`/events/${event.id}`)
       }
     } catch (error) {
       console.error('Error updating event:', error)
@@ -124,25 +84,16 @@ export default function EditEnhancedEventPage({ params: paramsPromise }: { param
   }
 
   const handleCancel = () => {
-    router.push(`/events/${params.id}`)
+    router.push(`/events/${resolvedParams.id}`)
   }
 
-  if (isLoading) {
+  if (loading || !event) {
     return (
-      <div className="flex justify-center items-center min-h-[400px]">
+      <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading event...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
         </div>
-      </div>
-    )
-  }
-
-  if (!event) {
-    return (
-      <div className="text-center py-12">
-        <h2 className="text-xl font-semibold text-gray-900">Event not found</h2>
-        <p className="mt-2 text-gray-600">The event you&apos;re looking for doesn&apos;t exist.</p>
       </div>
     )
   }
@@ -150,15 +101,15 @@ export default function EditEnhancedEventPage({ params: paramsPromise }: { param
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Edit Event (Enhanced)</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Edit Event</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Edit event with advanced SEO and media options
+          Update event details
         </p>
       </div>
       
-      <EventFormEnhanced 
-        event={event} 
-        eventFAQs={eventFAQs}
+      <EventFormSimple 
+        event={event}
+        categories={categories}
         onSubmit={handleSubmit} 
         onCancel={handleCancel} 
       />
