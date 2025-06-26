@@ -1,7 +1,7 @@
 'use client'
 
 import { useSupabase } from '@/components/providers/SupabaseProvider'
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import type { Customer } from '@/types/database'
 import { CustomerForm } from '@/components/CustomerForm'
 import { CustomerImport } from '@/components/CustomerImport'
@@ -20,12 +20,22 @@ import { PageLoadingSkeleton } from '@/components/ui/SkeletonLoader'
 
 export default function CustomersPage() {
   const supabase = useSupabase()
+  const [searchInput, setSearchInput] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<CustomerWithLoyalty | null>(null)
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
   const [loyalCustomerIds, setLoyalCustomerIds] = useState<string[]>([])
+
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchTerm(searchInput)
+    }, 300) // 300ms delay
+
+    return () => clearTimeout(timer)
+  }, [searchInput])
 
   // Memoize query configuration to prevent unnecessary re-renders
   const queryConfig = useMemo(() => ({
@@ -245,8 +255,8 @@ export default function CustomersPage() {
             <input
               type="text"
               placeholder="Search customers..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
             />
           </div>
