@@ -22,9 +22,38 @@ export async function GET(_request: NextRequest) {
       description: category.description,
       color: category.color,
       icon: category.icon,
+      slug: category.slug,
+      // Image fields - map single image_url to all for backwards compatibility
+      imageUrl: category.image_url,
+      defaultImageUrl: category.image_url,
+      thumbnailImageUrl: category.image_url,
+      posterImageUrl: category.image_url,
+      // SEO/Content fields
+      shortDescription: category.short_description,
+      longDescription: category.long_description,
+      highlights: category.highlights || [],
+      metaTitle: category.meta_title,
+      metaDescription: category.meta_description,
+      keywords: category.keywords || [],
+      // Video fields
+      promoVideoUrl: category.promo_video_url,
+      highlightVideoUrls: category.highlight_video_urls || [],
+      // Default event settings
       default_start_time: category.default_start_time,
+      default_end_time: category.default_end_time,
       default_capacity: category.default_capacity,
       default_reminder_hours: category.default_reminder_hours,
+      default_price: category.default_price,
+      default_is_free: category.default_is_free,
+      default_performer_type: category.default_performer_type,
+      default_event_status: category.default_event_status,
+      default_duration_minutes: category.default_duration_minutes,
+      default_doors_time: category.default_doors_time,
+      default_last_entry_time: category.default_last_entry_time,
+      default_booking_url: category.default_booking_url,
+      faqs: category.faqs || [],
+      sort_order: category.sort_order,
+      is_active: category.is_active,
     })) || [];
 
     return createApiResponse({

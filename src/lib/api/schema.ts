@@ -198,13 +198,9 @@ export function eventToSchema(event: any, bookingCount: number = 0, faqs?: any[]
   const capacity = event.capacity || 100; // Default capacity
   const remainingSeats = capacity - bookingCount;
   
-  // Build image array from various image fields
+  // Build image array from single image field
   const images: string[] = []
-  if (event.hero_image_url) images.push(event.hero_image_url)
-  if (event.thumbnail_image_url) images.push(event.thumbnail_image_url)
-  if (event.poster_image_url) images.push(event.poster_image_url)
-  if (event.gallery_image_urls?.length > 0) images.push(...event.gallery_image_urls)
-  if (event.image_urls?.length > 0) images.push(...event.image_urls)
+  if (event.image_url) images.push(event.image_url)
   
   // Build video array
   const videos: string[] = []
