@@ -144,56 +144,22 @@ export async function uploadEventImage(
 
     // Update the appropriate table based on whether it's an event or category
     if (event_id) {
-      // For events, update all image fields with the same URL for simplicity
-      const updateData: any = {}
-      if (image_type === 'primary' || image_type === 'hero') {
-        updateData.hero_image_url = publicUrl
-        updateData.thumbnail_image_url = publicUrl
-        updateData.poster_image_url = publicUrl
-      } else {
-        // Handle specific image types if needed
-        switch (image_type) {
-          case 'thumbnail':
-            updateData.thumbnail_image_url = publicUrl
-            break
-          case 'poster':
-            updateData.poster_image_url = publicUrl
-            break
-          case 'gallery':
-            // For gallery images, we need to append to the array
-            const { data: event } = await supabase
-              .from('events')
-              .select('gallery_image_urls')
-              .eq('id', event_id)
-              .single()
-            
-            const currentGallery = event?.gallery_image_urls || []
-            updateData.gallery_image_urls = [...currentGallery, publicUrl]
-            break
-        }
-      }
+      // For events, update the single image_url field
+      const { error: updateError } = await supabase
+        .from('events')
+        .update({ image_url: publicUrl })
+        .eq('id', event_id)
 
-      if (Object.keys(updateData).length > 0) {
-        const { error: updateError } = await supabase
-          .from('events')
-          .update(updateData)
-          .eq('id', event_id)
-
-        if (updateError) {
-          console.error('Event update error:', updateError)
-        }
+      if (updateError) {
+        console.error('Event update error:', updateError)
+        await supabase.storage.from(BUCKET_NAME).remove([storagePath])
+        return { type: 'error', message: 'Failed to update event image.' }
       }
     } else if (category_id) {
-      // For categories, update all image fields with the same URL
-      const updateData = {
-        default_image_url: publicUrl,
-        thumbnail_image_url: publicUrl,
-        poster_image_url: publicUrl
-      }
-
+      // For categories, update the single image_url field
       const { error: updateError } = await supabase
         .from('event_categories')
-        .update(updateData)
+        .update({ image_url: publicUrl })
         .eq('id', category_id)
 
       if (updateError) {
@@ -280,41 +246,11 @@ export async function deleteEventImage(imageId: string, eventId: string) {
       return { error: 'Failed to delete image record.' }
     }
 
-    // Update event to remove image URL
-    const { data: { publicUrl } } = supabase.storage
-      .from(BUCKET_NAME)
-      .getPublicUrl(image.storage_path)
-
-    const updateData: any = {}
-    switch (image.image_type) {
-      case 'hero':
-        updateData.hero_image_url = null
-        break
-      case 'thumbnail':
-        updateData.thumbnail_image_url = null
-        break
-      case 'poster':
-        updateData.poster_image_url = null
-        break
-      case 'gallery':
-        const { data: event } = await supabase
-          .from('events')
-          .select('gallery_image_urls')
-          .eq('id', eventId)
-          .single()
-        
-        if (event?.gallery_image_urls) {
-          updateData.gallery_image_urls = event.gallery_image_urls.filter((url: string) => url !== publicUrl)
-        }
-        break
-    }
-
-    if (Object.keys(updateData).length > 0) {
-      await supabase
-        .from('events')
-        .update(updateData)
-        .eq('id', eventId)
-    }
+    // Update event to remove image URL (set to null)
+    await supabase
+      .from('events')
+      .update({ image_url: null })
+      .eq('id', eventId)
 
     // Log audit event
     const { data: { user } } = await supabase.auth.getUser()

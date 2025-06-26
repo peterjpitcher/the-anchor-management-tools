@@ -1,6 +1,6 @@
 # Complete Database Documentation
 
-**Generated on:** 2025-06-26T13:41:06.981Z
+**Generated on:** 2025-06-15 (consolidated from source files dated 2025-06-15 to 2025-06-26)
 **Consolidated from:** 6 files
 
 ---
