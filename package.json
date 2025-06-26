@@ -13,7 +13,10 @@
     "test:report": "playwright show-report",
     "test:employees": "playwright test tests/employees/",
     "test:employees:headed": "playwright test tests/employees/ --headed",
-    "test:employees:ui": "playwright test tests/employees/ --ui"
+    "test:employees:ui": "playwright test tests/employees/ --ui",
+    "test:employees:basic": "playwright test tests/employees/employee-basic.spec.ts",
+    "test:employees:simple": "playwright test tests/employees/employee-create-simple.spec.ts",
+    "test:emp": "playwright test tests/employees/employees.spec.ts"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.4",

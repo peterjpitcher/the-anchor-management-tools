@@ -11,11 +11,14 @@ test.describe('Employee List Page', () => {
     await page.fill('input[type="email"]', TEST_CREDENTIALS.email);
     await page.fill('input[type="password"]', TEST_CREDENTIALS.password);
     await page.click('button[type="submit"]:has-text("Sign in")');
-    await page.waitForURL('**/dashboard');
+    await page.waitForURL('**/dashboard', { timeout: 30000 });
     
     // Navigate to employees page
     await page.goto('/employees');
     await page.waitForLoadState('networkidle');
+    
+    // Wait for the page to be fully loaded
+    await page.waitForSelector('h1:has-text("Employees")', { timeout: 10000 });
   });
 
   test('should display employee list page correctly', async ({ page }) => {
