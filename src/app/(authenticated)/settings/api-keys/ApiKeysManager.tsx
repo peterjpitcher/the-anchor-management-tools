@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { DocumentDuplicateIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { DocumentDuplicateIcon, PlusIcon } from '@heroicons/react/24/outline';
 import { Button } from '@/components/ui/Button';
 import toast from 'react-hot-toast';
 import { generateApiKey } from './actions';
@@ -175,7 +175,7 @@ export default function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <h3 className="font-semibold text-yellow-900 mb-2">New API Key Created</h3>
           <p className="text-sm text-yellow-800 mb-3">
-            Save this key now. You won't be able to see it again.
+            Save this key now. You won&apos;t be able to see it again.
           </p>
           <div className="flex items-center space-x-2">
             <code className="flex-1 bg-white p-2 rounded border border-yellow-300 font-mono text-sm">
@@ -282,7 +282,7 @@ export default function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
             <h4 className="font-medium mb-1">Available Endpoints</h4>
             <ul className="text-sm text-gray-600 space-y-1">
               <li>• GET /api/events - List all events</li>
-              <li>• GET /api/events/today - Today's events</li>
+              <li>• GET /api/events/today - Today&apos;s events</li>
               <li>• GET /api/events/[id] - Event details</li>
               <li>• POST /api/events/[id]/check-availability - Check availability</li>
               <li>• POST /api/bookings - Create booking</li>

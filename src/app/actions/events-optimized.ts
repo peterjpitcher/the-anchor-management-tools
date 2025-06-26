@@ -82,7 +82,7 @@ export async function invalidateEventsCache() {
   revalidateTag('events')
 }
 
-export async function invalidateEventCache(eventId: string) {
+export async function invalidateEventCache(_eventId: string) {
   const { revalidateTag } = await import('next/cache')
   revalidateTag('events')
   revalidateTag('event-details')

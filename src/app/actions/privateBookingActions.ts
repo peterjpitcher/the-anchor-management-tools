@@ -5,10 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import type { 
   PrivateBookingWithDetails,
-  BookingStatus,
-  VenueSpace,
-  CateringPackage,
-  Vendor
+  BookingStatus
 } from '@/types/private-bookings'
 import { syncCalendarEvent, deleteCalendarEvent, isCalendarConfigured } from '@/lib/google-calendar'
 import { queueAndSendPrivateBookingSms } from './private-booking-sms'
@@ -385,30 +382,38 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
       .eq('booking_id', id)
       .in('status', ['pending', 'approved'])
 
-    // Update each message with merged metadata
+    // Update all messages in a single batch operation
     if (existingMessages && existingMessages.length > 0) {
-      for (const message of existingMessages) {
-        const updatedMetadata = {
+      const messageIds = existingMessages.map(msg => msg.id)
+      const commonMetadata = {
+        cancelled_reason: 'event_date_changed',
+        old_date: currentBooking.event_date,
+        new_date: bookingData.event_date,
+        old_time: currentBooking.start_time,
+        new_time: bookingData.start_time,
+        cancelled_at: new Date().toISOString()
+      }
+
+      // Build updates with merged metadata for each message
+      const updates = existingMessages.map(message => ({
+        id: message.id,
+        status: 'cancelled',
+        metadata: {
           ...(message.metadata || {}),
-          cancelled_reason: 'event_date_changed',
-          old_date: currentBooking.event_date,
-          new_date: bookingData.event_date,
-          old_time: currentBooking.start_time,
-          new_time: bookingData.start_time,
-          cancelled_at: new Date().toISOString()
+          ...commonMetadata
         }
+      }))
 
-        const { error: cancelError } = await supabase
-          .from('private_booking_sms_queue')
-          .update({
-            status: 'cancelled',
-            metadata: updatedMetadata
-          })
-          .eq('id', message.id)
+      // Update all messages at once using the IN clause
+      const { error: cancelError } = await supabase
+        .from('private_booking_sms_queue')
+        .upsert(updates, {
+          onConflict: 'id',
+          ignoreDuplicates: false
+        })
 
-        if (cancelError) {
-          console.error('Error cancelling SMS message:', cancelError)
-        }
+      if (cancelError) {
+        console.error('Error cancelling SMS messages:', cancelError)
       }
     }
 
@@ -1062,7 +1067,7 @@ export async function createCateringPackage(data: {
     cost_per_head: data.per_head_cost,
     minimum_guests: data.minimum_order,
     description: data.description,
-    includes: data.includes,
+    dietary_notes: data.includes,
     active: data.is_active,
     display_order: 0 // Default value
   }
@@ -1098,7 +1103,7 @@ export async function updateCateringPackage(id: string, data: {
     cost_per_head: data.per_head_cost,
     minimum_guests: data.minimum_order,
     description: data.description,
-    includes: data.includes,
+    dietary_notes: data.includes,
     active: data.is_active
   }
   

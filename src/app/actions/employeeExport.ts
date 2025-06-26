@@ -144,7 +144,7 @@ function generateJSON(employees: Employee[], includeFields?: string[]): string {
   if (!includeFields || includeFields.length === 0) {
     // Return all fields except sensitive ones
     const sanitized = employees.map(emp => {
-      const { created_at, ...rest } = emp
+      const { created_at: _, ...rest } = emp
       return rest
     })
     return JSON.stringify(sanitized, null, 2)

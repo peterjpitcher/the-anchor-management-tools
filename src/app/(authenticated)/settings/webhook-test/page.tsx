@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
-import { usePermissions } from '@/contexts/PermissionContext'
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 

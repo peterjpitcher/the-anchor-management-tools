@@ -45,3 +45,10 @@ temp/
 data.sql
 *.sql.dump
 supabase/dumps/*.sql
+supabase/backups/
+
+# Temporary analysis files
+discovery-*.log
+lint-*.txt
+*-analysis.txt
+analyze-*.txt

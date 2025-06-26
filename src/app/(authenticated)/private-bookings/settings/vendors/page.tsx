@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { 
   PlusIcon, 
-  TrashIcon,
   ArrowLeftIcon,
   UserGroupIcon,
   PhoneIcon,
@@ -20,15 +19,15 @@ async function handleCreateVendor(formData: FormData) {
   
   const result = await createVendor({
     name: formData.get('name') as string,
-    vendor_type: formData.get('vendor_type') as string,
+    vendor_type: formData.get('service_type') as string,
     contact_name: formData.get('contact_name') as string || null,
-    phone: formData.get('phone') as string || null,
-    email: formData.get('email') as string || null,
+    phone: formData.get('contact_phone') as string || null,
+    email: formData.get('contact_email') as string || null,
     website: formData.get('website') as string || null,
     typical_rate: formData.get('typical_rate') ? parseFloat(formData.get('typical_rate') as string) : null,
     notes: formData.get('notes') as string || null,
-    is_preferred: formData.get('is_preferred') === 'true',
-    is_active: formData.get('is_active') === 'true'
+    is_preferred: formData.get('preferred') === 'true',
+    is_active: formData.get('active') === 'true'
   })
   
   if (result.error) {
@@ -42,15 +41,15 @@ async function handleUpdateVendor(formData: FormData) {
   const vendorId = formData.get('vendorId') as string
   const result = await updateVendor(vendorId, {
     name: formData.get('name') as string,
-    vendor_type: formData.get('vendor_type') as string,
+    vendor_type: formData.get('service_type') as string,
     contact_name: formData.get('contact_name') as string || null,
-    phone: formData.get('phone') as string || null,
-    email: formData.get('email') as string || null,
+    phone: formData.get('contact_phone') as string || null,
+    email: formData.get('contact_email') as string || null,
     website: formData.get('website') as string || null,
     typical_rate: formData.get('typical_rate') ? parseFloat(formData.get('typical_rate') as string) : null,
     notes: formData.get('notes') as string || null,
-    is_preferred: formData.get('is_preferred') === 'true',
-    is_active: formData.get('is_active') === 'true'
+    is_preferred: formData.get('preferred') === 'true',
+    is_active: formData.get('active') === 'true'
   })
   
   if (result.error) {
@@ -165,12 +164,12 @@ export default async function VendorsPage() {
                 />
               </div>
               <div>
-                <label htmlFor="vendor_type" className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="service_type" className="block text-sm font-medium text-gray-700 mb-1">
                   Type
                 </label>
                 <select
-                  id="vendor_type"
-                  name="vendor_type"
+                  id="service_type"
+                  name="service_type"
                   required
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
@@ -202,25 +201,25 @@ export default async function VendorsPage() {
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
-                <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="contact_phone" className="block text-sm font-medium text-gray-700 mb-1">
                   Phone
                 </label>
                 <input
                   type="tel"
-                  id="phone"
-                  name="phone"
+                  id="contact_phone"
+                  name="contact_phone"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="07700 900000"
                 />
               </div>
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="contact_email" className="block text-sm font-medium text-gray-700 mb-1">
                   Email
                 </label>
                 <input
                   type="email"
-                  id="email"
-                  name="email"
+                  id="contact_email"
+                  name="contact_email"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="mike@djmike.com"
                 />
@@ -255,12 +254,12 @@ export default async function VendorsPage() {
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label htmlFor="is_preferred" className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="preferred" className="block text-sm font-medium text-gray-700 mb-1">
                   Preferred Status
                 </label>
                 <select
-                  id="is_preferred"
-                  name="is_preferred"
+                  id="preferred"
+                  name="preferred"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="false">Regular Vendor</option>
@@ -268,12 +267,12 @@ export default async function VendorsPage() {
                 </select>
               </div>
               <div>
-                <label htmlFor="is_active" className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="active" className="block text-sm font-medium text-gray-700 mb-1">
                   Status
                 </label>
                 <select
-                  id="is_active"
-                  name="is_active"
+                  id="active"
+                  name="active"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="true">Active</option>
@@ -362,7 +361,7 @@ export default async function VendorsPage() {
                               Type
                             </label>
                             <select
-                              name="vendor_type"
+                              name="service_type"
                               defaultValue={vendor.service_type}
                               required
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -399,7 +398,7 @@ export default async function VendorsPage() {
                             </label>
                             <input
                               type="tel"
-                              name="phone"
+                              name="contact_phone"
                               defaultValue={vendor.contact_phone || ''}
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             />
@@ -411,8 +410,8 @@ export default async function VendorsPage() {
                             </label>
                             <input
                               type="email"
-                              name="email"
-                              defaultValue={vendor.email || ''}
+                              name="contact_email"
+                              defaultValue={vendor.contact_email || ''}
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             />
                           </div>
@@ -449,7 +448,7 @@ export default async function VendorsPage() {
                               Preferred Status
                             </label>
                             <select
-                              name="is_preferred"
+                              name="preferred"
                               defaultValue={vendor.preferred ? 'true' : 'false'}
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             >
@@ -462,7 +461,7 @@ export default async function VendorsPage() {
                               Status
                             </label>
                             <select
-                              name="is_active"
+                              name="active"
                               defaultValue={vendor.active ? 'true' : 'false'}
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             >

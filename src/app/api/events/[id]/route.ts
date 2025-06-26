@@ -4,10 +4,10 @@ import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/a
 import { eventToSchema } from '@/lib/api/schema';
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  return withApiAuth(async (req, apiKey) => {
+  return withApiAuth(async (_req, _apiKey) => {
     const params = await context.params;
     const supabase = createAdminClient();
     
@@ -101,7 +101,7 @@ export async function GET(
         lastUpdated: event.updated_at || event.created_at,
       }
     });
-  }, ['read:events'], request);
+  }, ['read:events'], _request);
 }
 
 export async function OPTIONS(request: NextRequest) {

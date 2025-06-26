@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { formatDate } from '@/lib/dateUtils'
-import toast from 'react-hot-toast'
 import { usePagination } from '@/hooks/usePagination'
 import { Pagination } from '@/components/Pagination'
 
@@ -65,7 +64,7 @@ export default function AuditLogsPage() {
     pageSize,
     isLoading: loading,
     setPage,
-    refresh: loadAuditLogs
+    refresh: __
   } = usePagination<AuditLog>(
     supabase,
     'audit_logs',

@@ -220,10 +220,6 @@ export function CategoryCustomerSuggestions({
                   Customers who enjoy similar events but haven&apos;t tried {selectedCategory.name} recently
                 </p>
                 {crossSuggestions.map((suggestion) => {
-                  const sourceCategory = categories.find(c => 
-                    regulars.find(r => r.customer_id === suggestion.customer_id)
-                  )
-                  
                   return (
                     <label
                       key={suggestion.customer_id}

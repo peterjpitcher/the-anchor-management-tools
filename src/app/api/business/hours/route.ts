@@ -1,12 +1,12 @@
 import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
-import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
-import { format, isAfter, isBefore, startOfDay, parse } from 'date-fns';
+import { createApiResponse, createErrorResponse } from '@/lib/api/auth';
+import { format } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 
 const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   // This endpoint can be public for SEO purposes
   const supabase = createAdminClient();
   

@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { createApiResponse, createErrorResponse } from '@/lib/api/auth';
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   // This endpoint can be public for SEO purposes
   const supabase = createAdminClient();
   

@@ -17,9 +17,9 @@ export async function OPTIONS(request: NextRequest) {
   });
 }
 
-export async function GET(request: NextRequest) {
-  return withApiAuth(async (req, apiKey) => {
-    const { searchParams } = new URL(request.url);
+export async function GET(_request: NextRequest) {
+  return withApiAuth(async (_req, _apiKey) => {
+    const { searchParams } = new URL(_request.url);
     const fromDate = searchParams.get('from_date');
     const toDate = searchParams.get('to_date');
     const categoryId = searchParams.get('category_id');
@@ -106,6 +106,6 @@ export async function GET(request: NextRequest) {
         lastUpdated: new Date().toISOString(),
       },
     });
-  }, ['read:events'], request);
+  }, ['read:events'], _request);
 }
 

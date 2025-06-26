@@ -8,12 +8,7 @@ import {
   CalendarIcon, 
   UserGroupIcon,
   UsersIcon,
-  ChatBubbleLeftRightIcon,
-  DocumentTextIcon,
-  EnvelopeIcon,
-  ClockIcon,
-  PlusIcon,
-  ChartBarIcon
+  ChatBubbleLeftRightIcon
 } from '@heroicons/react/24/outline'
 
 // Import components
@@ -212,7 +207,7 @@ export default function OptimizedDashboardPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Welcome back! Here's what's happening with your business today.
+            Welcome back! Here&apos;s what&apos;s happening with your business today.
           </p>
         </div>
 

@@ -12,8 +12,7 @@ import {
   ExclamationCircleIcon,
   ArrowPathIcon,
   TrashIcon,
-  PlayIcon,
-  PauseIcon
+  PlayIcon
 } from '@heroicons/react/24/outline'
 
 interface BackgroundJob {

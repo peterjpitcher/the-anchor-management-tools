@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { 
   PlusIcon, 
-  TrashIcon,
   ArrowLeftIcon,
   MapPinIcon,
   UserGroupIcon,
@@ -19,10 +18,10 @@ async function handleCreateSpace(formData: FormData) {
   
   const result = await createVenueSpace({
     name: formData.get('name') as string,
-    capacity: parseInt(formData.get('capacity') as string),
-    hire_cost: parseFloat(formData.get('hire_cost') as string),
+    capacity: parseInt(formData.get('capacity_seated') as string),
+    hire_cost: parseFloat(formData.get('rate_per_hour') as string),
     description: formData.get('description') as string || null,
-    is_active: formData.get('is_active') === 'true'
+    is_active: formData.get('active') === 'true'
   })
   
   if (result.error) {
@@ -36,10 +35,10 @@ async function handleUpdateSpace(formData: FormData) {
   const spaceId = formData.get('spaceId') as string
   const result = await updateVenueSpace(spaceId, {
     name: formData.get('name') as string,
-    capacity: parseInt(formData.get('capacity') as string),
-    hire_cost: parseFloat(formData.get('hire_cost') as string),
+    capacity: parseInt(formData.get('capacity_seated') as string),
+    hire_cost: parseFloat(formData.get('rate_per_hour') as string),
     description: formData.get('description') as string || null,
-    is_active: formData.get('is_active') === 'true'
+    is_active: formData.get('active') === 'true'
   })
   
   if (result.error) {
@@ -131,13 +130,13 @@ export default async function VenueSpacesPage() {
               />
             </div>
             <div>
-              <label htmlFor="capacity" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="capacity_seated" className="block text-sm font-medium text-gray-700 mb-1">
                 Seated Capacity
               </label>
               <input
                 type="number"
-                id="capacity"
-                name="capacity"
+                id="capacity_seated"
+                name="capacity_seated"
                 required
                 min="1"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -145,13 +144,13 @@ export default async function VenueSpacesPage() {
               />
             </div>
             <div>
-              <label htmlFor="hire_cost" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="rate_per_hour" className="block text-sm font-medium text-gray-700 mb-1">
                 Hourly Rate (£)
               </label>
               <input
                 type="number"
-                id="hire_cost"
-                name="hire_cost"
+                id="rate_per_hour"
+                name="rate_per_hour"
                 required
                 min="0"
                 step="0.01"
@@ -160,12 +159,12 @@ export default async function VenueSpacesPage() {
               />
             </div>
             <div>
-              <label htmlFor="is_active" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="active" className="block text-sm font-medium text-gray-700 mb-1">
                 Status
               </label>
               <select
-                id="is_active"
-                name="is_active"
+                id="active"
+                name="active"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="true">Active</option>
@@ -237,7 +236,7 @@ export default async function VenueSpacesPage() {
                         </label>
                         <input
                           type="number"
-                          name="capacity"
+                          name="capacity_seated"
                           defaultValue={space.capacity_seated}
                           required
                           min="1"
@@ -251,7 +250,7 @@ export default async function VenueSpacesPage() {
                         </label>
                         <input
                           type="number"
-                          name="hire_cost"
+                          name="rate_per_hour"
                           defaultValue={space.rate_per_hour}
                           required
                           min="0"
@@ -264,7 +263,7 @@ export default async function VenueSpacesPage() {
                           Status
                         </label>
                         <select
-                          name="is_active"
+                          name="active"
                           defaultValue={space.active ? 'true' : 'false'}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >

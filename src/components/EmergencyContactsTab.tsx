@@ -15,7 +15,7 @@ export default function EmergencyContactsTab({ employeeId }: EmergencyContactsTa
   const [contacts, setContacts] = useState<EmployeeEmergencyContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   async function getEmergencyContacts(employeeId: string): Promise<EmployeeEmergencyContact[]> {
     const { data, error } = await supabase

@@ -5,7 +5,6 @@ import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { addEmployee } from '@/app/actions/employeeActions';
 import type { ActionFormState } from '@/types/actions';
 import type { Employee } from '@/types/database';
 

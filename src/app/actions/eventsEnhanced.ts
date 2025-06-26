@@ -148,13 +148,6 @@ const eventSchemaEnhanced = z.object({
   }),
 })
 
-// FAQ validation schema
-const faqSchema = z.object({
-  question: z.string().min(1, 'Question is required').max(500),
-  answer: z.string().min(1, 'Answer is required').max(2000),
-  sort_order: z.number().default(0)
-})
-
 export async function createEventEnhanced(formData: FormData, faqs: Array<{question: string, answer: string, sort_order: number}>) {
   try {
     const supabase = await createClient()
@@ -289,11 +282,17 @@ export async function createEventEnhanced(formData: FormData, faqs: Array<{quest
     }
 
     // Log audit event
-    await logAuditEvent(user.id, 'event.create', {
-      eventId: event.id,
-      eventName: event.name,
-      eventDate: event.date,
-      eventSlug: event.slug
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'create',
+      resource_type: 'event',
+      resource_id: event.id,
+      operation_status: 'success',
+      additional_info: {
+        eventName: event.name,
+        eventDate: event.date,
+        eventSlug: event.slug
+      }
     })
 
     revalidatePath('/events')
@@ -479,11 +478,17 @@ export async function updateEventEnhanced(
     }
 
     // Log audit event
-    await logAuditEvent(user.id, 'event.update', {
-      eventId: event.id,
-      eventName: event.name,
-      eventDate: event.date,
-      eventSlug: event.slug
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'update',
+      resource_type: 'event',
+      resource_id: event.id,
+      operation_status: 'success',
+      additional_info: {
+        eventName: event.name,
+        eventDate: event.date,
+        eventSlug: event.slug
+      }
     })
 
     revalidatePath('/events')

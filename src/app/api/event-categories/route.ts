@@ -2,8 +2,8 @@ import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 
-export async function GET(request: NextRequest) {
-  return withApiAuth(async (req, apiKey) => {
+export async function GET(_request: NextRequest) {
+  return withApiAuth(async (_req, _apiKey) => {
     const supabase = createAdminClient();
     
     const { data: categories, error } = await supabase
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
         lastUpdated: new Date().toISOString(),
       },
     });
-  }, ['read:events'], request);
+  }, ['read:events'], _request);
 }
 
 export async function OPTIONS(request: NextRequest) {

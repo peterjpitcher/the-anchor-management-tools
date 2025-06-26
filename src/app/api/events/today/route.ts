@@ -3,8 +3,8 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { eventToSchema } from '@/lib/api/schema';
 
-export async function GET(request: NextRequest) {
-  return withApiAuth(async (req, apiKey) => {
+export async function GET(_request: NextRequest) {
+  return withApiAuth(async (_req, _apiKey) => {
     const supabase = createAdminClient();
     const today = new Date().toISOString().split('T')[0];
     
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
         lastUpdated: new Date().toISOString(),
       },
     });
-  }, ['read:events'], request);
+  }, ['read:events'], _request);
 }
 
 export async function OPTIONS(request: NextRequest) {

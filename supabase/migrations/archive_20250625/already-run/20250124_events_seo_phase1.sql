@@ -116,11 +116,7 @@ CREATE POLICY "Allow authenticated users to read event FAQs"
 CREATE POLICY "Allow users with events:edit to manage FAQs"
     ON event_faqs FOR ALL
     TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM user_has_permission(auth.uid(), 'events', 'edit')
-        )
-    );
+    USING (user_has_permission(auth.uid(), 'events', 'edit'));
 
 -- Add sort_order field to event_categories (was missing)
 ALTER TABLE event_categories

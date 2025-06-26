@@ -203,7 +203,7 @@ export default function GDPRSettingsPage() {
             <ul className="list-disc list-inside space-y-1 ml-4">
               <li>Right to access your personal data</li>
               <li>Right to rectification of inaccurate data</li>
-              <li>Right to erasure ("right to be forgotten")</li>
+              <li>Right to erasure (&quot;right to be forgotten&quot;)</li>
               <li>Right to data portability</li>
               <li>Right to object to processing</li>
               <li>Right to withdraw consent</li>

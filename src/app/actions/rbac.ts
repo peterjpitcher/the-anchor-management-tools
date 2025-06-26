@@ -343,7 +343,7 @@ export async function getAllUsers() {
   
   try {
     // First, try the RPC function if it exists
-    let { data: users, error: rpcError } = await supabase
+    const { data: users, error: rpcError } = await supabase
       .rpc('get_users_for_admin');
     
     // If the secure function fails, try the view

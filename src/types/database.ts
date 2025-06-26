@@ -60,6 +60,11 @@ export interface Customer {
   last_successful_sms_at?: string | null;
   sms_deactivated_at?: string | null;
   sms_deactivation_reason?: string | null;
+  messaging_status?: 'active' | 'suspended' | 'invalid_number' | 'opted_out';
+  last_successful_delivery?: string | null;
+  consecutive_failures?: number;
+  total_failures_30d?: number;
+  last_failure_type?: string | null;
 }
 
 export interface Booking {
@@ -225,26 +230,37 @@ export interface WebhookLog {
 
 export interface AuditLog {
   id: string;
-  user_id: string;
-  action: string;
-  entity_type: string | null;
-  entity_id: string | null;
-  changes: Record<string, unknown> | null;
-  metadata: Record<string, unknown> | null;
-  ip_address: string | null;
-  user_agent: string | null;
   created_at: string;
+  user_id?: string | null;
+  user_email?: string | null;
+  operation_type: string;
+  resource_type: string;
+  resource_id?: string | null;
+  operation_status: 'success' | 'failure';
+  ip_address?: string | null;
+  user_agent?: string | null;
+  old_values?: Record<string, unknown> | null;
+  new_values?: Record<string, unknown> | null;
+  error_message?: string | null;
+  additional_info?: Record<string, unknown> | null;
 }
 
 export interface MessageTemplate {
   id: string;
-  name: string;
-  type: string;
-  content: string;
-  variables: string[] | null;
-  is_active: boolean;
   created_at: string;
   updated_at: string;
+  name: string;
+  description?: string | null;
+  template_type?: string | null;
+  content: string;
+  variables: string[] | null;
+  is_default?: boolean;
+  is_active: boolean;
+  created_by?: string | null;
+  character_count?: number;
+  estimated_segments?: number;
+  send_timing?: string | null;
+  custom_timing_hours?: number | null;
 }
 
 export interface EventMessageTemplate {
@@ -271,6 +287,35 @@ export interface UserRole {
   user_id: string;
   role_id: string;
   created_at: string;
+}
+
+export interface CustomerCategoryStats {
+  customer_id: string;
+  category_id: string;
+  booking_count: number;
+  total_spent: number;
+  last_booking_date: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EventCategory {
+  id: string;
+  name: string;
+  color: string;
+  description?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Profile {
+  id: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+  avatar_url?: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Database {
@@ -365,6 +410,21 @@ export interface Database {
         Row: UserRole;
         Insert: Omit<UserRole, 'id' | 'created_at'>;
         Update: Partial<Omit<UserRole, 'id' | 'created_at'>>;
+      };
+      customer_category_stats: {
+        Row: CustomerCategoryStats;
+        Insert: Omit<CustomerCategoryStats, 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<CustomerCategoryStats, 'created_at' | 'updated_at'>>;
+      };
+      event_categories: {
+        Row: EventCategory;
+        Insert: Omit<EventCategory, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<EventCategory, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      profiles: {
+        Row: Profile;
+        Insert: Omit<Profile, 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<Profile, 'created_at' | 'updated_at'>>;
       };
     };
   };

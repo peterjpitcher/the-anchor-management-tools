@@ -135,7 +135,7 @@ async function analyzeSchemaConsistency() {
   
   try {
     // Read SQL schema
-    const sqlPath = join(process.cwd(), 'supabase/dumps/2025-06-21i-schema.sql')
+    const sqlPath = join(process.cwd(), 'supabase/dumps/2025-06-22-schema.sql')
     const sqlContent = readFileSync(sqlPath, 'utf-8')
     const sqlSchema = parseSQLSchema(sqlContent)
     

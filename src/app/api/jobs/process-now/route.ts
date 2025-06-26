@@ -6,7 +6,7 @@ export const runtime = 'nodejs'
 export const maxDuration = 60
 
 // Manual trigger endpoint for testing
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     // This endpoint is for manual testing only
     // In production, this would be triggered by a cron job
