@@ -1,45 +1,69 @@
-# The Anchor - Management Tools Documentation
+# Documentation Index
 
-Welcome to the documentation for The Anchor Management Tools. This application is a comprehensive venue management system designed to handle events, customers, and employees with automated SMS notifications.
+**Last Updated:** 2025-06-26T13:42:12.051Z
 
-## Documentation Index
+## API Documentation
 
-### Getting Started
-- [overview.md](./overview.md) - Project introduction and key features
-- [installation.md](./installation.md) - Setup instructions and prerequisites
-- [configuration.md](./configuration.md) - Environment variables and settings
+- [Api Documentation](./2025-06-26-api-documentation.md)
 
-### Architecture & Development
-- [architecture.md](./architecture.md) - System design and technical decisions
-- [database-schema.md](./database-schema.md) - Database structure and relationships
-- [api-reference.md](./api-reference.md) - Server actions and API endpoints
-- [development.md](./development.md) - Contributing guidelines and best practices
+## Feature Documentation
 
-### Features
-- [feature-authentication.md](./feature-authentication.md) - User authentication system
-- [feature-events.md](./feature-events.md) - Creating and managing events
-- [feature-customers.md](./feature-customers.md) - Customer records and bookings
-- [feature-employees.md](./feature-employees.md) - Employee records, notes, and attachments
-- [feature-sms.md](./feature-sms.md) - Automated messaging system
+- [Authentication](./2025-06-26-feature-authentication.md)
+- [Customers](./2025-06-26-feature-customers.md)
+- [Employees](./2025-06-26-feature-employees.md)
+- [Events](./2025-06-26-feature-events.md)
+- [Private Bookings](./2025-06-26-feature-private-bookings.md)
+- [Sms](./2025-06-26-feature-sms.md)
 
-### Operations
-- [deployment.md](./deployment.md) - Production deployment guide
-- [monitoring.md](./monitoring.md) - Application monitoring and logs
-- [troubleshooting.md](./troubleshooting.md) - Common issues and solutions
+## Development Guides
 
-### Reference
-- [release-notes.md](./release-notes.md) - Version history and updates
-- [ai-assistant-guide.md](./ai-assistant-guide.md) - Instructions for Claude Code
-- [style-guide.md](./style-guide.md) - UI/UX conventions and patterns
-- [security.md](./security.md) - Security best practices and policies
+- [Deployment Guide](./2025-06-26-deployment-guide.md)
+- [Developer Guide](./2025-06-26-developer-guide.md)
+- [Style Guide](./2025-06-26-style-guide.md)
 
-## Quick Links
+## Technical Documentation
 
-- [Production URL](https://your-production-url.vercel.app)
-- [GitHub Repository](https://github.com/your-username/EventPlanner3.0)
-- [Supabase Dashboard](https://app.supabase.com)
-- [Vercel Dashboard](https://vercel.com)
+- [Audit Summary](./2025-06-26-audit-summary.md)
+- [Database Documentation](./2025-06-26-database-documentation.md)
+- [Rbac](./2025-06-26-rbac.md)
+- [Security](./2025-06-26-security.md)
 
-## Support
+## Compliance & Legal
 
-For questions or issues, please contact the development team or refer to the [troubleshooting guide](./troubleshooting.md).
+- [Gdpr Compliance](./2025-06-26-gdpr-compliance.md)
+
+## Other Documentation
+
+- [Fixes Tracker](./2025-06-26-fixes-tracker.md)
+- [Google Calendar Debugging](./2025-06-26-google-calendar-debugging.md)
+- [Google Calendar Setup](./2025-06-26-google-calendar-setup.md)
+- [Overview](./2025-06-26-overview.md)
+- [Private Bookings Audit](./2025-06-26-private-bookings-audit.md)
+- [Private Bookings Field Fixes](./2025-06-26-private-bookings-field-fixes.md)
+- [Rate Limiting](./2025-06-26-rate-limiting.md)
+- [Readme](./2025-06-26-readme.md)
+- [Release Notes](./2025-06-26-release-notes.md)
+- [Sentry Integration](./2025-06-26-sentry-integration.md)
+- [Structured Logging](./2025-06-26-structured-logging.md)
+- [Ui Standards](./2025-06-26-ui-standards.md)
+- [Validation Constraints](./2025-06-26-validation-constraints.md)
+
+## API Specification
+
+- [OpenAPI Specification](./2025-06-26-openapi.yaml)
+
+## Specialized Documentation
+
+- [Audit Reports](./audit-reports/)
+- [Implementation Guides](./implementation-guides/)
+- [Security](./security/)
+- [Sms Templates](./sms-templates/)
+- [User Flows](./user-flows/)
+
+## Recent Analyses
+
+- [2025-06-26 Analysis Reports](./2025-06-26-085314/)
+
+## Archive
+
+- [Archived Documentation](./archive/)
