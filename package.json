@@ -10,7 +10,10 @@
     "test": "playwright test",
     "test:headed": "playwright test --headed",
     "test:debug": "playwright test --debug",
-    "test:report": "playwright show-report"
+    "test:report": "playwright show-report",
+    "test:employees": "playwright test tests/employees/",
+    "test:employees:headed": "playwright test tests/employees/ --headed",
+    "test:employees:ui": "playwright test tests/employees/ --ui"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.4",
