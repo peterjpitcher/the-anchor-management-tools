@@ -347,24 +347,38 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
 
       <div className="bg-white shadow sm:rounded-lg">
         <div className="px-4 py-5 sm:p-6">
-          <div className="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:justify-between sm:items-center">
-            <div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">{event.name}</h1>
-                <div className="mt-1 flex items-center space-x-2">
-                  <p className="text-sm text-gray-500">
-                    {formatDate(event.date)} at {event.time}
-                  </p>
-                  {event.category && (
-                    <span 
-                      className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
-                      style={{ 
-                        backgroundColor: event.category.color + '20',
-                        color: event.category.color 
-                      }}
-                    >
-                      {event.category.name}
-                    </span>
+          <div className="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:justify-between sm:items-start">
+            <div className="flex-1">
+              <div className="flex items-start space-x-4">
+                {event.hero_image_url && (
+                  <div className="flex-shrink-0">
+                    <img 
+                      src={event.hero_image_url} 
+                      alt={event.name}
+                      className="h-24 w-24 rounded-lg object-cover border border-gray-200"
+                    />
+                  </div>
+                )}
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">{event.name}</h1>
+                  <div className="mt-1 flex items-center space-x-2">
+                    <p className="text-sm text-gray-500">
+                      {formatDate(event.date)} at {event.time}
+                    </p>
+                    {event.category && (
+                      <span 
+                        className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                        style={{ 
+                          backgroundColor: event.category.color + '20',
+                          color: event.category.color 
+                        }}
+                      >
+                        {event.category.name}
+                      </span>
+                    )}
+                  </div>
+                  {event.description && (
+                    <p className="mt-2 text-sm text-gray-600">{event.description}</p>
                   )}
                 </div>
               </div>
@@ -374,12 +388,6 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
                 <Button variant="secondary">
                   <PencilSquareIcon className="h-5 w-5 mr-2" />
                   Edit Event
-                </Button>
-              </Link>
-              <Link href={`/events/${event.id}/edit-enhanced`}>
-                <Button variant="secondary">
-                  <PencilSquareIcon className="h-5 w-5 mr-2" />
-                  Edit (Enhanced)
                 </Button>
               </Link>
               <Button onClick={handleCopyAttendeeList} variant="secondary">

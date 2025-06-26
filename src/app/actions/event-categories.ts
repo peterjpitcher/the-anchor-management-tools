@@ -502,3 +502,44 @@ export async function getCustomerCategoryPreferences(customerId: string) {
     return { error: 'Failed to fetch customer preferences' }
   }
 }
+
+// Wrapper functions that accept FormData
+export async function createEventCategoryFromFormData(formData: FormData) {
+  const categoryData: CategoryFormData = {
+    name: formData.get('name') as string,
+    color: formData.get('color') as string,
+    icon: formData.get('icon') as string,
+    description: formData.get('description') as string,
+    sort_order: parseInt(formData.get('sort_order') as string) || 0,
+    is_active: formData.get('is_active') === 'true',
+    default_start_time: formData.get('default_start_time') as string,
+    default_end_time: formData.get('default_end_time') as string,
+    default_capacity: formData.get('default_capacity') ? parseInt(formData.get('default_capacity') as string) : undefined,
+    default_reminder_hours: parseInt(formData.get('default_reminder_hours') as string) || 24,
+    default_price: parseFloat(formData.get('default_price') as string) || 0,
+    default_is_free: formData.get('default_is_free') === 'true',
+    default_image_url: formData.get('default_image_url') as string,
+  }
+  
+  return createEventCategory(categoryData)
+}
+
+export async function updateEventCategoryFromFormData(id: string, formData: FormData) {
+  const categoryData: CategoryFormData = {
+    name: formData.get('name') as string,
+    color: formData.get('color') as string,
+    icon: formData.get('icon') as string,
+    description: formData.get('description') as string,
+    sort_order: parseInt(formData.get('sort_order') as string) || 0,
+    is_active: formData.get('is_active') === 'true',
+    default_start_time: formData.get('default_start_time') as string,
+    default_end_time: formData.get('default_end_time') as string,
+    default_capacity: formData.get('default_capacity') ? parseInt(formData.get('default_capacity') as string) : undefined,
+    default_reminder_hours: parseInt(formData.get('default_reminder_hours') as string) || 24,
+    default_price: parseFloat(formData.get('default_price') as string) || 0,
+    default_is_free: formData.get('default_is_free') === 'true',
+    default_image_url: formData.get('default_image_url') as string,
+  }
+  
+  return updateEventCategory(id, categoryData)
+}
