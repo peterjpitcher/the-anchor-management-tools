@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { TEST_USERS, TEST_DATA, generateTestData } from '../test-config';
+import { fillFormField, selectOption, waitForFormReady, submitFormAndWait } from '../helpers/form-helpers';
 
 // Use superadmin for all tests
 const TEST_CREDENTIALS = TEST_USERS.superAdmin;
@@ -66,45 +67,78 @@ test.describe('Employee Create Page', () => {
       phone: '07700900123'
     };
     
-    // Fill in required fields
-    await page.fill('input[name="first_name"]', testEmployee.firstName);
-    await page.fill('input[name="last_name"]', testEmployee.lastName);
-    await page.fill('input[name="email"]', testEmployee.email);
-    await page.fill('input[name="job_title"]', testEmployee.jobTitle);
+    // Wait for form to be ready
+    await page.waitForSelector('input[name="first_name"]', { state: 'visible' });
+    
+    // Fill in required fields with explicit waits
+    const firstNameInput = page.locator('input[name="first_name"]');
+    await firstNameInput.click();
+    await firstNameInput.fill(testEmployee.firstName);
+    
+    const lastNameInput = page.locator('input[name="last_name"]');
+    await lastNameInput.click();
+    await lastNameInput.fill(testEmployee.lastName);
+    
+    const emailInput = page.locator('input[name="email"]');
+    await emailInput.click();
+    await emailInput.fill(testEmployee.email);
+    
+    const jobTitleInput = page.locator('input[name="job_title"]');
+    await jobTitleInput.click();
+    await jobTitleInput.fill(testEmployee.jobTitle);
     
     // Set employment start date to today
     const today = new Date().toISOString().split('T')[0];
-    await page.fill('input[name="employment_start_date"]', today);
+    const startDateInput = page.locator('input[name="employment_start_date"]');
+    await startDateInput.click();
+    await startDateInput.fill(today);
     
     // Status should default to Active, but let's make sure
     const statusSelect = page.locator('select[name="status"]');
     await statusSelect.selectOption('Active');
     
     // Fill optional phone number
-    await page.fill('input[name="phone_number"]', testEmployee.phone);
+    const phoneInput = page.locator('input[name="phone_number"]');
+    await phoneInput.click();
+    await phoneInput.fill(testEmployee.phone);
+    
+    // Wait a moment for all fields to settle
+    await page.waitForTimeout(500);
     
     // Take screenshot before submitting
     await page.screenshot({ path: 'tests/screenshots/employee-create-filled.png' });
     
     // Submit form
-    await page.click('button:has-text("Save Employee")');
+    const saveButton = page.locator('button:has-text("Save Employee")');
+    await saveButton.click();
     
-    // Should redirect to employee list or detail page
-    await page.waitForURL(/\/employees(?:\/[a-f0-9-]+)?/, { timeout: 30000 });
+    // Wait for either success or error
+    await Promise.race([
+      page.waitForURL(/\/employees(?:\/[a-f0-9-]+)?/, { timeout: 30000 }),
+      page.waitForSelector('text=/success|created|added/i', { timeout: 30000 }),
+      page.waitForSelector('[role="alert"]', { timeout: 30000 })
+    ]);
     
-    // Check for success message or that the employee appears
-    const successMessage = page.locator('text=Employee added successfully, Employee created successfully, successfully added').first();
-    const employeeName = page.locator(`text=${testEmployee.firstName} ${testEmployee.lastName}`).first();
+    // Check current URL to determine if we succeeded
+    const currentUrl = page.url();
+    const isOnNewPage = currentUrl.includes('/employees/new');
     
-    // Either we see a success message or the employee name
-    const hasSuccess = await successMessage.isVisible({ timeout: 5000 }).catch(() => false);
-    const hasEmployee = await employeeName.isVisible({ timeout: 5000 }).catch(() => false);
+    if (isOnNewPage) {
+      // Still on create page, check for errors
+      const alert = await page.locator('[role="alert"]').textContent().catch(() => '');
+      console.log('Form submission failed. Alert:', alert);
+      
+      // Take screenshot of error state
+      await page.screenshot({ path: 'tests/screenshots/employee-create-error.png' });
+      
+      throw new Error(`Failed to create employee: ${alert}`);
+    }
     
-    expect(hasSuccess || hasEmployee).toBeTruthy();
+    // Success - we navigated away from the create page
+    console.log(`Successfully created employee. URL: ${currentUrl}`);
     
     // Store employee ID for cleanup if we're on detail page
-    const url = page.url();
-    const match = url.match(/\/employees\/([a-f0-9-]+)$/);
+    const match = currentUrl.match(/\/employees\/([a-f0-9-]+)$/);
     if (match) {
       console.log(`Created test employee with ID: ${match[1]}`);
     }
