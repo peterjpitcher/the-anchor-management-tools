@@ -52,3 +52,9 @@ discovery-*.log
 lint-*.txt
 *-analysis.txt
 analyze-*.txt
+
+# Playwright test artifacts
+test-results/
+playwright-report/
+tests/screenshots/
+tests/auth.json
