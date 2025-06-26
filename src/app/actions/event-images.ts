@@ -65,7 +65,9 @@ export async function uploadEventImage(
 
     const validationResult = uploadImageSchema.safeParse(fields)
     if (!validationResult.success) {
-      return { type: 'error', message: 'Invalid form data.' }
+      console.error('Validation errors:', validationResult.error.flatten())
+      const errors = validationResult.error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join(', ')
+      return { type: 'error', message: `Invalid form data: ${errors}` }
     }
 
     const { event_id, category_id, image_type, alt_text, caption, display_order } = validationResult.data
