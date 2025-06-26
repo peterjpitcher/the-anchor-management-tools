@@ -55,11 +55,11 @@ export async function uploadEventImage(
 
     // Validate other fields
     const fields = {
-      event_id: formData.get('event_id') as string,
-      category_id: formData.get('category_id') as string,
+      event_id: formData.get('event_id') as string || undefined,
+      category_id: formData.get('category_id') as string || undefined,
       image_type: formData.get('image_type') as string,
-      alt_text: formData.get('alt_text') as string,
-      caption: formData.get('caption') as string,
+      alt_text: formData.get('alt_text') as string || undefined,
+      caption: formData.get('caption') as string || undefined,
       display_order: formData.get('display_order') ? parseInt(formData.get('display_order') as string) : 0
     }
 

@@ -65,6 +65,12 @@ export function SquareImageUpload({
   const handleUpload = async () => {
     if (!selectedFile) return
 
+    // Don't allow upload for new entities
+    if (entityId === 'new') {
+      toast.error(`Please save the ${entityType} first before uploading images`)
+      return
+    }
+
     setIsUploading(true)
     try {
       const formData = new FormData()
@@ -156,8 +162,13 @@ export function SquareImageUpload({
 
       {/* Upload controls */}
       <div className="space-y-4">
+        {entityId === 'new' && (
+          <div className="text-sm text-amber-600 bg-amber-50 p-3 rounded-md">
+            Save the {entityType} first before uploading images
+          </div>
+        )}
         <div className="flex items-center space-x-4">
-          <label className="relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500">
+          <label className={`relative ${entityId === 'new' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500`}>
             <span className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
               <PhotoIcon className="h-5 w-5 mr-2" />
               Choose Image
@@ -168,6 +179,7 @@ export function SquareImageUpload({
               accept="image/jpeg,image/jpg,image/png,image/webp"
               onChange={handleFileSelect}
               className="sr-only"
+              disabled={entityId === 'new'}
             />
           </label>
 
