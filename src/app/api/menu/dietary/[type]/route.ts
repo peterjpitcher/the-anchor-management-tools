@@ -1,15 +1,15 @@
 import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
-import { SCHEMA_AVAILABILITY, SCHEMA_DIET } from '@/lib/api/schema';
+import { SCHEMA_AVAILABILITY } from '@/lib/api/schema';
 
 const VALID_DIETARY_TYPES = ['vegetarian', 'vegan', 'gluten-free', 'halal', 'kosher'];
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   context: { params: Promise<{ type: string }> }
 ) {
-  return withApiAuth(async (req, apiKey) => {
+  return withApiAuth(async (_req, _apiKey) => {
     const params = await context.params;
     const dietaryType = params.type.toLowerCase();
     
@@ -94,7 +94,7 @@ export async function GET(
         lastUpdated: new Date().toISOString(),
       },
     });
-  }, ['read:menu'], request);
+  }, ['read:menu'], _request);
 }
 
 export async function OPTIONS(request: NextRequest) {

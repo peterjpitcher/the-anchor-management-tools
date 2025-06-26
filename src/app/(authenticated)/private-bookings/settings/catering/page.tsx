@@ -4,7 +4,6 @@ import Link from 'next/link'
 import type { CateringPackage } from '@/types/private-bookings'
 import { 
   PlusIcon, 
-  TrashIcon,
   ArrowLeftIcon,
   SparklesIcon,
   CurrencyPoundIcon,
@@ -20,11 +19,11 @@ async function handleCreatePackage(formData: FormData) {
   const result = await createCateringPackage({
     name: formData.get('name') as string,
     package_type: formData.get('package_type') as string,
-    per_head_cost: parseFloat(formData.get('per_head_cost') as string),
-    minimum_order: parseInt(formData.get('minimum_order') as string) || null,
+    per_head_cost: parseFloat(formData.get('cost_per_head') as string),
+    minimum_order: parseInt(formData.get('minimum_guests') as string) || null,
     description: formData.get('description') as string || null,
-    includes: formData.get('includes') as string || null,
-    is_active: formData.get('is_active') === 'true'
+    includes: formData.get('dietary_notes') as string || null,
+    is_active: formData.get('active') === 'true'
   })
   
   if (result.error) {
@@ -39,11 +38,11 @@ async function handleUpdatePackage(formData: FormData) {
   const result = await updateCateringPackage(packageId, {
     name: formData.get('name') as string,
     package_type: formData.get('package_type') as string,
-    per_head_cost: parseFloat(formData.get('per_head_cost') as string),
-    minimum_order: parseInt(formData.get('minimum_order') as string) || null,
+    per_head_cost: parseFloat(formData.get('cost_per_head') as string),
+    minimum_order: parseInt(formData.get('minimum_guests') as string) || null,
     description: formData.get('description') as string || null,
-    includes: formData.get('includes') as string || null,
-    is_active: formData.get('is_active') === 'true'
+    includes: formData.get('dietary_notes') as string || null,
+    is_active: formData.get('active') === 'true'
   })
   
   if (result.error) {
@@ -155,21 +154,20 @@ export default async function CateringPackagesPage() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="buffet">Buffet</option>
-                  <option value="sit_down">Sit Down Meal</option>
+                  <option value="sit-down">Sit Down Meal</option>
                   <option value="canapes">Canapés</option>
-                  <option value="bbq">BBQ</option>
                   <option value="drinks">Drinks Package</option>
                   <option value="other">Other</option>
                 </select>
               </div>
               <div>
-                <label htmlFor="per_head_cost" className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="cost_per_head" className="block text-sm font-medium text-gray-700 mb-1">
                   Per Head Cost (£)
                 </label>
                 <input
                   type="number"
-                  id="per_head_cost"
-                  name="per_head_cost"
+                  id="cost_per_head"
+                  name="cost_per_head"
                   required
                   min="0"
                   step="0.01"
@@ -181,25 +179,25 @@ export default async function CateringPackagesPage() {
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
-                <label htmlFor="minimum_order" className="block text-sm font-medium text-gray-700 mb-1">
-                  Minimum Order
+                <label htmlFor="minimum_guests" className="block text-sm font-medium text-gray-700 mb-1">
+                  Minimum Guests
                 </label>
                 <input
                   type="number"
-                  id="minimum_order"
-                  name="minimum_order"
+                  id="minimum_guests"
+                  name="minimum_guests"
                   min="0"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="20"
                 />
               </div>
               <div>
-                <label htmlFor="is_active" className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="active" className="block text-sm font-medium text-gray-700 mb-1">
                   Status
                 </label>
                 <select
-                  id="is_active"
-                  name="is_active"
+                  id="active"
+                  name="active"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="true">Active</option>
@@ -222,15 +220,15 @@ export default async function CateringPackagesPage() {
             </div>
             
             <div>
-              <label htmlFor="includes" className="block text-sm font-medium text-gray-700 mb-1">
-                What&apos;s Included (one item per line)
+              <label htmlFor="dietary_notes" className="block text-sm font-medium text-gray-700 mb-1">
+                Dietary Information &amp; Notes
               </label>
               <textarea
-                id="includes"
-                name="includes"
+                id="dietary_notes"
+                name="dietary_notes"
                 rows={4}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Selection of sandwiches&#10;Sausage rolls&#10;Crisps and snacks&#10;Fresh fruit platter"
+                placeholder="Vegetarian options available&#10;Can accommodate gluten-free&#10;Contains nuts&#10;Halal options on request"
               />
             </div>
             
@@ -290,9 +288,8 @@ export default async function CateringPackagesPage() {
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             >
                               <option value="buffet">Buffet</option>
-                              <option value="sit_down">Sit Down Meal</option>
+                              <option value="sit-down">Sit Down Meal</option>
                               <option value="canapes">Canapés</option>
-                              <option value="bbq">BBQ</option>
                               <option value="drinks">Drinks Package</option>
                               <option value="other">Other</option>
                             </select>
@@ -304,7 +301,7 @@ export default async function CateringPackagesPage() {
                             </label>
                             <input
                               type="number"
-                              name="per_head_cost"
+                              name="cost_per_head"
                               defaultValue={pkg.cost_per_head}
                               required
                               min="0"
@@ -319,7 +316,7 @@ export default async function CateringPackagesPage() {
                             </label>
                             <input
                               type="number"
-                              name="minimum_order"
+                              name="minimum_guests"
                               defaultValue={pkg.minimum_guests || ''}
                               min="0"
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -333,7 +330,7 @@ export default async function CateringPackagesPage() {
                               Status
                             </label>
                             <select
-                              name="is_active"
+                              name="active"
                               defaultValue={pkg.active ? 'true' : 'false'}
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             >
@@ -357,11 +354,11 @@ export default async function CateringPackagesPage() {
                         
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            What's Included
+                            Dietary Information &amp; Notes
                           </label>
                           <textarea
-                            name="includes"
-                            defaultValue={pkg.includes || ''}
+                            name="dietary_notes"
+                            defaultValue={pkg.dietary_notes || ''}
                             rows={4}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           />

@@ -121,12 +121,13 @@ export async function exportUserData(userId?: string) {
     exportData.auditLogs = auditLogs || []
     
     // Log the export
-    await logAuditEvent(
-      user?.id || targetUserId,
-      'export_user_data',
-      {
-        resourceType: 'user',
-        resourceId: targetUserId,
+    await logAuditEvent({
+      user_id: user?.id || targetUserId,
+      operation_type: 'export',
+      resource_type: 'user_data',
+      resource_id: targetUserId,
+      operation_status: 'success',
+      additional_info: {
         exported_by: user?.id,
         record_counts: {
           profile: exportData.profile ? 1 : 0,
@@ -137,7 +138,7 @@ export async function exportUserData(userId?: string) {
           auditLogs: exportData.auditLogs.length
         }
       }
-    )
+    })
     
     // Return as JSON file
     const jsonData = JSON.stringify(exportData, null, 2)
@@ -194,17 +195,18 @@ export async function deleteUserData(userId: string, confirmEmail: string) {
     }
     
     // Log the deletion request first
-    await logAuditEvent(
-      user.id,
-      'delete_user_data',
-      {
-        resourceType: 'user',
-        resourceId: userId,
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'delete',
+      resource_type: 'user_data',
+      resource_id: userId,
+      operation_status: 'success',
+      additional_info: {
         deleted_by: user.id,
         email: confirmEmail,
         status: 'initiated'
       }
-    )
+    })
     
     // Note: Actual deletion would happen here
     // For safety, we're only logging the request

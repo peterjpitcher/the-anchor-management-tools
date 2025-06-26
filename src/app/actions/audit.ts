@@ -3,11 +3,20 @@
 import { createClient } from '@/lib/supabase/server'
 import { headers } from 'next/headers'
 
-export async function logAuditEvent(
-  userId: string,
-  action: string,
-  details: Record<string, any> = {}
-) {
+interface AuditLogParams {
+  user_id?: string;
+  user_email?: string;
+  operation_type: string;
+  resource_type: string;
+  resource_id?: string;
+  operation_status: 'success' | 'failure';
+  error_message?: string;
+  old_values?: Record<string, any>;
+  new_values?: Record<string, any>;
+  additional_info?: Record<string, any>;
+}
+
+export async function logAuditEvent(params: AuditLogParams) {
   try {
     const supabase = await createClient()
     const headersList = await headers()
@@ -22,9 +31,7 @@ export async function logAuditEvent(
     const { error } = await supabase
       .from('audit_logs')
       .insert({
-        user_id: userId,
-        action,
-        details,
+        ...params,
         ip_address: ip,
         user_agent: userAgent
       })
@@ -35,4 +42,22 @@ export async function logAuditEvent(
   } catch (error) {
     console.error('Exception in audit logging:', error)
   }
+}
+
+// Legacy function for backward compatibility
+export async function logAuditEventLegacy(
+  userId: string,
+  action: string,
+  details: Record<string, any> = {}
+) {
+  // Parse action into operation_type and resource_type
+  const [resourceType, operationType] = action.split('.')
+  
+  await logAuditEvent({
+    user_id: userId,
+    operation_type: operationType || 'unknown',
+    resource_type: resourceType || 'unknown',
+    operation_status: 'success',
+    additional_info: details
+  })
 }

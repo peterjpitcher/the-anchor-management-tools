@@ -5,7 +5,6 @@ import { getMessages, markAllMessagesAsRead } from '@/app/actions/messagesAction
 import { formatDistanceToNow } from 'date-fns'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
-import { Message } from '@/types/database'
 import { PageLoadingSkeleton } from '@/components/ui/SkeletonLoader'
 
 interface Conversation {

@@ -295,7 +295,7 @@ export function EventCategoryForm({ category, onSuccess, onCancel }: EventCatego
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
           placeholder="https://example.com/default-event-image.jpg"
         />
-        <p className="mt-1 text-xs text-gray-500">Default image used for events in this category when they don't have their own image</p>
+        <p className="mt-1 text-xs text-gray-500">Default image used for events in this category when they don&apos;t have their own image</p>
       </div>
 
       {/* Description */}

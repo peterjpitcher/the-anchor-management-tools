@@ -61,7 +61,7 @@ export default async function SimpleDashboardPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Welcome back! Here's what's happening today.
+          Welcome back! Here&apos;s what&apos;s happening today.
         </p>
       </div>
 
@@ -69,7 +69,7 @@ export default async function SimpleDashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white overflow-hidden shadow rounded-lg">
           <div className="px-4 py-5 sm:p-6">
-            <dt className="text-sm font-medium text-gray-500 truncate">Today's Events</dt>
+            <dt className="text-sm font-medium text-gray-500 truncate">Today&apos;s Events</dt>
             <dd className="mt-1 text-3xl font-semibold text-gray-900">{todayEvents.length}</dd>
           </div>
         </div>
@@ -91,7 +91,7 @@ export default async function SimpleDashboardPage() {
       {todayEvents.length > 0 && (
         <div className="bg-white shadow rounded-lg">
           <div className="px-4 py-5 sm:p-6">
-            <h2 className="text-lg font-medium text-gray-900 mb-4">Today's Events</h2>
+            <h2 className="text-lg font-medium text-gray-900 mb-4">Today&apos;s Events</h2>
             <div className="space-y-3">
               {todayEvents.map((event) => (
                 <Link

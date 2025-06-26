@@ -21,10 +21,7 @@ export async function createCustomer(formData: FormData) {
       first_name: formData.get('first_name') as string,
       last_name: formData.get('last_name') as string || undefined,
       mobile_number: formData.get('mobile_number') as string || undefined,
-      email_address: formData.get('email_address') as string || undefined,
-      sms_opt_in: formData.get('sms_opt_in') === 'on',
-      notes: formData.get('notes') as string || undefined,
-      date_of_birth: formData.get('date_of_birth') as string || undefined
+      sms_opt_in: formData.get('sms_opt_in') === 'on'
     }
 
     const validationResult = customerSchema.safeParse(rawData)
@@ -70,9 +67,13 @@ export async function createCustomer(formData: FormData) {
     }
 
     // Log audit event
-    await logAuditEvent(user.id, 'customer.create', {
-      customerId: customer.id,
-      customerName: `${customer.first_name} ${customer.last_name}`
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'create',
+      resource_type: 'customer',
+      resource_id: customer.id,
+      operation_status: 'success',
+      new_values: customer
     })
 
     revalidatePath('/customers')
@@ -98,10 +99,7 @@ export async function updateCustomer(id: string, formData: FormData) {
       first_name: formData.get('first_name') as string,
       last_name: formData.get('last_name') as string || undefined,
       mobile_number: formData.get('mobile_number') as string || undefined,
-      email_address: formData.get('email_address') as string || undefined,
-      sms_opt_in: formData.get('sms_opt_in') === 'on',
-      notes: formData.get('notes') as string || undefined,
-      date_of_birth: formData.get('date_of_birth') as string || undefined
+      sms_opt_in: formData.get('sms_opt_in') === 'on'
     }
 
     const validationResult = customerSchema.safeParse(rawData)
@@ -149,9 +147,13 @@ export async function updateCustomer(id: string, formData: FormData) {
     }
 
     // Log audit event
-    await logAuditEvent(user.id, 'customer.update', {
-      customerId: customer.id,
-      customerName: `${customer.first_name} ${customer.last_name}`
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'update',
+      resource_type: 'customer',
+      resource_id: id,
+      operation_status: 'success',
+      new_values: customer
     })
 
     revalidatePath('/customers')
@@ -193,9 +195,13 @@ export async function deleteCustomer(id: string) {
 
     // Log audit event
     if (customer) {
-      await logAuditEvent(user.id, 'customer.delete', {
-        customerId: id,
-        customerName: `${customer.first_name} ${customer.last_name}`
+      await logAuditEvent({
+        user_id: user.id,
+        operation_type: 'delete',
+        resource_type: 'customer',
+        resource_id: id,
+        operation_status: 'success',
+        old_values: customer
       })
     }
 

@@ -10,13 +10,6 @@ interface EmployeeNotesListProps {
   employeeId: string;
 }
 
-// Interface for the user data - Please confirm 'profiles' is the correct table name
-// and 'full_name' is the correct column for the user's name.
-interface UserProfile {
-  id: string;
-  full_name: string | null; // Placeholder: confirm this column name
-}
-
 interface DisplayEmployeeNote extends EmployeeNote {
   author_name?: string | null;
 }

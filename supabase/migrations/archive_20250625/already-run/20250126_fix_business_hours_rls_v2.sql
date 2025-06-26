@@ -12,21 +12,11 @@ CREATE POLICY "Public can read business hours" ON business_hours
   FOR SELECT USING (true);
 
 CREATE POLICY "Authorized users can manage business hours" ON business_hours
-  FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM user_has_permission(auth.uid(), 'settings', 'manage')
-      WHERE user_has_permission = true
-    )
-  );
+  FOR ALL USING (user_has_permission(auth.uid(), 'settings', 'manage'));
 
 -- Create comprehensive policies for special_hours  
 CREATE POLICY "Public can read special hours" ON special_hours
   FOR SELECT USING (true);
 
 CREATE POLICY "Authorized users can manage special hours" ON special_hours
-  FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM user_has_permission(auth.uid(), 'settings', 'manage')
-      WHERE user_has_permission = true
-    )
-  );
+  FOR ALL USING (user_has_permission(auth.uid(), 'settings', 'manage'));

@@ -3,7 +3,6 @@
 import { getSupabaseAdminClient } from '@/lib/supabase-singleton';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import type { Employee, EmployeeNote, EmployeeAttachment } from '@/types/database';
 import { supabase } from '@/lib/supabase';
 import { z } from 'zod';
 import type { ActionFormState, NoteFormState, AttachmentFormState, DeleteState } from '@/types/actions';
@@ -31,36 +30,12 @@ const noteSchema = z.object({
     created_by_user_id: z.string().uuid().optional(),
 });
 
-const attachmentSchema = z.object({
-  attachment_file: z.instanceof(File).refine(file => file.size > 0, "A file is required."),
-  category_id: z.string().uuid("A valid category must be selected."),
-  description: z.string().optional(),
-});
 
 const deleteAttachmentSchema = z.object({
     employee_id: z.string().uuid(),
     attachment_id: z.string().uuid(),
     storage_path: z.string().min(1),
 });
-
-// Generic helper
-async function handleFormAction<T extends z.ZodType<any, any>>(
-    formData: FormData,
-    schema: T,
-    action: (data: z.infer<T>) => Promise<ActionFormState>
-): Promise<ActionFormState> {
-    const rawData = Object.fromEntries(formData.entries());
-    const result = schema.safeParse(rawData);
-
-    if (!result.success) {
-        return {
-            type: 'error',
-            message: 'Invalid form data.',
-            errors: result.error.flatten().fieldErrors,
-        };
-    }
-    return action(result.data);
-}
 
 // Employee Actions
 export async function addEmployee(prevState: ActionFormState, formData: FormData): Promise<ActionFormState> {

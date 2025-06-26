@@ -18,7 +18,7 @@ const createBookingSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  return withApiAuth(async (req, apiKey) => {
+  return withApiAuth(async (_req, apiKey) => {
     const body = await request.json();
     
     // Validate input

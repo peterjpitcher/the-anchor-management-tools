@@ -5,8 +5,7 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { logAuditEvent } from './audit'
 import { sendBookingConfirmationSync } from './sms'
-import { withRetry, withTransaction } from '@/lib/supabase-retry'
-import { logger } from '@/lib/logger'
+import { withRetry } from '@/lib/supabase-retry'
 import { getEventAvailableCapacity, invalidateEventCache } from '@/lib/events'
 
 // Booking validation schema
@@ -101,13 +100,19 @@ export async function createBooking(formData: FormData) {
     }
 
     // Log audit event
-    await logAuditEvent(user.id, 'booking.create', {
-      bookingId: booking.id,
-      eventId: event.id,
-      eventName: event.name,
-      customerId: data.customer_id,
-      customerName: customer ? `${customer.first_name} ${customer.last_name}` : 'Unknown',
-      seats: data.seats
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'create',
+      resource_type: 'booking',
+      resource_id: booking.id,
+      operation_status: 'success',
+      additional_info: {
+        eventId: event.id,
+        eventName: event.name,
+        customerId: data.customer_id,
+        customerName: customer ? `${customer.first_name} ${customer.last_name}` : 'Unknown',
+        seats: data.seats
+      }
     })
 
     // Send SMS confirmation immediately
@@ -184,10 +189,16 @@ export async function createBulkBookings(eventId: string, customerIds: string[])
     }
 
     // Log audit event
-    await logAuditEvent(user.id, 'booking.bulk_create', {
-      eventId: eventId,
-      eventName: event.name,
-      customerCount: bookings.length
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'bulk_create',
+      resource_type: 'booking',
+      operation_status: 'success',
+      additional_info: {
+        eventId: eventId,
+        eventName: event.name,
+        customerCount: bookings.length
+      }
     })
 
     // Send SMS confirmations immediately
@@ -286,10 +297,16 @@ export async function updateBooking(id: string, formData: FormData) {
     }
 
     // Log audit event
-    await logAuditEvent(user.id, 'booking.update', {
-      bookingId: id,
-      eventName: event?.name,
-      seats
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'update',
+      resource_type: 'booking',
+      resource_id: id,
+      operation_status: 'success',
+      additional_info: {
+        eventName: event?.name,
+        seats
+      }
     })
 
     revalidatePath(`/events/${booking.event_id}`)
@@ -330,15 +347,21 @@ export async function deleteBooking(id: string) {
 
     // Log audit event
     if (booking) {
-      await logAuditEvent(user.id, 'booking.delete', {
-        bookingId: id,
-        eventId: booking.event_id,
-        eventName: (booking as any).events?.name,
-        customerId: booking.customer_id,
-        customerName: (booking as any).customers ? 
-          `${(booking as any).customers.first_name} ${(booking as any).customers.last_name}` : 
-          'Unknown',
-        seats: booking.seats
+      await logAuditEvent({
+        user_id: user.id,
+        operation_type: 'delete',
+        resource_type: 'booking',
+        resource_id: id,
+        operation_status: 'success',
+        additional_info: {
+          eventId: booking.event_id,
+          eventName: (booking as any).events?.name,
+          customerId: booking.customer_id,
+          customerName: (booking as any).customers ? 
+            `${(booking as any).customers.first_name} ${(booking as any).customers.last_name}` : 
+            'Unknown',
+          seats: booking.seats
+        }
       })
     }
 

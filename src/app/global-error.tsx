@@ -16,7 +16,7 @@ export default function GlobalError({
               Something went wrong!
             </h2>
             <p className="text-gray-600 mb-6">
-              We've encountered an unexpected error. Please try again or contact support if the issue persists.
+              We&apos;ve encountered an unexpected error. Please try again or contact support if the issue persists.
             </p>
             <div className="flex gap-4">
               <button

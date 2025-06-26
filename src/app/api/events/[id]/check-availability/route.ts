@@ -11,7 +11,7 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  return withApiAuth(async (req, apiKey) => {
+  return withApiAuth(async (_req, _apiKey) => {
     const params = await context.params;
     const body = await request.json();
     

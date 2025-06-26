@@ -22,8 +22,9 @@ WITH CHECK (
   bucket_id = 'event-images' AND
   EXISTS (
     SELECT 1 FROM user_roles ur
+    JOIN roles r ON ur.role_id = r.id
     WHERE ur.user_id = auth.uid()
-    AND ur.system_role IN ('super_admin', 'manager', 'staff')
+    AND r.name IN ('super_admin', 'manager', 'staff')
   )
 );
 
@@ -35,16 +36,18 @@ USING (
   bucket_id = 'event-images' AND
   EXISTS (
     SELECT 1 FROM user_roles ur
+    JOIN roles r ON ur.role_id = r.id
     WHERE ur.user_id = auth.uid()
-    AND ur.system_role IN ('super_admin', 'manager', 'staff')
+    AND r.name IN ('super_admin', 'manager', 'staff')
   )
 )
 WITH CHECK (
   bucket_id = 'event-images' AND
   EXISTS (
     SELECT 1 FROM user_roles ur
+    JOIN roles r ON ur.role_id = r.id
     WHERE ur.user_id = auth.uid()
-    AND ur.system_role IN ('super_admin', 'manager', 'staff')
+    AND r.name IN ('super_admin', 'manager', 'staff')
   )
 );
 
@@ -56,8 +59,9 @@ USING (
   bucket_id = 'event-images' AND
   EXISTS (
     SELECT 1 FROM user_roles ur
+    JOIN roles r ON ur.role_id = r.id
     WHERE ur.user_id = auth.uid()
-    AND ur.system_role IN ('super_admin', 'manager', 'staff')
+    AND r.name IN ('super_admin', 'manager', 'staff')
   )
 );
 
@@ -104,8 +108,9 @@ TO authenticated
 WITH CHECK (
   EXISTS (
     SELECT 1 FROM user_roles ur
+    JOIN roles r ON ur.role_id = r.id
     WHERE ur.user_id = auth.uid()
-    AND ur.system_role IN ('super_admin', 'manager', 'staff')
+    AND r.name IN ('super_admin', 'manager', 'staff')
   )
 );
 
@@ -116,15 +121,17 @@ TO authenticated
 USING (
   EXISTS (
     SELECT 1 FROM user_roles ur
+    JOIN roles r ON ur.role_id = r.id
     WHERE ur.user_id = auth.uid()
-    AND ur.system_role IN ('super_admin', 'manager', 'staff')
+    AND r.name IN ('super_admin', 'manager', 'staff')
   )
 )
 WITH CHECK (
   EXISTS (
     SELECT 1 FROM user_roles ur
+    JOIN roles r ON ur.role_id = r.id
     WHERE ur.user_id = auth.uid()
-    AND ur.system_role IN ('super_admin', 'manager', 'staff')
+    AND r.name IN ('super_admin', 'manager', 'staff')
   )
 );
 
@@ -135,8 +142,9 @@ TO authenticated
 USING (
   EXISTS (
     SELECT 1 FROM user_roles ur
+    JOIN roles r ON ur.role_id = r.id
     WHERE ur.user_id = auth.uid()
-    AND ur.system_role IN ('super_admin', 'manager', 'staff')
+    AND r.name IN ('super_admin', 'manager', 'staff')
   )
 );
 

@@ -147,10 +147,16 @@ export async function createEvent(formData: FormData) {
     }
 
     // Log audit event
-    await logAuditEvent(user.id, 'event.create', {
-      eventId: event.id,
-      eventName: event.name,
-      eventDate: event.date
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'create',
+      resource_type: 'event',
+      resource_id: event.id,
+      operation_status: 'success',
+      additional_info: {
+        eventName: event.name,
+        eventDate: event.date
+      }
     })
 
     revalidatePath('/events')
@@ -261,10 +267,16 @@ export async function updateEvent(id: string, formData: FormData) {
     }
 
     // Log audit event
-    await logAuditEvent(user.id, 'event.update', {
-      eventId: event.id,
-      eventName: event.name,
-      eventDate: event.date
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'update',
+      resource_type: 'event',
+      resource_id: event.id,
+      operation_status: 'success',
+      additional_info: {
+        eventName: event.name,
+        eventDate: event.date
+      }
     })
 
     revalidatePath('/events')
@@ -316,10 +328,16 @@ export async function deleteEvent(id: string) {
 
     // Log audit event
     if (event) {
-      await logAuditEvent(user.id, 'event.delete', {
-        eventId: id,
-        eventName: event.name,
-        eventDate: event.date
+      await logAuditEvent({
+        user_id: user.id,
+        operation_type: 'delete',
+        resource_type: 'event',
+        resource_id: id,
+        operation_status: 'success',
+        additional_info: {
+          eventName: event.name,
+          eventDate: event.date
+        }
       })
     }
 

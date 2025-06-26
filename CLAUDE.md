@@ -2,317 +2,674 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Context
+## Project Overview
 
-This is "The Anchor - Management Tools" (EventPlanner 3.0), a Next.js 15 application for managing events, customers, and employees for a venue. The application includes automated SMS notifications, file attachments, and comprehensive CRUD operations for all entities.
+The Anchor Management Tools is a comprehensive venue management system featuring event scheduling, customer management, employee records, and automated SMS notifications.
 
-Production URL: https://management.orangejelly.co.uk
+**Production URL**: https://management.orangejelly.co.uk
 
-## Commands
+## Tech Stack
 
-### Development
-- `npm run dev` - Start development server on http://localhost:3000
-- `npm run build` - Build the project for production
-- `npm start` - Start production server
-- `npm run lint` - Run ESLint for code quality checks
+- **Frontend**: Next.js 15.3.3, React 19.1.0, TypeScript, Tailwind CSS 3.4.0
+- **Backend**: Supabase (PostgreSQL with RLS, Auth, Storage)
+- **SMS**: Twilio 5.7.0
+- **Hosting**: Vercel (serverless)
+- **Validation**: Zod 3.25.56
+- **UI Components**: Custom components with Headless UI, Heroicons, Lucide React
 
-### Testing
-No test runner is currently configured. When adding tests, check with the user for the preferred testing framework.
+## High-Level Architecture
 
-### Utility Scripts
-The `/scripts/` directory contains various maintenance and analysis scripts:
-- **Data Analysis**: `analyze-api-surface.ts`, `analyze-performance.ts`, `analyze-schema-consistency.ts`, `analyze-user-flows.ts`
-- **Data Validation**: `check-booking-discount.ts`, `check-supabase-clients.ts`, `validate-business-logic.ts`
-- **Migration Tools**: `fix-supabase-imports.sh` 
-- **Testing**: `test-connectivity.ts`, `test-critical-flows.ts`, `load-test-critical-paths.ts`
-- **Security**: `security-scan.ts`
+### Application Structure
+- **Next.js 15 App Router** with file-based routing
+- **Server Actions** for all data mutations (no API routes)
+- **Role-Based Access Control (RBAC)** with super_admin, manager, and staff roles
+- **Supabase Context** - Always use existing SupabaseProvider, never create new clients
+- **Audit Logging** for all sensitive operations
 
-Run TypeScript scripts with `tsx scripts/[script-name].ts` (tsx is included as a dev dependency).
+### Key Directories
+- `src/app/(authenticated)/` - Protected routes requiring authentication
+- `src/app/actions/` - Server actions for data mutations
+- `src/lib/` - Core utilities (Supabase client, SMS, permissions, validation)
+- `src/components/` - Reusable UI components
+- `src/types/` - TypeScript type definitions
+- `supabase/migrations/` - Database migrations
 
-## Architecture Overview
+### Critical Patterns
+1. **Server Actions**: All mutations use server actions with Zod validation
+2. **Permissions**: checkUserPermission() must be called before any operation
+3. **Audit Logging**: logAuditEvent() for all create/update/delete operations
+4. **File Storage**: Always use returned paths from Supabase storage
+5. **SMS**: Phone numbers must be converted to E.164 format (+44...)
 
-### Technology Stack
-- **Framework**: Next.js 15.3.3 with App Router and React 19.1.0
-- **Database**: Supabase (PostgreSQL) with Row Level Security
-- **Authentication**: Supabase Auth with JWT tokens
-- **Styling**: Tailwind CSS with custom theme colors
-- **SMS**: Twilio integration for automated notifications
-- **File Storage**: Supabase Storage for employee attachments
-- **Deployment**: Vercel with cron jobs for scheduled tasks
-- **Type Safety**: TypeScript with strict mode
-- **Form Validation**: Zod schema validation
-- **Error Tracking**: Sentry integration (optional)
-- **Rate Limiting**: Upstash Redis (optional)
+## Essential Commands
 
-### Key Architectural Patterns
+```bash
+# Development
+npm run dev              # Start development server (http://localhost:3000)
+npm run build           # Build for production
+npm run lint            # Run ESLint - MUST pass before marking work complete
+npm run start           # Start production server
 
-1. **Server Actions**: Used exclusively for data mutations. Located in `/src/app/actions/`. This pattern co-locates mutations with components and eliminates need for separate API routes. Type-safe server-client communication is built-in.
+# Setup
+cp .env.example .env.local  # Create environment file
+npm install                 # Install dependencies
 
-2. **Supabase Client**: Centralized through `SupabaseProvider` context. Always use the client from context to avoid multiple instances and authentication issues.
+# Running TypeScript Scripts
+tsx scripts/[script-name].ts  # Run any script in the scripts/ directory
+```
 
-3. **File Storage Pattern**: When working with Supabase Storage:
-   - Always use the returned `data.path` from upload responses as the canonical path
-   - Store this path in the database for generating signed URLs
-   - Never construct storage paths manually
-   - Employee attachments use format: `{employee_id}/{filename}`
-   - Categories: legal_records, health_records, certifications, other
+## 🔴 MANDATORY: Pre-Development Discovery Protocol
 
-4. **Database Schema**: 
-   - Core entities: events, customers, bookings, employees, messages, private_bookings, event_categories
-   - Employee system includes notes (timestamped) and attachments (categorized)
-   - All tables use UUID primary keys and cascade deletes
-   - Row Level Security enabled on all tables
-   - Important views: `customer_messaging_health`, `message_templates_with_timing`
-   - Key functions: `user_has_permission()`, `get_message_template()`, `log_audit_event()`
+### MUST RUN BEFORE ANY CODE CHANGES
+```bash
+# 1. System Health Check
+echo "=== System Health Check ===" > discovery-$(date +%Y%m%d-%H%M%S).log
+npm run lint >> discovery-*.log 2>&1
+npm run build >> discovery-*.log 2>&1
 
-5. **RBAC System**: Comprehensive role-based access control
-   - System roles: `super_admin`, `manager`, `staff`
-   - Module-based permissions (view, create, edit, delete, manage)
-   - Permission checks via `PermissionContext` (client) and `user_has_permission()` (server)
-   - Middleware integration for route-level protection
-   - See `/docs/rbac.md` for detailed implementation guide
+# 2. Database State Verification
+echo "=== Database State ===" >> discovery-*.log
+tsx scripts/test-connectivity.ts >> discovery-*.log 2>&1
+tsx scripts/check-supabase-clients.ts >> discovery-*.log 2>&1
+tsx scripts/analyze-schema-consistency.ts >> discovery-*.log 2>&1
 
-6. **Messaging Architecture**: Advanced SMS system with templates
-   - Dynamic message templates with variable substitution
-   - Configurable timing: immediate, 1hr, 12hr, 24hr, 7 days, custom
-   - Event-specific template overrides
-   - Two-way SMS support with reply handling
-   - Automatic customer creation from unknown numbers
-   - SMS health monitoring with automatic suspension rules
-   - Webhook endpoints for status updates and inbound messages
+# 3. Critical Flows Test
+echo "=== Critical Flows ===" >> discovery-*.log
+tsx scripts/test-critical-flows.ts >> discovery-*.log 2>&1
 
-7. **Audit Logging**: Comprehensive tracking for compliance
-   - Immutable `audit_logs` table (no updates/deletes allowed)
-   - Tracks: login/logout, CRUD operations, exports, document access
-   - Automatic redaction of sensitive data
-   - Client info tracking (IP, user agent)
-   - Integration via `logAuditEvent()` in server actions
+# 4. Security Scan
+echo "=== Security Scan ===" >> discovery-*.log
+tsx scripts/security-scan.ts >> discovery-*.log 2>&1
 
-8. **Cron Jobs**: 
-   - **SMS Reminders**: Daily at 9 AM via `/api/cron/reminders`
-   - **Job Processor**: Every 5 minutes via `/api/jobs/process`
-     - Processes background jobs for SMS sending
-     - Required for booking confirmations and bulk SMS
-   - Both secured with `CRON_SECRET_KEY` environment variable
-   - Manual trigger available at `/api/jobs/process-now` for testing
+# 5. Performance Analysis
+echo "=== Performance Analysis ===" >> discovery-*.log
+tsx scripts/analyze-performance.ts >> discovery-*.log 2>&1
 
-9. **Form Data Pattern**: When passing data to server actions:
-   - Use hidden input fields for additional data
-   - Avoid `.bind()` pattern (deprecated in React 19)
-   - Example: `<input type="hidden" name="customerId" value={customerId} />`
+# 6. API Surface Analysis
+echo "=== API Surface ===" >> discovery-*.log
+tsx scripts/analyze-api-surface.ts >> discovery-*.log 2>&1
 
-10. **Multi-Layer Authentication Pattern**:
-    - Client-side: `SupabaseProvider` context provides single client instance
-    - Server Actions: Use `createClient()` for authenticated operations
-    - RBAC checks via `checkUserPermission()` in server actions
-    - All auth events logged via `logAuditEvent()`
+# Review the log
+cat discovery-*.log
+Discovery Report Template
+markdown## Discovery Report: [Feature/Fix Name]
+Date: [ISO Date]
+Branch: [git branch --show-current]
 
-11. **Phone Number Standardization**:
-    - UK phone numbers validated with `UK_PHONE_PATTERN`
-    - Convert to E.164 format (+44...) in server actions
-    - `generatePhoneVariants()` handles different formats when searching
-    - Always store in standardized format in database
+### System State
+- [ ] Build successful
+- [ ] No ESLint errors
+- [ ] Database connection verified
+- [ ] Critical flows passing
+- [ ] Security scan clean
+- [ ] Performance baseline established
 
-12. **Customer Loyalty Pattern**:
-    - `getLoyalCustomers()` identifies frequent customers
-    - Loyal customers marked with ★ in selection dropdowns
-    - `sortCustomersByLoyalty()` puts loyal customers at top
-    - Considers existing bookings when showing available customers
+### Feature Impact Analysis
+**Affected Components:**
+Run this to find dependencies
+grep -r "ComponentName" src/ --include=".tsx" --include=".ts"
 
-13. **Event-based Filtering Pattern**:
-    - Bulk messaging supports event-based customer filtering
-    - `getEventCustomers()` retrieves attendees for specific events
-    - Enables targeted communications to event participants
+**Database Tables Affected:**
+- [ ] events
+- [ ] customers
+- [ ] bookings
+- [ ] employees
+- [ ] messages
+- [ ] private_bookings
+- [ ] event_categories
+- [ ] audit_logs
 
-### Recent Features
+**Server Actions Affected:**
+List all server actions that might need updates
+ls -la src/app/actions/
 
-1. **Private Bookings Module**: Complete venue hire management
-   - Draft/tentative/confirmed workflow
-   - Comprehensive pricing and contract management
-   - Integration with event calendar
+**Permissions Required:**
+- Module: [events/customers/employees/etc]
+- Actions: [view/create/edit/delete/manage]
 
-2. **Event Categories**: Event categorization system
-   - Visual identity with colors and icons
-   - Smart customer suggestions based on category preferences
-   - Category-based filtering throughout the app
+**Integration Points:**
+- [ ] SMS/Twilio
+- [ ] File Storage
+- [ ] Cron Jobs
+- [ ] Webhooks
+- [ ] Audit Logging
+📋 Quality Standards & Verification
+Pre-Implementation Analysis
+bash# 1. Check existing patterns
+echo "=== Existing Patterns ==="
+# Find similar features
+find src/app/\(authenticated\) -name "*.tsx" | grep -E "(list|form|detail)" | head -10
 
-3. **Enhanced Dashboard**: Role-based widgets
-   - Configurable based on user permissions
-   - Real-time statistics and activity monitoring
-   - Quick action buttons for common tasks
+# 2. Review server actions
+echo "=== Server Actions ==="
+grep -l "export async function" src/app/actions/*.ts | head -10
 
-### Project Structure
-- `/src/app/(authenticated)/` - Protected routes requiring login
-- `/src/app/actions/` - Server actions for data operations
-- `/src/app/api/` - API routes (cron jobs, webhooks)
-- `/src/components/` - Reusable UI components
-- `/src/lib/` - Utilities, database client, SMS templates
-- `/src/types/` - TypeScript type definitions
-- `/supabase/migrations/` - Database schema migrations
-- `/docs/` - Comprehensive documentation for all features
-- `/scripts/` - Utility scripts for maintenance and analysis
+# 3. Check UI components
+echo "=== Available Components ==="
+ls -la src/components/ui/
+
+# 4. Review types
+echo "=== Type Definitions ==="
+ls -la src/types/
+Implementation Checklist
+
+ Follow server action pattern (no API routes for mutations)
+ Use SupabaseProvider context (never create new clients)
+ Implement proper RBAC checks
+ Add audit logging for sensitive operations
+ Handle all error states
+ Implement loading states
+ Test with different user roles
+ Verify RLS policies work correctly
+ Check mobile responsiveness
+ Validate forms with Zod schemas
+
+Post-Implementation Verification
+bash# 1. Lint and Build
+npm run lint
+npm run build
+
+# 2. Test Critical Flows
+tsx scripts/test-critical-flows.ts
+
+# 3. Validate Business Logic
+tsx scripts/validate-business-logic.ts
+
+# 4. Check Performance Impact
+tsx scripts/analyze-performance.ts
+
+# 5. Security Review
+tsx scripts/security-scan.ts
+
+# 6. Manual Testing Checklist
+echo "
+Manual Testing Required:
+- [ ] Test as super_admin role
+- [ ] Test as manager role
+- [ ] Test as staff role
+- [ ] Test error scenarios (network off)
+- [ ] Test on mobile device
+- [ ] Check audit logs created
+- [ ] Verify SMS sends (if applicable)
+- [ ] Test file uploads (if applicable)
+"
+🏗️ Critical Implementation Patterns
+Server Action Pattern (ALWAYS USE THIS)
+typescript// src/app/actions/[entity].ts
+'use server';
+
+import { createClient } from '@/lib/supabase/server';
+import { checkUserPermission } from '@/lib/permissions/server';
+import { logAuditEvent } from './audit';
+import { z } from 'zod';
+import { revalidatePath } from 'next/cache';
+
+// Define validation schema
+const CreateEntitySchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  // ... other fields
+});
+
+export async function createEntity(formData: FormData) {
+  try {
+    // 1. Get authenticated client
+    const supabase = await createClient();
+    
+    // 2. Check permissions
+    const hasPermission = await checkUserPermission(supabase, 'module_name', 'create');
+    if (!hasPermission) {
+      return { error: 'You do not have permission to perform this action' };
+    }
+    
+    // 3. Validate input
+    const validatedData = CreateEntitySchema.parse({
+      name: formData.get('name'),
+      // ... other fields
+    });
+    
+    // 4. Perform database operation
+    const { data, error } = await supabase
+      .from('table_name')
+      .insert(validatedData)
+      .select()
+      .single();
+      
+    if (error) {
+      console.error('Database error:', error);
+      return { error: 'Failed to create entity' };
+    }
+    
+    // 5. Log audit event
+    await logAuditEvent(supabase, {
+      action: 'create',
+      entity_type: 'entity_name',
+      entity_id: data.id,
+      details: { name: data.name }
+    });
+    
+    // 6. Revalidate cache
+    revalidatePath('/entity-list');
+    
+    return { success: true, data };
+  } catch (error) {
+    console.error('Server action error:', error);
+    return { error: 'An unexpected error occurred' };
+  }
+}
+Component Pattern with Supabase Context
+typescript// src/app/(authenticated)/module/page.tsx
+'use client';
+
+import { useSupabase } from '@/components/SupabaseProvider';
+import { usePermissions } from '@/components/PermissionContext';
+import { useState, useEffect } from 'react';
+import { DataTable } from '@/components/ui/data-table';
+import { Button } from '@/components/ui/button';
+import { Loader2 } from 'lucide-react';
+
+export default function EntityListPage() {
+  const { supabase } = useSupabase();
+  const { checkPermission } = usePermissions();
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  
+  const canCreate = checkPermission('module_name', 'create');
+  const canEdit = checkPermission('module_name', 'edit');
+  
+  useEffect(() => {
+    loadData();
+  }, []);
+  
+  async function loadData() {
+    try {
+      const { data, error } = await supabase
+        .from('table_name')
+        .select('*')
+        .order('created_at', { ascending: false });
+        
+      if (error) throw error;
+      setData(data || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+  
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+  
+  if (error) {
+    return (
+      <div className="p-4 text-red-600">
+        Error loading data: {error}
+      </div>
+    );
+  }
+  
+  return (
+    <div className="space-y-4">
+      {canCreate && (
+        <Button href="/module/new">Create New</Button>
+      )}
+      <DataTable 
+        data={data} 
+        columns={columns}
+        // ... other props
+      />
+    </div>
+  );
+}
+File Storage Pattern
+typescript// Always follow this pattern for file uploads
+export async function uploadEmployeeAttachment(
+  employeeId: string,
+  file: File,
+  category: string
+) {
+  const supabase = await createClient();
+  
+  // 1. Upload file - let Supabase generate the path
+  const { data, error } = await supabase.storage
+    .from('employee-attachments')
+    .upload(`${employeeId}/${file.name}`, file);
+    
+  if (error) {
+    return { error: 'Failed to upload file' };
+  }
+  
+  // 2. ALWAYS use the returned path
+  const storagePath = data.path;
+  
+  // 3. Save path to database
+  const { error: dbError } = await supabase
+    .from('employee_attachments')
+    .insert({
+      employee_id: employeeId,
+      file_name: file.name,
+      file_path: storagePath, // Use the returned path
+      category,
+      file_size: file.size,
+      mime_type: file.type
+    });
+    
+  if (dbError) {
+    // Rollback file upload
+    await supabase.storage
+      .from('employee-attachments')
+      .remove([storagePath]);
+    return { error: 'Failed to save file record' };
+  }
+  
+  return { success: true, path: storagePath };
+}
+
+// Generate signed URL for access
+export async function getFileUrl(filePath: string) {
+  const supabase = await createClient();
+  
+  const { data, error } = await supabase.storage
+    .from('employee-attachments')
+    .createSignedUrl(filePath, 3600); // 1 hour expiry
+    
+  return data?.signedUrl;
+}
+SMS Integration Pattern
+typescript// Always standardize phone numbers
+import { UK_PHONE_PATTERN } from '@/lib/sms/validation';
+
+export async function sendBookingConfirmation(bookingId: string) {
+  // 1. Validate and standardize phone number
+  let phoneNumber = customer.phone_number;
+  if (!UK_PHONE_PATTERN.test(phoneNumber)) {
+    return { error: 'Invalid phone number format' };
+  }
+  
+  // 2. Convert to E.164 format
+  if (phoneNumber.startsWith('0')) {
+    phoneNumber = '+44' + phoneNumber.substring(1);
+  }
+  
+  // 3. Check customer messaging health
+  const { data: health } = await supabase
+    .from('customer_messaging_health')
+    .select('*')
+    .eq('customer_id', customer.id)
+    .single();
+    
+  if (health?.sms_suspended) {
+    return { error: 'SMS messaging suspended for this customer' };
+  }
+  
+  // 4. Queue message via jobs system
+  const { error } = await supabase
+    .from('jobs')
+    .insert({
+      type: 'send_sms',
+      payload: {
+        to: phoneNumber,
+        template: 'booking_confirmation',
+        variables: {
+          customer_name: customer.name,
+          event_name: event.title,
+          // ... other variables
+        }
+      }
+    });
+    
+  // 5. Process immediately in dev, cron handles in production
+  if (process.env.NODE_ENV === 'development') {
+    await fetch('/api/jobs/process-now');
+  }
+  
+  return { success: true };
+}
+🔍 Feature-Specific Discovery
+Before Adding New Features
+bash# 1. Analyze existing patterns
+echo "=== Feature Analysis ==="
+# Find similar features
+find src/app/\(authenticated\) -type f -name "*.tsx" | xargs grep -l "similar-feature"
+
+# 2. Check permissions structure
+echo "=== Permission Requirements ==="
+grep -r "checkPermission" src/ | grep "module_name"
+
+# 3. Review database schema
+echo "=== Database Schema ==="
+# Check for related tables
+grep -r "CREATE TABLE" supabase/migrations/ | grep -E "(related|table)"
+
+# 4. Check for existing components
+echo "=== UI Components ==="
+# Find reusable components
+find src/components -name "*.tsx" | grep -E "(List|Form|Modal|Dialog)"
+Migration Checklist
+When creating database migrations:
+sql-- supabase/migrations/[timestamp]_descriptive_name.sql
+
+-- 1. Always start with a comment
+-- Description: What this migration does
+
+-- 2. Make migrations idempotent
+CREATE TABLE IF NOT EXISTS table_name (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. Add RLS policies
+ALTER TABLE table_name ENABLE ROW LEVEL SECURITY;
+
+-- 4. Create basic policies
+CREATE POLICY "Users can view based on permissions" ON table_name
+  FOR SELECT USING (
+    user_has_permission(auth.uid(), 'module_name', 'view')
+  );
+
+-- 5. Add indexes for performance
+CREATE INDEX IF NOT EXISTS idx_table_name_created_at 
+  ON table_name(created_at DESC);
+
+-- 6. Add to audit_logs if needed
+-- Handled automatically by audit triggers
+🚀 Performance & Monitoring
+Performance Checks
+bash# 1. Bundle size analysis
+npm run build > build-analysis.txt 2>&1
+grep -E "(First Load JS|Route)" build-analysis.txt
+
+# 2. Check for common issues
+echo "=== Performance Issues ==="
+# Find potential N+1 queries
+grep -r "map.*await" src/ --include="*.tsx" --include="*.ts"
+
+# Find missing loading states
+grep -r "useState.*loading" src/ | wc -l
+
+# Check for proper caching
+grep -r "revalidatePath" src/app/actions/
+Monitoring Integration Points
+
+SMS Health: Monitor at /settings/sms-health
+Webhook Logs: Check webhook_logs table
+Audit Trail: Query audit_logs for activity
+Job Queue: Monitor jobs table for processing
+Error Tracking: Check Sentry dashboard (if configured)
+
+🛡️ Security Checklist
+Every Feature MUST:
+
+ Use checkUserPermission() in server actions
+ Validate all inputs with Zod schemas
+ Log sensitive operations via logAuditEvent()
+ Use RLS policies as final defense layer
+ Generate time-limited signed URLs for files
+ Sanitize phone numbers to E.164 format
+ Never expose service role key to client
+ Validate webhook signatures in production
+
+Security Patterns
+typescript// Pattern for sensitive operations
+export async function deleteSensitiveData(id: string) {
+  const supabase = await createClient();
+  
+  // 1. Enhanced permission check
+  const hasPermission = await checkUserPermission(
+    supabase, 
+    'module_name', 
+    'delete'
+  );
+  
+  if (!hasPermission) {
+    // Log unauthorized attempt
+    await logAuditEvent(supabase, {
+      action: 'unauthorized_access_attempt',
+      entity_type: 'sensitive_data',
+      entity_id: id,
+      details: { attempted_action: 'delete' }
+    });
+    
+    return { error: 'Unauthorized' };
+  }
+  
+  // 2. Perform operation
+  const { error } = await supabase
+    .from('sensitive_table')
+    .delete()
+    .eq('id', id);
+    
+  // 3. Always log deletions
+  await logAuditEvent(supabase, {
+    action: 'delete',
+    entity_type: 'sensitive_data',
+    entity_id: id,
+    details: { deleted_at: new Date().toISOString() }
+  });
+  
+  return { success: true };
+}
+🔧 Common Development Tasks
+Adding a New Module
+bash# 1. Create migration
+echo "-- Description: Add new module tables" > supabase/migrations/$(date +%Y%m%d%H%M%S)_add_module_name.sql
+
+# 2. Create types
+touch src/types/module-name.ts
+
+# 3. Create server actions
+touch src/app/actions/module-name.ts
+
+# 4. Create UI structure
+mkdir -p src/app/\(authenticated\)/module-name
+touch src/app/\(authenticated\)/module-name/page.tsx
+touch src/app/\(authenticated\)/module-name/new/page.tsx
+touch src/app/\(authenticated\)/module-name/\[id\]/page.tsx
+
+# 5. Update permissions
+# Add to rbac_permissions table via migration
+Testing Webhooks Locally
+bash# 1. Use webhook test tool
+# Navigate to /settings/webhook-test
+
+# 2. Or test via curl
+curl -X POST http://localhost:3000/api/webhooks/twilio/route \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "From=%2B447700900000&To=%2B447700900001&Body=Test+message"
+
+# 3. Check webhook logs
+# Query webhook_logs table in Supabase
+📝 Code Review Checklist
+Before Requesting Review
+
+ Run npm run lint - zero errors
+ Run npm run build - builds successfully
+ Test all user roles (super_admin, manager, staff)
+ Verify audit logs created for sensitive actions
+ Check mobile responsiveness
+ Test error scenarios
+ Verify loading states show
+ Confirm success feedback displays
+ Review discovery log for any issues
+
+Common Issues to Check
+
+ No hardcoded strings - use constants
+ No console.log statements in production code
+ All async operations have error handling
+ Forms have proper validation and error display
+ Server actions return consistent format
+ RLS policies match permission checks
+ File paths use returned values from Supabase
+ Phone numbers converted to E.164 format
+
+🚨 Critical Reminders
+
+DO NOT COMMIT TO GITHUB unless explicitly asked
+ALWAYS RUN BUILD before marking work complete
+CHECK EXISTING PATTERNS before creating new ones
+TEST WITH ALL ROLES to ensure permissions work
+LOG AUDIT EVENTS for all sensitive operations
+USE SUPABASE CONTEXT never create new clients
+FOLLOW SMS PATTERNS for phone number handling
+MIGRATIONS NEED USER ACTION - always notify
+
+✅ Definition of Done
+A feature is ONLY complete when:
+
+Discovery protocol run and clean
+Build passes with no errors
+All user roles tested
+Mobile responsive verified
+Audit logging implemented
+Error handling comprehensive
+Loading states present
+Success feedback shows
+Documentation updated if needed
+Performance impact acceptable
+
+Remember: Quality over speed. A well-implemented feature following patterns is better than a quick fix that breaks conventions.
+
+## Key Database Tables
+
+- **events** - Event management with categories and capacity
+- **customers** - Customer records with messaging health tracking
+- **bookings** - Event bookings and registrations
+- **employees** - Employee records with attachments
+- **messages** - SMS message queue and history
+- **private_bookings** - Private venue bookings
+- **audit_logs** - Comprehensive audit trail
+- **rbac_roles/permissions** - Role-based access control
+- **jobs** - Background job queue for async processing
+
+## Important Configuration
 
 ### Environment Variables
-Required in `.env.local`:
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY` - For server-side operations
-- `TWILIO_ACCOUNT_SID` - Optional for SMS features
-- `TWILIO_AUTH_TOKEN` - Optional for SMS features
-- `TWILIO_PHONE_NUMBER` - Optional for SMS features
-- `NEXT_PUBLIC_APP_URL` - Application URL for links in SMS
-- `NEXT_PUBLIC_CONTACT_PHONE_NUMBER` - Displayed contact number
-- `CRON_SECRET_KEY` - For securing cron job endpoints
-- `SKIP_TWILIO_SIGNATURE_VALIDATION` - Optional, for testing only (NEVER set to true in production)
+Required variables are defined in `.env.example`. Key ones include:
+- Supabase connection details
+- Twilio API credentials  
+- Google Calendar API settings
+- Vercel deployment settings
 
-Optional for enhanced features:
-- `NEXT_PUBLIC_SENTRY_DSN` - Error tracking
-- `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` - Sentry configuration
-- `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` - Rate limiting
+### Cron Jobs (vercel.json)
+- Daily reminders: 9 AM UTC
+- Job processing: Every 5 minutes
 
-### UI/UX Conventions
-- **Color Palette**: 
-  - Primary Blue: `#2563eb`
-  - Sidebar Green: `#005131`
-  - Success Green: `#10b981`
-  - Warning Yellow: `#f59e0b`
-  - Error Red: `#ef4444`
-- **Component Patterns**: Always check existing components before creating new ones
-- **Loading States**: Use skeleton loaders for better UX
-- **Error Handling**: Display user-friendly error messages with recovery actions
-- **Responsive Design**: Mobile-first approach with Tailwind breakpoints
-- **Everything-on-one-page**: For complex forms, show all fields on one page
-- **Progressive Disclosure**: Use for complex workflows (e.g., private bookings)
-- **Status-driven UI**: UI changes based on entity status
+### Middleware
+- Authentication handling for protected routes
+- Allows unauthenticated access to cron endpoints
 
-### Build Configuration
-- **TypeScript**: Strict mode enabled with ES2017 target
-- **Path Aliases**: `@/` maps to `./src/` directory
-- **ESLint**: Configured but errors ignored during builds
-- **Server Actions**: Body size limit set to 10MB for file uploads
-- **No Prettier**: Project doesn't use Prettier for code formatting
-- **Next.js Configuration**: Uses experimental features for enhanced performance
-- **Sentry Integration**: Configured with source map upload and tree shaking
+## Common Pitfalls to Avoid
 
-### Important Reminders
-
-1. **Database Migrations**: Always notify the user when creating new migrations in `/supabase/migrations/`. The user needs to run migrations manually in their Supabase dashboard or via CLI. Check `supabase/migrations/README_MIGRATIONS.md` for any pending migrations.
-
-2. **Before Committing**: Always run `npm run build` locally to ensure the build passes before committing changes to GitHub.
-
-3. **Git Workflow**: 
-   - Do NOT commit code to GitHub unless explicitly asked by the user
-   - The user will test locally first before requesting commits
-   - Exception: Twilio-related changes may need to be committed for production testing
-
-4. **Error Handling**: Server actions should always return consistent error formats:
-   ```typescript
-   { error: string } | { success: true, data?: any }
-   ```
-
-5. **TypeScript Path Aliases**: Use `@/` for imports (configured in tsconfig.json)
-
-6. **Performance Considerations**:
-   - Use React Suspense for async components
-   - Implement proper caching strategies with `revalidatePath`
-   - Optimize images with Next.js Image component
-   - Minimize client-side JavaScript with server components
-
-7. **Security Best Practices**:
-   - All routes under `/(authenticated)` require authentication
-   - Use Row Level Security for all database operations
-   - Generate signed URLs for file access (24-hour expiry)
-   - Never expose service role key to client
-   - Validate all user inputs with Zod schemas
-   - Always enable webhook signature validation in production
-
-8. **Rate Limiting**: Server-side rate limiting implemented
-   - Login attempts: 5/minute
-   - Signups: 2/minute
-   - Use `checkRateLimit()` in server actions
-
-### Monitoring & Debugging Tools
-- **SMS Health Dashboard**: `/settings/sms-health` - Monitor delivery rates and customer messaging status
-- **Webhook Logs**: Database table for debugging webhook issues
-- **Audit Logs**: Comprehensive activity tracking for compliance
-- **Messages Interface**: View and reply to SMS conversations at `/messages`
-- **Webhook Test Tool**: `/settings/webhook-test` - Test webhook connectivity
-- **Import Messages Tool**: `/settings/import-messages` - Bulk import messaging data
-
-### Webhook Endpoints
-- `/api/webhooks/twilio/route` - Main webhook endpoint for SMS
-- `/api/cron/reminders` - Daily reminder cron job
-- All webhook activity logged to `webhook_logs` table for debugging
-
-### Common Development Tasks
-
-1. **Adding a New Entity**: 
-   - Create migration in `/supabase/migrations/`
-   - Add types in `/src/types/`
-   - Create server actions in `/src/app/actions/`
-   - Build UI components and pages
-   - Add RBAC permissions if needed
-
-2. **Working with SMS Templates**:
-   - Templates stored in `message_templates` table
-   - Use `{{variable}}` syntax for dynamic content
-   - Test with different timing configurations
-   - Monitor delivery via SMS health dashboard
-
-3. **File Uploads**:
-   - Use the employee attachments pattern as reference
-   - Always store the returned path from Supabase
-   - Generate signed URLs for access
-   - Implement proper error handling
-
-4. **Permission Checks**:
-   - Client-side: Use `PermissionContext`
-   - Server-side: Use `checkUserPermission()` in actions
-   - Always check permissions before sensitive operations
-
-### Documentation Structure
-Comprehensive documentation available in `/docs/`:
-- **Setup**: installation.md, configuration.md, deployment.md
-- **Features**: feature-*.md files for each major module
-- **Technical**: architecture.md, database-schema.md, api-reference.md
-- **Security**: security.md, rbac.md
-- **Monitoring**: monitoring.md, troubleshooting.md
-- **Standards**: development.md, style-guide.md, ui-standards.md
-
-### Debugging & Development Tips
-
-1. **When the build fails**: 
-   - Check for TypeScript errors: `npm run build` shows detailed error messages
-   - Common issues: missing imports, type mismatches, unused variables
-   - ESLint errors are ignored during build but shown for awareness
-
-2. **Supabase Connection Issues**:
-   - Verify environment variables are set correctly
-   - Check if RLS policies are blocking queries
-   - Use Supabase dashboard SQL editor to test queries directly
-   - Server actions need service role key, client needs anon key
-
-3. **SMS/Twilio Issues**:
-   - Check webhook logs in database for debugging
-   - Use `/settings/webhook-test` to verify connectivity
-   - Ensure phone numbers are in E.164 format
-   - Check SMS health dashboard for delivery rates
-
-4. **File Upload Problems**:
-   - Verify Supabase Storage bucket exists and has proper policies
-   - Check file size limits (10MB for server actions)
-   - Always use the returned path from upload response
-   - Generate signed URLs for secure access
-
-### Code Patterns to Follow
-
-1. **Component Naming**: Use PascalCase for components (e.g., `CustomerList.tsx`)
-2. **Server Action Naming**: Use camelCase with action verbs (e.g., `createCustomer`, `updateEvent`)
-3. **Type Definitions**: Always define types in `/src/types/` and import them
-4. **Loading States**: Use `loading` prop or Suspense boundaries, not custom states
-5. **Error Messages**: User-facing errors should be clear and actionable
-6. **Date Handling**: Use `format` from date-fns for consistent date formatting
-7. **Modal/Dialog Pattern**: Use the existing Dialog component from `/src/components/ui/`
-8. **Table Pattern**: Use the DataTable component for consistent table UI
-9. **Form Pattern**: Use react-hook-form with Zod validation
-10. **Icons**: Use lucide-react icons consistently throughout the app
+1. **Never create new Supabase clients** - Always use SupabaseProvider context
+2. **Don't use API routes for mutations** - Use server actions
+3. **Don't hardcode phone formats** - Convert to E.164 (+44...)
+4. **Don't skip audit logging** - Required for sensitive operations
+5. **Don't ignore RLS policies** - They're the final security layer
+6. **Don't commit without lint/build** - Must pass before marking complete

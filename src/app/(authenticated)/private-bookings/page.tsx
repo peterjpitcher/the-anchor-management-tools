@@ -83,12 +83,6 @@ export default async function PrivateBookingsPage() {
     p_action: 'create'
   })
 
-  const { data: hasEditPermission } = await supabase.rpc('user_has_permission', {
-    p_user_id: user.id,
-    p_module_name: 'private_bookings',
-    p_action: 'edit'
-  })
-
   const { data: hasDeletePermission } = await supabase.rpc('user_has_permission', {
     p_user_id: user.id,
     p_module_name: 'private_bookings',

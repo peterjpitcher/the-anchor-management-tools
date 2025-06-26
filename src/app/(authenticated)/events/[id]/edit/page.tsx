@@ -142,7 +142,7 @@ export default function EditEnhancedEventPage({ params: paramsPromise }: { param
     return (
       <div className="text-center py-12">
         <h2 className="text-xl font-semibold text-gray-900">Event not found</h2>
-        <p className="mt-2 text-gray-600">The event you're looking for doesn't exist.</p>
+        <p className="mt-2 text-gray-600">The event you&apos;re looking for doesn&apos;t exist.</p>
       </div>
     )
   }

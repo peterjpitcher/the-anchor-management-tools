@@ -52,11 +52,8 @@ export const nameSchema = z.string()
 export const customerSchema = z.object({
   first_name: nameSchema,
   last_name: nameSchema.optional(),
-  email_address: emailSchema.optional(),
   mobile_number: phoneSchema,
-  date_of_birth: pastDateSchema.optional(),
   sms_opt_in: z.boolean().default(false),
-  notes: z.string().max(500).optional(),
 });
 
 export const eventSchema = z.object({

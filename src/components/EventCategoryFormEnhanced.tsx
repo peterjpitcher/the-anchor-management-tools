@@ -493,7 +493,7 @@ export function EventCategoryFormEnhanced({ category, onSuccess, onCancel }: Eve
               placeholder="e.g., 30 minutes before"
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
             />
-            <p className="mt-1 text-xs text-gray-500">Descriptive text like "30 minutes before" or "1 hour before start"</p>
+            <p className="mt-1 text-xs text-gray-500">Descriptive text like &quot;30 minutes before&quot; or &quot;1 hour before start&quot;</p>
           </div>
 
           <div>

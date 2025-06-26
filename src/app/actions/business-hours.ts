@@ -104,19 +104,19 @@ export async function updateBusinessHours(formData: FormData) {
       updates.push(validationResult.data)
     }
 
-    // Update all days
-    for (const update of updates) {
-      const { error } = await supabase
-        .from('business_hours')
-        .upsert({
-          ...update,
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'day_of_week'
-        })
+    // Update all days in a single batch operation
+    const updatedData = updates.map(update => ({
+      ...update,
+      updated_at: new Date().toISOString()
+    }))
 
-      if (error) throw error
-    }
+    const { error } = await supabase
+      .from('business_hours')
+      .upsert(updatedData, {
+        onConflict: 'day_of_week'
+      })
+
+    if (error) throw error
 
     // Log audit event
     await logAuditEvent({

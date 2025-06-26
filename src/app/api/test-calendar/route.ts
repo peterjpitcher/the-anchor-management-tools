@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { testCalendarConnection, isCalendarConfigured } from '@/lib/google-calendar'
 import { createAdminClient } from '@/lib/supabase/server'
 
-export async function GET(request: Request) {
+export async function GET(_request: Request) {
   try {
     // Check authentication
     const supabase = createAdminClient()

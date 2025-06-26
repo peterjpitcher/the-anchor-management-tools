@@ -44,8 +44,13 @@ export async function signIn(email: string, password: string) {
 
     if (data.user) {
       // Log successful login
-      await logAuditEvent(data.user.id, 'auth.login', {
-        method: 'password'
+      await logAuditEvent({
+        user_id: data.user.id,
+        user_email: data.user.email || undefined,
+        operation_type: 'login',
+        resource_type: 'auth',
+        operation_status: 'success',
+        additional_info: { method: 'password' }
       })
     }
 
@@ -83,8 +88,15 @@ export async function signUp(email: string, password: string, firstName: string,
 
     if (data.user) {
       // Log signup
-      await logAuditEvent(data.user.id, 'auth.signup', {
-        method: 'password'
+      await logAuditEvent({
+        user_id: data.user.id,
+        user_email: data.user.email || undefined,
+        operation_type: 'signup',
+        resource_type: 'auth',
+        operation_status: 'success',
+        additional_info: {
+          method: 'password'
+        }
       })
     }
 
@@ -107,7 +119,13 @@ export async function signOut() {
     
     if (user) {
       // Log signout
-      await logAuditEvent(user.id, 'auth.logout', {})
+      await logAuditEvent({
+        user_id: user.id,
+        user_email: user.email || undefined,
+        operation_type: 'logout',
+        resource_type: 'auth',
+        operation_status: 'success'
+      })
     }
     
     const { error } = await supabase.auth.signOut()
