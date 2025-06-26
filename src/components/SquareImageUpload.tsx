@@ -69,7 +69,7 @@ export function SquareImageUpload({
     try {
       const formData = new FormData()
       formData.append(entityType === 'event' ? 'event_id' : 'category_id', entityId)
-      formData.append('image_type', 'primary') // Single image type
+      formData.append('image_type', 'hero') // Use 'hero' as the single image type
       formData.append('image_file', selectedFile)
 
       const result = await uploadEventImage({ type: 'idle' }, formData)
