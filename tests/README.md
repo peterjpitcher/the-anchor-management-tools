@@ -2,6 +2,46 @@
 
 This directory contains end-to-end tests for the Anchor Management Tools application using Playwright.
 
+## Test Coverage
+
+### ✅ Authentication Module (`/auth`)
+- Login functionality
+- Signup process
+- Session management
+- Password reset (placeholder)
+- Security features
+
+### ✅ Events Module (`/events`)
+- CRUD operations (Create, Read, Update, Delete)
+- Search and filtering
+- Form validation
+- Booking management
+- SMS messaging
+- Status management
+- Capacity tracking
+- Mobile responsiveness
+- Performance testing
+
+### 🔜 Employees Module (`/employees`)
+- Basic CRUD tests implemented
+- Needs comprehensive test suite
+
+### 🔜 Customers Module
+- Placeholder tests exist
+- Needs full implementation
+
+### 🔜 Messages Module
+- Placeholder tests exist
+- Needs full implementation
+
+### 🔜 Private Bookings Module
+- Placeholder tests exist
+- Needs full implementation
+
+### 🔜 Settings Module
+- Placeholder tests exist
+- Needs full implementation
+
 ## Setup
 
 1. **Install dependencies** (already done):

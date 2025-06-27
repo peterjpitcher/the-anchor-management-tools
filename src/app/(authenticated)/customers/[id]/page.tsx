@@ -68,6 +68,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
       }
     } catch (error) {
       console.error('Error loading messages:', error)
+      toast.error('Failed to load messages')
     }
   }, [params.id])
 

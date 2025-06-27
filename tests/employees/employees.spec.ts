@@ -76,7 +76,7 @@ test.describe('Employee Management', () => {
     await page.fill('input[name="last_name"]', lastName);
     await page.waitForTimeout(200);
     
-    await page.fill('input[name="email"]', email);
+    await page.fill('input[name="email_address"]', email); // Note: email_address, not email
     await page.waitForTimeout(200);
     
     await page.fill('input[name="job_title"]', 'Test Position');
@@ -85,8 +85,8 @@ test.describe('Employee Management', () => {
     await page.fill('input[name="employment_start_date"]', new Date().toISOString().split('T')[0]);
     await page.waitForTimeout(200);
     
-    // Submit
-    await page.getByRole('button', { name: /save|create|add/i }).click();
+    // Submit - specific button text
+    await page.getByRole('button', { name: 'Save Employee' }).click();
     
     // Should either:
     // 1. Navigate away from /new page (success)

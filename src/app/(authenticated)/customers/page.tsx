@@ -74,6 +74,7 @@ export default function CustomersPage() {
         setLoyalCustomerIds(loyalIds)
       } catch (error) {
         console.error('Error loading loyal customers:', error)
+        // Silent fail - loyalty status is not critical
       }
     }
     loadLoyalCustomers()
@@ -96,6 +97,7 @@ export default function CustomersPage() {
         }
       } catch (error) {
         console.error('Error loading unread counts:', error)
+        // Silent fail - not critical for page functionality
       }
     }
     

@@ -5,6 +5,7 @@ import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { formatDate } from '@/lib/dateUtils'
 import { usePagination } from '@/hooks/usePagination'
 import { Pagination } from '@/components/Pagination'
+import toast from 'react-hot-toast'
 import { 
   ClockIcon, 
   CheckCircleIcon, 
@@ -141,6 +142,7 @@ export default function BackgroundJobsPage() {
       await refresh()
     } catch (error) {
       console.error('Error processing jobs:', error)
+      toast.error('Failed to process jobs')
     } finally {
       setIsProcessing(false)
     }

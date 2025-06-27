@@ -55,6 +55,8 @@ analyze-*.txt
 
 # Playwright test artifacts
 test-results/
+test-reports/
 playwright-report/
 tests/screenshots/
 tests/auth.json
+*tests*
