@@ -5,6 +5,7 @@ import { PencilIcon, TrashIcon, ShieldCheckIcon } from '@heroicons/react/24/outl
 import { deleteRole } from '@/app/actions/rbac';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
 
 interface RoleCardProps {
   role: Role;
@@ -24,9 +25,10 @@ export default function RoleCard({ role, onEditPermissions }: RoleCardProps) {
     const result = await deleteRole(role.id);
     
     if (result.error) {
-      alert(result.error);
+      toast.error(result.error);
       setIsDeleting(false);
     } else {
+      toast.success('Role deleted successfully');
       router.refresh();
     }
   };

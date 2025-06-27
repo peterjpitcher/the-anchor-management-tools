@@ -31,8 +31,13 @@ The Anchor Management Tools is a comprehensive venue management system featuring
 - `src/app/actions/` - Server actions for data mutations
 - `src/lib/` - Core utilities (Supabase client, SMS, permissions, validation)
 - `src/components/` - Reusable UI components
+- `src/components/providers/` - React context providers (SupabaseProvider)
+- `src/contexts/` - Application contexts (PermissionContext)
 - `src/types/` - TypeScript type definitions
 - `supabase/migrations/` - Database migrations
+- `scripts/` - Utility scripts for maintenance and analysis
+- `tests/` - Playwright E2E test suites
+- `docs/` - Project documentation
 
 ### Critical Patterns
 1. **Server Actions**: All mutations use server actions with Zod validation
@@ -40,6 +45,14 @@ The Anchor Management Tools is a comprehensive venue management system featuring
 3. **Audit Logging**: logAuditEvent() for all create/update/delete operations
 4. **File Storage**: Always use returned paths from Supabase storage
 5. **SMS**: Phone numbers must be converted to E.164 format (+44...)
+
+### Import Paths to Remember
+- **Supabase Client (Server)**: `import { createClient } from '@/lib/supabase/server'`
+- **Supabase Client (Client)**: `import { useSupabase } from '@/components/providers/SupabaseProvider'`
+- **Permissions**: `import { checkUserPermission } from '@/app/actions/rbac'`
+- **Permissions Context**: `import { usePermissions } from '@/contexts/PermissionContext'`
+- **Audit Logging**: `import { logAuditEvent } from '@/app/actions/audit'`
+- **Constants**: `import { UK_PHONE_PATTERN } from '@/lib/constants'`
 
 ## Essential Commands
 
@@ -56,6 +69,21 @@ npm install                 # Install dependencies
 
 # Running TypeScript Scripts
 tsx scripts/[script-name].ts  # Run any script in the scripts/ directory
+
+# Testing
+npm test                        # Run all Playwright tests
+npm run test:headed            # Run tests in headed mode
+npm run test:debug             # Run tests in debug mode
+npm run test:report            # Show test report
+npm run test:employees         # Run employee tests only
+npm run test:employees:ui      # Run employee tests in UI mode
+npm run test:comprehensive     # Run comprehensive test suite
+
+# Playwright test commands
+npx playwright test            # Run all tests
+npx playwright test --ui       # Run in UI mode for debugging
+npx playwright test --debug    # Run in debug mode
+npx playwright test employees  # Run specific test file
 ```
 
 ## 🔴 MANDATORY: Pre-Development Discovery Protocol
@@ -382,7 +410,7 @@ export async function getFileUrl(filePath: string) {
 }
 SMS Integration Pattern
 typescript// Always standardize phone numbers
-import { UK_PHONE_PATTERN } from '@/lib/sms/validation';
+import { UK_PHONE_PATTERN } from '@/lib/constants';
 
 export async function sendBookingConfirmation(bookingId: string) {
   // 1. Validate and standardize phone number
@@ -645,8 +673,12 @@ Remember: Quality over speed. A well-implemented feature following patterns is b
 - **messages** - SMS message queue and history
 - **private_bookings** - Private venue bookings
 - **audit_logs** - Comprehensive audit trail
-- **rbac_roles/permissions** - Role-based access control
+- **rbac_roles/rbac_permissions** - Role-based access control
 - **jobs** - Background job queue for async processing
+- **webhook_logs** - Incoming webhook request logging
+- **customer_messaging_health** - SMS delivery health tracking
+- **event_categories** - Event category management with features
+- **employee_attachments** - File storage references for employees
 
 ## Important Configuration
 
@@ -656,6 +688,8 @@ Required variables are defined in `.env.example`. Key ones include:
 - Twilio API credentials  
 - Google Calendar API settings
 - Vercel deployment settings
+- `NEXT_PUBLIC_CONTACT_PHONE_NUMBER` - Public contact phone number
+- `SKIP_TWILIO_SIGNATURE_VALIDATION` - For testing webhooks locally (never use in production)
 
 ### Cron Jobs (vercel.json)
 - Daily reminders: 9 AM UTC
@@ -673,3 +707,87 @@ Required variables are defined in `.env.example`. Key ones include:
 4. **Don't skip audit logging** - Required for sensitive operations
 5. **Don't ignore RLS policies** - They're the final security layer
 6. **Don't commit without lint/build** - Must pass before marking complete
+7. **Don't forget to handle loading states** - Users need feedback
+8. **Don't skip error handling** - All operations can fail
+9. **Don't bypass permission checks** - Security first
+10. **Don't use client-side mutations** - Always use server actions
+
+## Testing Configuration
+
+### Playwright Tests
+- Tests run against **production URL**: https://management.orangejelly.co.uk
+- Test files located in `/tests` directory
+- Configuration: `playwright.config.ts`
+- Default timeout: 60 seconds per test
+- Retries: 1 on failure
+- Screenshots and traces captured on failure
+
+### Test Best Practices
+- Tests require production login credentials
+- Use unique test data to avoid conflicts
+- Clean up test data when possible
+- Tests run with limited parallelism to avoid rate limits
+- See `tests/TEST_README.md` for comprehensive testing guide
+
+### Running Tests
+```bash
+# Run all tests
+npm test
+
+# Run specific test file
+npm run test:employees
+
+# Debug tests with UI
+npm run test:employees:ui
+
+# Run tests in headed mode (see browser)
+npm run test:headed
+
+# Show test report after run
+npm run test:report
+```
+
+## Additional Resources
+
+### Documentation Directory
+Comprehensive documentation available in `/docs` including:
+- API documentation
+- Database schema documentation
+- Feature-specific implementation guides
+- Security and audit reports
+- Deployment guides
+
+### Utility Scripts
+Extensive TypeScript scripts available in `/scripts` for:
+- Database connectivity testing
+- Schema analysis and validation
+- Security scanning
+- Performance analysis
+- Migration management
+- Business logic validation
+
+Common scripts:
+```bash
+# Test database connectivity
+tsx scripts/test-connectivity.ts
+
+# Analyze schema consistency
+tsx scripts/analyze-schema-consistency.ts
+
+# Security scan
+tsx scripts/security-scan.ts
+
+# Performance analysis
+tsx scripts/analyze-performance.ts
+
+# Test critical flows
+tsx scripts/test-critical-flows.ts
+
+# Check for invalid phone numbers
+tsx scripts/check-invalid-phone-numbers.ts
+
+# Generate API key
+tsx scripts/generate-api-key.ts
+```
+
+Run any script with: `tsx scripts/[script-name].ts`

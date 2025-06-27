@@ -40,26 +40,32 @@ export const TEST_DATA = {
 };
 
 // Helper to generate unique test data
+export function generateTestData(type: 'event'): typeof TEST_DATA.event & { title: string };
+export function generateTestData(type: 'customer'): typeof TEST_DATA.customer & { name: string; email: string };
+export function generateTestData(type: 'employee'): { name: string; email: string };
 export function generateTestData(type: 'event' | 'customer' | 'employee') {
   const timestamp = Date.now();
-  const baseData = TEST_DATA[type as keyof typeof TEST_DATA];
   
-  if (!baseData || typeof baseData !== 'object') {
-    return {};
+  switch (type) {
+    case 'event':
+      return {
+        ...TEST_DATA.event,
+        title: `${TEST_DATA.prefix} Test Event ${timestamp}`
+      };
+    case 'customer':
+      return {
+        ...TEST_DATA.customer,
+        name: `${TEST_DATA.prefix} Customer ${timestamp}`,
+        email: `playwright.test.${timestamp}@example.com`
+      };
+    case 'employee':
+      return {
+        name: `${TEST_DATA.prefix} Employee ${timestamp}`,
+        email: `playwright.emp.${timestamp}@example.com`
+      };
+    default:
+      throw new Error(`Unknown test data type: ${type}`);
   }
-  
-  return {
-    ...baseData,
-    ...(type === 'event' && { title: `${TEST_DATA.prefix} Test Event ${timestamp}` }),
-    ...(type === 'customer' && { 
-      name: `${TEST_DATA.prefix} Customer ${timestamp}`,
-      email: `playwright.test.${timestamp}@example.com` 
-    }),
-    ...(type === 'employee' && { 
-      name: `${TEST_DATA.prefix} Employee ${timestamp}`,
-      email: `playwright.emp.${timestamp}@example.com` 
-    })
-  };
 }
 
 // URLs for different sections

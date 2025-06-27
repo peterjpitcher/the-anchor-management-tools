@@ -16,7 +16,15 @@
     "test:employees:ui": "playwright test tests/employees/ --ui",
     "test:employees:basic": "playwright test tests/employees/employee-basic.spec.ts",
     "test:employees:simple": "playwright test tests/employees/employee-create-simple.spec.ts",
-    "test:emp": "playwright test tests/employees/employees.spec.ts"
+    "test:emp": "playwright test tests/employees/employees.spec.ts",
+    "test:comprehensive": "playwright test comprehensive-app.spec.ts",
+    "test:comprehensive:headed": "playwright test comprehensive-app.spec.ts --headed",
+    "test:rbac": "playwright test tests/rbac/ --config=tests/playwright.config.full.ts",
+    "test:integration": "playwright test tests/integration/ --config=tests/playwright.config.full.ts",
+    "test:all": "tsx tests/run-all-tests.ts",
+    "test:all:parallel": "tsx tests/run-all-tests.ts --parallel",
+    "test:smoke": "playwright test smoke-test.spec.ts",
+    "test:suite": "tsx tests/run-all-tests.ts --suite"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.4",
@@ -44,6 +52,7 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "autoprefixer": "^10.4.19",
+    "commander": "^12.1.0",
     "csv-parse": "^5.6.0",
     "dotenv": "^16.5.0",
     "eslint": "^8",

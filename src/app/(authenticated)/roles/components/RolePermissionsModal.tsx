@@ -6,6 +6,7 @@ import { XMarkIcon } from '@heroicons/react/24/outline';
 import { Role, Permission } from '@/types/rbac';
 import { getRolePermissions, assignPermissionsToRole } from '@/app/actions/rbac';
 import { useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
 
 interface RolePermissionsModalProps {
   isOpen: boolean;
@@ -50,8 +51,9 @@ export default function RolePermissionsModal({
     const result = await assignPermissionsToRole(role.id, Array.from(selectedPermissions));
     
     if (result.error) {
-      alert(result.error);
+      toast.error(result.error);
     } else {
+      toast.success('Permissions updated successfully');
       router.refresh();
       onClose();
     }

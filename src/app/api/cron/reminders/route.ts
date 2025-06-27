@@ -18,20 +18,9 @@ export async function GET(request: Request) {
 
     console.log('Starting reminder check...')
 
-    // TEMPORARY: Use legacy approach until the timing function is fixed in production
-    // The new timing-based approach has a bug in the SQL function that needs migration
+    // Use the proven legacy approach for sending event reminders
     await sendEventReminders()
-    console.log('Reminder check completed using legacy approach')
-    
-    // TODO: Re-enable timing-based approach after running migration 20250620_fix_reminder_timing_function.sql
-    // try {
-    //   await sendEventRemindersWithTiming()
-    //   console.log('Reminder check completed using timing-based approach')
-    // } catch (timingError) {
-    //   console.error('Timing-based reminders failed, falling back to legacy approach:', timingError)
-    //   await sendEventReminders()
-    //   console.log('Reminder check completed using legacy approach')
-    // }
+    console.log('Reminder check completed successfully')
     return new NextResponse('Reminders processed successfully', { status: 200 })
   } catch (error) {
     console.error('Error processing reminders:', error)
