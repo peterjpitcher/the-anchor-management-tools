@@ -2,7 +2,7 @@
 
 import EmployeeForm from '@/components/EmployeeForm';
 import { updateEmployee } from '@/app/actions/employeeActions';
-import { supabase } from '@/lib/supabase';
+import { useSupabase } from '@/components/providers/SupabaseProvider';
 import type { Employee, EmployeeFinancialDetails, EmployeeHealthRecord } from '@/types/database';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
@@ -11,46 +11,9 @@ import FinancialDetailsForm from '@/components/FinancialDetailsForm';
 import HealthRecordsForm from '@/components/HealthRecordsForm';
 import { use, useState, useEffect, useCallback } from 'react';
 
-async function getEmployee(id: string): Promise<Employee | null> {
-  const { data, error } = await supabase
-    .from('employees')
-    .select('*')
-    .eq('employee_id', id)
-    .single();
-
-  if (error) {
-    console.error('Error fetching employee for edit:', error);
-    return null;
-  }
-  return data;
-}
-
-async function getFinancialDetails(employeeId: string): Promise<EmployeeFinancialDetails | null> {
-    const { data, error } = await supabase
-        .from('employee_financial_details')
-        .select('*')
-        .eq('employee_id', employeeId)
-        .single();
-    if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching financial details:', error);
-    }
-    return data;
-}
-
-async function getHealthRecord(employeeId: string): Promise<EmployeeHealthRecord | null> {
-    const { data, error } = await supabase
-        .from('employee_health_records')
-        .select('*')
-        .eq('employee_id', employeeId)
-        .single();
-    if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching health record:', error);
-    }
-    return data;
-}
-
 export default function EditEmployeePage({ params: paramsPromise }: { params: Promise<{ employee_id: string }> }) {
   const params = use(paramsPromise);
+  const supabase = useSupabase();
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [financialDetails, setFinancialDetails] = useState<EmployeeFinancialDetails | null>(null);
   const [healthRecord, setHealthRecord] = useState<EmployeeHealthRecord | null>(null);
@@ -64,6 +27,46 @@ export default function EditEmployeePage({ params: paramsPromise }: { params: Pr
       
       try {
           setIsLoading(true);
+          
+          // Define functions inline to use authenticated supabase client
+          const getEmployee = async (id: string): Promise<Employee | null> => {
+            const { data, error } = await supabase
+              .from('employees')
+              .select('*')
+              .eq('employee_id', id)
+              .single();
+
+            if (error) {
+              console.error('Error fetching employee for edit:', error);
+              return null;
+            }
+            return data;
+          };
+
+          const getFinancialDetails = async (employeeId: string): Promise<EmployeeFinancialDetails | null> => {
+            const { data, error } = await supabase
+              .from('employee_financial_details')
+              .select('*')
+              .eq('employee_id', employeeId)
+              .single();
+            if (error && error.code !== 'PGRST116') {
+              console.error('Error fetching financial details:', error);
+            }
+            return data;
+          };
+
+          const getHealthRecord = async (employeeId: string): Promise<EmployeeHealthRecord | null> => {
+            const { data, error } = await supabase
+              .from('employee_health_records')
+              .select('*')
+              .eq('employee_id', employeeId)
+              .single();
+            if (error && error.code !== 'PGRST116') {
+              console.error('Error fetching health record:', error);
+            }
+            return data;
+          };
+          
           const [employeeData, financialData, healthData] = await Promise.all([
               getEmployee(params.employee_id),
               getFinancialDetails(params.employee_id),
@@ -84,7 +87,7 @@ export default function EditEmployeePage({ params: paramsPromise }: { params: Pr
       } finally {
           setIsLoading(false);
       }
-  }, [params]);
+  }, [params, supabase]);
 
   useEffect(() => {
     loadData();
