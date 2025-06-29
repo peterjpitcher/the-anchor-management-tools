@@ -3,7 +3,6 @@
 import { getSupabaseAdminClient } from '@/lib/supabase-singleton';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
 import { z } from 'zod';
 import type { ActionFormState, NoteFormState, AttachmentFormState, DeleteState } from '@/types/actions';
 import { getConstraintErrorMessage, isPostgrestError } from '@/lib/dbErrorHandler';
@@ -445,9 +444,9 @@ export async function deleteEmployeeAttachment(prevState: DeleteState, formData:
 const EmergencyContactSchema = z.object({
   employee_id: z.string().uuid(),
   name: z.string().min(1, 'Name is required'),
-  relationship: z.string().optional(),
-  phone_number: z.string().optional(),
-  address: z.string().optional(),
+  relationship: z.union([z.string().min(1), z.null()]).optional(),
+  phone_number: z.union([z.string().regex(/^(\+?44|0)?[0-9]{10,11}$/, 'Invalid UK phone number format'), z.null()]).optional(),
+  address: z.union([z.string().min(1), z.null()]).optional(),
 });
 
 export async function addEmergencyContact(
@@ -463,9 +462,19 @@ export async function addEmergencyContact(
     };
   }
 
-  const validatedFields = EmergencyContactSchema.safeParse(
-    Object.fromEntries(formData.entries())
-  );
+  // Extract form data and clean up empty strings
+  const formDataEntries = Object.fromEntries(formData.entries());
+  const cleanedData = Object.entries(formDataEntries).reduce((acc, [key, value]) => {
+    // Convert empty strings to null for optional fields
+    if (value === '' && ['relationship', 'phone_number', 'address'].includes(key)) {
+      acc[key] = null;
+    } else {
+      acc[key] = value;
+    }
+    return acc;
+  }, {} as Record<string, any>);
+
+  const validatedFields = EmergencyContactSchema.safeParse(cleanedData);
 
   if (!validatedFields.success) {
     return {
@@ -477,15 +486,18 @@ export async function addEmergencyContact(
 
   const { employee_id, name, relationship, phone_number, address } = validatedFields.data;
 
+  const supabase = getSupabaseAdminClient();
+  
   const { error } = await supabase
     .from('employee_emergency_contacts')
     .insert([{ employee_id, name, relationship, phone_number, address }]);
 
   if (error) {
     console.error('Error adding emergency contact:', error);
+    const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error: Could not add emergency contact.';
     return {
       type: 'error',
-      message: 'Database error: Could not add emergency contact.',
+      message,
     };
   }
 
@@ -502,12 +514,12 @@ export async function addEmergencyContact(
 
 const FinancialDetailsSchema = z.object({
   employee_id: z.string().uuid(),
-  ni_number: z.string().optional(),
-  bank_account_number: z.string().optional(),
-  bank_sort_code: z.string().optional(),
-  bank_name: z.string().optional(),
-  payee_name: z.string().optional(),
-  branch_address: z.string().optional(),
+  ni_number: z.union([z.string().min(1), z.null()]).optional(),
+  bank_account_number: z.union([z.string().regex(/^\d{8}$/, 'Account number must be 8 digits'), z.null()]).optional(),
+  bank_sort_code: z.union([z.string().regex(/^\d{2}-?\d{2}-?\d{2}$/, 'Sort code must be in format XX-XX-XX'), z.null()]).optional(),
+  bank_name: z.union([z.string().min(1), z.null()]).optional(),
+  payee_name: z.union([z.string().min(1), z.null()]).optional(),
+  branch_address: z.union([z.string().min(1), z.null()]).optional(),
 });
 
 export async function upsertFinancialDetails(
@@ -523,9 +535,19 @@ export async function upsertFinancialDetails(
     };
   }
 
-  const validatedFields = FinancialDetailsSchema.safeParse(
-    Object.fromEntries(formData.entries())
-  );
+  // Extract form data and clean up empty strings
+  const formDataEntries = Object.fromEntries(formData.entries());
+  const cleanedData = Object.entries(formDataEntries).reduce((acc, [key, value]) => {
+    // Convert empty strings to null for optional fields
+    if (value === '' && key !== 'employee_id') {
+      acc[key] = null;
+    } else {
+      acc[key] = value;
+    }
+    return acc;
+  }, {} as Record<string, any>);
+
+  const validatedFields = FinancialDetailsSchema.safeParse(cleanedData);
 
   if (!validatedFields.success) {
     return {
@@ -535,15 +557,18 @@ export async function upsertFinancialDetails(
     };
   }
 
+  const supabase = getSupabaseAdminClient();
+  
   const { error } = await supabase
     .from('employee_financial_details')
     .upsert(validatedFields.data, { onConflict: 'employee_id' });
 
   if (error) {
     console.error('Error upserting financial details:', error);
+    const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error: Could not save financial details.';
     return {
       type: 'error',
-      message: 'Database error: Could not save financial details.',
+      message,
     };
   }
 
@@ -561,11 +586,11 @@ export async function upsertFinancialDetails(
 
 const HealthRecordSchema = z.object({
   employee_id: z.string().uuid(),
-  doctor_name: z.string().optional(),
-  doctor_address: z.string().optional(),
-  allergies: z.string().optional(),
-  illness_history: z.string().optional(),
-  recent_treatment: z.string().optional(),
+  doctor_name: z.union([z.string().min(1), z.null()]).optional(),
+  doctor_address: z.union([z.string().min(1), z.null()]).optional(),
+  allergies: z.union([z.string().min(1), z.null()]).optional(),
+  illness_history: z.union([z.string().min(1), z.null()]).optional(),
+  recent_treatment: z.union([z.string().min(1), z.null()]).optional(),
   has_diabetes: z.boolean(),
   has_epilepsy: z.boolean(),
   has_skin_condition: z.boolean(),
@@ -573,9 +598,9 @@ const HealthRecordSchema = z.object({
   has_bowel_problems: z.boolean(),
   has_ear_problems: z.boolean(),
   is_registered_disabled: z.boolean(),
-  disability_reg_number: z.string().optional(),
-  disability_reg_expiry_date: z.string().optional().nullable(),
-  disability_details: z.string().optional(),
+  disability_reg_number: z.union([z.string().min(1), z.null()]).optional(),
+  disability_reg_expiry_date: z.union([z.string().min(1), z.null()]).optional(),
+  disability_details: z.union([z.string().min(1), z.null()]).optional(),
 });
 
 export async function upsertHealthRecord(
@@ -602,6 +627,15 @@ export async function upsertHealthRecord(
     data[field] = data[field] === 'on';
   });
   
+  // Handle empty strings for optional text fields
+  const optionalTextFields = ['doctor_name', 'doctor_address', 'allergies', 'illness_history', 
+                              'recent_treatment', 'disability_reg_number', 'disability_details'];
+  optionalTextFields.forEach(field => {
+    if (data[field] === '') {
+      data[field] = null;
+    }
+  });
+  
   // Handle empty date string
   if (data.disability_reg_expiry_date === '') {
       data.disability_reg_expiry_date = null;
@@ -617,15 +651,18 @@ export async function upsertHealthRecord(
     };
   }
 
+  const supabase = getSupabaseAdminClient();
+  
   const { error } = await supabase
     .from('employee_health_records')
     .upsert(validatedFields.data, { onConflict: 'employee_id' });
 
   if (error) {
     console.error('Error upserting health record:', error);
+    const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error: Could not save health record.';
     return {
       type: 'error',
-      message: 'Database error: Could not save health record.',
+      message,
     };
   }
 
