@@ -168,7 +168,7 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
 
     revalidatePath(`/employees`);
     revalidatePath(`/employees/${employeeId}`);
-    return { type: 'success', message: 'Employee updated successfully.' };
+    return { type: 'success', message: 'Employee updated successfully.', employeeId };
 }
 
 export async function deleteEmployee(prevState: DeleteState, formData: FormData): Promise<DeleteState> {
