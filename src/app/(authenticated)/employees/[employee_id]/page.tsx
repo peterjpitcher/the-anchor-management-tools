@@ -46,7 +46,7 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
             .from('employees')
             .select('*')
             .eq('employee_id', id)
-            .single();
+            .maybeSingle();
 
           if (error) {
             console.error('Error fetching employee:', error);

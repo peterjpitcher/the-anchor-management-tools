@@ -34,7 +34,7 @@ export default function EditEmployeePage({ params: paramsPromise }: { params: Pr
               .from('employees')
               .select('*')
               .eq('employee_id', id)
-              .single();
+              .maybeSingle();
 
             if (error) {
               console.error('Error fetching employee for edit:', error);
@@ -48,8 +48,8 @@ export default function EditEmployeePage({ params: paramsPromise }: { params: Pr
               .from('employee_financial_details')
               .select('*')
               .eq('employee_id', employeeId)
-              .single();
-            if (error && error.code !== 'PGRST116') {
+              .maybeSingle();
+            if (error) {
               console.error('Error fetching financial details:', error);
             }
             return data;
@@ -60,8 +60,8 @@ export default function EditEmployeePage({ params: paramsPromise }: { params: Pr
               .from('employee_health_records')
               .select('*')
               .eq('employee_id', employeeId)
-              .single();
-            if (error && error.code !== 'PGRST116') {
+              .maybeSingle();
+            if (error) {
               console.error('Error fetching health record:', error);
             }
             return data;

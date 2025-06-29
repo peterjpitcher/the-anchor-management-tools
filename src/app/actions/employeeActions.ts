@@ -18,10 +18,10 @@ const employeeSchema = z.object({
   job_title: z.string().min(1, 'Job title is required'),
   employment_start_date: z.string().min(1, 'Start date is required'),
   status: z.enum(['Active', 'Former']),
-  date_of_birth: z.string().optional().nullable(),
-  address: z.string().optional().nullable(),
-  phone_number: z.string().optional().nullable(),
-  employment_end_date: z.string().optional().nullable(),
+  date_of_birth: z.union([z.string().min(1), z.null()]).optional(),
+  address: z.union([z.string().min(1), z.null()]).optional(),
+  phone_number: z.union([z.string().min(1), z.null()]).optional(),
+  employment_end_date: z.union([z.string().min(1), z.null()]).optional(),
 });
 
 const noteSchema = z.object({
@@ -45,9 +45,22 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
         return { type: 'error', message: 'Insufficient permissions to create employees.' };
     }
 
-    const result = employeeSchema.safeParse(Object.fromEntries(formData.entries()));
+    // Extract form data and clean up empty strings
+    const formDataEntries = Object.fromEntries(formData.entries());
+    const cleanedData = Object.entries(formDataEntries).reduce((acc, [key, value]) => {
+        // Convert empty strings to null for optional fields
+        if (value === '' && ['date_of_birth', 'address', 'phone_number', 'employment_end_date'].includes(key)) {
+            acc[key] = null;
+        } else {
+            acc[key] = value;
+        }
+        return acc;
+    }, {} as Record<string, any>);
+
+    const result = employeeSchema.safeParse(cleanedData);
 
     if (!result.success) {
+        console.error('Validation errors:', result.error.flatten());
         return { type: 'error', message: 'Invalid form data.', errors: result.error.flatten().fieldErrors };
     }
 
@@ -92,10 +105,27 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
     }
 
     const employeeId = formData.get('employee_id') as string;
-    const result = employeeSchema.safeParse(Object.fromEntries(formData.entries()));
+    
+    // Extract form data and clean up empty strings
+    const formDataEntries = Object.fromEntries(formData.entries());
+    const cleanedData = Object.entries(formDataEntries).reduce((acc, [key, value]) => {
+        // Convert empty strings to null for optional fields
+        if (value === '' && ['date_of_birth', 'address', 'phone_number', 'employment_end_date'].includes(key)) {
+            acc[key] = null;
+        } else {
+            acc[key] = value;
+        }
+        return acc;
+    }, {} as Record<string, any>);
+    
+    // Remove employee_id from data to be validated and updated
+    const { employee_id, ...dataToValidate } = cleanedData;
+    
+    const result = employeeSchema.safeParse(dataToValidate);
     
     if (!result.success) {
-        return { type: 'error', message: 'Invalid form data.', errors: result.error.flatten().fieldErrors };
+        console.error('Validation errors:', result.error.flatten());
+        return { type: 'error', message: 'Invalid data provided. Please check your input and try again.', errors: result.error.flatten().fieldErrors };
     }
 
     const supabase = getSupabaseAdminClient();
@@ -105,7 +135,7 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
         .from('employees')
         .select('*')
         .eq('employee_id', employeeId)
-        .single();
+        .maybeSingle();
     
     const { error } = await supabase.from('employees').update(result.data).eq('employee_id', employeeId);
     
@@ -159,7 +189,7 @@ export async function deleteEmployee(prevState: DeleteState, formData: FormData)
         .from('employees')
         .select('*')
         .eq('employee_id', employeeId)
-        .single();
+        .maybeSingle();
     
     const { error } = await supabase.from('employees').delete().eq('employee_id', employeeId);
     
