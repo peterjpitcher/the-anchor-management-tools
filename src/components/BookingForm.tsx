@@ -6,6 +6,7 @@ import { MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import { formatDate } from '@/lib/dateUtils'
 import { CustomerWithLoyalty, getLoyalCustomers, sortCustomersByLoyalty } from '@/lib/customerUtils'
 import { Button } from '@/components/ui/Button'
+import { createBooking } from '@/app/actions/bookings'
 
 interface BookingFormProps {
   booking?: Booking
@@ -26,6 +27,8 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
   const [searchTerm, setSearchTerm] = useState('')
   const [allCustomers, setAllCustomers] = useState<CustomerWithLoyalty[]>([])
   const [availableCapacity, setAvailableCapacity] = useState<number | null>(null)
+  const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false)
+  const [existingBookingInfo, setExistingBookingInfo] = useState<{ id: string; seats: number } | null>(null)
 
   // Calculate available capacity
   const calculateAvailableCapacity = useCallback(async () => {
@@ -135,7 +138,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
     setCustomers(filtered)
   }, [searchTerm, allCustomers])
 
-  const handleSubmit = async (e: React.FormEvent, addAnother: boolean = false) => {
+  const handleSubmit = async (e: React.FormEvent, addAnother: boolean = false, overwrite: boolean = false) => {
     e.preventDefault()
 
     // Validate seats is not negative
@@ -157,61 +160,46 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
       }
     }
 
-    // Check if customer already has a booking for this event
-    const { data: existingBooking } = await supabase
-      .from('bookings')
-      .select('id, seats')
-      .eq('event_id', event.id)
-      .eq('customer_id', customerId)
-      .single()
-
-    if (existingBooking) {
-      if (existingBooking.seats > 0 && !booking) {
-        const confirmBooking = window.confirm(
-          'This customer already has a booking with seats for this event. Would you like to create another booking for them?'
-        )
-        if (!confirmBooking) {
-          return
-        }
-      } else if (existingBooking.seats === 0 || existingBooking.seats === null) {
-        // Update the existing reminder booking using the onSubmit handler
-        setIsSubmitting(true)
-        try {
-          await onSubmit({
-            customer_id: customerId,
-            event_id: event.id,
-            seats: seatCount,
-            notes: notes || null,
-          })
-
-          if (addAnother) {
-            setCustomerId('')
-            setSeats('')
-            setNotes('')
-            setSearchTerm('')
-            await loadCustomers()
-          } else {
-            onCancel() // Close the form if not adding another
-          }
-          return
-        } catch (error) {
-          console.error('Error updating reminder:', error)
-          toast.error('Failed to update reminder')
-          return
-        } finally {
-          setIsSubmitting(false)
-        }
-      }
-    }
-
     setIsSubmitting(true)
     try {
-      await onSubmit({
-        customer_id: customerId,
-        event_id: event.id,
-        seats: seatCount,
-        notes: notes || null,
-      })
+      // Use server action instead of direct database access
+      const formData = new FormData()
+      formData.append('event_id', event.id)
+      formData.append('customer_id', customerId)
+      formData.append('seats', seatCount?.toString() || '0')
+      formData.append('notes', notes || '')
+      if (overwrite) {
+        formData.append('overwrite', 'true')
+      }
+
+      const result = await createBooking(formData)
+
+      if ('error' in result) {
+        if (result.error === 'duplicate_booking' && 'existingBooking' in result && !overwrite) {
+          // Show overwrite confirmation
+          setExistingBookingInfo(result.existingBooking)
+          setShowOverwriteConfirm(true)
+          setIsSubmitting(false)
+          return
+        } else {
+          toast.error(typeof result.error === 'string' ? result.error : 'An error occurred')
+          setIsSubmitting(false)
+          return
+        }
+      }
+
+      // Success!
+      toast.success(overwrite ? 'Booking updated successfully' : 'Booking created successfully')
+      
+      // If updating an existing booking (from the event page), use the onSubmit callback
+      if (booking) {
+        await onSubmit({
+          customer_id: customerId,
+          event_id: event.id,
+          seats: seatCount,
+          notes: notes || null,
+        })
+      }
 
       if (addAnother) {
         // Reset form for next booking
@@ -219,11 +207,16 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
         setSeats('')
         setNotes('')
         setSearchTerm('')
+        setShowOverwriteConfirm(false)
+        setExistingBookingInfo(null)
         // Reload available customers
         await loadCustomers()
       } else {
         onCancel() // Close the form if not adding another
       }
+    } catch (error) {
+      console.error('Error creating booking:', error)
+      toast.error('Failed to create booking')
     } finally {
       setIsSubmitting(false)
     }
@@ -234,7 +227,45 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
   }
 
   return (
-    <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-6 max-h-[calc(100vh-8rem)] overflow-y-auto">
+    <>
+      {/* Overwrite Confirmation Dialog */}
+      {showOverwriteConfirm && existingBookingInfo && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">
+              Existing Booking Found
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              This customer already has a booking for this event with {existingBookingInfo.seats || 0} seat{existingBookingInfo.seats !== 1 ? 's' : ''}.
+              Would you like to overwrite the existing booking?
+            </p>
+            <div className="mt-6 flex justify-end space-x-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowOverwriteConfirm(false)
+                  setExistingBookingInfo(null)
+                  setIsSubmitting(false)
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  setShowOverwriteConfirm(false)
+                  handleSubmit(new Event('submit') as React.FormEvent, false, true)
+                }}
+              >
+                Overwrite
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-6 max-h-[calc(100vh-8rem)] overflow-y-auto">
       <div>
         <h2 className="text-lg font-medium text-gray-900 mb-4">
           New Booking for {event.name} on {formatDate(event.date)} at {event.time}
@@ -373,5 +404,6 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
         </Button>
       </div>
     </form>
+    </>
   )
 } 
