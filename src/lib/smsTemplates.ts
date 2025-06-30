@@ -153,44 +153,74 @@ export async function getMessageTemplatesBatch(
 export async function getMessageTemplate(
   eventId: string,
   templateType: string,
-  variables: Record<string, string>
+  variables: Record<string, string>,
+  bypassCache: boolean = false
 ): Promise<string | null> {
   try {
+    console.log('[getMessageTemplate] Called with:', { eventId, templateType, bypassCache });
+    
     // Build cache key
     const cacheKey = cache.buildKey('TEMPLATE', eventId, templateType);
+    console.log('[getMessageTemplate] Cache key:', cacheKey);
     
-    // Try to get template content from cache
-    const cachedTemplate = await cache.getOrSet(
-      cacheKey,
-      async () => {
-        const supabase = getSupabaseAdminClient();
-
-        // Map legacy template type to new type
-        const mappedType = TEMPLATE_TYPE_MAP[templateType] || templateType;
-
-        // Try to get template from database
-        const { data, error } = await supabase
-          .rpc('get_message_template', {
-            p_event_id: eventId,
-            p_template_type: mappedType
-          })
-          .single<{ content: string; variables: string[]; send_timing: string; custom_timing_hours: number | null }>();
-          
-        if (error || !data?.content) {
-          return null;
-        }
-        
-        return data.content;
-      },
-      'LONG' // Cache templates for 1 hour
-    );
-
-    if (!cachedTemplate) {
+    // Check if caching is disabled via environment variable
+    const cacheDisabled = process.env.DISABLE_TEMPLATE_CACHE === 'true';
+    
+    // Check cache first (unless bypassing or disabled)
+    if (!bypassCache && !cacheDisabled) {
+      const cached = await cache.get<string>(cacheKey);
+      if (cached !== null) {
+        console.log('[getMessageTemplate] Cache hit');
+        const rendered = renderTemplate(cached, variables);
+        console.log('[getMessageTemplate] Rendered cached template:', rendered ? rendered.substring(0, 50) + '...' : 'null');
+        return rendered;
+      }
+    }
+    
+    console.log('[getMessageTemplate] Cache miss, fetching from database');
+    
+    // Check if we have the required environment variables
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error('[getMessageTemplate] Missing Supabase environment variables');
       return null;
     }
+    
+    const supabase = getSupabaseAdminClient();
 
-    // Render the template with variables
-    return renderTemplate(cachedTemplate, variables);
+    // Map legacy template type to new type
+    const mappedType = TEMPLATE_TYPE_MAP[templateType] || templateType;
+    console.log('[getMessageTemplate] Mapped type:', mappedType);
+
+    // Try to get template from database
+    const { data, error } = await supabase
+      .rpc('get_message_template', {
+        p_event_id: eventId,
+        p_template_type: mappedType
+      })
+      .single<{ content: string; variables: string[]; send_timing: string; custom_timing_hours: number | null }>();
+      
+    console.log('[getMessageTemplate] RPC result:', { data, error });
+    
+    if (error || !data?.content) {
+      console.log('[getMessageTemplate] No template found, returning null');
+      // Don't cache null values
+      return null;
+    }
+    
+    console.log('[getMessageTemplate] Template content found:', data.content.substring(0, 50) + '...');
+    
+    // Cache the template content (unless caching is disabled)
+    if (!cacheDisabled) {
+      await cache.set(cacheKey, data.content, 'LONG');
+      console.log('[getMessageTemplate] Template cached');
+    } else {
+      console.log('[getMessageTemplate] Caching disabled, not caching template');
+    }
+    
+    // Render and return
+    const rendered = renderTemplate(data.content, variables);
+    console.log('[getMessageTemplate] Rendered template:', rendered ? rendered.substring(0, 50) + '...' : 'null');
+    return rendered;
   } catch (error) {
     console.error('Error in getMessageTemplate:', error);
     return null;
