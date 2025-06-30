@@ -68,21 +68,16 @@ export function EventTemplateManager({ eventId }: Props) {
     try {
       const { data, error } = await supabase
         .from('message_templates')
-        .select('name, content')
+        .select('name, content, template_type')
         .eq('is_active', true)
-        .in('type', ['confirmation', 'reminder_24h', 'reminder_7d'])
+        .eq('is_default', true)
+        .in('template_type', ['booking_confirmation', 'reminder_24_hour', 'reminder_7_day', 'booking_reminder_confirmation', 'booking_reminder_24_hour', 'booking_reminder_7_day'])
 
       if (error) throw error
       
       const defaults: Record<string, string> = {}
       data?.forEach(template => {
-        if (template.name.includes('24 Hour')) {
-          defaults['reminder_24h'] = template.content
-        } else if (template.name.includes('7 Day')) {
-          defaults['reminder_7d'] = template.content
-        } else if (template.name.includes('Confirmation')) {
-          defaults['confirmation'] = template.content
-        }
+        defaults[template.template_type] = template.content
       })
       
       setDefaultTemplates(defaults)
