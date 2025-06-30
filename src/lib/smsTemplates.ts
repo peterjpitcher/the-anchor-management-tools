@@ -151,13 +151,19 @@ export async function getMessageTemplatesBatch(
 }
 
 export async function getMessageTemplate(
-  eventId: string,
+  eventId: string | undefined,
   templateType: string,
   variables: Record<string, string>,
   bypassCache: boolean = false
 ): Promise<string | null> {
   try {
     console.log('[getMessageTemplate] Called with:', { eventId, templateType, bypassCache });
+    
+    // If no eventId provided, try to get global template only
+    if (!eventId) {
+      console.log('[getMessageTemplate] No eventId provided, fetching global template');
+      return getGlobalMessageTemplate(templateType, variables);
+    }
     
     // Build cache key
     const cacheKey = cache.buildKey('TEMPLATE', eventId, templateType);
@@ -202,9 +208,9 @@ export async function getMessageTemplate(
     console.log('[getMessageTemplate] RPC result:', { data, error });
     
     if (error || !data?.content) {
-      console.log('[getMessageTemplate] No template found, returning null');
-      // Don't cache null values
-      return null;
+      console.log('[getMessageTemplate] No event-specific template found, trying global template');
+      // Try to get global template as fallback
+      return getGlobalMessageTemplate(templateType, variables);
     }
     
     console.log('[getMessageTemplate] Template content found:', data.content.substring(0, 50) + '...');
@@ -223,6 +229,42 @@ export async function getMessageTemplate(
     return rendered;
   } catch (error) {
     console.error('Error in getMessageTemplate:', error);
+    return null;
+  }
+}
+
+// Helper function to get global templates
+async function getGlobalMessageTemplate(
+  templateType: string,
+  variables: Record<string, string>
+): Promise<string | null> {
+  try {
+    const supabase = getSupabaseAdminClient();
+    const mappedType = TEMPLATE_TYPE_MAP[templateType] || templateType;
+    
+    console.log('[getGlobalMessageTemplate] Fetching global template for type:', mappedType);
+    
+    // Query global templates directly
+    const { data, error } = await supabase
+      .from('message_templates')
+      .select('content')
+      .eq('template_type', mappedType)
+      .eq('is_default', true)
+      .eq('is_active', true)
+      .single();
+    
+    if (error || !data?.content) {
+      console.log('[getGlobalMessageTemplate] No global template found');
+      return null;
+    }
+    
+    console.log('[getGlobalMessageTemplate] Global template found:', data.content.substring(0, 50) + '...');
+    
+    // Render and return
+    const rendered = renderTemplate(data.content, variables);
+    return rendered;
+  } catch (error) {
+    console.error('Error in getGlobalMessageTemplate:', error);
     return null;
   }
 }
