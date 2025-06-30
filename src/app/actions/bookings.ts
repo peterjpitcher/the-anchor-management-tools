@@ -18,7 +18,21 @@ const bookingSchema = z.object({
   notes: z.string().max(500, 'Notes too long').optional()
 })
 
-export async function createBooking(formData: FormData) {
+interface BookingData {
+  id: string;
+  event_id: string;
+  customer_id: string;
+  seats: number | null;
+  notes: string | null;
+  created_at: string;
+}
+
+type CreateBookingResult = 
+  | { success: true; data: BookingData }
+  | { error: string }
+  | { error: 'duplicate_booking'; existingBooking: { id: string; seats: number } }
+
+export async function createBooking(formData: FormData): Promise<CreateBookingResult> {
   try {
     const supabase = await createClient()
     
@@ -33,7 +47,8 @@ export async function createBooking(formData: FormData) {
       event_id: formData.get('event_id') as string,
       customer_id: formData.get('customer_id') as string,
       seats: parseInt(formData.get('seats') as string || '0'),
-      notes: formData.get('notes') as string || undefined
+      notes: formData.get('notes') as string || undefined,
+      overwrite: formData.get('overwrite') === 'true' // Check if we should overwrite existing booking
     }
 
     const validationResult = bookingSchema.safeParse(rawData)
@@ -46,13 +61,20 @@ export async function createBooking(formData: FormData) {
     // Check if booking already exists
     const { data: existingBooking } = await supabase
       .from('bookings')
-      .select('id')
+      .select('id, seats')
       .eq('event_id', data.event_id)
       .eq('customer_id', data.customer_id)
       .single()
 
-    if (existingBooking) {
-      return { error: 'This customer already has a booking for this event' }
+    if (existingBooking && !rawData.overwrite) {
+      // Return specific error with existing booking info
+      return { 
+        error: 'duplicate_booking',
+        existingBooking: {
+          id: existingBooking.id,
+          seats: existingBooking.seats
+        }
+      }
     }
 
     // Get event details to check capacity
@@ -68,7 +90,12 @@ export async function createBooking(formData: FormData) {
 
     // Check capacity using cached function
     if (event.capacity && data.seats > 0) {
-      const availableCapacity = await getEventAvailableCapacity(data.event_id)
+      let availableCapacity = await getEventAvailableCapacity(data.event_id)
+      
+      // If overwriting, add back the existing booking's seats to available capacity
+      if (existingBooking && rawData.overwrite && existingBooking.seats) {
+        availableCapacity = availableCapacity !== null ? availableCapacity + existingBooking.seats : null
+      }
       
       if (availableCapacity !== null && data.seats > availableCapacity) {
         return { error: `Only ${availableCapacity} seats available (capacity: ${event.capacity})` }
@@ -82,27 +109,63 @@ export async function createBooking(formData: FormData) {
       .eq('id', data.customer_id)
       .single()
 
-    // Create booking with retry logic
-    const { data: booking, error } = await withRetry(
-      async () => {
-        return await supabase
-          .from('bookings')
-          .insert(data)
-          .select()
-          .single()
-      },
-      'create booking'
-    )
+    let booking
+    let operationType: 'create' | 'update' = 'create'
 
-    if (error) {
-      console.error('Booking creation error:', error)
-      return { error: 'Failed to create booking' }
+    if (existingBooking && rawData.overwrite) {
+      // Update existing booking
+      const { data: updatedBooking, error } = await withRetry(
+        async () => {
+          return await supabase
+            .from('bookings')
+            .update({
+              seats: data.seats,
+              notes: data.notes || null
+            })
+            .eq('id', existingBooking.id)
+            .select()
+            .single()
+        },
+        'update booking'
+      )
+
+      if (error) {
+        console.error('Booking update error:', error)
+        return { error: 'Failed to update booking' }
+      }
+      
+      booking = updatedBooking
+      operationType = 'update'
+    } else {
+      // Create new booking with retry logic
+      const { data: newBooking, error } = await withRetry(
+        async () => {
+          return await supabase
+            .from('bookings')
+            .insert({
+              event_id: data.event_id,
+              customer_id: data.customer_id,
+              seats: data.seats,
+              notes: data.notes || null
+            })
+            .select()
+            .single()
+        },
+        'create booking'
+      )
+
+      if (error) {
+        console.error('Booking creation error:', error)
+        return { error: 'Failed to create booking' }
+      }
+      
+      booking = newBooking
     }
 
     // Log audit event
     await logAuditEvent({
       user_id: user.id,
-      operation_type: 'create',
+      operation_type: operationType,
       resource_type: 'booking',
       resource_id: booking.id,
       operation_status: 'success',
@@ -111,7 +174,8 @@ export async function createBooking(formData: FormData) {
         eventName: event.name,
         customerId: data.customer_id,
         customerName: customer ? `${customer.first_name} ${customer.last_name}` : 'Unknown',
-        seats: data.seats
+        seats: data.seats,
+        overwrote: existingBooking && rawData.overwrite
       }
     })
 
@@ -332,7 +396,13 @@ export async function deleteBooking(id: string) {
       .from('bookings')
       .select('event_id, customer_id, seats, events(name), customers(first_name, last_name)')
       .eq('id', id)
-      .single()
+      .single() as { data: {
+        event_id: string;
+        customer_id: string;
+        seats: number | null;
+        events?: { name: string };
+        customers?: { first_name: string; last_name: string };
+      } | null }
 
     // Delete booking
     const { error } = await supabase
@@ -355,10 +425,10 @@ export async function deleteBooking(id: string) {
         operation_status: 'success',
         additional_info: {
           eventId: booking.event_id,
-          eventName: (booking as any).events?.name,
+          eventName: booking.events?.name,
           customerId: booking.customer_id,
-          customerName: (booking as any).customers ? 
-            `${(booking as any).customers.first_name} ${(booking as any).customers.last_name}` : 
+          customerName: booking.customers ? 
+            `${booking.customers.first_name} ${booking.customers.last_name}` : 
             'Unknown',
           seats: booking.seats
         }

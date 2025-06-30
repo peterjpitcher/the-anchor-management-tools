@@ -65,44 +65,11 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
     loadEventData()
   }, [loadEventData])
 
-  const handleCreateBooking = async (data: Omit<Booking, 'id' | 'created_at'>) => {
-    try {
-      // First check if booking already exists
-      const { data: existingBooking } = await supabase
-        .from('bookings')
-        .select('id')
-        .eq('event_id', data.event_id)
-        .eq('customer_id', data.customer_id)
-        .single()
-
-      if (existingBooking) {
-        toast.error('This customer already has a booking for this event')
-        return
-      }
-
-      const { data: newBookingData, error } = await supabase.from('bookings').insert(data).select('id').single()
-
-      if (error || !newBookingData) {
-        throw error || new Error('Failed to create booking or get its ID')
-      }
-
-      toast.success('Booking created successfully')
-      setShowBookingForm(false)
-      await loadEventData() // Refresh data
-
-      // Send SMS confirmation immediately
-      sendBookingConfirmationSync(newBookingData.id).catch(smsError => {
-        console.error('Failed to send booking confirmation SMS:', smsError)
-        toast.error('Booking created, but failed to send confirmation SMS.')
-      })
-    } catch (error: any) {
-      console.error('Error creating booking:', error)
-      if (error?.code === '23505') {
-        toast.error('This customer already has a booking for this event')
-      } else {
-        toast.error(error?.message || 'Failed to create booking')
-      }
-    }
+  const handleCreateBooking = async (_data: Omit<Booking, 'id' | 'created_at'>) => {
+    // The BookingForm now handles all the logic including duplicate checking
+    // This function is called after successful creation/update
+    setShowBookingForm(false)
+    await loadEventData() // Refresh data
   }
 
   const handleAddMultipleAttendees = async (customerIds: string[]): Promise<void> => {
