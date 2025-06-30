@@ -104,10 +104,19 @@ export async function sendBookingConfirmationSync(bookingId: string) {
 
     // Try to get template from database
     const templateType = booking.seats ? 'bookingConfirmation' : 'reminderOnly';
+    console.log('[SMS] Template lookup:', {
+      eventId: booking.event.id,
+      templateType,
+      mappedType: templateType === 'bookingConfirmation' ? 'booking_confirmation' : 'booking_reminder_confirmation',
+      seats: booking.seats
+    });
+    
     let message = await getMessageTemplate(booking.event.id, templateType, templateVariables);
+    console.log('[SMS] Template result:', message ? 'Found template' : 'No template found');
     
     // Fall back to legacy templates if database template not found
     if (!message) {
+      console.log('[SMS] Falling back to hard-coded template');
       message = booking.seats
         ? smsTemplates.bookingConfirmation({
             firstName: booking.customer.first_name,
