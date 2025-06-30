@@ -1,4 +1,4 @@
-import { Booking, Event, Customer } from '@/types/database'
+import type { Booking, Event, Customer } from '@/types/database'
 import { useState, useEffect, useCallback } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import toast from 'react-hot-toast'
@@ -253,9 +253,11 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
               </Button>
               <Button
                 type="button"
-                onClick={() => {
+                onClick={(e) => {
+                  e.preventDefault()
                   setShowOverwriteConfirm(false)
-                  handleSubmit(new Event('submit') as React.FormEvent, false, true)
+                  const syntheticEvent = { preventDefault: () => {} } as React.FormEvent
+                  handleSubmit(syntheticEvent, false, true)
                 }}
               >
                 Overwrite
