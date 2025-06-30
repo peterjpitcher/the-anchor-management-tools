@@ -98,24 +98,25 @@ export async function getMessageTemplatesBatch(
     const uniqueEventIds = Array.from(new Set(requests.map(r => r.eventId)));
     const uniqueTemplateTypes = Array.from(new Set(requests.map(r => TEMPLATE_TYPE_MAP[r.templateType] || r.templateType)));
 
-    // Fetch all templates for these events and types
-    const { data: templates, error } = await supabase
-      .from('message_templates_with_timing')
-      .select('event_id, template_type, template_content')
+    // Fetch event-specific templates
+    const { data: eventTemplates, error: eventError } = await supabase
+      .from('event_message_templates')
+      .select('event_id, template_type, content')
       .in('event_id', uniqueEventIds)
-      .in('template_type', uniqueTemplateTypes);
+      .in('template_type', uniqueTemplateTypes)
+      .eq('is_active', true);
 
-    if (error) {
-      console.error('Error fetching templates batch:', error);
-      return results;
+    if (eventError) {
+      console.error('Error fetching event templates batch:', eventError);
     }
 
     // Also fetch global templates
-    const { data: globalTemplates } = await supabase
-      .from('message_templates_with_timing')
-      .select('template_type, template_content')
-      .is('event_id', null)
-      .in('template_type', uniqueTemplateTypes);
+    const { data: globalTemplates, error: globalError } = await supabase
+      .from('message_templates')
+      .select('template_type, content')
+      .in('template_type', uniqueTemplateTypes)
+      .eq('is_default', true)
+      .eq('is_active', true);
 
     // Build the results map
     for (const request of requests) {
@@ -123,19 +124,19 @@ export async function getMessageTemplatesBatch(
       const key = `${request.eventId}-${request.templateType}`;
       
       // First try event-specific template
-      const eventTemplate = templates?.find(
+      const eventTemplate = eventTemplates?.find(
         t => t.event_id === request.eventId && t.template_type === mappedType
       );
       
-      if (eventTemplate?.template_content) {
-        results.set(key, eventTemplate.template_content);
+      if (eventTemplate?.content) {
+        results.set(key, eventTemplate.content);
       } else {
         // Fall back to global template
         const globalTemplate = globalTemplates?.find(
           t => t.template_type === mappedType
         );
-        if (globalTemplate?.template_content) {
-          results.set(key, globalTemplate.template_content);
+        if (globalTemplate?.content) {
+          results.set(key, globalTemplate.content);
         } else {
           results.set(key, null);
         }
@@ -173,13 +174,13 @@ export async function getMessageTemplate(
             p_event_id: eventId,
             p_template_type: mappedType
           })
-          .single<{ template_content: string; send_timing: string; custom_timing_hours: number | null }>();
+          .single<{ content: string; variables: string[]; send_timing: string; custom_timing_hours: number | null }>();
           
-        if (error || !data?.template_content) {
+        if (error || !data?.content) {
           return null;
         }
         
-        return data.template_content;
+        return data.content;
       },
       'LONG' // Cache templates for 1 hour
     );
