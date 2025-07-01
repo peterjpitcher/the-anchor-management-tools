@@ -183,6 +183,14 @@ export async function createPrivateBooking(formData: FormData) {
     balance_due_date: formData.get('balance_due_date') as string || undefined,
   }
 
+  // Debug logging for time fields
+  console.log('Raw booking data times:', {
+    start_time: rawData.start_time,
+    end_time: rawData.end_time,
+    customer_id: rawData.customer_id,
+    is_new_customer: !rawData.customer_id
+  })
+
   // Validate data
   const validationResult = privateBookingSchema.safeParse(rawData)
   if (!validationResult.success) {
@@ -207,21 +215,63 @@ export async function createPrivateBooking(formData: FormData) {
     ? `${bookingData.customer_first_name} ${bookingData.customer_last_name}`
     : bookingData.customer_first_name
 
+  // Clean up empty strings for time fields
+  // Special handling for end_time to ensure it's valid
+  let cleanedEndTime = bookingData.end_time || null;
+  
+  // If end_time exists but is the same or before start_time, set it to null
+  if (cleanedEndTime && bookingData.start_time) {
+    const [startHour, startMin] = bookingData.start_time.split(':').map(Number);
+    const [endHour, endMin] = cleanedEndTime.split(':').map(Number);
+    
+    const startMinutes = startHour * 60 + startMin;
+    const endMinutes = endHour * 60 + endMin;
+    
+    if (endMinutes <= startMinutes) {
+      console.warn('End time is not after start time, setting to null', {
+        start_time: bookingData.start_time,
+        end_time: cleanedEndTime,
+        startMinutes,
+        endMinutes
+      });
+      cleanedEndTime = null;
+    }
+  }
+  
+  const cleanedBookingData = {
+    ...bookingData,
+    setup_time: bookingData.setup_time || null,
+    end_time: cleanedEndTime,
+    setup_date: bookingData.setup_date || null,
+    balance_due_date: bookingData.balance_due_date || balance_due_date || null,
+  }
+
+  const insertData = {
+    ...cleanedBookingData,
+    customer_name, // Include for backward compatibility
+    balance_due_date: cleanedBookingData.balance_due_date,
+    deposit_amount: bookingData.deposit_amount || 250, // Default £250 if not specified
+    created_by: user?.id,
+    status: 'draft'
+  }
+
+  // Debug logging for database insert
+  console.log('Inserting booking with data:', {
+    start_time: insertData.start_time,
+    end_time: insertData.end_time,
+    customer_id: insertData.customer_id,
+    is_new_customer: !insertData.customer_id
+  })
+
   const { data, error } = await supabase
     .from('private_bookings')
-    .insert({
-      ...bookingData,
-      customer_name, // Include for backward compatibility
-      balance_due_date,
-      deposit_amount: bookingData.deposit_amount || 250, // Default £250 if not specified
-      created_by: user?.id,
-      status: 'draft'
-    })
+    .insert(insertData)
     .select()
     .single()
 
   if (error) {
     console.error('Error creating private booking:', error)
+    console.error('Insert data that caused error:', insertData)
     return { error: error.message || 'An error occurred' }
   }
 
