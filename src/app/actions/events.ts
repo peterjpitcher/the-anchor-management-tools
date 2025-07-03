@@ -109,9 +109,7 @@ const eventSchema = z.object({
         return false
       }
     })
-  }),
-  // FAQs
-  faqs: z.any().nullable().optional() // Will be JSONB in database
+  })
 })
 
 export async function createEvent(formData: FormData) {
@@ -164,8 +162,7 @@ export async function createEvent(formData: FormData) {
           // Other defaults
           performer_type: category.default_performer_type,
           event_status: category.default_event_status || 'scheduled',
-          booking_url: category.default_booking_url,
-          faqs: category.faqs
+          booking_url: category.default_booking_url
         }
       }
     }
@@ -197,8 +194,7 @@ export async function createEvent(formData: FormData) {
       booking_url: formData.get('booking_url') as string || categoryDefaults.booking_url || null,
       image_url: formData.get('image_url') as string || categoryDefaults.image_url || null,
       promo_video_url: formData.get('promo_video_url') as string || categoryDefaults.promo_video_url || null,
-      highlight_video_urls: formData.get('highlight_video_urls') ? JSON.parse(formData.get('highlight_video_urls') as string) : categoryDefaults.highlight_video_urls || [],
-      faqs: formData.get('faqs') ? JSON.parse(formData.get('faqs') as string) : categoryDefaults.faqs || []
+      highlight_video_urls: formData.get('highlight_video_urls') ? JSON.parse(formData.get('highlight_video_urls') as string) : categoryDefaults.highlight_video_urls || []
     }
 
     const validationResult = eventSchema.safeParse(rawData)
@@ -297,8 +293,7 @@ export async function updateEvent(id: string, formData: FormData) {
       booking_url: formData.get('booking_url') as string || null,
       image_url: formData.get('image_url') as string || formData.get('hero_image_url') as string || null,
       promo_video_url: formData.get('promo_video_url') as string || null,
-      highlight_video_urls: formData.get('highlight_video_urls') ? JSON.parse(formData.get('highlight_video_urls') as string) : [],
-      faqs: formData.get('faqs') ? JSON.parse(formData.get('faqs') as string) : []
+      highlight_video_urls: formData.get('highlight_video_urls') ? JSON.parse(formData.get('highlight_video_urls') as string) : []
     }
 
     // Use a modified schema for past events
