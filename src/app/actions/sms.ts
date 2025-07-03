@@ -67,8 +67,20 @@ export async function sendBookingConfirmationSync(bookingId: string) {
 
     if (bookingError || !booking) {
       console.error('Failed to fetch booking details for SMS:', bookingError)
+      logger.error('SMS: Failed to fetch booking', {
+        error: bookingError ? new Error(bookingError.message) : new Error('Booking not found'),
+        metadata: { bookingId }
+      })
       return
     }
+    
+    console.log('SMS: Booking details fetched:', {
+      bookingId,
+      customerId: booking.customer?.id,
+      hasCustomer: !!booking.customer,
+      hasMobileNumber: !!booking.customer?.mobile_number,
+      smsOptIn: booking.customer?.sms_opt_in
+    })
 
     if (!booking.customer?.mobile_number) {
       console.log('Skipping SMS - No mobile number for customer')
@@ -148,9 +160,21 @@ export async function sendBookingConfirmationSync(bookingId: string) {
       return;
     }
 
+    console.log('SMS: Attempting to send message via Twilio:', {
+      to: messageParams.to,
+      bodyLength: messageParams.body.length,
+      from: messageParams.from,
+      messagingServiceSid: messageParams.messagingServiceSid
+    })
+    
     const twilioMessage = await twilioClientInstance.messages.create(messageParams)
     
-    console.log('Booking confirmation SMS sent successfully');
+    console.log('Booking confirmation SMS sent successfully:', {
+      sid: twilioMessage.sid,
+      status: twilioMessage.status,
+      to: twilioMessage.to,
+      from: twilioMessage.from
+    });
 
     // Calculate segments (SMS is 160 chars, or 153 for multi-part)
     const messageLength = message.length;
