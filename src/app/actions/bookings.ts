@@ -180,9 +180,24 @@ export async function createBooking(formData: FormData): Promise<CreateBookingRe
     })
 
     // Send SMS confirmation immediately
-    sendBookingConfirmationSync(booking.id).catch(error => {
+    try {
+      await sendBookingConfirmationSync(booking.id)
+      console.log(`SMS confirmation sent successfully for booking ${booking.id}`)
+    } catch (error) {
       console.error('Failed to send booking confirmation:', error)
-    })
+      // Log detailed error information
+      await logAuditEvent({
+        user_id: user.id,
+        operation_type: 'sms_failure',
+        resource_type: 'booking',
+        resource_id: booking.id,
+        operation_status: 'failure',
+        additional_info: {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          customerId: data.customer_id
+        }
+      })
+    }
 
     // Invalidate event cache
     await invalidateEventCache(data.event_id)

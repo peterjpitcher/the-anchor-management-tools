@@ -295,7 +295,7 @@ export async function updateEvent(id: string, formData: FormData) {
       price_currency: formData.get('price_currency') as string || 'GBP',
       is_free: formData.get('is_free') === 'true',
       booking_url: formData.get('booking_url') as string || null,
-      image_url: formData.get('image_url') as string || null,
+      image_url: formData.get('image_url') as string || formData.get('hero_image_url') as string || null,
       promo_video_url: formData.get('promo_video_url') as string || null,
       highlight_video_urls: formData.get('highlight_video_urls') ? JSON.parse(formData.get('highlight_video_urls') as string) : [],
       faqs: formData.get('faqs') ? JSON.parse(formData.get('faqs') as string) : []
