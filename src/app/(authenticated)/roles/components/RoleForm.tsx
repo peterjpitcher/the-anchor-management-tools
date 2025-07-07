@@ -47,7 +47,7 @@ export default function RoleForm({ action, initialData }: RoleFormProps) {
             id="name"
             required
             defaultValue={initialData?.name}
-            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
             placeholder="e.g., Event Manager"
           />
         </div>
@@ -66,7 +66,7 @@ export default function RoleForm({ action, initialData }: RoleFormProps) {
             id="description"
             rows={3}
             defaultValue={initialData?.description}
-            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
             placeholder="Describe the purpose and responsibilities of this role"
           />
         </div>
@@ -75,14 +75,14 @@ export default function RoleForm({ action, initialData }: RoleFormProps) {
       <div className="flex justify-end space-x-3">
         <Link
           href="/roles"
-          className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
         >
           Cancel
         </Link>
         <button
           type="submit"
           disabled={isPending}
-          className="inline-flex justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
+          className="inline-flex justify-center rounded-md border border-transparent bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50"
         >
           {isPending ? 'Saving...' : initialData?.id ? 'Update Role' : 'Create Role'}
         </button>

@@ -97,7 +97,7 @@ export default function NewPrivateBookingPage() {
       </div>
 
       <div className="bg-white shadow rounded-lg">
-        <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+        <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100">
           <h2 className="text-2xl font-bold text-gray-900">New Private Booking</h2>
           <p className="text-gray-600 mt-1">Create a new venue hire booking</p>
         </div>
@@ -137,7 +137,7 @@ export default function NewPrivateBookingPage() {
                     value={customerFirstName}
                     onChange={(e) => setCustomerFirstName(e.target.value)}
                     required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                     placeholder="John"
                   />
                 </div>
@@ -151,7 +151,7 @@ export default function NewPrivateBookingPage() {
                     name="customer_last_name"
                     value={customerLastName}
                     onChange={(e) => setCustomerLastName(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                     placeholder="Smith"
                   />
                 </div>
@@ -169,7 +169,7 @@ export default function NewPrivateBookingPage() {
                     name="contact_phone"
                     value={contactPhone}
                     onChange={(e) => setContactPhone(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                     placeholder="07700 900000"
                   />
                 </div>
@@ -186,7 +186,7 @@ export default function NewPrivateBookingPage() {
                   name="contact_email"
                   value={contactEmail}
                   onChange={(e) => setContactEmail(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="john@example.com"
                 />
               </div>
@@ -213,7 +213,7 @@ export default function NewPrivateBookingPage() {
                   defaultValue={defaultDate}
                   min={today}
                   max={maxDate}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 />
               </div>
               <div>
@@ -225,7 +225,7 @@ export default function NewPrivateBookingPage() {
                   type="text"
                   id="event_type"
                   name="event_type"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="Birthday Party, Wedding, Corporate Event..."
                 />
               </div>
@@ -237,7 +237,7 @@ export default function NewPrivateBookingPage() {
                 <select
                   id="source"
                   name="source"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 >
                   <option value="">Select source...</option>
                   <option value="phone">Phone</option>
@@ -262,7 +262,7 @@ export default function NewPrivateBookingPage() {
                   name="start_time"
                   required
                   defaultValue="18:00"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 />
               </div>
               <div>
@@ -274,7 +274,7 @@ export default function NewPrivateBookingPage() {
                   id="end_time"
                   name="end_time"
                   defaultValue="23:00"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 />
               </div>
               <div>
@@ -287,7 +287,7 @@ export default function NewPrivateBookingPage() {
                   id="guest_count"
                   name="guest_count"
                   min="1"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="50"
                 />
               </div>
@@ -310,7 +310,7 @@ export default function NewPrivateBookingPage() {
                   type="date"
                   id="setup_date"
                   name="setup_date"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 />
                 <p className="mt-1 text-xs text-gray-500">Leave blank if same as event date</p>
               </div>
@@ -322,7 +322,7 @@ export default function NewPrivateBookingPage() {
                   type="time"
                   id="setup_time"
                   name="setup_time"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 />
                 <p className="mt-1 text-xs text-gray-500">When vendors can start setup</p>
               </div>
@@ -348,7 +348,7 @@ export default function NewPrivateBookingPage() {
                   step="0.01"
                   min="0"
                   defaultValue="250"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 />
                 <p className="mt-1 text-xs text-gray-500">Default is £250</p>
               </div>
@@ -360,7 +360,7 @@ export default function NewPrivateBookingPage() {
                   type="date"
                   id="balance_due_date"
                   name="balance_due_date"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 />
                 <p className="mt-1 text-xs text-gray-500">Leave blank to auto-calculate (7 days before event)</p>
               </div>
@@ -383,7 +383,7 @@ export default function NewPrivateBookingPage() {
                   id="customer_requests"
                   name="customer_requests"
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="Special requests, dietary requirements, decorations..."
                 />
               </div>
@@ -396,7 +396,7 @@ export default function NewPrivateBookingPage() {
                   id="internal_notes"
                   name="internal_notes"
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="Staff notes, setup requirements, important reminders..."
                 />
               </div>
@@ -409,7 +409,7 @@ export default function NewPrivateBookingPage() {
                   id="special_requirements"
                   name="special_requirements"
                   rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="Equipment needs, layout preferences, technical requirements..."
                 />
               </div>
@@ -422,7 +422,7 @@ export default function NewPrivateBookingPage() {
                   id="accessibility_needs"
                   name="accessibility_needs"
                   rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="Wheelchair access, hearing loops, dietary restrictions..."
                 />
               </div>
@@ -447,7 +447,7 @@ export default function NewPrivateBookingPage() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
             >
               {isSubmitting ? 'Creating...' : 'Create Booking'}
             </button>

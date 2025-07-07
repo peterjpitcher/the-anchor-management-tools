@@ -144,10 +144,10 @@ export async function uploadEventImage(
 
     // Update the appropriate table based on whether it's an event or category
     if (event_id) {
-      // For events, update the single image_url field
+      // For events, update the hero_image_url field
       const { error: updateError } = await supabase
         .from('events')
-        .update({ image_url: publicUrl })
+        .update({ hero_image_url: publicUrl })
         .eq('id', event_id)
 
       if (updateError) {
@@ -156,7 +156,8 @@ export async function uploadEventImage(
         return { type: 'error', message: 'Failed to update event image.' }
       }
     } else if (category_id) {
-      // For categories, update the single image_url field
+      // For categories, keep image_url as it doesn't exist in DB yet
+      // This will fail until migration is applied, but keeping for future compatibility
       const { error: updateError } = await supabase
         .from('event_categories')
         .update({ image_url: publicUrl })
@@ -249,7 +250,7 @@ export async function deleteEventImage(imageId: string, eventId: string) {
     // Update event to remove image URL (set to null)
     await supabase
       .from('events')
-      .update({ image_url: null })
+      .update({ hero_image_url: null })
       .eq('id', eventId)
 
     // Log audit event

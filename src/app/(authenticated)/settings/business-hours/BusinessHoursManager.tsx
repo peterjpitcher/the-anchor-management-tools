@@ -107,7 +107,7 @@ export function BusinessHoursManager() {
                     type="checkbox"
                     checked={dayHours.is_closed}
                     onChange={(e) => handleTimeChange(dayHours.day_of_week, 'is_closed', e.target.checked)}
-                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                    className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
                   />
                 </td>
                 <td className="px-3 py-4 whitespace-nowrap">
@@ -116,7 +116,7 @@ export function BusinessHoursManager() {
                     value={dayHours.opens || ''}
                     onChange={(e) => handleTimeChange(dayHours.day_of_week, 'opens', e.target.value)}
                     disabled={dayHours.is_closed}
-                    className="block w-full px-2 py-1 text-sm border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
+                    className="block w-full px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100"
                   />
                 </td>
                 <td className="px-3 py-4 whitespace-nowrap">
@@ -125,7 +125,7 @@ export function BusinessHoursManager() {
                     value={dayHours.closes || ''}
                     onChange={(e) => handleTimeChange(dayHours.day_of_week, 'closes', e.target.value)}
                     disabled={dayHours.is_closed}
-                    className="block w-full px-2 py-1 text-sm border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
+                    className="block w-full px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100"
                   />
                 </td>
                 <td className="px-3 py-4 whitespace-nowrap">
@@ -134,7 +134,7 @@ export function BusinessHoursManager() {
                     value={dayHours.kitchen_opens || ''}
                     onChange={(e) => handleTimeChange(dayHours.day_of_week, 'kitchen_opens', e.target.value)}
                     disabled={dayHours.is_closed}
-                    className="block w-full px-2 py-1 text-sm border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
+                    className="block w-full px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100"
                   />
                 </td>
                 <td className="px-3 py-4 whitespace-nowrap">
@@ -143,7 +143,7 @@ export function BusinessHoursManager() {
                     value={dayHours.kitchen_closes || ''}
                     onChange={(e) => handleTimeChange(dayHours.day_of_week, 'kitchen_closes', e.target.value)}
                     disabled={dayHours.is_closed}
-                    className="block w-full px-2 py-1 text-sm border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
+                    className="block w-full px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100"
                   />
                 </td>
               </tr>

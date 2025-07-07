@@ -6,6 +6,7 @@ import { CalendarIcon, UserGroupIcon, PencilSquareIcon, EnvelopeIcon, BuildingOf
 import { useEffect, useState, useMemo } from 'react'
 import { getUnreadMessageCount } from '@/app/actions/messagesActions'
 import { usePermissions } from '@/contexts/PermissionContext'
+import { Badge } from '@/components/ui/Badge'
 import type { ModuleName, ActionType } from '@/types/rbac'
 
 // ADDED Props interface

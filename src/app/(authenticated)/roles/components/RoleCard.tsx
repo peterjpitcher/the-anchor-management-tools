@@ -55,7 +55,7 @@ export default function RoleCard({ role, onEditPermissions }: RoleCardProps) {
         <div className="mt-5 flex justify-between">
           <button
             onClick={onEditPermissions}
-            className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
           >
             <ShieldCheckIcon className="-ml-0.5 mr-2 h-4 w-4" aria-hidden="true" />
             Permissions
@@ -66,7 +66,7 @@ export default function RoleCard({ role, onEditPermissions }: RoleCardProps) {
               <>
                 <button
                   onClick={() => router.push(`/roles/${role.id}/edit`)}
-                  className="inline-flex items-center p-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  className="inline-flex items-center p-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
                 >
                   <PencilIcon className="h-4 w-4" aria-hidden="true" />
                 </button>

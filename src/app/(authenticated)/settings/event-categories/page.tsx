@@ -200,7 +200,7 @@ export default function EventCategoriesPage() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
           <p className="mt-4 text-gray-500">Loading categories...</p>
         </div>
       </div>
@@ -305,7 +305,7 @@ export default function EventCategoriesPage() {
                     <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                       <button
                         onClick={() => handleOpenForm(category)}
-                        className="text-indigo-600 hover:text-indigo-900 mr-4"
+                        className="text-blue-600 hover:text-blue-900 mr-4"
                       >
                         <PencilIcon className="h-5 w-5" />
                         <span className="sr-only">Edit</span>

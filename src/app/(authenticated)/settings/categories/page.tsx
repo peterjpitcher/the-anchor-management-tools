@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { PlusIcon, TrashIcon, PencilIcon } from '@heroicons/react/24/outline';
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import Link from 'next/link';
 
 interface AttachmentCategory {
@@ -98,11 +99,7 @@ export default function CategoriesPage() {
   }
 
   if (loading) {
-    return (
-      <div className="px-4 sm:px-6 lg:px-8 py-8">
-        <div className="text-center">Loading categories...</div>
-      </div>
-    );
+    return <LoadingSpinner text="Loading categories..." />;
   }
 
   return (

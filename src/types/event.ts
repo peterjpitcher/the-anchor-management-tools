@@ -24,7 +24,11 @@ export interface Event {
   price_currency: string
   is_free: boolean
   booking_url: string | null
-  image_url: string | null
+  hero_image_url: string | null
+  thumbnail_image_url: string | null
+  poster_image_url: string | null
+  gallery_image_urls: any | null // JSONB array
+  image_urls: any | null // JSONB array
   promo_video_url: string | null
   highlight_video_urls: string[] | null
   faqs: any | null // JSONB field
@@ -40,7 +44,6 @@ export interface EventCategory {
   color: string
   icon: string
   slug: string | null
-  image_url: string | null
   short_description: string | null
   long_description: string | null
   highlights: string[] | null
@@ -93,7 +96,11 @@ export interface EventFormData {
   price_currency?: string
   is_free?: boolean
   booking_url?: string
-  image_url?: string
+  hero_image_url?: string
+  thumbnail_image_url?: string
+  poster_image_url?: string
+  gallery_image_urls?: any // JSONB array
+  image_urls?: any // JSONB array
   promo_video_url?: string
   highlight_video_urls?: string[]
   faqs?: any[]

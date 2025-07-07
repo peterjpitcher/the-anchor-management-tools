@@ -44,7 +44,7 @@ export default function ImportMessagesPage() {
             id="startDate"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500"
             disabled={loading}
           />
         </div>
@@ -58,7 +58,7 @@ export default function ImportMessagesPage() {
             id="endDate"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500"
             disabled={loading}
           />
         </div>

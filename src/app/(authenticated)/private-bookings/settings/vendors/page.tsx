@@ -159,7 +159,7 @@ export default async function VendorsPage() {
                   id="name"
                   name="name"
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="e.g., DJ Mike's Entertainment"
                 />
               </div>
@@ -171,7 +171,7 @@ export default async function VendorsPage() {
                   id="service_type"
                   name="service_type"
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 >
                   <option value="">Select type...</option>
                   <option value="dj">DJ</option>
@@ -193,7 +193,7 @@ export default async function VendorsPage() {
                   type="text"
                   id="contact_name"
                   name="contact_name"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="Mike Johnson"
                 />
               </div>
@@ -208,7 +208,7 @@ export default async function VendorsPage() {
                   type="tel"
                   id="contact_phone"
                   name="contact_phone"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="07700 900000"
                 />
               </div>
@@ -220,7 +220,7 @@ export default async function VendorsPage() {
                   type="email"
                   id="contact_email"
                   name="contact_email"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="mike@djmike.com"
                 />
               </div>
@@ -232,7 +232,7 @@ export default async function VendorsPage() {
                   type="url"
                   id="website"
                   name="website"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="https://www.djmike.com"
                 />
               </div>
@@ -246,7 +246,7 @@ export default async function VendorsPage() {
                   name="typical_rate"
                   min="0"
                   step="0.01"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="250.00"
                 />
               </div>
@@ -260,7 +260,7 @@ export default async function VendorsPage() {
                 <select
                   id="preferred"
                   name="preferred"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 >
                   <option value="false">Regular Vendor</option>
                   <option value="true">Preferred Vendor</option>
@@ -273,7 +273,7 @@ export default async function VendorsPage() {
                 <select
                   id="active"
                   name="active"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 >
                   <option value="true">Active</option>
                   <option value="false">Inactive</option>
@@ -289,14 +289,14 @@ export default async function VendorsPage() {
                 id="notes"
                 name="notes"
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 placeholder="Additional notes about this vendor..."
               />
             </div>
             
             <button
               type="submit"
-              className="w-full md:w-auto px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="w-full md:w-auto px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors min-h-[44px]"
             >
               Add Vendor
             </button>
@@ -353,7 +353,7 @@ export default async function VendorsPage() {
                               name="name"
                               defaultValue={vendor.name}
                               required
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                             />
                           </div>
                           <div>
@@ -364,7 +364,7 @@ export default async function VendorsPage() {
                               name="service_type"
                               defaultValue={vendor.service_type}
                               required
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                             >
                               <option value="dj">DJ</option>
                               <option value="band">Band</option>
@@ -385,7 +385,7 @@ export default async function VendorsPage() {
                               type="text"
                               name="contact_name"
                               defaultValue={vendor.contact_name || ''}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                             />
                           </div>
                         </div>
@@ -400,7 +400,7 @@ export default async function VendorsPage() {
                               type="tel"
                               name="contact_phone"
                               defaultValue={vendor.contact_phone || ''}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                             />
                           </div>
                           <div>
@@ -412,7 +412,7 @@ export default async function VendorsPage() {
                               type="email"
                               name="contact_email"
                               defaultValue={vendor.contact_email || ''}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                             />
                           </div>
                           <div>
@@ -424,7 +424,7 @@ export default async function VendorsPage() {
                               type="url"
                               name="website"
                               defaultValue={vendor.website || ''}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                             />
                           </div>
                           <div>
@@ -437,7 +437,7 @@ export default async function VendorsPage() {
                               defaultValue={vendor.typical_rate || ''}
                               min="0"
                               step="0.01"
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                             />
                           </div>
                         </div>
@@ -450,7 +450,7 @@ export default async function VendorsPage() {
                             <select
                               name="preferred"
                               defaultValue={vendor.preferred ? 'true' : 'false'}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                             >
                               <option value="false">Regular Vendor</option>
                               <option value="true">Preferred Vendor</option>
@@ -463,7 +463,7 @@ export default async function VendorsPage() {
                             <select
                               name="active"
                               defaultValue={vendor.active ? 'true' : 'false'}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                             >
                               <option value="true">Active</option>
                               <option value="false">Inactive</option>
@@ -479,13 +479,13 @@ export default async function VendorsPage() {
                             name="notes"
                             defaultValue={vendor.notes || ''}
                             rows={2}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                           />
                         </div>
                         
                         <button
                           type="submit"
-                          className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-1"
+                          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-1 min-h-[44px]"
                         >
                           <CheckIcon className="h-4 w-4" />
                           Update Vendor

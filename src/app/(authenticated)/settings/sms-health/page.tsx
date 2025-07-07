@@ -204,9 +204,9 @@ export default function SMSHealthDashboard() {
         <div className="flex space-x-2">
           <button
             onClick={() => setFilter('all')}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
               filter === 'all' 
-                ? 'bg-indigo-600 text-white' 
+                ? 'bg-green-600 text-white' 
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
@@ -214,9 +214,9 @@ export default function SMSHealthDashboard() {
           </button>
           <button
             onClick={() => setFilter('active')}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
               filter === 'active' 
-                ? 'bg-indigo-600 text-white' 
+                ? 'bg-green-600 text-white' 
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
@@ -224,9 +224,9 @@ export default function SMSHealthDashboard() {
           </button>
           <button
             onClick={() => setFilter('at_risk')}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
               filter === 'at_risk' 
-                ? 'bg-indigo-600 text-white' 
+                ? 'bg-green-600 text-white' 
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
@@ -234,9 +234,9 @@ export default function SMSHealthDashboard() {
           </button>
           <button
             onClick={() => setFilter('suspended')}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
               filter === 'suspended' 
-                ? 'bg-indigo-600 text-white' 
+                ? 'bg-green-600 text-white' 
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
@@ -244,9 +244,9 @@ export default function SMSHealthDashboard() {
           </button>
           <button
             onClick={() => setFilter('invalid_number')}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
               filter === 'invalid_number' 
-                ? 'bg-indigo-600 text-white' 
+                ? 'bg-green-600 text-white' 
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >

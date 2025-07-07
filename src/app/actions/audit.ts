@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 import { headers } from 'next/headers'
 
 interface AuditLogParams {
@@ -18,7 +18,7 @@ interface AuditLogParams {
 
 export async function logAuditEvent(params: AuditLogParams) {
   try {
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
     const headersList = await headers()
     
     // Get client info

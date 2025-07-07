@@ -137,7 +137,7 @@ export default function EditEmployeePage({ params: paramsPromise }: { params: Pr
               </h1>
               <p className="mt-1 text-sm text-gray-500">
                 Update details below or{' '}
-                <Link href={`/employees/${employee.employee_id}`} className="font-medium text-indigo-600 hover:text-indigo-500">
+                <Link href={`/employees/${employee.employee_id}`} className="font-medium text-blue-600 hover:text-blue-900">
                   cancel and return to view
                 </Link>
               </p>

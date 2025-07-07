@@ -234,7 +234,7 @@ export default function BackgroundJobsPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-md border-gray-300"
+            className="rounded-lg border-gray-300"
           >
             <option value="">All Statuses</option>
             <option value="pending">Pending</option>
@@ -246,7 +246,7 @@ export default function BackgroundJobsPage() {
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="rounded-md border-gray-300"
+            className="rounded-lg border-gray-300"
           >
             <option value="">All Types</option>
             {Object.entries(jobTypeLabels).map(([value, label]) => (

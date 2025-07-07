@@ -15,6 +15,8 @@ import { markMessagesAsRead } from '@/app/actions/messageActions'
 import { MessageThread } from '@/components/MessageThread'
 import { CustomerCategoryPreferences } from '@/components/CustomerCategoryPreferences'
 import { PageLoadingSkeleton } from '@/components/ui/SkeletonLoader'
+import { CustomerLabelSelector } from '@/components/CustomerLabelSelector'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 type BookingWithEvent = Omit<Booking, 'event'> & {
   event: Pick<Event, 'id' | 'name' | 'date' | 'time' | 'capacity' | 'created_at' | 'slug'>
@@ -27,6 +29,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   const supabase = useSupabase()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { hasPermission } = usePermissions()
 
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [bookings, setBookings] = useState<BookingWithEvent[]>([])
@@ -403,6 +406,16 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
           </div>
         </div>
       </div>
+
+      {/* Customer Labels Card */}
+      {hasPermission('customers', 'manage') && (
+        <div className="bg-white shadow sm:rounded-lg">
+          <div className="px-4 py-5 sm:p-6">
+            <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">Customer Labels</h3>
+            <CustomerLabelSelector customerId={customer.id} canEdit={true} />
+          </div>
+        </div>
+      )}
 
       {/* SMS Status Card */}
       <div className="bg-white shadow sm:rounded-lg">

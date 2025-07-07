@@ -173,9 +173,9 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
                         {field.value}
                     </span>
                 ) : field.isEmail ? (
-                    <a href={`mailto:${field.value}`} className="text-indigo-600 hover:text-indigo-900">{field.value}</a>
+                    <a href={`mailto:${field.value}`} className="text-blue-600 hover:text-blue-900">{field.value}</a>
                 ) : field.isPhone ? (
-                    <a href={`tel:${field.value}`} className="text-indigo-600 hover:text-indigo-900">{field.value}</a>
+                    <a href={`tel:${field.value}`} className="text-blue-600 hover:text-blue-900">{field.value}</a>
                 ) : (
                     field.value
                 )}
@@ -216,7 +216,7 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
                 {employee.first_name} {employee.last_name}
               </h1>
               <p className="mt-1 text-sm text-gray-500">
-                {employee.job_title} - <Link href="/employees" className="font-medium text-indigo-600 hover:text-indigo-500">Back to all employees</Link>
+                {employee.job_title} - <Link href="/employees" className="font-medium text-blue-600 hover:text-blue-900">Back to all employees</Link>
               </p>
             </div>
             <div className="flex items-center space-x-3">
@@ -271,7 +271,7 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
             </div>
             <Link
               href="/settings/categories"
-              className="text-sm text-indigo-600 hover:text-indigo-500"
+              className="text-sm text-blue-600 hover:text-blue-900"
             >
               Manage Categories
             </Link>

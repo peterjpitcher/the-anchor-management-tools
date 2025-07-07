@@ -23,11 +23,12 @@ export async function GET(_request: NextRequest) {
       color: category.color,
       icon: category.icon,
       slug: category.slug,
-      // Image fields - map single image_url to all for backwards compatibility
-      imageUrl: category.image_url,
-      defaultImageUrl: category.image_url,
-      thumbnailImageUrl: category.image_url,
-      posterImageUrl: category.image_url,
+      // Image fields - currently no image_url in database
+      // These will work once migration is applied
+      imageUrl: null, // category.image_url once migration applied
+      defaultImageUrl: null, // category.image_url once migration applied
+      thumbnailImageUrl: null, // category.image_url once migration applied
+      posterImageUrl: null, // category.image_url once migration applied
       // SEO/Content fields
       shortDescription: category.short_description,
       longDescription: category.long_description,

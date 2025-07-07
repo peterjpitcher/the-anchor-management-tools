@@ -1,11 +1,11 @@
 'use client'
 
 import { useSupabase } from '@/components/providers/SupabaseProvider'
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import type { Customer } from '@/types/database'
 import { CustomerForm } from '@/components/CustomerForm'
 import { CustomerImport } from '@/components/CustomerImport'
-import { PlusIcon, ArrowUpOnSquareIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, ArrowUpOnSquareIcon, PencilIcon, TrashIcon, FunnelIcon, XCircleIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 import { CustomerName } from '@/components/CustomerName'
 import { CustomerWithLoyalty, getLoyalCustomers } from '@/lib/customerUtils'
@@ -16,10 +16,26 @@ import { ChatBubbleLeftIcon } from '@heroicons/react/24/solid'
 import { getConstraintErrorMessage, isPostgrestError } from '@/lib/dbErrorHandler'
 import { usePagination } from '@/hooks/usePagination'
 import { Pagination } from '@/components/Pagination'
-import { PageLoadingSkeleton } from '@/components/ui/SkeletonLoader'
+import { CustomerLabelDisplay } from '@/components/CustomerLabelDisplay'
+import { usePermissions } from '@/contexts/PermissionContext'
+import { TagIcon } from '@heroicons/react/24/outline'
+import { getBulkCustomerLabels } from '@/app/actions/customer-labels-bulk'
+import type { CustomerLabel, CustomerLabelAssignment } from '@/app/actions/customer-labels'
+
+interface CustomerCategoryStats {
+  customer_id: string
+  category_id: string
+  times_attended: number
+  last_attended_date: string
+  event_categories: {
+    id: string
+    name: string
+  }
+}
 
 export default function CustomersPage() {
   const supabase = useSupabase()
+  const { hasPermission } = usePermissions()
   const [searchInput, setSearchInput] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -27,6 +43,9 @@ export default function CustomersPage() {
   const [editingCustomer, setEditingCustomer] = useState<CustomerWithLoyalty | null>(null)
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
   const [loyalCustomerIds, setLoyalCustomerIds] = useState<string[]>([])
+  const [customerPreferences, setCustomerPreferences] = useState<Record<string, CustomerCategoryStats[]>>({})
+  const [customerLabels, setCustomerLabels] = useState<Record<string, CustomerLabelAssignment[]>>({})
+  const [filter, setFilter] = useState<'all' | 'regular' | 'non-regular'>('all')
 
   // Debounce search term
   useEffect(() => {
@@ -80,6 +99,63 @@ export default function CustomersPage() {
     loadLoyalCustomers()
   }, [supabase])
 
+  // Load customer event preferences and labels
+  useEffect(() => {
+    async function loadCustomerData() {
+      if (!customers || customers.length === 0) return
+
+      try {
+        const customerIds = customers.map(c => c.id)
+        
+        // Load preferences
+        const { data: stats, error } = await supabase
+          .from('customer_category_stats')
+          .select(`
+            customer_id,
+            category_id,
+            times_attended,
+            last_attended_date,
+            event_categories!inner(
+              id,
+              name
+            )
+          `)
+          .in('customer_id', customerIds)
+          .order('times_attended', { ascending: false })
+
+        if (error) {
+          console.error('Error loading customer preferences:', error)
+        } else {
+          // Group by customer ID
+          const preferencesByCustomer: Record<string, CustomerCategoryStats[]> = {}
+          stats?.forEach((stat: any) => {
+            if (!preferencesByCustomer[stat.customer_id]) {
+              preferencesByCustomer[stat.customer_id] = []
+            }
+            preferencesByCustomer[stat.customer_id].push({
+              customer_id: stat.customer_id,
+              category_id: stat.category_id,
+              times_attended: stat.times_attended,
+              last_attended_date: stat.last_attended_date,
+              event_categories: stat.event_categories
+            })
+          })
+          setCustomerPreferences(preferencesByCustomer)
+        }
+        
+        // Load labels in bulk
+        const { assignments } = await getBulkCustomerLabels(customerIds)
+        if (assignments) {
+          setCustomerLabels(assignments)
+        }
+      } catch (error) {
+        console.error('Error loading customer data:', error)
+      }
+    }
+
+    loadCustomerData()
+  }, [customers, supabase])
+
   // Load unread message counts separately with a slight delay to avoid blocking initial render
   useEffect(() => {
     let mounted = true
@@ -108,13 +184,33 @@ export default function CustomersPage() {
     }
   }, [])
 
-  // Process customers with loyalty status
+  // Process customers with loyalty status and apply filter
   const customersWithLoyalty = useMemo(() => {
-    return customers.map(customer => ({
+    const processedCustomers = customers.map(customer => ({
       ...customer,
       isLoyal: loyalCustomerIds.includes(customer.id)
     }))
-  }, [customers, loyalCustomerIds])
+    
+    // Check if customer has the "Regular" label
+    const regularLabelAssignments = Object.entries(customerLabels).reduce((acc, [customerId, assignments]) => {
+      const hasRegularLabel = assignments.some(assignment => {
+        const label = assignment.label as CustomerLabel
+        return label?.name === 'Regular'
+      })
+      if (hasRegularLabel) {
+        acc.add(customerId)
+      }
+      return acc
+    }, new Set<string>())
+    
+    if (filter === 'regular') {
+      return processedCustomers.filter(customer => regularLabelAssignments.has(customer.id))
+    } else if (filter === 'non-regular') {
+      return processedCustomers.filter(customer => !regularLabelAssignments.has(customer.id))
+    }
+    
+    return processedCustomers
+  }, [customers, loyalCustomerIds, filter, customerLabels])
 
   async function handleCreateCustomer(
     customerData: Omit<Customer, 'id' | 'created_at'>
@@ -197,10 +293,6 @@ export default function CustomersPage() {
     }
   }
 
-  if (isLoading) {
-    return <PageLoadingSkeleton />
-  }
-
   if (showForm || editingCustomer) {
     return (
       <div className="bg-white shadow sm:rounded-lg">
@@ -243,6 +335,14 @@ export default function CustomersPage() {
               </p>
             </div>
             <div className="flex space-x-3">
+              {hasPermission('customers', 'manage') && (
+                <Link href="/settings/customer-labels">
+                  <Button variant="outline">
+                    <TagIcon className="-ml-1 mr-2 h-5 w-5" />
+                    Manage Labels
+                  </Button>
+                </Link>
+              )}
               <Button variant="outline" onClick={() => setShowImport(true)}>
                 <ArrowUpOnSquareIcon className="-ml-1 mr-2 h-5 w-5" />
                 Import
@@ -253,19 +353,65 @@ export default function CustomersPage() {
               </Button>
             </div>
           </div>
-          <div className="mt-4">
+          <div className="mt-4 space-y-3">
             <input
               type="text"
               placeholder="Search customers..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+              className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+              autoComplete="off"
             />
+            <div className="flex items-center space-x-2">
+              <FunnelIcon className="h-5 w-5 text-gray-400" />
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => setFilter('all')}
+                  className={`px-3 py-1 text-sm rounded-full transition-colors ${
+                    filter === 'all' 
+                      ? 'bg-green-600 text-white' 
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  All Customers
+                </button>
+                <button
+                  onClick={() => setFilter('regular')}
+                  className={`px-3 py-1 text-sm rounded-full transition-colors ${
+                    filter === 'regular' 
+                      ? 'bg-green-600 text-white' 
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  Regular Only
+                </button>
+                <button
+                  onClick={() => setFilter('non-regular')}
+                  className={`px-3 py-1 text-sm rounded-full transition-colors ${
+                    filter === 'non-regular' 
+                      ? 'bg-green-600 text-white' 
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  Non-Regular Only
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {customersWithLoyalty.length === 0 ? (
+      {isLoading ? (
+        <div className="bg-white shadow sm:rounded-lg">
+          <div className="animate-pulse p-6">
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="h-12 bg-gray-200 rounded"></div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : customersWithLoyalty.length === 0 ? (
         <div className="bg-white shadow sm:rounded-lg text-center py-12">
             <h3 className="text-lg font-medium text-gray-900">No customers found</h3>
             <p className="mt-1 text-sm text-gray-500">
@@ -284,6 +430,9 @@ export default function CustomersPage() {
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Mobile
                   </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Event Preferences
+                  </th>
                   <th scope="col" className="relative px-6 py-3">
                     <span className="sr-only">Actions</span>
                   </th>
@@ -293,29 +442,65 @@ export default function CustomersPage() {
                 {customersWithLoyalty.map((customer) => (
                   <tr key={customer.id}>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="font-medium text-gray-900">
-                           <Link href={`/customers/${customer.id}`} className="text-blue-600 hover:text-blue-700">
-                            <CustomerName customer={customer} />
-                          </Link>
-                          {unreadCounts[customer.id] > 0 && (
-                            <span className="ml-2 inline-flex items-center">
-                              <ChatBubbleLeftIcon className="h-5 w-5 text-blue-500" />
-                              <span className="ml-1 text-sm font-medium text-blue-600">
-                                {unreadCounts[customer.id]}
+                      <div className="space-y-2">
+                        <div className="flex items-center">
+                          <div className="font-medium text-gray-900">
+                             <Link href={`/customers/${customer.id}`} className="text-blue-600 hover:text-blue-700">
+                              <CustomerName customer={customer} />
+                            </Link>
+                            {unreadCounts[customer.id] > 0 && (
+                              <span className="ml-2 inline-flex items-center">
+                                <ChatBubbleLeftIcon className="h-5 w-5 text-blue-500" />
+                                <span className="ml-1 text-sm font-medium text-blue-600">
+                                  {unreadCounts[customer.id]}
+                                </span>
                               </span>
-                            </span>
-                          )}
+                            )}
+                          </div>
                         </div>
+                        <CustomerLabelDisplay assignments={customerLabels[customer.id] || []} />
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {customer.mobile_number ? (
-                        <a href={`tel:${customer.mobile_number}`} className="text-blue-600 hover:text-blue-700">
-                          {customer.mobile_number}
-                        </a>
+                      <div className="space-y-1">
+                        {customer.mobile_number ? (
+                          <a href={`tel:${customer.mobile_number}`} className="text-blue-600 hover:text-blue-700">
+                            {customer.mobile_number}
+                          </a>
+                        ) : (
+                          '-'
+                        )}
+                        {customer.mobile_number && customer.sms_opt_in === false && (
+                          <div className="flex items-center">
+                            <XCircleIcon className="h-4 w-4 text-red-500 mr-1" />
+                            <span className="text-xs text-red-600">SMS Deactivated</span>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      {customerPreferences[customer.id] ? (
+                        <div className="flex flex-wrap gap-1">
+                          {customerPreferences[customer.id].slice(0, 3).map((pref) => (
+                            <span
+                              key={pref.category_id}
+                              className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"
+                              title={`Attended ${pref.times_attended} times`}
+                            >
+                              {pref.event_categories.name}
+                              {pref.times_attended > 1 && (
+                                <span className="ml-1 text-green-600">×{pref.times_attended}</span>
+                              )}
+                            </span>
+                          ))}
+                          {customerPreferences[customer.id].length > 3 && (
+                            <span className="text-xs text-gray-500">
+                              +{customerPreferences[customer.id].length - 3} more
+                            </span>
+                          )}
+                        </div>
                       ) : (
-                        '-'
+                        <span className="text-gray-400">No preferences yet</span>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -385,17 +570,51 @@ export default function CustomersPage() {
                     </div>
                 </div>
                 <div className="mt-2 sm:flex sm:justify-between">
-                  <div className="sm:flex">
-                    <p className="flex items-center text-sm text-gray-500">
-                      {customer.mobile_number ? (
-                        <a href={`tel:${customer.mobile_number}`} className="text-blue-600 hover:text-blue-700">
-                          {customer.mobile_number}
-                        </a>
-                      ) : (
-                        'No mobile'
+                  <div className="sm:flex space-y-1">
+                    <div>
+                      <p className="flex items-center text-sm text-gray-500">
+                        {customer.mobile_number ? (
+                          <a href={`tel:${customer.mobile_number}`} className="text-blue-600 hover:text-blue-700">
+                            {customer.mobile_number}
+                          </a>
+                        ) : (
+                          'No mobile'
+                        )}
+                      </p>
+                      {customer.mobile_number && customer.sms_opt_in === false && (
+                        <div className="flex items-center">
+                          <XCircleIcon className="h-4 w-4 text-red-500 mr-1" />
+                          <span className="text-xs text-red-600">SMS Deactivated</span>
+                        </div>
                       )}
-                    </p>
+                    </div>
                   </div>
+                </div>
+                {customerPreferences[customer.id] && customerPreferences[customer.id].length > 0 && (
+                  <div className="mt-2">
+                    <div className="flex flex-wrap gap-1">
+                      {customerPreferences[customer.id].slice(0, 2).map((pref) => (
+                        <span
+                          key={pref.category_id}
+                          className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"
+                          title={`Attended ${pref.times_attended} times`}
+                        >
+                          {pref.event_categories.name}
+                          {pref.times_attended > 1 && (
+                            <span className="ml-1 text-green-600">×{pref.times_attended}</span>
+                          )}
+                        </span>
+                      ))}
+                      {customerPreferences[customer.id].length > 2 && (
+                        <span className="text-xs text-gray-500">
+                          +{customerPreferences[customer.id].length - 2}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <div className="mt-2">
+                  <CustomerLabelDisplay assignments={customerLabels[customer.id] || []} />
                 </div>
               </li>
             ))}

@@ -1,10 +1,12 @@
 'use client'
 
-import { useState, Suspense } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
+import { Loader2 } from 'lucide-react'
+import Image from 'next/image'
 
 // LoginForm component - Client Component
 function LoginForm() {
@@ -16,89 +18,171 @@ function LoginForm() {
   const redirectTo = searchParams.get('redirectedFrom') || '/events'
   const supabase = createClient()
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Security check: Clear URL if credentials are exposed
+  useEffect(() => {
+    // Check for exposed credentials in URL
+    const urlParams = new URLSearchParams(window.location.search)
+    if (urlParams.has('email') || urlParams.has('password') || 
+        urlParams.has('login-email') || urlParams.has('login-password')) {
+      // Immediately clear the URL without reload
+      window.history.replaceState({}, '', '/auth/login')
+      console.error('SECURITY WARNING: Credentials detected in URL and cleared')
+      
+      // Clear form fields as a precaution
+      setEmail('')
+      setPassword('')
+      
+      // Show security warning
+      toast.error('Security alert: Please enter your credentials again')
+    }
+  }, [searchParams])
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    e.stopPropagation()
+    
+    // Security: Ensure we're not exposing credentials
+    if (window.location.search.includes('password=') || window.location.search.includes('email=')) {
+      window.history.replaceState({}, '', '/auth/login')
+      toast.error('Security error: Please try logging in again')
+      return
+    }
+
     setIsLoading(true)
 
     try {
       const { error } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.trim(),
         password,
       })
 
       if (error) throw error
 
       toast.success('Logged in successfully')
-      router.push(redirectTo)
+      
+      // Use replace to prevent back button issues
+      router.replace(redirectTo)
       router.refresh()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error:', error)
-      toast.error('Failed to log in')
+      if (error?.message?.includes('Invalid login credentials')) {
+        toast.error('Invalid email or password')
+      } else {
+        toast.error('Failed to log in. Please try again.')
+      }
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+    <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          {/* Logo */}
+          <div className="mx-auto w-64 mb-2">
+            <Image 
+              src="/logo.png" 
+              alt="The Anchor Logo" 
+              width={256}
+              height={256}
+              className="w-full h-auto"
+              priority 
+            />
+          </div>
+          
+          {/* Title */}
+          <h1 className="text-3xl font-bold text-white">
             Sign in to your account
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Or{' '}
-            <Link
-              href="/auth/signup"
-              className="font-medium text-indigo-600 hover:text-indigo-500"
-            >
-              create a new account
-            </Link>
+          </h1>
+          <p className="mt-2 text-sm text-green-100">
+            This is a private system - authorised users only
           </p>
         </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="rounded-md shadow-sm -space-y-px">
-            <div>
-              <label htmlFor="email" className="sr-only">
-                Email address
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                placeholder="Email address"
-              />
-            </div>
-            <div>
-              <label htmlFor="password" className="sr-only">
-                Password
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                placeholder="Password"
-              />
+
+        <form 
+          onSubmit={handleSubmit} 
+          method="POST" 
+          action="#" 
+          autoComplete="on"
+          className="space-y-6"
+        >
+          {/* Hidden honeypot field for security */}
+          <input 
+            type="text" 
+            name="username" 
+            style={{ display: 'none' }} 
+            tabIndex={-1} 
+            autoComplete="off"
+            onChange={() => {
+              console.error('SECURITY: Bot detection triggered')
+              toast.error('Security error detected')
+            }}
+          />
+          
+          {/* Email Field */}
+          <div>
+            <label htmlFor="login-email" className="block text-sm font-medium text-white">
+              Email address
+            </label>
+            <input
+              id="login-email"
+              name="login-email"
+              type="email"
+              autoComplete="username"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="mt-1 block w-full rounded-lg border border-green-800/50 bg-white/10 backdrop-blur px-3 py-2 text-white placeholder-green-200 shadow-sm focus:border-white focus:ring-white sm:text-sm"
+              placeholder="you@example.com"
+            />
+          </div>
+
+          {/* Password Field */}
+          <div>
+            <label htmlFor="login-password" className="block text-sm font-medium text-white">
+              Password
+            </label>
+            <input
+              id="login-password"
+              name="login-password"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="mt-1 block w-full rounded-lg border border-green-800/50 bg-white/10 backdrop-blur px-3 py-2 text-white placeholder-green-200 shadow-sm focus:border-white focus:ring-white sm:text-sm"
+              placeholder="Enter your password"
+            />
+          </div>
+
+          {/* Forgot Password Link */}
+          <div className="flex items-center justify-between">
+            <div className="text-sm">
+              <Link
+                href="/auth/reset-password"
+                className="text-white underline hover:text-green-100 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-sidebar rounded"
+              >
+                Forgot your password?
+              </Link>
             </div>
           </div>
 
+          {/* Submit Button */}
           <div>
             <button
               type="submit"
               disabled={isLoading}
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              className="inline-flex w-full items-center justify-center rounded-lg bg-white px-6 py-3 md:py-2 text-base md:text-sm font-medium text-sidebar shadow-sm hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-sidebar disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] transition-colors duration-150"
             >
-              {isLoading ? 'Signing in...' : 'Sign in'}
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                'Sign in'
+              )}
             </button>
           </div>
         </form>
@@ -110,7 +194,13 @@ function LoginForm() {
 // Page Component
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div>Loading...</div>}>
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
+        <div className="flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-white" />
+        </div>
+      </div>
+    }>
       <LoginForm />
     </Suspense>
   )
