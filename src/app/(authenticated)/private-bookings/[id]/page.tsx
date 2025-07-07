@@ -189,7 +189,7 @@ function PaymentModal({ isOpen, onClose, bookingId, type, amount, onSuccess }: P
               onChange={(e) => setCustomAmount(e.target.value)}
               step="0.01"
               min="0"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
               required
             />
           </div>
@@ -569,7 +569,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                   const item = items.find(i => i.id === e.target.value)
                   setSelectedItem(item || null)
                 }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 required
               >
                 <option value="">Select...</option>
@@ -595,7 +595,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                 type="text"
                 value={customDescription}
                 onChange={(e) => setCustomDescription(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 required
                 readOnly={itemType === 'electricity'}
               />
@@ -613,7 +613,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                 value={quantity}
                 onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
                 min="1"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 required
                 readOnly={itemType === 'electricity'}
               />
@@ -632,7 +632,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                 onChange={(e) => setCustomPrice(e.target.value)}
                 step="0.01"
                 min="0"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 required={itemType === 'other' || itemType === 'vendor' || itemType === 'electricity'}
                 readOnly={(itemType !== 'other' && itemType !== 'vendor' && !!selectedItem) || itemType === 'electricity'}
               />
@@ -653,14 +653,14 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                   placeholder="Amount"
                   min="0"
                   step="0.01"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 />
               </div>
               <div>
                 <select
                   value={discountType}
                   onChange={(e) => setDiscountType(e.target.value as 'percent' | 'fixed')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 >
                   <option value="percent">Percentage (%)</option>
                   <option value="fixed">Fixed Amount (£)</option>
@@ -678,7 +678,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
             />
           </div>
 
@@ -807,7 +807,7 @@ function DiscountModal({ isOpen, onClose, bookingId, currentTotal, onSuccess }: 
               step="0.01"
               min="0"
               max={discountType === 'percent' ? '100' : undefined}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
               required
             />
           </div>
@@ -820,7 +820,7 @@ function DiscountModal({ isOpen, onClose, bookingId, currentTotal, onSuccess }: 
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
               required
               placeholder="e.g., Early bird discount, loyalty customer, etc."
             />
@@ -968,7 +968,7 @@ function EditItemModal({ isOpen, onClose, item, onSuccess }: EditItemModalProps)
                 value={quantity}
                 onChange={(e) => setQuantity(parseInt(e.target.value) || 0)}
                 min="1"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 required
               />
             </div>
@@ -983,7 +983,7 @@ function EditItemModal({ isOpen, onClose, item, onSuccess }: EditItemModalProps)
                 onChange={(e) => setUnitPrice(e.target.value)}
                 min="0"
                 step="0.01"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 required
               />
             </div>
@@ -1002,12 +1002,12 @@ function EditItemModal({ isOpen, onClose, item, onSuccess }: EditItemModalProps)
                 step={discountType === 'percent' ? '1' : '0.01'}
                 max={discountType === 'percent' ? '100' : undefined}
                 placeholder="0"
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
               />
               <select
                 value={discountType}
                 onChange={(e) => setDiscountType(e.target.value as 'percent' | 'fixed')}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
               >
                 <option value="percent">%</option>
                 <option value="fixed">£</option>
@@ -1023,7 +1023,7 @@ function EditItemModal({ isOpen, onClose, item, onSuccess }: EditItemModalProps)
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
               placeholder="e.g., Special pricing agreement, discount reason, etc."
             />
           </div>

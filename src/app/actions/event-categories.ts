@@ -40,10 +40,11 @@ const categorySchema = z.object({
   default_is_free: z.boolean().optional(),
   default_performer_type: z.enum(['MusicGroup', 'Person', 'TheaterGroup', 'DanceGroup', 'ComedyGroup', 'Organization', '']).optional(),
   default_event_status: z.enum(['scheduled', 'cancelled', 'postponed', 'rescheduled']).optional(),
-  default_image_url: z.preprocess(
-    (val) => (!val || val === '' ? undefined : val),
-    z.string().url().optional().nullable()
-  ),
+  // default_image_url field doesn't exist in DB yet
+  // default_image_url: z.preprocess(
+  //   (val) => (!val || val === '' ? undefined : val),
+  //   z.string().url().optional().nullable()
+  // ),
   slug: z.string().regex(/^[a-z0-9-]*$/, 'Invalid slug format').optional(),
   meta_description: z.string().max(160, 'Meta description too long').optional(),
   is_active: z.boolean(),
@@ -55,15 +56,16 @@ const categorySchema = z.object({
   highlights: z.array(z.string()).optional(),
   meta_title: z.string().max(60).optional(),
   keywords: z.array(z.string()).optional(),
-  gallery_image_urls: z.array(z.string().url()).optional(),
-  poster_image_url: z.preprocess(
-    (val) => (!val || val === '' ? undefined : val),
-    z.string().url().optional()
-  ),
-  thumbnail_image_url: z.preprocess(
-    (val) => (!val || val === '' ? undefined : val),
-    z.string().url().optional()
-  ),
+  // These image fields don't exist in DB yet
+  // gallery_image_urls: z.array(z.string().url()).optional(),
+  // poster_image_url: z.preprocess(
+  //   (val) => (!val || val === '' ? undefined : val),
+  //   z.string().url().optional()
+  // ),
+  // thumbnail_image_url: z.preprocess(
+  //   (val) => (!val || val === '' ? undefined : val),
+  //   z.string().url().optional()
+  // ),
   promo_video_url: z.preprocess(
     (val) => (!val || val === '' ? undefined : val),
     z.string().url().optional()
@@ -341,7 +343,7 @@ export async function getCategoryRegulars(categoryId: string, daysBack: number =
     // Check if user is manager or admin
     const { data: hasPermission } = await supabase.rpc('user_has_permission', {
       p_user_id: user.id,
-      p_resource: 'customers',
+      p_module_name: 'customers',
       p_action: 'view'
     })
 
@@ -349,12 +351,42 @@ export async function getCategoryRegulars(categoryId: string, daysBack: number =
       return { error: 'You do not have permission to view customer suggestions' }
     }
 
-    const { data, error } = await supabase.rpc('get_category_regulars', {
-      p_category_id: categoryId,
-      p_days_back: daysBack
-    })
+    // Direct query instead of RPC due to type mismatch issue
+    const cutoffDate = new Date()
+    cutoffDate.setDate(cutoffDate.getDate() - daysBack)
+    
+    const { data: statsData, error } = await supabase
+      .from('customer_category_stats')
+      .select(`
+        customer_id,
+        times_attended,
+        last_attended_date,
+        customers!inner(
+          id,
+          first_name,
+          last_name,
+          mobile_number,
+          sms_opt_in
+        )
+      `)
+      .eq('category_id', categoryId)
+      .eq('customers.sms_opt_in', true)
+      .gte('last_attended_date', cutoffDate.toISOString().split('T')[0])
+      .order('times_attended', { ascending: false })
+      .order('last_attended_date', { ascending: false })
 
     if (error) throw error
+
+    // Transform the data to match the expected format
+    const data: CategoryRegular[] = statsData?.map((stat: any) => ({
+      customer_id: stat.customer_id,
+      first_name: stat.customers.first_name,
+      last_name: stat.customers.last_name,
+      mobile_number: stat.customers.mobile_number,
+      times_attended: stat.times_attended,
+      last_attended_date: stat.last_attended_date,
+      days_since_last_visit: Math.floor((new Date().getTime() - new Date(stat.last_attended_date).getTime()) / (1000 * 60 * 60 * 24))
+    })) || []
 
     return { data }
   } catch (error) {
@@ -379,7 +411,7 @@ export async function getCrossCategorySuggestions(
 
     const { data: hasPermission } = await supabase.rpc('user_has_permission', {
       p_user_id: user.id,
-      p_resource: 'customers',
+      p_module_name: 'customers',
       p_action: 'view'
     })
 
@@ -387,13 +419,63 @@ export async function getCrossCategorySuggestions(
       return { error: 'You do not have permission to view customer suggestions' }
     }
 
-    const { data, error } = await supabase.rpc('get_cross_category_suggestions', {
-      p_target_category_id: targetCategoryId,
-      p_source_category_id: sourceCategoryId,
-      p_limit: limit
-    })
+    // Direct query instead of RPC due to type mismatch issue
+    const cutoffDate = new Date()
+    cutoffDate.setDate(cutoffDate.getDate() - 90) // 90 days lookback
+    
+    // Get customers who attended source category
+    const { data: sourceStats, error: sourceError } = await supabase
+      .from('customer_category_stats')
+      .select(`
+        customer_id,
+        times_attended,
+        last_attended_date,
+        customers!inner(
+          id,
+          first_name,
+          last_name,
+          mobile_number,
+          sms_opt_in
+        )
+      `)
+      .eq('category_id', sourceCategoryId)
+      .eq('customers.sms_opt_in', true)
+      .gte('last_attended_date', cutoffDate.toISOString().split('T')[0])
+      .order('times_attended', { ascending: false })
+      .order('last_attended_date', { ascending: false })
+      .limit(limit * 2) // Get more to filter out those who already attended target
 
-    if (error) throw error
+    if (sourceError) throw sourceError
+
+    // Get customers who already attended target category
+    const { data: targetStats, error: targetError } = await supabase
+      .from('customer_category_stats')
+      .select('customer_id')
+      .eq('category_id', targetCategoryId)
+
+    if (targetError) throw targetError
+
+    const targetCustomerIds = new Set(targetStats?.map(s => s.customer_id) || [])
+
+    // Transform and filter the data
+    const data: CrossCategorySuggestion[] = sourceStats
+      ?.map((stat: any) => ({
+        customer_id: stat.customer_id,
+        first_name: stat.customers.first_name,
+        last_name: stat.customers.last_name,
+        mobile_number: stat.customers.mobile_number,
+        source_times_attended: stat.times_attended,
+        source_last_attended: stat.last_attended_date,
+        already_attended_target: targetCustomerIds.has(stat.customer_id)
+      }))
+      // Prioritize those who haven't attended target
+      .sort((a, b) => {
+        if (a.already_attended_target !== b.already_attended_target) {
+          return a.already_attended_target ? 1 : -1
+        }
+        return b.source_times_attended - a.source_times_attended
+      })
+      .slice(0, limit) || []
 
     return { data }
   } catch (error) {
@@ -518,7 +600,7 @@ export async function createEventCategoryFromFormData(formData: FormData) {
     default_reminder_hours: parseInt(formData.get('default_reminder_hours') as string) || 24,
     default_price: parseFloat(formData.get('default_price') as string) || 0,
     default_is_free: formData.get('default_is_free') === 'true',
-    default_image_url: formData.get('default_image_url') as string,
+    // default_image_url: formData.get('default_image_url') as string, // Field doesn't exist in DB
   }
   
   return createEventCategory(categoryData)
@@ -538,7 +620,7 @@ export async function updateEventCategoryFromFormData(id: string, formData: Form
     default_reminder_hours: parseInt(formData.get('default_reminder_hours') as string) || 24,
     default_price: parseFloat(formData.get('default_price') as string) || 0,
     default_is_free: formData.get('default_is_free') === 'true',
-    default_image_url: formData.get('default_image_url') as string,
+    // default_image_url: formData.get('default_image_url') as string, // Field doesn't exist in DB
   }
   
   return updateEventCategory(id, categoryData)

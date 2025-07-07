@@ -5,6 +5,7 @@ import { useSupabase } from '@/components/providers/SupabaseProvider'
 import Link from 'next/link'
 import type { Employee } from '@/types/database'
 import { Button } from '@/components/ui/Button'
+import { Badge } from '@/components/ui/Badge'
 import { PlusIcon, MagnifyingGlassIcon, ArrowDownTrayIcon, ChevronDownIcon } from '@heroicons/react/24/outline'
 import { Menu, Transition } from '@headlessui/react'
 import { formatDate } from '@/lib/dateUtils'
@@ -17,7 +18,7 @@ import { PageLoadingSkeleton } from '@/components/ui/SkeletonLoader'
 export default function EmployeesPage() {
   const supabase = useSupabase()
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Former'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Former'>('Active')
 
   // Memoize query configuration to prevent unnecessary re-renders
   const queryConfig = useMemo(() => ({
@@ -180,7 +181,7 @@ export default function EmployeesPage() {
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-green-500 focus:border-green-500 sm:text-sm"
+                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-green-500 focus:border-green-500 sm:text-sm"
                   placeholder="Search by name, email, or job title..."
                 />
               </div>
@@ -192,7 +193,7 @@ export default function EmployeesPage() {
               <div className="flex space-x-1">
                 <button
                   onClick={() => setStatusFilter('all')}
-                  className={`px-3 py-1 text-sm font-medium rounded-full ${
+                  className={`px-3 py-1 text-sm font-medium rounded-full focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
                     statusFilter === 'all'
                       ? 'bg-green-600 text-white'
                       : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
@@ -202,7 +203,7 @@ export default function EmployeesPage() {
                 </button>
                 <button
                   onClick={() => setStatusFilter('Active')}
-                  className={`px-3 py-1 text-sm font-medium rounded-full ${
+                  className={`px-3 py-1 text-sm font-medium rounded-full focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
                     statusFilter === 'Active'
                       ? 'bg-green-600 text-white'
                       : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
@@ -212,7 +213,7 @@ export default function EmployeesPage() {
                 </button>
                 <button
                   onClick={() => setStatusFilter('Former')}
-                  className={`px-3 py-1 text-sm font-medium rounded-full ${
+                  className={`px-3 py-1 text-sm font-medium rounded-full focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
                     statusFilter === 'Former'
                       ? 'bg-green-600 text-white'
                       : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
@@ -287,12 +288,9 @@ export default function EmployeesPage() {
                           : 'N/A'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium 
-                            ${employee.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}
-                        >
+                        <Badge variant={employee.status === 'Active' ? 'success' : 'error'}>
                           {employee.status}
-                        </span>
+                        </Badge>
                       </td>
                     </tr>
                   ))}
@@ -309,12 +307,9 @@ export default function EmployeesPage() {
                       <div className="flex items-center justify-between">
                         <p className="text-sm font-medium text-blue-600 truncate">{employee.first_name} {employee.last_name}</p>
                         <div className="ml-2 flex-shrink-0 flex">
-                          <span
-                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium 
-                              ${employee.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}
-                          >
+                          <Badge variant={employee.status === 'Active' ? 'success' : 'error'}>
                             {employee.status}
-                          </span>
+                          </Badge>
                         </div>
                       </div>
                       <div className="mt-2 sm:flex sm:justify-between">

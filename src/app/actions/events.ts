@@ -77,8 +77,28 @@ const eventSchema = z.object({
       return null
     }
   }),
-  // Media fields - now just single image
-  image_url: z.string().nullable().optional().transform(val => {
+  // Media fields - using existing database fields
+  hero_image_url: z.string().nullable().optional().transform(val => {
+    if (!val || val.trim() === '') return null
+    // Basic URL validation
+    try {
+      new URL(val)
+      return val
+    } catch {
+      return null
+    }
+  }),
+  thumbnail_image_url: z.string().nullable().optional().transform(val => {
+    if (!val || val.trim() === '') return null
+    // Basic URL validation
+    try {
+      new URL(val)
+      return val
+    } catch {
+      return null
+    }
+  }),
+  poster_image_url: z.string().nullable().optional().transform(val => {
     if (!val || val.trim() === '') return null
     // Basic URL validation
     try {
@@ -156,7 +176,7 @@ export async function createEvent(formData: FormData) {
           meta_title: category.meta_title,
           meta_description: category.meta_description,
           // Media defaults
-          image_url: category.image_url,
+          hero_image_url: category.image_url,
           promo_video_url: category.promo_video_url,
           highlight_video_urls: category.highlight_video_urls,
           // Other defaults
@@ -192,7 +212,9 @@ export async function createEvent(formData: FormData) {
       price_currency: formData.get('price_currency') as string || 'GBP',
       is_free: formData.get('is_free') ? formData.get('is_free') === 'true' : categoryDefaults.is_free || false,
       booking_url: formData.get('booking_url') as string || categoryDefaults.booking_url || null,
-      image_url: formData.get('image_url') as string || categoryDefaults.image_url || null,
+      hero_image_url: formData.get('hero_image_url') as string || categoryDefaults.hero_image_url || null,
+      thumbnail_image_url: formData.get('thumbnail_image_url') as string || null,
+      poster_image_url: formData.get('poster_image_url') as string || null,
       promo_video_url: formData.get('promo_video_url') as string || categoryDefaults.promo_video_url || null,
       highlight_video_urls: formData.get('highlight_video_urls') ? JSON.parse(formData.get('highlight_video_urls') as string) : categoryDefaults.highlight_video_urls || []
     }
@@ -291,7 +313,9 @@ export async function updateEvent(id: string, formData: FormData) {
       price_currency: formData.get('price_currency') as string || 'GBP',
       is_free: formData.get('is_free') === 'true',
       booking_url: formData.get('booking_url') as string || null,
-      image_url: formData.get('image_url') as string || formData.get('hero_image_url') as string || null,
+      hero_image_url: formData.get('hero_image_url') as string || null,
+      thumbnail_image_url: formData.get('thumbnail_image_url') as string || null,
+      poster_image_url: formData.get('poster_image_url') as string || null,
       promo_video_url: formData.get('promo_video_url') as string || null,
       highlight_video_urls: formData.get('highlight_video_urls') ? JSON.parse(formData.get('highlight_video_urls') as string) : []
     }

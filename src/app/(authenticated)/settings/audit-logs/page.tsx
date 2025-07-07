@@ -110,7 +110,7 @@ export default function AuditLogsPage() {
           <select
             value={filterState.operationType}
             onChange={(e) => setFilterState({ ...filterState, operationType: e.target.value })}
-            className="rounded-md border-gray-300"
+            className="rounded-lg border-gray-300"
           >
             <option value="">All Operations</option>
             <option value="create">Create</option>
@@ -127,7 +127,7 @@ export default function AuditLogsPage() {
           <select
             value={filterState.resourceType}
             onChange={(e) => setFilterState({ ...filterState, resourceType: e.target.value })}
-            className="rounded-md border-gray-300"
+            className="rounded-lg border-gray-300"
           >
             <option value="">All Resources</option>
             <option value="employee">Employee</option>
@@ -143,7 +143,7 @@ export default function AuditLogsPage() {
           <select
             value={filterState.status}
             onChange={(e) => setFilterState({ ...filterState, status: e.target.value })}
-            className="rounded-md border-gray-300"
+            className="rounded-lg border-gray-300"
           >
             <option value="">All Statuses</option>
             <option value="success">Success</option>
@@ -154,7 +154,7 @@ export default function AuditLogsPage() {
             type="date"
             value={filterState.dateFrom}
             onChange={(e) => setFilterState({ ...filterState, dateFrom: e.target.value })}
-            className="rounded-md border-gray-300"
+            className="rounded-lg border-gray-300"
             placeholder="From date"
           />
 
@@ -162,7 +162,7 @@ export default function AuditLogsPage() {
             type="date"
             value={filterState.dateTo}
             onChange={(e) => setFilterState({ ...filterState, dateTo: e.target.value })}
-            className="rounded-md border-gray-300"
+            className="rounded-lg border-gray-300"
             placeholder="To date"
           />
         </div>
@@ -236,7 +236,7 @@ export default function AuditLogsPage() {
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <button
                     onClick={() => setExpandedLog(expandedLog === log.id ? null : log.id)}
-                    className="text-indigo-600 hover:text-indigo-900"
+                    className="text-blue-600 hover:text-blue-900"
                   >
                     {expandedLog === log.id ? 'Hide' : 'Details'}
                   </button>

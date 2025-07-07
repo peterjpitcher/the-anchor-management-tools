@@ -101,7 +101,7 @@ export default function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
                 type="text"
                 id="name"
                 required
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 placeholder="e.g., Website Integration"
                 value={newKeyData.name}
                 onChange={(e) => setNewKeyData({ ...newKeyData, name: e.target.value })}
@@ -115,7 +115,7 @@ export default function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
               <input
                 type="text"
                 id="description"
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 placeholder="Optional description"
                 value={newKeyData.description}
                 onChange={(e) => setNewKeyData({ ...newKeyData, description: e.target.value })}
@@ -133,7 +133,7 @@ export default function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
                       type="checkbox"
                       checked={newKeyData.permissions.includes(option.value)}
                       onChange={() => handleTogglePermission(option.value)}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      className="rounded border-gray-300 text-green-600 focus:ring-green-500"
                     />
                     <span className="ml-2 text-sm text-gray-700">{option.label}</span>
                   </label>
@@ -148,7 +148,7 @@ export default function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
               <input
                 type="number"
                 id="rate_limit"
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 value={newKeyData.rate_limit}
                 onChange={(e) => setNewKeyData({ ...newKeyData, rate_limit: parseInt(e.target.value) || 1000 })}
               />

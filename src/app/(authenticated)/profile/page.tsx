@@ -305,7 +305,7 @@ export default function ProfilePage() {
                   id="email"
                   value={profile.email || ''}
                   disabled
-                  className="mt-1 block w-full rounded-md border-gray-300 bg-gray-50 shadow-sm sm:text-sm"
+                  className="mt-1 block w-full rounded-lg border-gray-300 bg-gray-50 shadow-sm sm:text-sm"
                 />
               </div>
 
@@ -318,7 +318,7 @@ export default function ProfilePage() {
                   id="full_name"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 focus:ring-2 sm:text-sm"
                 />
               </div>
 
@@ -340,7 +340,7 @@ export default function ProfilePage() {
                   type="button"
                   onClick={updateProfile}
                   disabled={saving}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+                  className="inline-flex items-center px-6 py-3 md:py-2 border border-transparent text-base md:text-sm font-medium rounded-lg shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
                 >
                   {saving ? 'Saving...' : 'Save Changes'}
                 </button>
@@ -358,7 +358,7 @@ export default function ProfilePage() {
             <div className="space-y-4">
               <Link
                 href="/profile/change-password"
-                className="inline-flex items-center text-indigo-600 hover:text-indigo-700"
+                className="inline-flex items-center text-blue-600 hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 rounded"
               >
                 <KeyIcon className="h-5 w-5 mr-2" />
                 Change Password
@@ -386,8 +386,8 @@ export default function ProfilePage() {
                   type="button"
                   onClick={() => toggleNotification('sms')}
                   className={`${
-                    profile.sms_notifications ? 'bg-indigo-600' : 'bg-gray-200'
-                  } relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2`}
+                    profile.sms_notifications ? 'bg-green-600' : 'bg-gray-200'
+                  } relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2`}
                 >
                   <span
                     className={`${
@@ -409,8 +409,8 @@ export default function ProfilePage() {
                   type="button"
                   onClick={() => toggleNotification('email')}
                   className={`${
-                    profile.email_notifications ? 'bg-indigo-600' : 'bg-gray-200'
-                  } relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2`}
+                    profile.email_notifications ? 'bg-green-600' : 'bg-gray-200'
+                  } relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2`}
                 >
                   <span
                     className={`${
@@ -432,7 +432,7 @@ export default function ProfilePage() {
             <div className="space-y-4">
               <button
                 onClick={exportData}
-                className="inline-flex items-center text-indigo-600 hover:text-indigo-700"
+                className="inline-flex items-center text-blue-600 hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 rounded"
               >
                 <ArrowDownTrayIcon className="h-5 w-5 mr-2" />
                 Export My Data
@@ -441,7 +441,7 @@ export default function ProfilePage() {
               <div className="pt-4 border-t border-gray-200">
                 <button
                   onClick={requestAccountDeletion}
-                  className="inline-flex items-center text-red-600 hover:text-red-700"
+                  className="inline-flex items-center text-red-600 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 rounded"
                 >
                   <TrashIcon className="h-5 w-5 mr-2" />
                   Request Account Deletion

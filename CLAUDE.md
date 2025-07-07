@@ -48,11 +48,14 @@ The Anchor Management Tools is a comprehensive venue management system featuring
 
 ### Import Paths to Remember
 - **Supabase Client (Server)**: `import { createClient } from '@/lib/supabase/server'`
+- **Supabase Admin Client (Server)**: `import { createAdminClient } from '@/lib/supabase/server'`
 - **Supabase Client (Client)**: `import { useSupabase } from '@/components/providers/SupabaseProvider'`
-- **Permissions**: `import { checkUserPermission } from '@/app/actions/rbac'`
-- **Permissions Context**: `import { usePermissions } from '@/contexts/PermissionContext'`
+- **Permissions (Server)**: `import { checkUserPermission } from '@/app/actions/rbac'`
+- **Permissions Context (Client)**: `import { usePermissions } from '@/contexts/PermissionContext'`
 - **Audit Logging**: `import { logAuditEvent } from '@/app/actions/audit'`
 - **Constants**: `import { UK_PHONE_PATTERN } from '@/lib/constants'`
+- **Validation**: `import { z } from 'zod'`
+- **Cache Revalidation**: `import { revalidatePath } from 'next/cache'`
 
 ## Essential Commands
 
@@ -227,7 +230,7 @@ typescript// src/app/actions/[entity].ts
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
-import { checkUserPermission } from '@/lib/permissions/server';
+import { checkUserPermission } from '@/app/actions/rbac';
 import { logAuditEvent } from './audit';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
@@ -244,7 +247,7 @@ export async function createEntity(formData: FormData) {
     const supabase = await createClient();
     
     // 2. Check permissions
-    const hasPermission = await checkUserPermission(supabase, 'module_name', 'create');
+    const hasPermission = await checkUserPermission('module_name', 'create');
     if (!hasPermission) {
       return { error: 'You do not have permission to perform this action' };
     }
@@ -288,22 +291,22 @@ Component Pattern with Supabase Context
 typescript// src/app/(authenticated)/module/page.tsx
 'use client';
 
-import { useSupabase } from '@/components/SupabaseProvider';
-import { usePermissions } from '@/components/PermissionContext';
+import { useSupabase } from '@/components/providers/SupabaseProvider';
+import { usePermissions } from '@/contexts/PermissionContext';
 import { useState, useEffect } from 'react';
 import { DataTable } from '@/components/ui/data-table';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 
 export default function EntityListPage() {
-  const { supabase } = useSupabase();
-  const { checkPermission } = usePermissions();
+  const supabase = useSupabase();
+  const { hasPermission } = usePermissions();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
-  const canCreate = checkPermission('module_name', 'create');
-  const canEdit = checkPermission('module_name', 'edit');
+  const canCreate = hasPermission('module_name', 'create');
+  const canEdit = hasPermission('module_name', 'edit');
   
   useEffect(() => {
     loadData();
@@ -549,11 +552,7 @@ export async function deleteSensitiveData(id: string) {
   const supabase = await createClient();
   
   // 1. Enhanced permission check
-  const hasPermission = await checkUserPermission(
-    supabase, 
-    'module_name', 
-    'delete'
-  );
+  const hasPermission = await checkUserPermission('module_name', 'delete');
   
   if (!hasPermission) {
     // Log unauthorized attempt
@@ -692,8 +691,8 @@ Required variables are defined in `.env.example`. Key ones include:
 - `SKIP_TWILIO_SIGNATURE_VALIDATION` - For testing webhooks locally (never use in production)
 
 ### Cron Jobs (vercel.json)
-- Daily reminders: 9 AM UTC
-- Job processing: Every 5 minutes
+- Daily reminders: 9 AM UTC (`/api/cron/reminders`)
+- Job processing: Every 5 minutes (`/api/jobs/process`)
 
 ### Middleware
 - Authentication handling for protected routes
@@ -745,6 +744,12 @@ npm run test:headed
 
 # Show test report after run
 npm run test:report
+
+# Run comprehensive test suite
+npm run test:comprehensive
+
+# Run all test suites
+npm run test:suite
 ```
 
 ## Additional Resources
@@ -788,6 +793,20 @@ tsx scripts/check-invalid-phone-numbers.ts
 
 # Generate API key
 tsx scripts/generate-api-key.ts
+
+# Validate business logic
+tsx scripts/validate-business-logic.ts
+
+# Fix phone number formats
+tsx scripts/cleanup-phone-numbers.ts
+
+# Check webhook log entries
+tsx scripts/check-messages.ts
 ```
 
 Run any script with: `tsx scripts/[script-name].ts`
+
+Note: There's also a JavaScript security scan script available:
+```bash
+node scripts/security-scan.js
+```

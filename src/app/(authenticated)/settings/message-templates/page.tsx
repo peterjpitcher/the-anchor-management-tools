@@ -260,7 +260,7 @@ export default function MessageTemplatesPage() {
             setEditingTemplate(null)
             setShowForm(true)
           }}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700"
+          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
         >
           <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
           New Template
@@ -282,7 +282,7 @@ export default function MessageTemplatesPage() {
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                  className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm"
                   required
                 />
               </div>
@@ -293,7 +293,7 @@ export default function MessageTemplatesPage() {
                   type="text"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                  className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm"
                 />
               </div>
 
@@ -303,7 +303,7 @@ export default function MessageTemplatesPage() {
                   <select
                     value={formData.template_type}
                     onChange={(e) => setFormData({ ...formData, template_type: e.target.value as MessageTemplate['template_type'] })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm"
                   >
                     {Object.entries(TEMPLATE_TYPES).map(([key, label]) => (
                       <option key={key} value={key}>{label}</option>
@@ -317,7 +317,7 @@ export default function MessageTemplatesPage() {
                 <select
                   value={formData.send_timing}
                   onChange={(e) => setFormData({ ...formData, send_timing: e.target.value as 'immediate' | '1_hour' | '12_hours' | '24_hours' | '7_days' | 'custom' })}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                  className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm"
                 >
                   {Object.entries(TIMING_OPTIONS).map(([key, label]) => (
                     <option key={key} value={key}>{label}</option>
@@ -334,7 +334,7 @@ export default function MessageTemplatesPage() {
                     max="720"
                     value={formData.custom_timing_hours || ''}
                     onChange={(e) => setFormData({ ...formData, custom_timing_hours: e.target.value ? parseInt(e.target.value) : null })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm"
                     placeholder="Enter hours (1-720)"
                   />
                   <p className="mt-1 text-sm text-gray-500">Maximum 30 days (720 hours)</p>
@@ -368,7 +368,7 @@ export default function MessageTemplatesPage() {
                   id="template-content"
                   value={formData.content}
                   onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                  className="block w-full rounded-md border-gray-300 shadow-sm"
+                  className="block w-full rounded-lg border-gray-300 shadow-sm"
                   rows={6}
                   required
                 />
@@ -395,7 +395,7 @@ export default function MessageTemplatesPage() {
               </button>
               <button
                 onClick={handleSave}
-                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
+                className="px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
               >
                 {editingTemplate ? 'Update' : 'Create'} Template
               </button>
@@ -473,7 +473,7 @@ export default function MessageTemplatesPage() {
                             </button>
                             <button
                               onClick={() => editTemplate(template)}
-                              className="text-indigo-600 hover:text-indigo-900"
+                              className="text-blue-600 hover:text-blue-900"
                             >
                               <PencilIcon className="h-5 w-5" />
                             </button>
@@ -506,7 +506,7 @@ export default function MessageTemplatesPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
           {Object.entries(AVAILABLE_VARIABLES).map(([key, desc]) => (
             <div key={key}>
-              <code className="text-indigo-600">{`{{${key}}}`}</code>
+              <code className="text-green-600">{`{{${key}}}`}</code>
               <span className="text-gray-600 ml-2">- {desc}</span>
             </div>
           ))}

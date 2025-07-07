@@ -63,6 +63,13 @@ const settingsSections = [
     permission: { module: 'settings', action: 'manage' },
   },
   {
+    name: 'Customer Labels',
+    description: 'Manage labels for customer segmentation and targeting',
+    href: '/settings/customer-labels',
+    icon: TagIcon,
+    permission: { module: 'customers', action: 'manage' },
+  },
+  {
     name: 'Message Templates',
     description: 'Manage SMS message templates and customize content',
     href: '/settings/message-templates',

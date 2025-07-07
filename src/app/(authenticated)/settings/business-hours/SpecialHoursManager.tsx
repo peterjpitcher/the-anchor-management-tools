@@ -126,7 +126,7 @@ export function SpecialHoursManager() {
                 required
                 value={formData.date}
                 onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
               />
             </div>
             
@@ -151,7 +151,7 @@ export function SpecialHoursManager() {
                 value={formData.opens}
                 onChange={(e) => setFormData({ ...formData, opens: e.target.value })}
                 disabled={formData.is_closed}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm disabled:bg-gray-100"
+                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm disabled:bg-gray-100"
               />
             </div>
 
@@ -164,7 +164,7 @@ export function SpecialHoursManager() {
                 value={formData.closes}
                 onChange={(e) => setFormData({ ...formData, closes: e.target.value })}
                 disabled={formData.is_closed}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm disabled:bg-gray-100"
+                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm disabled:bg-gray-100"
               />
             </div>
 
@@ -177,7 +177,7 @@ export function SpecialHoursManager() {
                 value={formData.kitchen_opens}
                 onChange={(e) => setFormData({ ...formData, kitchen_opens: e.target.value })}
                 disabled={formData.is_closed}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm disabled:bg-gray-100"
+                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm disabled:bg-gray-100"
               />
             </div>
 
@@ -190,7 +190,7 @@ export function SpecialHoursManager() {
                 value={formData.kitchen_closes}
                 onChange={(e) => setFormData({ ...formData, kitchen_closes: e.target.value })}
                 disabled={formData.is_closed}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm disabled:bg-gray-100"
+                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm disabled:bg-gray-100"
               />
             </div>
 
@@ -203,7 +203,7 @@ export function SpecialHoursManager() {
                 value={formData.note}
                 onChange={(e) => setFormData({ ...formData, note: e.target.value })}
                 placeholder="e.g., Christmas Day, Bank Holiday"
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
               />
             </div>
           </div>

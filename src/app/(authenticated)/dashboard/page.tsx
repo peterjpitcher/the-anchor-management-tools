@@ -121,7 +121,7 @@ export default async function SimpleDashboardPage() {
         <div className="px-4 py-5 sm:p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-medium text-gray-900">Upcoming Events</h2>
-            <Link href="/events" className="text-sm text-blue-600 hover:text-blue-500">
+            <Link href="/events" className="text-sm text-blue-600 hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 rounded">
               View all
             </Link>
           </div>

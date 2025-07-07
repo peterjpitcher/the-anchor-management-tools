@@ -6,6 +6,7 @@ import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquare
 import { useEffect, useState, useMemo } from 'react'
 import { getUnreadMessageCount } from '@/app/actions/messagesActions'
 import { usePermissions } from '@/contexts/PermissionContext'
+import { Badge } from '@/components/ui/Badge'
 import type { ModuleName, ActionType } from '@/types/rbac'
 
 type NavigationItemWithPermission = {
@@ -84,6 +85,7 @@ export function Navigation({ onQuickAddNoteClick }: NavigationProps) {
           className={`
             group flex items-center px-2 py-2 text-sm font-medium rounded-md w-full
             text-gray-100 hover:bg-green-700 hover:text-white
+            focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-sidebar
           `}
         >
           <item.icon
@@ -119,9 +121,9 @@ export function Navigation({ onQuickAddNoteClick }: NavigationProps) {
         />
         {item.name}
         {item.name === 'Messages' && unreadCount > 0 && (
-          <span className="ml-auto inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+          <Badge variant="error" className="ml-auto">
             {unreadCount}
-          </span>
+          </Badge>
         )}
       </Link>
     );

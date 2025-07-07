@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 import Link from 'next/link'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
+import { Button } from '@/components/ui/Button'
+import { Loader2 } from 'lucide-react'
 
 export default function ChangePasswordPage() {
   const supabase = useSupabase()
@@ -47,22 +49,32 @@ export default function ChangePasswordPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-6">
-        <Link
-          href="/profile"
-          className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700"
-        >
-          <ArrowLeftIcon className="h-4 w-4 mr-1" />
-          Back to Profile
-        </Link>
-      </div>
-
+    <div className="space-y-6">
+      {/* Page Header */}
       <div className="bg-white shadow sm:rounded-lg">
         <div className="px-4 py-5 sm:p-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-6">Change Password</h1>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Change Password</h1>
+              <p className="mt-1 text-sm text-gray-500">
+                Update your account password
+              </p>
+            </div>
+            <Link
+              href="/profile"
+              className="inline-flex items-center text-blue-600 hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 rounded"
+            >
+              <ArrowLeftIcon className="h-4 w-4 mr-1" />
+              Back to Profile
+            </Link>
+          </div>
+        </div>
+      </div>
 
-          <form onSubmit={handleChangePassword} className="space-y-6">
+      {/* Form Card */}
+      <div className="bg-white shadow sm:rounded-lg">
+        <form onSubmit={handleChangePassword}>
+          <div className="px-4 py-5 sm:p-6 space-y-6">
             <div>
               <label htmlFor="new-password" className="block text-sm font-medium text-gray-700">
                 New Password
@@ -74,9 +86,10 @@ export default function ChangePasswordPage() {
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
                 minLength={6}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                placeholder="Enter new password"
               />
-              <p className="mt-1 text-sm text-gray-500">
+              <p className="mt-1 text-xs text-gray-500">
                 Must be at least 6 characters long
               </p>
             </div>
@@ -92,27 +105,28 @@ export default function ChangePasswordPage() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
                 minLength={6}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                placeholder="Confirm new password"
               />
             </div>
-
-            <div className="flex justify-end space-x-3">
-              <Link
-                href="/profile"
-                className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              >
-                Cancel
-              </Link>
-              <button
-                type="submit"
-                disabled={loading}
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-              >
-                {loading ? 'Updating...' : 'Update Password'}
-              </button>
-            </div>
-          </form>
-        </div>
+          </div>
+          
+          <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse gap-3">
+            <Button type="submit" disabled={loading}>
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                'Update Password'
+              )}
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => router.push('/profile')}>
+              Cancel
+            </Button>
+          </div>
+        </form>
       </div>
     </div>
   )
