@@ -39,7 +39,7 @@ export async function fetchTwilioMessages(
 ): Promise<{ messages?: MessageComparison[], error?: string }> {
   try {
     // Check permission
-    const hasPermission = await checkUserPermission('messages', 'manage')
+    const hasPermission = await checkUserPermission('messages', 'view')
     if (!hasPermission) {
       return { error: 'Insufficient permissions to view Twilio messages' }
     }
