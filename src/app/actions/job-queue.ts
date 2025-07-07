@@ -1,6 +1,6 @@
 'use server'
 
-import { JobQueue } from '@/lib/job-queue'
+import { jobQueue } from '@/lib/background-jobs'
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from './rbac'
 
@@ -25,23 +25,17 @@ export async function enqueueBulkSMSJob(
   }
 
   try {
-    const jobQueue = new JobQueue()
-    const { success, jobId, error } = await jobQueue.enqueue(
+    const jobId = await jobQueue.enqueue(
       'send_bulk_sms',
       { 
         customerIds, 
         message,
         eventId,
         categoryId
-      },
-      user.id
+      }
     )
     
-    if (success && jobId) {
-      return { success: true, jobId }
-    } else {
-      return { error: error || 'Failed to queue bulk SMS job' }
-    }
+    return { success: true, jobId }
   } catch (error) {
     console.error('Error enqueueing bulk SMS job:', error)
     return { error: 'Failed to queue bulk SMS job' }
