@@ -1,12 +1,12 @@
 'use server'
 
-import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
+import { createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
 export async function getMessages() {
   console.log('=== Getting all messages ===')
   
-  const supabase = getSupabaseAdminClient()
+  const supabase = createAdminClient()
   
   // Get only unread inbound messages
   const { data: messages, error: messagesError } = await supabase
@@ -101,10 +101,7 @@ export async function getMessages() {
 export async function getUnreadMessageCount() {
   console.log('=== Getting unread message count ===')
   
-  const supabase = getSupabaseAdminClient()
-  if (!supabase) {
-    return { count: 0 }
-  }
+  const supabase = createAdminClient()
   
   const { count, error } = await supabase
     .from('messages')
@@ -123,10 +120,7 @@ export async function getUnreadMessageCount() {
 }
 
 export async function markMessageAsRead(messageId: string) {
-  const supabase = getSupabaseAdminClient()
-  if (!supabase) {
-    throw new Error('Failed to initialize database connection')
-  }
+  const supabase = createAdminClient()
   
   const { error } = await supabase
     .from('messages')
@@ -144,10 +138,7 @@ export async function markMessageAsRead(messageId: string) {
 }
 
 export async function markAllMessagesAsRead() {
-  const supabase = getSupabaseAdminClient()
-  if (!supabase) {
-    throw new Error('Failed to initialize database connection')
-  }
+  const supabase = createAdminClient()
   
   const { error } = await supabase
     .from('messages')
@@ -165,10 +156,7 @@ export async function markAllMessagesAsRead() {
 }
 
 export async function markConversationAsRead(customerId: string) {
-  const supabase = getSupabaseAdminClient()
-  if (!supabase) {
-    throw new Error('Failed to initialize database connection')
-  }
+  const supabase = createAdminClient()
   
   const { error } = await supabase
     .from('messages')

@@ -1,10 +1,9 @@
-import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
+import { createAdminClient } from '@/lib/supabase/server'
 import { Job, JobType, JobPayload, JobOptions } from './job-types'
 import { logger } from './logger'
 
 export class JobQueue {
   private static instance: JobQueue
-  private supabase = getSupabaseAdminClient()
   
   private constructor() {}
   
@@ -36,7 +35,8 @@ export class JobQueue {
       created_at: new Date().toISOString()
     }
     
-    const { data, error } = await this.supabase
+    const supabase = createAdminClient()
+    const { data, error } = await supabase
       .from('background_jobs')
       .insert(job)
       .select()
@@ -61,7 +61,8 @@ export class JobQueue {
    * Process pending jobs
    */
   async processJobs(limit = 10): Promise<void> {
-    const { data: jobs, error } = await this.supabase
+    const supabase = createAdminClient()
+    const { data: jobs, error } = await supabase
       .from('background_jobs')
       .select('*')
       .eq('status', 'pending')
@@ -90,10 +91,11 @@ export class JobQueue {
    */
   private async processJob(job: any): Promise<void> {
     const startTime = Date.now()
+    const supabase = createAdminClient()
     
     try {
       // Mark job as processing
-      await this.supabase
+      await supabase
         .from('background_jobs')
         .update({
           status: 'processing',
@@ -106,7 +108,7 @@ export class JobQueue {
       const result = await this.executeJob(job.type, job.payload)
       
       // Mark as completed
-      await this.supabase
+      await supabase
         .from('background_jobs')
         .update({
           status: 'completed',
@@ -129,7 +131,7 @@ export class JobQueue {
       // Check if should retry
       const shouldRetry = job.attempts + 1 < job.max_attempts
       
-      await this.supabase
+      await supabase
         .from('background_jobs')
         .update({
           status: shouldRetry ? 'pending' : 'failed',
@@ -192,7 +194,8 @@ export class JobQueue {
     
     // Log message to database
     if (payload.customerId) {
-      await this.supabase
+      const supabase = createAdminClient()
+      await supabase
         .from('messages')
         .insert({
           customer_id: payload.customerId,
@@ -211,6 +214,7 @@ export class JobQueue {
   private async processBulkSms(payload: JobPayload['send_bulk_sms']) {
     const { customerIds, message } = payload
     const results = []
+    const supabase = createAdminClient()
     
     // Process in batches to avoid overloading
     const batchSize = 10
@@ -218,7 +222,7 @@ export class JobQueue {
       const batch = customerIds.slice(i, i + batchSize)
       
       // Get customer details
-      const { data: customers } = await this.supabase
+      const { data: customers } = await supabase
         .from('customers')
         .select('id, mobile_number, sms_opt_in')
         .in('id', batch)
@@ -247,7 +251,8 @@ export class JobQueue {
     const { bookingId, reminderType } = payload
     
     // Get booking details
-    const { data: booking } = await this.supabase
+    const supabase = createAdminClient()
+    const { data: booking } = await supabase
       .from('bookings')
       .select(`
         *,
@@ -262,7 +267,7 @@ export class JobQueue {
     }
     
     // Check if reminder already sent
-    const { data: existingReminder } = await this.supabase
+    const { data: existingReminder } = await supabase
       .from('booking_reminders')
       .select('id')
       .eq('booking_id', bookingId)
@@ -328,7 +333,7 @@ export class JobQueue {
     const costUsd = segments * 0.04
     
     // Log message to database
-    const { error: messageError } = await this.supabase
+    const { error: messageError } = await supabase
       .from('messages')
       .insert({
         customer_id: booking.customer.id,
@@ -356,7 +361,7 @@ export class JobQueue {
     
     // Record the reminder as sent (using 24_hour for confirmations)
     const actualReminderType = reminderType === '24_hour' ? '24_hour' : reminderType
-    const { error: reminderError } = await this.supabase
+    const { error: reminderError } = await supabase
       .from('booking_reminders')
       .insert({
         booking_id: bookingId,
@@ -384,15 +389,16 @@ export class JobQueue {
   
   private async syncCustomerStats(payload: JobPayload['sync_customer_stats']) {
     const { customerId } = payload
+    const supabase = createAdminClient()
     
     if (customerId) {
       // Sync single customer
-      await this.supabase.rpc('rebuild_customer_category_stats', {
+      await supabase.rpc('rebuild_customer_category_stats', {
         p_customer_id: customerId
       })
     } else {
       // Sync all customers (be careful with this!)
-      await this.supabase.rpc('rebuild_all_customer_category_stats')
+      await supabase.rpc('rebuild_all_customer_category_stats')
     }
     
     return { success: true }
@@ -403,7 +409,8 @@ export class JobQueue {
     const cutoffDate = new Date()
     cutoffDate.setDate(cutoffDate.getDate() - daysToKeep)
     
-    const { data, error } = await this.supabase
+    const supabase = createAdminClient()
+    const { data, error } = await supabase
       .from('messages')
       .delete()
       .lt('created_at', cutoffDate.toISOString())

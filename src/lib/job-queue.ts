@@ -1,4 +1,4 @@
-import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
+import { createAdminClient } from '@/lib/supabase/server'
 
 export type JobType = 
   | 'export_employees' 
@@ -20,14 +20,13 @@ export interface Job {
 }
 
 export class JobQueue {
-  private supabase = getSupabaseAdminClient()
-
   constructor() {
   }
 
   async enqueue(type: JobType, payload?: any, userId?: string): Promise<{ success: boolean; jobId?: string; error?: string }> {
     try {
-      const { data, error } = await this.supabase
+      const supabase = createAdminClient()
+      const { data, error } = await supabase
         .from('job_queue')
         .insert({
           type,
@@ -50,7 +49,8 @@ export class JobQueue {
   }
 
   async getJob(jobId: string): Promise<Job | null> {
-    const { data, error } = await this.supabase
+    const supabase = createAdminClient()
+    const { data, error } = await supabase
       .from('job_queue')
       .select('*')
       .eq('id', jobId)
@@ -92,7 +92,8 @@ export class JobQueue {
     if (result) update.result = result
     if (error) update.error = error
 
-    const { error: updateError } = await this.supabase
+    const supabase = createAdminClient()
+    const { error: updateError } = await supabase
       .from('job_queue')
       .update(update)
       .eq('id', jobId)
@@ -106,7 +107,8 @@ export class JobQueue {
   }
 
   async getNextPendingJob(): Promise<Job | null> {
-    const { data, error } = await this.supabase
+    const supabase = createAdminClient()
+    const { data, error } = await supabase
       .rpc('process_pending_jobs')
       .single()
 

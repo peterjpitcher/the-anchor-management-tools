@@ -1,6 +1,6 @@
 'use server'
 
-import { getSupabaseAdminClient } from '@/lib/supabase-singleton';
+import { createAdminClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { checkUserPermission } from './rbac';
 
@@ -11,7 +11,7 @@ export async function toggleCustomerSmsOptIn(customerId: string, optIn: boolean)
     return { error: 'Insufficient permissions' };
   }
 
-  const supabase = getSupabaseAdminClient();
+  const supabase = createAdminClient();
 
   const updateData: any = {
     sms_opt_in: optIn
@@ -46,7 +46,7 @@ export async function getCustomerSmsStats(customerId: string) {
     return { error: 'Insufficient permissions' };
   }
 
-  const supabase = getSupabaseAdminClient();
+  const supabase = createAdminClient();
 
   // Get customer SMS status
   const { data: customer, error: customerError } = await supabase
@@ -90,7 +90,7 @@ export async function getCustomerSmsStats(customerId: string) {
 }
 
 export async function getCustomerMessages(customerId: string) {
-  const supabase = getSupabaseAdminClient();
+  const supabase = createAdminClient();
 
   const { data: messages, error } = await supabase
     .from('messages')
@@ -106,7 +106,7 @@ export async function getCustomerMessages(customerId: string) {
 }
 
 export async function getDeliveryFailureReport() {
-  const supabase = getSupabaseAdminClient();
+  const supabase = createAdminClient();
 
   // Get customers with delivery failures
   const { data: customers, error } = await supabase
@@ -123,7 +123,7 @@ export async function getDeliveryFailureReport() {
 }
 
 export async function getSmsDeliveryStats() {
-  const supabase = getSupabaseAdminClient();
+  const supabase = createAdminClient();
 
   // Get overall message statistics for the last 30 days
   const thirtyDaysAgo = new Date();
