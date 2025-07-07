@@ -103,7 +103,7 @@ const settingsSections = [
     description: 'View actual messages from Twilio and compare with database records',
     href: '/settings/twilio-messages',
     icon: ChatBubbleLeftRightIcon,
-    permission: { module: 'messages', action: 'manage' },
+    permission: { module: 'messages', action: 'view' },
   },
   {
     name: 'Audit Logs',
