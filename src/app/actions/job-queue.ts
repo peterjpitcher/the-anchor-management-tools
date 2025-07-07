@@ -11,7 +11,7 @@ export async function enqueueBulkSMSJob(
   categoryId?: string
 ) {
   // Check permission
-  const hasPermission = await checkUserPermission('messages', 'create')
+  const hasPermission = await checkUserPermission('messages', 'send')
   if (!hasPermission) {
     return { error: 'Insufficient permissions to send messages' }
   }
