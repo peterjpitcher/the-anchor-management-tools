@@ -20,6 +20,8 @@ export interface JobPayload {
     customerIds: string[]
     message: string
     filters?: Record<string, any>
+    eventId?: string
+    categoryId?: string
   }
   process_reminder: {
     bookingId: string

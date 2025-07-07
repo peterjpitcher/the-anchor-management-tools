@@ -99,6 +99,13 @@ const settingsSections = [
     permission: { module: 'sms_health', action: 'view' },
   },
   {
+    name: 'Twilio Messages Monitor',
+    description: 'View actual messages from Twilio and compare with database records',
+    href: '/settings/twilio-messages',
+    icon: ChatBubbleLeftRightIcon,
+    permission: { module: 'messages', action: 'manage' },
+  },
+  {
     name: 'Audit Logs',
     description: 'View system audit logs for security and compliance',
     href: '/settings/audit-logs',
@@ -160,10 +167,10 @@ export default async function SettingsPage() {
     s.href === '/profile' || s.href === '/users' || s.href === '/roles'
   );
   const systemSettingsSections = visibleSections.filter(s => 
-    s.href.includes('/settings/') && !s.name.includes('SMS') && !s.name.includes('Audit') && !s.name.includes('API Keys')
+    s.href.includes('/settings/') && !s.name.includes('SMS') && !s.name.includes('Audit') && !s.name.includes('API Keys') && !s.name.includes('Twilio')
   );
   const monitoringSections = visibleSections.filter(s => 
-    s.name.includes('SMS') || s.name.includes('Audit') || s.name.includes('API Keys')
+    s.name.includes('SMS') || s.name.includes('Audit') || s.name.includes('API Keys') || s.name.includes('Twilio')
   );
 
   return (
