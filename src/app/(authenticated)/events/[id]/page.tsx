@@ -82,14 +82,34 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
       return
     }
 
-    const newBookingsToInsert = customerIds.map(customerId => ({
-      event_id: event.id,
-      customer_id: customerId,
-      seats: 0,
-      notes: 'Added via bulk add',
-    }))
-
     try {
+      // First, check which customers already have bookings for this event
+      const { data: existingBookings, error: checkError } = await supabase
+        .from('bookings')
+        .select('customer_id')
+        .eq('event_id', event.id)
+        .in('customer_id', customerIds)
+
+      if (checkError) {
+        throw checkError
+      }
+
+      const existingCustomerIds = new Set(existingBookings?.map(b => b.customer_id) || [])
+      const customersToAdd = customerIds.filter(id => !existingCustomerIds.has(id))
+      const skippedCount = customerIds.length - customersToAdd.length
+
+      if (customersToAdd.length === 0) {
+        toast.error('All selected customers already have bookings for this event.')
+        return
+      }
+
+      const newBookingsToInsert = customersToAdd.map(customerId => ({
+        event_id: event.id,
+        customer_id: customerId,
+        seats: 0,
+        notes: 'Added via bulk add',
+      }))
+
       const { data: insertedBookings, error } = await supabase
         .from('bookings')
         .insert(newBookingsToInsert)
@@ -99,7 +119,12 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
         throw error || new Error('Failed to insert bookings or retrieve their IDs.')
       }
 
-      toast.success(`${customerIds.length} attendee(s) added successfully!`)
+      // Construct success message
+      let successMessage = `${customersToAdd.length} attendee(s) added successfully!`
+      if (skippedCount > 0) {
+        successMessage += ` (${skippedCount} skipped - already booked)`
+      }
+      toast.success(successMessage)
       setShowAddAttendeesModal(false)
       await loadEventData() // Refresh data
 
