@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { sendBulkSMS } from '@/app/actions/sms'
-import { JobQueue } from '@/lib/job-queue'
+import { enqueueBulkSMSJob } from '@/app/actions/job-queue'
 import { getActiveEventCategories } from '@/app/actions/event-categories'
 import toast from 'react-hot-toast'
 import Link from 'next/link'
@@ -286,27 +286,18 @@ export default function BulkMessagePage() {
       
       // For large batches (>50), use job queue
       if (selectedCustomerIds.length > 50) {
-        const jobQueue = new JobQueue()
-        
-        // Get current user
-        const { data: { user } } = await supabase.auth.getUser()
-        
-        const { success, jobId, error } = await jobQueue.enqueue(
-          'send_bulk_sms',
-          { 
-            customerIds: selectedCustomerIds, 
-            message: messageContent,
-            eventId: filters.eventId,
-            categoryId: filters.categoryId
-          },
-          user?.id
+        const result = await enqueueBulkSMSJob(
+          selectedCustomerIds, 
+          messageContent,
+          filters.eventId,
+          filters.categoryId
         )
         
-        if (success && jobId) {
+        if (result.success && result.jobId) {
           toast.success(`Bulk SMS job queued successfully. Processing ${selectedCustomerIds.length} messages in background.`)
           setSelectedCustomers(new Set())
         } else {
-          toast.error(error || 'Failed to queue bulk SMS job')
+          toast.error(result.error || 'Failed to queue bulk SMS job')
         }
       } else {
         // For smaller batches, send immediately

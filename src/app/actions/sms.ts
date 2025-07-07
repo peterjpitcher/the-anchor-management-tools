@@ -1,6 +1,6 @@
 'use server'
 
-import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
+import { createAdminClient } from '@/lib/supabase/server'
 import twilio from 'twilio'
 import { smsTemplates, getMessageTemplate, getMessageTemplatesBatch, renderTemplate } from '@/lib/smsTemplates'
 import { rateLimiters } from '@/lib/rate-limit'
@@ -57,7 +57,7 @@ export async function sendBookingConfirmationSync(bookingId: string) {
       return
     }
 
-    const supabase = getSupabaseAdminClient()
+    const supabase = createAdminClient()
 
     const { data: booking, error: bookingError } = await supabase
       .from('bookings')
@@ -235,7 +235,7 @@ export async function sendEventReminders() {
       throw new Error('Supabase Admin configuration missing for reminders')
     }
 
-    const supabase = getSupabaseAdminClient()
+    const supabase = createAdminClient()
 
     const today = new Date()
     const tomorrow = new Date(today)
@@ -519,7 +519,7 @@ export async function sendSms(params: { to: string; body: string; bookingId?: st
     console.log('SMS sent successfully')
 
     // If we have access to the database, store the message
-    const supabase = getSupabaseAdminClient()
+    const supabase = createAdminClient()
     if (supabase) {
       // Calculate segments
       const messageLength = params.body.length
@@ -623,7 +623,7 @@ async function sendBulkSMSInternal(customerIds: string[], message: string, skipR
       return { error: 'SMS service not configured' }
     }
 
-    const supabase = getSupabaseAdminClient()
+    const supabase = createAdminClient()
 
     // Get customer details for all provided IDs
     const { data: customers, error: customerError } = await supabase

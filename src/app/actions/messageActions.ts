@@ -1,10 +1,10 @@
 'use server'
 
-import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
+import { createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
 export async function getUnreadMessageCounts() {
-  const supabase = getSupabaseAdminClient()
+  const supabase = createAdminClient()
   
   const { data, error } = await supabase
     .from('messages')
@@ -27,7 +27,7 @@ export async function getUnreadMessageCounts() {
 }
 
 export async function getTotalUnreadCount() {
-  const supabase = getSupabaseAdminClient()
+  const supabase = createAdminClient()
   
   const { count, error } = await supabase
     .from('messages')
@@ -44,7 +44,7 @@ export async function getTotalUnreadCount() {
 }
 
 export async function markMessagesAsRead(customerId: string) {
-  const supabase = getSupabaseAdminClient()
+  const supabase = createAdminClient()
   
   const { error } = await supabase
     .from('messages')
@@ -68,7 +68,7 @@ export async function markMessagesAsRead(customerId: string) {
 }
 
 export async function sendSmsReply(customerId: string, message: string) {
-  const supabase = getSupabaseAdminClient()
+  const supabase = createAdminClient()
   
   // Get customer details
   const { data: customer, error: customerError } = await supabase
