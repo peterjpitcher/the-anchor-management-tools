@@ -19,6 +19,13 @@ interface EmployeeRecentChangesProps {
 }
 
 export function EmployeeRecentChanges({ employeeId }: EmployeeRecentChangesProps) {
+  // This component requires RPC functions that may not be configured in the database
+  // Return null to avoid errors until the required database functions are available
+  return null
+  
+  /* TODO: Enable this component when the following RPC function is available:
+  - get_employee_changes_summary
+  
   const { hasPermission } = usePermissions()
   const [changes, setChanges] = useState<ChangeRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -28,8 +35,10 @@ export function EmployeeRecentChanges({ employeeId }: EmployeeRecentChangesProps
   useEffect(() => {
     if (canViewHistory) {
       loadRecentChanges()
+    } else {
+      setIsLoading(false)
     }
-  }, [employeeId])
+  }, [employeeId, canViewHistory])
 
   async function loadRecentChanges() {
     try {
@@ -38,34 +47,29 @@ export function EmployeeRecentChanges({ employeeId }: EmployeeRecentChangesProps
       
       if (result.error) {
         console.error('Error loading changes:', result.error)
+        // Don't show the component if there's an error
+        setChanges([])
       } else if (result.data) {
         setChanges(result.data.slice(0, 5)) // Show only last 5 changes
       }
     } catch (error) {
       console.error('Error loading recent changes:', error)
+      // Don't show the component if there's an error
+      setChanges([])
     } finally {
       setIsLoading(false)
     }
   }
+  */
 
+  /*
   if (!canViewHistory) {
     return null
   }
 
   if (isLoading) {
-    return (
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <div className="animate-pulse">
-            <div className="h-4 bg-gray-200 rounded w-1/4 mb-4"></div>
-            <div className="space-y-2">
-              <div className="h-3 bg-gray-200 rounded"></div>
-              <div className="h-3 bg-gray-200 rounded"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
+    // Don't show loading state since the component will likely fail
+    return null
   }
 
   if (changes.length === 0) {
@@ -99,4 +103,5 @@ export function EmployeeRecentChanges({ employeeId }: EmployeeRecentChangesProps
       </div>
     </div>
   )
+  */
 }

@@ -58,7 +58,7 @@ export default function EmployeeForm({
     { name: 'email_address', label: 'Email Address', type: 'email', required: true, defaultValue: employee?.email_address },
     { name: 'job_title', label: 'Job Title', type: 'text', required: true, defaultValue: employee?.job_title },
     { name: 'employment_start_date', label: 'Employment Start Date', type: 'date', required: true, defaultValue: employee?.employment_start_date?.split('T')[0] },
-    { name: 'status', label: 'Status', type: 'select', required: true, options: ['Active', 'Former'], defaultValue: employee?.status || 'Active' },
+    { name: 'status', label: 'Status', type: 'select', required: true, options: ['Active', 'Former', 'Prospective'], defaultValue: employee?.status || 'Active' },
     { name: 'date_of_birth', label: 'Date of Birth', type: 'date', defaultValue: employee?.date_of_birth?.split('T')[0] },
     { name: 'address', label: 'Address', type: 'textarea', defaultValue: employee?.address },
     { name: 'phone_number', label: 'Phone Number', type: 'tel', defaultValue: employee?.phone_number },

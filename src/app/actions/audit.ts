@@ -26,12 +26,27 @@ export async function logAuditEvent(params: AuditLogParams) {
     const forwardedFor = headersList.get('x-forwarded-for')
     const realIp = headersList.get('x-real-ip')
     const ip = forwardedFor?.split(',')[0] || realIp || 'Unknown'
+    
+    // If we have user_id but no user_email, try to look it up
+    let user_email = params.user_email
+    if (params.user_id && !user_email) {
+      const { data: userData } = await supabase
+        .from('auth.users')
+        .select('email')
+        .eq('id', params.user_id)
+        .single()
+      
+      if (userData?.email) {
+        user_email = userData.email
+      }
+    }
 
     // Create audit log entry
     const { error } = await supabase
       .from('audit_logs')
       .insert({
         ...params,
+        user_email,
         ip_address: ip,
         user_agent: userAgent
       })

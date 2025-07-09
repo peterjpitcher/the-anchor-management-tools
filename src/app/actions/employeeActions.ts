@@ -6,7 +6,8 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import type { ActionFormState, NoteFormState, AttachmentFormState, DeleteState } from '@/types/actions';
 import { getConstraintErrorMessage, isPostgrestError } from '@/lib/dbErrorHandler';
-import { logAuditEvent, getCurrentUserForAudit } from '@/lib/auditLog';
+import { logAuditEvent } from '@/app/actions/audit';
+import { getCurrentUser } from '@/lib/audit-helpers';
 import { checkUserPermission } from './rbac';
 
 // Schemas
@@ -16,7 +17,7 @@ const employeeSchema = z.object({
   email_address: z.string().email('Invalid email address'),
   job_title: z.string().min(1, 'Job title is required'),
   employment_start_date: z.string().min(1, 'Start date is required'),
-  status: z.enum(['Active', 'Former']),
+  status: z.enum(['Active', 'Former', 'Prospective']),
   date_of_birth: z.union([z.string().min(1), z.null()]).optional(),
   address: z.union([z.string().min(1), z.null()]).optional(),
   phone_number: z.union([z.string().min(1), z.null()]).optional(),
@@ -63,33 +64,40 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
         return { type: 'error', message: 'Invalid form data.', errors: result.error.flatten().fieldErrors };
     }
 
+    // Get current user for audit logging
+    const userInfo = await getCurrentUser();
+    
     const supabase = getSupabaseAdminClient();
 
     const { data: newEmployee, error } = await supabase.from('employees').insert(result.data).select().single();
     
-    // Audit log
-    const userInfo = await getCurrentUserForAudit(supabase);
-    
     if (error) {
         const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error';
         await logAuditEvent({
-            ...userInfo,
-            operationType: 'create',
-            resourceType: 'employee',
-            operationStatus: 'failure',
-            errorMessage: message,
-            newValues: result.data
+            ...(userInfo.user_id && { user_id: userInfo.user_id }),
+            ...(userInfo.user_email && { user_email: userInfo.user_email }),
+            operation_type: 'create',
+            resource_type: 'employee',
+            operation_status: 'failure',
+            error_message: message,
+            new_values: result.data
         });
         return { type: 'error', message };
     }
     
     await logAuditEvent({
-        ...userInfo,
-        operationType: 'create',
-        resourceType: 'employee',
-        resourceId: newEmployee.employee_id,
-        operationStatus: 'success',
-        newValues: newEmployee
+        ...(userInfo.user_id && { user_id: userInfo.user_id }),
+        ...(userInfo.user_email && { user_email: userInfo.user_email }),
+        operation_type: 'create',
+        resource_type: 'employee',
+        resource_id: newEmployee.employee_id,
+        operation_status: 'success',
+        new_values: newEmployee,
+        additional_info: {
+            employee_name: `${newEmployee.first_name} ${newEmployee.last_name}`,
+            job_title: newEmployee.job_title,
+            status: newEmployee.status
+        }
     });
     
     revalidatePath('/employees');
@@ -129,6 +137,9 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
 
     const supabase = getSupabaseAdminClient();
 
+    // Get current user for audit logging
+    const userInfo = await getCurrentUser();
+    
     // Get old values for audit
     const { data: oldEmployee } = await supabase
         .from('employees')
@@ -138,32 +149,44 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
     
     const { error } = await supabase.from('employees').update(result.data).eq('employee_id', employeeId);
     
-    // Audit log
-    const userInfo = await getCurrentUserForAudit(supabase);
-    
     if (error) {
         const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error';
         await logAuditEvent({
-            ...userInfo,
-            operationType: 'update',
-            resourceType: 'employee',
-            resourceId: employeeId,
-            operationStatus: 'failure',
-            errorMessage: message,
-            oldValues: oldEmployee,
-            newValues: result.data
+            ...(userInfo.user_id && { user_id: userInfo.user_id }),
+        ...(userInfo.user_email && { user_email: userInfo.user_email }),
+            operation_type: 'update',
+            resource_type: 'employee',
+            resource_id: employeeId,
+            operation_status: 'failure',
+            error_message: message,
+            old_values: oldEmployee,
+            new_values: result.data
         });
         return { type: 'error', message };
     }
     
+    // Determine what fields changed
+    const changedFields: string[] = [];
+    if (oldEmployee) {
+        Object.keys(result.data).forEach(key => {
+            if ((oldEmployee as any)[key] !== (result.data as any)[key]) {
+                changedFields.push(key);
+            }
+        });
+    }
+    
     await logAuditEvent({
-        ...userInfo,
-        operationType: 'update',
-        resourceType: 'employee',
-        resourceId: employeeId,
-        operationStatus: 'success',
-        oldValues: oldEmployee,
-        newValues: result.data
+        ...(userInfo.user_id && { user_id: userInfo.user_id }),
+        ...(userInfo.user_email && { user_email: userInfo.user_email }),
+        operation_type: 'update',
+        resource_type: 'employee',
+        resource_id: employeeId,
+        operation_status: 'success',
+        old_values: oldEmployee,
+        new_values: result.data,
+        additional_info: {
+            fields_changed: changedFields
+        }
     });
 
     revalidatePath(`/employees`);
@@ -190,32 +213,39 @@ export async function deleteEmployee(prevState: DeleteState, formData: FormData)
         .eq('employee_id', employeeId)
         .maybeSingle();
     
-    const { error } = await supabase.from('employees').delete().eq('employee_id', employeeId);
+    // Get current user for audit logging
+    const userInfo = await getCurrentUser();
     
-    // Audit log
-    const userInfo = await getCurrentUserForAudit(supabase);
+    const { error } = await supabase.from('employees').delete().eq('employee_id', employeeId);
     
     if (error) {
         const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error';
         await logAuditEvent({
-            ...userInfo,
-            operationType: 'delete',
-            resourceType: 'employee',
-            resourceId: employeeId,
-            operationStatus: 'failure',
-            errorMessage: message,
-            oldValues: employee
+            ...(userInfo.user_id && { user_id: userInfo.user_id }),
+        ...(userInfo.user_email && { user_email: userInfo.user_email }),
+            operation_type: 'delete',
+            resource_type: 'employee',
+            resource_id: employeeId,
+            operation_status: 'failure',
+            error_message: message,
+            old_values: employee
         });
         return { type: 'error', message };
     }
     
     await logAuditEvent({
-        ...userInfo,
-        operationType: 'delete',
-        resourceType: 'employee',
-        resourceId: employeeId,
-        operationStatus: 'success',
-        oldValues: employee
+        ...(userInfo.user_id && { user_id: userInfo.user_id }),
+        ...(userInfo.user_email && { user_email: userInfo.user_email }),
+        operation_type: 'delete',
+        resource_type: 'employee',
+        resource_id: employeeId,
+        operation_status: 'success',
+        old_values: employee,
+        additional_info: {
+            employee_name: employee ? `${employee.first_name} ${employee.last_name}` : 'Unknown',
+            job_title: employee?.job_title,
+            status: employee?.status
+        }
     });
     
     revalidatePath('/employees');
@@ -255,9 +285,23 @@ export async function addEmployeeNote(prevState: NoteFormState, formData: FormDa
     
     const supabase = getSupabaseAdminClient();
     
-    const { error } = await supabase.from('employee_notes').insert(result.data);
+    const { data: newNote, error } = await supabase.from('employee_notes').insert(result.data).select().single();
 
     if (error) return { type: 'error', message: `Database error: ${error.message}` };
+
+    // Audit log
+    const userInfo = await getCurrentUser();
+    await logAuditEvent({
+        ...(userInfo.user_id && { user_id: userInfo.user_id }),
+        ...(userInfo.user_email && { user_email: userInfo.user_email }),
+        operation_type: 'add_note',
+        resource_type: 'employee',
+        resource_id: result.data.employee_id,
+        operation_status: 'success',
+        additional_info: {
+            note_preview: result.data.note_text.substring(0, 100)
+        }
+    });
 
     revalidatePath(`/employees/${result.data.employee_id}`);
     return { type: 'success', message: 'Note added successfully.' };
@@ -362,19 +406,20 @@ export async function addEmployeeAttachment(
   }
 
   // Audit log success
-  const userInfo = await getCurrentUserForAudit(supabase);
+  const userInfo = await getCurrentUser();
   await logAuditEvent({
-    ...userInfo,
-    operationType: 'upload',
-    resourceType: 'attachment',
-    resourceId: employee_id,
-    operationStatus: 'success',
-    newValues: {
-      fileName: attachment_file.name,
-      category_id,
-      fileSize: attachment_file.size
-    },
-    additionalInfo: { storagePath }
+    ...(userInfo.user_id && { user_id: userInfo.user_id }),
+    ...(userInfo.user_email && { user_email: userInfo.user_email }),
+    operation_type: 'add_attachment',
+    resource_type: 'employee',
+    resource_id: employee_id,
+    operation_status: 'success',
+    additional_info: {
+      file_name: attachment_file.name,
+      category: category_id,
+      file_size: attachment_file.size,
+      storage_path: storagePath
+    }
   });
   
   console.log(`Attachment metadata for '${storagePath}' successfully saved to DB.`);
@@ -401,13 +446,17 @@ export async function getAttachmentSignedUrl(storagePath: string): Promise<{ url
   }
 
   // Audit log attachment access
-  const userInfo = await getCurrentUserForAudit(supabase);
+  const userInfo = await getCurrentUser();
   await logAuditEvent({
-    ...userInfo,
-    operationType: 'view',
-    resourceType: 'attachment',
-    operationStatus: 'success',
-    additionalInfo: { storagePath }
+    ...(userInfo.user_id && { user_id: userInfo.user_id }),
+    ...(userInfo.user_email && { user_email: userInfo.user_email }),
+    operation_type: 'view',
+    resource_type: 'employee_attachment',
+    resource_id: storagePath,
+    operation_status: 'success',
+    additional_info: {
+      storage_path: storagePath
+    }
   });
   
   return { url: data.signedUrl, error: null };
@@ -434,8 +483,30 @@ export async function deleteEmployeeAttachment(prevState: DeleteState, formData:
     
     if (storageError) return { type: 'error', message: `Storage error: ${storageError.message}` };
 
+    // Get attachment details for audit before deletion
+    const { data: attachment } = await supabase
+        .from('employee_attachments')
+        .select('file_name')
+        .eq('attachment_id', attachment_id)
+        .single();
+
     const { error: dbError } = await supabase.from('employee_attachments').delete().eq('attachment_id', attachment_id);
     if (dbError) return { type: 'error', message: `Database error: ${dbError.message}` };
+
+    // Audit log
+    const userInfo = await getCurrentUser();
+    await logAuditEvent({
+        ...(userInfo.user_id && { user_id: userInfo.user_id }),
+        ...(userInfo.user_email && { user_email: userInfo.user_email }),
+        operation_type: 'delete_attachment',
+        resource_type: 'employee',
+        resource_id: employee_id,
+        operation_status: 'success',
+        additional_info: {
+            file_name: attachment?.file_name || 'Unknown',
+            storage_path: storage_path
+        }
+    });
 
     revalidatePath(`/employees/${employee_id}`);
     return { type: 'success', message: 'Attachment deleted successfully.' };
@@ -446,6 +517,7 @@ const EmergencyContactSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   relationship: z.union([z.string().min(1), z.null()]).optional(),
   phone_number: z.union([z.string().regex(/^(\+?44|0)?[0-9]{10,11}$/, 'Invalid UK phone number format'), z.null()]).optional(),
+  priority: z.enum(['Primary', 'Secondary', 'Other']).optional(),
   address: z.union([z.string().min(1), z.null()]).optional(),
 });
 
@@ -484,13 +556,13 @@ export async function addEmergencyContact(
     };
   }
 
-  const { employee_id, name, relationship, phone_number, address } = validatedFields.data;
+  const { employee_id, name, relationship, phone_number, priority, address } = validatedFields.data;
 
   const supabase = getSupabaseAdminClient();
   
   const { error } = await supabase
     .from('employee_emergency_contacts')
-    .insert([{ employee_id, name, relationship, phone_number, address }]);
+    .insert([{ employee_id, name, relationship, phone_number, priority, address }]);
 
   if (error) {
     console.error('Error adding emergency contact:', error);
@@ -500,6 +572,23 @@ export async function addEmergencyContact(
       message,
     };
   }
+
+  // Audit log
+  const userInfo = await getCurrentUser();
+  await logAuditEvent({
+    ...(userInfo.user_id && { user_id: userInfo.user_id }),
+    ...(userInfo.user_email && { user_email: userInfo.user_email }),
+    operation_type: 'update',
+    resource_type: 'employee',
+    resource_id: employee_id,
+    operation_status: 'success',
+    additional_info: {
+      action: 'add_emergency_contact',
+      contact_name: name,
+      relationship: relationship,
+      priority: priority
+    }
+  });
 
   revalidatePath(`/employees/${employee_id}`);
   return {
@@ -517,6 +606,8 @@ const FinancialDetailsSchema = z.object({
   ni_number: z.union([z.string().min(1), z.null()]).optional(),
   bank_account_number: z.union([z.string().regex(/^\d{8}$/, 'Account number must be 8 digits'), z.null()]).optional(),
   bank_sort_code: z.union([z.string().regex(/^\d{2}-?\d{2}-?\d{2}$/, 'Sort code must be in format XX-XX-XX'), z.null()]).optional(),
+  sort_code_in_words: z.union([z.string().min(1), z.null()]).optional(),
+  account_number_in_words: z.union([z.string().min(1), z.null()]).optional(),
   bank_name: z.union([z.string().min(1), z.null()]).optional(),
   payee_name: z.union([z.string().min(1), z.null()]).optional(),
   branch_address: z.union([z.string().min(1), z.null()]).optional(),
@@ -571,6 +662,21 @@ export async function upsertFinancialDetails(
       message,
     };
   }
+
+  // Audit log
+  const userInfo = await getCurrentUser();
+  await logAuditEvent({
+    ...(userInfo.user_id && { user_id: userInfo.user_id }),
+    ...(userInfo.user_email && { user_email: userInfo.user_email }),
+    operation_type: 'update',
+    resource_type: 'employee',
+    resource_id: validatedFields.data.employee_id,
+    operation_status: 'success',
+    additional_info: {
+      action: 'update_financial_details',
+      fields_updated: Object.keys(validatedFields.data).filter(k => k !== 'employee_id' && (validatedFields.data as any)[k] !== null)
+    }
+  });
 
   revalidatePath(`/employees/${validatedFields.data.employee_id}`);
   return {
@@ -666,9 +772,379 @@ export async function upsertHealthRecord(
     };
   }
 
+  // Audit log
+  const userInfo = await getCurrentUser();
+  await logAuditEvent({
+    ...(userInfo.user_id && { user_id: userInfo.user_id }),
+    ...(userInfo.user_email && { user_email: userInfo.user_email }),
+    operation_type: 'update',
+    resource_type: 'employee',
+    resource_id: validatedFields.data.employee_id,
+    operation_status: 'success',
+    additional_info: {
+      action: 'update_health_records',
+      fields_updated: Object.keys(validatedFields.data).filter(k => k !== 'employee_id')
+    }
+  });
+
   revalidatePath(`/employees/${validatedFields.data.employee_id}`);
   return {
     type: 'success',
     message: 'Health record saved successfully.',
+  };
+}
+
+// Right to Work schemas and actions
+const RightToWorkSchema = z.object({
+  employee_id: z.string().uuid(),
+  document_type: z.enum(['List A', 'List B']),
+  document_details: z.union([z.string().min(1), z.null()]).optional(),
+  verification_date: z.string().min(1, 'Verification date is required'),
+  document_expiry_date: z.union([z.string().min(1), z.null()]).optional(),
+  follow_up_date: z.union([z.string().min(1), z.null()]).optional(),
+  verified_by_user_id: z.union([z.string().uuid(), z.null()]).optional(),
+  document_photo: z.instanceof(File)
+    .refine(file => file.size > 0, "File is empty")
+    .refine(file => file.size < 10 * 1024 * 1024, "File size must be less than 10MB")
+    .refine(file => ['image/jpeg', 'image/png', 'application/pdf'].includes(file.type), "Only JPG, PNG, and PDF files are allowed")
+    .optional(),
+});
+
+export async function upsertRightToWork(
+  prevState: ActionFormState | null,
+  formData: FormData
+): Promise<ActionFormState | null> {
+  // Check permission
+  const hasPermission = await checkUserPermission('employees', 'edit');
+  if (!hasPermission) {
+    return {
+      type: 'error',
+      message: 'Insufficient permissions to update right to work information.',
+    };
+  }
+
+  const data: any = Object.fromEntries(formData.entries());
+  
+  // Handle empty strings for optional fields
+  ['document_details', 'document_expiry_date', 'follow_up_date', 'verified_by_user_id'].forEach(field => {
+    if (data[field] === '') {
+      data[field] = null;
+    }
+  });
+
+  // Handle file field - if it's an empty file, remove it from data
+  if (data.document_photo && data.document_photo instanceof File && data.document_photo.size === 0) {
+    delete data.document_photo;
+  }
+
+  const validatedFields = RightToWorkSchema.safeParse(data);
+
+  if (!validatedFields.success) {
+    return {
+      type: 'error',
+      message: 'Validation failed.',
+      errors: validatedFields.error.flatten().fieldErrors,
+    };
+  }
+
+  const supabase = getSupabaseAdminClient();
+  
+  // Get current user ID for verified_by_user_id if not provided
+  if (!validatedFields.data.verified_by_user_id) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      validatedFields.data.verified_by_user_id = user.id;
+    }
+  }
+  
+  // Handle file upload if provided
+  let photoStoragePath: string | null = null;
+  const documentPhoto = validatedFields.data.document_photo;
+  
+  if (documentPhoto && documentPhoto.size > 0) {
+    // Check if there's an existing photo to delete
+    const { data: existingRecord } = await supabase
+      .from('employee_right_to_work')
+      .select('photo_storage_path')
+      .eq('employee_id', validatedFields.data.employee_id)
+      .single();
+      
+    // Upload new photo
+    const sanitizedFileName = documentPhoto.name
+      .replace(/[^\w\s.-]/g, '')
+      .replace(/\s+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^[._-]+|[._-]+$/g, '');
+    
+    const finalFileName = sanitizedFileName || 'right_to_work_document';
+    const uniqueFileName = `${validatedFields.data.employee_id}/rtw_${Date.now()}_${finalFileName}`;
+    
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from(ATTACHMENT_BUCKET_NAME)
+      .upload(uniqueFileName, documentPhoto, { upsert: false });
+      
+    if (uploadError) {
+      console.error('Error uploading right to work document:', uploadError);
+      return {
+        type: 'error',
+        message: `Failed to upload document photo: ${uploadError.message}`,
+      };
+    }
+    
+    photoStoragePath = uploadData.path;
+    
+    // Delete old photo if exists
+    if (existingRecord?.photo_storage_path) {
+      const { error: deleteError } = await supabase.storage
+        .from(ATTACHMENT_BUCKET_NAME)
+        .remove([existingRecord.photo_storage_path]);
+        
+      if (deleteError) {
+        console.error('Error deleting old right to work photo:', deleteError);
+      }
+    }
+  }
+  
+  // Prepare data for database update
+  const { document_photo, ...dataToSave } = validatedFields.data;
+  const dataForDb: any = {
+    ...dataToSave,
+    ...(photoStoragePath ? { photo_storage_path: photoStoragePath } : {})
+  };
+  
+  const { error } = await supabase
+    .from('employee_right_to_work')
+    .upsert(dataForDb, { onConflict: 'employee_id' });
+
+  if (error) {
+    console.error('Error upserting right to work:', error);
+    
+    // Clean up uploaded file if database update failed
+    if (photoStoragePath) {
+      await supabase.storage.from(ATTACHMENT_BUCKET_NAME).remove([photoStoragePath]);
+    }
+    
+    return {
+      type: 'error',
+      message: 'Database error: Could not save right to work information.',
+    };
+  }
+
+  // Audit log
+  const userInfo = await getCurrentUser();
+  await logAuditEvent({
+    ...(userInfo.user_id && { user_id: userInfo.user_id }),
+    ...(userInfo.user_email && { user_email: userInfo.user_email }),
+    operation_type: 'update',
+    resource_type: 'employee',
+    resource_id: validatedFields.data.employee_id,
+    operation_status: 'success',
+    additional_info: {
+      action: 'update_right_to_work',
+      document_type: dataForDb.document_type,
+      verification_date: dataForDb.verification_date,
+      photo_uploaded: photoStoragePath ? true : false
+    }
+  });
+
+  revalidatePath(`/employees/${validatedFields.data.employee_id}`);
+  return {
+    type: 'success',
+    message: 'Right to work information saved successfully.',
+  };
+}
+
+// Get signed URL for right to work photo
+export async function getRightToWorkPhotoUrl(photoPath: string): Promise<{ url: string | null; error: string | null }> {
+  // Check permission
+  const hasPermission = await checkUserPermission('employees', 'view');
+  if (!hasPermission) {
+    return { url: null, error: 'Insufficient permissions to view employee documents.' };
+  }
+
+  const supabase = getSupabaseAdminClient();
+
+  const { data, error } = await supabase.storage
+    .from(ATTACHMENT_BUCKET_NAME)
+    .createSignedUrl(photoPath, 60 * 5); // URL valid for 5 minutes
+
+  if (error) {
+    console.error('Error creating signed URL for right to work photo:', error);
+    return { url: null, error: error.message };
+  }
+
+  return { url: data.signedUrl, error: null };
+}
+
+// Delete right to work photo
+export async function deleteRightToWorkPhoto(employeeId: string): Promise<{ error?: string; success?: boolean }> {
+  // Check permission
+  const hasPermission = await checkUserPermission('employees', 'edit');
+  if (!hasPermission) {
+    return { error: 'Insufficient permissions to delete employee documents.' };
+  }
+
+  const supabase = getSupabaseAdminClient();
+  
+  // Get current photo path
+  const { data: rightToWork, error: fetchError } = await supabase
+    .from('employee_right_to_work')
+    .select('photo_storage_path')
+    .eq('employee_id', employeeId)
+    .single();
+    
+  if (fetchError || !rightToWork?.photo_storage_path) {
+    return { error: 'No photo found to delete.' };
+  }
+  
+  // Delete from storage
+  const { error: storageError } = await supabase.storage
+    .from(ATTACHMENT_BUCKET_NAME)
+    .remove([rightToWork.photo_storage_path]);
+    
+  if (storageError) {
+    console.error('Error deleting right to work photo from storage:', storageError);
+    return { error: 'Failed to delete photo from storage.' };
+  }
+  
+  // Update database record
+  const { error: dbError } = await supabase
+    .from('employee_right_to_work')
+    .update({ photo_storage_path: null })
+    .eq('employee_id', employeeId);
+    
+  if (dbError) {
+    console.error('Error updating right to work record:', dbError);
+    return { error: 'Failed to update database record.' };
+  }
+  
+  // Audit log
+  const userInfo = await getCurrentUser();
+  await logAuditEvent({
+    ...(userInfo.user_id && { user_id: userInfo.user_id }),
+    ...(userInfo.user_email && { user_email: userInfo.user_email }),
+    operation_type: 'delete',
+    resource_type: 'employee_attachment',
+    resource_id: employeeId,
+    operation_status: 'success',
+    additional_info: {
+      attachment_type: 'right_to_work_photo',
+      file_path: rightToWork.photo_storage_path
+    }
+  });
+  
+  revalidatePath(`/employees/${employeeId}`);
+  return { success: true };
+}
+
+// Onboarding Checklist action
+export async function updateOnboardingChecklist(
+  employeeId: string,
+  field: string,
+  checked: boolean
+): Promise<{ error?: string; success?: boolean }> {
+  // Check permission
+  const hasPermission = await checkUserPermission('employees', 'edit');
+  if (!hasPermission) {
+    return { error: 'Insufficient permissions to update onboarding checklist.' };
+  }
+
+  const supabase = getSupabaseAdminClient();
+  
+  // Build the update object dynamically
+  const updateData: any = { employee_id: employeeId };
+  
+  // Set the boolean field
+  updateData[field] = checked;
+  
+  // If checking the box, also set the corresponding date field
+  if (checked && field.endsWith('_sent') || field.endsWith('_added') || field.endsWith('_setup') || field.endsWith('_drafted') || field.endsWith('_accepted')) {
+    const dateField = field.replace('_sent', '_date')
+                           .replace('_added', '_date')
+                           .replace('_setup', '_date')
+                           .replace('_drafted', '_date')
+                           .replace('_accepted', '_accepted_date');
+    
+    // Special handling for employee_agreement_accepted_date (timestamp)
+    if (dateField === 'employee_agreement_accepted_date') {
+      updateData[dateField] = new Date().toISOString();
+    } else {
+      updateData[dateField] = new Date().toISOString().split('T')[0]; // Date only
+    }
+  }
+  
+  const { error } = await supabase
+    .from('employee_onboarding_checklist')
+    .upsert(updateData, { onConflict: 'employee_id' });
+
+  if (error) {
+    console.error('Error updating onboarding checklist:', error);
+    return { error: 'Failed to update onboarding checklist.' };
+  }
+
+  // Audit log
+  const userInfo = await getCurrentUser();
+  await logAuditEvent({
+    ...(userInfo.user_id && { user_id: userInfo.user_id }),
+    ...(userInfo.user_email && { user_email: userInfo.user_email }),
+    operation_type: 'update',
+    resource_type: 'employee',
+    resource_id: employeeId,
+    operation_status: 'success',
+    additional_info: {
+      action: 'update_onboarding_checklist',
+      field: field,
+      checked: checked,
+      ...updateData
+    }
+  });
+
+  revalidatePath(`/employees/${employeeId}`);
+  return { success: true };
+}
+
+// Get onboarding progress
+export async function getOnboardingProgress(employeeId: string) {
+  const supabase = getSupabaseAdminClient();
+  
+  const { data, error } = await supabase
+    .from('employee_onboarding_checklist')
+    .select('*')
+    .eq('employee_id', employeeId)
+    .single();
+
+  if (error && error.code !== 'PGRST116') { // PGRST116 = not found
+    console.error('Error fetching onboarding progress:', error);
+    return null;
+  }
+
+  const checklistItems = [
+    { field: 'wheniwork_invite_sent', label: 'WhenIWork Invite Sent', completed: data?.wheniwork_invite_sent || false },
+    { field: 'private_whatsapp_added', label: 'Added to Private WhatsApp', completed: data?.private_whatsapp_added || false },
+    { field: 'team_whatsapp_added', label: 'Added to Team WhatsApp', completed: data?.team_whatsapp_added || false },
+    { field: 'till_system_setup', label: 'Till System Setup', completed: data?.till_system_setup || false },
+    { field: 'training_flow_setup', label: 'Training in Flow Setup', completed: data?.training_flow_setup || false },
+    { field: 'employment_agreement_drafted', label: 'Employment Agreement Drafted', completed: data?.employment_agreement_drafted || false },
+    { field: 'employee_agreement_accepted', label: 'Employee Agreement Accepted', completed: data?.employee_agreement_accepted || false },
+  ];
+
+  if (!data) {
+    return {
+      completed: 0,
+      total: checklistItems.length,
+      percentage: 0,
+      items: checklistItems,
+      data: null
+    };
+  }
+
+  const completed = checklistItems.filter(item => item.completed).length;
+  
+  return {
+    completed,
+    total: checklistItems.length,
+    percentage: Math.round((completed / checklistItems.length) * 100),
+    items: checklistItems,
+    data
   };
 }

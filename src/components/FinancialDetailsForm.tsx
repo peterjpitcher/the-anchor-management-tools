@@ -39,7 +39,9 @@ export default function FinancialDetailsForm({ employeeId, financialDetails }: F
     { name: 'payee_name', label: 'Payee Name', defaultValue: financialDetails?.payee_name },
     { name: 'bank_name', label: 'Bank Name', defaultValue: financialDetails?.bank_name },
     { name: 'bank_sort_code', label: 'Sort Code', defaultValue: financialDetails?.bank_sort_code },
+    { name: 'sort_code_in_words', label: 'Sort Code in Words', defaultValue: financialDetails?.sort_code_in_words, placeholder: 'e.g., zero-one-two-three-four-five' },
     { name: 'bank_account_number', label: 'Account Number', defaultValue: financialDetails?.bank_account_number },
+    { name: 'account_number_in_words', label: 'Account Number in Words', defaultValue: financialDetails?.account_number_in_words, placeholder: 'e.g., zero-one-two-three-four-five-six-seven' },
     { name: 'branch_address', label: 'Branch Address', defaultValue: financialDetails?.branch_address },
   ];
 
@@ -59,6 +61,7 @@ export default function FinancialDetailsForm({ employeeId, financialDetails }: F
                 name={field.name}
                 id={field.name}
                 defaultValue={field.defaultValue || ''}
+                placeholder={field.placeholder}
                 className="block w-full max-w-lg rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
               />
                {state?.errors?.[field.name] && (

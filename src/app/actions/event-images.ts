@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { checkUserPermission } from './rbac'
-import { logAuditEvent } from '@/lib/auditLog'
+import { logAuditEvent } from '@/app/actions/audit'
 
 const BUCKET_NAME = 'event-images'
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
@@ -172,18 +172,18 @@ export async function uploadEventImage(
 
     // Log audit event
     await logAuditEvent({
-      userId: user.id,
-      userEmail: user.email!,
-      operationType: 'upload',
-      resourceType: 'event',
-      resourceId: event_id || category_id || '',
-      operationStatus: 'success',
-      newValues: {
+      user_id: user.id,
+      user_email: user.email!,
+      operation_type: 'upload',
+      resource_type: 'event',
+      resource_id: event_id || category_id || '',
+      operation_status: 'success',
+      new_values: {
         imageType: image_type,
         fileName: file.name,
         fileSize: file.size
       },
-      additionalInfo: { 
+      additional_info: { 
         storagePath,
         entityType: event_id ? 'event' : 'event_category'
       }
@@ -257,13 +257,13 @@ export async function deleteEventImage(imageId: string, eventId: string) {
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
       await logAuditEvent({
-        userId: user.id,
-        userEmail: user.email!,
-        operationType: 'delete',
-        resourceType: 'event',
-        resourceId: eventId,
-        operationStatus: 'success',
-        oldValues: {
+        user_id: user.id,
+        user_email: user.email!,
+        operation_type: 'delete',
+        resource_type: 'event',
+        resource_id: eventId,
+        operation_status: 'success',
+        old_values: {
           imageType: image.image_type,
           fileName: image.file_name
         }

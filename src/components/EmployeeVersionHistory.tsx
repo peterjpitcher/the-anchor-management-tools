@@ -72,6 +72,12 @@ export function EmployeeVersionHistory({ employeeId, employeeName }: EmployeeVer
       return
     }
 
+    // Version comparison requires database functions that may not be configured
+    toast.error('Version comparison is not available at this time')
+    return
+
+    // TODO: Implement version comparison when RPC function is available
+    /*
     try {
       const { data, error } = await supabase.rpc('compare_employee_versions', {
         p_employee_id: employeeId,
@@ -86,6 +92,7 @@ export function EmployeeVersionHistory({ employeeId, employeeName }: EmployeeVer
       console.error('Error comparing versions:', error)
       toast.error('Failed to compare versions')
     }
+    */
   }
 
   async function restoreVersion(versionNumber: number) {
@@ -94,6 +101,12 @@ export function EmployeeVersionHistory({ employeeId, employeeName }: EmployeeVer
       return
     }
 
+    // Version restore requires database functions that may not be configured
+    toast.error('Version restore is not available at this time')
+    return
+
+    // TODO: Implement version restore when RPC function is available
+    /*
     const confirmMsg = `Are you sure you want to restore this employee to version ${versionNumber}? This will overwrite the current data.`
     if (!confirm(confirmMsg)) return
 
@@ -115,6 +128,7 @@ export function EmployeeVersionHistory({ employeeId, employeeName }: EmployeeVer
       console.error('Error restoring version:', error)
       toast.error('Failed to restore version')
     }
+    */
   }
 
   if (!canViewHistory) {

@@ -284,6 +284,7 @@ export async function createEventEnhanced(formData: FormData, faqs: Array<{quest
     // Log audit event
     await logAuditEvent({
       user_id: user.id,
+      user_email: user.email || undefined,
       operation_type: 'create',
       resource_type: 'event',
       resource_id: event.id,
@@ -480,6 +481,7 @@ export async function updateEventEnhanced(
     // Log audit event
     await logAuditEvent({
       user_id: user.id,
+      user_email: user.email || undefined,
       operation_type: 'update',
       resource_type: 'event',
       resource_id: event.id,

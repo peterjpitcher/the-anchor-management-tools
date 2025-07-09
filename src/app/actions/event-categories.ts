@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
-import { logAuditEvent } from '@/lib/auditLog'
+import { logAuditEvent } from '@/app/actions/audit'
 import type { EventCategory, CategoryFormData, CategoryRegular, CrossCategorySuggestion } from '@/types/event-categories'
 
 // Validation schema for event categories
@@ -186,14 +186,14 @@ export async function createEventCategory(formData: CategoryFormData) {
 
     // Log audit event
     await logAuditEvent({
-      userId: user.id,
-      userEmail: user.email!,
-      operationType: 'create',
-      resourceType: 'event',
-      resourceId: category.id,
-      operationStatus: 'success',
-      newValues: category,
-      additionalInfo: { type: 'event_category' }
+      user_id: user.id,
+      user_email: user.email!,
+      operation_type: 'create',
+      resource_type: 'event',
+      resource_id: category.id,
+      operation_status: 'success',
+      new_values: category,
+      additional_info: { type: 'event_category' }
     })
 
     revalidatePath('/settings/event-categories')
@@ -253,15 +253,15 @@ export async function updateEventCategory(id: string, formData: CategoryFormData
 
     // Log audit event
     await logAuditEvent({
-      userId: user.id,
-      userEmail: user.email!,
-      operationType: 'update',
-      resourceType: 'event',
-      resourceId: id,
-      operationStatus: 'success',
-      oldValues: oldCategory,
-      newValues: category,
-      additionalInfo: { type: 'event_category' }
+      user_id: user.id,
+      user_email: user.email!,
+      operation_type: 'update',
+      resource_type: 'event',
+      resource_id: id,
+      operation_status: 'success',
+      old_values: oldCategory,
+      new_values: category,
+      additional_info: { type: 'event_category' }
     })
 
     revalidatePath('/settings/event-categories')
@@ -312,14 +312,14 @@ export async function deleteEventCategory(id: string) {
 
     // Log audit event
     await logAuditEvent({
-      userId: user.id,
-      userEmail: user.email!,
-      operationType: 'delete',
-      resourceType: 'event',
-      resourceId: id,
-      operationStatus: 'success',
-      oldValues: category,
-      additionalInfo: { type: 'event_category' }
+      user_id: user.id,
+      user_email: user.email!,
+      operation_type: 'delete',
+      resource_type: 'event',
+      resource_id: id,
+      operation_status: 'success',
+      old_values: category,
+      additional_info: { type: 'event_category' }
     })
 
     revalidatePath('/settings/event-categories')
@@ -505,13 +505,13 @@ export async function categorizeHistoricalEvents() {
 
     // Log audit event
     await logAuditEvent({
-      userId: user.id,
-      userEmail: user.email!,
-      operationType: 'update',
-      resourceType: 'event',
-      resourceId: 'historical_categorization',
-      operationStatus: 'success',
-      additionalInfo: { events_categorized: count }
+      user_id: user.id,
+      user_email: user.email!,
+      operation_type: 'update',
+      resource_type: 'event',
+      resource_id: 'historical_categorization',
+      operation_status: 'success',
+      additional_info: { events_categorized: count }
     })
 
     return { success: true, count: count || 0 }
@@ -542,13 +542,13 @@ export async function rebuildCustomerCategoryStats() {
 
     // Log audit event
     await logAuditEvent({
-      userId: user.id,
-      userEmail: user.email!,
-      operationType: 'update',
-      resourceType: 'customer',
-      resourceId: 'rebuild_stats',
-      operationStatus: 'success',
-      additionalInfo: { type: 'customer_category_stats', records_created: count }
+      user_id: user.id,
+      user_email: user.email!,
+      operation_type: 'update',
+      resource_type: 'customer',
+      resource_id: 'rebuild_stats',
+      operation_status: 'success',
+      additional_info: { type: 'customer_category_stats', records_created: count }
     })
 
     return { success: true, count: count || 0 }

@@ -18,7 +18,7 @@ import { PageLoadingSkeleton } from '@/components/ui/SkeletonLoader'
 export default function EmployeesPage() {
   const supabase = useSupabase()
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Former'>('Active')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Former' | 'Prospective'>('Active')
 
   // Memoize query configuration to prevent unnecessary re-renders
   const queryConfig = useMemo(() => ({
@@ -54,6 +54,7 @@ export default function EmployeesPage() {
 
   const activeCount = employees.filter(e => e.status === 'Active').length
   const formerCount = employees.filter(e => e.status === 'Former').length
+  const prospectiveCount = employees.filter(e => e.status === 'Prospective').length
 
   async function handleExport(format: 'csv' | 'json') {
     try {
@@ -101,7 +102,7 @@ export default function EmployeesPage() {
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Employees</h1>
               <p className="mt-1 text-sm text-gray-500">
-                {employees.length} total employees ({activeCount} active, {formerCount} former)
+                {employees.length} total employees ({activeCount} active, {prospectiveCount} prospective, {formerCount} former)
               </p>
             </div>
             <div className="flex-shrink-0 flex space-x-2">
@@ -212,6 +213,16 @@ export default function EmployeesPage() {
                   Active ({activeCount})
                 </button>
                 <button
+                  onClick={() => setStatusFilter('Prospective')}
+                  className={`px-3 py-1 text-sm font-medium rounded-full focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
+                    statusFilter === 'Prospective'
+                      ? 'bg-green-600 text-white'
+                      : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                  }`}
+                >
+                  Prospective ({prospectiveCount})
+                </button>
+                <button
                   onClick={() => setStatusFilter('Former')}
                   className={`px-3 py-1 text-sm font-medium rounded-full focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
                     statusFilter === 'Former'
@@ -288,7 +299,7 @@ export default function EmployeesPage() {
                           : 'N/A'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <Badge variant={employee.status === 'Active' ? 'success' : 'error'}>
+                        <Badge variant={employee.status === 'Active' ? 'success' : employee.status === 'Prospective' ? 'info' : 'error'}>
                           {employee.status}
                         </Badge>
                       </td>
@@ -307,7 +318,7 @@ export default function EmployeesPage() {
                       <div className="flex items-center justify-between">
                         <p className="text-sm font-medium text-blue-600 truncate">{employee.first_name} {employee.last_name}</p>
                         <div className="ml-2 flex-shrink-0 flex">
-                          <Badge variant={employee.status === 'Active' ? 'success' : 'error'}>
+                          <Badge variant={employee.status === 'Active' ? 'success' : employee.status === 'Prospective' ? 'info' : 'error'}>
                             {employee.status}
                           </Badge>
                         </div>
