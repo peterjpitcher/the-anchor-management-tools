@@ -22,7 +22,7 @@ export async function getEmployeeChangesSummary(employeeId: string, startDate?: 
     // Check permission
     const { data: hasPermission } = await supabase.rpc('user_has_permission', {
       p_user_id: user.id,
-      p_resource: 'employee_history',
+      p_resource: 'employees',
       p_action: 'view'
     })
 
@@ -97,7 +97,7 @@ export async function compareEmployeeVersions(employeeId: string, version1: numb
     // Check permission
     const { data: hasPermission } = await supabase.rpc('user_has_permission', {
       p_user_id: user.id,
-      p_resource: 'employee_history',
+      p_resource: 'employees',
       p_action: 'view'
     })
 

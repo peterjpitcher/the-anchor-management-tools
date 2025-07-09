@@ -1,7 +1,8 @@
 'use server'
 
 import { createClient } from '@supabase/supabase-js'
-import { logAuditEvent, getCurrentUserForAudit } from '@/lib/auditLog'
+import { logAuditEvent } from '@/app/actions/audit'
+import { getCurrentUser } from '@/lib/audit-helpers'
 import type { Employee } from '@/types/database'
 
 function getSupabaseAdminClient() {
@@ -18,7 +19,7 @@ function getSupabaseAdminClient() {
 interface ExportOptions {
   format: 'csv' | 'json'
   includeFields?: string[]
-  statusFilter?: 'all' | 'Active' | 'Former'
+  statusFilter?: 'all' | 'Active' | 'Former' | 'Prospective'
 }
 
 export async function exportEmployees(options: ExportOptions): Promise<{ data?: string; error?: string; filename?: string }> {
@@ -46,13 +47,14 @@ export async function exportEmployees(options: ExportOptions): Promise<{ data?: 
     }
 
     // Audit log the export
-    const userInfo = await getCurrentUserForAudit(supabase)
+    const userInfo = await getCurrentUser()
     await logAuditEvent({
-      ...userInfo,
-      operationType: 'export',
-      resourceType: 'employee',
-      operationStatus: 'success',
-      additionalInfo: {
+      ...(userInfo.user_id && { user_id: userInfo.user_id }),
+      ...(userInfo.user_email && { user_email: userInfo.user_email }),
+      operation_type: 'export',
+      resource_type: 'employee',
+      operation_status: 'success',
+      additional_info: {
         format: options.format,
         recordCount: employees.length,
         statusFilter: options.statusFilter

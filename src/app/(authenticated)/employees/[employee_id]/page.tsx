@@ -15,9 +15,11 @@ import { Tabs } from '@/components/ui/Tabs';
 import EmergencyContactsTab from '@/components/EmergencyContactsTab';
 import FinancialDetailsTab from '@/components/FinancialDetailsTab';
 import HealthRecordsTab from '@/components/HealthRecordsTab';
+import RightToWorkTab from '@/components/RightToWorkTab';
+import OnboardingChecklistTab from '@/components/OnboardingChecklistTab';
 import { formatDate } from '@/lib/dateUtils';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
-import { EmployeeVersionHistory } from '@/components/EmployeeVersionHistory';
+import { EmployeeAuditTrail } from '@/components/EmployeeAuditTrail';
 import { EmployeeRecentChanges } from '@/components/EmployeeRecentChanges';
 
 export const dynamic = 'force-dynamic';
@@ -168,7 +170,9 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
                 {field.isBadge ? (
                     <span
                         className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium 
-                        ${employee.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}
+                        ${employee.status === 'Active' ? 'bg-green-100 text-green-800' : 
+                          employee.status === 'Prospective' ? 'bg-blue-100 text-blue-800' : 
+                          'bg-red-100 text-red-800'}`}
                     >
                         {field.value}
                     </span>
@@ -198,8 +202,16 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
       content: <HealthRecordsTab healthRecord={healthRecord} />
     },
     {
-      label: 'Version History',
-      content: <EmployeeVersionHistory 
+      label: 'Right to Work',
+      content: <RightToWorkTab employeeId={employee.employee_id} />
+    },
+    {
+      label: 'Onboarding',
+      content: <OnboardingChecklistTab employeeId={employee.employee_id} />
+    },
+    {
+      label: 'Audit Trail',
+      content: <EmployeeAuditTrail 
         employeeId={employee.employee_id} 
         employeeName={`${employee.first_name} ${employee.last_name}`} 
       />

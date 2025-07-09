@@ -99,7 +99,7 @@ export interface Employee {
   job_title: string;
   employment_start_date: string; // Date
   employment_end_date?: string | null; // Date
-  status: string; // e.g., 'Active', 'Former'
+  status: string; // e.g., 'Active', 'Former', 'Prospective'
   created_at: string; // Timestamp
   updated_at: string; // Timestamp
 }
@@ -109,6 +109,8 @@ export interface EmployeeFinancialDetails {
   ni_number?: string | null;
   bank_account_number?: string | null;
   bank_sort_code?: string | null;
+  sort_code_in_words?: string | null;
+  account_number_in_words?: string | null;
   bank_name?: string | null;
   payee_name?: string | null;
   branch_address?: string | null;
@@ -171,7 +173,41 @@ export interface EmployeeEmergencyContact {
   relationship?: string | null;
   address?: string | null;
   phone_number?: string | null;
+  priority?: 'Primary' | 'Secondary' | 'Other' | null;
   created_at: string; // Timestamp
+}
+
+export interface EmployeeRightToWork {
+  employee_id: string; // UUID, Primary Key, Foreign Key to Employee
+  document_type: 'List A' | 'List B';
+  document_details?: string | null;
+  verification_date: string; // Date
+  document_expiry_date?: string | null; // Date
+  follow_up_date?: string | null; // Date
+  verified_by_user_id?: string | null; // UUID
+  photo_storage_path?: string | null;
+  created_at: string; // Timestamp
+  updated_at: string; // Timestamp
+}
+
+export interface EmployeeOnboardingChecklist {
+  employee_id: string; // UUID, Primary Key, Foreign Key to Employee
+  wheniwork_invite_sent?: boolean | null;
+  wheniwork_invite_date?: string | null; // Date
+  private_whatsapp_added?: boolean | null;
+  private_whatsapp_date?: string | null; // Date
+  team_whatsapp_added?: boolean | null;
+  team_whatsapp_date?: string | null; // Date
+  till_system_setup?: boolean | null;
+  till_system_date?: string | null; // Date
+  training_flow_setup?: boolean | null;
+  training_flow_date?: string | null; // Date
+  employment_agreement_drafted?: boolean | null;
+  employment_agreement_date?: string | null; // Date
+  employee_agreement_accepted?: boolean | null;
+  employee_agreement_accepted_date?: string | null; // Timestamp
+  created_at: string; // Timestamp
+  updated_at: string; // Timestamp
 }
 
 export interface Message {

@@ -25,19 +25,17 @@ export async function signIn(email: string, password: string) {
                  headersList.get('x-real-ip') || 
                  '127.0.0.1'
 
-      await supabase
-        .from('audit_logs')
-        .insert({
-          user_id: null,
-          user_email: email,
-          action: 'auth.login_failed',
-          resource_type: 'auth',
-          details: {
-            error: error.message,
-            ip_address: ip,
-            user_agent: userAgent
-          }
-        })
+      await logAuditEvent({
+        user_email: email,
+        operation_type: 'login_failed',
+        resource_type: 'auth',
+        operation_status: 'failure',
+        additional_info: {
+          error: error.message,
+          ip_address: ip,
+          user_agent: userAgent
+        }
+      })
 
       return { error: 'Invalid email or password' }
     }

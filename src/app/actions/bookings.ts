@@ -165,6 +165,7 @@ export async function createBooking(formData: FormData): Promise<CreateBookingRe
     // Log audit event
     await logAuditEvent({
       user_id: user.id,
+      user_email: user.email || undefined,
       operation_type: operationType,
       resource_type: 'booking',
       resource_id: booking.id,
@@ -188,6 +189,7 @@ export async function createBooking(formData: FormData): Promise<CreateBookingRe
       // Log detailed error information
       await logAuditEvent({
         user_id: user.id,
+        user_email: user.email || undefined,
         operation_type: 'sms_failure',
         resource_type: 'booking',
         resource_id: booking.id,
@@ -270,6 +272,7 @@ export async function createBulkBookings(eventId: string, customerIds: string[])
     // Log audit event
     await logAuditEvent({
       user_id: user.id,
+      user_email: user.email || undefined,
       operation_type: 'bulk_create',
       resource_type: 'booking',
       operation_status: 'success',
@@ -378,6 +381,7 @@ export async function updateBooking(id: string, formData: FormData) {
     // Log audit event
     await logAuditEvent({
       user_id: user.id,
+      user_email: user.email || undefined,
       operation_type: 'update',
       resource_type: 'booking',
       resource_id: id,
@@ -434,6 +438,7 @@ export async function deleteBooking(id: string) {
     if (booking) {
       await logAuditEvent({
         user_id: user.id,
+        user_email: user.email || undefined,
         operation_type: 'delete',
         resource_type: 'booking',
         resource_id: id,

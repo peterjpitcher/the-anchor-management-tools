@@ -253,6 +253,7 @@ export async function createEvent(formData: FormData) {
     // Log audit event
     await logAuditEvent({
       user_id: user.id,
+      user_email: user.email,
       operation_type: 'create',
       resource_type: 'event',
       resource_id: event.id,
@@ -378,6 +379,7 @@ export async function updateEvent(id: string, formData: FormData) {
     // Log audit event
     await logAuditEvent({
       user_id: user.id,
+      user_email: user.email,
       operation_type: 'update',
       resource_type: 'event',
       resource_id: event.id,
@@ -439,6 +441,7 @@ export async function deleteEvent(id: string) {
     if (event) {
       await logAuditEvent({
         user_id: user.id,
+        user_email: user.email,
         operation_type: 'delete',
         resource_type: 'event',
         resource_id: id,

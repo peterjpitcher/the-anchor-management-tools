@@ -43,6 +43,7 @@ export default function AddEmergencyContactModal({
   const formFields = [
     { name: 'name', label: 'Full Name', type: 'text', required: true },
     { name: 'relationship', label: 'Relationship', type: 'text' },
+    { name: 'priority', label: 'Priority', type: 'select', options: ['Primary', 'Secondary', 'Other'] },
     { name: 'phone_number', label: 'Phone Number', type: 'tel' },
     { name: 'address', label: 'Address', type: 'textarea' },
   ];
@@ -75,6 +76,17 @@ export default function AddEmergencyContactModal({
                     rows={3}
                     className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                   />
+                ) : field.type === 'select' ? (
+                  <select
+                    id={field.name}
+                    name={field.name}
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                    defaultValue="Other"
+                  >
+                    {field.options?.map(option => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
                 ) : (
                   <input
                     type={field.type}

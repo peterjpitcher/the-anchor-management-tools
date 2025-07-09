@@ -123,6 +123,7 @@ export async function exportUserData(userId?: string) {
     // Log the export
     await logAuditEvent({
       user_id: user?.id || targetUserId,
+      user_email: user?.email || undefined,
       operation_type: 'export',
       resource_type: 'user_data',
       resource_id: targetUserId,
@@ -197,6 +198,7 @@ export async function deleteUserData(userId: string, confirmEmail: string) {
     // Log the deletion request first
     await logAuditEvent({
       user_id: user.id,
+      user_email: user.email || undefined,
       operation_type: 'delete',
       resource_type: 'user_data',
       resource_id: userId,

@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { checkUserPermission } from './rbac'
-import { logAuditEvent } from '@/lib/auditLog'
+import { logAuditEvent } from '@/app/actions/audit'
 import type { BusinessHours, SpecialHours } from '@/types/business-hours'
 
 // Helper to validate time format
@@ -120,13 +120,13 @@ export async function updateBusinessHours(formData: FormData) {
 
     // Log audit event
     await logAuditEvent({
-      userId: user.id,
-      userEmail: user.email!,
-      operationType: 'update',
-      resourceType: 'settings',
-      resourceId: 'business_hours',
-      operationStatus: 'success',
-      newValues: { updated_days: updates.length }
+      user_id: user.id,
+      user_email: user.email!,
+      operation_type: 'update',
+      resource_type: 'settings',
+      resource_id: 'business_hours',
+      operation_status: 'success',
+      new_values: { updated_days: updates.length }
     })
 
     revalidatePath('/settings/business-hours')
@@ -215,13 +215,13 @@ export async function createSpecialHours(formData: FormData) {
 
     // Log audit event
     await logAuditEvent({
-      userId: user.id,
-      userEmail: user.email!,
-      operationType: 'create',
-      resourceType: 'settings',
-      resourceId: 'special_hours',
-      operationStatus: 'success',
-      newValues: data
+      user_id: user.id,
+      user_email: user.email!,
+      operation_type: 'create',
+      resource_type: 'settings',
+      resource_id: 'special_hours',
+      operation_status: 'success',
+      new_values: data
     })
 
     revalidatePath('/settings/business-hours')
@@ -294,14 +294,14 @@ export async function updateSpecialHours(id: string, formData: FormData) {
 
     // Log audit event
     await logAuditEvent({
-      userId: user.id,
-      userEmail: user.email!,
-      operationType: 'update',
-      resourceType: 'settings',
-      resourceId: 'special_hours',
-      operationStatus: 'success',
-      oldValues: oldData,
-      newValues: data
+      user_id: user.id,
+      user_email: user.email!,
+      operation_type: 'update',
+      resource_type: 'settings',
+      resource_id: 'special_hours',
+      operation_status: 'success',
+      old_values: oldData,
+      new_values: data
     })
 
     revalidatePath('/settings/business-hours')
@@ -347,13 +347,13 @@ export async function deleteSpecialHours(id: string) {
 
     // Log audit event
     await logAuditEvent({
-      userId: user.id,
-      userEmail: user.email!,
-      operationType: 'delete',
-      resourceType: 'settings',
-      resourceId: 'special_hours',
-      operationStatus: 'success',
-      oldValues: oldData
+      user_id: user.id,
+      user_email: user.email!,
+      operation_type: 'delete',
+      resource_type: 'settings',
+      resource_id: 'special_hours',
+      operation_status: 'success',
+      old_values: oldData
     })
 
     revalidatePath('/settings/business-hours')

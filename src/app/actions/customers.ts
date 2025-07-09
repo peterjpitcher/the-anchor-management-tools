@@ -69,6 +69,7 @@ export async function createCustomer(formData: FormData) {
     // Log audit event
     await logAuditEvent({
       user_id: user.id,
+      user_email: user.email,
       operation_type: 'create',
       resource_type: 'customer',
       resource_id: customer.id,
@@ -149,6 +150,7 @@ export async function updateCustomer(id: string, formData: FormData) {
     // Log audit event
     await logAuditEvent({
       user_id: user.id,
+      user_email: user.email,
       operation_type: 'update',
       resource_type: 'customer',
       resource_id: id,
@@ -197,6 +199,7 @@ export async function deleteCustomer(id: string) {
     if (customer) {
       await logAuditEvent({
         user_id: user.id,
+        user_email: user.email,
         operation_type: 'delete',
         resource_type: 'customer',
         resource_id: id,

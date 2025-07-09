@@ -84,10 +84,19 @@ export default function EmergencyContactsTab({ employeeId }: EmergencyContactsTa
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-medium">{contact.name}</h3>
-                    <p className="text-sm text-gray-500">{contact.relationship}</p>
+                    <div className="flex items-center space-x-2">
+                      {contact.priority && contact.priority !== 'Other' && (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                          contact.priority === 'Primary' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
+                        }`}>
+                          {contact.priority}
+                        </span>
+                      )}
+                      <p className="text-sm text-gray-500">{contact.relationship}</p>
+                    </div>
                   </div>
-                  <p className="text-sm text-gray-500">{contact.phone_number}</p>
-                  <p className="text-sm text-gray-500">{contact.address}</p>
+                  {contact.phone_number && <p className="text-sm text-gray-500">Phone: {contact.phone_number}</p>}
+                  {contact.address && <p className="text-sm text-gray-500">{contact.address}</p>}
                 </div>
               </div>
             </li>
