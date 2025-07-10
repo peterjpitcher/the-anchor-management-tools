@@ -22,7 +22,11 @@ export async function POST(request: NextRequest) {
     if (!githubToken) {
       console.error('GITHUB_BUG_REPORTER_TOKEN not configured');
       return NextResponse.json(
-        { error: 'Bug reporting is not configured' },
+        { 
+          error: 'Bug reporting is not configured',
+          message: 'The GitHub token for bug reporting has not been set up. Please contact your administrator.',
+          details: 'Missing environment variable: GITHUB_BUG_REPORTER_TOKEN'
+        },
         { status: 500 }
       );
     }

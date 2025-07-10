@@ -20,6 +20,7 @@ async function handleCreatePackage(formData: FormData) {
     name: formData.get('name') as string,
     package_type: formData.get('package_type') as string,
     per_head_cost: parseFloat(formData.get('cost_per_head') as string),
+    pricing_model: formData.get('pricing_model') as 'per_head' | 'total_value',
     minimum_order: parseInt(formData.get('minimum_guests') as string) || null,
     description: formData.get('description') as string || null,
     includes: formData.get('dietary_notes') as string || null,
@@ -39,6 +40,7 @@ async function handleUpdatePackage(formData: FormData) {
     name: formData.get('name') as string,
     package_type: formData.get('package_type') as string,
     per_head_cost: parseFloat(formData.get('cost_per_head') as string),
+    pricing_model: formData.get('pricing_model') as 'per_head' | 'total_value',
     minimum_order: parseInt(formData.get('minimum_guests') as string) || null,
     description: formData.get('description') as string || null,
     includes: formData.get('dietary_notes') as string || null,
@@ -157,12 +159,13 @@ export default async function CateringPackagesPage() {
                   <option value="sit-down">Sit Down Meal</option>
                   <option value="canapes">Canapés</option>
                   <option value="drinks">Drinks Package</option>
+                  <option value="pizza">Pizza</option>
                   <option value="other">Other</option>
                 </select>
               </div>
               <div>
                 <label htmlFor="cost_per_head" className="block text-sm font-medium text-gray-700 mb-1">
-                  Per Head Cost (£)
+                  Price (£)
                 </label>
                 <input
                   type="number"
@@ -174,6 +177,20 @@ export default async function CateringPackagesPage() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="25.00"
                 />
+              </div>
+              <div>
+                <label htmlFor="pricing_model" className="block text-sm font-medium text-gray-700 mb-1">
+                  Pricing Model
+                </label>
+                <select
+                  id="pricing_model"
+                  name="pricing_model"
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="per_head">Per Person</option>
+                  <option value="total_value">Total Value</option>
+                </select>
               </div>
             </div>
             
@@ -291,13 +308,14 @@ export default async function CateringPackagesPage() {
                               <option value="sit-down">Sit Down Meal</option>
                               <option value="canapes">Canapés</option>
                               <option value="drinks">Drinks Package</option>
+                              <option value="pizza">Pizza</option>
                               <option value="other">Other</option>
                             </select>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
                               <CurrencyPoundIcon className="h-4 w-4 inline mr-1" />
-                              Per Head
+                              {pkg.pricing_model === 'total_value' ? 'Total Price' : 'Per Head'}
                             </label>
                             <input
                               type="number"
@@ -325,6 +343,20 @@ export default async function CateringPackagesPage() {
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Pricing Model
+                            </label>
+                            <select
+                              name="pricing_model"
+                              defaultValue={pkg.pricing_model || 'per_head'}
+                              required
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            >
+                              <option value="per_head">Per Person</option>
+                              <option value="total_value">Total Value</option>
+                            </select>
+                          </div>
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
                               Status
