@@ -44,51 +44,9 @@ import {
   getVendors,
   applyBookingDiscount
 } from '@/app/actions/privateBookingActions'
-import type { PrivateBookingWithDetails, BookingStatus } from '@/types/private-bookings'
+import type { PrivateBookingWithDetails, BookingStatus, CateringPackage, VenueSpace, Vendor, PrivateBookingItem } from '@/types/private-bookings'
 
-// Type definitions for booking items
-interface VenueSpace {
-  id: string;
-  name: string;
-  capacity: number;
-  description?: string;
-  is_active: boolean;
-  hire_cost: number;
-}
-
-interface CateringPackage {
-  id: string;
-  name: string;
-  description?: string;
-  per_head_cost: number;
-  is_active: boolean;
-}
-
-interface Vendor {
-  id: string;
-  name: string;
-  vendor_type: string;
-  contact_email?: string;
-  contact_phone?: string;
-  is_active: boolean;
-  typical_rate?: number;
-}
-
-interface BookingItem {
-  id: string;
-  booking_id: string;
-  item_type: string;
-  description: string;
-  quantity: number;
-  unit_price: number;
-  discount_value?: number;
-  discount_type?: 'percent' | 'fixed';
-  line_total: number;
-  notes?: string;
-  space?: VenueSpace;
-  package?: CateringPackage;
-  vendor?: Vendor;
-}
+// Using types from private-bookings.ts
 
 // Status configuration
 const statusConfig: Record<BookingStatus, { 
@@ -396,6 +354,13 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
     loadOptions()
   }, [itemType])
 
+  // Set quantity to 1 for total_value items
+  useEffect(() => {
+    if (itemType === 'catering' && selectedItem && 'pricing_model' in selectedItem && selectedItem.pricing_model === 'total_value') {
+      setQuantity(1)
+    }
+  }, [selectedItem, itemType])
+
   const loadOptions = async () => {
     if (itemType === 'space') {
       const result = await getVenueSpaces()
@@ -426,17 +391,27 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
       description = 'Additional Electricity Supply'
       unitPrice = 25
     } else if (itemType !== 'other' && selectedItem) {
-      if (itemType === 'space' && 'hire_cost' in selectedItem) {
+      if (itemType === 'space' && 'rate_per_hour' in selectedItem) {
         description = selectedItem.name
-        unitPrice = selectedItem.hire_cost
-      } else if (itemType === 'catering' && 'per_head_cost' in selectedItem) {
+        unitPrice = selectedItem.rate_per_hour
+      } else if (itemType === 'catering' && 'cost_per_head' in selectedItem) {
         description = selectedItem.name
-        unitPrice = selectedItem.per_head_cost
-      } else if (itemType === 'vendor' && 'vendor_type' in selectedItem) {
-        description = `${selectedItem.name} (${selectedItem.vendor_type})`
+        // For total_value items, use the custom price entered by the user
+        if ('pricing_model' in selectedItem && selectedItem.pricing_model === 'total_value') {
+          unitPrice = parseFloat(customPrice) || selectedItem.cost_per_head
+        } else {
+          unitPrice = selectedItem.cost_per_head
+        }
+      } else if (itemType === 'vendor' && 'service_type' in selectedItem) {
+        description = `${selectedItem.name} (${selectedItem.service_type})`
         unitPrice = 0 // Vendors don&apos;t have a fixed price in the schema
       }
     }
+
+    // For total_value pricing model, quantity should be 1
+    const finalQuantity = itemType === 'catering' && selectedItem && 'pricing_model' in selectedItem && selectedItem.pricing_model === 'total_value' 
+      ? 1 
+      : quantity
 
     const data = {
       booking_id: bookingId,
@@ -445,7 +420,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
       package_id: itemType === 'catering' ? selectedItem?.id : null,
       vendor_id: itemType === 'vendor' ? selectedItem?.id : null,
       description,
-      quantity,
+      quantity: finalQuantity,
       unit_price: unitPrice,
       discount_value: discountAmount ? parseFloat(discountAmount) : undefined,
       discount_type: discountAmount ? discountType : undefined,
@@ -576,9 +551,13 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                 {(itemType === 'space' ? spaces : itemType === 'catering' ? packages : vendors).map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
-                    {itemType === 'space' && 'hire_cost' in item && ` (£${item.hire_cost}/hr)`}
-                    {itemType === 'catering' && 'per_head_cost' in item && ` (£${item.per_head_cost}/person)`}
-                    {itemType === 'vendor' && 'vendor_type' in item && item.vendor_type && ` - ${item.vendor_type}`}
+                    {itemType === 'space' && 'rate_per_hour' in item && ` (£${item.rate_per_hour}/hr)`}
+                    {itemType === 'catering' && 'cost_per_head' in item && (
+                      item.pricing_model === 'total_value' 
+                        ? ` (£${item.cost_per_head} total)` 
+                        : ` (£${item.cost_per_head}/person)`
+                    )}
+                    {itemType === 'vendor' && 'service_type' in item && item.service_type && ` - ${item.service_type}`}
                   </option>
                 ))}
               </select>
@@ -602,42 +581,62 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
             </div>
           )}
 
-          {/* Quantity and Price */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Quantity and Price - Different layouts based on pricing model */}
+          {itemType === 'catering' && selectedItem && 'pricing_model' in selectedItem && selectedItem.pricing_model === 'total_value' ? (
+            // Total Value Layout - Single price field
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Quantity
+                Total Price (£)
               </label>
               <input
                 type="number"
-                value={quantity}
-                onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-                min="1"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                required
-                readOnly={itemType === 'electricity'}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Unit Price (£)
-              </label>
-              <input
-                type="number"
-                value={customPrice || (selectedItem && (
-                  itemType === 'space' && 'hire_cost' in selectedItem ? selectedItem.hire_cost :
-                  itemType === 'catering' && 'per_head_cost' in selectedItem ? selectedItem.per_head_cost :
-                  ''
-                )) || ''}
+                value={customPrice || selectedItem.cost_per_head || ''}
                 onChange={(e) => setCustomPrice(e.target.value)}
                 step="0.01"
                 min="0"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                required={itemType === 'other' || itemType === 'vendor' || itemType === 'electricity'}
-                readOnly={(itemType !== 'other' && itemType !== 'vendor' && !!selectedItem) || itemType === 'electricity'}
+                required
+                placeholder="Enter total price"
               />
             </div>
-          </div>
+          ) : (
+            // Standard Layout - Quantity and Unit Price
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {itemType === 'catering' ? 'Number of Guests' : 'Quantity'}
+                </label>
+                <input
+                  type="number"
+                  value={quantity}
+                  onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
+                  min="1"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  required
+                  readOnly={itemType === 'electricity'}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Unit Price (£)
+                </label>
+                <input
+                  type="number"
+                  value={customPrice || (selectedItem && (
+                    itemType === 'space' && 'rate_per_hour' in selectedItem ? selectedItem.rate_per_hour :
+                    itemType === 'catering' && 'cost_per_head' in selectedItem ? selectedItem.cost_per_head :
+                    ''
+                  )) || ''}
+                  onChange={(e) => setCustomPrice(e.target.value)}
+                  step="0.01"
+                  min="0"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  required={itemType === 'other' || itemType === 'vendor' || itemType === 'electricity'}
+                  readOnly={(itemType !== 'other' && itemType !== 'vendor' && !!selectedItem) || itemType === 'electricity'}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Discount */}
           <div className="space-y-2">
@@ -872,7 +871,7 @@ function DiscountModal({ isOpen, onClose, bookingId, currentTotal, onSuccess }: 
 interface EditItemModalProps {
   isOpen: boolean
   onClose: () => void
-  item: BookingItem
+  item: PrivateBookingItem
   onSuccess: () => void
 }
 
@@ -1067,7 +1066,7 @@ export default function PrivateBookingDetailPage({
   const router = useRouter()
   const [bookingId, setBookingId] = useState<string>('')
   const [booking, setBooking] = useState<PrivateBookingWithDetails | null>(null)
-  const [items, setItems] = useState<BookingItem[]>([])
+  const [items, setItems] = useState<PrivateBookingItem[]>([])
   const [loading, setLoading] = useState(true)
   const [showDepositModal, setShowDepositModal] = useState(false)
   const [showFinalModal, setShowFinalModal] = useState(false)
@@ -1075,7 +1074,7 @@ export default function PrivateBookingDetailPage({
   const [showAddItemModal, setShowAddItemModal] = useState(false)
   const [showDiscountModal, setShowDiscountModal] = useState(false)
   const [showEditItemModal, setShowEditItemModal] = useState(false)
-  const [editingItem, setEditingItem] = useState<BookingItem | null>(null)
+  const [editingItem, setEditingItem] = useState<PrivateBookingItem | null>(null)
 
   useEffect(() => {
     params.then(p => {
@@ -1119,7 +1118,58 @@ export default function PrivateBookingDetailPage({
   }
 
   const calculateSubtotal = () => {
-    return items.reduce((sum, item) => sum + (item.line_total || 0), 0)
+    const total = items.reduce((sum, item) => {
+      // Convert line_total to number in case it's a string
+      const lineTotal = typeof item.line_total === 'string' ? parseFloat(item.line_total) : item.line_total
+      
+      // If line_total is missing (null/undefined), calculate it manually
+      if (lineTotal === null || lineTotal === undefined) {
+        const qty = typeof item.quantity === 'string' ? parseFloat(item.quantity) : item.quantity
+        const price = typeof item.unit_price === 'string' ? parseFloat(item.unit_price) : item.unit_price
+        let calculatedTotal = qty * price
+        
+        if (item.discount_value) {
+          const discount = typeof item.discount_value === 'string' ? parseFloat(item.discount_value) : item.discount_value
+          if (item.discount_type === 'percent') {
+            calculatedTotal = calculatedTotal * (1 - discount / 100)
+          } else {
+            calculatedTotal = calculatedTotal - discount
+          }
+        }
+        return sum + calculatedTotal
+      }
+      // lineTotal could be 0 (valid for 100% discounted items)
+      return sum + lineTotal
+    }, 0)
+    
+    return total
+  }
+
+  // Calculate the original price before any item-level discounts
+  const calculateOriginalTotal = () => {
+    return items.reduce((sum, item) => {
+      const qty = typeof item.quantity === 'string' ? parseFloat(item.quantity) : item.quantity
+      const price = typeof item.unit_price === 'string' ? parseFloat(item.unit_price) : item.unit_price
+      return sum + (qty * price)
+    }, 0)
+  }
+
+  // Calculate total item-level discounts
+  const calculateItemDiscounts = () => {
+    return items.reduce((sum, item) => {
+      if (item.discount_value && item.discount_value > 0) {
+        const qty = typeof item.quantity === 'string' ? parseFloat(item.quantity) : item.quantity
+        const price = typeof item.unit_price === 'string' ? parseFloat(item.unit_price) : item.unit_price
+        const originalPrice = qty * price
+        
+        if (item.discount_type === 'percent') {
+          return sum + (originalPrice * (item.discount_value / 100))
+        } else {
+          return sum + item.discount_value
+        }
+      }
+      return sum
+    }, 0)
   }
 
   const calculateTotal = () => {
@@ -1337,10 +1387,17 @@ export default function PrivateBookingDetailPage({
                             <div className="mt-1 flex items-center space-x-4 text-sm text-gray-500">
                               <span>Qty: {item.quantity}</span>
                               <span>£{item.unit_price.toFixed(2)} each</span>
-                              {item.discount_value && (
-                                <span className="text-green-600">
-                                  -{item.discount_type === 'percent' ? `${item.discount_value}%` : `£${item.discount_value.toFixed(2)}`}
-                                </span>
+                              {item.discount_value && item.discount_value > 0 && (
+                                <>
+                                  <span className="text-green-600">
+                                    -{item.discount_type === 'percent' ? `${item.discount_value}%` : `£${item.discount_value.toFixed(2)}`}
+                                  </span>
+                                  {item.discount_value === 100 && item.discount_type === 'percent' && (
+                                    <span className="text-gray-400 line-through">
+                                      (was £{(item.quantity * item.unit_price).toFixed(2)})
+                                    </span>
+                                  )}
+                                </>
                               )}
                             </div>
                             {item.notes && (
@@ -1430,27 +1487,63 @@ export default function PrivateBookingDetailPage({
               </div>
               <div className="p-6 space-y-4">
                 <div className="space-y-3">
+                  {/* Always show original price and discounts */}
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Subtotal</span>
+                    <span className="text-gray-500">Original Price (before discounts)</span>
                     <span className="font-medium text-gray-900">
-                      £{calculateSubtotal().toFixed(2)}
+                      £{items.length > 0 ? calculateOriginalTotal().toFixed(2) : '0.00'}
                     </span>
                   </div>
 
-                  {booking.discount_amount && (
+                  {/* Show item-level discounts if any */}
+                  {calculateItemDiscounts() > 0 && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-green-600">
-                        Discount ({booking.discount_type === 'percent' ? `${booking.discount_amount}%` : `£${booking.discount_amount}`})
-                      </span>
+                      <span className="text-green-600">Item Discounts</span>
                       <span className="font-medium text-green-600">
-                        -£{(calculateSubtotal() - calculateTotal()).toFixed(2)}
+                        -£{calculateItemDiscounts().toFixed(2)}
                       </span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Subtotal</span>
+                    <span className="font-medium text-gray-900">
+                      £{items.length > 0 ? calculateSubtotal().toFixed(2) : '0.00'}
+                    </span>
+                  </div>
+
+                  {/* Show booking-level discount if any */}
+                  {booking.discount_amount && booking.discount_amount > 0 && (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-green-600">
+                          Booking Discount ({booking.discount_type === 'percent' ? `${booking.discount_amount}%` : `£${booking.discount_amount}`})
+                          {booking.discount_reason && (
+                            <span className="block text-xs text-gray-500 font-normal mt-1">{booking.discount_reason}</span>
+                          )}
+                        </span>
+                        <span className="font-medium text-green-600">
+                          -£{(calculateSubtotal() - calculateTotal()).toFixed(2)}
+                        </span>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Show total savings if any discounts */}
+                  {(calculateItemDiscounts() > 0 || (booking.discount_amount && booking.discount_amount > 0)) && (
+                    <div className="bg-green-50 p-2 rounded-lg">
+                      <div className="flex justify-between text-sm">
+                        <span className="font-medium text-green-800">Total Savings</span>
+                        <span className="font-bold text-green-800">
+                          £{(calculateOriginalTotal() - calculateTotal()).toFixed(2)}
+                        </span>
+                      </div>
                     </div>
                   )}
 
                   <div className="pt-3 border-t">
                     <div className="flex justify-between">
-                      <span className="text-base font-medium text-gray-900">Total</span>
+                      <span className="text-base font-medium text-gray-900">Total Event Cost</span>
                       <span className="text-xl font-bold text-gray-900">
                         £{calculateTotal().toFixed(2)}
                       </span>
@@ -1459,34 +1552,43 @@ export default function PrivateBookingDetailPage({
                 </div>
 
                 <div className="space-y-3 pt-3 border-t">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-700">Deposit</p>
-                      <p className="text-xs text-gray-500">
-                        {booking.deposit_paid_date 
-                          ? `Paid ${new Date(booking.deposit_paid_date).toLocaleDateString('en-GB')}`
-                          : 'Not paid'
-                        }
-                      </p>
+                  <div className="bg-blue-50 p-3 rounded-lg">
+                    <p className="text-xs font-medium text-blue-900 mb-2">Refundable Deposit</p>
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-700">Security Deposit</p>
+                        <p className="text-xs text-gray-500">
+                          {booking.deposit_paid_date 
+                            ? `Paid ${new Date(booking.deposit_paid_date).toLocaleDateString('en-GB')}`
+                            : 'Not paid'
+                          }
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-medium text-gray-900">
+                          £{(booking.deposit_amount || 250).toFixed(2)}
+                        </p>
+                        {!booking.deposit_paid_date && booking.status !== 'draft' && (
+                          <button
+                            onClick={() => setShowDepositModal(true)}
+                            className="mt-1 text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                          >
+                            Record Payment
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm font-medium text-gray-900">
-                        £{booking.deposit_amount?.toFixed(2) || '250.00'}
-                      </p>
-                      {!booking.deposit_paid_date && booking.status !== 'draft' && (
-                        <button
-                          onClick={() => setShowDepositModal(true)}
-                          className="mt-1 text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
-                        >
-                          Record Payment
-                        </button>
-                      )}
-                    </div>
+                    <p className="text-xs text-gray-600 mt-2">
+                      Returned after event (subject to terms)
+                    </p>
                   </div>
 
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <p className="text-sm font-medium text-gray-700">Balance Due</p>
+                      <p className="text-xs text-gray-500">
+                        For booking items only
+                      </p>
                       {booking.balance_due_date && (
                         <p className="text-xs text-gray-500">
                           Due by {new Date(booking.balance_due_date).toLocaleDateString('en-GB')}
@@ -1495,9 +1597,9 @@ export default function PrivateBookingDetailPage({
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-medium text-gray-900">
-                        £{(calculateTotal() - (booking.deposit_paid_date ? (booking.deposit_amount || 0) : 0)).toFixed(2)}
+                        £{calculateTotal().toFixed(2)}
                       </p>
-                      {booking.deposit_paid_date && !booking.final_payment_date && (
+                      {!booking.final_payment_date && calculateTotal() > 0 && (
                         <button
                           onClick={() => setShowFinalModal(true)}
                           className="mt-1 text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
@@ -1612,7 +1714,7 @@ export default function PrivateBookingDetailPage({
         onClose={() => setShowFinalModal(false)}
         bookingId={bookingId}
         type="final"
-        amount={calculateTotal() - (booking.deposit_paid_date ? (booking.deposit_amount || 0) : 0)}
+        amount={calculateTotal()}
         onSuccess={() => loadBooking(bookingId)}
       />
 

@@ -23,36 +23,7 @@ import {
   getCateringPackages,
   getVendors
 } from '@/app/actions/privateBookingActions'
-
-// Type definitions
-type ItemType = 'space' | 'catering' | 'vendor' | 'other'
-
-interface VenueSpace {
-  id: string;
-  name: string;
-  capacity: number;
-  description?: string;
-  is_active: boolean;
-  hire_cost: number;
-}
-
-interface CateringPackage {
-  id: string;
-  name: string;
-  description?: string;
-  per_head_cost: number;
-  is_active: boolean;
-}
-
-interface Vendor {
-  id: string;
-  name: string;
-  vendor_type: string;
-  contact_email?: string;
-  contact_phone?: string;
-  is_active: boolean;
-  typical_rate?: number;
-}
+import type { VenueSpace, CateringPackage, Vendor, ItemType } from '@/types/private-bookings'
 
 interface BookingItem {
   id: string
@@ -130,6 +101,13 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
     loadOptions()
   }, [loadOptions])
 
+  // Set quantity to 1 for total_value items
+  useEffect(() => {
+    if (itemType === 'catering' && selectedItem && 'pricing_model' in selectedItem && selectedItem.pricing_model === 'total_value') {
+      setQuantity(1)
+    }
+  }, [selectedItem, itemType])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
@@ -138,17 +116,27 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
     let unitPrice = parseFloat(customPrice) || 0
 
     if (itemType !== 'other' && selectedItem) {
-      if (itemType === 'space' && 'hire_cost' in selectedItem) {
+      if (itemType === 'space' && 'rate_per_hour' in selectedItem) {
         description = selectedItem.name
-        unitPrice = selectedItem.hire_cost
-      } else if (itemType === 'catering' && 'per_head_cost' in selectedItem) {
+        unitPrice = selectedItem.rate_per_hour
+      } else if (itemType === 'catering' && 'cost_per_head' in selectedItem) {
         description = selectedItem.name
-        unitPrice = selectedItem.per_head_cost
-      } else if (itemType === 'vendor' && 'vendor_type' in selectedItem) {
-        description = `${selectedItem.name} (${selectedItem.vendor_type})`
-        unitPrice = selectedItem.typical_rate || 0
+        // For total_value items, use the custom price entered by the user
+        if ('pricing_model' in selectedItem && selectedItem.pricing_model === 'total_value') {
+          unitPrice = parseFloat(customPrice) || selectedItem.cost_per_head
+        } else {
+          unitPrice = selectedItem.cost_per_head
+        }
+      } else if (itemType === 'vendor' && 'service_type' in selectedItem) {
+        description = `${selectedItem.name} (${selectedItem.service_type})`
+        unitPrice = parseFloat(selectedItem.typical_rate || '0') || 0
       }
     }
+
+    // For total_value pricing model, quantity should be 1
+    const finalQuantity = itemType === 'catering' && selectedItem && 'pricing_model' in selectedItem && selectedItem.pricing_model === 'total_value' 
+      ? 1 
+      : quantity
 
     const data = {
       booking_id: bookingId,
@@ -157,7 +145,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
       package_id: itemType === 'catering' ? selectedItem?.id : null,
       vendor_id: itemType === 'vendor' ? selectedItem?.id : null,
       description,
-      quantity,
+      quantity: finalQuantity,
       unit_price: unitPrice,
       discount_value: discountAmount ? parseFloat(discountAmount) : undefined,
       discount_type: discountAmount ? discountType : undefined,
@@ -276,9 +264,13 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                 {(itemType === 'space' ? spaces : itemType === 'catering' ? packages : vendors).map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
-                    {itemType === 'space' && 'hire_cost' in item && ` (£${item.hire_cost}/hr)`}
-                    {itemType === 'catering' && 'per_head_cost' in item && ` (£${item.per_head_cost}/person)`}
-                    {itemType === 'vendor' && 'vendor_type' in item && item.vendor_type && ` - ${item.vendor_type}`}
+                    {itemType === 'space' && 'rate_per_hour' in item && ` (£${item.rate_per_hour}/hr)`}
+                    {itemType === 'catering' && 'cost_per_head' in item && (
+                      item.pricing_model === 'total_value' 
+                        ? ` (£${item.cost_per_head} total)` 
+                        : ` (£${item.cost_per_head}/person)`
+                    )}
+                    {itemType === 'vendor' && 'service_type' in item && item.service_type && ` - ${item.service_type}`}
                   </option>
                 ))}
               </select>
@@ -301,42 +293,62 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
             </div>
           )}
 
-          {/* Quantity and Price */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Quantity and Price - Different layouts based on pricing model */}
+          {itemType === 'catering' && selectedItem && 'pricing_model' in selectedItem && selectedItem.pricing_model === 'total_value' ? (
+            // Total Value Layout - Single price field
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Quantity
+                Total Price (£)
               </label>
               <input
                 type="number"
-                value={quantity}
-                onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-                min="1"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Unit Price (£)
-              </label>
-              <input
-                type="number"
-                value={customPrice || (selectedItem && (
-                  itemType === 'space' && 'hire_cost' in selectedItem ? selectedItem.hire_cost :
-                  itemType === 'catering' && 'per_head_cost' in selectedItem ? selectedItem.per_head_cost :
-                  itemType === 'vendor' && 'typical_rate' in selectedItem ? (selectedItem.typical_rate ?? '') :
-                  ''
-                )) || ''}
+                value={customPrice || selectedItem.cost_per_head || ''}
                 onChange={(e) => setCustomPrice(e.target.value)}
                 step="0.01"
                 min="0"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                required={itemType === 'other'}
-                readOnly={itemType !== 'other' && !!selectedItem}
+                required
+                placeholder="Enter total price"
               />
             </div>
-          </div>
+          ) : (
+            // Standard Layout - Quantity and Unit Price
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {itemType === 'catering' ? 'Number of Guests' : 'Quantity'}
+                </label>
+                <input
+                  type="number"
+                  value={quantity}
+                  onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
+                  min="1"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Unit Price (£)
+                </label>
+                <input
+                  type="number"
+                  value={customPrice || (selectedItem && (
+                    itemType === 'space' && 'rate_per_hour' in selectedItem ? selectedItem.rate_per_hour :
+                    itemType === 'catering' && 'cost_per_head' in selectedItem ? selectedItem.cost_per_head :
+                    itemType === 'vendor' && 'typical_rate' in selectedItem ? (selectedItem.typical_rate ?? '') :
+                    ''
+                  )) || ''}
+                  onChange={(e) => setCustomPrice(e.target.value)}
+                  step="0.01"
+                  min="0"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  required={itemType === 'other' || itemType === 'vendor'}
+                  readOnly={itemType !== 'other' && itemType !== 'vendor' && !!selectedItem}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Discount */}
           <div className="space-y-2">
@@ -417,9 +429,9 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
 
   function calculateTotal() {
     const price = parseFloat(customPrice) || (selectedItem && (
-      itemType === 'space' && 'hire_cost' in selectedItem ? selectedItem.hire_cost :
-      itemType === 'catering' && 'per_head_cost' in selectedItem ? selectedItem.per_head_cost :
-      itemType === 'vendor' && 'typical_rate' in selectedItem ? (selectedItem.typical_rate || 0) :
+      itemType === 'space' && 'rate_per_hour' in selectedItem ? selectedItem.rate_per_hour :
+      itemType === 'catering' && 'cost_per_head' in selectedItem ? selectedItem.cost_per_head :
+      itemType === 'vendor' && 'typical_rate' in selectedItem ? parseFloat(selectedItem.typical_rate || '0') :
       0
     )) || 0
 

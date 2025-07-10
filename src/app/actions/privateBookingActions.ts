@@ -1103,6 +1103,7 @@ export async function createCateringPackage(data: {
   name: string
   package_type: string
   per_head_cost: number
+  pricing_model?: 'per_head' | 'total_value'
   minimum_order?: number | null
   description?: string | null
   includes?: string | null
@@ -1115,6 +1116,7 @@ export async function createCateringPackage(data: {
     name: data.name,
     package_type: data.package_type,
     cost_per_head: data.per_head_cost,
+    pricing_model: data.pricing_model || 'per_head',
     minimum_guests: data.minimum_order,
     description: data.description,
     dietary_notes: data.includes,
@@ -1139,6 +1141,7 @@ export async function updateCateringPackage(id: string, data: {
   name: string
   package_type: string
   per_head_cost: number
+  pricing_model?: 'per_head' | 'total_value'
   minimum_order?: number | null
   description?: string | null
   includes?: string | null
@@ -1151,6 +1154,7 @@ export async function updateCateringPackage(id: string, data: {
     name: data.name,
     package_type: data.package_type,
     cost_per_head: data.per_head_cost,
+    pricing_model: data.pricing_model || 'per_head',
     minimum_guests: data.minimum_order,
     description: data.description,
     dietary_notes: data.includes,

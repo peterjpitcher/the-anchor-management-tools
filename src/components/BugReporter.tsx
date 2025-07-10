@@ -110,7 +110,8 @@ export function BugReporter({ isOpen, onClose }: BugReporterProps) {
       const result = await response.json();
       
       if (!response.ok) {
-        throw new Error(result.error || 'Failed to submit bug report');
+        const errorMessage = result.message || result.error || 'Failed to submit bug report';
+        throw new Error(errorMessage);
       }
       
       // Success
