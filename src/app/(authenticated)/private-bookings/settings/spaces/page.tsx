@@ -12,6 +12,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { createVenueSpace, updateVenueSpace, deleteVenueSpace } from '@/app/actions/privateBookingActions'
 import { VenueSpaceDeleteButton } from '@/components/VenueSpaceDeleteButton'
+import { formatDateFull } from '@/lib/dateUtils'
 
 async function handleCreateSpace(formData: FormData) {
   'use server'
@@ -315,7 +316,7 @@ export default async function VenueSpacesPage() {
                         )}
                       </span>
                       <span className="text-sm text-gray-500">
-                        Created {new Date(space.created_at).toLocaleDateString()}
+                        Created {formatDateFull(space.created_at)}
                       </span>
                     </div>
                     

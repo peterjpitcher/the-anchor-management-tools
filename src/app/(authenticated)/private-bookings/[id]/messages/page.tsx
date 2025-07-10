@@ -15,6 +15,7 @@ import {
 import { getPrivateBooking } from '@/app/actions/privateBookingActions'
 import { sendSms } from '@/app/actions/sms'
 import type { PrivateBookingWithDetails, PrivateBookingSmsQueue } from '@/types/private-bookings'
+import { formatDateFull, formatTime12Hour, formatDateTime12Hour } from '@/lib/dateUtils'
 
 interface SmsTemplate {
   id: string
@@ -107,19 +108,14 @@ export default function MessagesPage({
       const replacements: Record<string, string> = {
         customer_name: booking.customer_name, // Keep for backward compatibility
         customer_first_name: booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there',
-        event_date: new Date(booking.event_date).toLocaleDateString('en-GB', {
-          weekday: 'long',
-          day: 'numeric',
-          month: 'long',
-          year: 'numeric'
-        }),
+        event_date: formatDateFull(booking.event_date),
         event_type: booking.event_type || 'event',
         guest_count: booking.guest_count?.toString() || 'your',
-        start_time: booking.start_time,
-        setup_time: booking.setup_time || booking.start_time,
+        start_time: formatTime12Hour(booking.start_time),
+        setup_time: formatTime12Hour(booking.setup_time || booking.start_time),
         deposit_amount: booking.deposit_amount?.toFixed(0) || '250',
         balance_due: ((booking.calculated_total || 0) - (booking.deposit_paid_date ? (booking.deposit_amount || 0) : 0)).toFixed(0),
-        balance_due_date: booking.balance_due_date ? new Date(booking.balance_due_date).toLocaleDateString('en-GB') : 'TBC'
+        balance_due_date: booking.balance_due_date ? formatDateFull(booking.balance_due_date) : 'TBC'
       }
 
       Object.entries(replacements).forEach(([key, value]) => {
@@ -349,7 +345,7 @@ export default function MessagesPage({
                         {message.trigger_type === 'manual' ? 'Manual Message' : message.trigger_type}
                       </p>
                       <time className="text-sm text-gray-500">
-                        {new Date(message.sent_at || message.created_at).toLocaleString('en-GB')}
+                        {formatDateTime12Hour(message.sent_at || message.created_at)}
                       </time>
                     </div>
                     <p className="text-sm text-gray-600 mt-1">{message.message_body}</p>

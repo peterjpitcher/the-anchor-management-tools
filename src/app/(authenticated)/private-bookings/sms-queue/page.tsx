@@ -13,6 +13,7 @@ import {
   PaperAirplaneIcon
 } from '@heroicons/react/24/outline'
 import { approveSms, rejectSms, sendApprovedSms } from '@/app/actions/privateBookingActions'
+import { formatDateFull, formatDateTime12Hour } from '@/lib/dateUtils'
 
 async function handleApproveSms(formData: FormData) {
   'use server'
@@ -175,11 +176,7 @@ export default async function SmsQueuePage() {
                         {sms.booking && (
                           <span className="flex items-center gap-1">
                             <CalendarIcon className="h-4 w-4" />
-                            {new Date(sms.booking.event_date).toLocaleDateString('en-GB', {
-                              day: 'numeric',
-                              month: 'long',
-                              year: 'numeric'
-                            })}
+                            {formatDateFull(sms.booking.event_date)}
                           </span>
                         )}
                       </div>
@@ -189,7 +186,7 @@ export default async function SmsQueuePage() {
                       </div>
                       
                       <p className="text-xs text-gray-500">
-                        Created {new Date(sms.created_at).toLocaleString()}
+                        Created {formatDateTime12Hour(sms.created_at)}
                       </p>
                     </div>
                   </div>
@@ -246,7 +243,7 @@ export default async function SmsQueuePage() {
                           Approved
                         </span>
                         <span className="text-xs text-gray-500">
-                          by {sms.approved_by} at {new Date(sms.approved_at).toLocaleString()}
+                          by {sms.approved_by} at {formatDateTime12Hour(sms.approved_at)}
                         </span>
                       </div>
                       
@@ -322,7 +319,7 @@ export default async function SmsQueuePage() {
                         {isDateChange && metadata.old_date && metadata.new_date && (
                           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3">
                             <p className="text-sm text-yellow-800">
-                              <strong>Booking rescheduled:</strong> {new Date(metadata.old_date).toLocaleDateString('en-GB')} → {new Date(metadata.new_date).toLocaleDateString('en-GB')}
+                              <strong>Booking rescheduled:</strong> {formatDateFull(metadata.old_date)} → {formatDateFull(metadata.new_date)}
                             </p>
                           </div>
                         )}
@@ -332,7 +329,7 @@ export default async function SmsQueuePage() {
                         </div>
                         
                         <p className="text-xs text-gray-500 mt-2">
-                          Cancelled {metadata.cancelled_at ? new Date(metadata.cancelled_at).toLocaleString() : 'recently'}
+                          Cancelled {metadata.cancelled_at ? formatDateTime12Hour(metadata.cancelled_at) : 'recently'}
                         </p>
                       </div>
                     </div>
