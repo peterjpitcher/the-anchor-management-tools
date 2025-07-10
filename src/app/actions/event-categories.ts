@@ -6,6 +6,23 @@ import { revalidatePath } from 'next/cache'
 import { logAuditEvent } from '@/app/actions/audit'
 import type { EventCategory, CategoryFormData, CategoryRegular, CrossCategorySuggestion } from '@/types/event-categories'
 
+// Helper function to format time to HH:MM
+function formatTimeToHHMM(time: string | undefined | null): string | undefined | null {
+  if (!time) return time
+  
+  // If time is already in correct format, return it
+  if (/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/.test(time)) {
+    return time
+  }
+  
+  // Parse and format time
+  const [hours, minutes] = time.split(':')
+  const formattedHours = hours.padStart(2, '0')
+  const formattedMinutes = (minutes || '00').padStart(2, '0')
+  
+  return `${formattedHours}:${formattedMinutes}`
+}
+
 // Validation schema for event categories
 const categorySchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name too long'),
@@ -594,8 +611,8 @@ export async function createEventCategoryFromFormData(formData: FormData) {
     description: formData.get('description') as string,
     sort_order: parseInt(formData.get('sort_order') as string) || 0,
     is_active: formData.get('is_active') === 'true',
-    default_start_time: formData.get('default_start_time') as string,
-    default_end_time: formData.get('default_end_time') as string,
+    default_start_time: formatTimeToHHMM(formData.get('default_start_time') as string),
+    default_end_time: formatTimeToHHMM(formData.get('default_end_time') as string),
     default_capacity: formData.get('default_capacity') ? parseInt(formData.get('default_capacity') as string) : undefined,
     default_reminder_hours: parseInt(formData.get('default_reminder_hours') as string) || 24,
     default_price: parseFloat(formData.get('default_price') as string) || 0,
@@ -614,8 +631,8 @@ export async function updateEventCategoryFromFormData(id: string, formData: Form
     description: formData.get('description') as string,
     sort_order: parseInt(formData.get('sort_order') as string) || 0,
     is_active: formData.get('is_active') === 'true',
-    default_start_time: formData.get('default_start_time') as string,
-    default_end_time: formData.get('default_end_time') as string,
+    default_start_time: formatTimeToHHMM(formData.get('default_start_time') as string),
+    default_end_time: formatTimeToHHMM(formData.get('default_end_time') as string),
     default_capacity: formData.get('default_capacity') ? parseInt(formData.get('default_capacity') as string) : undefined,
     default_reminder_hours: parseInt(formData.get('default_reminder_hours') as string) || 24,
     default_price: parseFloat(formData.get('default_price') as string) || 0,
