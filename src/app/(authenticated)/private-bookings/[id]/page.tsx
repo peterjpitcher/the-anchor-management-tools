@@ -1387,7 +1387,7 @@ export default function PrivateBookingDetailPage({
                             <div className="mt-1 flex items-center space-x-4 text-sm text-gray-500">
                               <span>Qty: {item.quantity}</span>
                               <span>£{item.unit_price.toFixed(2)} each</span>
-                              {item.discount_value && item.discount_value > 0 && (
+                              {!!item.discount_value && item.discount_value > 0 && (
                                 <>
                                   <span className="text-green-600">
                                     -{item.discount_type === 'percent' ? `${item.discount_value}%` : `£${item.discount_value.toFixed(2)}`}
@@ -1513,7 +1513,7 @@ export default function PrivateBookingDetailPage({
                   </div>
 
                   {/* Show booking-level discount if any */}
-                  {booking.discount_amount && booking.discount_amount > 0 && (
+                  {!!booking.discount_amount && booking.discount_amount > 0 && (
                     <>
                       <div className="flex justify-between text-sm">
                         <span className="text-green-600">
