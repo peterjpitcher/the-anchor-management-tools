@@ -11,6 +11,7 @@ import { redirect } from 'next/navigation'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { PermissionProvider } from '@/contexts/PermissionContext'
 import type { User } from '@supabase/supabase-js'
+import { BugReporterButton } from '@/components/BugReporterButton'
 
 function AuthenticatedLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -132,6 +133,7 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
         </div>
       </div>
       <AddNoteModal isOpen={isAddNoteModalOpen} onClose={closeAddNoteModal} />
+      <BugReporterButton />
     </div>
   )
 }
