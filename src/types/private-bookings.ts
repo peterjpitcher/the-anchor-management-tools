@@ -2,7 +2,8 @@ export type BookingStatus = 'draft' | 'confirmed' | 'completed' | 'cancelled'
 export type PaymentMethod = 'cash' | 'card' | 'invoice'
 export type ItemType = 'space' | 'catering' | 'vendor' | 'other'
 export type DiscountType = 'percent' | 'fixed'
-export type PackageType = 'buffet' | 'sit-down' | 'canapes' | 'drinks' | 'other'
+export type PackageType = 'buffet' | 'sit-down' | 'canapes' | 'drinks' | 'pizza' | 'other'
+export type PricingModel = 'per_head' | 'total_value'
 export type VendorServiceType = 'dj' | 'band' | 'photographer' | 'florist' | 'decorator' | 'cake' | 'transport' | 'other'
 export type DocumentType = 'contract' | 'invoice' | 'receipt' | 'correspondence' | 'other'
 export type SmsTriggerType = 'status_change' | 'deposit_received' | 'payment_received' | 'reminder' | 'payment_due' | 'urgent' | 'manual'
@@ -67,6 +68,7 @@ export interface CateringPackage {
   name: string
   description?: string
   package_type?: PackageType
+  pricing_model?: PricingModel
   cost_per_head: number
   minimum_guests: number
   maximum_guests?: number
