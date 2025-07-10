@@ -5,6 +5,23 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { logAuditEvent } from './audit'
 
+// Helper function to format time to HH:MM
+function formatTimeToHHMM(time: string | undefined | null): string | undefined | null {
+  if (!time) return time
+  
+  // If time is already in correct format, return it
+  if (/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/.test(time)) {
+    return time
+  }
+  
+  // Parse and format time
+  const [hours, minutes] = time.split(':')
+  const formattedHours = hours.padStart(2, '0')
+  const formattedMinutes = (minutes || '00').padStart(2, '0')
+  
+  return `${formattedHours}:${formattedMinutes}`
+}
+
 // Event validation schema
 const eventSchema = z.object({
   name: z.string().min(1, 'Event name is required').max(200, 'Event name too long'),
@@ -191,7 +208,7 @@ export async function createEvent(formData: FormData) {
     const rawData = {
       name: formData.get('name') as string,
       date: formData.get('date') as string,
-      time: formData.get('time') as string || categoryDefaults.time,
+      time: formatTimeToHHMM(formData.get('time') as string || categoryDefaults.time) as string,
       capacity: formData.get('capacity') as string || categoryDefaults.capacity?.toString(),
       category_id: categoryId,
       description: formData.get('description') as string || categoryDefaults.description || null,
@@ -201,10 +218,10 @@ export async function createEvent(formData: FormData) {
       keywords: formData.get('keywords') ? JSON.parse(formData.get('keywords') as string) : categoryDefaults.keywords || [],
       meta_title: formData.get('meta_title') as string || categoryDefaults.meta_title || null,
       meta_description: formData.get('meta_description') as string || categoryDefaults.meta_description || null,
-      end_time: formData.get('end_time') as string || categoryDefaults.end_time || null,
+      end_time: formatTimeToHHMM(formData.get('end_time') as string || categoryDefaults.end_time || null),
       duration_minutes: formData.get('duration_minutes') ? parseInt(formData.get('duration_minutes') as string) : categoryDefaults.duration_minutes || null,
-      doors_time: formData.get('doors_time') as string || categoryDefaults.doors_time || null,
-      last_entry_time: formData.get('last_entry_time') as string || categoryDefaults.last_entry_time || null,
+      doors_time: formatTimeToHHMM(formData.get('doors_time') as string || categoryDefaults.doors_time || null),
+      last_entry_time: formatTimeToHHMM(formData.get('last_entry_time') as string || categoryDefaults.last_entry_time || null),
       event_status: formData.get('event_status') as string || categoryDefaults.event_status || 'scheduled',
       performer_name: formData.get('performer_name') as string || null,
       performer_type: formData.get('performer_type') as string || categoryDefaults.performer_type || null,
@@ -293,7 +310,7 @@ export async function updateEvent(id: string, formData: FormData) {
     const rawData = {
       name: formData.get('name') as string,
       date: formData.get('date') as string,
-      time: formData.get('time') as string,
+      time: formatTimeToHHMM(formData.get('time') as string) as string,
       capacity: formData.get('capacity') as string,
       category_id: formData.get('category_id') as string || null,
       description: formData.get('description') as string || null,
@@ -303,10 +320,10 @@ export async function updateEvent(id: string, formData: FormData) {
       keywords: formData.get('keywords') ? JSON.parse(formData.get('keywords') as string) : [],
       meta_title: formData.get('meta_title') as string || null,
       meta_description: formData.get('meta_description') as string || null,
-      end_time: formData.get('end_time') as string || null,
+      end_time: formatTimeToHHMM(formData.get('end_time') as string || null),
       duration_minutes: formData.get('duration_minutes') ? parseInt(formData.get('duration_minutes') as string) : null,
-      doors_time: formData.get('doors_time') as string || null,
-      last_entry_time: formData.get('last_entry_time') as string || null,
+      doors_time: formatTimeToHHMM(formData.get('doors_time') as string || null),
+      last_entry_time: formatTimeToHHMM(formData.get('last_entry_time') as string || null),
       event_status: formData.get('event_status') as string || 'scheduled',
       performer_name: formData.get('performer_name') as string || null,
       performer_type: formData.get('performer_type') as string || null,
