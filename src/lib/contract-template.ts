@@ -37,7 +37,38 @@ export function generateContractHTML(data: ContractData): string {
 
   // Calculate totals including discounts
   const calculateSubtotal = () => {
-    return booking.items?.reduce((sum: number, item: PrivateBookingItem) => sum + (item.line_total || 0), 0) || 0
+    return booking.items?.reduce((sum: number, item: PrivateBookingItem) => {
+      // Use line_total directly since it's a database-generated column
+      const lineTotal = typeof item.line_total === 'string' ? parseFloat(item.line_total) : item.line_total
+      return sum + (lineTotal || 0)
+    }, 0) || 0
+  }
+
+  // Calculate the original price before any item-level discounts
+  const calculateOriginalTotal = () => {
+    return booking.items?.reduce((sum: number, item: PrivateBookingItem) => {
+      const qty = typeof item.quantity === 'string' ? parseFloat(item.quantity) : item.quantity
+      const price = typeof item.unit_price === 'string' ? parseFloat(item.unit_price) : item.unit_price
+      return sum + (qty * price)
+    }, 0) || 0
+  }
+
+  // Calculate total item-level discounts
+  const calculateItemDiscounts = () => {
+    return booking.items?.reduce((sum: number, item: PrivateBookingItem) => {
+      if (item.discount_value && item.discount_value > 0) {
+        const qty = typeof item.quantity === 'string' ? parseFloat(item.quantity) : item.quantity
+        const price = typeof item.unit_price === 'string' ? parseFloat(item.unit_price) : item.unit_price
+        const originalPrice = qty * price
+        
+        if (item.discount_type === 'percent') {
+          return sum + (originalPrice * (item.discount_value / 100))
+        } else {
+          return sum + item.discount_value
+        }
+      }
+      return sum
+    }, 0) || 0
   }
 
   const calculateDiscountAmount = () => {
@@ -66,7 +97,8 @@ export function generateContractHTML(data: ContractData): string {
   const subtotal = calculateSubtotal()
   const discountAmount = calculateDiscountAmount()
   const total = calculateTotal()
-  const balanceDue = total - (booking.deposit_paid_date ? depositAmount : 0)
+  // Balance due is the total event cost (deposit is separate and refundable)
+  const balanceDue = booking.final_payment_date ? 0 : total
   
   // Calculate balance due date (7 days before event)
   let balanceDueDate = 'To be confirmed'
@@ -451,8 +483,8 @@ export function generateContractHTML(data: ContractData): string {
       <thead>
         <tr>
           <th>Package</th>
-          <th>Guests</th>
-          <th>Price per Head</th>
+          <th>Details</th>
+          <th>Price</th>
           <th>Total</th>
         </tr>
       </thead>
@@ -472,8 +504,18 @@ export function generateContractHTML(data: ContractData): string {
                 </small>
               ` : ''}
             </td>
-            <td>${item.quantity}</td>
-            <td>${formatCurrency(item.unit_price)}</td>
+            <td>
+              ${item.package?.pricing_model === 'total_value' 
+                ? 'Total Package' 
+                : `${item.quantity} guests`
+              }
+            </td>
+            <td>
+              ${item.package?.pricing_model === 'total_value'
+                ? 'See total'
+                : `${formatCurrency(item.unit_price)} per head`
+              }
+            </td>
             <td>
               ${hasDiscount && originalPrice !== item.line_total ? 
                 `<s style="color: #999;">${formatCurrency(originalPrice)}</s><br/><strong>${formatCurrency(item.line_total)}</strong>` : 
@@ -535,13 +577,23 @@ export function generateContractHTML(data: ContractData): string {
   <table>
     <tbody>
       <tr>
+        <td><strong>Original Price (before discounts)</strong></td>
+        <td style="text-align: right;">${formatCurrency(calculateOriginalTotal())}</td>
+      </tr>
+      ${calculateItemDiscounts() > 0 ? `
+        <tr style="color: #10b981;">
+          <td><strong>Item Discounts</strong></td>
+          <td style="text-align: right;"><strong>-${formatCurrency(calculateItemDiscounts())}</strong></td>
+        </tr>
+      ` : ''}
+      <tr>
         <td><strong>Subtotal</strong></td>
         <td style="text-align: right;">${formatCurrency(subtotal)}</td>
       </tr>
       ${booking.discount_amount && booking.discount_amount > 0 ? `
         <tr class="discount-row">
           <td>
-            <strong>✓ Discount Applied</strong>
+            <strong>✓ Booking Discount</strong>
             ${booking.discount_type === 'percent' ? ` (${booking.discount_amount}% off)` : ` (£${booking.discount_amount} off)`}
             ${booking.discount_reason ? `<br/><small style="font-weight: normal; color: #059669;">Reason: ${booking.discount_reason}</small>` : ''}
           </td>
@@ -550,29 +602,50 @@ export function generateContractHTML(data: ContractData): string {
           </td>
         </tr>
       ` : ''}
+      ${(calculateItemDiscounts() > 0 || (booking.discount_amount && booking.discount_amount > 0)) ? `
+        <tr>
+          <td colspan="2" style="text-align: center; padding: 8px; background-color: #f0fdf4; color: #059669; font-weight: bold;">
+            Total Savings: ${formatCurrency(calculateOriginalTotal() - total)}
+          </td>
+        </tr>
+      ` : ''}
       <tr class="total-row">
         <td><strong>Total Event Cost</strong></td>
         <td style="text-align: right;"><strong>${formatCurrency(total)}</strong></td>
       </tr>
-      <tr>
-        <td><strong>Deposit Required</strong></td>
-        <td style="text-align: right;">${formatCurrency(depositAmount)}</td>
+    </tbody>
+  </table>
+  
+  <table style="margin-top: 15px;">
+    <tbody>
+      <tr style="background: #e0f2fe;">
+        <td style="padding: 10px; border: 1px solid #0284c7;">
+          <strong style="color: #0c4a6e;">Refundable Security Deposit</strong>
+          <br/><small style="color: #0369a1;">Returned after event (subject to terms)</small>
+        </td>
+        <td style="text-align: right; padding: 10px; border: 1px solid #0284c7; color: #0c4a6e;">
+          <strong>${formatCurrency(depositAmount)}</strong>
+          ${booking.deposit_paid_date ? `<br/><small style="color: #0369a1;">Paid ${formatDate(booking.deposit_paid_date)}</small>` : `<br/><small style="color: #dc2626;">Not yet paid</small>`}
+        </td>
       </tr>
-      ${booking.deposit_paid_date ? `
-        <tr>
-          <td>Deposit Paid (${formatDate(booking.deposit_paid_date)})</td>
-          <td style="text-align: right;">-${formatCurrency(depositAmount)}</td>
-        </tr>
-      ` : ''}
       <tr class="total-row">
-        <td><strong>Balance Due</strong></td>
+        <td><strong>Balance Due for Event</strong></td>
         <td style="text-align: right;"><strong>${formatCurrency(balanceDue)}</strong></td>
       </tr>
+      ${!booking.final_payment_date && total > 0 ? `
       <tr>
         <td colspan="2" style="text-align: right; font-size: 10pt; color: #666;">
           Balance due by: ${balanceDueDate} (7 days before event)
         </td>
       </tr>
+      ` : ''}
+      ${booking.final_payment_date ? `
+      <tr>
+        <td colspan="2" style="text-align: center; color: #10b981; font-weight: bold; padding: 10px;">
+          ✓ FULLY PAID - Thank you!
+        </td>
+      </tr>
+      ` : ''}
     </tbody>
   </table>
   </div>
@@ -605,9 +678,9 @@ export function generateContractHTML(data: ContractData): string {
     <h3>AGREEMENT</h3>
     <p>I, <strong>${customerName}</strong>, hereby agree to engage Orange Jelly Limited, operating as The Anchor Pub, to host my event described as "<strong>${eventType}</strong>" on <strong>${eventDate}</strong> from <strong>${startTime}</strong> to <strong>${endTime}</strong>. In accordance with the terms of this agreement, I commit to paying the total cost of the event, amounting to <strong>${formatCurrency(total)}</strong>.</p>
     
-    <p>To secure this booking, I will pay a refundable deposit of <strong>${formatCurrency(depositAmount)}</strong> in cash. This deposit is to cover any potential damages from the event and is separate from the total event cost. The deposit will be returned within 48 hours after the event's conclusion, provided that no significant damages occur beyond normal wear and incidental breakages.</p>
+    <p>To secure this booking, I will pay a refundable security deposit of <strong>${formatCurrency(depositAmount)}</strong> in cash. This deposit is to cover any potential damages from the event and is <strong>separate from and additional to</strong> the total event cost. The deposit will be returned within 48 hours after the event's conclusion, provided that no significant damages occur beyond normal wear and incidental breakages.</p>
     
-    <p>The total event cost of <strong>${formatCurrency(total)}</strong> is due no later than <strong>${balanceDueDate}</strong>, which is 7 days before the event date. I understand that failure to pay the full amount by this due date may result in the cancellation of my event without a refund of my deposit.</p>
+    <p>The total event cost of <strong>${formatCurrency(total)}</strong> is due no later than <strong>${balanceDueDate}</strong>, which is 7 days before the event date. This payment is for the booking items and services only, and does not include the refundable security deposit. I understand that failure to pay the full amount by this due date may result in the cancellation of my event without a refund of my deposit.</p>
     
     <p>By signing below, I, <strong>${customerName}</strong>, confirm my understanding and agreement to these terms, and commit to upholding my responsibilities as outlined in this agreement.</p>
   </div>
