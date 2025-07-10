@@ -10,6 +10,23 @@ import type {
 import { syncCalendarEvent, deleteCalendarEvent, isCalendarConfigured } from '@/lib/google-calendar'
 import { queueAndSendPrivateBookingSms } from './private-booking-sms'
 
+// Helper function to format time to HH:MM
+function formatTimeToHHMM(time: string | undefined): string | undefined {
+  if (!time) return undefined
+  
+  // If time is already in correct format, return it
+  if (/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/.test(time)) {
+    return time
+  }
+  
+  // Parse and format time
+  const [hours, minutes] = time.split(':')
+  const formattedHours = hours.padStart(2, '0')
+  const formattedMinutes = (minutes || '00').padStart(2, '0')
+  
+  return `${formattedHours}:${formattedMinutes}`
+}
+
 // Time validation schema
 const timeSchema = z.string().regex(
   /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/,
@@ -168,10 +185,10 @@ export async function createPrivateBooking(formData: FormData) {
     contact_phone: formData.get('contact_phone') as string || undefined,
     contact_email: formData.get('contact_email') as string || undefined,
     event_date: formData.get('event_date') as string,
-    start_time: formData.get('start_time') as string,
+    start_time: formatTimeToHHMM(formData.get('start_time') as string) || formData.get('start_time') as string,
     setup_date: formData.get('setup_date') as string || undefined,
-    setup_time: formData.get('setup_time') as string || undefined,
-    end_time: formData.get('end_time') as string || undefined,
+    setup_time: formatTimeToHHMM(formData.get('setup_time') as string || undefined),
+    end_time: formatTimeToHHMM(formData.get('end_time') as string || undefined),
     guest_count: formData.get('guest_count') ? parseInt(formData.get('guest_count') as string) : undefined,
     event_type: formData.get('event_type') as string || undefined,
     internal_notes: formData.get('internal_notes') as string || undefined,
@@ -369,10 +386,10 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
     contact_phone: formData.get('contact_phone') as string || undefined,
     contact_email: formData.get('contact_email') as string || undefined,
     event_date: formData.get('event_date') as string,
-    start_time: formData.get('start_time') as string,
+    start_time: formatTimeToHHMM(formData.get('start_time') as string) || formData.get('start_time') as string,
     setup_date: formData.get('setup_date') as string || undefined,
-    setup_time: formData.get('setup_time') as string || undefined,
-    end_time: formData.get('end_time') as string || undefined,
+    setup_time: formatTimeToHHMM(formData.get('setup_time') as string || undefined),
+    end_time: formatTimeToHHMM(formData.get('end_time') as string || undefined),
     guest_count: formData.get('guest_count') ? parseInt(formData.get('guest_count') as string) : undefined,
     event_type: formData.get('event_type') as string || undefined,
     internal_notes: formData.get('internal_notes') as string || undefined,
