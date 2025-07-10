@@ -17,7 +17,7 @@ export class NetworkLogger {
   private originalXHRSend: typeof XMLHttpRequest.prototype.send;
   
   constructor() {
-    this.originalFetch = window.fetch;
+    this.originalFetch = window.fetch.bind(window);
     this.originalXHROpen = XMLHttpRequest.prototype.open;
     this.originalXHRSend = XMLHttpRequest.prototype.send;
     this.interceptFetch();
@@ -84,7 +84,7 @@ export class NetworkLogger {
         return originalSetRequestHeader.apply(this, [name, value]);
       };
       
-      return self.originalXHROpen.apply(this, [method, url, async ?? true, username, password]);
+      return self.originalXHROpen.call(this, method, url, async ?? true, username, password);
     };
     
     XMLHttpRequest.prototype.send = function(body?: Document | XMLHttpRequestBodyInit | null) {
@@ -102,7 +102,7 @@ export class NetworkLogger {
         });
       });
       
-      return self.originalXHRSend.apply(this, [body]);
+      return self.originalXHRSend.call(this, body);
     };
   }
   
