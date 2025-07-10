@@ -8,6 +8,7 @@ import {
   ClockIcon
 } from '@heroicons/react/24/outline'
 import type { BookingStatus } from '@/types/private-bookings'
+import { formatTime12Hour } from '@/lib/dateUtils'
 
 interface CalendarBooking {
   id: string
@@ -71,9 +72,6 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + (direction === 'next' ? 1 : -1), 1))
   }
   
-  const formatTime = (time: string) => {
-    return time.substring(0, 5)
-  }
   
   const isToday = (day: number) => {
     const today = new Date()
@@ -159,7 +157,7 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                       <div className="font-medium truncate">{booking.customer_name}</div>
                       <div className="flex items-center gap-1 mt-0.5">
                         <ClockIcon className="h-3 w-3" />
-                        {formatTime(booking.start_time)}
+                        {formatTime12Hour(booking.start_time)}
                       </div>
                     </Link>
                   ))}

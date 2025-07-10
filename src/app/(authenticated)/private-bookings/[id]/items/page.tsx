@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import { formatDateFull } from '@/lib/dateUtils'
 import { 
   ArrowLeftIcon, 
   PlusIcon, 
@@ -692,7 +693,7 @@ export default function ItemsPage({
             <div>
               <h2 className="text-xl font-semibold text-gray-900">Booking Items</h2>
               <p className="text-sm text-gray-500 mt-1">
-                {booking?.customer_name || `${booking?.customer_first_name || ''} ${booking?.customer_last_name || ''}`.trim() || 'Unknown'} - {booking?.event_date ? new Date(booking.event_date).toLocaleDateString('en-GB') : 'Date TBD'}
+                {booking?.customer_name || `${booking?.customer_first_name || ''} ${booking?.customer_last_name || ''}`.trim() || 'Unknown'} - {booking?.event_date ? formatDateFull(booking.event_date) : 'Date TBD'}
               </p>
             </div>
             <button

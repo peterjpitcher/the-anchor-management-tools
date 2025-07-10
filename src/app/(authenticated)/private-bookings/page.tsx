@@ -16,6 +16,7 @@ import {
 import { deletePrivateBooking } from '@/app/actions/privateBookingActions'
 import DeleteBookingButton from '@/components/private-bookings/DeleteBookingButton'
 import type { PrivateBookingWithDetails, BookingStatus, PrivateBookingItem } from '@/types/private-bookings'
+import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils'
 
 async function handleDeleteBooking(formData: FormData) {
   'use server'
@@ -141,16 +142,11 @@ export default async function PrivateBookingsPage() {
   const upcomingBookings = enrichedBookings.filter(b => b.status !== 'completed' && b.event_date >= today)
 
   const formatDate = (date: string) => {
-    return new Date(date).toLocaleDateString('en-GB', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric'
-    })
+    return formatDateFull(date)
   }
 
   const formatTime = (time: string) => {
-    return time.substring(0, 5)
+    return formatTime12Hour(time)
   }
 
   return (

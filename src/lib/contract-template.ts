@@ -1,4 +1,5 @@
 import { PrivateBookingWithDetails, PrivateBookingItem } from '@/types/private-bookings'
+import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils'
 
 export interface ContractData {
   booking: PrivateBookingWithDetails
@@ -18,17 +19,11 @@ export function generateContractHTML(data: ContractData): string {
   
   // Helper functions
   const formatDate = (date: string | null) => {
-    if (!date) return 'To be confirmed'
-    return new Date(date).toLocaleDateString('en-GB', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
-    })
+    return formatDateFull(date)
   }
 
   const formatTime = (time: string | null) => {
-    if (!time) return 'To be confirmed'
-    return time.substring(0, 5)
+    return formatTime12Hour(time)
   }
 
   const formatCurrency = (amount: number) => {

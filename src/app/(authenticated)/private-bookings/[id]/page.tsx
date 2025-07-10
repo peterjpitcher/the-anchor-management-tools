@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils'
 import { 
   ArrowLeftIcon, 
   PencilIcon, 
@@ -1256,16 +1257,11 @@ export default function PrivateBookingDetailPage({
                     <label className="block text-sm font-medium text-gray-500">Event Date</label>
                     <div className="mt-1 flex items-center text-sm text-gray-900">
                       <CalendarDaysIcon className="h-5 w-5 text-gray-400 mr-2" />
-                      {new Date(booking.event_date).toLocaleDateString('en-GB', {
-                        weekday: 'long',
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
-                      })}
+                      {formatDateFull(booking.event_date)}
                     </div>
                     {booking.setup_date && (
                       <p className="mt-1 text-sm text-gray-500">
-                        Setup: {new Date(booking.setup_date).toLocaleDateString('en-GB')}
+                        Setup: {formatDateFull(booking.setup_date)}
                       </p>
                     )}
                   </div>
@@ -1274,11 +1270,11 @@ export default function PrivateBookingDetailPage({
                     <label className="block text-sm font-medium text-gray-500">Time</label>
                     <div className="mt-1 flex items-center text-sm text-gray-900">
                       <ClockIcon className="h-5 w-5 text-gray-400 mr-2" />
-                      {booking.start_time} - {booking.end_time || 'TBC'}
+                      {formatTime12Hour(booking.start_time)} - {formatTime12Hour(booking.end_time || null)}
                     </div>
                     {booking.setup_time && (
                       <p className="mt-1 text-sm text-gray-500">
-                        Setup: {booking.setup_time}
+                        Setup: {formatTime12Hour(booking.setup_time || null)}
                       </p>
                     )}
                   </div>
@@ -1341,7 +1337,7 @@ export default function PrivateBookingDetailPage({
                     <div className="flex items-center">
                       <ExclamationCircleIcon className="h-5 w-5 text-amber-600 mr-2" />
                       <p className="text-sm text-amber-800">
-                        Balance due by {new Date(booking.balance_due_date).toLocaleDateString('en-GB')}
+                        Balance due by {formatDateFull(booking.balance_due_date)}
                       </p>
                     </div>
                   </div>
@@ -1559,7 +1555,7 @@ export default function PrivateBookingDetailPage({
                         <p className="text-sm font-medium text-gray-700">Security Deposit</p>
                         <p className="text-xs text-gray-500">
                           {booking.deposit_paid_date 
-                            ? `Paid ${new Date(booking.deposit_paid_date).toLocaleDateString('en-GB')}`
+                            ? `Paid ${formatDateFull(booking.deposit_paid_date)}`
                             : 'Not paid'
                           }
                         </p>
@@ -1591,7 +1587,7 @@ export default function PrivateBookingDetailPage({
                       </p>
                       {booking.balance_due_date && (
                         <p className="text-xs text-gray-500">
-                          Due by {new Date(booking.balance_due_date).toLocaleDateString('en-GB')}
+                          Due by {formatDateFull(booking.balance_due_date)}
                         </p>
                       )}
                     </div>
@@ -1615,7 +1611,7 @@ export default function PrivateBookingDetailPage({
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-green-600 font-medium">✓ Fully Paid</span>
                         <span className="text-xs text-gray-500">
-                          {new Date(booking.final_payment_date).toLocaleDateString('en-GB')}
+                          {formatDateFull(booking.final_payment_date)}
                         </span>
                       </div>
                     </div>
@@ -1678,13 +1674,13 @@ export default function PrivateBookingDetailPage({
                 <div>
                   <label className="block text-xs font-medium text-gray-500">Created</label>
                   <p className="mt-1 text-sm text-gray-900">
-                    {new Date(booking.created_at).toLocaleDateString('en-GB')}
+                    {formatDateFull(booking.created_at)}
                   </p>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500">Last Updated</label>
                   <p className="mt-1 text-sm text-gray-900">
-                    {new Date(booking.updated_at).toLocaleDateString('en-GB')}
+                    {formatDateFull(booking.updated_at)}
                   </p>
                 </div>
                 {booking.contract_version > 0 && (
