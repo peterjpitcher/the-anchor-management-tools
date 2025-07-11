@@ -230,7 +230,7 @@ function LoyaltyDashboardContent() {
         <div className="bg-amber-100 border-2 border-amber-300 rounded-xl p-6">
           <div className="text-center">
             <p className="text-sm font-medium text-amber-800 mb-2">REDEMPTION CODE</p>
-            <p className={`text-4xl font-bold ${timeRemaining < 60 ? 'text-red-600' : 'text-gray-900'} mb-2`}>
+            <p className={`text-4xl font-bold font-mono tracking-wider ${timeRemaining < 60 ? 'text-red-600' : 'text-gray-900'} mb-2`}>
               {activeCode.code}
             </p>
             <p className={`text-lg font-medium ${timeRemaining < 60 ? 'text-red-600' : 'text-amber-700'}`}>

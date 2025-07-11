@@ -87,10 +87,11 @@ export default function StaffRedeemPage() {
                   type="text"
                   id="code"
                   value={code}
-                  onChange={(e) => setCode(e.target.value.toUpperCase())}
+                  onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent text-2xl font-mono text-center uppercase"
-                  placeholder="ABC-1234"
-                  pattern="[A-Z]{3}-[0-9]{4}"
+                  placeholder="DES1234"
+                  pattern="[A-Z]{3}[0-9]{4}"
+                  maxLength={7}
                   required
                   autoComplete="off"
                   autoFocus
