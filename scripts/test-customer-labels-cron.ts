@@ -6,16 +6,16 @@ async function testCustomerLabelsCron() {
   // For testing, use localhost if available
   const isLocalhost = process.argv.includes('--local');
   const baseUrl = isLocalhost ? 'http://localhost:3000' : (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000');
-  const cronSecret = process.env.CRON_SECRET_KEY;
+  const cronSecret = process.env.CRON_SECRET;
   
   if (!cronSecret) {
-    console.error('❌ CRON_SECRET_KEY not found in environment variables');
-    console.log('Please set CRON_SECRET_KEY in your .env.local file');
+    console.error('❌ CRON_SECRET not found in environment variables');
+    console.log('Please set CRON_SECRET in your .env.local file');
     process.exit(1);
   }
   
   console.log(`Testing endpoint: ${baseUrl}/api/cron/apply-customer-labels`);
-  console.log(`Using CRON_SECRET_KEY: ${cronSecret.substring(0, 4)}...${cronSecret.substring(cronSecret.length - 4)}\n`);
+  console.log(`Using CRON_SECRET: ${cronSecret.substring(0, 4)}...${cronSecret.substring(cronSecret.length - 4)}\n`);
   
   try {
     // Test with valid authorization

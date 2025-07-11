@@ -13,7 +13,7 @@ const envSchema = z.object({
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_PHONE_NUMBER: z.string().optional(),
-  CRON_SECRET_KEY: z.string().min(1, 'CRON_SECRET_KEY is required').optional(),
+  CRON_SECRET: z.string().min(1, 'CRON_SECRET is required').optional(),
 });
 
 // Create a type from the schema

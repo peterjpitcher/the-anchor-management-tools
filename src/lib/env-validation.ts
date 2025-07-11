@@ -26,7 +26,7 @@ const envSchema = z.object({
   NEXT_PUBLIC_CONTACT_PHONE_NUMBER: z.string().default('01753682707'),
   
   // Security
-  CRON_SECRET_KEY: z.union([
+  CRON_SECRET: z.union([
     z.string().min(32),
     z.string().length(0),
     z.undefined()

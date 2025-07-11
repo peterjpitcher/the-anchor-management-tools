@@ -33,7 +33,7 @@ export async function middleware(request: NextRequest) {
     // Cron endpoints should only be called by Vercel
     if (request.nextUrl.pathname.startsWith('/api/cron/')) {
       const cronSecret = request.headers.get('x-cron-secret')
-      if (cronSecret !== process.env.CRON_SECRET_KEY) {
+      if (cronSecret !== process.env.CRON_SECRET) {
         return NextResponse.json(
           { error: 'Unauthorized' },
           { status: 401 }

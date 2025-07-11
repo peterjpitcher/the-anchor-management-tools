@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
   try {
     // Verify cron secret
     const authHeader = request.headers.get('authorization')
-    const cronSecret = process.env.CRON_SECRET_KEY
+    const cronSecret = process.env.CRON_SECRET
     
     if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
       logger.warn('Unauthorized job processor access attempt')
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
   try {
     // Verify cron secret for health check too
     const authHeader = request.headers.get('authorization')
-    const cronSecret = process.env.CRON_SECRET_KEY
+    const cronSecret = process.env.CRON_SECRET
     
     if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

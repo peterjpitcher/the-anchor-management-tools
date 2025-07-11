@@ -17,7 +17,7 @@ async function testConnectivity() {
     'SUPABASE_SERVICE_ROLE_KEY',
     'NEXT_PUBLIC_APP_URL',
     'NEXT_PUBLIC_CONTACT_PHONE_NUMBER',
-    'CRON_SECRET_KEY'
+    'CRON_SECRET'
   ]
   
   const optionalVars = [
