@@ -3,11 +3,9 @@ import { addEmployee } from '@/app/actions/employeeActions';
 
 export default function NewEmployeePage() {
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <EmployeeForm 
-        formAction={addEmployee} 
-        initialFormState={null} // Or provide a default initial state if needed
-      />
-    </div>
+    <EmployeeForm 
+      formAction={addEmployee} 
+      initialFormState={null} // Or provide a default initial state if needed
+    />
   );
 } 

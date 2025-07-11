@@ -196,7 +196,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
 
   if (!quote) {
     return (
-      <div className="p-4 sm:p-6 lg:p-8">
+      <div className="space-y-6">
         <div className="text-center">
           <p className="text-red-600">Quote not found</p>
           <Button
@@ -233,7 +233,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
   }, 0) || 0
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
+    <div className="space-y-6">
       <div className="mb-6">
         <Button
           variant="ghost"

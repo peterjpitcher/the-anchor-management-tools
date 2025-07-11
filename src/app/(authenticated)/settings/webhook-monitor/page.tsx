@@ -36,9 +36,14 @@ export default function WebhookMonitorPage() {
   }, [loadLogs])
   
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-6 flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Webhook Monitor</h1>
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Webhook Monitor</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Monitor incoming webhook requests and responses
+          </p>
+        </div>
         <div className="flex gap-4">
           <Link
             href="/settings/webhook-test"

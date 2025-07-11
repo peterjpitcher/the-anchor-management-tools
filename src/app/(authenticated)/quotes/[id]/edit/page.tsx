@@ -230,7 +230,7 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
 
   if (!quote) {
     return (
-      <div className="p-4 sm:p-6 lg:p-8">
+      <div className="space-y-6">
         <div className="text-center">
           <p className="text-red-600">{error || 'Quote not found'}</p>
           <Button
@@ -246,7 +246,7 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
   }
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
+    <div className="space-y-6">
       <div className="mb-8">
         <Button
           variant="ghost"

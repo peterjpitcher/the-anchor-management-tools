@@ -82,9 +82,8 @@ export default function QuotesPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
-      <div className="mb-8">
-        <div className="flex justify-between items-center mb-6">
+    <div className="space-y-6">
+      <div className="flex justify-between items-center mb-6">
           <div>
             <h1 className="text-2xl font-bold">Quotes</h1>
             <p className="text-gray-600 mt-1">Manage quotes and estimates for your vendors</p>
@@ -146,7 +145,6 @@ export default function QuotesPage() {
             </div>
           </div>
         </div>
-      </div>
 
       {error && (
         <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg">

@@ -50,8 +50,8 @@ export default function ChangePasswordPage() {
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div className="bg-white shadow sm:rounded-lg">
+        {/* Page Header */}
+        <div className="bg-white shadow sm:rounded-lg">
         <div className="px-4 py-5 sm:p-6">
           <div className="flex items-center justify-between">
             <div>

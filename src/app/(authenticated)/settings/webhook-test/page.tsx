@@ -38,19 +38,17 @@ export default function WebhookTestPage() {
 
   if (!isAuthorized) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-          <div className="flex">
-            <ExclamationTriangleIcon className="h-6 w-6 text-red-400 mr-3" />
-            <div>
-              <h3 className="text-lg font-medium text-red-800">Access Denied</h3>
-              <p className="mt-2 text-sm text-red-700">
-                This page is restricted to super administrators only.
-              </p>
-              <Link href="/dashboard" className="mt-4 inline-block text-sm text-blue-600 hover:text-blue-800">
-                Return to Dashboard
-              </Link>
-            </div>
+      <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+        <div className="flex">
+          <ExclamationTriangleIcon className="h-6 w-6 text-red-400 mr-3" />
+          <div>
+            <h3 className="text-lg font-medium text-red-800">Access Denied</h3>
+            <p className="mt-2 text-sm text-red-700">
+              This page is restricted to super administrators only.
+            </p>
+            <Link href="/dashboard" className="mt-4 inline-block text-sm text-blue-600 hover:text-blue-800">
+              Return to Dashboard
+            </Link>
           </div>
         </div>
       </div>
@@ -96,10 +94,10 @@ export default function WebhookTestPage() {
   }
   
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8">Webhook Test Tool</h1>
+    <div className="space-y-6">
+      <h1 className="text-3xl font-bold">Webhook Test Tool</h1>
       
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
         <div className="flex">
           <ExclamationTriangleIcon className="h-5 w-5 text-yellow-400 mr-3 flex-shrink-0" />
           <div>
@@ -150,7 +148,7 @@ export default function WebhookTestPage() {
         </div>
       </div>
       
-      <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
         <h3 className="text-lg font-medium text-blue-900 mb-2">Testing in Development</h3>
         <p className="text-sm text-blue-700 mb-4">
           For local development testing, you can use ngrok to expose your local server:

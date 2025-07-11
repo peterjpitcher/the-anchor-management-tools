@@ -128,7 +128,7 @@ export default function EditEmployeePage({ params: paramsPromise }: { params: Pr
 
   return (
     <div className="space-y-6">
-       <div className="bg-white shadow sm:rounded-lg">
+        <div className="bg-white shadow sm:rounded-lg">
         <div className="px-4 py-5 sm:p-6">
           <div className="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:justify-between sm:items-center">
             <div>
@@ -146,9 +146,9 @@ export default function EditEmployeePage({ params: paramsPromise }: { params: Pr
         </div>
       </div>
 
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-        <Tabs tabs={tabs} />
-      </div>
+        <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+          <Tabs tabs={tabs} />
+        </div>
     </div>
   );
 }

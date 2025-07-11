@@ -378,9 +378,8 @@ export default function BulkMessagePage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-6">
-        <div className="flex items-center justify-between">
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <Link
               href="/messages"
@@ -392,7 +391,6 @@ export default function BulkMessagePage() {
           </div>
           <div className="text-sm text-gray-600">
             {selectedCustomers.size} of {filteredCustomers.length} customers selected
-          </div>
         </div>
       </div>
 

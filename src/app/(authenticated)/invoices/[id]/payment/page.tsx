@@ -110,7 +110,7 @@ export default function RecordPaymentPage() {
 
   if (!invoice) {
     return (
-      <div className="container mx-auto p-6">
+      <div className="space-y-6">
         <div className="bg-red-50 border border-red-200 text-red-600 rounded-lg p-4">
           {error || 'Invoice not found'}
         </div>
@@ -127,7 +127,7 @@ export default function RecordPaymentPage() {
   const outstanding = invoice.total_amount - invoice.paid_amount
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
+    <div className="space-y-6">
       <div className="mb-6">
         <Button
           variant="ghost"

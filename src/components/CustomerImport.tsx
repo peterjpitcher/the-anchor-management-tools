@@ -181,7 +181,7 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
   }
 
   return (
-    <div className="max-w-4xl mx-auto py-6">
+    <div className="py-6">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-xl font-semibold">Import Customers</h2>
         <div className="space-x-4">

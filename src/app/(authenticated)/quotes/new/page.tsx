@@ -180,7 +180,7 @@ export default function NewQuotePage() {
   const totals = calculateQuoteTotal()
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
+    <div className="space-y-6">
       <div className="mb-8">
         <Link href="/quotes">
           <Button variant="ghost" className="mb-4">

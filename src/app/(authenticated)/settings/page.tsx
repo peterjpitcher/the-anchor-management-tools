@@ -275,7 +275,6 @@ export default async function SettingsPage() {
           </ul>
         </div>
       )}
-
     </div>
   );
 }

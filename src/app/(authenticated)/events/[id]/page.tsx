@@ -320,7 +320,7 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
 
   return (
     <div className="space-y-6">
-      {showBookingForm && event && (
+        {showBookingForm && event && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
             <BookingForm event={event} onSubmit={handleCreateBooking} onCancel={() => setShowBookingForm(false)} />

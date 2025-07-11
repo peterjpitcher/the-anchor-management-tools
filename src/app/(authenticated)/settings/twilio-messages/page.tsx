@@ -83,8 +83,8 @@ export default function TwilioMessagesPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-7xl">
-      <div className="mb-6">
+    <div className="space-y-6">
+      <div>
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <Link
@@ -105,7 +105,7 @@ export default function TwilioMessagesPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white shadow rounded-lg p-6 mb-6">
+      <div className="bg-white shadow rounded-lg p-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
@@ -153,7 +153,7 @@ export default function TwilioMessagesPage() {
 
       {/* Message Comparison Stats */}
       {!showUnloggedOnly && messages.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white shadow rounded-lg p-4">
             <div className="flex items-center justify-between">
               <div>

@@ -73,7 +73,7 @@ export const getDashboardData = unstable_cache(
         date,
         time,
         capacity,
-        bookings (id)
+        bookings (id, seats)
       `)
       .gte('date', now.toISOString().split('T')[0])
       .lte('date', nextWeek.toISOString().split('T')[0])
@@ -83,7 +83,7 @@ export const getDashboardData = unstable_cache(
     // Process upcoming events
     const upcomingEventsWithCounts = upcomingEvents?.map(event => ({
       ...event,
-      bookingCount: event.bookings?.length || 0,
+      bookingCount: event.bookings?.reduce((sum, booking) => sum + (booking.seats || 0), 0) || 0,
       max_attendees: event.capacity, // Map capacity to max_attendees for compatibility
       event_date: `${event.date}T${event.time}`, // Combine date and time for display
       bookings: undefined // Remove raw bookings data

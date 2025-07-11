@@ -12,7 +12,7 @@ async function getEvents() {
     .select(`
       *,
       category:event_categories(*),
-      bookings (id)
+      bookings (id, seats)
     `)
     .order('date', { ascending: true })
     .order('time', { ascending: true })
@@ -24,7 +24,7 @@ async function getEvents() {
   
   return events.map(event => ({
     ...event,
-    booked_seats: event.bookings?.length || 0,
+    booked_seats: event.bookings?.reduce((sum: number, booking: any) => sum + (booking.seats || 0), 0) || 0,
     bookings: undefined
   }))
 }
@@ -38,7 +38,7 @@ export default async function EventsPage() {
   
   return (
     <div className="space-y-6">
-      <div className="bg-white shadow sm:rounded-lg">
+        <div className="bg-white shadow sm:rounded-lg">
         <div className="px-4 py-5 sm:p-6">
           <div className="flex justify-between items-center">
             <div>

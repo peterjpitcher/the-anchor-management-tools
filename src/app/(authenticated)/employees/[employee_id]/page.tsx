@@ -220,7 +220,7 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
 
   return (
     <div className="space-y-6">
-      <div className="bg-white shadow sm:rounded-lg">
+        <div className="bg-white shadow sm:rounded-lg">
         <div className="px-4 py-5 sm:p-6">
           <div className="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:justify-between sm:items-center">
             <div>
