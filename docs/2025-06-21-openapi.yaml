@@ -65,7 +65,7 @@ components:
       type: apiKey
       in: header
       name: Authorization
-      description: Bearer token with CRON_SECRET_KEY for cron job endpoints
+      description: Bearer token with CRON_SECRET for cron job endpoints
     
     twilioSignature:
       type: apiKey

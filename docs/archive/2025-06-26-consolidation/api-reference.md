@@ -50,7 +50,7 @@ The Anchor Management Tools uses a hybrid API architecture combining traditional
 #### Send Event Reminders
 ```
 GET /api/cron/reminders
-Authorization: Bearer {CRON_SECRET_KEY}
+Authorization: Bearer {CRON_SECRET}
 ```
 
 **Description**: Processes SMS reminders for events happening in 24 hours and 7 days
@@ -60,7 +60,7 @@ Authorization: Bearer {CRON_SECRET_KEY}
 - `401 Unauthorized`: Invalid or missing CRON secret
 - `500 Internal Server Error`: Processing error
 
-**Security**: Requires valid `CRON_SECRET_KEY` in Authorization header
+**Security**: Requires valid `CRON_SECRET` in Authorization header
 
 ---
 

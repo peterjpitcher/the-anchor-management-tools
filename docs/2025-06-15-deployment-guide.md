@@ -429,7 +429,7 @@ SUPABASE_SERVICE_ROLE_KEY=your-staging-service-role-key
 TWILIO_ACCOUNT_SID=your-test-sid
 TWILIO_AUTH_TOKEN=your-test-token
 TWILIO_PHONE_NUMBER=+15005550006
-CRON_SECRET_KEY=generate-secure-key
+CRON_SECRET=generate-secure-key
 SKIP_TWILIO_SIGNATURE_VALIDATION=true
 ```
 
@@ -457,7 +457,7 @@ SKIP_TWILIO_SIGNATURE_VALIDATION=true
    }
    ```
 
-2. Ensure `CRON_SECRET_KEY` is set and matches
+2. Ensure `CRON_SECRET` is set and matches
 
 ### 8. Test Webhooks
 
@@ -567,7 +567,7 @@ git push origin main
    - Review Twilio logs
 
 3. **Cron Jobs Not Running**
-   - Verify `CRON_SECRET_KEY` matches
+   - Verify `CRON_SECRET` matches
    - Check Vercel cron configuration
    - Review function logs
 
@@ -900,7 +900,7 @@ NEXT_PUBLIC_CONTACT_PHONE_NUMBER=+447700106752
 ### Security
 ```bash
 # Generate with: openssl rand -hex 32
-CRON_SECRET_KEY=your_cron_secret_key
+CRON_SECRET=your_CRON_SECRET
 
 # Temporarily disable rate limiting if needed (emergency use only)
 # DISABLE_RATE_LIMITING=true

@@ -250,7 +250,7 @@ export async function middleware(request: NextRequest) {
     // Skip rate limiting for cron jobs with valid secret
     if (pathname.startsWith('/api/cron')) {
       const authHeader = request.headers.get('authorization');
-      if (authHeader === `Bearer ${process.env.CRON_SECRET_KEY}`) {
+      if (authHeader === `Bearer ${process.env.CRON_SECRET}`) {
         return NextResponse.next();
       }
     }
