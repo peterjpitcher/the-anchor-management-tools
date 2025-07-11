@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { EventFormSimple } from '@/components/EventFormSimple'
+import { EventFormGrouped } from '@/components/EventFormGrouped'
 import { updateEvent } from '@/app/actions/events'
 import { Event } from '@/types/database'
 import toast from 'react-hot-toast'
@@ -93,15 +93,15 @@ export default function EditEventPage({ params }: PageProps) {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Edit Event</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Update event details
+          Update the details for {event.name}
         </p>
       </div>
       
-      <EventFormSimple 
+      <EventFormGrouped 
         event={event}
         categories={categories}
         onSubmit={handleSubmit} 

@@ -13,7 +13,7 @@ import { EventCategory } from '@/types/event-categories'
 import { PlusIcon, PencilIcon, TrashIcon, SparklesIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/Button'
-import { EventCategoryFormSimple } from '@/components/EventCategoryFormSimple'
+import { EventCategoryFormGrouped } from '@/components/EventCategoryFormGrouped'
 
 export default function EventCategoriesPage() {
   const [categories, setCategories] = useState<EventCategory[]>([])
@@ -161,7 +161,7 @@ export default function EventCategoriesPage() {
             <h2 className="text-xl font-semibold mb-4">
               {editingCategory ? 'Edit Event Category' : 'Create Event Category'}
             </h2>
-            <EventCategoryFormSimple
+            <EventCategoryFormGrouped
               category={editingCategory}
               onSubmit={async (data) => {
                 try {
@@ -238,19 +238,19 @@ export default function EventCategoriesPage() {
             <table className="min-w-full divide-y divide-gray-300">
               <thead className="bg-gray-50">
                 <tr>
-                  <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">
+                  <th scope="col" className="py-3 pl-6 pr-3 text-left text-sm font-semibold text-gray-900">
                     Category
                   </th>
-                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                  <th scope="col" className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
                     Description
                   </th>
-                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                  <th scope="col" className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
                     Defaults
                   </th>
-                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                  <th scope="col" className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
                     Status
                   </th>
-                  <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                  <th scope="col" className="relative py-3 pl-3 pr-6">
                     <span className="sr-only">Actions</span>
                   </th>
                 </tr>
@@ -258,7 +258,7 @@ export default function EventCategoriesPage() {
               <tbody className="divide-y divide-gray-200 bg-white">
                 {categories.map((category) => (
                   <tr key={category.id}>
-                    <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm sm:pl-6">
+                    <td className="whitespace-nowrap py-4 pl-6 pr-3 text-sm">
                       <div className="flex items-center">
                         <div 
                           className="h-10 w-10 flex-shrink-0 rounded-full flex items-center justify-center text-xl"
@@ -271,12 +271,12 @@ export default function EventCategoriesPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-3 py-4 text-sm text-gray-500">
+                    <td className="px-6 py-4 text-sm text-gray-500">
                       <div className="max-w-xs truncate">
                         {category.description || '-'}
                       </div>
                     </td>
-                    <td className="px-3 py-4 text-sm text-gray-500">
+                    <td className="px-6 py-4 text-sm text-gray-500">
                       <div className="space-y-1">
                         {category.default_start_time && (
                           <div className="text-xs">
@@ -293,7 +293,7 @@ export default function EventCategoriesPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="whitespace-nowrap px-3 py-4 text-sm">
+                    <td className="whitespace-nowrap px-6 py-4 text-sm">
                       <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
                         category.is_active
                           ? 'bg-green-100 text-green-800'
@@ -302,7 +302,7 @@ export default function EventCategoriesPage() {
                         {category.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                    <td className="relative whitespace-nowrap py-4 pl-3 pr-6 text-right text-sm font-medium">
                       <button
                         onClick={() => handleOpenForm(category)}
                         className="text-blue-600 hover:text-blue-900 mr-4"

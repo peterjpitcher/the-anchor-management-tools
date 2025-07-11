@@ -156,11 +156,10 @@ export async function uploadEventImage(
         return { type: 'error', message: 'Failed to update event image.' }
       }
     } else if (category_id) {
-      // For categories, keep image_url as it doesn't exist in DB yet
-      // This will fail until migration is applied, but keeping for future compatibility
+      // For categories, update default_image_url
       const { error: updateError } = await supabase
         .from('event_categories')
-        .update({ image_url: publicUrl })
+        .update({ default_image_url: publicUrl })
         .eq('id', category_id)
 
       if (updateError) {
