@@ -2,8 +2,12 @@
   "name": "the-anchor-management-tools",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "dev": "next dev",
+    "dev:legacy": "NODE_OPTIONS='--openssl-legacy-provider' next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -27,14 +31,19 @@
     "test:suite": "tsx tests/run-all-tests.ts --suite"
   },
   "dependencies": {
+    "@azure/identity": "^4.10.2",
     "@headlessui/react": "^2.2.4",
     "@heroicons/react": "^2.2.0",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/ssr": "^0.6.1",
+    "@types/jszip": "^3.4.0",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
     "express-rate-limit": "^7.5.1",
     "googleapis": "^150.0.1",
+    "isomorphic-fetch": "^3.0.0",
+    "jszip": "^3.10.1",
     "lru-cache": "^11.1.0",
     "lucide-react": "^0.522.0",
     "next": "15.3.3",

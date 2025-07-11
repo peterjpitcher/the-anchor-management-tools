@@ -1,92 +1,198 @@
 #!/usr/bin/env tsx
 
-import { isCalendarConfigured } from '@/lib/google-calendar'
+import * as fs from 'fs'
+import * as path from 'path'
 import { config } from 'dotenv'
-import path from 'path'
+import { google } from 'googleapis'
 
 // Load environment variables
-config({ path: path.resolve(process.cwd(), '.env.local') })
+const envPath = path.resolve(process.cwd(), '.env.local')
+if (fs.existsSync(envPath)) {
+  config({ path: envPath })
+  console.log('✓ Loaded .env.local')
+} else {
+  console.log('✗ .env.local not found')
+  process.exit(1)
+}
 
-console.log('=== Google Calendar Configuration Debug ===\n')
+console.log('\n=== Google Calendar Debug Script ===\n')
+
+// Check Node.js version
+console.log('Node.js version:', process.version)
+console.log('Node.js OpenSSL version:', process.versions.openssl)
 
 // Check environment variables
-console.log('1. Environment Variables Check:')
-console.log('   GOOGLE_CALENDAR_ID:', process.env.GOOGLE_CALENDAR_ID ? `✓ Set (${process.env.GOOGLE_CALENDAR_ID})` : '✗ Not set')
+console.log('\n1. Checking environment variables:')
+console.log('   GOOGLE_CALENDAR_ID:', process.env.GOOGLE_CALENDAR_ID ? '✓ Set' : '✗ Not set')
 console.log('   GOOGLE_SERVICE_ACCOUNT_KEY:', process.env.GOOGLE_SERVICE_ACCOUNT_KEY ? '✓ Set' : '✗ Not set')
-console.log('   GOOGLE_CLIENT_ID:', process.env.GOOGLE_CLIENT_ID ? '✓ Set' : '✗ Not set')
-console.log('   GOOGLE_CLIENT_SECRET:', process.env.GOOGLE_CLIENT_SECRET ? '✓ Set' : '✗ Not set')
-console.log('   GOOGLE_REFRESH_TOKEN:', process.env.GOOGLE_REFRESH_TOKEN ? '✓ Set' : '✗ Not set')
-console.log('')
 
-// Check if calendar is configured
-console.log('2. Calendar Configuration Status:')
-console.log('   isCalendarConfigured():', isCalendarConfigured() ? '✓ Yes' : '✗ No')
-console.log('')
-
-// Try to parse service account key if present
-if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
-  console.log('3. Service Account Key Validation:')
-  try {
-    const serviceAccount = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY)
-    console.log('   ✓ Valid JSON')
-    console.log('   Type:', serviceAccount.type || 'Not specified')
-    console.log('   Project ID:', serviceAccount.project_id || 'Not specified')
-    console.log('   Client Email:', serviceAccount.client_email || 'Not specified')
-    console.log('   Private Key:', serviceAccount.private_key ? '✓ Present' : '✗ Missing')
-    console.log('   Private Key ID:', serviceAccount.private_key_id ? '✓ Present' : '✗ Missing')
-  } catch (error) {
-    console.log('   ✗ Invalid JSON:', error instanceof Error ? error.message : 'Unknown error')
-    console.log('   Tip: Make sure the entire JSON is on one line with escaped newlines (\\n)')
-  }
-  console.log('')
+if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
+  console.log('\n✗ GOOGLE_SERVICE_ACCOUNT_KEY not found in environment')
+  process.exit(1)
 }
 
-// Check calendar ID format
-if (process.env.GOOGLE_CALENDAR_ID) {
-  console.log('4. Calendar ID Format Check:')
-  const calendarId = process.env.GOOGLE_CALENDAR_ID
+// Analyze the service account key
+console.log('\n2. Analyzing service account key:')
+const keyString = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
+
+// Check key format
+console.log('   Key length:', keyString.length, 'characters')
+console.log('   Starts with {:', keyString.startsWith('{'))
+console.log('   Ends with }:', keyString.endsWith('}'))
+
+// Check for common issues
+const hasLiteralNewlines = keyString.includes('\n')
+const hasEscapedNewlines = keyString.includes('\\n')
+console.log('   Contains literal newlines (\\n):', hasLiteralNewlines)
+console.log('   Contains escaped newlines (\\\\n):', hasEscapedNewlines)
+
+// Try parsing the key
+let serviceAccount: any = null
+let parseError: string | null = null
+
+try {
+  serviceAccount = JSON.parse(keyString)
+  console.log('\n3. Successfully parsed service account JSON')
+} catch (error: any) {
+  parseError = error.message
+  console.log('\n3. Failed to parse service account JSON:', error.message)
   
-  if (calendarId === 'primary') {
-    console.log('   ✓ Using primary calendar')
-  } else if (calendarId.includes('@')) {
-    if (calendarId.endsWith('@group.calendar.google.com')) {
-      console.log('   ✓ Valid calendar ID format (group calendar)')
-    } else if (calendarId.includes('@gmail.com') || calendarId.includes('@googlemail.com')) {
-      console.log('   ✓ Valid calendar ID format (user calendar)')
-    } else {
-      console.log('   ⚠️  Unusual calendar ID format, but might still be valid')
-    }
-  } else {
-    console.log('   ⚠️  Calendar ID doesn\'t look like an email address')
-    console.log('   Expected format: either "primary" or "calendar-id@group.calendar.google.com"')
+  // Try to extract and examine the private key
+  const privateKeyMatch = keyString.match(/"private_key"\s*:\s*"([^"]+)"/s)
+  if (privateKeyMatch) {
+    const privateKey = privateKeyMatch[1]
+    console.log('\n   Extracted private key details:')
+    console.log('   - Length:', privateKey.length)
+    console.log('   - Has BEGIN header:', privateKey.includes('BEGIN'))
+    console.log('   - Has END footer:', privateKey.includes('END'))
+    console.log('   - Contains literal \\n:', privateKey.includes('\n'))
+    console.log('   - Contains escaped \\\\n:', privateKey.includes('\\n'))
   }
-  console.log('')
 }
 
-// Provide setup instructions if not configured
-if (!isCalendarConfigured()) {
-  console.log('=== Setup Instructions ===\n')
-  console.log('To enable Google Calendar integration, you need either:')
-  console.log('')
-  console.log('Option 1: Service Account (Recommended for server-to-server):')
-  console.log('1. Create a service account in Google Cloud Console')
-  console.log('2. Download the JSON key file')
-  console.log('3. Convert it to a single line: cat key.json | jq -c . | pbcopy')
-  console.log('4. Add to .env.local: GOOGLE_SERVICE_ACCOUNT_KEY=<paste here>')
-  console.log('5. Set GOOGLE_CALENDAR_ID to your calendar ID or "primary"')
-  console.log('6. Share your calendar with the service account email (with "Make changes to events" permission)')
-  console.log('')
-  console.log('Option 2: OAuth2 (For user-specific calendars):')
-  console.log('1. Set up OAuth2 credentials in Google Cloud Console')
-  console.log('2. Add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN')
-  console.log('3. Set GOOGLE_CALENDAR_ID to your calendar ID or "primary"')
+// If parsing succeeded, analyze the service account
+if (serviceAccount) {
+  console.log('\n4. Service account details:')
+  console.log('   Type:', serviceAccount.type)
+  console.log('   Project ID:', serviceAccount.project_id)
+  console.log('   Private key ID:', serviceAccount.private_key_id)
+  console.log('   Client email:', serviceAccount.client_email)
+  console.log('   Client ID:', serviceAccount.client_id)
+  console.log('   Auth URI:', serviceAccount.auth_uri)
+  console.log('   Token URI:', serviceAccount.token_uri)
+  console.log('   Auth provider:', serviceAccount.auth_provider_x509_cert_url)
+  console.log('   Client cert URL:', serviceAccount.client_x509_cert_url)
+  
+  // Analyze private key
+  if (serviceAccount.private_key) {
+    const privateKey = serviceAccount.private_key
+    console.log('\n5. Private key analysis:')
+    console.log('   Length:', privateKey.length, 'characters')
+    console.log('   Starts with BEGIN:', privateKey.startsWith('-----BEGIN'))
+    console.log('   Ends with END:', privateKey.endsWith('-----\n') || privateKey.endsWith('-----'))
+    console.log('   Line count:', privateKey.split('\n').length)
+    
+    // Check if key has proper newlines
+    const lines = privateKey.split('\n')
+    console.log('   First line:', lines[0])
+    console.log('   Last line:', lines[lines.length - 1] || lines[lines.length - 2])
+  } else {
+    console.log('\n5. ✗ No private_key field found')
+  }
+  
+  // Try to authenticate
+  console.log('\n6. Attempting authentication:')
+  ;(async () => {
+    try {
+      const auth = new google.auth.GoogleAuth({
+        credentials: serviceAccount,
+        scopes: ['https://www.googleapis.com/auth/calendar']
+      })
+      
+      console.log('   ✓ GoogleAuth instance created')
+      
+      const client = await auth.getClient()
+      console.log('   ✓ Auth client obtained')
+      
+      // Try to get an access token
+      const accessToken = await client.getAccessToken()
+      console.log('   ✓ Access token obtained:', accessToken.token ? 'Yes' : 'No')
+      
+      // Try to access calendar
+      const calendar = google.calendar({ version: 'v3', auth: client })
+      const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary'
+      
+      console.log('\n7. Testing calendar access:')
+      console.log('   Calendar ID:', calendarId)
+      
+      try {
+        const response = await calendar.calendars.get({ calendarId })
+        console.log('   ✓ Calendar accessed successfully')
+        console.log('   Calendar name:', response.data.summary)
+        console.log('   Time zone:', response.data.timeZone)
+      } catch (calError: any) {
+        console.log('   ✗ Calendar access failed:', calError.message)
+        if (calError.code === 404) {
+          console.log('   → Calendar not found. Check GOOGLE_CALENDAR_ID')
+        } else if (calError.code === 403) {
+          console.log('   → Permission denied. Share calendar with:', serviceAccount.client_email)
+        }
+      }
+      
+    } catch (authError: any) {
+      console.log('   ✗ Authentication failed:', authError.message)
+      console.log('\n   Error details:')
+      console.log('   Code:', authError.code)
+      console.log('   Stack:', authError.stack?.split('\n').slice(0, 5).join('\n'))
+      
+      if (authError.message.includes('ERR_OSSL_UNSUPPORTED')) {
+        console.log('\n   ⚠️  ERR_OSSL_UNSUPPORTED detected!')
+        console.log('   This usually means the private key format is incorrect.')
+        console.log('   Common causes:')
+        console.log('   - Missing or incorrect newline characters in the private key')
+        console.log('   - Double-escaped newlines (\\\\n instead of \\n)')
+        console.log('   - The key was corrupted during copy/paste')
+      }
+    }
+  })().catch(console.error)
+} else {
+  console.log('\n4. Cannot analyze service account - parsing failed')
+  console.log('\n   Attempting to fix common issues:')
+  
+  // Try different parsing strategies
+  const strategies = [
+    {
+      name: 'Replace literal newlines',
+      transform: (s: string) => s.replace(/\n/g, '\\n').replace(/\r/g, '\\r')
+    },
+    {
+      name: 'Fix private key newlines',
+      transform: (s: string) => {
+        return s.replace(/"private_key"\s*:\s*"([^"]+)"/g, (match, key) => {
+          const fixed = key.replace(/\n/g, '\\n').replace(/\r/g, '\\r')
+          return `"private_key":"${fixed}"`
+        })
+      }
+    },
+    {
+      name: 'Unescape double-escaped newlines',
+      transform: (s: string) => s.replace(/\\\\n/g, '\\n')
+    }
+  ]
+  
+  for (const strategy of strategies) {
+    console.log(`\n   Trying: ${strategy.name}`)
+    try {
+      const transformed = strategy.transform(keyString)
+      const parsed = JSON.parse(transformed)
+      console.log('   ✓ Success! This strategy works.')
+      console.log('\n   To fix your .env.local, use this format:')
+      console.log('   GOOGLE_SERVICE_ACCOUNT_KEY=' + transformed.substring(0, 100) + '...')
+      break
+    } catch (e) {
+      console.log('   ✗ Failed')
+    }
+  }
 }
 
-console.log('\n=== Common Issues ===\n')
-console.log('1. "Calendar not found" - Make sure the calendar ID is correct')
-console.log('2. "Permission denied" - Share the calendar with the service account email')
-console.log('3. "Invalid JSON" - Ensure the service account key is properly escaped')
-console.log('4. Events not appearing - Check that events are being created in the correct calendar')
-console.log('5. Wrong timezone - Events are created in Europe/London timezone by default')
-
-process.exit(0)
+console.log('\n=== End of debug script ===\n')

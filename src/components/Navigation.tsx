@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, ShieldCheckIcon, UsersIcon, BuildingOfficeIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, ShieldCheckIcon, UsersIcon, BuildingOfficeIcon, DocumentTextIcon } from '@heroicons/react/24/outline'
 import { useEffect, useState, useMemo } from 'react'
 import { getUnreadMessageCount } from '@/app/actions/messagesActions'
 import { usePermissions } from '@/contexts/PermissionContext'
@@ -20,14 +20,21 @@ type NavigationItemWithPermission = {
 const primaryNavigation: NavigationItemWithPermission[] = [
   { name: 'Dashboard', href: '/', icon: HomeIcon, permission: { module: 'dashboard', action: 'view' } },
   { name: 'Events', href: '/events', icon: CalendarIcon, permission: { module: 'events', action: 'view' } },
-  { name: 'Private Bookings', href: '/private-bookings', icon: BuildingOfficeIcon, permission: { module: 'private_bookings', action: 'view' } },
   { name: 'Customers', href: '/customers', icon: UserGroupIcon, permission: { module: 'customers', action: 'view' } },
   { name: 'Messages', href: '/messages', icon: EnvelopeIcon, permission: { module: 'messages', action: 'view' } },
 ];
 
 const secondaryNavigation: NavigationItemWithPermission[] = [
+  { name: 'Private Bookings', href: '/private-bookings', icon: BuildingOfficeIcon, permission: { module: 'private_bookings', action: 'view' } },
+];
+
+const tertiaryNavigation: NavigationItemWithPermission[] = [
   { name: 'Employees', href: '/employees', icon: IdentificationIcon, permission: { module: 'employees', action: 'view' } },
   { name: 'Quick Add Note', href: '#', icon: PencilSquareIcon, action: true },
+];
+
+const quaternaryNavigation: NavigationItemWithPermission[] = [
+  { name: 'Invoices', href: '/invoices', icon: DocumentTextIcon, permission: { module: 'invoices', action: 'view' } },
   { name: 'Settings', href: '/settings', icon: CogIcon, permission: { module: 'settings', action: 'view' } },
 ];
 
@@ -68,6 +75,20 @@ export function Navigation({ onQuickAddNoteClick }: NavigationProps) {
   const filteredSecondaryNav = useMemo(() => {
     if (permissionsLoading) return [];
     return secondaryNavigation.filter(item => 
+      !item.permission || hasPermission(item.permission.module, item.permission.action)
+    );
+  }, [hasPermission, permissionsLoading]);
+
+  const filteredTertiaryNav = useMemo(() => {
+    if (permissionsLoading) return [];
+    return tertiaryNavigation.filter(item => 
+      !item.permission || hasPermission(item.permission.module, item.permission.action)
+    );
+  }, [hasPermission, permissionsLoading]);
+
+  const filteredQuaternaryNav = useMemo(() => {
+    if (permissionsLoading) return [];
+    return quaternaryNavigation.filter(item => 
       !item.permission || hasPermission(item.permission.module, item.permission.action)
     );
   }, [hasPermission, permissionsLoading]);
@@ -153,6 +174,24 @@ export function Navigation({ onQuickAddNoteClick }: NavigationProps) {
       )}
       
       {filteredSecondaryNav.map(renderNavItem)}
+      
+      {/* Divider between secondary and tertiary */}
+      {filteredSecondaryNav.length > 0 && filteredTertiaryNav.length > 0 && (
+        <div className="pt-2 pb-1">
+          <hr className="border-t border-green-600 opacity-75" />
+        </div>
+      )}
+      
+      {filteredTertiaryNav.map(renderNavItem)}
+      
+      {/* Divider between tertiary and quaternary */}
+      {filteredTertiaryNav.length > 0 && filteredQuaternaryNav.length > 0 && (
+        <div className="pt-2 pb-1">
+          <hr className="border-t border-green-600 opacity-75" />
+        </div>
+      )}
+      
+      {filteredQuaternaryNav.map(renderNavItem)}
     </nav>
   )
 } 

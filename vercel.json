@@ -7,6 +7,14 @@
     {
       "path": "/api/jobs/process",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/recurring-invoices",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/invoice-reminders",
+      "schedule": "0 10 * * *"
     }
   ]
 } 
