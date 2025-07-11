@@ -22,21 +22,21 @@ export default function LoyaltyDemoPage() {
           <div>
             <h3 className="font-medium text-gray-900 mb-2">1. Customer Self Check-In</h3>
             <p className="text-sm text-gray-600 mb-3">
-              Customers scan QR code at their table and enter their phone number to check in
+              Customers scan the event QR code and enter their phone number to check in
             </p>
             <div className="flex gap-3">
               <a
-                href="/checkin?event=event-123&table=5"
+                href="/checkin?event=event-123"
                 target="_blank"
                 className="inline-flex items-center px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
               >
-                Try Check-In (Table 5)
+                Try Check-In
               </a>
               <a
-                href="/loyalty/table-qr"
+                href="/loyalty/event-qr"
                 className="inline-flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
               >
-                View Table QR Codes
+                View Event QR Code
               </a>
             </div>
           </div>
@@ -139,7 +139,8 @@ export default function LoyaltyDemoPage() {
         <ul className="space-y-1">
           <li>• All data is mocked - no database changes are made</li>
           <li>• Check-ins and redemptions are stored in memory only</li>
-          <li>• QR codes link to the local development server</li>
+          <li>• One QR code per event (not per table)</li>
+          <li>• System identifies customers by their phone number from booking</li>
           <li>• Timer-based features (5-minute codes) work in real-time</li>
         </ul>
       </div>

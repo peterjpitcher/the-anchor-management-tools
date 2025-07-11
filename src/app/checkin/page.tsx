@@ -14,7 +14,6 @@ function CheckInPageContent() {
   const [bookingData, setBookingData] = useState<any>(null);
   
   const eventId = searchParams.get('event') || todaysEvent.id;
-  const tableNumber = searchParams.get('table') || '';
 
   const handleCheckIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,9 +100,6 @@ function CheckInPageContent() {
             <div className="text-center mb-8">
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome to {todaysEvent.name}!</h1>
               <p className="text-gray-600">Check in to earn your VIP points</p>
-              {tableNumber && (
-                <p className="mt-2 text-sm text-gray-500">Table {tableNumber}</p>
-              )}
             </div>
             
             <form onSubmit={handleCheckIn} className="space-y-6">

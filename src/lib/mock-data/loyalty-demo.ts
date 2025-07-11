@@ -47,7 +47,6 @@ export interface Booking {
   eventId: string;
   phoneNumber: string;
   partySize: number;
-  tableNumber?: number;
   checkedIn: boolean;
   checkInTime?: string;
 }
@@ -209,7 +208,6 @@ export const mockBookings: Booking[] = [
     eventId: 'event-123',
     phoneNumber: '+447700900001',
     partySize: 4,
-    tableNumber: 5,
     checkedIn: false
   },
   {
@@ -218,7 +216,6 @@ export const mockBookings: Booking[] = [
     eventId: 'event-123',
     phoneNumber: '+447700900002',
     partySize: 2,
-    tableNumber: 3,
     checkedIn: false
   },
   {
@@ -227,7 +224,6 @@ export const mockBookings: Booking[] = [
     eventId: 'event-123',
     phoneNumber: '+447700900003',
     partySize: 6,
-    tableNumber: 8,
     checkedIn: true,
     checkInTime: '19:15'
   }
@@ -301,7 +297,7 @@ export function generateRedemptionCode(rewardId: string): string {
                 'GEN';
   
   const random = Math.floor(Math.random() * 9000) + 1000;
-  return `${prefix}-${random}`;
+  return `${prefix}${random}`;
 }
 
 export function getPointsForEvent(tier: string, eventType: string): number {
