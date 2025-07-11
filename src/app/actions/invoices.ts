@@ -222,11 +222,9 @@ export async function createInvoice(formData: FormData) {
       quantity: item.quantity,
       unit_price: item.unit_price,
       discount_percentage: item.discount_percentage,
-      vat_rate: item.vat_rate,
-      subtotal_amount: item.quantity * item.unit_price,
-      discount_amount: (item.quantity * item.unit_price) * (item.discount_percentage / 100),
-      vat_amount: 0, // Will be calculated by generated column
-      total_amount: 0 // Will be calculated by generated column
+      vat_rate: item.vat_rate
+      // Note: subtotal_amount, discount_amount, vat_amount, and total_amount are GENERATED columns
+      // and will be automatically calculated by the database
     }))
 
     const { error: lineItemsError } = await supabase
