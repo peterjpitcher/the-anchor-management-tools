@@ -11,8 +11,8 @@ jobs:
     steps:
       - name: Check Required Secrets
         run: |
-          if [ -z "${{ secrets.CRON_SECRET_KEY }}" ]; then
-            echo "Error: CRON_SECRET_KEY secret is not set"
+          if [ -z "${{ secrets.CRON_SECRET }}" ]; then
+            echo "Error: CRON_SECRET secret is not set"
             exit 1
           fi
           echo "Required secrets are set"
@@ -26,7 +26,7 @@ jobs:
           echo "Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 
           response=$(curl -X GET "${VERCEL_URL}/api/cron/reminders" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -H "Content-Type: application/json" \
             -w "\n%{http_code}\n%{url_effective}\n%{time_total}\n%{size_download}\n%{speed_download}" \
             -L \

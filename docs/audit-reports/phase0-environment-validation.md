@@ -12,7 +12,7 @@ All required environment variables are properly defined:
 - ✅ `SUPABASE_SERVICE_ROLE_KEY` - Service role key for server operations
 - ✅ `NEXT_PUBLIC_APP_URL` - Application URL
 - ✅ `NEXT_PUBLIC_CONTACT_PHONE_NUMBER` - Contact phone for SMS
-- ✅ `CRON_SECRET_KEY` - Secret key for cron job authentication
+- ✅ `CRON_SECRET` - Secret key for cron job authentication
 
 ### Optional Variables
 - ✅ `TWILIO_ACCOUNT_SID` - Twilio account identifier
