@@ -19,7 +19,19 @@ export async function GET(request: NextRequest) {
     
     const supabase = createAdminClient()
     
+    // First, backfill any missing customer category stats
+    console.log('[Cron] Backfilling customer category stats...')
+    const { data: backfillData, error: backfillError } = await supabase.rpc('backfill_customer_category_stats')
+    
+    if (backfillError) {
+      console.error('[Cron] Error backfilling customer stats:', backfillError)
+      // Continue anyway - partial data is better than none
+    } else {
+      console.log(`[Cron] Backfilled ${backfillData || 0} customer category stats`)
+    }
+    
     // Call the database function to apply labels retroactively
+    console.log('[Cron] Applying customer labels retroactively...')
     const { data, error } = await supabase.rpc('apply_customer_labels_retroactively')
     
     if (error) {

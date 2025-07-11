@@ -358,6 +358,18 @@ export async function applyLabelsRetroactively(): Promise<{
       return { error: 'You do not have permission to apply labels retroactively' }
     }
 
+    // First, backfill any missing customer category stats
+    console.log('Backfilling customer category stats...')
+    const { data: backfillData, error: backfillError } = await supabase
+      .rpc('backfill_customer_category_stats')
+    
+    if (backfillError) {
+      console.error('Error backfilling customer stats:', backfillError)
+      // Continue anyway - partial data is better than none
+    } else {
+      console.log(`Backfilled ${backfillData || 0} customer category stats`)
+    }
+
     // Call the RPC function
     const { data, error } = await supabase
       .rpc('apply_customer_labels_retroactively')
