@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { getQuotes } from '@/app/actions/quotes'
+import { getQuotes, getQuoteSummary } from '@/app/actions/quotes'
 import { Button } from '@/components/ui/Button'
-import { Plus, FileText, CheckCircle, XCircle, Clock, ArrowRight } from 'lucide-react'
+import { Plus, FileText, TrendingUp, Clock, AlertCircle, FileEdit, ChevronLeft, Download, Package, ArrowRight } from 'lucide-react'
 import type { QuoteWithDetails, QuoteStatus } from '@/types/invoices'
 
 export default function QuotesPage() {
@@ -14,26 +14,39 @@ export default function QuotesPage() {
   const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<QuoteStatus | 'all'>('all')
   const [searchTerm, setSearchTerm] = useState('')
+  const [summary, setSummary] = useState({
+    total_pending: 0,
+    total_expired: 0,
+    total_accepted: 0,
+    draft_count: 0
+  })
 
   useEffect(() => {
-    async function loadQuotes() {
-      try {
-        const result = await getQuotes(statusFilter === 'all' ? undefined : statusFilter)
-
-        if (result.error || !result.quotes) {
-          throw new Error(result.error || 'Failed to load quotes')
-        }
-
-        setQuotes(result.quotes)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load data')
-      } finally {
-        setLoading(false)
-      }
-    }
-    
-    loadQuotes()
+    loadData()
   }, [statusFilter])
+
+  async function loadData() {
+    try {
+      const [quotesResult, summaryResult] = await Promise.all([
+        getQuotes(statusFilter === 'all' ? undefined : statusFilter),
+        getQuoteSummary()
+      ])
+
+      if (quotesResult.error || !quotesResult.quotes) {
+        throw new Error(quotesResult.error || 'Failed to load quotes')
+      }
+
+      setQuotes(quotesResult.quotes)
+      
+      if (summaryResult.summary) {
+        setSummary(summaryResult.summary)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load data')
+    } finally {
+      setLoading(false)
+    }
+  }
 
 
   function getStatusColor(status: QuoteStatus): string {
@@ -42,17 +55,8 @@ export default function QuotesPage() {
       case 'sent': return 'bg-blue-100 text-blue-800'
       case 'accepted': return 'bg-green-100 text-green-800'
       case 'rejected': return 'bg-red-100 text-red-800'
-      case 'expired': return 'bg-orange-100 text-orange-800'
+      case 'expired': return 'bg-yellow-100 text-yellow-800'
       default: return 'bg-gray-100 text-gray-800'
-    }
-  }
-
-  function getStatusIcon(status: QuoteStatus) {
-    switch (status) {
-      case 'accepted': return <CheckCircle className="h-4 w-4" />
-      case 'rejected': return <XCircle className="h-4 w-4" />
-      case 'expired': return <Clock className="h-4 w-4" />
-      default: return null
     }
   }
 
@@ -78,24 +82,69 @@ export default function QuotesPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-6xl">
-      <div className="mb-8 flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Quotes</h1>
-          <p className="text-muted-foreground">Manage quotes and estimates</p>
+    <div className="p-4 sm:p-6 lg:p-8">
+      <div className="mb-8">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-2xl font-bold">Quotes</h1>
+            <p className="text-gray-600 mt-1">Manage quotes and estimates for your vendors</p>
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline"
+              onClick={() => router.push('/invoices')}
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              Invoices
+            </Button>
+            <Button onClick={() => router.push('/quotes/new')}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Quote
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button 
-            variant="outline"
-            onClick={() => router.push('/invoices')}
-          >
-            <FileText className="h-4 w-4 mr-2" />
-            Invoices
-          </Button>
-          <Button onClick={() => router.push('/quotes/new')}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Quote
-          </Button>
+
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <div className="bg-white rounded-lg shadow-sm border p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Pending</p>
+                <p className="text-2xl font-semibold mt-1">£{summary.total_pending.toFixed(2)}</p>
+              </div>
+              <TrendingUp className="h-8 w-8 text-blue-500" />
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm border p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Expired</p>
+                <p className="text-2xl font-semibold mt-1">£{summary.total_expired.toFixed(2)}</p>
+              </div>
+              <Clock className="h-8 w-8 text-yellow-500" />
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm border p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Accepted</p>
+                <p className="text-2xl font-semibold mt-1">£{summary.total_accepted.toFixed(2)}</p>
+              </div>
+              <TrendingUp className="h-8 w-8 text-green-500" />
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm border p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Drafts</p>
+                <p className="text-2xl font-semibold mt-1">{summary.draft_count}</p>
+              </div>
+              <FileEdit className="h-8 w-8 text-gray-500" />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -106,8 +155,8 @@ export default function QuotesPage() {
       )}
 
       <div className="bg-white rounded-lg shadow-sm border">
-        <div className="p-4 border-b flex flex-col md:flex-row gap-4 justify-between">
-          <div className="flex gap-2">
+        <div className="p-4 border-b flex flex-col md:flex-row gap-4 justify-between items-center">
+          <div className="flex flex-col md:flex-row gap-2 flex-1">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as QuoteStatus | 'all')}
@@ -126,8 +175,14 @@ export default function QuotesPage() {
               placeholder="Search quotes..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 flex-1"
             />
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm">
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </Button>
           </div>
         </div>
 
@@ -178,8 +233,7 @@ export default function QuotesPage() {
                       {new Date(quote.valid_until).toLocaleDateString('en-GB')}
                     </td>
                     <td className="p-4">
-                      <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(quote.status)}`}>
-                        {getStatusIcon(quote.status)}
+                      <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(quote.status)}`}>
                         {quote.status.charAt(0).toUpperCase() + quote.status.slice(1)}
                       </span>
                     </td>
@@ -206,6 +260,35 @@ export default function QuotesPage() {
             </table>
           </div>
         )}
+      </div>
+
+      {/* Quick Actions */}
+      <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Button
+          variant="outline"
+          className="h-24 flex flex-col items-center justify-center gap-2"
+          onClick={() => router.push('/invoices/vendors')}
+        >
+          <FileText className="h-8 w-8" />
+          <span>Vendors</span>
+        </Button>
+        
+        <Button
+          variant="outline"
+          className="h-24 flex flex-col items-center justify-center gap-2"
+          onClick={() => router.push('/invoices/catalog')}
+        >
+          <Package className="h-8 w-8" />
+          <span>Line Item Catalog</span>
+        </Button>
+        
+        <Button
+          variant="outline"
+          className="h-24 flex flex-col items-center justify-center gap-2"
+        >
+          <Download className="h-8 w-8" />
+          <span>Export Quotes</span>
+        </Button>
       </div>
     </div>
   )

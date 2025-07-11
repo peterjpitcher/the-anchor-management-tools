@@ -13,6 +13,8 @@ The Anchor Management Tools is a comprehensive venue management system featuring
 - **Frontend**: Next.js 15.3.3, React 19.1.0, TypeScript, Tailwind CSS 3.4.0
 - **Backend**: Supabase (PostgreSQL with RLS, Auth, Storage)
 - **SMS**: Twilio 5.7.0
+- **Email**: Microsoft Graph API (Office 365/Outlook)
+- **PDF Generation**: Puppeteer 24.12.1
 - **Hosting**: Vercel (serverless)
 - **Validation**: Zod 3.25.56
 - **UI Components**: Custom components with Headless UI, Heroicons, Lucide React
@@ -45,6 +47,8 @@ The Anchor Management Tools is a comprehensive venue management system featuring
 3. **Audit Logging**: logAuditEvent() for all create/update/delete operations
 4. **File Storage**: Always use returned paths from Supabase storage
 5. **SMS**: Phone numbers must be converted to E.164 format (+44...)
+6. **Email**: Invoices and quotes are sent as PDF attachments via Microsoft Graph API
+7. **PDF Generation**: Uses Puppeteer to convert HTML templates to PDF for professional delivery
 
 ### Import Paths to Remember
 - **Supabase Client (Server)**: `import { createClient } from '@/lib/supabase/server'`

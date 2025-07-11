@@ -1,0 +1,196 @@
+import puppeteer from 'puppeteer'
+import { generateCompactInvoiceHTML } from './invoice-template-compact'
+import { generateCompactQuoteHTML } from './quote-template-compact'
+import type { InvoiceWithDetails, QuoteWithDetails } from '@/types/invoices'
+
+// Generate PDF from invoice
+export async function generateInvoicePDF(invoice: InvoiceWithDetails): Promise<Buffer> {
+  let browser = null
+  
+  try {
+    // Launch puppeteer with optimized settings for serverless environments
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process', // Required for some serverless environments
+        '--disable-gpu'
+      ]
+    })
+    
+    const page = await browser.newPage()
+    
+    // Generate HTML with absolute URL for logo
+    const html = generateCompactInvoiceHTML({
+      invoice,
+      logoUrl: process.env.NEXT_PUBLIC_APP_URL 
+        ? `${process.env.NEXT_PUBLIC_APP_URL}/logo-black.png`
+        : undefined
+    })
+    
+    // Set content with proper viewport
+    await page.setViewport({ width: 1200, height: 1600 })
+    await page.setContent(html, { 
+      waitUntil: 'networkidle0',
+      timeout: 30000 // 30 second timeout
+    })
+    
+    // Add custom styles for PDF rendering
+    await page.addStyleTag({
+      content: `
+        @media print {
+          body { -webkit-print-color-adjust: exact; }
+        }
+      `
+    })
+    
+    // Generate PDF with A4 format
+    const pdf = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      preferCSSPageSize: false,
+      margin: {
+        top: '8mm',
+        right: '8mm',
+        bottom: '8mm',
+        left: '8mm'
+      },
+      displayHeaderFooter: false
+    })
+    
+    return Buffer.from(pdf)
+  } catch (error) {
+    console.error('Error generating invoice PDF:', error)
+    throw new Error('Failed to generate PDF')
+  } finally {
+    if (browser) {
+      await browser.close()
+    }
+  }
+}
+
+// Generate PDF from quote
+export async function generateQuotePDF(quote: QuoteWithDetails): Promise<Buffer> {
+  let browser = null
+  
+  try {
+    // Launch puppeteer with optimized settings
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu'
+      ]
+    })
+    
+    const page = await browser.newPage()
+    
+    // Generate HTML with absolute URL for logo
+    const html = generateCompactQuoteHTML({
+      quote,
+      logoUrl: process.env.NEXT_PUBLIC_APP_URL 
+        ? `${process.env.NEXT_PUBLIC_APP_URL}/logo-black.png`
+        : undefined
+    })
+    
+    // Set content with proper viewport
+    await page.setViewport({ width: 1200, height: 1600 })
+    await page.setContent(html, { 
+      waitUntil: 'networkidle0',
+      timeout: 30000
+    })
+    
+    // Add custom styles for PDF rendering
+    await page.addStyleTag({
+      content: `
+        @media print {
+          body { -webkit-print-color-adjust: exact; }
+        }
+      `
+    })
+    
+    // Generate PDF
+    const pdf = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      preferCSSPageSize: false,
+      margin: {
+        top: '8mm',
+        right: '8mm',
+        bottom: '8mm',
+        left: '8mm'
+      },
+      displayHeaderFooter: false
+    })
+    
+    return Buffer.from(pdf)
+  } catch (error) {
+    console.error('Error generating quote PDF:', error)
+    throw new Error('Failed to generate PDF')
+  } finally {
+    if (browser) {
+      await browser.close()
+    }
+  }
+}
+
+// Helper function to generate PDF with custom HTML
+export async function generatePDFFromHTML(html: string): Promise<Buffer> {
+  let browser = null
+  
+  try {
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu'
+      ]
+    })
+    
+    const page = await browser.newPage()
+    
+    await page.setViewport({ width: 1200, height: 1600 })
+    await page.setContent(html, { 
+      waitUntil: 'networkidle0',
+      timeout: 30000
+    })
+    
+    const pdf = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      preferCSSPageSize: false,
+      margin: {
+        top: '15mm',
+        right: '15mm',
+        bottom: '15mm',
+        left: '15mm'
+      }
+    })
+    
+    return Buffer.from(pdf)
+  } catch (error) {
+    console.error('Error generating PDF from HTML:', error)
+    throw new Error('Failed to generate PDF')
+  } finally {
+    if (browser) {
+      await browser.close()
+    }
+  }
+}

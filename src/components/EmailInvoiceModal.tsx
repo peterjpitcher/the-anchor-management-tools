@@ -17,17 +17,23 @@ export function EmailInvoiceModal({ invoice, isOpen, onClose, onSuccess }: Email
   const [recipientEmail, setRecipientEmail] = useState(invoice.vendor?.email || '')
   const [subject, setSubject] = useState(`Invoice ${invoice.invoice_number} from Orange Jelly Limited`)
   const [body, setBody] = useState(
-    `Dear ${invoice.vendor?.contact_name || invoice.vendor?.name || 'Customer'},
+    `Hi ${invoice.vendor?.contact_name || invoice.vendor?.name || 'there'},
 
-Please find attached invoice ${invoice.invoice_number} for your records.
+I hope you're doing well!
+
+Please find attached invoice ${invoice.invoice_number} with the following details:
 
 Amount Due: £${invoice.total_amount.toFixed(2)}
 Due Date: ${new Date(invoice.due_date).toLocaleDateString('en-GB')}
 
-${invoice.notes ? `Notes: ${invoice.notes}\n\n` : ''}If you have any questions about this invoice, please don't hesitate to contact us.
+${invoice.notes ? `${invoice.notes}\n\n` : ''}If you have any questions or need anything at all, just let me know - I'm always happy to help!
 
-Best regards,
-Orange Jelly Limited`
+Many thanks,
+Peter Pitcher
+Orange Jelly Limited
+07995087315
+
+P.S. The invoice is attached as a PDF for easy viewing and printing.`
   )
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -126,10 +132,10 @@ Orange Jelly Limited`
 
           <div className="bg-gray-50 rounded-lg p-4">
             <p className="text-sm text-gray-600">
-              <strong>Attachment:</strong> Invoice {invoice.invoice_number} (HTML format)
+              <strong>Attachment:</strong> Invoice {invoice.invoice_number} (PDF format)
             </p>
             <p className="text-sm text-gray-600 mt-1">
-              The invoice will be attached as an HTML file that can be opened in any browser.
+              The invoice will be attached as a PDF file for professional presentation and easy printing.
             </p>
           </div>
         </div>

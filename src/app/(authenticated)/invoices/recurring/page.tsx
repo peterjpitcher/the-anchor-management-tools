@@ -138,7 +138,7 @@ export default function RecurringInvoicesPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-6xl">
+    <div className="p-4 sm:p-6 lg:p-8">
       <Link href="/invoices">
         <Button variant="ghost" className="mb-4">
           <ChevronLeft className="h-4 w-4 mr-2" />

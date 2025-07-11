@@ -1,11 +1,11 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
-import type { RecurringInvoice, RecurringInvoiceWithDetails, RecurringFrequency, InvoiceLineItemInput } from '@/types/invoices'
+import type { RecurringInvoice, RecurringInvoiceWithDetails, RecurringFrequency, InvoiceLineItemInput, InvoiceStatus } from '@/types/invoices'
 
 // Validation schemas
 const CreateRecurringInvoiceSchema = z.object({
@@ -346,59 +346,27 @@ export async function deleteRecurringInvoice(formData: FormData) {
       return { error: 'Recurring invoice ID is required' }
     }
 
-    // Check if any invoices have been generated
-    const { data: existingInvoices, error: checkError } = await supabase
-      .from('invoices')
-      .select('id')
-      .eq('recurring_invoice_id', id)
-      .limit(1)
+    // Always soft delete (deactivate) recurring invoices
+    const { error: updateError } = await supabase
+      .from('recurring_invoices')
+      .update({ 
+        is_active: false,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
 
-    if (checkError) {
-      console.error('Error checking invoices:', checkError)
-      return { error: 'Failed to check existing invoices' }
+    if (updateError) {
+      console.error('Error deactivating recurring invoice:', updateError)
+      return { error: 'Failed to deactivate recurring invoice' }
     }
 
-    if (existingInvoices && existingInvoices.length > 0) {
-      // Soft delete - just deactivate
-      const { error: updateError } = await supabase
-        .from('recurring_invoices')
-        .update({ 
-          is_active: false,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
-
-      if (updateError) {
-        console.error('Error deactivating recurring invoice:', updateError)
-        return { error: 'Failed to deactivate recurring invoice' }
-      }
-
-      await logAuditEvent({
-        operation_type: 'update',
-        resource_type: 'recurring_invoice',
-        resource_id: id,
-        operation_status: 'success',
-        additional_info: { action: 'deactivated' }
-      })
-    } else {
-      // Hard delete if no invoices generated
-      const { error: deleteError } = await supabase
-        .from('recurring_invoices')
-        .delete()
-        .eq('id', id)
-
-      if (deleteError) {
-        console.error('Error deleting recurring invoice:', deleteError)
-        return { error: 'Failed to delete recurring invoice' }
-      }
-
-      await logAuditEvent({
-        operation_type: 'delete',
-        resource_type: 'recurring_invoice',
-        resource_id: id,
-        operation_status: 'success'
-      })
-    }
+    await logAuditEvent({
+      operation_type: 'update',
+      resource_type: 'recurring_invoice',
+      resource_id: id,
+      operation_status: 'success',
+      additional_info: { action: 'deactivated' }
+    })
 
     revalidatePath('/invoices/recurring')
     
@@ -413,6 +381,7 @@ export async function deleteRecurringInvoice(formData: FormData) {
 export async function generateInvoiceFromRecurring(recurringInvoiceId: string) {
   try {
     const supabase = await createClient()
+    const adminClient = await createAdminClient()
     
     // Check permissions
     const hasPermission = await checkUserPermission('invoices', 'create')
@@ -451,17 +420,106 @@ export async function generateInvoiceFromRecurring(recurringInvoiceId: string) {
     const dueDate = new Date()
     dueDate.setDate(dueDate.getDate() + recurringInvoice.days_before_due)
 
-    // Create invoice using the generate_invoice_from_recurring function
-    const { data: newInvoice, error: generateError } = await supabase
-      .rpc('generate_invoice_from_recurring', {
-        p_recurring_invoice_id: recurringInvoiceId,
-        p_invoice_date: invoiceDate.toISOString(),
-        p_due_date: dueDate.toISOString()
+    // Get next invoice number
+    const { data: seriesData } = await adminClient
+      .from('invoice_series')
+      .select('series_code')
+      .single()
+
+    const seriesCode = seriesData?.series_code || 'INV'
+    
+    // Get and increment the sequence atomically
+    const { data: sequenceData, error: sequenceError } = await adminClient
+      .rpc('get_and_increment_invoice_series', { p_series_code: seriesCode })
+      .single()
+
+    if (sequenceError) {
+      console.error('Error getting invoice number:', sequenceError)
+      return { error: 'Failed to generate invoice number' }
+    }
+
+    // Generate invoice number
+    const encoded = ((sequenceData as any).next_sequence + 5000).toString(36).toUpperCase().padStart(5, '0')
+    const invoiceNumber = `${seriesCode}-${encoded}`
+
+    // Calculate totals (same logic as in createInvoice)
+    let subtotal = 0
+    let totalVat = 0
+
+    if (recurringInvoice.line_items) {
+      recurringInvoice.line_items.forEach((item: any) => {
+        const lineSubtotal = item.quantity * item.unit_price
+        const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
+        const lineAfterDiscount = lineSubtotal - lineDiscount
+        subtotal += lineAfterDiscount
       })
 
-    if (generateError) {
-      console.error('Error generating invoice:', generateError)
-      return { error: 'Failed to generate invoice' }
+      const invoiceDiscount = subtotal * (recurringInvoice.invoice_discount_percentage / 100)
+      const afterInvoiceDiscount = subtotal - invoiceDiscount
+
+      recurringInvoice.line_items.forEach((item: any) => {
+        const lineSubtotal = item.quantity * item.unit_price
+        const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
+        const lineAfterDiscount = lineSubtotal - lineDiscount
+        const itemShare = subtotal > 0 ? lineAfterDiscount / subtotal : 0
+        const itemAfterInvoiceDiscount = lineAfterDiscount - (invoiceDiscount * itemShare)
+        const itemVat = itemAfterInvoiceDiscount * (item.vat_rate / 100)
+        totalVat += itemVat
+      })
+    }
+
+    const invoiceDiscountAmount = subtotal * (recurringInvoice.invoice_discount_percentage / 100)
+    const totalAmount = subtotal - invoiceDiscountAmount + totalVat
+
+    // Create invoice
+    const { data: newInvoice, error: invoiceError } = await supabase
+      .from('invoices')
+      .insert({
+        invoice_number: invoiceNumber,
+        vendor_id: recurringInvoice.vendor_id,
+        invoice_date: invoiceDate.toISOString().split('T')[0],
+        due_date: dueDate.toISOString().split('T')[0],
+        reference: recurringInvoice.reference,
+        invoice_discount_percentage: recurringInvoice.invoice_discount_percentage,
+        subtotal_amount: subtotal,
+        discount_amount: invoiceDiscountAmount,
+        vat_amount: totalVat,
+        total_amount: totalAmount,
+        notes: recurringInvoice.notes,
+        internal_notes: recurringInvoice.internal_notes,
+        status: 'draft' as InvoiceStatus
+      })
+      .select()
+      .single()
+
+    if (invoiceError) {
+      console.error('Error creating invoice:', invoiceError)
+      return { error: 'Failed to create invoice' }
+    }
+
+    // Create line items
+    if (recurringInvoice.line_items && recurringInvoice.line_items.length > 0) {
+      const lineItemsToInsert = recurringInvoice.line_items.map((item: any) => ({
+        invoice_id: newInvoice.id,
+        catalog_item_id: item.catalog_item_id || null,
+        description: item.description,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        discount_percentage: item.discount_percentage || 0,
+        vat_rate: item.vat_rate
+        // GENERATED columns excluded
+      }))
+
+      const { error: lineItemsError } = await supabase
+        .from('invoice_line_items')
+        .insert(lineItemsToInsert)
+
+      if (lineItemsError) {
+        console.error('Error creating line items:', lineItemsError)
+        // Rollback invoice creation
+        await supabase.from('invoices').delete().eq('id', newInvoice.id)
+        return { error: 'Failed to create invoice line items' }
+      }
     }
 
     // Update next invoice date

@@ -89,7 +89,7 @@ export default function ConvertQuotePage({ params }: { params: Promise<{ id: str
 
   if (!quote) {
     return (
-      <div className="container mx-auto p-6 max-w-2xl">
+      <div className="p-4 sm:p-6 lg:p-8">
         <div className="text-center">
           <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
           <p className="text-red-600 mb-4">{error || 'Quote not found'}</p>
@@ -105,7 +105,7 @@ export default function ConvertQuotePage({ params }: { params: Promise<{ id: str
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-2xl">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="mb-8">
         <Button
           variant="ghost"

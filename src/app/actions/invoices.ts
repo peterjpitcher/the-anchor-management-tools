@@ -186,7 +186,14 @@ export async function createInvoice(formData: FormData) {
     const totalAmount = afterInvoiceDiscount + totalVat
 
     // Get next invoice number
-    const invoiceNumber = await getNextInvoiceNumber('INV')
+    let invoiceNumber: string
+    try {
+      invoiceNumber = await getNextInvoiceNumber('INV')
+    } catch (error) {
+      console.error('Failed to generate invoice number:', error)
+      // Fallback to timestamp-based number for debugging
+      invoiceNumber = `FALLBACK-${Date.now()}`
+    }
 
     // Create invoice
     const { data: invoice, error: invoiceError } = await supabase

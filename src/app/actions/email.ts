@@ -120,6 +120,122 @@ export async function sendInvoiceViaEmail(formData: FormData) {
   }
 }
 
+// Send chase payment email for overdue invoice
+export async function sendChasePaymentEmail(formData: FormData) {
+  try {
+    const supabase = await createClient()
+    
+    // Check permissions
+    const hasPermission = await checkUserPermission('invoices', 'edit')
+    if (!hasPermission) {
+      return { error: 'You do not have permission to send payment reminders' }
+    }
+
+    // Check if email is configured
+    if (!isGraphConfigured()) {
+      return { error: 'Email service is not configured. Please contact your administrator.' }
+    }
+
+    // Validate input
+    const validatedData = SendInvoiceEmailSchema.parse({
+      invoiceId: formData.get('invoiceId'),
+      recipientEmail: formData.get('recipientEmail'),
+      subject: formData.get('subject') || undefined,
+      body: formData.get('body') || undefined
+    })
+
+    // Get invoice details
+    const invoiceResult = await getInvoice(validatedData.invoiceId)
+    if (invoiceResult.error || !invoiceResult.invoice) {
+      return { error: 'Invoice not found' }
+    }
+
+    const invoice = invoiceResult.invoice
+    
+    // Calculate days overdue
+    const dueDate = new Date(invoice.due_date)
+    const today = new Date()
+    const daysOverdue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24))
+    
+    // Ensure invoice is actually overdue
+    if (daysOverdue <= 0) {
+      return { error: 'Invoice is not yet overdue' }
+    }
+    
+    // Calculate outstanding amount
+    const outstandingAmount = invoice.total_amount - invoice.paid_amount
+
+    // Default subject and body for chase
+    const defaultSubject = `Gentle reminder: Invoice ${invoice.invoice_number} - ${daysOverdue} days overdue`
+    const defaultBody = `Hi ${invoice.vendor?.contact_name || invoice.vendor?.name || 'there'},
+
+I hope you're well!
+
+Just a gentle reminder that invoice ${invoice.invoice_number} was due on ${dueDate.toLocaleDateString('en-GB')} and is now ${daysOverdue} ${daysOverdue === 1 ? 'day' : 'days'} overdue.
+
+Amount Outstanding: £${outstandingAmount.toFixed(2)}
+
+I understand things can get busy, so this is just a friendly nudge. If there's anything I can help with or if you need to discuss payment arrangements, please don't hesitate to get in touch.
+
+Many thanks,
+Peter Pitcher
+Orange Jelly Limited
+07995087315
+
+P.S. I've attached a copy of the invoice for your reference.`
+
+    // Send email with overridden defaults
+    const result = await sendInvoiceEmail(
+      invoice,
+      validatedData.recipientEmail,
+      validatedData.subject || defaultSubject,
+      validatedData.body || defaultBody
+    )
+
+    if (!result.success) {
+      return { error: result.error || 'Failed to send email' }
+    }
+
+    // Log chase email sent
+    const { error: logError } = await supabase
+      .from('invoice_email_logs')
+      .insert({
+        invoice_id: validatedData.invoiceId,
+        sent_to: validatedData.recipientEmail,
+        sent_by: (await supabase.auth.getUser()).data.user?.id,
+        subject: validatedData.subject || defaultSubject,
+        body: validatedData.body || defaultBody,
+        status: 'sent' as const,
+        email_type: 'chase' as const
+      })
+
+    if (logError) {
+      console.error('Error logging chase email:', logError)
+    }
+
+    await logAuditEvent({
+      operation_type: 'update',
+      resource_type: 'invoice',
+      resource_id: validatedData.invoiceId,
+      operation_status: 'success',
+      additional_info: { 
+        action: 'chase_email_sent',
+        recipient: validatedData.recipientEmail,
+        invoice_number: invoice.invoice_number,
+        days_overdue: daysOverdue
+      }
+    })
+
+    return { success: true, messageId: result.messageId, daysOverdue }
+  } catch (error) {
+    console.error('Error in sendChasePaymentEmail:', error)
+    if (error instanceof z.ZodError) {
+      return { error: error.errors[0].message }
+    }
+    return { error: 'An unexpected error occurred' }
+  }
+}
+
 // Send quote via email
 export async function sendQuoteViaEmail(formData: FormData) {
   try {

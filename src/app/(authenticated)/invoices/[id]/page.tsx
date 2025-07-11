@@ -7,6 +7,7 @@ import { getEmailConfigStatus } from '@/app/actions/email'
 import { Button } from '@/components/ui/Button'
 import { Download, Mail, Edit, Trash2, Copy, ChevronLeft, CheckCircle, XCircle, Clock } from 'lucide-react'
 import { EmailInvoiceModal } from '@/components/EmailInvoiceModal'
+import { ChasePaymentModal } from '@/components/ChasePaymentModal'
 import type { InvoiceWithDetails, InvoiceStatus } from '@/types/invoices'
 
 export default function InvoiceDetailPage() {
@@ -17,6 +18,7 @@ export default function InvoiceDetailPage() {
   const [actionLoading, setActionLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showEmailModal, setShowEmailModal] = useState(false)
+  const [showChaseModal, setShowChaseModal] = useState(false)
   const [emailConfigured, setEmailConfigured] = useState(false)
 
   const invoiceId = params.id as string
@@ -179,7 +181,7 @@ export default function InvoiceDetailPage() {
   }, 0) || 0
 
   return (
-    <div className="container mx-auto p-6 max-w-6xl">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="mb-6">
         <Button
           variant="ghost"
@@ -239,14 +241,28 @@ export default function InvoiceDetailPage() {
             )}
 
             {emailConfigured && (
-              <Button
-                variant="outline"
-                onClick={() => setShowEmailModal(true)}
-                disabled={actionLoading}
-              >
-                <Mail className="h-4 w-4 mr-2" />
-                Send Email
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowEmailModal(true)}
+                  disabled={actionLoading}
+                >
+                  <Mail className="h-4 w-4 mr-2" />
+                  Send Email
+                </Button>
+                {(invoice.status === 'overdue' || 
+                  (invoice.status === 'sent' && new Date(invoice.due_date) < new Date())) && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowChaseModal(true)}
+                    disabled={actionLoading}
+                    className="border-orange-500 text-orange-600 hover:bg-orange-50"
+                  >
+                    <Clock className="h-4 w-4 mr-2" />
+                    Chase Payment
+                  </Button>
+                )}
+              </>
             )}
 
             <Button
@@ -288,9 +304,10 @@ export default function InvoiceDetailPage() {
               <div>
                 <h3 className="font-medium text-sm text-gray-600 mb-1">From</h3>
                 <p className="font-medium">Orange Jelly Limited</p>
-                <p className="text-sm text-gray-600">123 Business Street</p>
-                <p className="text-sm text-gray-600">London, UK</p>
-                <p className="text-sm text-gray-600">VAT: 315203647</p>
+                <p className="text-sm text-gray-600">The Anchor, Horton Road</p>
+                <p className="text-sm text-gray-600">Stanwell Moor Village, Surrey</p>
+                <p className="text-sm text-gray-600">TW19 6AQ</p>
+                <p className="text-sm text-gray-600">VAT: GB315203647</p>
               </div>
 
               <div>
@@ -512,18 +529,32 @@ export default function InvoiceDetailPage() {
       </div>
 
       {invoice && (
-        <EmailInvoiceModal
-          invoice={invoice}
-          isOpen={showEmailModal}
-          onClose={() => setShowEmailModal(false)}
-          onSuccess={async () => {
-            // Reload invoice to get updated status
-            const result = await getInvoice(invoiceId)
-            if (result.invoice) {
-              setInvoice(result.invoice)
-            }
-          }}
-        />
+        <>
+          <EmailInvoiceModal
+            invoice={invoice}
+            isOpen={showEmailModal}
+            onClose={() => setShowEmailModal(false)}
+            onSuccess={async () => {
+              // Reload invoice to get updated status
+              const result = await getInvoice(invoiceId)
+              if (result.invoice) {
+                setInvoice(result.invoice)
+              }
+            }}
+          />
+          <ChasePaymentModal
+            invoice={invoice}
+            isOpen={showChaseModal}
+            onClose={() => setShowChaseModal(false)}
+            onSuccess={async () => {
+              // Reload invoice to get updated status
+              const result = await getInvoice(invoiceId)
+              if (result.invoice) {
+                setInvoice(result.invoice)
+              }
+            }}
+          />
+        </>
       )}
     </div>
   )

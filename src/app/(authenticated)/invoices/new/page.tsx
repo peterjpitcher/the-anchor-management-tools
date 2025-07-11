@@ -187,7 +187,7 @@ export default function NewInvoicePage() {
   const totals = calculateInvoiceTotal()
 
   return (
-    <div className="container mx-auto p-6 max-w-6xl">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="mb-8">
         <Link href="/invoices">
           <Button variant="ghost" className="mb-4">
