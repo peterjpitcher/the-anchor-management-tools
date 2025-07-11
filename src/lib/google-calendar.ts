@@ -8,7 +8,18 @@ const calendar = google.calendar('v3')
 function parseServiceAccountKey(jsonString: string): any {
   try {
     // First attempt: try parsing as-is
-    return JSON.parse(jsonString)
+    const parsed = JSON.parse(jsonString)
+    
+    // Fix escaped newlines in private key if needed
+    if (parsed.private_key && typeof parsed.private_key === 'string') {
+      // Check if the private key has escaped newlines that need to be converted
+      if (parsed.private_key.includes('\\n') && !parsed.private_key.includes('\n')) {
+        console.log('[Google Calendar] Converting escaped newlines in private key')
+        parsed.private_key = parsed.private_key.replace(/\\n/g, '\n')
+      }
+    }
+    
+    return parsed
   } catch (firstError) {
     try {
       // Second attempt: handle common issues with newlines and quotes
@@ -18,7 +29,17 @@ function parseServiceAccountKey(jsonString: string): any {
         .replace(/\r/g, '\\r')
         .replace(/\t/g, '\\t')
       
-      return JSON.parse(escapedJson)
+      const parsed = JSON.parse(escapedJson)
+      
+      // Fix escaped newlines in private key if needed
+      if (parsed.private_key && typeof parsed.private_key === 'string') {
+        if (parsed.private_key.includes('\\n') && !parsed.private_key.includes('\n')) {
+          console.log('[Google Calendar] Converting escaped newlines in private key')
+          parsed.private_key = parsed.private_key.replace(/\\n/g, '\n')
+        }
+      }
+      
+      return parsed
     } catch (secondError) {
       // Third attempt: handle private key format issues
       try {
@@ -36,15 +57,28 @@ function parseServiceAccountKey(jsonString: string): any {
           }
         )
         
-        return JSON.parse(fixedJson)
+        const parsed = JSON.parse(fixedJson)
+        
+        // Fix escaped newlines in private key if needed
+        if (parsed.private_key && typeof parsed.private_key === 'string') {
+          if (parsed.private_key.includes('\\n') && !parsed.private_key.includes('\n')) {
+            console.log('[Google Calendar] Converting escaped newlines in private key')
+            parsed.private_key = parsed.private_key.replace(/\\n/g, '\n')
+          }
+        }
+        
+        return parsed
       } catch (thirdError) {
         // If all attempts fail, provide helpful error message
         console.error('Failed to parse Google Service Account Key.')
         console.error('Please ensure your GOOGLE_SERVICE_ACCOUNT_KEY environment variable contains valid JSON.')
         console.error('Common issues:')
-        console.error('1. Newlines in the private key must be escaped as \\n')
-        console.error('2. The entire JSON must be on a single line or properly escaped')
+        console.error('1. Newlines in the private key must be actual newlines, not \\n literal characters')
+        console.error('2. The entire JSON must be valid and properly formatted')
         console.error('3. Check for any unescaped quotes within string values')
+        console.error('')
+        console.error('To fix ERR_OSSL_UNSUPPORTED errors:')
+        console.error('Run: tsx scripts/fix-google-service-key.ts')
         console.error('')
         console.error('Example format:')
         console.error('{"type":"service_account","private_key":"-----BEGIN PRIVATE KEY-----\\nMIIE...\\n-----END PRIVATE KEY-----\\n",...}')

@@ -43,12 +43,14 @@ export default function ProfilePage() {
       }
 
       // First check if profile exists
-      let { data: existingProfile, error: fetchError } = await supabase
+      const { data: fetchedProfile, error: fetchError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single()
 
+      let existingProfile = fetchedProfile
+      
       if (fetchError && fetchError.code === 'PGRST116') {
         // Profile doesn't exist, create it
         const { data: newProfile, error: createError } = await supabase

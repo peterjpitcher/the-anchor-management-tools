@@ -40,7 +40,8 @@ export type ModuleName =
   | 'reports'
   | 'users'
   | 'roles'
-  | 'private_bookings';
+  | 'private_bookings'
+  | 'invoices';
 
 export type ActionType = 
   | 'view'
