@@ -436,27 +436,6 @@ export default async function PrivateBookingsPage() {
           </div>
         )}
 
-        {/* Contact Footer */}
-        <div className="mt-12 bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-8 text-white text-center">
-          <h3 className="text-2xl font-bold mb-2">Need Help with Bookings?</h3>
-          <p className="text-blue-100 mb-4">Contact The Anchor team for assistance</p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <a 
-              href="tel:01753682707" 
-              className="flex items-center gap-2 px-6 py-3 bg-white text-blue-600 rounded-lg hover:bg-blue-50 transition-colors font-medium"
-            >
-              <PhoneIcon className="h-5 w-5" />
-              01753 682 707
-            </a>
-            <a 
-              href="mailto:manager@the-anchor.pub" 
-              className="flex items-center gap-2 px-6 py-3 bg-blue-700 text-white rounded-lg hover:bg-blue-800 transition-colors font-medium"
-            >
-              <EnvelopeIcon className="h-5 w-5" />
-              manager@the-anchor.pub
-            </a>
-          </div>
-        </div>
       </div>
     </div>
   )

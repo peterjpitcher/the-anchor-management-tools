@@ -7,6 +7,7 @@ import { logAuditEvent } from './audit'
 import { sendBookingConfirmationSync } from './sms'
 import { withRetry } from '@/lib/supabase-retry'
 import { getEventAvailableCapacity, invalidateEventCache } from '@/lib/events'
+import { formatPhoneForStorage } from '@/lib/validation'
 
 // Booking validation schema
 const bookingSchema = z.object({
@@ -42,10 +43,77 @@ export async function createBooking(formData: FormData): Promise<CreateBookingRe
       return { error: 'Unauthorized' }
     }
 
+    let customerId = formData.get('customer_id') as string
+
+    // Check if we need to create a new customer
+    if (formData.get('create_customer') === 'true') {
+      const firstName = formData.get('customer_first_name') as string
+      const lastName = formData.get('customer_last_name') as string
+      const mobileNumber = formData.get('customer_mobile_number') as string
+
+      if (!firstName || !lastName || !mobileNumber) {
+        return { error: 'Customer details are required' }
+      }
+
+      // Normalize phone number
+      let formattedPhone: string
+      try {
+        formattedPhone = formatPhoneForStorage(mobileNumber)
+      } catch (error) {
+        return { error: 'Invalid phone number format. Please use UK format (07XXX XXXXXX)' }
+      }
+
+      // Check if customer already exists with this phone number
+      const { data: existingCustomer } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('mobile_number', formattedPhone)
+        .single()
+
+      if (existingCustomer) {
+        customerId = existingCustomer.id
+      } else {
+        // Create new customer
+        const { data: newCustomer, error: customerError } = await supabase
+          .from('customers')
+          .insert({
+            first_name: firstName,
+            last_name: lastName,
+            mobile_number: formattedPhone,
+            sms_consent: true
+          })
+          .select()
+          .single()
+
+        if (customerError) {
+          console.error('Customer creation error:', customerError)
+          return { error: 'Failed to create customer' }
+        }
+
+        customerId = newCustomer.id
+
+        // Log customer creation
+        await logAuditEvent({
+          user_id: user.id,
+          user_email: user.email || undefined,
+          operation_type: 'create',
+          resource_type: 'customer',
+          resource_id: customerId,
+          operation_status: 'success',
+          additional_info: {
+            firstName,
+            lastName,
+            mobileNumber: formattedPhone,
+            createdDuringBooking: true
+          }
+        })
+      }
+    }
+
     // Parse and validate form data
     const rawData = {
       event_id: formData.get('event_id') as string,
-      customer_id: formData.get('customer_id') as string,
+      customer_id: customerId,
       seats: parseInt(formData.get('seats') as string || '0'),
       notes: formData.get('notes') as string || undefined,
       overwrite: formData.get('overwrite') === 'true' // Check if we should overwrite existing booking
