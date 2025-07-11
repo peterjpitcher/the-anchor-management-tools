@@ -29,6 +29,7 @@ yarn-error.log*
 .env*.local
 .env
 .env.google-calendar-example
+.env.local.backup-*
 
 # Google service account credentials
 google-service-account*.json
