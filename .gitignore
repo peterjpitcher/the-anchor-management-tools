@@ -30,6 +30,10 @@ yarn-error.log*
 .env
 .env.google-calendar-example
 
+# Google service account credentials
+google-service-account*.json
+*service-account*.json
+
 # vercel
 .vercel
 
