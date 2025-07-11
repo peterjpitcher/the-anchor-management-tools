@@ -2,7 +2,7 @@ import type { Booking, Event, Customer } from '@/types/database'
 import { useState, useEffect, useCallback } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import toast from 'react-hot-toast'
-import { MagnifyingGlassIcon } from '@heroicons/react/24/outline'
+import { MagnifyingGlassIcon, UserPlusIcon } from '@heroicons/react/24/outline'
 import { formatDate } from '@/lib/dateUtils'
 import { CustomerWithLoyalty, getLoyalCustomers, sortCustomersByLoyalty } from '@/lib/customerUtils'
 import { Button } from '@/components/ui/Button'
@@ -29,6 +29,12 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
   const [availableCapacity, setAvailableCapacity] = useState<number | null>(null)
   const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false)
   const [existingBookingInfo, setExistingBookingInfo] = useState<{ id: string; seats: number } | null>(null)
+  const [showNewCustomerForm, setShowNewCustomerForm] = useState(false)
+  const [newCustomer, setNewCustomer] = useState({
+    firstName: '',
+    lastName: '',
+    mobileNumber: ''
+  })
 
   // Calculate available capacity
   const calculateAvailableCapacity = useCallback(async () => {
@@ -162,10 +168,70 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
 
     setIsSubmitting(true)
     try {
-      // Use server action instead of direct database access
+      let finalCustomerId = customerId
+
+      // Create new customer if needed
+      if (showNewCustomerForm && !customerId) {
+        if (!newCustomer.firstName || !newCustomer.lastName || !newCustomer.mobileNumber) {
+          toast.error('Please fill in all customer details')
+          setIsSubmitting(false)
+          return
+        }
+
+        // Use server action to create the customer
+        const formData = new FormData()
+        formData.append('event_id', event.id)
+        formData.append('create_customer', 'true')
+        formData.append('customer_first_name', newCustomer.firstName)
+        formData.append('customer_last_name', newCustomer.lastName)
+        formData.append('customer_mobile_number', newCustomer.mobileNumber)
+        formData.append('seats', seatCount?.toString() || '0')
+        formData.append('notes', notes || '')
+        if (overwrite) {
+          formData.append('overwrite', 'true')
+        }
+
+        const result = await createBooking(formData)
+
+        if ('error' in result) {
+          if (result.error === 'duplicate_booking' && 'existingBooking' in result && !overwrite) {
+            // Show overwrite confirmation
+            setExistingBookingInfo(result.existingBooking)
+            setShowOverwriteConfirm(true)
+            setIsSubmitting(false)
+            return
+          } else {
+            toast.error(typeof result.error === 'string' ? result.error : 'An error occurred')
+            setIsSubmitting(false)
+            return
+          }
+        }
+
+        // Success!
+        toast.success(overwrite ? 'Booking updated successfully' : 'Booking created successfully with new customer')
+        
+        if (addAnother) {
+          // Reset form for next booking
+          setCustomerId('')
+          setSeats('')
+          setNotes('')
+          setSearchTerm('')
+          setShowOverwriteConfirm(false)
+          setExistingBookingInfo(null)
+          setShowNewCustomerForm(false)
+          setNewCustomer({ firstName: '', lastName: '', mobileNumber: '' })
+          // Reload available customers
+          await loadCustomers()
+        } else {
+          onCancel() // Close the form if not adding another
+        }
+        return
+      }
+
+      // Use server action for existing customer
       const formData = new FormData()
       formData.append('event_id', event.id)
-      formData.append('customer_id', customerId)
+      formData.append('customer_id', finalCustomerId)
       formData.append('seats', seatCount?.toString() || '0')
       formData.append('notes', notes || '')
       if (overwrite) {
@@ -299,40 +365,116 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
             </div>
           </div>
 
-          <div>
-            <label
-              htmlFor="customer"
-              className="block text-sm font-medium text-gray-900 mb-2"
+          {!showNewCustomerForm && (
+            <div>
+              <label
+                htmlFor="customer"
+                className="block text-sm font-medium text-gray-900 mb-2"
+              >
+                Select Customer
+              </label>
+              <select
+                id="customer"
+                name="customer"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                value={customerId}
+                onChange={(e) => setCustomerId(e.target.value)}
+                required={!showNewCustomerForm}
+              >
+                <option value="">Select a customer</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.first_name} {c.last_name} ({c.mobile_number}) {c.isLoyal ? '★' : ''}
+                  </option>
+                ))}
+              </select>
+              {customers.length === 0 && searchTerm && (
+                <p className="mt-2 text-sm text-gray-500">
+                  No customers found matching your search.
+                </p>
+              )}
+              {customers.length === 0 && !searchTerm && (
+                <p className="mt-2 text-sm text-red-600">
+                  No available customers. Either all customers are already booked for this event,
+                  or no customers exist in the system.
+                </p>
+              )}
+            </div>
+          )}
+          
+          {!showNewCustomerForm && (
+            <button
+              type="button"
+              onClick={() => setShowNewCustomerForm(true)}
+              className="mt-2 inline-flex items-center text-sm text-blue-600 hover:text-blue-800"
             >
-              Select Customer
-            </label>
-            <select
-              id="customer"
-              name="customer"
-              className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-green-500 focus:ring-green-500 sm:text-sm"
-              value={customerId}
-              onChange={(e) => setCustomerId(e.target.value)}
-              required
-            >
-              <option value="">Select a customer</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.first_name} {c.last_name} ({c.mobile_number}) {c.isLoyal ? '★' : ''}
-                </option>
-              ))}
-            </select>
-            {customers.length === 0 && searchTerm && (
-              <p className="mt-2 text-sm text-gray-500">
-                No customers found matching your search.
-              </p>
-            )}
-            {customers.length === 0 && !searchTerm && (
-              <p className="mt-2 text-sm text-red-600">
-                No available customers. Either all customers are already booked for this event,
-                or no customers exist in the system.
-              </p>
-            )}
-          </div>
+              <UserPlusIcon className="h-4 w-4 mr-1" />
+              Create new customer
+            </button>
+          )}
+
+          {showNewCustomerForm && (
+            <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
+              <h3 className="text-sm font-medium text-gray-900">New Customer Details</h3>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
+                    First Name
+                  </label>
+                  <input
+                    type="text"
+                    id="firstName"
+                    name="firstName"
+                    value={newCustomer.firstName}
+                    onChange={(e) => setNewCustomer(prev => ({ ...prev, firstName: e.target.value }))}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    required={showNewCustomerForm}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">
+                    Last Name
+                  </label>
+                  <input
+                    type="text"
+                    id="lastName"
+                    name="lastName"
+                    value={newCustomer.lastName}
+                    onChange={(e) => setNewCustomer(prev => ({ ...prev, lastName: e.target.value }))}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    required={showNewCustomerForm}
+                  />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="mobileNumber" className="block text-sm font-medium text-gray-700">
+                  Mobile Number
+                </label>
+                <input
+                  type="tel"
+                  id="mobileNumber"
+                  name="mobileNumber"
+                  value={newCustomer.mobileNumber}
+                  onChange={(e) => setNewCustomer(prev => ({ ...prev, mobileNumber: e.target.value }))}
+                  placeholder="07XXX XXXXXX"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  required={showNewCustomerForm}
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowNewCustomerForm(false)
+                    setNewCustomer({ firstName: '', lastName: '', mobileNumber: '' })
+                  }}
+                  className="text-sm text-gray-600 hover:text-gray-800"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
 
