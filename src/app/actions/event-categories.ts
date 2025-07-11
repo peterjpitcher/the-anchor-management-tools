@@ -55,13 +55,19 @@ const categorySchema = z.object({
   default_reminder_hours: z.number().min(1).max(168), // Max 1 week
   default_price: z.number().min(0).max(99999.99).optional(),
   default_is_free: z.boolean().optional(),
-  default_performer_type: z.enum(['MusicGroup', 'Person', 'TheaterGroup', 'DanceGroup', 'ComedyGroup', 'Organization', '']).optional(),
+  default_performer_name: z.preprocess(
+    (val) => (!val || val === '' ? undefined : val),
+    z.string().max(255).optional()
+  ),
+  default_performer_type: z.preprocess(
+    (val) => (!val || val === '' ? undefined : val),
+    z.enum(['MusicGroup', 'Person', 'TheaterGroup', 'DanceGroup', 'ComedyGroup', 'Organization']).optional()
+  ),
   default_event_status: z.enum(['scheduled', 'cancelled', 'postponed', 'rescheduled']).optional(),
-  // default_image_url field doesn't exist in DB yet
-  // default_image_url: z.preprocess(
-  //   (val) => (!val || val === '' ? undefined : val),
-  //   z.string().url().optional().nullable()
-  // ),
+  default_image_url: z.preprocess(
+    (val) => (!val || val === '' ? undefined : val),
+    z.string().optional()
+  ),
   slug: z.string().regex(/^[a-z0-9-]*$/, 'Invalid slug format').optional(),
   meta_description: z.string().max(160, 'Meta description too long').optional(),
   is_active: z.boolean(),
@@ -73,16 +79,15 @@ const categorySchema = z.object({
   highlights: z.array(z.string()).optional(),
   meta_title: z.string().max(60).optional(),
   keywords: z.array(z.string()).optional(),
-  // These image fields don't exist in DB yet
-  // gallery_image_urls: z.array(z.string().url()).optional(),
-  // poster_image_url: z.preprocess(
-  //   (val) => (!val || val === '' ? undefined : val),
-  //   z.string().url().optional()
-  // ),
-  // thumbnail_image_url: z.preprocess(
-  //   (val) => (!val || val === '' ? undefined : val),
-  //   z.string().url().optional()
-  // ),
+  gallery_image_urls: z.array(z.string()).optional(),
+  poster_image_url: z.preprocess(
+    (val) => (!val || val === '' ? undefined : val),
+    z.string().optional()
+  ),
+  thumbnail_image_url: z.preprocess(
+    (val) => (!val || val === '' ? undefined : val),
+    z.string().optional()
+  ),
   promo_video_url: z.preprocess(
     (val) => (!val || val === '' ? undefined : val),
     z.string().url().optional()
@@ -604,6 +609,28 @@ export async function getCustomerCategoryPreferences(customerId: string) {
 
 // Wrapper functions that accept FormData
 export async function createEventCategoryFromFormData(formData: FormData) {
+  // Parse array fields
+  const parseArrayField = (fieldName: string): string[] | undefined => {
+    const value = formData.get(fieldName) as string
+    if (!value || value === '') return undefined
+    try {
+      return JSON.parse(value)
+    } catch {
+      return value.split(',').map(s => s.trim()).filter(s => s)
+    }
+  }
+
+  // Parse FAQs
+  const parseFAQs = (): Array<{question: string, answer: string, sort_order: number}> | undefined => {
+    const value = formData.get('faqs') as string
+    if (!value || value === '') return undefined
+    try {
+      return JSON.parse(value)
+    } catch {
+      return undefined
+    }
+  }
+
   const categoryData: CategoryFormData = {
     name: formData.get('name') as string,
     color: formData.get('color') as string,
@@ -617,13 +644,57 @@ export async function createEventCategoryFromFormData(formData: FormData) {
     default_reminder_hours: parseInt(formData.get('default_reminder_hours') as string) || 24,
     default_price: parseFloat(formData.get('default_price') as string) || 0,
     default_is_free: formData.get('default_is_free') === 'true',
-    // default_image_url: formData.get('default_image_url') as string, // Field doesn't exist in DB
+    default_performer_name: (formData.get('default_performer_name') as string) || undefined,
+    default_performer_type: (formData.get('default_performer_type') as string) || undefined,
+    default_image_url: (formData.get('default_image_url') as string) || undefined,
+    // SEO and content fields
+    slug: (formData.get('slug') as string) || undefined,
+    meta_title: (formData.get('meta_title') as string) || undefined,
+    meta_description: (formData.get('meta_description') as string) || undefined,
+    short_description: (formData.get('short_description') as string) || undefined,
+    long_description: (formData.get('long_description') as string) || undefined,
+    highlights: parseArrayField('highlights'),
+    keywords: parseArrayField('keywords'),
+    // Media fields
+    gallery_image_urls: parseArrayField('gallery_image_urls'),
+    poster_image_url: (formData.get('poster_image_url') as string) || undefined,
+    thumbnail_image_url: (formData.get('thumbnail_image_url') as string) || undefined,
+    promo_video_url: (formData.get('promo_video_url') as string) || undefined,
+    highlight_video_urls: parseArrayField('highlight_video_urls'),
+    // Additional timing fields
+    default_duration_minutes: formData.get('default_duration_minutes') ? parseInt(formData.get('default_duration_minutes') as string) : undefined,
+    default_doors_time: (formData.get('default_doors_time') as string) || undefined,
+    default_last_entry_time: formatTimeToHHMM(formData.get('default_last_entry_time') as string) || undefined,
+    default_booking_url: (formData.get('default_booking_url') as string) || undefined,
+    faqs: parseFAQs(),
   }
   
   return createEventCategory(categoryData)
 }
 
 export async function updateEventCategoryFromFormData(id: string, formData: FormData) {
+  // Parse array fields
+  const parseArrayField = (fieldName: string): string[] | undefined => {
+    const value = formData.get(fieldName) as string
+    if (!value || value === '') return undefined
+    try {
+      return JSON.parse(value)
+    } catch {
+      return value.split(',').map(s => s.trim()).filter(s => s)
+    }
+  }
+
+  // Parse FAQs
+  const parseFAQs = (): Array<{question: string, answer: string, sort_order: number}> | undefined => {
+    const value = formData.get('faqs') as string
+    if (!value || value === '') return undefined
+    try {
+      return JSON.parse(value)
+    } catch {
+      return undefined
+    }
+  }
+
   const categoryData: CategoryFormData = {
     name: formData.get('name') as string,
     color: formData.get('color') as string,
@@ -637,7 +708,29 @@ export async function updateEventCategoryFromFormData(id: string, formData: Form
     default_reminder_hours: parseInt(formData.get('default_reminder_hours') as string) || 24,
     default_price: parseFloat(formData.get('default_price') as string) || 0,
     default_is_free: formData.get('default_is_free') === 'true',
-    // default_image_url: formData.get('default_image_url') as string, // Field doesn't exist in DB
+    default_performer_name: (formData.get('default_performer_name') as string) || undefined,
+    default_performer_type: (formData.get('default_performer_type') as string) || undefined,
+    default_image_url: (formData.get('default_image_url') as string) || undefined,
+    // SEO and content fields
+    slug: (formData.get('slug') as string) || undefined,
+    meta_title: (formData.get('meta_title') as string) || undefined,
+    meta_description: (formData.get('meta_description') as string) || undefined,
+    short_description: (formData.get('short_description') as string) || undefined,
+    long_description: (formData.get('long_description') as string) || undefined,
+    highlights: parseArrayField('highlights'),
+    keywords: parseArrayField('keywords'),
+    // Media fields
+    gallery_image_urls: parseArrayField('gallery_image_urls'),
+    poster_image_url: (formData.get('poster_image_url') as string) || undefined,
+    thumbnail_image_url: (formData.get('thumbnail_image_url') as string) || undefined,
+    promo_video_url: (formData.get('promo_video_url') as string) || undefined,
+    highlight_video_urls: parseArrayField('highlight_video_urls'),
+    // Additional timing fields
+    default_duration_minutes: formData.get('default_duration_minutes') ? parseInt(formData.get('default_duration_minutes') as string) : undefined,
+    default_doors_time: (formData.get('default_doors_time') as string) || undefined,
+    default_last_entry_time: formatTimeToHHMM(formData.get('default_last_entry_time') as string) || undefined,
+    default_booking_url: (formData.get('default_booking_url') as string) || undefined,
+    faqs: parseFAQs(),
   }
   
   return updateEventCategory(id, categoryData)

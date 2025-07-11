@@ -171,20 +171,17 @@ function combineDateAndTime(date: string, time: string): string {
   // Ensure we have valid inputs
   if (!date || !time) throw new Error('Date and time are required')
   
-  // Parse the date (YYYY-MM-DD) and time (HH:MM:SS)
+  // Parse the date (YYYY-MM-DD) and time (HH:MM or HH:MM:SS)
   const [year, month, day] = date.split('-')
-  const [hour, minute] = time.split(':')
+  const timeParts = time.split(':')
+  const hour = timeParts[0].padStart(2, '0')
+  const minute = timeParts[1].padStart(2, '0')
+  const second = timeParts[2] ? timeParts[2].padStart(2, '0') : '00'
   
-  // Create a Date object in local time
-  const dateTime = new Date(
-    parseInt(year),
-    parseInt(month) - 1, // Month is 0-indexed
-    parseInt(day),
-    parseInt(hour),
-    parseInt(minute)
-  )
-  
-  return dateTime.toISOString()
+  // Create an ISO-like datetime string without timezone conversion
+  // This represents the exact time entered, which will be interpreted
+  // in the timezone specified in the Google Calendar event (Europe/London)
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${hour}:${minute}:${second}`
 }
 
 // Format booking details for calendar description

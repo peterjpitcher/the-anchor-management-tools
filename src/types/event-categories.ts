@@ -10,6 +10,7 @@ export interface EventCategory {
   default_reminder_hours: number
   default_price: number
   default_is_free: boolean
+  default_performer_name: string | null
   default_performer_type: string | null
   default_event_status: string
   default_image_url: string | null
@@ -83,6 +84,7 @@ export interface CategoryFormData {
   default_reminder_hours: number
   default_price?: number
   default_is_free?: boolean
+  default_performer_name?: string
   default_performer_type?: string
   default_event_status?: string
   default_image_url?: string
