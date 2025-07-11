@@ -17,17 +17,25 @@ export function EmailQuoteModal({ quote, isOpen, onClose, onSuccess }: EmailQuot
   const [recipientEmail, setRecipientEmail] = useState(quote.vendor?.email || '')
   const [subject, setSubject] = useState(`Quote ${quote.quote_number} from Orange Jelly Limited`)
   const [body, setBody] = useState(
-    `Dear ${quote.vendor?.contact_name || quote.vendor?.name || 'Customer'},
+    `Hi ${quote.vendor?.contact_name || quote.vendor?.name || 'there'},
 
-Please find attached quote ${quote.quote_number} for your consideration.
+Thanks for getting in touch!
+
+I've attached quote ${quote.quote_number} for your review:
 
 Total Amount: £${quote.total_amount.toFixed(2)}
-Valid Until: ${new Date(quote.valid_until).toLocaleDateString('en-GB')}
+Quote Valid Until: ${new Date(quote.valid_until).toLocaleDateString('en-GB')}
 
-${quote.notes ? `Notes: ${quote.notes}\n\n` : ''}If you have any questions about this quote or would like to proceed, please let us know.
+${quote.notes ? `${quote.notes}\n\n` : ''}Please take your time to review everything, and don't hesitate to reach out if you have any questions or would like to discuss anything.
 
-Best regards,
-Orange Jelly Limited`
+Looking forward to hearing from you!
+
+Best wishes,
+Peter Pitcher
+Orange Jelly Limited
+07995087315
+
+P.S. The quote is attached as a PDF for your convenience.`
   )
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -126,10 +134,10 @@ Orange Jelly Limited`
 
           <div className="bg-gray-50 rounded-lg p-4">
             <p className="text-sm text-gray-600">
-              <strong>Attachment:</strong> Quote {quote.quote_number} (HTML format)
+              <strong>Attachment:</strong> Quote {quote.quote_number} (PDF format)
             </p>
             <p className="text-sm text-gray-600 mt-1">
-              The quote will be attached as an HTML file that can be opened in any browser.
+              The quote will be attached as a PDF file for professional presentation and easy printing.
             </p>
           </div>
         </div>

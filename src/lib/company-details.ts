@@ -18,5 +18,15 @@ export const COMPANY_DETAILS = {
     accountNumber: '32448887',
     sortCode: '23-05-80',
     accountName: 'Orange Jelly Limited'
+  },
+  // Convenience properties for templates
+  name: 'Orange Jelly Limited',
+  fullAddress: 'The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ',
+  companyNumber: '10537179',
+  bank: {
+    name: 'Orange Jelly Limited',
+    accountNumber: '32448887',
+    sortCode: '23-05-80',
+    accountName: 'Orange Jelly Limited'
   }
 } as const

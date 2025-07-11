@@ -86,6 +86,12 @@ export default function NewRecurringInvoicePage() {
     setLineItems(updated)
   }
 
+  function updateLineItemMultiple(index: number, updates: Partial<InvoiceLineItemInput>) {
+    const updated = [...lineItems]
+    updated[index] = { ...updated[index], ...updates }
+    setLineItems(updated)
+  }
+
   function calculateTotals() {
     let subtotal = 0
     let totalVat = 0
@@ -161,7 +167,7 @@ export default function NewRecurringInvoicePage() {
   const { subtotal, invoiceDiscountAmount, totalVat, total } = calculateTotals()
 
   return (
-    <div className="container mx-auto p-6 max-w-4xl">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="mb-8">
         <Button
           variant="ghost"
@@ -300,13 +306,15 @@ export default function NewRecurringInvoicePage() {
                           if (catalogId) {
                             const catalogItem = catalogItems.find(c => c.id === catalogId)
                             if (catalogItem) {
-                              updateLineItem(index, 'catalog_item_id', catalogId)
-                              updateLineItem(index, 'description', catalogItem.description || catalogItem.name)
-                              updateLineItem(index, 'unit_price', catalogItem.default_price)
-                              updateLineItem(index, 'vat_rate', catalogItem.default_vat_rate)
+                              updateLineItemMultiple(index, {
+                                catalog_item_id: catalogId,
+                                description: catalogItem.description || catalogItem.name,
+                                unit_price: catalogItem.default_price,
+                                vat_rate: catalogItem.default_vat_rate
+                              })
                             }
                           } else {
-                            updateLineItem(index, 'catalog_item_id', '')
+                            updateLineItem(index, 'catalog_item_id', undefined)
                           }
                         }}
                         className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"

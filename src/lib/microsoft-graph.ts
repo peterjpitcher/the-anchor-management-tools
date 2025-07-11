@@ -3,6 +3,7 @@ import { ClientSecretCredential } from '@azure/identity'
 import type { InvoiceWithDetails, QuoteWithDetails } from '@/types/invoices'
 import { generateInvoiceHTML } from '@/lib/invoice-template'
 import { generateQuoteHTML } from '@/lib/quote-template'
+import { generateInvoicePDF, generateQuotePDF } from '@/lib/pdf-generator'
 
 // Initialize Microsoft Graph client
 function getGraphClient() {
@@ -41,9 +42,9 @@ export function isGraphConfigured(): boolean {
   )
 }
 
-// Convert HTML to base64 for email attachment
-function htmlToBase64(html: string): string {
-  return Buffer.from(html).toString('base64')
+// Convert Buffer to base64 for email attachment
+function bufferToBase64(buffer: Buffer): string {
+  return buffer.toString('base64')
 }
 
 // Send invoice email
@@ -64,26 +65,31 @@ export async function sendInvoiceEmail(
     const client = getGraphClient()
     const senderEmail = process.env.MICROSOFT_USER_EMAIL!
 
-    // Generate invoice HTML
-    const invoiceHtml = generateInvoiceHTML({
-      invoice,
-      logoUrl: `${process.env.NEXT_PUBLIC_APP_URL}/logo-black.png`
-    })
+    // Generate invoice PDF with 'sent' status if currently draft
+    const invoiceForPDF = invoice.status === 'draft' 
+      ? { ...invoice, status: 'sent' as const }
+      : invoice
+    const pdfBuffer = await generateInvoicePDF(invoiceForPDF)
 
     // Default subject and body
     const emailSubject = subject || `Invoice ${invoice.invoice_number} from Orange Jelly Limited`
-    const emailBody = body || `Dear ${invoice.vendor?.contact_name || invoice.vendor?.name || 'Customer'},
+    const emailBody = body || `Hi ${invoice.vendor?.contact_name || invoice.vendor?.name || 'there'},
 
-Please find attached invoice ${invoice.invoice_number} for your records.
+I hope you're doing well!
+
+Please find attached invoice ${invoice.invoice_number} with the following details:
 
 Amount Due: £${invoice.total_amount.toFixed(2)}
 Due Date: ${new Date(invoice.due_date).toLocaleDateString('en-GB')}
 
-${invoice.notes ? `Notes: ${invoice.notes}\n\n` : ''}
-If you have any questions about this invoice, please don't hesitate to contact us.
+${invoice.notes ? `${invoice.notes}\n\n` : ''}If you have any questions or need anything at all, just let me know - I'm always happy to help!
 
-Best regards,
-Orange Jelly Limited`
+Many thanks,
+Peter Pitcher
+Orange Jelly Limited
+07995087315
+
+P.S. The invoice is attached as a PDF for easy viewing and printing.`
 
     // Create email message
     const message = {
@@ -102,9 +108,9 @@ Orange Jelly Limited`
       attachments: [
         {
           '@odata.type': '#microsoft.graph.fileAttachment',
-          name: `invoice-${invoice.invoice_number}.html`,
-          contentType: 'text/html',
-          contentBytes: htmlToBase64(invoiceHtml)
+          name: `invoice-${invoice.invoice_number}.pdf`,
+          contentType: 'application/pdf',
+          contentBytes: bufferToBase64(pdfBuffer)
         }
       ]
     }
@@ -148,26 +154,30 @@ export async function sendQuoteEmail(
     const client = getGraphClient()
     const senderEmail = process.env.MICROSOFT_USER_EMAIL!
 
-    // Generate quote HTML
-    const quoteHtml = generateQuoteHTML({
-      quote,
-      logoUrl: `${process.env.NEXT_PUBLIC_APP_URL}/logo-black.png`
-    })
+    // Generate quote PDF
+    const pdfBuffer = await generateQuotePDF(quote)
 
     // Default subject and body
     const emailSubject = subject || `Quote ${quote.quote_number} from Orange Jelly Limited`
-    const emailBody = body || `Dear ${quote.vendor?.contact_name || quote.vendor?.name || 'Customer'},
+    const emailBody = body || `Hi ${quote.vendor?.contact_name || quote.vendor?.name || 'there'},
 
-Please find attached quote ${quote.quote_number} for your consideration.
+Thanks for getting in touch!
+
+I've attached quote ${quote.quote_number} for your review:
 
 Total Amount: £${quote.total_amount.toFixed(2)}
-Valid Until: ${new Date(quote.valid_until).toLocaleDateString('en-GB')}
+Quote Valid Until: ${new Date(quote.valid_until).toLocaleDateString('en-GB')}
 
-${quote.notes ? `Notes: ${quote.notes}\n\n` : ''}
-If you have any questions about this quote or would like to proceed, please let us know.
+${quote.notes ? `${quote.notes}\n\n` : ''}Please take your time to review everything, and don't hesitate to reach out if you have any questions or would like to discuss anything.
 
-Best regards,
-Orange Jelly Limited`
+Looking forward to hearing from you!
+
+Best wishes,
+Peter Pitcher
+Orange Jelly Limited
+07995087315
+
+P.S. The quote is attached as a PDF for your convenience.`
 
     // Create email message
     const message = {
@@ -186,9 +196,9 @@ Orange Jelly Limited`
       attachments: [
         {
           '@odata.type': '#microsoft.graph.fileAttachment',
-          name: `quote-${quote.quote_number}.html`,
-          contentType: 'text/html',
-          contentBytes: htmlToBase64(quoteHtml)
+          name: `quote-${quote.quote_number}.pdf`,
+          contentType: 'application/pdf',
+          contentBytes: bufferToBase64(pdfBuffer)
         }
       ]
     }
@@ -255,7 +265,7 @@ export async function sendInternalReminder(
           '@odata.type': '#microsoft.graph.fileAttachment',
           name: attachmentName,
           contentType: 'text/html',
-          contentBytes: htmlToBase64(attachmentHtml)
+          contentBytes: bufferToBase64(Buffer.from(attachmentHtml))
         }
       ]
     }

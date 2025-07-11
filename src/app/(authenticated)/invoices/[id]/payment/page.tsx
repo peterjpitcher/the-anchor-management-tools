@@ -127,7 +127,7 @@ export default function RecordPaymentPage() {
   const outstanding = invoice.total_amount - invoice.paid_amount
 
   return (
-    <div className="container mx-auto p-6 max-w-2xl">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="mb-6">
         <Button
           variant="ghost"

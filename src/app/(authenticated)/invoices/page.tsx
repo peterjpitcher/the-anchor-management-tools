@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getInvoices, getInvoiceSummary } from '@/app/actions/invoices'
 import { Button } from '@/components/ui/Button'
-import { Plus, Download, Users, Settings, FileText, Calendar, Package } from 'lucide-react'
+import { Plus, Download, FileText, Calendar, Package, Users } from 'lucide-react'
 import type { InvoiceWithDetails, InvoiceStatus } from '@/types/invoices'
 
 export default function InvoicesPage() {
@@ -85,7 +85,7 @@ export default function InvoicesPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-6xl">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="mb-8 flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold mb-2">Invoices</h1>
@@ -189,17 +189,9 @@ export default function InvoicesPage() {
               <Download className="h-4 w-4 mr-2" />
               Export
             </Button>
-            <Button variant="outline" onClick={() => router.push('/invoices/vendors')}>
-              <Users className="h-4 w-4 mr-2" />
-              Vendors
-            </Button>
             <Button variant="outline" onClick={() => router.push('/invoices/recurring')}>
-              <Settings className="h-4 w-4 mr-2" />
+              <Calendar className="h-4 w-4 mr-2" />
               Recurring
-            </Button>
-            <Button variant="outline" onClick={() => router.push('/invoices/settings')}>
-              <Settings className="h-4 w-4 mr-2" />
-              Settings
             </Button>
           </div>
         </div>
@@ -275,7 +267,7 @@ export default function InvoicesPage() {
         )}
       </div>
 
-      <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <Button
           variant="outline"
           onClick={() => router.push('/invoices/vendors')}
@@ -301,15 +293,6 @@ export default function InvoicesPage() {
         >
           <Download className="h-5 w-5" />
           <span>Export</span>
-        </Button>
-        
-        <Button
-          variant="outline"
-          onClick={() => router.push('/settings/cron-test')}
-          className="flex items-center justify-center gap-2 py-6"
-        >
-          <Settings className="h-5 w-5" />
-          <span>Settings</span>
         </Button>
       </div>
     </div>

@@ -44,6 +44,61 @@ async function getNextQuoteNumber(): Promise<string> {
   return `QTE-${encoded}`
 }
 
+// Get quote summary
+export async function getQuoteSummary() {
+  try {
+    const supabase = await createClient()
+    
+    // Check permissions
+    const hasPermission = await checkUserPermission('invoices', 'view')
+    if (!hasPermission) {
+      return { error: 'You do not have permission to view quotes' }
+    }
+
+    // Get all quotes for summary
+    const { data: quotes, error } = await supabase
+      .from('quotes')
+      .select('status, total_amount, valid_until')
+      .is('deleted_at', null)
+
+    if (error) {
+      console.error('Error fetching quote summary:', error)
+      return { error: 'Failed to fetch quote summary' }
+    }
+
+    // Calculate summary
+    const summary = {
+      total_pending: 0,
+      total_expired: 0,
+      total_accepted: 0,
+      draft_count: 0
+    }
+
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    quotes?.forEach(quote => {
+      if (quote.status === 'draft') {
+        summary.draft_count++
+      } else if (quote.status === 'sent') {
+        const validUntil = new Date(quote.valid_until)
+        if (validUntil < today) {
+          summary.total_expired += quote.total_amount
+        } else {
+          summary.total_pending += quote.total_amount
+        }
+      } else if (quote.status === 'accepted') {
+        summary.total_accepted += quote.total_amount
+      }
+    })
+
+    return { summary }
+  } catch (error) {
+    console.error('Error in getQuoteSummary:', error)
+    return { error: 'An unexpected error occurred' }
+  }
+}
+
 export async function getQuotes(status?: QuoteStatus) {
   try {
     const supabase = await createClient()
@@ -480,6 +535,66 @@ export async function updateQuote(formData: FormData) {
     if (error instanceof z.ZodError) {
       return { error: error.errors[0].message }
     }
+    return { error: 'An unexpected error occurred' }
+  }
+}
+
+// Delete quote
+export async function deleteQuote(formData: FormData) {
+  try {
+    const supabase = await createClient()
+    
+    const hasPermission = await checkUserPermission('invoices', 'delete')
+    if (!hasPermission) {
+      return { error: 'You do not have permission to delete quotes' }
+    }
+
+    const quoteId = formData.get('quoteId') as string
+    if (!quoteId) {
+      return { error: 'Quote ID is required' }
+    }
+
+    // Check if quote can be deleted (only draft quotes)
+    const { data: quote, error: fetchError } = await supabase
+      .from('quotes')
+      .select('status')
+      .eq('id', quoteId)
+      .single()
+
+    if (fetchError || !quote) {
+      return { error: 'Quote not found' }
+    }
+
+    if (quote.status !== 'draft') {
+      return { error: 'Only draft quotes can be deleted' }
+    }
+
+    // Soft delete the quote
+    const { error: deleteError } = await supabase
+      .from('quotes')
+      .update({ 
+        deleted_at: new Date().toISOString(),
+        deleted_by: (await supabase.auth.getUser()).data.user?.id
+      })
+      .eq('id', quoteId)
+
+    if (deleteError) {
+      console.error('Error deleting quote:', deleteError)
+      return { error: 'Failed to delete quote' }
+    }
+
+    await logAuditEvent({
+      operation_type: 'delete',
+      resource_type: 'quote',
+      resource_id: quoteId,
+      operation_status: 'success'
+    })
+
+    revalidatePath('/quotes')
+    
+    return { success: true }
+  } catch (error) {
+    console.error('Error in deleteQuote:', error)
     return { error: 'An unexpected error occurred' }
   }
 }

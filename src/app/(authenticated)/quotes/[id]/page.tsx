@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { getQuote, updateQuoteStatus, convertQuoteToInvoice } from '@/app/actions/quotes'
+import { getQuote, updateQuoteStatus, convertQuoteToInvoice, deleteQuote } from '@/app/actions/quotes'
 import { getEmailConfigStatus } from '@/app/actions/email'
 import { Button } from '@/components/ui/Button'
-import { ArrowLeft, FileText, Download, Mail, CheckCircle, XCircle, Edit } from 'lucide-react'
+import { ChevronLeft, FileText, Download, Mail, CheckCircle, XCircle, Edit, Copy, Trash2, Clock } from 'lucide-react'
 import { EmailQuoteModal } from '@/components/EmailQuoteModal'
 import type { QuoteWithDetails, QuoteStatus } from '@/types/invoices'
 
@@ -130,14 +130,50 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
     }
   }
 
+  async function handleDelete() {
+    if (!quote || processing) return
+
+    if (!confirm('Are you sure you want to delete this quote? This action cannot be undone.')) {
+      return
+    }
+
+    setProcessing(true)
+    setError(null)
+
+    try {
+      const formData = new FormData()
+      formData.append('quoteId', quote.id)
+
+      const result = await deleteQuote(formData)
+
+      if (result.error) {
+        throw new Error(result.error)
+      }
+
+      router.push('/quotes')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete quote')
+      setProcessing(false)
+    }
+  }
+
   function getStatusColor(status: QuoteStatus): string {
     switch (status) {
       case 'draft': return 'bg-gray-100 text-gray-800'
       case 'sent': return 'bg-blue-100 text-blue-800'
       case 'accepted': return 'bg-green-100 text-green-800'
       case 'rejected': return 'bg-red-100 text-red-800'
-      case 'expired': return 'bg-orange-100 text-orange-800'
+      case 'expired': return 'bg-yellow-100 text-yellow-800'
       default: return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  function getStatusIcon(status: QuoteStatus) {
+    switch (status) {
+      case 'accepted': return <CheckCircle className="h-4 w-4" />
+      case 'rejected': return <XCircle className="h-4 w-4" />
+      case 'expired': return <Clock className="h-4 w-4" />
+      default: return null
     }
   }
 
@@ -160,7 +196,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
 
   if (!quote) {
     return (
-      <div className="container mx-auto p-6 max-w-4xl">
+      <div className="p-4 sm:p-6 lg:p-8">
         <div className="text-center">
           <p className="text-red-600">Quote not found</p>
           <Button
@@ -178,28 +214,47 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
   const isExpired = quote.status === 'expired' || 
     (quote.status === 'sent' && new Date(quote.valid_until) < new Date())
 
+  // Calculate totals for display
+  const subtotal = quote.line_items?.reduce((acc, item) => {
+    const lineSubtotal = item.quantity * item.unit_price
+    const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
+    return acc + (lineSubtotal - lineDiscount)
+  }, 0) || 0
+
+  const quoteDiscount = subtotal * (quote.quote_discount_percentage / 100)
+
+  const vat = quote.line_items?.reduce((acc, item) => {
+    const itemSubtotal = item.quantity * item.unit_price
+    const itemDiscount = itemSubtotal * (item.discount_percentage / 100)
+    const itemAfterDiscount = itemSubtotal - itemDiscount
+    const itemShare = subtotal > 0 ? itemAfterDiscount / subtotal : 0
+    const itemAfterQuoteDiscount = itemAfterDiscount - (quoteDiscount * itemShare)
+    return acc + (itemAfterQuoteDiscount * (item.vat_rate / 100))
+  }, 0) || 0
+
   return (
-    <div className="container mx-auto p-6 max-w-4xl">
-      <div className="mb-8">
+    <div className="p-4 sm:p-6 lg:p-8">
+      <div className="mb-6">
         <Button
           variant="ghost"
           onClick={() => router.push('/quotes')}
           className="mb-4"
         >
-          <ArrowLeft className="h-4 w-4 mr-2" />
+          <ChevronLeft className="h-4 w-4 mr-2" />
           Back to Quotes
         </Button>
-        
+
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-3xl font-bold mb-2">Quote {quote.quote_number}</h1>
-            <div className="flex items-center gap-4 text-gray-600">
-              <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(quote.status)}`}>
-                {quote.status.charAt(0).toUpperCase() + quote.status.slice(1)}
+            <div className="flex items-center gap-4">
+              <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(quote.status)}`}>
+                {getStatusIcon(quote.status)}
+                {quote.status.charAt(0).toUpperCase() + quote.status.slice(1).replace('_', ' ')}
               </span>
-              {quote.converted_to_invoice_id && (
-                <span className="text-sm text-green-600">
-                  Converted to Invoice: {quote.converted_invoice?.invoice_number}
+              {quote.reference && (
+                <span className="text-gray-600">
+                  Reference: {quote.reference}
                 </span>
               )}
             </div>
@@ -209,6 +264,13 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
             {quote.status === 'draft' && (
               <>
                 <Button
+                  onClick={() => handleStatusChange('sent')}
+                  disabled={processing}
+                >
+                  <Mail className="h-4 w-4 mr-2" />
+                  Mark as Sent
+                </Button>
+                <Button
                   variant="outline"
                   onClick={() => router.push(`/quotes/${quote.id}/edit`)}
                   disabled={processing}
@@ -216,33 +278,27 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
                   <Edit className="h-4 w-4 mr-2" />
                   Edit
                 </Button>
-                <Button
-                  onClick={() => handleStatusChange('sent')}
-                  disabled={processing}
-                >
-                  <Mail className="h-4 w-4 mr-2" />
-                  Mark as Sent
-                </Button>
               </>
             )}
             
             {quote.status === 'sent' && !isExpired && (
               <>
                 <Button
-                  variant="outline"
                   onClick={() => handleStatusChange('accepted')}
                   disabled={processing}
+                  className="bg-green-600 hover:bg-green-700 text-white"
                 >
                   <CheckCircle className="h-4 w-4 mr-2" />
-                  Mark Accepted
+                  Mark as Accepted
                 </Button>
                 <Button
                   variant="outline"
                   onClick={() => handleStatusChange('rejected')}
                   disabled={processing}
+                  className="text-red-600 hover:bg-red-50"
                 >
                   <XCircle className="h-4 w-4 mr-2" />
-                  Mark Rejected
+                  Mark as Rejected
                 </Button>
               </>
             )}
@@ -251,12 +307,13 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               <Button
                 onClick={handleConvertToInvoice}
                 disabled={processing}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
               >
                 <FileText className="h-4 w-4 mr-2" />
                 Convert to Invoice
               </Button>
             )}
-            
+
             {emailConfigured && (
               <Button
                 variant="outline"
@@ -271,10 +328,23 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
             <Button
               variant="outline"
               onClick={() => window.open(`/api/quotes/${quote.id}/pdf`, '_blank')}
+              disabled={processing}
             >
               <Download className="h-4 w-4 mr-2" />
-              Download
+              Download PDF
             </Button>
+
+            {quote.status === 'draft' && (
+              <Button
+                variant="outline"
+                onClick={handleDelete}
+                disabled={processing}
+                className="text-red-600 hover:bg-red-50"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -285,167 +355,216 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
         </div>
       )}
 
-      <div className="space-y-6">
-        {/* Quote Information */}
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <h2 className="text-xl font-semibold mb-4">Quote Information</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-gray-600">Quote Date</p>
-              <p className="font-medium">
-                {new Date(quote.quote_date).toLocaleDateString('en-GB', {
-                  day: '2-digit',
-                  month: 'long',
-                  year: 'numeric'
-                })}
-              </p>
-            </div>
-            
-            <div>
-              <p className="text-sm text-gray-600">Valid Until</p>
-              <p className="font-medium">
-                {new Date(quote.valid_until).toLocaleDateString('en-GB', {
-                  day: '2-digit',
-                  month: 'long',
-                  year: 'numeric'
-                })}
-                {isExpired && (
-                  <span className="text-red-600 text-sm ml-2">(Expired)</span>
-                )}
-              </p>
-            </div>
-            
-            {quote.reference && (
-              <div>
-                <p className="text-sm text-gray-600">Reference</p>
-                <p className="font-medium">{quote.reference}</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Vendor Information */}
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <h2 className="text-xl font-semibold mb-4">Vendor Information</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-gray-600">Company Name</p>
-              <p className="font-medium">{quote.vendor?.name || '-'}</p>
-            </div>
-            
-            {quote.vendor?.contact_name && (
-              <div>
-                <p className="text-sm text-gray-600">Contact Name</p>
-                <p className="font-medium">{quote.vendor.contact_name}</p>
-              </div>
-            )}
-            
-            {quote.vendor?.email && (
-              <div>
-                <p className="text-sm text-gray-600">Email</p>
-                <p className="font-medium">{quote.vendor.email}</p>
-              </div>
-            )}
-            
-            {quote.vendor?.phone && (
-              <div>
-                <p className="text-sm text-gray-600">Phone</p>
-                <p className="font-medium">{quote.vendor.phone}</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Line Items */}
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <h2 className="text-xl font-semibold mb-4">Line Items</h2>
-          
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left p-2 font-medium text-gray-700">Description</th>
-                  <th className="text-right p-2 font-medium text-gray-700">Qty</th>
-                  <th className="text-right p-2 font-medium text-gray-700">Unit Price</th>
-                  <th className="text-right p-2 font-medium text-gray-700">Discount</th>
-                  <th className="text-right p-2 font-medium text-gray-700">Subtotal</th>
-                  <th className="text-right p-2 font-medium text-gray-700">VAT</th>
-                </tr>
-              </thead>
-              <tbody>
-                {quote.line_items?.map((item, index) => {
-                  const lineTotal = calculateLineTotal(item)
-                  return (
-                    <tr key={index} className="border-b">
-                      <td className="p-2">{item.description}</td>
-                      <td className="text-right p-2">{item.quantity}</td>
-                      <td className="text-right p-2">£{item.unit_price.toFixed(2)}</td>
-                      <td className="text-right p-2">
-                        {item.discount_percentage > 0 && `${item.discount_percentage}%`}
-                      </td>
-                      <td className="text-right p-2">£{lineTotal.toFixed(2)}</td>
-                      <td className="text-right p-2">{item.vat_rate}%</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Summary */}
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <h2 className="text-xl font-semibold mb-4">Summary</h2>
-          
-          <div className="max-w-xs ml-auto space-y-2">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Subtotal:</span>
-              <span className="font-medium">£{quote.subtotal_amount.toFixed(2)}</span>
-            </div>
-            
-            {quote.discount_amount > 0 && (
-              <div className="flex justify-between text-red-600">
-                <span>Discount ({quote.quote_discount_percentage}%):</span>
-                <span>-£{quote.discount_amount.toFixed(2)}</span>
-              </div>
-            )}
-            
-            <div className="flex justify-between">
-              <span className="text-gray-600">VAT:</span>
-              <span className="font-medium">£{quote.vat_amount.toFixed(2)}</span>
-            </div>
-            
-            <div className="flex justify-between text-lg font-bold border-t pt-2">
-              <span>Total:</span>
-              <span>£{quote.total_amount.toFixed(2)}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Notes */}
-        {(quote.notes || quote.internal_notes) && (
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
           <div className="bg-white rounded-lg shadow-sm border p-6">
-            <h2 className="text-xl font-semibold mb-4">Notes</h2>
+            <h2 className="text-lg font-semibold mb-4">Quote Details</h2>
             
-            {quote.notes && (
-              <div className="mb-4">
-                <p className="text-sm text-gray-600 mb-1">Quote Notes</p>
-                <p className="whitespace-pre-wrap">{quote.notes}</p>
-              </div>
-            )}
-            
-            {quote.internal_notes && (
+            <div className="grid grid-cols-2 gap-6">
               <div>
-                <p className="text-sm text-gray-600 mb-1">Internal Notes</p>
-                <p className="whitespace-pre-wrap text-gray-700 bg-gray-50 p-3 rounded">
-                  {quote.internal_notes}
+                <h3 className="font-medium text-sm text-gray-600 mb-1">From</h3>
+                <p className="font-medium">Orange Jelly Limited</p>
+                <p className="text-sm text-gray-600">The Anchor, Horton Road</p>
+                <p className="text-sm text-gray-600">Stanwell Moor Village, Surrey</p>
+                <p className="text-sm text-gray-600">TW19 6AQ</p>
+                <p className="text-sm text-gray-600">VAT: GB315203647</p>
+              </div>
+
+              <div>
+                <h3 className="font-medium text-sm text-gray-600 mb-1">To</h3>
+                {quote.vendor ? (
+                  <>
+                    <p className="font-medium">{quote.vendor.name}</p>
+                    {quote.vendor.contact_name && (
+                      <p className="text-sm text-gray-600">{quote.vendor.contact_name}</p>
+                    )}
+                    {quote.vendor.email && (
+                      <p className="text-sm text-gray-600">{quote.vendor.email}</p>
+                    )}
+                    {quote.vendor.phone && (
+                      <p className="text-sm text-gray-600">{quote.vendor.phone}</p>
+                    )}
+                    {quote.vendor.address && (
+                      <p className="text-sm text-gray-600 whitespace-pre-line">{quote.vendor.address}</p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-gray-500">No vendor details</p>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-6 mt-6 pt-6 border-t">
+              <div>
+                <p className="text-sm text-gray-600">Quote Date</p>
+                <p className="font-medium">
+                  {new Date(quote.quote_date).toLocaleDateString('en-GB')}
                 </p>
               </div>
-            )}
+              <div>
+                <p className="text-sm text-gray-600">Valid Until</p>
+                <p className="font-medium">
+                  {new Date(quote.valid_until).toLocaleDateString('en-GB')}
+                </p>
+              </div>
+            </div>
           </div>
-        )}
+
+          <div className="bg-white rounded-lg shadow-sm border p-6">
+            <h2 className="text-lg font-semibold mb-4">Line Items</h2>
+            
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-2 text-sm font-medium text-gray-600">Description</th>
+                    <th className="text-right py-2 text-sm font-medium text-gray-600">Qty</th>
+                    <th className="text-right py-2 text-sm font-medium text-gray-600">Unit Price</th>
+                    <th className="text-right py-2 text-sm font-medium text-gray-600">Discount</th>
+                    <th className="text-right py-2 text-sm font-medium text-gray-600">VAT</th>
+                    <th className="text-right py-2 text-sm font-medium text-gray-600">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {quote.line_items?.map((item) => {
+                    const lineSubtotal = item.quantity * item.unit_price
+                    const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
+                    const lineAfterDiscount = lineSubtotal - lineDiscount
+                    const itemShare = subtotal > 0 ? lineAfterDiscount / subtotal : 0
+                    const lineAfterQuoteDiscount = lineAfterDiscount - (quoteDiscount * itemShare)
+                    const lineVat = lineAfterQuoteDiscount * (item.vat_rate / 100)
+                    const lineTotal = lineAfterQuoteDiscount + lineVat
+
+                    return (
+                      <tr key={item.id} className="border-b">
+                        <td className="py-3 text-sm">{item.description}</td>
+                        <td className="py-3 text-sm text-right">{item.quantity}</td>
+                        <td className="py-3 text-sm text-right">£{item.unit_price.toFixed(2)}</td>
+                        <td className="py-3 text-sm text-right">
+                          {item.discount_percentage > 0 && (
+                            <span className="text-green-600">-{item.discount_percentage}%</span>
+                          )}
+                        </td>
+                        <td className="py-3 text-sm text-right">{item.vat_rate}%</td>
+                        <td className="py-3 text-sm text-right font-medium">£{lineTotal.toFixed(2)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-6 pt-6 border-t space-y-2">
+              <div className="flex justify-between text-sm">
+                <span>Subtotal:</span>
+                <span>£{subtotal.toFixed(2)}</span>
+              </div>
+              {quote.quote_discount_percentage > 0 && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>Quote Discount ({quote.quote_discount_percentage}%):</span>
+                  <span>-£{quoteDiscount.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-sm">
+                <span>VAT:</span>
+                <span>£{vat.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-lg font-semibold pt-2 border-t">
+                <span>Total:</span>
+                <span>£{quote.total_amount.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+
+          {(quote.notes || quote.internal_notes) && (
+            <div className="bg-white rounded-lg shadow-sm border p-6">
+              <h2 className="text-lg font-semibold mb-4">Notes</h2>
+              
+              {quote.notes && (
+                <div className="mb-4">
+                  <h3 className="font-medium text-sm text-gray-600 mb-1">Quote Notes</h3>
+                  <p className="text-sm whitespace-pre-wrap">{quote.notes}</p>
+                </div>
+              )}
+              
+              {quote.internal_notes && (
+                <div>
+                  <h3 className="font-medium text-sm text-gray-600 mb-1">Internal Notes</h3>
+                  <p className="text-sm whitespace-pre-wrap bg-yellow-50 p-3 rounded-md">
+                    {quote.internal_notes}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-6">
+          <div className="bg-white rounded-lg shadow-sm border p-6">
+            <h2 className="text-lg font-semibold mb-4">Quote Status</h2>
+            
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm text-gray-600">Total Amount</p>
+                <p className="text-2xl font-bold">£{quote.total_amount.toFixed(2)}</p>
+              </div>
+              
+              <div>
+                <p className="text-sm text-gray-600">Status</p>
+                <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(quote.status)}`}>
+                  {getStatusIcon(quote.status)}
+                  {quote.status.charAt(0).toUpperCase() + quote.status.slice(1).replace('_', ' ')}
+                </span>
+              </div>
+              
+              {quote.converted_to_invoice_id && (
+                <div>
+                  <p className="text-sm text-gray-600">Converted to Invoice</p>
+                  <p className="text-sm font-medium text-green-600">
+                    {quote.converted_invoice?.invoice_number}
+                  </p>
+                </div>
+              )}
+
+              {isExpired && quote.status === 'sent' && (
+                <div className="p-3 bg-yellow-50 rounded-md">
+                  <p className="text-sm text-yellow-800">
+                    This quote has expired
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm border p-6">
+            <h2 className="text-lg font-semibold mb-4">Actions</h2>
+            
+            <div className="space-y-2">
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  navigator.clipboard.writeText(window.location.href)
+                  alert('Link copied to clipboard!')
+                }}
+              >
+                <Copy className="h-4 w-4 mr-2" />
+                Copy Link
+              </Button>
+              
+              {quote.status === 'sent' && !isExpired && (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => handleStatusChange('expired')}
+                  disabled={processing}
+                >
+                  Mark as Expired
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {quote && (
@@ -455,11 +574,9 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
           onClose={() => setShowEmailModal(false)}
           onSuccess={async () => {
             // Reload quote to get updated status
-            if (quoteId) {
-              const result = await getQuote(quoteId)
-              if (result.quote) {
-                setQuote(result.quote)
-              }
+            const result = await getQuote(quoteId!)
+            if (result.quote) {
+              setQuote(result.quote)
             }
           }}
         />
