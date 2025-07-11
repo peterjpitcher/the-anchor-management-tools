@@ -627,6 +627,53 @@ export async function updateBookingStatus(id: string, status: BookingStatus) {
     return { error: error.message || 'An error occurred' }
   }
 
+  // Sync with Google Calendar after status update
+  console.log('[privateBookingActions] Status updated, checking calendar sync:', {
+    bookingId: id,
+    newStatus: status,
+    isConfigured: isCalendarConfigured()
+  })
+
+  if (isCalendarConfigured()) {
+    try {
+      // Fetch the full booking details for calendar sync
+      const { data: updatedBooking } = await supabase
+        .from('private_bookings')
+        .select('*')
+        .eq('id', id)
+        .single()
+
+      if (updatedBooking) {
+        console.log('[privateBookingActions] Syncing calendar after status change:', {
+          bookingId: id,
+          status: updatedBooking.status,
+          hasCalendarEventId: !!updatedBooking.calendar_event_id
+        })
+
+        const calendarEventId = await syncCalendarEvent(updatedBooking)
+        
+        if (calendarEventId && !updatedBooking.calendar_event_id) {
+          // Update the booking with the new calendar event ID
+          await supabase
+            .from('private_bookings')
+            .update({ calendar_event_id: calendarEventId })
+            .eq('id', id)
+        }
+        
+        console.log('[privateBookingActions] Calendar sync completed after status change:', {
+          bookingId: id,
+          calendarEventId,
+          statusInCalendar: status
+        })
+      }
+    } catch (error) {
+      console.error('[privateBookingActions] Calendar sync exception during status update:', error)
+      // Don't fail the status update if calendar sync fails
+    }
+  } else {
+    console.log('[privateBookingActions] Calendar not configured, skipping sync')
+  }
+
   revalidatePath('/private-bookings')
   revalidatePath(`/private-bookings/${id}`)
   return { success: true }
