@@ -15,7 +15,7 @@ async function getUpcomingEvents() {
       date,
       time,
       capacity,
-      bookings (id)
+      bookings (id, seats)
     `)
     .gte('date', today)
     .order('date', { ascending: true })
@@ -28,7 +28,7 @@ async function getUpcomingEvents() {
   
   return events.map(event => ({
     ...event,
-    bookingCount: event.bookings?.length || 0,
+    bookingCount: event.bookings?.reduce((sum: number, booking: any) => sum + (booking.seats || 0), 0) || 0,
     bookings: undefined
   }))
 }
@@ -59,7 +59,7 @@ export default async function SimpleDashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
         <p className="mt-1 text-sm text-gray-500">
           Welcome back! Here&apos;s what&apos;s happening today.
         </p>

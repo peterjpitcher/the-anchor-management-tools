@@ -100,8 +100,13 @@ export default function AuditLogsPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-6">Audit Logs</h1>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Audit Logs</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          View system activity and security events
+        </p>
+      </div>
       
       {/* Filters */}
       <div className="bg-white rounded-lg shadow p-4 mb-6">

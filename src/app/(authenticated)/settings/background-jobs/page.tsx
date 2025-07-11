@@ -129,10 +129,8 @@ export default function BackgroundJobsPage() {
     setIsProcessing(true)
     try {
       const response = await fetch('/api/jobs/process', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_CRON_SECRET_KEY || ''}`
-        }
+        method: 'POST'
+        // Auth header handled server-side
       })
       
       if (!response.ok) {
@@ -180,8 +178,8 @@ export default function BackgroundJobsPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Background Jobs</h1>
         <button
           onClick={processJobs}

@@ -28,7 +28,7 @@ export async function POST(
     const { seats } = validation.data;
     const supabase = createAdminClient();
     
-    // Get event details with booking count
+    // Get event details with bookings
     const { data: event, error } = await supabase
       .from('events')
       .select(`
@@ -38,7 +38,7 @@ export async function POST(
         time,
         capacity,
         event_status,
-        bookings(count)
+        bookings(seats)
       `)
       .eq('id', params.id)
       .single();
@@ -66,9 +66,9 @@ export async function POST(
       );
     }
 
-    const bookingCount = event.bookings?.[0]?.count || 0;
+    const bookedSeats = event.bookings?.reduce((sum, booking) => sum + (booking.seats || 0), 0) || 0;
     const capacity = event.capacity || 100; // Default capacity
-    const availableSeats = capacity - bookingCount;
+    const availableSeats = capacity - bookedSeats;
     const isAvailable = availableSeats >= seats;
 
     return createApiResponse({

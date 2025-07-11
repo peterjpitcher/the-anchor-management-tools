@@ -36,8 +36,8 @@ export default async function ApiKeysPage() {
     .order('created_at', { ascending: false });
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8">API Key Management</h1>
+    <div className="space-y-6">
+      <h1 className="text-3xl font-bold">API Key Management</h1>
       <ApiKeysManager initialKeys={apiKeys || []} />
     </div>
   );

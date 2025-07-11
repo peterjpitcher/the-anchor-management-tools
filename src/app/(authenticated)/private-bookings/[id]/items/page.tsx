@@ -663,7 +663,7 @@ export default function ItemsPage({
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto animate-pulse">
+      <div className="px-4 sm:px-6 lg:px-8 animate-pulse">
         <div className="h-8 bg-gray-200 rounded w-1/4 mb-8"></div>
         <div className="bg-white shadow rounded-lg p-6">
           <div className="space-y-4">
@@ -676,7 +676,7 @@ export default function ItemsPage({
   }
 
   return (
-    <div className="max-w-7xl mx-auto">
+    <div className="px-4 sm:px-6 lg:px-8">
       <div className="mb-8">
         <Link
           href={`/private-bookings/${bookingId}`}

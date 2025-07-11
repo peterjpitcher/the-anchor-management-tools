@@ -167,7 +167,7 @@ export default function NewRecurringInvoicePage() {
   const { subtotal, invoiceDiscountAmount, totalVat, total } = calculateTotals()
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
+    <div className="space-y-6">
       <div className="mb-8">
         <Button
           variant="ghost"

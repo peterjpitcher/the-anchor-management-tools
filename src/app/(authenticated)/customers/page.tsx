@@ -295,19 +295,21 @@ export default function CustomersPage() {
 
   if (showForm || editingCustomer) {
     return (
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <h2 className="text-xl font-semibold mb-4">
-            {editingCustomer ? 'Edit Customer' : 'Create New Customer'}
-          </h2>
-          <CustomerForm
-            customer={editingCustomer ?? undefined}
-            onSubmit={editingCustomer ? handleUpdateCustomer : handleCreateCustomer}
-            onCancel={() => {
-              setShowForm(false)
-              setEditingCustomer(null)
-            }}
-          />
+      <div className="space-y-6">
+        <div className="bg-white shadow sm:rounded-lg">
+          <div className="px-4 py-5 sm:p-6">
+            <h2 className="text-xl font-semibold mb-4">
+              {editingCustomer ? 'Edit Customer' : 'Create New Customer'}
+            </h2>
+            <CustomerForm
+              customer={editingCustomer ?? undefined}
+              onSubmit={editingCustomer ? handleUpdateCustomer : handleCreateCustomer}
+              onCancel={() => {
+                setShowForm(false)
+                setEditingCustomer(null)
+              }}
+            />
+          </div>
         </div>
       </div>
     )
@@ -315,11 +317,13 @@ export default function CustomersPage() {
 
   if (showImport) {
     return (
-      <CustomerImport
-        onImportComplete={handleImportCustomers}
-        onCancel={() => setShowImport(false)}
-        existingCustomers={customers}
-      />
+      <div className="space-y-6">
+        <CustomerImport
+          onImportComplete={handleImportCustomers}
+          onCancel={() => setShowImport(false)}
+          existingCustomers={customers}
+        />
+      </div>
     )
   }
 

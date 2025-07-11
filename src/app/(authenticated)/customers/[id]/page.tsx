@@ -316,7 +316,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
 
   return (
     <div className="space-y-6">
-      {showModal && (
+        {showModal && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col">
             {/* Header */}

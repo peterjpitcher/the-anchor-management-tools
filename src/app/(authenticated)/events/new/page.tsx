@@ -76,8 +76,8 @@ export default function NewEventPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div className="mb-6">
+    <div className="space-y-6">
+      <div>
         <h1 className="text-2xl font-bold text-gray-900">Create New Event</h1>
         <p className="mt-1 text-sm text-gray-600">
           Add a new event to your calendar

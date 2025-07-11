@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   if (process.env.NODE_ENV === 'production') {
     const headersList = await headers()
     const authHeader = headersList.get('authorization')
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    if (authHeader !== `Bearer ${process.env.CRON_SECRET_KEY}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
   }

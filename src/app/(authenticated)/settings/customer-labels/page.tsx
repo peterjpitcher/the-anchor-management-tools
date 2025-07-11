@@ -183,6 +183,10 @@ export default function CustomerLabelsPage() {
               <p className="mt-1 text-sm text-gray-500">
                 Organize customers with labels for better targeting and management
               </p>
+              <p className="mt-1 text-xs text-green-600 flex items-center">
+                <CheckCircleIcon className="mr-1 h-3 w-3" />
+                Labels are automatically updated daily at 2:00 AM
+              </p>
             </div>
             {canManage && (
               <div className="flex space-x-3">
