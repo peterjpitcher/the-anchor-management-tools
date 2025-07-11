@@ -563,11 +563,9 @@ export async function convertQuoteToInvoice(quoteId: string) {
       quantity: item.quantity,
       unit_price: item.unit_price,
       discount_percentage: item.discount_percentage,
-      vat_rate: item.vat_rate,
-      subtotal_amount: item.subtotal_amount,
-      discount_amount: item.discount_amount,
-      vat_amount: item.vat_amount,
-      total_amount: item.total_amount
+      vat_rate: item.vat_rate
+      // Note: subtotal_amount, discount_amount, vat_amount, and total_amount are GENERATED columns
+      // and will be automatically calculated by the database
     }))
 
     const { error: lineItemsError } = await supabase
