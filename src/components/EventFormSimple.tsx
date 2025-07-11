@@ -24,7 +24,6 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
   const [time, setTime] = useState(event?.time ?? '')
   const [endTime, setEndTime] = useState(event?.end_time ?? '')
   const [capacity, setCapacity] = useState(event?.capacity?.toString() ?? '')
-  const [description, setDescription] = useState(event?.description ?? '')
   const [categoryId, setCategoryId] = useState(event?.category_id ?? '')
   const [eventStatus, setEventStatus] = useState(event?.event_status ?? 'scheduled')
   const [performerName, setPerformerName] = useState(event?.performer_name ?? '')
@@ -71,7 +70,6 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
         time,
         end_time: endTime || null,
         capacity: capacity ? parseInt(capacity) : null,
-        description: description.trim() || null,
         category_id: categoryId || null,
         event_status: eventStatus,
         performer_name: performerName.trim() || null,
@@ -289,20 +287,6 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
               </div>
             </div>
 
-            <div className="col-span-full">
-              <label htmlFor="description" className="block text-sm font-medium leading-6 text-gray-900">
-                Description
-              </label>
-              <div className="mt-2">
-                <textarea
-                  id="description"
-                  rows={3}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-                />
-              </div>
-            </div>
 
             {/* Event Details */}
             <div className="col-span-full">

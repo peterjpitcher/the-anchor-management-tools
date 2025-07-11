@@ -148,7 +148,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required
-                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 />
               </div>
             </div>
@@ -164,7 +164,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   value={sortOrder}
                   onChange={(e) => setSortOrder(e.target.value)}
                   min="0"
-                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 />
               </div>
             </div>
@@ -179,7 +179,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   rows={3}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 />
               </div>
             </div>
@@ -247,7 +247,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   id="default_start_time"
                   value={defaultStartTime}
                   onChange={(e) => setDefaultStartTime(e.target.value)}
-                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 />
               </div>
             </div>
@@ -262,7 +262,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   id="default_end_time"
                   value={defaultEndTime}
                   onChange={(e) => setDefaultEndTime(e.target.value)}
-                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 />
               </div>
             </div>
@@ -279,7 +279,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   onChange={(e) => setDefaultCapacity(e.target.value)}
                   min="1"
                   placeholder="Unlimited"
-                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 />
               </div>
             </div>
@@ -299,7 +299,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   }}
                   min="0"
                   step="0.01"
-                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 />
               </div>
             </div>
@@ -315,7 +315,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   value={defaultPerformerName}
                   onChange={(e) => setDefaultPerformerName(e.target.value)}
                   placeholder="e.g., DJ John, The Blues Band"
-                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 />
               </div>
             </div>
@@ -329,7 +329,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   id="default_performer_type"
                   value={defaultPerformerType}
                   onChange={(e) => setDefaultPerformerType(e.target.value)}
-                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 >
                   <option value="">Select type...</option>
                   <option value="MusicGroup">Music Group / Band</option>
@@ -355,7 +355,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   min="1"
                   max="1440"
                   placeholder="e.g., 180"
-                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 />
               </div>
             </div>
@@ -371,7 +371,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   value={defaultDoorsTime}
                   onChange={(e) => setDefaultDoorsTime(e.target.value)}
                   placeholder="e.g., 30 mins before"
-                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 />
               </div>
             </div>
@@ -386,7 +386,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   id="default_last_entry_time"
                   value={defaultLastEntryTime}
                   onChange={(e) => setDefaultLastEntryTime(e.target.value)}
-                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 />
               </div>
             </div>
@@ -402,7 +402,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   value={defaultBookingUrl}
                   onChange={(e) => setDefaultBookingUrl(e.target.value)}
                   placeholder="https://example.com/book"
-                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 />
               </div>
             </div>
@@ -423,7 +423,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   value={slug}
                   onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
                   placeholder="quiz-night"
-                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 />
               </div>
             </div>
@@ -440,7 +440,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   onChange={(e) => setMetaTitle(e.target.value)}
                   maxLength={60}
                   placeholder="SEO page title"
-                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 />
               </div>
             </div>
@@ -457,7 +457,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   onChange={(e) => setMetaDescription(e.target.value)}
                   maxLength={160}
                   placeholder="SEO page description"
-                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 />
               </div>
             </div>
@@ -474,7 +474,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   onChange={(e) => setShortDescription(e.target.value)}
                   maxLength={150}
                   placeholder="Brief description for listings"
-                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 />
               </div>
             </div>
@@ -490,7 +490,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   value={longDescription}
                   onChange={(e) => setLongDescription(e.target.value)}
                   placeholder="Detailed description for the category page"
-                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 />
               </div>
             </div>
@@ -506,7 +506,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   value={highlights}
                   onChange={(e) => setHighlights(e.target.value)}
                   placeholder="Great prizes, Fun atmosphere, Weekly event"
-                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 />
               </div>
             </div>
@@ -522,7 +522,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   value={keywords}
                   onChange={(e) => setKeywords(e.target.value)}
                   placeholder="quiz, trivia, pub quiz, entertainment"
-                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 />
               </div>
             </div>

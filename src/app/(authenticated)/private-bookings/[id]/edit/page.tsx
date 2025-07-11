@@ -88,7 +88,7 @@ export default function EditPrivateBookingPage({
 
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="animate-pulse">
           <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
           <div className="bg-white shadow sm:rounded-lg p-6">
@@ -104,7 +104,7 @@ export default function EditPrivateBookingPage({
 
   if (error || !booking) {
     return (
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="rounded-md bg-red-50 p-4">
           <p className="text-sm text-red-800">{error || 'Booking not found'}</p>
         </div>
