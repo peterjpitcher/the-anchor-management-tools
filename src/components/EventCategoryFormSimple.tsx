@@ -29,6 +29,30 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
   const [defaultCapacity, setDefaultCapacity] = useState(category?.default_capacity?.toString() ?? '')
   const [defaultPrice, setDefaultPrice] = useState(category?.default_price?.toString() ?? '0')
   const [defaultIsFree, setDefaultIsFree] = useState(category?.default_is_free ?? true)
+  const [defaultPerformerName, setDefaultPerformerName] = useState(category?.default_performer_name ?? '')
+  const [defaultPerformerType, setDefaultPerformerType] = useState(category?.default_performer_type ?? '')
+  
+  // SEO and content fields
+  const [slug, setSlug] = useState(category?.slug ?? '')
+  const [metaTitle, setMetaTitle] = useState(category?.meta_title ?? '')
+  const [metaDescription, setMetaDescription] = useState(category?.meta_description ?? '')
+  const [shortDescription, setShortDescription] = useState(category?.short_description ?? '')
+  const [longDescription, setLongDescription] = useState(category?.long_description ?? '')
+  const [highlights, setHighlights] = useState(category?.highlights?.join(', ') ?? '')
+  const [keywords, setKeywords] = useState(category?.keywords?.join(', ') ?? '')
+  
+  // Additional timing fields
+  const [defaultDurationMinutes, setDefaultDurationMinutes] = useState(category?.default_duration_minutes?.toString() ?? '')
+  const [defaultDoorsTime, setDefaultDoorsTime] = useState(category?.default_doors_time ?? '')
+  const [defaultLastEntryTime, setDefaultLastEntryTime] = useState(category?.default_last_entry_time?.substring(0, 5) ?? '')
+  const [defaultBookingUrl, setDefaultBookingUrl] = useState(category?.default_booking_url ?? '')
+  
+  // Media fields
+  const [galleryImageUrls, setGalleryImageUrls] = useState(category?.gallery_image_urls?.join(', ') ?? '')
+  const [posterImageUrl, setPosterImageUrl] = useState(category?.poster_image_url ?? '')
+  const [thumbnailImageUrl, setThumbnailImageUrl] = useState(category?.thumbnail_image_url ?? '')
+  const [promoVideoUrl, setPromoVideoUrl] = useState(category?.promo_video_url ?? '')
+  const [highlightVideoUrls, setHighlightVideoUrls] = useState(category?.highlight_video_urls?.join(', ') ?? '')
   
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -50,14 +74,33 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
         is_active: isActive,
         sort_order: parseInt(sortOrder) || 0,
         default_image_url: imageUrl || null,
-        // Set other image URLs to match the single image
-        thumbnail_image_url: imageUrl || null,
-        poster_image_url: imageUrl || null,
+        // Set other image URLs to match the single image if not specified
+        thumbnail_image_url: thumbnailImageUrl || imageUrl || null,
+        poster_image_url: posterImageUrl || imageUrl || null,
         default_start_time: defaultStartTime || null,
         default_end_time: defaultEndTime || null,
         default_capacity: defaultCapacity ? parseInt(defaultCapacity) : null,
         default_price: parseFloat(defaultPrice) || 0,
         default_is_free: defaultIsFree,
+        default_performer_name: defaultPerformerName.trim() || undefined,
+        default_performer_type: defaultPerformerType || undefined,
+        // SEO and content fields
+        slug: slug.trim() || undefined,
+        meta_title: metaTitle.trim() || undefined,
+        meta_description: metaDescription.trim() || undefined,
+        short_description: shortDescription.trim() || undefined,
+        long_description: longDescription.trim() || undefined,
+        highlights: highlights ? highlights.split(',').map(h => h.trim()).filter(h => h) : [],
+        keywords: keywords ? keywords.split(',').map(k => k.trim()).filter(k => k) : [],
+        // Media fields
+        gallery_image_urls: galleryImageUrls ? galleryImageUrls.split(',').map(url => url.trim()).filter(url => url) : [],
+        promo_video_url: promoVideoUrl.trim() || undefined,
+        highlight_video_urls: highlightVideoUrls ? highlightVideoUrls.split(',').map(url => url.trim()).filter(url => url) : [],
+        // Additional timing fields
+        default_duration_minutes: defaultDurationMinutes ? parseInt(defaultDurationMinutes) : null,
+        default_doors_time: defaultDoorsTime.trim() || undefined,
+        default_last_entry_time: defaultLastEntryTime || undefined,
+        default_booking_url: defaultBookingUrl.trim() || undefined,
       }
 
       await onSubmit(categoryData)
@@ -256,6 +299,229 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   }}
                   min="0"
                   step="0.01"
+                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                />
+              </div>
+            </div>
+
+            <div className="sm:col-span-3">
+              <label htmlFor="default_performer_name" className="block text-sm font-medium leading-6 text-gray-900">
+                Default Performer Name
+              </label>
+              <div className="mt-2">
+                <input
+                  type="text"
+                  id="default_performer_name"
+                  value={defaultPerformerName}
+                  onChange={(e) => setDefaultPerformerName(e.target.value)}
+                  placeholder="e.g., DJ John, The Blues Band"
+                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                />
+              </div>
+            </div>
+
+            <div className="sm:col-span-3">
+              <label htmlFor="default_performer_type" className="block text-sm font-medium leading-6 text-gray-900">
+                Default Performer Type
+              </label>
+              <div className="mt-2">
+                <select
+                  id="default_performer_type"
+                  value={defaultPerformerType}
+                  onChange={(e) => setDefaultPerformerType(e.target.value)}
+                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                >
+                  <option value="">Select type...</option>
+                  <option value="MusicGroup">Music Group / Band</option>
+                  <option value="Person">Solo Performer</option>
+                  <option value="TheaterGroup">Theater Group</option>
+                  <option value="DanceGroup">Dance Group</option>
+                  <option value="ComedyGroup">Comedy Group</option>
+                  <option value="Organization">Organization</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="sm:col-span-2">
+              <label htmlFor="default_duration_minutes" className="block text-sm font-medium leading-6 text-gray-900">
+                Default Duration (minutes)
+              </label>
+              <div className="mt-2">
+                <input
+                  type="number"
+                  id="default_duration_minutes"
+                  value={defaultDurationMinutes}
+                  onChange={(e) => setDefaultDurationMinutes(e.target.value)}
+                  min="1"
+                  max="1440"
+                  placeholder="e.g., 180"
+                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                />
+              </div>
+            </div>
+
+            <div className="sm:col-span-2">
+              <label htmlFor="default_doors_time" className="block text-sm font-medium leading-6 text-gray-900">
+                Default Doors Time
+              </label>
+              <div className="mt-2">
+                <input
+                  type="text"
+                  id="default_doors_time"
+                  value={defaultDoorsTime}
+                  onChange={(e) => setDefaultDoorsTime(e.target.value)}
+                  placeholder="e.g., 30 mins before"
+                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                />
+              </div>
+            </div>
+
+            <div className="sm:col-span-2">
+              <label htmlFor="default_last_entry_time" className="block text-sm font-medium leading-6 text-gray-900">
+                Default Last Entry Time
+              </label>
+              <div className="mt-2">
+                <input
+                  type="time"
+                  id="default_last_entry_time"
+                  value={defaultLastEntryTime}
+                  onChange={(e) => setDefaultLastEntryTime(e.target.value)}
+                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                />
+              </div>
+            </div>
+
+            <div className="col-span-full">
+              <label htmlFor="default_booking_url" className="block text-sm font-medium leading-6 text-gray-900">
+                Default Booking URL
+              </label>
+              <div className="mt-2">
+                <input
+                  type="url"
+                  id="default_booking_url"
+                  value={defaultBookingUrl}
+                  onChange={(e) => setDefaultBookingUrl(e.target.value)}
+                  placeholder="https://example.com/book"
+                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                />
+              </div>
+            </div>
+
+            {/* SEO and Content Fields */}
+            <div className="col-span-full">
+              <h3 className="text-lg font-medium leading-6 text-gray-900">SEO & Content</h3>
+            </div>
+
+            <div className="sm:col-span-3">
+              <label htmlFor="slug" className="block text-sm font-medium leading-6 text-gray-900">
+                URL Slug
+              </label>
+              <div className="mt-2">
+                <input
+                  type="text"
+                  id="slug"
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
+                  placeholder="quiz-night"
+                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                />
+              </div>
+            </div>
+
+            <div className="sm:col-span-3">
+              <label htmlFor="meta_title" className="block text-sm font-medium leading-6 text-gray-900">
+                Meta Title
+              </label>
+              <div className="mt-2">
+                <input
+                  type="text"
+                  id="meta_title"
+                  value={metaTitle}
+                  onChange={(e) => setMetaTitle(e.target.value)}
+                  maxLength={60}
+                  placeholder="SEO page title"
+                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                />
+              </div>
+            </div>
+
+            <div className="col-span-full">
+              <label htmlFor="meta_description" className="block text-sm font-medium leading-6 text-gray-900">
+                Meta Description
+              </label>
+              <div className="mt-2">
+                <textarea
+                  id="meta_description"
+                  rows={2}
+                  value={metaDescription}
+                  onChange={(e) => setMetaDescription(e.target.value)}
+                  maxLength={160}
+                  placeholder="SEO page description"
+                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                />
+              </div>
+            </div>
+
+            <div className="col-span-full">
+              <label htmlFor="short_description" className="block text-sm font-medium leading-6 text-gray-900">
+                Short Description
+              </label>
+              <div className="mt-2">
+                <textarea
+                  id="short_description"
+                  rows={2}
+                  value={shortDescription}
+                  onChange={(e) => setShortDescription(e.target.value)}
+                  maxLength={150}
+                  placeholder="Brief description for listings"
+                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                />
+              </div>
+            </div>
+
+            <div className="col-span-full">
+              <label htmlFor="long_description" className="block text-sm font-medium leading-6 text-gray-900">
+                Long Description
+              </label>
+              <div className="mt-2">
+                <textarea
+                  id="long_description"
+                  rows={6}
+                  value={longDescription}
+                  onChange={(e) => setLongDescription(e.target.value)}
+                  placeholder="Detailed description for the category page"
+                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                />
+              </div>
+            </div>
+
+            <div className="col-span-full">
+              <label htmlFor="highlights" className="block text-sm font-medium leading-6 text-gray-900">
+                Highlights (comma-separated)
+              </label>
+              <div className="mt-2">
+                <input
+                  type="text"
+                  id="highlights"
+                  value={highlights}
+                  onChange={(e) => setHighlights(e.target.value)}
+                  placeholder="Great prizes, Fun atmosphere, Weekly event"
+                  className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                />
+              </div>
+            </div>
+
+            <div className="col-span-full">
+              <label htmlFor="keywords" className="block text-sm font-medium leading-6 text-gray-900">
+                Keywords (comma-separated)
+              </label>
+              <div className="mt-2">
+                <input
+                  type="text"
+                  id="keywords"
+                  value={keywords}
+                  onChange={(e) => setKeywords(e.target.value)}
+                  placeholder="quiz, trivia, pub quiz, entertainment"
                   className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
                 />
               </div>

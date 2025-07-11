@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { uploadEventImage, deleteEventImage } from '@/app/actions/event-images'
 import { Button } from '@/components/ui/Button'
 import { TrashIcon, PhotoIcon } from '@heroicons/react/24/outline'
@@ -30,6 +30,13 @@ export function SquareImageUpload({
   const [previewUrl, setPreviewUrl] = useState<string | null>(currentImageUrl || null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  
+  // Update previewUrl when currentImageUrl prop changes
+  useEffect(() => {
+    if (currentImageUrl && !selectedFile) {
+      setPreviewUrl(currentImageUrl)
+    }
+  }, [currentImageUrl, selectedFile])
 
   // Handle file selection and preview
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
