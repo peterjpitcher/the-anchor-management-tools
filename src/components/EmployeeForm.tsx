@@ -14,9 +14,11 @@ interface EmployeeFormProps {
   initialFormState: ActionFormState | null;
   showTitle?: boolean;
   showCancel?: boolean;
+  submitButtonText?: string;
+  draftMode?: boolean;
 }
 
-function SubmitButton() {
+function SubmitButton({ text = 'Save Employee' }: { text?: string }) {
   const { pending } = useFormStatus();
   return (
     <button
@@ -24,7 +26,7 @@ function SubmitButton() {
       disabled={pending}
       className="rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 disabled:opacity-50"
     >
-      {pending ? 'Saving...' : 'Save Employee'}
+      {pending ? 'Saving...' : text}
     </button>
   );
 }
@@ -35,22 +37,24 @@ export default function EmployeeForm({
   initialFormState,
   showTitle = true,
   showCancel = true,
+  submitButtonText = 'Save Employee',
+  draftMode = false,
 }: EmployeeFormProps) {
   const router = useRouter();
   const [state, dispatch] = useActionState(formAction, initialFormState);
 
   useEffect(() => {
-    if (state?.type === 'success' && state.employeeId) {
-      // Redirect to the employee's detail page
-      router.push(`/employees/${state.employeeId}`);
+    if (state?.type === 'success' && !draftMode) {
+      // Only redirect if we're editing an existing employee
+      // For new employees, the parent component handles navigation
+      if (employee) {
+        router.push('/employees');
+      }
       // Optionally, show a success toast message here using a library like react-hot-toast
       // For example: toast.success(state.message);
-    } else if (state?.type === 'success') {
-      // Fallback if employeeId is not in state for some reason, go to list
-      router.push('/employees');
     }
     // No changes needed for error states here as they are handled by displaying messages in the form
-  }, [state, router]);
+  }, [state, router, employee, draftMode]);
 
   const formFields = [
     { name: 'first_name', label: 'First Name', type: 'text', required: true, defaultValue: employee?.first_name },
@@ -142,7 +146,7 @@ export default function EmployeeForm({
               Cancel
             </Link>
           )}
-          <SubmitButton />
+          <SubmitButton text={submitButtonText} />
         </div>
       </div>
     </form>

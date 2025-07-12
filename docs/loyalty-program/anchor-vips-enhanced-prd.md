@@ -42,31 +42,26 @@ The Anchor VIPs evolves from a simple SMS-based loyalty program into a comprehen
 - Session-based authentication with JWT tokens
 - Rate limiting on all endpoints
 
-### 3. **Printable Table Cards System**
+### 3. **Event QR Code System**
 
-**Purpose:** Premium touch point that confirms bookings and drives engagement
+**Purpose:** Simple, unified check-in system for all attendees
 
-**Card Contents:**
-- **Header**: The Anchor logo + "VIP Reserved" banner
-- **Booking Details**: 
-  - Customer name(s)
-  - Event name and time
-  - Table number (if applicable)
-  - Party size
-- **Loyalty Status Section**:
-  - Current tier (Bronze/Silver/Gold/Platinum) with icon
-  - Points balance
-  - Progress bar to next tier
-- **Tonight's Rewards**:
-  - Available rewards they can redeem
-  - Birthday recognition if applicable
-  - Achievement unlocks available tonight
-- **Incentive Messaging**:
-  - "Only 50 points from your next reward!"
-  - "Try our featured cocktail for double points"
-  - "Bring a friend next time for bonus points"
-- **QR Code**: Large, scannable code for check-in
-- **Footer**: "Thank you for being a VIP member!"
+**How it Works:**
+- **One QR code per event** - Display at entrance, bar, or on tables
+- **Customers scan with phone** - Opens check-in page for that specific event
+- **Phone number verification** - System identifies customer from their booking
+- **Instant check-in** - Points awarded immediately
+
+**Print Options:**
+- **Large A4 poster** - For entrance or prominent display
+- **Medium A5 cards** - For bar area or host station
+- **Small table tents** - Multiple per table if desired
+
+**Benefits:**
+- No need to manage individual table codes
+- Works for standing events or flexible seating
+- Easy to update for each event
+- Customers identified by their booking phone number
 
 **Technical Requirements:**
 - A4 PDF generation with print-friendly layout

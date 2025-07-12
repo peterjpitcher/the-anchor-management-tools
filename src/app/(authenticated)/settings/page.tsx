@@ -13,7 +13,8 @@ import {
   CpuChipIcon,
   CommandLineIcon,
   ClockIcon,
-  PlayIcon
+  PlayIcon,
+  SparklesIcon
 } from '@heroicons/react/24/outline';
 import { checkUserPermission } from '@/app/actions/rbac';
 import type { ModuleName, ActionType } from '@/types/rbac';
@@ -71,6 +72,13 @@ const settingsSections = [
     permission: { module: 'customers', action: 'manage' },
   },
   {
+    name: 'Loyalty Program',
+    description: 'Configure The Anchor VIP Club loyalty program settings',
+    href: '/settings/loyalty',
+    icon: SparklesIcon,
+    permission: { module: 'settings', action: 'manage' },
+  },
+  {
     name: 'Message Templates',
     description: 'Manage SMS message templates and customize content',
     href: '/settings/message-templates',
@@ -126,6 +134,13 @@ const settingsSections = [
     href: '/settings/calendar-test',
     icon: CalendarDaysIcon,
     permission: { module: 'settings', action: 'manage' },
+  },
+  {
+    name: 'Sync Employee Birthdays',
+    description: 'Sync all employee birthdays to Google Calendar',
+    href: '/settings/sync-birthdays',
+    icon: CalendarDaysIcon,
+    permission: { module: 'employees', action: 'manage' },
   },
   {
     name: 'API Keys',
