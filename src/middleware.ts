@@ -10,6 +10,7 @@ export async function middleware(request: NextRequest) {
   // - API routes (especially webhooks)
   // - Auth pages
   // - Public pages
+  // - Loyalty demo pages
   if (
     path.startsWith('/_next') ||
     path.startsWith('/static') ||
@@ -17,7 +18,8 @@ export async function middleware(request: NextRequest) {
     path.startsWith('/api') || // Allow ALL API routes without auth check
     path.startsWith('/auth') ||
     path.startsWith('/error') ||
-    path.startsWith('/privacy')
+    path.startsWith('/privacy') ||
+    path.startsWith('/loyalty')
   ) {
     return NextResponse.next()
   }
@@ -67,7 +69,8 @@ export const config = {
      * - api (ALL API routes should bypass auth middleware)
      * - auth (authentication pages)
      * - privacy (public pages)
+     * - loyalty (loyalty dashboard, check-in, redeem, and demo)
      */
-    '/((?!_next/static|_next/image|favicon.ico|api|auth|privacy).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api|auth|privacy|loyalty).*)',
   ],
 }

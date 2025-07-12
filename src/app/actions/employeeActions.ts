@@ -2,13 +2,13 @@
 
 import { getSupabaseAdminClient } from '@/lib/supabase-singleton';
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import type { ActionFormState, NoteFormState, AttachmentFormState, DeleteState } from '@/types/actions';
 import { getConstraintErrorMessage, isPostgrestError } from '@/lib/dbErrorHandler';
 import { logAuditEvent } from '@/app/actions/audit';
 import { getCurrentUser } from '@/lib/audit-helpers';
 import { checkUserPermission } from './rbac';
+import { syncBirthdayCalendarEvent, deleteBirthdayCalendarEvent } from '@/lib/google-calendar-birthdays';
 
 // Schemas
 const employeeSchema = z.object({
@@ -57,6 +57,34 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
         return acc;
     }, {} as Record<string, any>);
 
+    // Extract additional data that will be handled separately
+    const financialFields = ['ni_number', 'payee_name', 'bank_name', 'bank_sort_code', 'bank_account_number', 'branch_address'];
+    const healthFields = ['gp_name', 'gp_practice', 'gp_address', 'gp_phone', 'medical_conditions', 'medications', 'allergies', 'emergency_medical_info', 'blood_type'];
+    
+    const financialData: any = {};
+    const healthData: any = {};
+    
+    // Separate financial and health data
+    Object.entries(cleanedData).forEach(([key, value]) => {
+        if (financialFields.includes(key)) {
+            financialData[key] = value === '' ? null : value;
+            delete cleanedData[key];
+        } else if (healthFields.includes(key)) {
+            healthData[key] = value === '' ? null : value;
+            delete cleanedData[key];
+        }
+    });
+    
+    // Parse JSON data
+    const emergencyContacts = cleanedData.emergency_contacts ? JSON.parse(cleanedData.emergency_contacts as string) : [];
+    const rightToWorkData = cleanedData.right_to_work ? JSON.parse(cleanedData.right_to_work as string) : {};
+    const onboardingTasks = cleanedData.onboarding_tasks ? JSON.parse(cleanedData.onboarding_tasks as string) : [];
+    
+    // Remove JSON fields from employee data
+    delete cleanedData.emergency_contacts;
+    delete cleanedData.right_to_work;
+    delete cleanedData.onboarding_tasks;
+
     const result = employeeSchema.safeParse(cleanedData);
 
     if (!result.success) {
@@ -69,6 +97,7 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
     
     const supabase = getSupabaseAdminClient();
 
+    // Start transaction-like operations
     const { data: newEmployee, error } = await supabase.from('employees').insert(result.data).select().single();
     
     if (error) {
@@ -85,6 +114,93 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
         return { type: 'error', message };
     }
     
+    const employeeId = newEmployee.employee_id;
+    
+    // Create financial details if provided
+    if (Object.values(financialData).some(val => val !== null)) {
+        const { error: financialError } = await supabase
+            .from('employee_financial_details')
+            .insert({ employee_id: employeeId, ...financialData });
+            
+        if (financialError) {
+            console.error('Failed to create financial details:', financialError);
+        }
+    }
+    
+    // Create health record if provided
+    if (Object.values(healthData).some(val => val !== null)) {
+        const { error: healthError } = await supabase
+            .from('employee_health_records')
+            .insert({ employee_id: employeeId, ...healthData });
+            
+        if (healthError) {
+            console.error('Failed to create health record:', healthError);
+        }
+    }
+    
+    // Create emergency contacts
+    if (emergencyContacts.length > 0) {
+        const contactsToInsert = emergencyContacts
+            .filter((c: any) => c.name && c.relationship && c.phone_number)
+            .map((contact: any) => ({
+                employee_id: employeeId,
+                name: contact.name,
+                relationship: contact.relationship,
+                phone_number: contact.phone_number,
+                email: contact.email || null,
+                is_primary: contact.is_primary || false
+            }));
+            
+        if (contactsToInsert.length > 0) {
+            const { error: contactsError } = await supabase
+                .from('employee_emergency_contacts')
+                .insert(contactsToInsert);
+                
+            if (contactsError) {
+                console.error('Failed to create emergency contacts:', contactsError);
+            }
+        }
+    }
+    
+    // Create right to work record if provided
+    if (rightToWorkData.has_right_to_work) {
+        const { error: rtwError } = await supabase
+            .from('employee_right_to_work')
+            .insert({
+                employee_id: employeeId,
+                has_right_to_work: rightToWorkData.has_right_to_work || false,
+                document_type: rightToWorkData.right_to_work_type || null,
+                expiry_date: rightToWorkData.right_to_work_expiry || null,
+                notes: rightToWorkData.right_to_work_notes || null
+            });
+            
+        if (rtwError) {
+            console.error('Failed to create right to work record:', rtwError);
+        }
+    }
+    
+    // Create onboarding tasks
+    if (onboardingTasks.length > 0) {
+        const tasksToInsert = onboardingTasks
+            .filter((t: any) => t.task)
+            .map((task: any) => ({
+                employee_id: employeeId,
+                task_name: task.task,
+                is_completed: task.completed || false,
+                due_date: task.due_date || null
+            }));
+            
+        if (tasksToInsert.length > 0) {
+            const { error: onboardingError } = await supabase
+                .from('employee_onboarding_checklist')
+                .insert(tasksToInsert);
+                
+            if (onboardingError) {
+                console.error('Failed to create onboarding tasks:', onboardingError);
+            }
+        }
+    }
+    
     await logAuditEvent({
         ...(userInfo.user_id && { user_id: userInfo.user_id }),
         ...(userInfo.user_email && { user_email: userInfo.user_email }),
@@ -96,12 +212,27 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
         additional_info: {
             employee_name: `${newEmployee.first_name} ${newEmployee.last_name}`,
             job_title: newEmployee.job_title,
-            status: newEmployee.status
+            status: newEmployee.status,
+            has_financial_details: Object.values(financialData).some(val => val !== null),
+            has_health_record: Object.values(healthData).some(val => val !== null),
+            emergency_contacts_count: emergencyContacts.filter((c: any) => c.name).length,
+            has_right_to_work: !!rightToWorkData.has_right_to_work,
+            onboarding_tasks_count: onboardingTasks.filter((t: any) => t.task).length
         }
     });
     
+    // Sync birthday to Google Calendar if employee has date of birth and is active
+    if (newEmployee.date_of_birth && newEmployee.status === 'Active') {
+        try {
+            await syncBirthdayCalendarEvent(newEmployee);
+        } catch (error) {
+            console.error('Failed to sync birthday to calendar:', error);
+            // Don't fail the employee creation if calendar sync fails
+        }
+    }
+    
     revalidatePath('/employees');
-    redirect('/employees');
+    return { type: 'success', message: 'Employee created successfully.', employeeId: newEmployee.employee_id };
 }
 
 export async function updateEmployee(prevState: ActionFormState, formData: FormData): Promise<ActionFormState> {
@@ -189,6 +320,30 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
         }
     });
 
+    // Handle birthday calendar sync based on status and date of birth changes
+    const statusChanged = oldEmployee && oldEmployee.status !== result.data.status;
+    const dobChanged = oldEmployee && oldEmployee.date_of_birth !== result.data.date_of_birth;
+    
+    if (statusChanged || dobChanged) {
+        try {
+            // If employee became former or date of birth was removed, delete calendar events
+            if (result.data.status === 'Former' || !result.data.date_of_birth) {
+                await deleteBirthdayCalendarEvent(employeeId);
+            } 
+            // If employee is active and has date of birth, sync calendar event
+            else if (result.data.status === 'Active' && result.data.date_of_birth) {
+                await syncBirthdayCalendarEvent({
+                    ...oldEmployee,
+                    ...result.data,
+                    employee_id: employeeId
+                });
+            }
+        } catch (error) {
+            console.error('Failed to update birthday calendar:', error);
+            // Don't fail the employee update if calendar sync fails
+        }
+    }
+
     revalidatePath(`/employees`);
     revalidatePath(`/employees/${employeeId}`);
     return { type: 'success', message: 'Employee updated successfully.', employeeId };
@@ -248,8 +403,18 @@ export async function deleteEmployee(prevState: DeleteState, formData: FormData)
         }
     });
     
+    // Delete birthday calendar events if employee had a date of birth
+    if (employee?.date_of_birth) {
+        try {
+            await deleteBirthdayCalendarEvent(employeeId);
+        } catch (error) {
+            console.error('Failed to delete birthday from calendar:', error);
+            // Don't fail the employee deletion if calendar sync fails
+        }
+    }
+    
     revalidatePath('/employees');
-    redirect('/employees');
+    return { type: 'success', message: 'Employee deleted successfully' };
 }
 
 // Server action to get a simplified list of employees for dropdowns
@@ -603,11 +768,25 @@ export async function addEmergencyContact(
 
 const FinancialDetailsSchema = z.object({
   employee_id: z.string().uuid(),
-  ni_number: z.union([z.string().min(1), z.null()]).optional(),
-  bank_account_number: z.union([z.string().regex(/^\d{8}$/, 'Account number must be 8 digits'), z.null()]).optional(),
-  bank_sort_code: z.union([z.string().regex(/^\d{2}-?\d{2}-?\d{2}$/, 'Sort code must be in format XX-XX-XX'), z.null()]).optional(),
-  sort_code_in_words: z.union([z.string().min(1), z.null()]).optional(),
-  account_number_in_words: z.union([z.string().min(1), z.null()]).optional(),
+  ni_number: z.union([
+    z.string().regex(/^[A-Z]{2}\d{6}[A-Z]$/, 'NI number must be in format: AA123456A'),
+    z.null()
+  ]).optional(),
+  bank_account_number: z.union([
+    z.string().regex(/^\d{8}$/, 'Account number must be exactly 8 digits'),
+    z.null()
+  ]).optional(),
+  bank_sort_code: z.union([
+    z.string().transform(val => {
+      // Remove any existing dashes and add them in the correct places
+      const cleaned = val.replace(/\D/g, '');
+      if (cleaned.length === 6) {
+        return `${cleaned.slice(0, 2)}-${cleaned.slice(2, 4)}-${cleaned.slice(4, 6)}`;
+      }
+      return val;
+    }).pipe(z.string().regex(/^\d{2}-\d{2}-\d{2}$/, 'Sort code must be 6 digits')),
+    z.null()
+  ]).optional(),
   bank_name: z.union([z.string().min(1), z.null()]).optional(),
   payee_name: z.union([z.string().min(1), z.null()]).optional(),
   branch_address: z.union([z.string().min(1), z.null()]).optional(),

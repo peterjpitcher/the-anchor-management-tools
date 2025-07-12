@@ -41,7 +41,8 @@ export type ModuleName =
   | 'users'
   | 'roles'
   | 'private_bookings'
-  | 'invoices';
+  | 'invoices'
+  | 'loyalty';
 
 export type ActionType = 
   | 'view'
@@ -65,7 +66,9 @@ export type ActionType =
   | 'manage_vendors'
   | 'generate_contracts'
   | 'view_sms_queue'
-  | 'approve_sms';
+  | 'approve_sms'
+  | 'enroll'
+  | 'redeem';
 
 export type UserPermission = {
   module_name: ModuleName;

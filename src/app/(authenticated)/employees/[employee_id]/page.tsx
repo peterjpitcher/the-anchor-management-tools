@@ -10,7 +10,6 @@ import AddEmployeeNoteForm from '@/components/AddEmployeeNoteForm';
 import EmployeeAttachmentsList from '@/components/EmployeeAttachmentsList';
 import AddEmployeeAttachmentForm from '@/components/AddEmployeeAttachmentForm';
 import { Suspense, use, useState, useEffect, useCallback } from 'react';
-import { Button } from '@/components/ui/Button';
 import { Tabs } from '@/components/ui/Tabs';
 import EmergencyContactsTab from '@/components/EmergencyContactsTab';
 import FinancialDetailsTab from '@/components/FinancialDetailsTab';
@@ -232,12 +231,13 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
               </p>
             </div>
             <div className="flex items-center space-x-3">
-              <Button asChild>
-                <Link href={`/employees/${employee.employee_id}/edit`} className="whitespace-nowrap">
-                  <PencilSquareIcon className="-ml-0.5 mr-1.5 h-5 w-5" aria-hidden="true" />
-                  Edit
-                </Link>
-              </Button>
+              <Link 
+                href={`/employees/${employee.employee_id}/edit`} 
+                className="inline-flex items-center justify-center rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap min-h-[44px] bg-green-600 text-white shadow-sm hover:bg-green-700 focus:ring-green-500 px-6 py-3 md:py-2 text-base md:text-sm"
+              >
+                <PencilSquareIcon className="-ml-0.5 mr-1.5 h-5 w-5" aria-hidden="true" />
+                Edit
+              </Link>
               <DeleteEmployeeButton
                 employeeId={employee.employee_id}
                 employeeName={`${employee.first_name} ${employee.last_name}`}

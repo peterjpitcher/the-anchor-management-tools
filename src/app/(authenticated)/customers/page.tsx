@@ -21,6 +21,8 @@ import { usePermissions } from '@/contexts/PermissionContext'
 import { TagIcon } from '@heroicons/react/24/outline'
 import { getBulkCustomerLabels } from '@/app/actions/customer-labels-bulk'
 import type { CustomerLabel, CustomerLabelAssignment } from '@/app/actions/customer-labels'
+import { LoyaltyService } from '@/lib/services/loyalty'
+import { LOYALTY_CONFIG } from '@/lib/config/loyalty'
 
 interface CustomerCategoryStats {
   customer_id: string
@@ -46,6 +48,8 @@ export default function CustomersPage() {
   const [customerPreferences, setCustomerPreferences] = useState<Record<string, CustomerCategoryStats[]>>({})
   const [customerLabels, setCustomerLabels] = useState<Record<string, CustomerLabelAssignment[]>>({})
   const [filter, setFilter] = useState<'all' | 'regular' | 'non-regular'>('all')
+  const [loyaltyMembers, setLoyaltyMembers] = useState<Record<string, any>>({}) // phoneNumber -> member data
+  const [loyaltyProgramEnabled, setLoyaltyProgramEnabled] = useState(false)
 
   // Debounce search term
   useEffect(() => {
@@ -87,6 +91,17 @@ export default function CustomersPage() {
 
   // Load loyal customer IDs once on mount
   useEffect(() => {
+    // Always show loyalty features (configuration is always enabled)
+    setLoyaltyProgramEnabled(true);
+
+    // Listen for settings changes (though we always show the UI)
+    const handleSettingsChange = (event: CustomEvent) => {
+      // Keep UI enabled regardless of operational status
+      setLoyaltyProgramEnabled(true);
+    };
+
+    window.addEventListener('loyalty-settings-changed' as any, handleSettingsChange);
+
     async function loadLoyalCustomers() {
       try {
         const loyalIds = await getLoyalCustomers(supabase)
@@ -96,16 +111,36 @@ export default function CustomersPage() {
         // Silent fail - loyalty status is not critical
       }
     }
+    
+    // Always load loyal customers for display
     loadLoyalCustomers()
+
+    return () => {
+      window.removeEventListener('loyalty-settings-changed' as any, handleSettingsChange);
+    };
   }, [supabase])
 
-  // Load customer event preferences and labels
+  // Load customer event preferences, labels, and loyalty status
   useEffect(() => {
     async function loadCustomerData() {
       if (!customers || customers.length === 0) return
 
       try {
         const customerIds = customers.map(c => c.id)
+        
+        // Load loyalty status for all customers (only if enabled)
+        if (loyaltyProgramEnabled) {
+          const loyaltyData: Record<string, any> = {}
+          for (const customer of customers) {
+            if (customer.mobile_number) {
+              const member = await LoyaltyService.getMemberByPhone(customer.mobile_number)
+              if (member) {
+                loyaltyData[customer.mobile_number] = member
+              }
+            }
+          }
+          setLoyaltyMembers(loyaltyData)
+        }
         
         // Load preferences
         const { data: stats, error } = await supabase
@@ -154,7 +189,7 @@ export default function CustomersPage() {
     }
 
     loadCustomerData()
-  }, [customers, supabase])
+  }, [customers, supabase, loyaltyProgramEnabled])
 
   // Load unread message counts separately with a slight delay to avoid blocking initial render
   useEffect(() => {
@@ -434,6 +469,11 @@ export default function CustomersPage() {
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Mobile
                   </th>
+                  {loyaltyProgramEnabled && (
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      VIP Status
+                    </th>
+                  )}
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Event Preferences
                   </th>
@@ -482,6 +522,57 @@ export default function CustomersPage() {
                         )}
                       </div>
                     </td>
+                    {loyaltyProgramEnabled && (
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {customer.mobile_number && loyaltyMembers[customer.mobile_number] ? (
+                          <div className="flex items-center space-x-2">
+                            <span style={{ color: LOYALTY_CONFIG.tiers[loyaltyMembers[customer.mobile_number].tier as keyof typeof LOYALTY_CONFIG.tiers].color }}>
+                              {LOYALTY_CONFIG.tiers[loyaltyMembers[customer.mobile_number].tier as keyof typeof LOYALTY_CONFIG.tiers].icon}
+                            </span>
+                            <span className="font-medium" style={{ color: LOYALTY_CONFIG.tiers[loyaltyMembers[customer.mobile_number].tier as keyof typeof LOYALTY_CONFIG.tiers].color }}>
+                              {LOYALTY_CONFIG.tiers[loyaltyMembers[customer.mobile_number].tier as keyof typeof LOYALTY_CONFIG.tiers].name}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              ({loyaltyMembers[customer.mobile_number].availablePoints} pts)
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center space-x-2">
+                            <span className="text-gray-400">Not enrolled</span>
+                            {hasPermission('loyalty', 'enroll') && (
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const formData = new FormData();
+                                  formData.append('customerId', customer.id);
+                                  formData.append('phoneNumber', customer.mobile_number);
+                                  
+                                  const { enrollCustomer } = await import('@/app/actions/loyalty');
+                                  const result = await enrollCustomer(formData);
+                                  
+                                  if (result.error) {
+                                    toast.error(result.error);
+                                  } else {
+                                    toast.success('Customer enrolled in VIP Club!');
+                                    // Reload loyalty data
+                                    const member = await LoyaltyService.getMemberByPhone(customer.mobile_number);
+                                    if (member) {
+                                      setLoyaltyMembers(prev => ({
+                                        ...prev,
+                                        [customer.mobile_number]: member
+                                      }));
+                                    }
+                                  }
+                                }}
+                                className="text-xs px-2 py-1 bg-amber-600 text-white rounded hover:bg-amber-700"
+                              >
+                                Enroll
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    )}
                     <td className="px-6 py-4 text-sm text-gray-500">
                       {customerPreferences[customer.id] ? (
                         <div className="flex flex-wrap gap-1">
@@ -594,6 +685,57 @@ export default function CustomersPage() {
                     </div>
                   </div>
                 </div>
+                {loyaltyProgramEnabled && (
+                  <div className="mt-2">
+                    {customer.mobile_number && loyaltyMembers[customer.mobile_number] ? (
+                      <div className="flex items-center space-x-2">
+                        <span style={{ color: LOYALTY_CONFIG.tiers[loyaltyMembers[customer.mobile_number].tier as keyof typeof LOYALTY_CONFIG.tiers].color }}>
+                          {LOYALTY_CONFIG.tiers[loyaltyMembers[customer.mobile_number].tier as keyof typeof LOYALTY_CONFIG.tiers].icon}
+                        </span>
+                        <span className="text-sm font-medium" style={{ color: LOYALTY_CONFIG.tiers[loyaltyMembers[customer.mobile_number].tier as keyof typeof LOYALTY_CONFIG.tiers].color }}>
+                          {LOYALTY_CONFIG.tiers[loyaltyMembers[customer.mobile_number].tier as keyof typeof LOYALTY_CONFIG.tiers].name}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          ({loyaltyMembers[customer.mobile_number].availablePoints} pts)
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm text-gray-400">Not enrolled</span>
+                        {hasPermission('loyalty', 'enroll') && customer.mobile_number && (
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              const formData = new FormData();
+                              formData.append('customerId', customer.id);
+                              formData.append('phoneNumber', customer.mobile_number);
+                              
+                              const { enrollCustomer } = await import('@/app/actions/loyalty');
+                              const result = await enrollCustomer(formData);
+                              
+                              if (result.error) {
+                                toast.error(result.error);
+                              } else {
+                                toast.success('Customer enrolled in VIP Club!');
+                                // Reload loyalty data
+                                const member = await LoyaltyService.getMemberByPhone(customer.mobile_number);
+                                if (member) {
+                                  setLoyaltyMembers(prev => ({
+                                    ...prev,
+                                    [customer.mobile_number]: member
+                                  }));
+                                }
+                              }
+                            }}
+                            className="text-xs px-2 py-1 bg-amber-600 text-white rounded hover:bg-amber-700"
+                          >
+                            Enroll
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {customerPreferences[customer.id] && customerPreferences[customer.id].length > 0 && (
                   <div className="mt-2">
                     <div className="flex flex-wrap gap-1">

@@ -9,10 +9,22 @@ interface Tab {
 
 interface TabsProps {
   tabs: Tab[];
+  activeTab?: number;
+  onTabChange?: (index: number) => void;
 }
 
-export function Tabs({ tabs }: TabsProps) {
-  const [activeTab, setActiveTab] = useState(0);
+export function Tabs({ tabs, activeTab: controlledActiveTab, onTabChange }: TabsProps) {
+  const [internalActiveTab, setInternalActiveTab] = useState(0);
+  
+  // Use controlled state if provided, otherwise use internal state
+  const activeTab = controlledActiveTab !== undefined ? controlledActiveTab : internalActiveTab;
+  const setActiveTab = (index: number) => {
+    if (onTabChange) {
+      onTabChange(index);
+    } else {
+      setInternalActiveTab(index);
+    }
+  };
 
   const tabNavigation = (
     <div className="border-b border-gray-200">

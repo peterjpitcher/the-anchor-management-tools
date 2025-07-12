@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { upsertHealthRecord } from '@/app/actions/employeeActions';
 import type { EmployeeHealthRecord } from '@/types/database';
+import { usePathname } from 'next/navigation';
 
 interface HealthRecordsFormProps {
   employeeId: string;
@@ -26,12 +27,17 @@ function SubmitButton() {
 export default function HealthRecordsForm({ employeeId, healthRecord }: HealthRecordsFormProps) {
   const [state, formAction] = useActionState(upsertHealthRecord, null);
   const [isRegisteredDisabled, setIsRegisteredDisabled] = useState(healthRecord?.is_registered_disabled || false);
+  const pathname = usePathname();
+  const isNewEmployee = pathname?.includes('/employees/new');
 
   useEffect(() => {
     if (state?.type === 'success') {
-      console.log(state.message);
+      // Only redirect when editing an existing employee
+      if (!isNewEmployee) {
+        window.location.href = '/employees';
+      }
     }
-  }, [state]);
+  }, [state, isNewEmployee]);
 
   interface FieldConfig {
     name: string;

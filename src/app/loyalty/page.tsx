@@ -3,6 +3,8 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { normalizePhoneNumber, mockMembers, tierConfig, achievements, memberAchievements, rewards, activeRedemptionCodes, generateRedemptionCode } from '@/lib/mock-data/loyalty-demo';
+import QRCode from 'qrcode';
+import VIPClubLogo from '@/components/loyalty/VIPClubLogo';
 
 type ViewMode = 'dashboard' | 'achievements' | 'rewards' | 'history';
 
@@ -14,6 +16,7 @@ function LoyaltyDashboardContent() {
   const [selectedReward, setSelectedReward] = useState<any>(null);
   const [activeCode, setActiveCode] = useState<any>(null);
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
   
   useEffect(() => {
     const phone = searchParams.get('phone');
@@ -47,7 +50,7 @@ function LoyaltyDashboardContent() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const generateCode = (reward: any) => {
+  const generateCode = async (reward: any) => {
     if (activeCode) return;
     
     const code = generateRedemptionCode(reward.id);
@@ -59,6 +62,22 @@ function LoyaltyDashboardContent() {
       expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
       used: false
     };
+    
+    // Generate QR code for staff scanning
+    const qrData = {
+      code: code,
+      customerId: memberData.id
+    };
+    // Encode the data for URL parameter
+    const encodedData = encodeURIComponent(JSON.stringify(qrData));
+    const verifyUrl = `${window.location.origin}/loyalty/redeem/verify?data=${encodedData}`;
+    
+    const qrUrl = await QRCode.toDataURL(verifyUrl, {
+      width: 200,
+      margin: 2,
+      errorCorrectionLevel: 'M'
+    });
+    setQrDataUrl(qrUrl);
     
     activeRedemptionCodes.push(newCode);
     setActiveCode(newCode);
@@ -226,17 +245,35 @@ function LoyaltyDashboardContent() {
 
   const renderRewards = () => (
     <div className="space-y-6">
-      {activeCode && (
+      {activeCode && selectedReward && (
         <div className="bg-amber-100 border-2 border-amber-300 rounded-xl p-6">
           <div className="text-center">
-            <p className="text-sm font-medium text-amber-800 mb-2">REDEMPTION CODE</p>
-            <p className={`text-4xl font-bold font-mono tracking-wider ${timeRemaining < 60 ? 'text-red-600' : 'text-gray-900'} mb-2`}>
-              {activeCode.code}
-            </p>
+            <p className="text-sm font-medium text-amber-800 mb-3">SHOW THIS TO YOUR SERVER</p>
+            
+            {/* QR Code for scanning */}
+            <div className="bg-white p-4 rounded-lg inline-block mb-4">
+              <img src={qrDataUrl} alt="Redemption QR" className="w-48 h-48" />
+            </div>
+            
+            {/* Reward details */}
+            <div className="mb-4">
+              <p className="text-2xl font-bold text-gray-900">{selectedReward.name}</p>
+              <p className="text-sm text-gray-600">{selectedReward.description}</p>
+            </div>
+            
+            {/* Code as backup */}
+            <div className="mb-3">
+              <p className="text-xs text-gray-600 mb-1">Or enter code manually:</p>
+              <p className={`text-2xl font-bold font-mono tracking-wider ${timeRemaining < 60 ? 'text-red-600' : 'text-gray-900'}`}>
+                {activeCode.code}
+              </p>
+            </div>
+            
+            {/* Timer */}
             <p className={`text-lg font-medium ${timeRemaining < 60 ? 'text-red-600' : 'text-amber-700'}`}>
               ⏱️ Expires in: {formatTime(timeRemaining)}
             </p>
-            <p className="text-sm text-amber-700 mt-4">Show this to your server</p>
+            
             {timeRemaining < 60 && (
               <p className="text-sm text-red-600 mt-2 font-medium">⚠️ Code expiring soon!</p>
             )}
@@ -365,9 +402,14 @@ function LoyaltyDashboardContent() {
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       {/* Header */}
-      <div className="bg-gradient-to-r from-amber-600 to-orange-600 text-white p-6">
-        <h1 className="text-2xl font-bold">Your VIP Dashboard</h1>
-        <p className="text-amber-100 mt-1">Manage your rewards and achievements</p>
+      <div className="bg-gradient-to-br from-amber-900 via-amber-800 to-amber-700 text-white p-6 shadow-xl">
+        <div className="max-w-lg mx-auto text-center">
+          <div className="mb-4">
+            <VIPClubLogo size="medium" />
+          </div>
+          <h1 className="text-2xl font-bold">Your VIP Dashboard</h1>
+          <p className="text-amber-100 mt-1">Manage your rewards and achievements</p>
+        </div>
       </div>
 
       {/* Content */}
