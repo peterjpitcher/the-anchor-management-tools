@@ -5,10 +5,13 @@ import { useFormStatus } from 'react-dom';
 import { upsertFinancialDetails } from '@/app/actions/employeeActions';
 import type { ActionFormState } from '@/types/actions';
 import type { EmployeeFinancialDetails } from '@/types/database';
+import { usePathname } from 'next/navigation';
 
 interface FinancialDetailsFormProps {
   employeeId: string;
   financialDetails: EmployeeFinancialDetails | null;
+  onSave?: (data: FormData) => void;
+  draftMode?: boolean;
 }
 
 function SubmitButton() {
@@ -24,29 +27,39 @@ function SubmitButton() {
   );
 }
 
-export default function FinancialDetailsForm({ employeeId, financialDetails }: FinancialDetailsFormProps) {
+export default function FinancialDetailsForm({ employeeId, financialDetails, onSave, draftMode = false }: FinancialDetailsFormProps) {
   const [state, formAction] = useActionState(upsertFinancialDetails, null);
+  const pathname = usePathname();
+  const isNewEmployee = pathname?.includes('/employees/new');
 
   useEffect(() => {
-    if (state?.type === 'success') {
-      // Potentially show a toast message here
-      console.log(state.message);
+    if (state?.type === 'success' && !draftMode) {
+      // Only redirect when editing an existing employee
+      if (!isNewEmployee) {
+        window.location.href = '/employees';
+      }
     }
-  }, [state]);
+  }, [state, isNewEmployee, draftMode]);
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    if (draftMode && onSave) {
+      e.preventDefault();
+      const formData = new FormData(e.currentTarget);
+      onSave(formData);
+    }
+  };
 
   const details = [
     { name: 'ni_number', label: 'NI Number', defaultValue: financialDetails?.ni_number },
     { name: 'payee_name', label: 'Payee Name', defaultValue: financialDetails?.payee_name },
     { name: 'bank_name', label: 'Bank Name', defaultValue: financialDetails?.bank_name },
-    { name: 'bank_sort_code', label: 'Sort Code', defaultValue: financialDetails?.bank_sort_code },
-    { name: 'sort_code_in_words', label: 'Sort Code in Words', defaultValue: financialDetails?.sort_code_in_words, placeholder: 'e.g., zero-one-two-three-four-five' },
-    { name: 'bank_account_number', label: 'Account Number', defaultValue: financialDetails?.bank_account_number },
-    { name: 'account_number_in_words', label: 'Account Number in Words', defaultValue: financialDetails?.account_number_in_words, placeholder: 'e.g., zero-one-two-three-four-five-six-seven' },
+    { name: 'bank_sort_code', label: 'Sort Code', defaultValue: financialDetails?.bank_sort_code, placeholder: '00-00-00' },
+    { name: 'bank_account_number', label: 'Account Number', defaultValue: financialDetails?.bank_account_number, placeholder: '8 digits' },
     { name: 'branch_address', label: 'Branch Address', defaultValue: financialDetails?.branch_address },
   ];
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form action={draftMode ? undefined : formAction} onSubmit={draftMode ? handleSubmit : undefined} className="space-y-6">
       <input type="hidden" name="employee_id" value={employeeId} />
       
       <div className="space-y-4">

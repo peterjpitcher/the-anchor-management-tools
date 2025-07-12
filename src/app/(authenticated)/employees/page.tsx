@@ -4,9 +4,8 @@ import { useState, Fragment, useMemo } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import Link from 'next/link'
 import type { Employee } from '@/types/database'
-import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import { PlusIcon, MagnifyingGlassIcon, ArrowDownTrayIcon, ChevronDownIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, MagnifyingGlassIcon, ArrowDownTrayIcon, ChevronDownIcon, CakeIcon } from '@heroicons/react/24/outline'
 import { Menu, Transition } from '@headlessui/react'
 import { formatDate } from '@/lib/dateUtils'
 import toast from 'react-hot-toast'
@@ -14,6 +13,7 @@ import { exportEmployees } from '@/app/actions/employeeExport'
 import { usePagination } from '@/hooks/usePagination'
 import { Pagination } from '@/components/Pagination'
 import { PageLoadingSkeleton } from '@/components/ui/SkeletonLoader'
+import { calculateLengthOfService } from '@/lib/employeeUtils'
 
 export default function EmployeesPage() {
   const supabase = useSupabase()
@@ -106,6 +106,13 @@ export default function EmployeesPage() {
               </p>
             </div>
             <div className="flex-shrink-0 flex space-x-2">
+              <Link 
+                href="/employees/birthdays" 
+                className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+              >
+                <CakeIcon className="-ml-1 mr-2 h-5 w-5" />
+                Birthdays
+              </Link>
               <Menu as="div" className="relative inline-block text-left">
                 <div>
                   <Menu.Button
@@ -158,12 +165,13 @@ export default function EmployeesPage() {
                   </Menu.Items>
                 </Transition>
               </Menu>
-              <Button asChild>
-                <Link href="/employees/new">
-                  <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
-                  Add Employee
-                </Link>
-              </Button>
+              <Link 
+                href="/employees/new" 
+                className="inline-flex items-center justify-center rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap min-h-[44px] bg-green-600 text-white shadow-sm hover:bg-green-700 focus:ring-green-500 px-6 py-3 md:py-2 text-base md:text-sm"
+              >
+                <PlusIcon className="-ml-1 mr-2 h-5 w-5 flex-shrink-0" />
+                Add Employee
+              </Link>
             </div>
           </div>
         </div>
@@ -294,9 +302,14 @@ export default function EmployeesPage() {
                         </a>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {employee.employment_start_date 
-                          ? formatDate(employee.employment_start_date)
-                          : 'N/A'}
+                        <div>
+                          {employee.employment_start_date 
+                            ? formatDate(employee.employment_start_date)
+                            : 'N/A'}
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          {calculateLengthOfService(employee.employment_start_date)}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         <Badge variant={employee.status === 'Active' ? 'success' : employee.status === 'Prospective' ? 'info' : 'error'}>
@@ -328,11 +341,16 @@ export default function EmployeesPage() {
                           <p className="flex items-center text-sm text-gray-500">{employee.job_title}</p>
                         </div>
                         <div className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
-                          <p>
-                            Started: {employee.employment_start_date 
-                              ? formatDate(employee.employment_start_date)
-                              : 'N/A'}
-                          </p>
+                          <div>
+                            <p>
+                              Started: {employee.employment_start_date 
+                                ? formatDate(employee.employment_start_date)
+                                : 'N/A'}
+                            </p>
+                            <p className="text-xs text-gray-400">
+                              {calculateLengthOfService(employee.employment_start_date)}
+                            </p>
+                          </div>
                         </div>
                       </div>
                     </Link>
