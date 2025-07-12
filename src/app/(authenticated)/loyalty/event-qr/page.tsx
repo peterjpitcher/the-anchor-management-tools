@@ -15,7 +15,7 @@ export default function EventQRPage() {
   const generateQRCode = async () => {
     setLoading(true);
     
-    const url = `${window.location.origin}/checkin?event=${todaysEvent.id}`;
+    const url = `${window.location.origin}/loyalty/checkin?event=${todaysEvent.id}`;
     const dataUrl = await QRCode.toDataURL(url, {
       width: 400,
       margin: 2,
@@ -51,7 +51,7 @@ export default function EventQRPage() {
         <div className="max-w-4xl mx-auto p-6">
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-gray-900">Event QR Code</h1>
-            <p className="text-gray-600 mt-1">For tonight's event: {todaysEvent.name}</p>
+            <p className="text-gray-600 mt-1">For tonight&apos;s event: {todaysEvent.name}</p>
           </div>
 
           <div className="bg-white rounded-lg shadow p-8">
@@ -77,7 +77,7 @@ export default function EventQRPage() {
             <h3 className="font-semibold text-blue-900 mb-2">How it works:</h3>
             <ol className="space-y-2 text-blue-800">
               <li>1. Customer scans QR code with phone camera</li>
-              <li>2. Opens check-in page for tonight's event</li>
+              <li>2. Opens check-in page for tonight&apos;s event</li>
               <li>3. Customer enters their mobile number</li>
               <li>4. System finds their booking and awards points</li>
               <li>5. No booking? They can still join the VIP program!</li>

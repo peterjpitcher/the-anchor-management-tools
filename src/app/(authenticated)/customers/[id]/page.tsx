@@ -17,6 +17,7 @@ import { CustomerCategoryPreferences } from '@/components/CustomerCategoryPrefer
 import { PageLoadingSkeleton } from '@/components/ui/SkeletonLoader'
 import { CustomerLabelSelector } from '@/components/CustomerLabelSelector'
 import { usePermissions } from '@/contexts/PermissionContext'
+import { CustomerLoyaltyCard } from '@/components/CustomerLoyaltyCard'
 
 type BookingWithEvent = Omit<Booking, 'event'> & {
   event: Pick<Event, 'id' | 'name' | 'date' | 'time' | 'capacity' | 'created_at' | 'slug'>
@@ -473,6 +474,13 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
 
       {/* Category Preferences */}
       <CustomerCategoryPreferences customerId={customer.id} />
+
+      {/* Loyalty Status */}
+      <CustomerLoyaltyCard 
+        customerId={customer.id} 
+        customerPhone={customer.mobile_number}
+        customerName={`${customer.first_name} ${customer.last_name}`}
+      />
 
       {/* Message Thread */}
       <div className="bg-white shadow overflow-hidden sm:rounded-lg">

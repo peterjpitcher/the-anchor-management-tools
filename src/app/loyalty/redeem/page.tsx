@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { activeRedemptionCodes, rewards, mockMembers } from '@/lib/mock-data/loyalty-demo';
+import VIPClubLogo from '@/components/loyalty/VIPClubLogo';
 
 type RedemptionState = 'input' | 'checking' | 'success' | 'error' | 'expired' | 'already-used';
 
@@ -74,8 +75,11 @@ export default function StaffRedeemPage() {
         <div className="max-w-md w-full">
           <div className="bg-white rounded-2xl shadow-xl p-8">
             <div className="text-center mb-8">
+              <div className="mb-6">
+                <VIPClubLogo size="small" />
+              </div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Redemption Terminal</h1>
-              <p className="text-gray-600">Enter customer's redemption code</p>
+              <p className="text-gray-600">Enter or scan customer's redemption code</p>
             </div>
             
             <form onSubmit={handleRedeem} className="space-y-6">
@@ -106,9 +110,31 @@ export default function StaffRedeemPage() {
               </button>
             </form>
             
+            <div className="mt-6">
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-300"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-4 bg-white text-gray-500">OR</span>
+                </div>
+              </div>
+              
+              <button
+                onClick={() => alert('QR scanner would open here - in production this would use the device camera to scan customer QR codes')}
+                className="mt-6 w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold text-lg hover:bg-blue-700 transition-colors flex items-center justify-center"
+              >
+                <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2L5 6v2z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 4h2a1 1 0 011 1v2M5 20h2a1 1 0 001-1v-2M19 4h-2a1 1 0 00-1 1v2M19 20h-2a1 1 0 01-1-1v-2" />
+                </svg>
+                Scan QR Code
+              </button>
+            </div>
+            
             <div className="mt-8 p-4 bg-blue-50 rounded-lg">
               <p className="text-sm text-blue-800">
-                💡 Customer shows you their code from their phone. Enter it exactly as shown.
+                💡 Customer can show their code or QR from their phone. QR scanning is instant!
               </p>
             </div>
           </div>
