@@ -16,39 +16,37 @@ import {
   ChartBarIcon
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
-
-interface Reward {
-  id: string;
-  name: string;
-  description: string;
-  category: 'snacks' | 'drinks' | 'desserts' | 'experiences';
-  pointsCost: number;
-  inventory?: number;
-  dailyLimit?: number;
-  tierRequired?: string;
-  active: boolean;
-  redemptions: number;
-}
+import { LoyaltyReward, RewardFormData } from '@/types/loyalty';
+import { 
+  getRewards, 
+  getRewardStats, 
+  createReward, 
+  updateReward, 
+  deleteReward,
+  updateRewardInventory 
+} from '@/app/actions/loyalty-rewards';
 
 export default function RewardManagementPage() {
   const { hasPermission } = usePermissions();
-  const [rewards, setRewards] = useState<Reward[]>([]);
+  const [rewards, setRewards] = useState<LoyaltyReward[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [editingReward, setEditingReward] = useState<Reward | null>(null);
+  const [editingReward, setEditingReward] = useState<LoyaltyReward | null>(null);
   const [programOperational, setProgramOperational] = useState(false);
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [categoryFilter, setCategoryFilter] = useState<'all' | string>('all');
+  const [stats, setStats] = useState<any>(null);
 
   // Form state
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<RewardFormData>({
     name: '',
     description: '',
-    category: 'snacks' as 'snacks' | 'drinks' | 'desserts' | 'experiences',
-    pointsCost: 100,
-    inventory: undefined as number | undefined,
-    dailyLimit: undefined as number | undefined,
-    tierRequired: '',
+    category: 'snacks',
+    points_cost: 100,
+    tier_required: undefined,
+    icon: undefined,
+    inventory: undefined,
+    daily_limit: undefined,
     active: true
   });
 
@@ -74,25 +72,20 @@ export default function RewardManagementPage() {
   const loadRewards = async () => {
     setLoading(true);
     try {
-      // In production, this would fetch from database
-      // For now, use config rewards with mock data
-      const mockRewards: Reward[] = Object.entries(LOYALTY_CONFIG.rewards)
-        .flatMap(([category, items]) => 
-          Object.entries(items).map(([id, reward]) => ({
-            id,
-            name: reward.name,
-            description: reward.description || '',
-            category: category as any,
-            pointsCost: reward.pointsCost,
-            inventory: Math.floor(Math.random() * 100),
-            dailyLimit: category === 'experiences' ? 5 : undefined,
-            tierRequired: 'tierRequired' in reward ? reward.tierRequired : undefined,
-            active: true,
-            redemptions: Math.floor(Math.random() * 50)
-          }))
-        );
+      const [rewardsResult, statsResult] = await Promise.all([
+        getRewards(),
+        getRewardStats()
+      ]);
       
-      setRewards(mockRewards);
+      if (rewardsResult.error) {
+        toast.error(rewardsResult.error);
+      } else if (rewardsResult.data) {
+        setRewards(rewardsResult.data);
+      }
+      
+      if (statsResult.data) {
+        setStats(statsResult.data);
+      }
     } catch (error) {
       console.error('Error loading rewards:', error);
       toast.error('Failed to load rewards');
@@ -107,24 +100,25 @@ export default function RewardManagementPage() {
     try {
       if (editingReward) {
         // Update existing reward
-        setRewards(rewards.map(r => 
-          r.id === editingReward.id 
-            ? { ...r, ...formData, redemptions: r.redemptions }
-            : r
-        ));
-        toast.success('Reward updated successfully');
+        const result = await updateReward(editingReward.id, formData);
+        if (result.error) {
+          toast.error(result.error);
+        } else if (result.success) {
+          toast.success('Reward updated successfully');
+          resetForm();
+          loadRewards();
+        }
       } else {
         // Create new reward
-        const newReward: Reward = {
-          id: `reward-${Date.now()}`,
-          ...formData,
-          redemptions: 0
-        };
-        setRewards([...rewards, newReward]);
-        toast.success('Reward created successfully');
+        const result = await createReward(formData);
+        if (result.error) {
+          toast.error(result.error);
+        } else if (result.success) {
+          toast.success('Reward created successfully');
+          resetForm();
+          loadRewards();
+        }
       }
-      
-      resetForm();
     } catch (error) {
       toast.error('Failed to save reward');
     }
@@ -136,23 +130,46 @@ export default function RewardManagementPage() {
     }
     
     try {
-      setRewards(rewards.filter(r => r.id !== rewardId));
-      toast.success('Reward deleted successfully');
+      const result = await deleteReward(rewardId);
+      if (result.error) {
+        toast.error(result.error);
+      } else if (result.success) {
+        toast.success('Reward deleted successfully');
+        loadRewards();
+      }
     } catch (error) {
       toast.error('Failed to delete reward');
     }
   };
 
-  const toggleActive = async (rewardId: string) => {
+  const toggleActive = async (reward: LoyaltyReward) => {
     try {
-      setRewards(rewards.map(r => 
-        r.id === rewardId 
-          ? { ...r, active: !r.active }
-          : r
-      ));
-      toast.success('Reward status updated');
+      const result = await updateReward(reward.id, {
+        ...reward,
+        active: !reward.active
+      });
+      if (result.error) {
+        toast.error(result.error);
+      } else if (result.success) {
+        toast.success('Reward status updated');
+        loadRewards();
+      }
     } catch (error) {
       toast.error('Failed to update reward status');
+    }
+  };
+
+  const handleRestockReward = async (rewardId: string, newInventory: number) => {
+    try {
+      const result = await updateRewardInventory(rewardId, newInventory);
+      if (result.error) {
+        toast.error(result.error);
+      } else if (result.success) {
+        toast.success('Inventory updated successfully');
+        loadRewards();
+      }
+    } catch (error) {
+      toast.error('Failed to update inventory');
     }
   };
 
@@ -161,25 +178,27 @@ export default function RewardManagementPage() {
       name: '',
       description: '',
       category: 'snacks',
-      pointsCost: 100,
+      points_cost: 100,
+      tier_required: undefined,
+      icon: undefined,
       inventory: undefined,
-      dailyLimit: undefined,
-      tierRequired: '',
+      daily_limit: undefined,
       active: true
     });
     setEditingReward(null);
     setShowForm(false);
   };
 
-  const startEdit = (reward: Reward) => {
+  const startEdit = (reward: LoyaltyReward) => {
     setFormData({
       name: reward.name,
-      description: reward.description,
-      category: reward.category as 'snacks' | 'drinks' | 'desserts' | 'experiences',
-      pointsCost: reward.pointsCost,
+      description: reward.description || '',
+      category: reward.category,
+      points_cost: reward.points_cost,
+      tier_required: reward.tier_required,
+      icon: reward.icon,
       inventory: reward.inventory,
-      dailyLimit: reward.dailyLimit,
-      tierRequired: reward.tierRequired || '',
+      daily_limit: reward.daily_limit,
       active: reward.active
     });
     setEditingReward(reward);
@@ -231,7 +250,7 @@ export default function RewardManagementPage() {
             <div>
               <p className="text-yellow-800 font-medium">Configuration Mode</p>
               <p className="text-sm text-yellow-700">
-                The loyalty program is not operational. You can configure rewards, but customers won't earn points until you 
+                The loyalty program is not operational. You can configure rewards, but customers won&apos;t earn points until you 
                 <Link href="/settings/loyalty" className="ml-1 text-yellow-900 underline">enable operations</Link>.
               </p>
             </div>
@@ -305,7 +324,7 @@ export default function RewardManagementPage() {
             <GiftIcon className="h-8 w-8 text-amber-600 mr-3" />
             <div>
               <p className="text-sm text-gray-500">Total Rewards</p>
-              <p className="text-xl font-semibold">{rewards.length}</p>
+              <p className="text-xl font-semibold">{stats?.totalRewards || 0}</p>
             </div>
           </div>
         </div>
@@ -315,7 +334,7 @@ export default function RewardManagementPage() {
             <CheckCircleIcon className="h-8 w-8 text-green-600 mr-3" />
             <div>
               <p className="text-sm text-gray-500">Active</p>
-              <p className="text-xl font-semibold">{rewards.filter(r => r.active).length}</p>
+              <p className="text-xl font-semibold">{stats?.activeRewards || 0}</p>
             </div>
           </div>
         </div>
@@ -325,9 +344,7 @@ export default function RewardManagementPage() {
             <ExclamationTriangleIcon className="h-8 w-8 text-yellow-600 mr-3" />
             <div>
               <p className="text-sm text-gray-500">Low Stock</p>
-              <p className="text-xl font-semibold">
-                {rewards.filter(r => r.inventory !== undefined && r.inventory < 10).length}
-              </p>
+              <p className="text-xl font-semibold">{stats?.lowStockCount || 0}</p>
             </div>
           </div>
         </div>
@@ -337,9 +354,7 @@ export default function RewardManagementPage() {
             <ChartBarIcon className="h-8 w-8 text-purple-600 mr-3" />
             <div>
               <p className="text-sm text-gray-500">Total Redemptions</p>
-              <p className="text-xl font-semibold">
-                {rewards.reduce((sum, r) => sum + r.redemptions, 0)}
-              </p>
+              <p className="text-xl font-semibold">{stats?.totalRedemptions || 0}</p>
             </div>
           </div>
         </div>
@@ -348,9 +363,12 @@ export default function RewardManagementPage() {
       {/* Rewards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredRewards.map(reward => {
-          const category = categories[reward.category];
-          const tier = reward.tierRequired ? 
-            LOYALTY_CONFIG.tiers[reward.tierRequired as keyof typeof LOYALTY_CONFIG.tiers] : null;
+          const category = categories[reward.category as keyof typeof categories] || {
+            name: reward.category,
+            icon: '📦',
+            color: 'bg-gray-100 text-gray-800'
+          };
+          const tier = reward.tier;
           
           return (
             <div 
@@ -394,7 +412,7 @@ export default function RewardManagementPage() {
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="text-gray-500">Points Cost:</span>
-                    <span className="font-semibold text-amber-600">{reward.pointsCost} pts</span>
+                    <span className="font-semibold text-amber-600">{reward.points_cost} pts</span>
                   </div>
                   
                   {tier && (
@@ -417,22 +435,22 @@ export default function RewardManagementPage() {
                     </div>
                   )}
                   
-                  {reward.dailyLimit && (
+                  {reward.daily_limit && (
                     <div className="flex items-center justify-between">
                       <span className="text-gray-500">Daily Limit:</span>
-                      <span className="font-medium">{reward.dailyLimit}/day</span>
+                      <span className="font-medium">{reward.daily_limit}/day</span>
                     </div>
                   )}
                   
                   <div className="flex items-center justify-between pt-2 border-t">
                     <span className="text-gray-500">Redemptions:</span>
-                    <span className="font-medium">{reward.redemptions}</span>
+                    <span className="font-medium">0</span>
                   </div>
                 </div>
 
                 <div className="mt-4 flex items-center justify-between">
                   <button
-                    onClick={() => toggleActive(reward.id)}
+                    onClick={() => toggleActive(reward)}
                     className={`inline-flex items-center px-3 py-1 border rounded-md text-xs font-medium ${
                       reward.active
                         ? 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
@@ -443,7 +461,15 @@ export default function RewardManagementPage() {
                   </button>
                   
                   {reward.inventory !== undefined && reward.inventory < 10 && (
-                    <button className="text-xs text-amber-600 hover:text-amber-700">
+                    <button 
+                      onClick={() => {
+                        const newInventory = window.prompt('Enter new inventory level:', '100');
+                        if (newInventory && !isNaN(parseInt(newInventory))) {
+                          handleRestockReward(reward.id, parseInt(newInventory));
+                        }
+                      }}
+                      className="text-xs text-amber-600 hover:text-amber-700"
+                    >
                       Restock →
                     </button>
                   )}
@@ -545,8 +571,8 @@ export default function RewardManagementPage() {
                   <input
                     type="number"
                     min="1"
-                    value={formData.pointsCost}
-                    onChange={(e) => setFormData({ ...formData, pointsCost: parseInt(e.target.value) })}
+                    value={formData.points_cost}
+                    onChange={(e) => setFormData({ ...formData, points_cost: parseInt(e.target.value) })}
                     className="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
                     required
                   />
@@ -578,10 +604,10 @@ export default function RewardManagementPage() {
                   <input
                     type="number"
                     min="1"
-                    value={formData.dailyLimit || ''}
+                    value={formData.daily_limit || ''}
                     onChange={(e) => setFormData({ 
                       ...formData, 
-                      dailyLimit: e.target.value ? parseInt(e.target.value) : undefined 
+                      daily_limit: e.target.value ? parseInt(e.target.value) : undefined 
                     })}
                     className="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
                     placeholder="No limit"
@@ -594,8 +620,8 @@ export default function RewardManagementPage() {
                   Required Tier (optional)
                 </label>
                 <select
-                  value={formData.tierRequired}
-                  onChange={(e) => setFormData({ ...formData, tierRequired: e.target.value })}
+                  value={formData.tier_required || ''}
+                  onChange={(e) => setFormData({ ...formData, tier_required: e.target.value || undefined })}
                   className="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
                 >
                   <option value="">Available to all tiers</option>
