@@ -222,7 +222,7 @@ export default function LoyaltyAnalyticsPage() {
             <div>
               <p className="text-yellow-800 font-medium">Viewing Historical Data</p>
               <p className="text-sm text-yellow-700">
-                The loyalty program is not operational. Analytics show historical data. New points won't be earned until you 
+                The loyalty program is not operational. Analytics show historical data. New points won&apos;t be earned until you 
                 <Link href="/settings/loyalty" className="ml-1 text-yellow-900 underline">enable operations</Link>.
               </p>
             </div>

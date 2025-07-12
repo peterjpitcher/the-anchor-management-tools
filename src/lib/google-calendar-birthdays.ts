@@ -61,9 +61,10 @@ async function getOAuth2Client() {
 }
 
 // Generate a unique event ID for an employee's birthday
-function generateBirthdayEventId(employeeId: string, year: number): string {
+function generateBirthdayEventId(employeeId: string): string {
   // Use a predictable ID so we can find and update existing events
-  return `birthday-${employeeId}-${year}`.replace(/[^a-z0-9]/g, '');
+  // Remove year from ID since this will be a recurring event
+  return `birthday-${employeeId}`.replace(/[^a-z0-9]/g, '');
 }
 
 // Create or update a birthday calendar event
@@ -82,50 +83,49 @@ export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Emp
     const auth = await getOAuth2Client();
     const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
     
-    // Calculate this year's and next year's birthday
-    const currentYear = getYear(new Date());
+    // Parse date of birth
     const dob = new Date(employee.date_of_birth);
-    const currentYearBirthday = new Date(currentYear, dob.getMonth(), dob.getDate());
-    const nextYearBirthday = new Date(currentYear + 1, dob.getMonth(), dob.getDate());
+    const eventId = generateBirthdayEventId(employee.employee_id);
     
-    // Determine which year's birthday to create/update
+    // Calculate the start date for the recurring event
+    // If the birthday has already passed this year, start from next year
+    const currentYear = getYear(new Date());
+    const currentYearBirthday = new Date(currentYear, dob.getMonth(), dob.getDate());
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    let birthdayDate: Date;
-    let year: number;
-    
-    // If this year's birthday hasn't passed yet, create for this year
-    // Otherwise, create for next year
+    let startYear: number;
     if (currentYearBirthday >= today) {
-      birthdayDate = currentYearBirthday;
-      year = currentYear;
+      startYear = currentYear;
     } else {
-      birthdayDate = nextYearBirthday;
-      year = currentYear + 1;
+      startYear = currentYear + 1;
     }
     
-    const eventId = generateBirthdayEventId(employee.employee_id, year);
-    const age = year - dob.getFullYear();
+    const startDate = new Date(startYear, dob.getMonth(), dob.getDate());
+    const birthYear = dob.getFullYear();
     
     const event = {
       id: eventId,
-      summary: `🎂 ${employee.first_name} ${employee.last_name}'s Birthday (${age})`,
+      summary: `🎂 ${employee.first_name} ${employee.last_name}'s Birthday`,
       description: [
-        `${employee.first_name} ${employee.last_name} turns ${age}`,
+        `${employee.first_name} ${employee.last_name}`,
+        `Born: ${format(dob, 'MMMM d, yyyy')}`,
         employee.job_title ? `Job Title: ${employee.job_title}` : '',
         employee.email_address ? `Email: ${employee.email_address}` : '',
         '',
         'Remember to wish them a happy birthday! 🎉'
       ].filter(Boolean).join('\n'),
       start: {
-        date: format(birthdayDate, 'yyyy-MM-dd'),
+        date: format(startDate, 'yyyy-MM-dd'),
         timeZone: 'Europe/London'
       },
       end: {
-        date: format(birthdayDate, 'yyyy-MM-dd'),
+        date: format(startDate, 'yyyy-MM-dd'),
         timeZone: 'Europe/London'
       },
+      recurrence: [
+        `RRULE:FREQ=YEARLY;BYMONTH=${dob.getMonth() + 1};BYMONTHDAY=${dob.getDate()}`
+      ],
       colorId: '5', // Yellow color for birthdays
       transparency: 'transparent', // Show as free time
       reminders: {
@@ -186,35 +186,27 @@ export async function deleteBirthdayCalendarEvent(employeeId: string): Promise<b
 
     const auth = await getOAuth2Client();
     const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
-    const currentYear = getYear(new Date());
+    const eventId = generateBirthdayEventId(employeeId);
     
-    // Try to delete this year's and next year's events
-    const years = [currentYear, currentYear + 1];
-    let deletedAny = false;
-    
-    for (const year of years) {
-      const eventId = generateBirthdayEventId(employeeId, year);
+    try {
+      await calendar.events.delete({
+        auth: auth as any,
+        calendarId,
+        eventId
+      });
       
-      try {
-        await calendar.events.delete({
-          auth: auth as any,
-          calendarId,
-          eventId
-        });
-        
-        console.log('[Birthday Calendar] Deleted birthday event:', eventId);
-        deletedAny = true;
-      } catch (error: any) {
-        if (error.code === 404 || error.code === 410) {
-          // Event not found or already deleted - that's okay
-          console.log('[Birthday Calendar] Event not found (may not exist):', eventId);
-        } else {
-          console.error('[Birthday Calendar] Error deleting event:', error.message);
-        }
+      console.log('[Birthday Calendar] Deleted birthday event:', eventId);
+      return true;
+    } catch (error: any) {
+      if (error.code === 404 || error.code === 410) {
+        // Event not found or already deleted - that's okay
+        console.log('[Birthday Calendar] Event not found (may not exist):', eventId);
+        return false;
+      } else {
+        console.error('[Birthday Calendar] Error deleting event:', error.message);
+        throw error;
       }
     }
-    
-    return deletedAny;
   } catch (error: any) {
     console.error('[Birthday Calendar] Delete failed:', error.message);
     return false;
