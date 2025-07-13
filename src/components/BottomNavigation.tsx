@@ -68,10 +68,10 @@ export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps)
 
   if (permissionsLoading) {
     return (
-      <nav className="fixed bottom-0 left-0 right-0 z-50 h-16 bg-sidebar border-t border-gray-300 md:hidden">
-        <div className="flex h-full overflow-x-auto scrollbar-hide">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-sidebar border-t border-gray-300 md:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <div className="flex h-16 overflow-x-auto scrollbar-hide">
           {[...Array(6)].map((_, i) => (
-            <div key={i} className="inline-flex flex-col items-center justify-center min-w-[80px] px-2">
+            <div key={i} className="inline-flex flex-col items-center justify-center min-w-[90px] px-2">
               <div className="w-6 h-6 bg-white/20 rounded animate-pulse"></div>
               <div className="w-12 h-3 bg-white/20 rounded mt-1 animate-pulse"></div>
             </div>
@@ -82,17 +82,20 @@ export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps)
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 h-16 bg-sidebar border-t border-gray-300 md:hidden">
-      <div className="flex h-full overflow-x-auto scrollbar-hide">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-sidebar border-t border-gray-300 md:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      <div className="flex h-16 overflow-x-auto scrollbar-hide relative">
+        {/* Scroll indicators */}
+        <div className="absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-sidebar to-transparent pointer-events-none z-10 md:hidden" />
+        <div className="absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-l from-sidebar to-transparent pointer-events-none z-10 md:hidden" />
         {navigationItems.map((item) => {
           if (item.action && item.name === 'Notes') {
             return (
               <button
                 key={item.name}
                 onClick={onQuickAddNoteClick}
-                className="inline-flex flex-col items-center justify-center min-w-[80px] px-3 hover:bg-white/10 text-white/80 hover:text-white transition-colors"
+                className="inline-flex flex-col items-center justify-center min-w-[90px] px-3 py-2 hover:bg-white/10 active:bg-white/20 text-white/80 hover:text-white transition-colors"
               >
-                <item.icon className="w-5 h-5" />
+                <item.icon className="w-6 h-6" />
                 <span className="text-xs mt-1">{item.name}</span>
               </button>
             );
@@ -101,16 +104,16 @@ export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps)
             <Link
               key={item.name}
               href={item.href}
-              className={`inline-flex flex-col items-center justify-center min-w-[80px] px-3 transition-colors ${
+              className={`inline-flex flex-col items-center justify-center min-w-[90px] px-3 py-2 transition-colors ${
                 isActive(item.href)
                   ? 'bg-white/20 text-white'
                   : 'text-white/80 hover:text-white hover:bg-white/10'
               }`}
             >
               <div className="relative">
-                <item.icon className="w-5 h-5" />
+                <item.icon className="w-6 h-6" />
                 {item.name === 'Messages' && unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-red-600 rounded-full">
+                  <span className="absolute -top-2 -right-2 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold leading-none text-white bg-red-600 rounded-full">
                     {unreadCount > 99 ? '99+' : unreadCount}
                   </span>
                 )}

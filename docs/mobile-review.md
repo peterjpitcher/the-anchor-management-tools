@@ -46,7 +46,9 @@ This document tracks the mobile responsiveness review of all pages and component
 
 ### Reset Password Page
 - **Path**: `/src/app/auth/reset-password/page.tsx`
-- **Issues Found**: [Not yet reviewed]
+- **Issues Found**: 
+  - **Inconsistent Button Padding** (Line 136): px-6 py-3 md:py-2 creates different touch targets
+  - **Input Field Size** (Line 127): sm:text-sm might be too small, could trigger zoom on iOS
 
 ### Home Page
 - **Path**: `/src/app/page.tsx`
@@ -73,15 +75,25 @@ This document tracks the mobile responsiveness review of all pages and component
 
 ### Loyalty Portal
 - **Path**: `/src/app/loyalty/portal/page.tsx`
-- **Issues Found**: [Not yet reviewed]
+- **Issues Found**: 
+  - **Tab Overflow** (Line 203): 4 tabs might overflow on small screens without scroll handling
+  - **Points Grid** (Line 234): grid-cols-3 too cramped on mobile
+  - **Small Redeem Buttons** (Line 340): px-4 py-2 below touch target minimum
+  - **Long Names** (Lines 172-175): Could overflow header on mobile
 
 ### Privacy Policy
 - **Path**: `/src/app/privacy/page.tsx`
-- **Issues Found**: [Not yet reviewed]
+- **Issues Found**: 
+  - **Minimal Padding** (Line 16): px-4 only 16px, too narrow for comfortable reading
+  - **Grid Spacing** (Line 114): md:grid-cols-2 lacks vertical spacing on mobile
+  - **Wide Text** (Line 20): prose with max-w-none needs responsive constraints
 
 ### Loyalty Demo Page
 - **Path**: `/src/app/loyalty/demo/page.tsx`
-- **Issues Found**: [Not yet reviewed]
+- **Issues Found**: 
+  - **Code Block Overflow** (Lines 68-71): Phone number examples might overflow
+  - **Insufficient Padding** (Line 27): px-4 too minimal for mobile
+  - **Long Code Snippets** (Lines 200-228): Need horizontal scroll handling
 
 ## 2. Authenticated Pages
 
@@ -122,11 +134,28 @@ This document tracks the mobile responsiveness review of all pages and component
     - **Inconsistent Button Heights** (Line 170): min-h-[44px] mixed with other styles
     - **Otherwise Good**: Has responsive desktop/mobile views (Lines 269-360)
 - **Employee Detail**: `/src/app/(authenticated)/employees/[employee_id]/page.tsx`
-  - **Issues Found**: [Not yet reviewed]
+  - **Issues Found**: 
+    - **Tab Navigation**: 7 tabs challenging to navigate on small screens
+    - **Button Stacking**: Action buttons take significant vertical space
+    - **Grid Layout**: sm:grid-cols-4 creates excessive vertical scrolling
+    - **Information Density**: Multiple sections create very long pages
 - **New Employee**: `/src/app/(authenticated)/employees/new/page.tsx`
-  - **Issues Found**: [Not yet reviewed]
+  - **Issues Found**: 
+    - **Form Length**: 3 tabs with 30+ fields total, excessive scrolling
+    - **Checkbox Touch Targets**: Health records checkboxes too small
+    - **Save Button Position**: At top, requires scrolling back up
+    - **No Progressive Save**: Risk of data loss on long forms
 - **Edit Employee**: `/src/app/(authenticated)/employees/[employee_id]/edit/page.tsx`
-  - **Issues Found**: [Not yet reviewed]
+  - **Issues Found**: 
+    - **Same as New Employee**: Inherits all form length issues
+    - **Tab Loading**: Separate forms per tab slow on mobile
+    - **No Progress Indicator**: Users don't know completion status
+- **Employee Birthdays**: `/src/app/(authenticated)/employees/birthdays/page.tsx`
+  - **Issues Found**: 
+    - **List Density**: Multiple info per entry wraps awkwardly
+    - **Horizontal Layout**: flex justify-between squeezes content
+    - **Small Badges**: Countdown badges hard to read
+    - **Vertical Space**: Month headers take too much room
 
 ### Events Module
 - **Event List**: `/src/app/(authenticated)/events/page.tsx`
@@ -141,17 +170,56 @@ This document tracks the mobile responsiveness review of all pages and component
     - **Button Overflow** (Lines 378-405): 5 action buttons might overflow despite flex-wrap
     - **Otherwise Good**: Has responsive desktop/mobile views (Lines 208-319)
 - **New Event**: `/src/app/(authenticated)/events/new/page.tsx`
-  - **Issues Found**: [Not yet reviewed]
+  - **Issues Found**: Uses EventFormSimple component - see form issues documented in Components section
 - **Edit Event**: `/src/app/(authenticated)/events/[id]/edit/page.tsx`
-  - **Issues Found**: [Not yet reviewed]
+  - **Issues Found**: Uses EventFormSimple component - see form issues documented in Components section
 
 ### Private Bookings Module
 - **Booking List**: `/src/app/(authenticated)/private-bookings/page.tsx`
-  - **Issues Found**: [Not yet reviewed]
+  - **Issues Found**: 
+    - **Header Button Overflow** (Lines 163-187): 3 buttons don't stack on mobile
+    - **Non-Responsive Table** (Lines 215-237): Requires horizontal scrolling
+    - **Small Touch Targets**: View/Delete buttons in table hard to tap
+    - **Quick Links Grid**: Cards may be too large on mobile
+- **Booking Detail**: `/src/app/(authenticated)/private-bookings/[id]/page.tsx`
+  - **Issues Found**: 
+    - **Fixed Width Modals** (Lines 127-200, 238-317, 451-704): max-w-md/2xl overflow mobile
+    - **Complex Grid Forms**: Item selection grid-cols-4 without mobile fallback
+    - **Dense Information**: Financial summary needs better mobile layout
+    - **3-Column Layout**: lg:grid-cols-3 sidebar content too dense when stacked
+- **New Booking**: `/src/app/(authenticated)/private-bookings/new/page.tsx`
+  - **Issues Found**: 
+    - **3-Column Time Grid** (Lines 252-294): Too narrow on mobile
+    - **Dense Form Sections**: Minimal mobile-specific spacing
+    - **Long Form**: Multiple sections need better mobile navigation
+- **Calendar View**: `/src/app/(authenticated)/private-bookings/calendar/page.tsx`
+  - **Issues Found**: See CalendarView component issues below
 
 ### Invoices Module
 - **Invoice List**: `/src/app/(authenticated)/invoices/page.tsx`
-  - **Issues Found**: [Not yet reviewed]
+  - **Issues Found**: 
+    - **7-Column Table**: Not responsive, requires excessive scrolling
+    - **Header Buttons** (Lines 94-113): Don't stack on mobile
+    - **Filter Controls** (Lines 161-186): May not wrap properly
+    - **Small Touch Targets**: Throughout table actions
+- **Invoice Detail**: `/src/app/(authenticated)/invoices/[id]/page.tsx`
+  - **Issues Found**: 
+    - **Multiple Action Buttons** (Lines 211-288): Don't adapt to mobile
+    - **3-Column Grid**: Content hierarchy not optimized for stacking
+    - **6-Column Line Items Table**: Requires significant scrolling
+    - **Nested Grids**: 2-column grids too cramped on mobile
+- **New Invoice**: `/src/app/(authenticated)/invoices/new/page.tsx`
+  - **Issues Found**: 
+    - **12-Column Line Item Grid** (Lines 315-403): Poor mobile layout
+    - **Narrow Input Fields**: Quantity/price/VAT fields too small
+    - **Catalog Dropdown**: May overflow viewport
+    - **Complex Form**: Needs mobile-optimized layout
+- **Product Catalog**: `/src/app/(authenticated)/invoices/catalog/page.tsx`
+  - **Issues Found**: 
+    - **Fixed Modal Width**: max-w-md might be too wide
+    - **5-Column Table**: Requires scrolling
+    - **Small Action Buttons**: Edit/Delete hard to tap
+    - **2-Column Price Grid**: Might be cramped
 
 ### Messages Module
 - **Message List**: `/src/app/(authenticated)/messages/page.tsx`
@@ -161,11 +229,39 @@ This document tracks the mobile responsiveness review of all pages and component
     - **Conversation List** (Lines 114-149): Not optimized for mobile, content gets squeezed
     - **Small Touch Targets**: Throughout conversation list
 - **Bulk Messaging**: `/src/app/(authenticated)/messages/bulk/page.tsx`
-  - **Issues Found**: [Not yet reviewed]
+  - **Issues Found**: Complex multi-step form needs mobile optimization
 
 ### Loyalty Module
 - **Check-in**: `/src/app/(authenticated)/loyalty/check-in/page.tsx`
-  - **Issues Found**: [Not yet reviewed]
+  - **Issues Found**: 
+    - **Fixed 3-Column Grid** (Lines 267-303): Method selection buttons cramped
+    - **Complex Search Results** (Lines 476-510): Multiple data points get squished
+    - **QR Scanner**: No mobile-specific sizing constraints
+    - **Success Cards**: May exceed viewport height when stacked
+- **Admin Dashboard**: `/src/app/(authenticated)/loyalty/admin/page.tsx`
+  - **Issues Found**: 
+    - **Header Actions** (Lines 102-131): Multiple buttons wrap poorly
+    - **Stats Grid**: Too much content in cards for mobile
+    - **Bar Charts**: Difficult to read on small screens
+    - **Quick Actions**: 4 cards too small with nested layouts
+- **Rewards**: `/src/app/(authenticated)/loyalty/admin/rewards/page.tsx`
+  - **Issues Found**: 
+    - **Filter Controls** (Lines 289-318): Don't stack on mobile
+    - **Summary Stats**: 4 columns illegible on small screens
+    - **Reward Cards**: Tiny edit/delete buttons
+    - **Fixed Modal**: max-w-md too wide for phones
+- **Analytics**: `/src/app/(authenticated)/loyalty/analytics/page.tsx`
+  - **Issues Found**: 
+    - **Date Range Selector**: Doesn't adapt for mobile
+    - **Key Metrics Grid**: Complex nested data unreadable
+    - **5-Column Table**: Requires horizontal scrolling
+    - **Data Visualizations**: Too complex for mobile
+- **Redemption Terminal**: `/src/app/(authenticated)/loyalty/redeem/page.tsx`
+  - **Issues Found**: 
+    - **Large Success States**: Icons/text too large for viewport
+    - **Code Input**: text-2xl causes horizontal scrolling
+    - **3-Column Grid**: Doesn't stack properly
+    - **QR Scanner**: No mobile optimization
 
 ## 3. Main Components
 
@@ -190,6 +286,13 @@ This document tracks the mobile responsiveness review of all pages and component
     - **Nested Form Complexity** (Lines 417-477): Takes significant vertical space
     - **Missing inputMode** (Line 454): Phone number field lacks numeric keyboard
     - **Confusing Button Order** (Line 526): Reverse order on mobile
+
+- **EmployeeForm**: `/src/components/EmployeeForm.tsx`
+  - **Issues Found**: 
+    - **Label/Input Layout**: sm:grid-cols-4 means labels stack above inputs, doubling vertical space
+    - **Input Width**: max-w-lg may be too wide for some mobile screens
+    - **No Field Grouping**: Single long list without visual grouping
+    - **Error Messages**: Appear below fields, increasing vertical space
 
 ### Navigation
 - **Navigation**: `/src/components/Navigation.tsx`
@@ -229,6 +332,48 @@ This document tracks the mobile responsiveness review of all pages and component
     - **Fixed Height** (Line 97): h-[500px] doesn't adapt to viewport
     - **No Landscape Support**: Takes too much vertical space
 
+### Other Key Components
+- **Pagination**: `/src/components/Pagination.tsx`
+  - **Issues Found**: 
+    - **Small Touch Targets**: Page number buttons too small for mobile
+    - **Cramped Layout**: Many page numbers don't fit on small screens
+    - **Insufficient Spacing**: Between interactive elements
+
+- **CalendarView**: `/src/components/private-bookings/CalendarView.tsx`
+  - **Issues Found**: 
+    - **7-Column Grid** (Lines 133-173): Completely unsuitable for mobile
+    - **Tiny Calendar Cells**: Booking details unreadable/untappable
+    - **No Mobile View**: Needs agenda/list view alternative
+    - **No Swipe Gestures**: For mobile navigation
+
+- **Dashboard Widgets**: Various in `/src/components/dashboard/`
+  - **Issues Found**: 
+    - **Filter Buttons**: Wrap poorly creating awkward layouts
+    - **Long Descriptions**: Can cause horizontal overflow
+    - **Timeline Visualization**: Doesn't scale well with connecting lines
+    - **Fixed Dimensions**: Not responsive to viewport
+
+- **Image Upload Components**: EventImageUpload, SquareImageUpload
+  - **Issues Found**: 
+    - **Native File Input**: Not optimized for touch
+    - **Fixed Preview Dimensions**: max-w-xs may be too large
+    - **Absolute Delete Button**: Positioning problematic on small screens
+    - **No Mobile Alternative**: To drag-and-drop
+
+- **CustomerSearchInput**: `/src/components/CustomerSearchInput.tsx`
+  - **Issues Found**: 
+    - **Dropdown Overflow**: Can extend beyond viewport
+    - **Small Result Touch Targets**: Hard to tap accurately
+    - **Phone Number Overflow**: In narrow containers
+    - **Short Debounce**: 300ms might be too quick for mobile typing
+
+- **List Components**: EmployeeAttachmentsList, EmployeeNotesList
+  - **Issues Found**: 
+    - **Cramped Action Buttons**: View/download/delete too close
+    - **Horizontal Overflow**: File names and descriptions
+    - **Modal Issues**: Not optimized for mobile viewports
+    - **Timeline Scale**: Doesn't work well on small screens
+
 ## Summary of Critical Issues
 
 ### 1. Touch Target Sizes
@@ -260,6 +405,32 @@ This document tracks the mobile responsiveness review of all pages and component
 - Long content can overflow containers
 - Truncation issues in flex containers
 - No responsive text sizing
+
+## Most Critical Pages Needing Immediate Attention
+
+1. **Event List Page** - Completely non-responsive table with no mobile layout
+2. **Messages Page** - Header buttons overflow, conversation list not optimized  
+3. **Private Bookings Calendar** - Traditional calendar view unusable on mobile
+4. **Invoice/Quote Forms** - Complex multi-column grids break on mobile
+5. **Loyalty Check-in/Redemption** - Touch interfaces not optimized for staff use
+6. **All Data Tables** - No responsive patterns, rely only on horizontal scrolling
+
+## Common Patterns Across Application
+
+### Problematic Patterns:
+1. **Tables with 5-7+ columns** without mobile layouts
+2. **Fixed-width modals** (max-w-md, max-w-2xl) that overflow
+3. **Multi-column filter controls** that don't stack
+4. **Hover-only interactions** without touch alternatives
+5. **Dense information displays** without progressive disclosure
+6. **Small action buttons** in table rows
+7. **Complex nested grids** in forms
+
+### Good Patterns Found:
+1. **Button component** includes min-h-[44px]
+2. **Some pages** have separate desktop/mobile views (Employee List, Event Detail)
+3. **Responsive grid utilities** used (though breakpoints need work)
+4. **Loading states** present in most pages
 
 ## Recommendations
 
