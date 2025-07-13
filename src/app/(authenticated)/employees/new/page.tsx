@@ -30,37 +30,21 @@ interface EmployeeData {
   branch_address?: string;
   
   // Health Records
-  gp_name?: string;
-  gp_practice?: string;
-  gp_address?: string;
-  gp_phone?: string;
-  medical_conditions?: string;
-  medications?: string;
+  doctor_name?: string;
+  doctor_address?: string;
   allergies?: string;
-  emergency_medical_info?: string;
-  blood_type?: string;
-  
-  // Emergency Contacts (array)
-  emergency_contacts: Array<{
-    name: string;
-    relationship: string;
-    phone_number: string;
-    email?: string;
-    is_primary: boolean;
-  }>;
-  
-  // Right to Work
-  has_right_to_work?: boolean;
-  right_to_work_type?: string;
-  right_to_work_expiry?: string;
-  right_to_work_notes?: string;
-  
-  // Onboarding
-  onboarding_tasks: Array<{
-    task: string;
-    completed: boolean;
-    due_date?: string;
-  }>;
+  illness_history?: string;
+  recent_treatment?: string;
+  has_diabetes?: boolean;
+  has_epilepsy?: boolean;
+  has_skin_condition?: boolean;
+  has_depressive_illness?: boolean;
+  has_bowel_problems?: boolean;
+  has_ear_problems?: boolean;
+  is_registered_disabled?: boolean;
+  disability_reg_number?: string;
+  disability_reg_expiry_date?: string;
+  disability_details?: string;
 }
 
 export default function NewEmployeePage() {
@@ -75,9 +59,7 @@ export default function NewEmployeePage() {
     email_address: '',
     job_title: '',
     employment_start_date: '',
-    status: 'Active',
-    emergency_contacts: [],
-    onboarding_tasks: []
+    status: 'Active'
   });
 
   // Update form field
@@ -124,25 +106,22 @@ export default function NewEmployeePage() {
       if (formData.branch_address) employeeFormData.append('branch_address', formData.branch_address);
 
       // Add health records
-      if (formData.gp_name) employeeFormData.append('gp_name', formData.gp_name);
-      if (formData.gp_practice) employeeFormData.append('gp_practice', formData.gp_practice);
-      if (formData.gp_address) employeeFormData.append('gp_address', formData.gp_address);
-      if (formData.gp_phone) employeeFormData.append('gp_phone', formData.gp_phone);
-      if (formData.medical_conditions) employeeFormData.append('medical_conditions', formData.medical_conditions);
-      if (formData.medications) employeeFormData.append('medications', formData.medications);
+      if (formData.doctor_name) employeeFormData.append('doctor_name', formData.doctor_name);
+      if (formData.doctor_address) employeeFormData.append('doctor_address', formData.doctor_address);
       if (formData.allergies) employeeFormData.append('allergies', formData.allergies);
-      if (formData.emergency_medical_info) employeeFormData.append('emergency_medical_info', formData.emergency_medical_info);
-      if (formData.blood_type) employeeFormData.append('blood_type', formData.blood_type);
+      if (formData.illness_history) employeeFormData.append('illness_history', formData.illness_history);
+      if (formData.recent_treatment) employeeFormData.append('recent_treatment', formData.recent_treatment);
+      if (formData.has_diabetes !== undefined) employeeFormData.append('has_diabetes', String(formData.has_diabetes));
+      if (formData.has_epilepsy !== undefined) employeeFormData.append('has_epilepsy', String(formData.has_epilepsy));
+      if (formData.has_skin_condition !== undefined) employeeFormData.append('has_skin_condition', String(formData.has_skin_condition));
+      if (formData.has_depressive_illness !== undefined) employeeFormData.append('has_depressive_illness', String(formData.has_depressive_illness));
+      if (formData.has_bowel_problems !== undefined) employeeFormData.append('has_bowel_problems', String(formData.has_bowel_problems));
+      if (formData.has_ear_problems !== undefined) employeeFormData.append('has_ear_problems', String(formData.has_ear_problems));
+      if (formData.is_registered_disabled !== undefined) employeeFormData.append('is_registered_disabled', String(formData.is_registered_disabled));
+      if (formData.disability_reg_number) employeeFormData.append('disability_reg_number', formData.disability_reg_number);
+      if (formData.disability_reg_expiry_date) employeeFormData.append('disability_reg_expiry_date', formData.disability_reg_expiry_date);
+      if (formData.disability_details) employeeFormData.append('disability_details', formData.disability_details);
 
-      // Add other data as JSON
-      employeeFormData.append('emergency_contacts', JSON.stringify(formData.emergency_contacts));
-      employeeFormData.append('right_to_work', JSON.stringify({
-        has_right_to_work: formData.has_right_to_work,
-        right_to_work_type: formData.right_to_work_type,
-        right_to_work_expiry: formData.right_to_work_expiry,
-        right_to_work_notes: formData.right_to_work_notes
-      }));
-      employeeFormData.append('onboarding_tasks', JSON.stringify(formData.onboarding_tasks));
 
       // Create the employee
       const result = await addEmployee(null, employeeFormData);
@@ -264,6 +243,17 @@ export default function NewEmployeePage() {
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Employment End Date
+              </label>
+              <input
+                type="date"
+                value={formData.employment_end_date || ''}
+                onChange={(e) => updateField('employment_end_date', e.target.value)}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+              />
+            </div>
             <div className="sm:col-span-2">
               <label className="block text-sm font-medium text-gray-700">
                 Address
@@ -378,86 +368,22 @@ export default function NewEmployeePage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-gray-700">
-                GP Name
+                Doctor Name
               </label>
               <input
                 type="text"
-                value={formData.gp_name || ''}
-                onChange={(e) => updateField('gp_name', e.target.value)}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                GP Practice
-              </label>
-              <input
-                type="text"
-                value={formData.gp_practice || ''}
-                onChange={(e) => updateField('gp_practice', e.target.value)}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                GP Phone
-              </label>
-              <input
-                type="tel"
-                value={formData.gp_phone || ''}
-                onChange={(e) => updateField('gp_phone', e.target.value)}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Blood Type
-              </label>
-              <select
-                value={formData.blood_type || ''}
-                onChange={(e) => updateField('blood_type', e.target.value)}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-              >
-                <option value="">Select blood type</option>
-                <option value="A+">A+</option>
-                <option value="A-">A-</option>
-                <option value="B+">B+</option>
-                <option value="B-">B-</option>
-                <option value="AB+">AB+</option>
-                <option value="AB-">AB-</option>
-                <option value="O+">O+</option>
-                <option value="O-">O-</option>
-              </select>
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">
-                GP Address
-              </label>
-              <textarea
-                value={formData.gp_address || ''}
-                onChange={(e) => updateField('gp_address', e.target.value)}
-                rows={2}
+                value={formData.doctor_name || ''}
+                onChange={(e) => updateField('doctor_name', e.target.value)}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
               />
             </div>
             <div className="sm:col-span-2">
               <label className="block text-sm font-medium text-gray-700">
-                Medical Conditions
+                Doctor Address
               </label>
               <textarea
-                value={formData.medical_conditions || ''}
-                onChange={(e) => updateField('medical_conditions', e.target.value)}
-                rows={3}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Medications
-              </label>
-              <textarea
-                value={formData.medications || ''}
-                onChange={(e) => updateField('medications', e.target.value)}
+                value={formData.doctor_address || ''}
+                onChange={(e) => updateField('doctor_address', e.target.value)}
                 rows={2}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
               />
@@ -473,297 +399,138 @@ export default function NewEmployeePage() {
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
               />
             </div>
-          </div>
-        </div>
-      )
-    },
-    {
-      label: 'Emergency Contacts',
-      content: (
-        <div className="p-6">
-          <div className="mb-4">
-            <button
-              type="button"
-              onClick={() => {
-                setFormData(prev => ({
-                  ...prev,
-                  emergency_contacts: [
-                    ...prev.emergency_contacts,
-                    { name: '', relationship: '', phone_number: '', email: '', is_primary: prev.emergency_contacts.length === 0 }
-                  ]
-                }));
-              }}
-              className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-            >
-              Add Emergency Contact
-            </button>
-          </div>
-          
-          <div className="space-y-4">
-            {formData.emergency_contacts.map((contact, index) => (
-              <div key={index} className="border border-gray-200 rounded-lg p-4">
-                <div className="flex justify-between items-start mb-4">
-                  <h4 className="text-sm font-medium text-gray-900">
-                    Emergency Contact {index + 1}
-                    {contact.is_primary && <span className="ml-2 text-green-600">(Primary)</span>}
-                  </h4>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFormData(prev => ({
-                        ...prev,
-                        emergency_contacts: prev.emergency_contacts.filter((_, i) => i !== index)
-                      }));
-                    }}
-                    className="text-red-600 hover:text-red-900"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
-                
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Name <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={contact.name}
-                      onChange={(e) => {
-                        const newContacts = [...formData.emergency_contacts];
-                        newContacts[index].name = e.target.value;
-                        updateField('emergency_contacts', newContacts);
-                      }}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Relationship <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={contact.relationship}
-                      onChange={(e) => {
-                        const newContacts = [...formData.emergency_contacts];
-                        newContacts[index].relationship = e.target.value;
-                        updateField('emergency_contacts', newContacts);
-                      }}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Phone Number <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="tel"
-                      value={contact.phone_number}
-                      onChange={(e) => {
-                        const newContacts = [...formData.emergency_contacts];
-                        newContacts[index].phone_number = e.target.value;
-                        updateField('emergency_contacts', newContacts);
-                      }}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      value={contact.email || ''}
-                      onChange={(e) => {
-                        const newContacts = [...formData.emergency_contacts];
-                        newContacts[index].email = e.target.value;
-                        updateField('emergency_contacts', newContacts);
-                      }}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={contact.is_primary}
-                        onChange={(e) => {
-                          const newContacts = [...formData.emergency_contacts];
-                          // If checking this one, uncheck all others
-                          if (e.target.checked) {
-                            newContacts.forEach((c, i) => {
-                              c.is_primary = i === index;
-                            });
-                          } else {
-                            newContacts[index].is_primary = false;
-                          }
-                          updateField('emergency_contacts', newContacts);
-                        }}
-                        className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                      />
-                      <span className="ml-2 text-sm text-gray-700">Primary Contact</span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            ))}
-            
-            {formData.emergency_contacts.length === 0 && (
-              <p className="text-sm text-gray-500 text-center py-4">
-                No emergency contacts added yet. Click &quot;Add Emergency Contact&quot; to add one.
-              </p>
-            )}
-          </div>
-        </div>
-      )
-    },
-    {
-      label: 'Right to Work',
-      content: (
-        <div className="p-6 space-y-4">
-          <div className="space-y-4">
-            <div>
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={formData.has_right_to_work || false}
-                  onChange={(e) => updateField('has_right_to_work', e.target.checked)}
-                  className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                />
-                <span className="ml-2 text-sm font-medium text-gray-700">Has Right to Work in UK</span>
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700">
+                History of Illness
               </label>
+              <textarea
+                value={formData.illness_history || ''}
+                onChange={(e) => updateField('illness_history', e.target.value)}
+                rows={3}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+              />
             </div>
-            
-            {formData.has_right_to_work && (
-              <>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Document Type
-                  </label>
-                  <select
-                    value={formData.right_to_work_type || ''}
-                    onChange={(e) => updateField('right_to_work_type', e.target.value)}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-                  >
-                    <option value="">Select document type</option>
-                    <option value="passport">British Passport</option>
-                    <option value="birth_certificate">Birth Certificate</option>
-                    <option value="visa">Visa</option>
-                    <option value="brp">Biometric Residence Permit</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Expiry Date (if applicable)
-                  </label>
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Recent Treatment (last 3 months)
+              </label>
+              <textarea
+                value={formData.recent_treatment || ''}
+                onChange={(e) => updateField('recent_treatment', e.target.value)}
+                rows={2}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <h3 className="text-base font-medium text-gray-900 mb-3">Conditions</h3>
+              <div className="space-y-2">
+                <label className="flex items-center">
                   <input
-                    type="date"
-                    value={formData.right_to_work_expiry || ''}
-                    onChange={(e) => updateField('right_to_work_expiry', e.target.value)}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                    type="checkbox"
+                    checked={formData.has_diabetes || false}
+                    onChange={(e) => updateField('has_diabetes', e.target.checked)}
+                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
                   />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Notes
-                  </label>
-                  <textarea
-                    value={formData.right_to_work_notes || ''}
-                    onChange={(e) => updateField('right_to_work_notes', e.target.value)}
-                    rows={3}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-                  />
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )
-    },
-    {
-      label: 'Onboarding',
-      content: (
-        <div className="p-6">
-          <div className="mb-4">
-            <button
-              type="button"
-              onClick={() => {
-                setFormData(prev => ({
-                  ...prev,
-                  onboarding_tasks: [
-                    ...prev.onboarding_tasks,
-                    { task: '', completed: false, due_date: '' }
-                  ]
-                }));
-              }}
-              className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-            >
-              Add Onboarding Task
-            </button>
-          </div>
-          
-          <div className="space-y-4">
-            {formData.onboarding_tasks.map((task, index) => (
-              <div key={index} className="flex items-start space-x-3">
-                <input
-                  type="checkbox"
-                  checked={task.completed}
-                  onChange={(e) => {
-                    const newTasks = [...formData.onboarding_tasks];
-                    newTasks[index].completed = e.target.checked;
-                    updateField('onboarding_tasks', newTasks);
-                  }}
-                  className="mt-1 rounded border-gray-300 text-green-600 focus:ring-green-500"
-                />
-                <div className="flex-1">
+                  <span className="ml-2 text-sm text-gray-700">Suffer with Diabetes?</span>
+                </label>
+                <label className="flex items-center">
                   <input
-                    type="text"
-                    value={task.task}
-                    onChange={(e) => {
-                      const newTasks = [...formData.onboarding_tasks];
-                      newTasks[index].task = e.target.value;
-                      updateField('onboarding_tasks', newTasks);
-                    }}
-                    placeholder="Task description"
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                    type="checkbox"
+                    checked={formData.has_epilepsy || false}
+                    onChange={(e) => updateField('has_epilepsy', e.target.checked)}
+                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
                   />
-                </div>
-                <input
-                  type="date"
-                  value={task.due_date || ''}
-                  onChange={(e) => {
-                    const newTasks = [...formData.onboarding_tasks];
-                    newTasks[index].due_date = e.target.value;
-                    updateField('onboarding_tasks', newTasks);
-                  }}
-                  className="block w-32 rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFormData(prev => ({
-                      ...prev,
-                      onboarding_tasks: prev.onboarding_tasks.filter((_, i) => i !== index)
-                    }));
-                  }}
-                  className="text-red-600 hover:text-red-900"
-                >
-                  <X className="h-5 w-5" />
-                </button>
+                  <span className="ml-2 text-sm text-gray-700">Suffer with Epilepsy/Fits/Blackouts?</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={formData.has_skin_condition || false}
+                    onChange={(e) => updateField('has_skin_condition', e.target.checked)}
+                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">Suffer with Eczema/Dermatitis/Skin Disease?</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={formData.has_depressive_illness || false}
+                    onChange={(e) => updateField('has_depressive_illness', e.target.checked)}
+                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">Suffer with Depressive Illness?</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={formData.has_bowel_problems || false}
+                    onChange={(e) => updateField('has_bowel_problems', e.target.checked)}
+                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">Suffer with Bowel Problems?</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={formData.has_ear_problems || false}
+                    onChange={(e) => updateField('has_ear_problems', e.target.checked)}
+                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">Suffer with Earache or Infection?</span>
+                </label>
               </div>
-            ))}
-            
-            {formData.onboarding_tasks.length === 0 && (
-              <p className="text-sm text-gray-500 text-center py-4">
-                No onboarding tasks added yet. Click &quot;Add Onboarding Task&quot; to add one.
-              </p>
-            )}
+            </div>
+            <div className="sm:col-span-2">
+              <h3 className="text-sm font-medium text-gray-700 mb-3">Disability Information</h3>
+              <div className="space-y-4">
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={formData.is_registered_disabled || false}
+                    onChange={(e) => updateField('is_registered_disabled', e.target.checked)}
+                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">Is Registered Disabled?</span>
+                </label>
+                {formData.is_registered_disabled && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Disability Registration Number
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.disability_reg_number || ''}
+                        onChange={(e) => updateField('disability_reg_number', e.target.value)}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Registration Expiry Date
+                      </label>
+                      <input
+                        type="date"
+                        value={formData.disability_reg_expiry_date || ''}
+                        onChange={(e) => updateField('disability_reg_expiry_date', e.target.value)}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Disability Details
+                      </label>
+                      <textarea
+                        value={formData.disability_details || ''}
+                        onChange={(e) => updateField('disability_details', e.target.value)}
+                        rows={3}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )

@@ -25,6 +25,7 @@ export interface LoyaltyTier {
   color: string;
   icon: string;
   benefits: string[];
+  sort_order: number;
   created_at: string;
   updated_at: string;
 }
@@ -39,26 +40,32 @@ export interface LoyaltyMember {
   lifetime_points: number;
   lifetime_events: number;
   join_date: string;
-  last_visit_date: string | null;
-  status: 'active' | 'suspended' | 'inactive';
-  metadata: Record<string, any>;
+  last_activity_date: string | null;
+  status: 'active' | 'inactive' | 'suspended';
   created_at: string;
   updated_at: string;
   // Relations
-  customer?: any;
+  customer?: {
+    id: string;
+    name: string;
+    email_address: string | null;
+    phone_number: string;
+  };
   tier?: LoyaltyTier;
 }
 
 export interface EventCheckIn {
   id: string;
+  booking_id: string | null;
   event_id: string;
   customer_id: string;
-  member_id: string;
-  booking_id?: string;
+  member_id: string | null;
   check_in_time: string;
-  check_in_method: 'qr' | 'manual' | 'auto';
+  check_in_method: 'qr' | 'manual' | 'self';
   points_earned: number;
-  staff_id: string;
+  achievements_earned: string[];
+  staff_id: string | null;
+  notes: string | null;
   created_at: string;
   // Relations
   event?: any;
@@ -118,14 +125,12 @@ export interface RewardRedemption {
   id: string;
   member_id: string;
   reward_id: string;
-  redemption_code: string;
   points_spent: number;
-  generated_at: string;
-  expires_at: string;
-  redeemed_at: string | null;
-  redeemed_by: string | null;
-  status: 'pending' | 'redeemed' | 'expired' | 'cancelled';
-  metadata: Record<string, any>;
+  redeemed_at: string;
+  fulfilled_at: string | null;
+  fulfilled_by: string | null;
+  status: 'pending' | 'fulfilled' | 'cancelled';
+  notes: string | null;
   created_at: string;
   // Relations
   member?: LoyaltyMember;
@@ -136,13 +141,13 @@ export interface LoyaltyPointTransaction {
   id: string;
   member_id: string;
   points: number; // positive for earned, negative for spent
-  transaction_type: string;
-  description: string;
-  reference_type?: 'check_in' | 'achievement' | 'redemption' | 'adjustment' | 'challenge';
-  reference_id?: string;
   balance_after: number;
+  transaction_type: 'earned' | 'redeemed' | 'expired' | 'adjusted' | 'bonus';
+  description: string;
+  reference_type: string | null;
+  reference_id: string | null;
   created_at: string;
-  created_by: string;
+  created_by: string | null;
   // Relations
   member?: LoyaltyMember;
 }
@@ -210,6 +215,12 @@ export interface AchievementProgress {
 }
 
 // Form data types for creating/updating
+export interface LoyaltyMemberFormData {
+  customer_id: string;
+  status?: 'active' | 'inactive' | 'suspended';
+  join_date?: string;
+}
+
 export interface RewardFormData {
   name: string;
   description: string;

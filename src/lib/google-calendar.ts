@@ -91,7 +91,7 @@ function parseServiceAccountKey(jsonString: string): any {
 }
 
 // Initialize OAuth2 client
-async function getOAuth2Client() {
+export async function getOAuth2Client() {
   console.log('[Google Calendar] Getting OAuth2 client...')
   
   try {

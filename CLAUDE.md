@@ -588,7 +588,7 @@ export async function deleteSensitiveData(id: string) {
 }
 🔧 Common Development Tasks
 Adding a New Module
-bash# 1. Create migration
+bash# 1. Create migration (ALWAYS use proper format)
 echo "-- Description: Add new module tables" > supabase/migrations/$(date +%Y%m%d%H%M%S)_add_module_name.sql
 
 # 2. Create types
@@ -650,6 +650,7 @@ LOG AUDIT EVENTS for all sensitive operations
 USE SUPABASE CONTEXT never create new clients
 FOLLOW SMS PATTERNS for phone number handling
 MIGRATIONS NEED USER ACTION - always notify
+SUPABASE MIGRATIONS - Follow proper format and patterns (see below)
 
 ✅ Definition of Done
 A feature is ONLY complete when:
@@ -666,6 +667,52 @@ Documentation updated if needed
 Performance impact acceptable
 
 Remember: Quality over speed. A well-implemented feature following patterns is better than a quick fix that breaks conventions.
+
+## Supabase Migration Guidelines
+
+### CRITICAL: Always follow these migration patterns
+1. **Naming Format**: `YYYYMMDDHHMMSS_description.sql` (e.g., `20240712170500_add_new_feature.sql`)
+2. **Make Idempotent**: Use `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, etc.
+3. **Check Before Altering**: Use DO blocks to check existence before adding columns
+4. **Location**: Place in `/supabase/migrations/` folder
+5. **Test First**: Run `supabase db reset` locally before pushing
+
+### Migration Template
+```sql
+-- Description: What this migration does
+
+-- Create table (idempotent)
+CREATE TABLE IF NOT EXISTS table_name (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Add column (with check)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'table_name' AND column_name = 'new_column'
+  ) THEN
+    ALTER TABLE table_name ADD COLUMN new_column VARCHAR(255);
+  END IF;
+END $$;
+
+-- Create index (idempotent)
+CREATE INDEX IF NOT EXISTS idx_table_column ON table_name(column_name);
+```
+
+### Verify Migrations
+```bash
+# Check migration health
+./supabase/verify-migrations.sh
+
+# Test locally
+supabase db reset
+
+# Push to remote
+supabase db push
+```
 
 ## Key Database Tables
 

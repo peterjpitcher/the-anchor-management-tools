@@ -59,7 +59,10 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
 
     // Extract additional data that will be handled separately
     const financialFields = ['ni_number', 'payee_name', 'bank_name', 'bank_sort_code', 'bank_account_number', 'branch_address'];
-    const healthFields = ['gp_name', 'gp_practice', 'gp_address', 'gp_phone', 'medical_conditions', 'medications', 'allergies', 'emergency_medical_info', 'blood_type'];
+    const healthFields = ['doctor_name', 'doctor_address', 'allergies', 'illness_history', 'recent_treatment', 
+        'has_diabetes', 'has_epilepsy', 'has_skin_condition', 'has_depressive_illness', 'has_bowel_problems', 
+        'has_ear_problems', 'is_registered_disabled', 'disability_reg_number', 'disability_reg_expiry_date', 
+        'disability_details'];
     
     const financialData: any = {};
     const healthData: any = {};
@@ -70,20 +73,17 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
             financialData[key] = value === '' ? null : value;
             delete cleanedData[key];
         } else if (healthFields.includes(key)) {
-            healthData[key] = value === '' ? null : value;
+            // Handle boolean fields properly (checkboxes send 'on' when checked)
+            if (['has_diabetes', 'has_epilepsy', 'has_skin_condition', 'has_depressive_illness', 
+                'has_bowel_problems', 'has_ear_problems', 'is_registered_disabled'].includes(key)) {
+                healthData[key] = value === 'on' || value === 'true' || value === true;
+            } else {
+                healthData[key] = value === '' ? null : value;
+            }
             delete cleanedData[key];
         }
     });
     
-    // Parse JSON data
-    const emergencyContacts = cleanedData.emergency_contacts ? JSON.parse(cleanedData.emergency_contacts as string) : [];
-    const rightToWorkData = cleanedData.right_to_work ? JSON.parse(cleanedData.right_to_work as string) : {};
-    const onboardingTasks = cleanedData.onboarding_tasks ? JSON.parse(cleanedData.onboarding_tasks as string) : [];
-    
-    // Remove JSON fields from employee data
-    delete cleanedData.emergency_contacts;
-    delete cleanedData.right_to_work;
-    delete cleanedData.onboarding_tasks;
 
     const result = employeeSchema.safeParse(cleanedData);
 
@@ -138,69 +138,6 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
         }
     }
     
-    // Create emergency contacts
-    if (emergencyContacts.length > 0) {
-        const contactsToInsert = emergencyContacts
-            .filter((c: any) => c.name && c.relationship && c.phone_number)
-            .map((contact: any) => ({
-                employee_id: employeeId,
-                name: contact.name,
-                relationship: contact.relationship,
-                phone_number: contact.phone_number,
-                email: contact.email || null,
-                is_primary: contact.is_primary || false
-            }));
-            
-        if (contactsToInsert.length > 0) {
-            const { error: contactsError } = await supabase
-                .from('employee_emergency_contacts')
-                .insert(contactsToInsert);
-                
-            if (contactsError) {
-                console.error('Failed to create emergency contacts:', contactsError);
-            }
-        }
-    }
-    
-    // Create right to work record if provided
-    if (rightToWorkData.has_right_to_work) {
-        const { error: rtwError } = await supabase
-            .from('employee_right_to_work')
-            .insert({
-                employee_id: employeeId,
-                has_right_to_work: rightToWorkData.has_right_to_work || false,
-                document_type: rightToWorkData.right_to_work_type || null,
-                expiry_date: rightToWorkData.right_to_work_expiry || null,
-                notes: rightToWorkData.right_to_work_notes || null
-            });
-            
-        if (rtwError) {
-            console.error('Failed to create right to work record:', rtwError);
-        }
-    }
-    
-    // Create onboarding tasks
-    if (onboardingTasks.length > 0) {
-        const tasksToInsert = onboardingTasks
-            .filter((t: any) => t.task)
-            .map((task: any) => ({
-                employee_id: employeeId,
-                task_name: task.task,
-                is_completed: task.completed || false,
-                due_date: task.due_date || null
-            }));
-            
-        if (tasksToInsert.length > 0) {
-            const { error: onboardingError } = await supabase
-                .from('employee_onboarding_checklist')
-                .insert(tasksToInsert);
-                
-            if (onboardingError) {
-                console.error('Failed to create onboarding tasks:', onboardingError);
-            }
-        }
-    }
-    
     await logAuditEvent({
         ...(userInfo.user_id && { user_id: userInfo.user_id }),
         ...(userInfo.user_email && { user_email: userInfo.user_email }),
@@ -214,10 +151,7 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
             job_title: newEmployee.job_title,
             status: newEmployee.status,
             has_financial_details: Object.values(financialData).some(val => val !== null),
-            has_health_record: Object.values(healthData).some(val => val !== null),
-            emergency_contacts_count: emergencyContacts.filter((c: any) => c.name).length,
-            has_right_to_work: !!rightToWorkData.has_right_to_work,
-            onboarding_tasks_count: onboardingTasks.filter((t: any) => t.task).length
+            has_health_record: Object.values(healthData).some(val => val !== null)
         }
     });
     

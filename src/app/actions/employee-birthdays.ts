@@ -162,6 +162,58 @@ export async function getUpcomingBirthdays(daysAhead: number = 30) {
   }
 }
 
+/**
+ * Get all employee birthdays sorted by upcoming date
+ */
+export async function getAllBirthdays() {
+  try {
+    const supabase = await createClient();
+    
+    // Check permission
+    const hasPermission = await checkUserPermission('employees', 'view');
+    if (!hasPermission) {
+      return { error: 'You do not have permission to view employee birthdays' };
+    }
+
+    // Get all active employees with date of birth
+    const { data: employees, error } = await supabase
+      .from('employees')
+      .select('employee_id, first_name, last_name, job_title, date_of_birth, email_address')
+      .eq('status', 'Active')
+      .not('date_of_birth', 'is', null);
+
+    if (error) {
+      return { error: 'Failed to fetch employees' };
+    }
+
+    if (!employees || employees.length === 0) {
+      return { success: true, birthdays: [] };
+    }
+
+    // Calculate upcoming birthday for all employees
+    const allBirthdays: EmployeeWithBirthday[] = [];
+    
+    for (const employee of employees) {
+      const birthday = getUpcomingBirthday(employee.date_of_birth, 365); // Look ahead full year
+      const age = calculateAge(employee.date_of_birth);
+      
+      allBirthdays.push({
+        ...employee,
+        days_until_birthday: birthday.daysUntil,
+        turning_age: birthday.daysUntil === 0 ? (age || 0) : (age || 0) + 1
+      });
+    }
+
+    // Sort by days until birthday
+    allBirthdays.sort((a, b) => a.days_until_birthday - b.days_until_birthday);
+
+    return { success: true, birthdays: allBirthdays };
+  } catch (error) {
+    console.error('Error getting all birthdays:', error);
+    return { error: 'An unexpected error occurred' };
+  }
+}
+
 function generateBirthdayReminderEmail(birthdays: EmployeeWithBirthday[]): string {
   const birthdayList = birthdays
     .map(emp => {

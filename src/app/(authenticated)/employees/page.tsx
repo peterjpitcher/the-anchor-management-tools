@@ -23,7 +23,7 @@ export default function EmployeesPage() {
   // Memoize query configuration to prevent unnecessary re-renders
   const queryConfig = useMemo(() => ({
     select: '*',
-    orderBy: { column: 'last_name', ascending: true },
+    orderBy: { column: 'employment_start_date', ascending: true },
     filters: statusFilter === 'all' ? [] : [
       { column: 'status', operator: 'eq', value: statusFilter }
     ]
