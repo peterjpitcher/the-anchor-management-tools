@@ -27,4 +27,4 @@ export interface CreateVendorInput {
   active?: boolean;
 }
 
-export interface UpdateVendorInput extends Partial<CreateVendorInput> {}
+export type UpdateVendorInput = Partial<CreateVendorInput>

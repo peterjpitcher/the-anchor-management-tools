@@ -217,7 +217,7 @@ export default function LoyaltyPortalLoginPage() {
           <div className="mt-8 p-4 bg-gray-50 rounded-lg">
             <p className="text-xs text-gray-600 text-center">
               🔒 Your phone number is used for secure authentication only. 
-              We'll never share your information.
+              We&apos;ll never share your information.
             </p>
           </div>
         </div>

@@ -161,7 +161,7 @@ export async function processEventCheckIn(data: z.infer<typeof CheckInSchema>) {
       }
       
       // Send achievement notifications
-      if (achievementResult?.newAchievements && achievementResult.newAchievements.length > 0) {
+      if (achievementResult && 'newAchievements' in achievementResult && achievementResult.newAchievements && achievementResult.newAchievements.length > 0) {
         for (const achievement of achievementResult.newAchievements) {
           await sendLoyaltyNotification({
             member_id: result.member_id || validatedData.customer_id,
@@ -190,7 +190,7 @@ export async function processEventCheckIn(data: z.infer<typeof CheckInSchema>) {
         tierUpgraded: tierResult.upgraded || false,
         newTier: tierResult.newTier,
         oldTier: tierResult.oldTier,
-        newAchievements: achievementResult?.newAchievements || []
+        newAchievements: (achievementResult && 'newAchievements' in achievementResult) ? achievementResult.newAchievements : []
       }
     };
   } catch (error) {

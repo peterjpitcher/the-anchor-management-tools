@@ -113,7 +113,7 @@ export default function OnboardingChecklistTab({ employeeId }: OnboardingCheckli
         <div className="px-6 py-4 border-b border-gray-200">
           <h3 className="text-lg font-medium text-gray-900">Onboarding Tasks</h3>
           <p className="mt-1 text-sm text-gray-500">
-            Check off each task as it's completed. Dates will be automatically recorded.
+            Check off each task as it&apos;s completed. Dates will be automatically recorded.
           </p>
         </div>
         

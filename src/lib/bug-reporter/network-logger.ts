@@ -63,6 +63,7 @@ export class NetworkLogger {
   }
   
   private interceptXHR() {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     
     XMLHttpRequest.prototype.open = function(
@@ -88,6 +89,7 @@ export class NetworkLogger {
     };
     
     XMLHttpRequest.prototype.send = function(body?: Document | XMLHttpRequestBodyInit | null) {
+      // eslint-disable-next-line @typescript-eslint/no-this-alias
       const xhr = this;
       
       xhr.addEventListener('loadend', function() {

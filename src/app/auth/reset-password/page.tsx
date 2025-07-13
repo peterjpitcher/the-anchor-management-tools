@@ -63,7 +63,7 @@ function ResetPasswordForm() {
             Check your email
           </h1>
           <p className="text-green-100 mb-8">
-            We've sent a password reset link to {email}
+            We&apos;ve sent a password reset link to {email}
           </p>
           
           <Link
@@ -99,7 +99,7 @@ function ResetPasswordForm() {
             Reset your password
           </h1>
           <p className="mt-2 text-sm text-green-100">
-            Enter your email address and we'll send you a reset link
+            Enter your email address and we&apos;ll send you a reset link
           </p>
         </div>
 

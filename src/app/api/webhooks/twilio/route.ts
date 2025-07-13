@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
   // Initialize variables for logging
   let body = '';
   let headers: Record<string, string> = {};
-  let params: Record<string, string> = {};
+  const params: Record<string, string> = {};
   let publicClient: any = null;
   let adminClient: any = null;
   

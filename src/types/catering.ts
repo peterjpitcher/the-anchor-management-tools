@@ -24,4 +24,4 @@ export interface CreateCateringPackageInput {
   active?: boolean;
 }
 
-export interface UpdateCateringPackageInput extends Partial<CreateCateringPackageInput> {}
+export type UpdateCateringPackageInput = Partial<CreateCateringPackageInput>

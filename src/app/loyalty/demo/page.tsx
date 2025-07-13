@@ -49,7 +49,7 @@ export default function LoyaltyDemoPage() {
 
         {/* Today's Event */}
         <div className="bg-white rounded-lg shadow-lg p-8 mb-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Today's Event</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Today&apos;s Event</h2>
           <div className="grid md:grid-cols-2 gap-8 items-center">
             <div>
               <p className="text-lg font-medium text-gray-900">{todaysEvent.name}</p>
@@ -77,7 +77,7 @@ export default function LoyaltyDemoPage() {
               {eventQrUrl && (
                 <img src={eventQrUrl} alt="Event QR Code" className="mx-auto" />
               )}
-              <p className="text-xs text-gray-500 mt-2">Scan to check in to tonight's event</p>
+              <p className="text-xs text-gray-500 mt-2">Scan to check in to tonight&apos;s event</p>
             </div>
           </div>
         </div>
@@ -201,7 +201,7 @@ export default function LoyaltyDemoPage() {
               <span className="font-bold text-blue-600 mr-3">1.</span>
               <div>
                 <strong>Customer Check-in:</strong> Go to <code className="bg-white px-2 py-1 rounded">/loyalty/checkin</code> 
-                and enter one of the test phone numbers. You'll see the check-in success screen with points earned.
+                and enter one of the test phone numbers. You&apos;ll see the check-in success screen with points earned.
               </div>
             </li>
             <li className="flex items-start">
