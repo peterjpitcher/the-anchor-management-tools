@@ -102,9 +102,9 @@ export default function NewPrivateBookingPage() {
           <p className="text-gray-600 mt-1">Create a new venue hire booking</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-8">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-6 sm:space-y-8">
           {/* Customer Information */}
-          <div>
+          <div className="bg-gray-50 rounded-lg p-4 sm:p-6">
             <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
               <UserIcon className="h-5 w-5 mr-2 text-gray-400" />
               Customer Information
@@ -194,7 +194,7 @@ export default function NewPrivateBookingPage() {
           </div>
 
           {/* Event Details */}
-          <div>
+          <div className="bg-gray-50 rounded-lg p-4 sm:p-6">
             <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
               <CalendarIcon className="h-5 w-5 mr-2 text-gray-400" />
               Event Details
@@ -250,7 +250,7 @@ export default function NewPrivateBookingPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
               <div>
                 <label htmlFor="start_time" className="block text-sm font-medium text-gray-700 mb-1">
                   <ClockIcon className="inline h-4 w-4 mr-1" />
@@ -295,7 +295,7 @@ export default function NewPrivateBookingPage() {
           </div>
 
           {/* Setup Details */}
-          <div>
+          <div className="bg-gray-50 rounded-lg p-4 sm:p-6">
             <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
               <BuildingOfficeIcon className="h-5 w-5 mr-2 text-gray-400" />
               Setup Details
@@ -330,7 +330,7 @@ export default function NewPrivateBookingPage() {
           </div>
 
           {/* Financial Details */}
-          <div>
+          <div className="bg-gray-50 rounded-lg p-4 sm:p-6">
             <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
               <CurrencyPoundIcon className="h-5 w-5 mr-2 text-gray-400" />
               Financial Details (Optional)
@@ -368,7 +368,7 @@ export default function NewPrivateBookingPage() {
           </div>
 
           {/* Additional Information */}
-          <div>
+          <div className="bg-gray-50 rounded-lg p-4 sm:p-6">
             <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
               <DocumentTextIcon className="h-5 w-5 mr-2 text-gray-400" />
               Additional Information
@@ -437,20 +437,22 @@ export default function NewPrivateBookingPage() {
           )}
 
           {/* Form Actions */}
-          <div className="flex justify-end space-x-4 pt-4 border-t">
-            <Link
-              href="/private-bookings"
-              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
-              Cancel
-            </Link>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
-            >
-              {isSubmitting ? 'Creating...' : 'Create Booking'}
-            </button>
+          <div className="sticky bottom-0 -mx-4 sm:-mx-6 px-4 sm:px-6 py-4 bg-white border-t sm:relative sm:mx-0 sm:px-0">
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 sm:gap-4">
+              <Link
+                href="/private-bookings"
+                className="w-full sm:w-auto px-4 py-3 sm:py-2 text-center text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </Link>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full sm:w-auto px-6 py-3 sm:py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] font-medium"
+              >
+                {isSubmitting ? 'Creating...' : 'Create Booking'}
+              </button>
+            </div>
           </div>
         </form>
       </div>

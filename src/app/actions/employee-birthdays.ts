@@ -20,18 +20,12 @@ interface EmployeeWithBirthday {
 }
 
 /**
- * Check for employees with upcoming birthdays and send reminder emails
- * This can be called manually or via a cron job
+ * Internal function for system-initiated birthday reminders (no permission check)
+ * This can be called via a cron job
  */
-export async function sendBirthdayReminders(daysAhead: number = 7) {
+async function sendBirthdayRemindersInternal(daysAhead: number = 7) {
   try {
     const supabase = await createClient();
-    
-    // Check permission
-    const hasPermission = await checkUserPermission('employees', 'manage');
-    if (!hasPermission) {
-      return { error: 'You do not have permission to send birthday reminders' };
-    }
 
     // Get all active employees with date of birth
     const { data: employees, error } = await supabase
@@ -107,6 +101,21 @@ export async function sendBirthdayReminders(daysAhead: number = 7) {
     return { error: 'An unexpected error occurred' };
   }
 }
+
+/**
+ * Public function with permission check for manual birthday reminders
+ */
+export async function sendBirthdayReminders(daysAhead: number = 7) {
+  const hasPermission = await checkUserPermission('employees', 'manage');
+  if (!hasPermission) {
+    return { error: 'You do not have permission to send birthday reminders' };
+  }
+  
+  return sendBirthdayRemindersInternal(daysAhead);
+}
+
+// Export internal function for system use (e.g., cron jobs)
+export { sendBirthdayRemindersInternal };
 
 /**
  * Get upcoming birthdays without sending emails (for preview)

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sendBirthdayReminders } from '@/app/actions/employee-birthdays';
+import { sendBirthdayRemindersInternal } from '@/app/actions/employee-birthdays';
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Send birthday reminders for employees with birthdays exactly 7 days away
-    const result = await sendBirthdayReminders(7);
+    const result = await sendBirthdayRemindersInternal(7);
 
     if (result.error) {
       console.error('Birthday reminder error:', result.error);
