@@ -24,5 +24,47 @@
       "path": "/api/cron/birthday-reminders",
       "schedule": "0 8 * * *"
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/api/redirect",
+      "has": [
+        {
+          "type": "host",
+          "value": "vip-club.uk"
+        }
+      ]
+    },
+    {
+      "source": "/",
+      "destination": "/api/redirect",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.vip-club.uk"
+        }
+      ]
+    },
+    {
+      "source": "/:code",
+      "destination": "/api/redirect/:code",
+      "has": [
+        {
+          "type": "host",
+          "value": "vip-club.uk"
+        }
+      ]
+    },
+    {
+      "source": "/:code",
+      "destination": "/api/redirect/:code",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.vip-club.uk"
+        }
+      ]
+    }
   ]
 } 

@@ -58,7 +58,7 @@ async function checkEnrollmentSMS() {
   // Check recent SMS jobs
   console.log('\n\n📱 Recent SMS jobs (last 24 hours):');
   const { data: smsJobs, error: jobError } = await supabase
-    .from('jobs')
+    .from('background_jobs')
     .select('*')
     .eq('type', 'send_sms')
     .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())

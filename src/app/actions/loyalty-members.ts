@@ -206,7 +206,7 @@ export async function enrollLoyaltyMember(formData: LoyaltyMemberFormData) {
         status: validatedData.status || 'active',
         join_date: validatedData.join_date || new Date().toISOString().split('T')[0]
       })
-      .select()
+      .select('*, access_token')
       .single();
     
     if (memberError) {
@@ -249,41 +249,60 @@ export async function enrollLoyaltyMember(formData: LoyaltyMemberFormData) {
       }
     });
     
-    // Add a small delay to ensure database propagation
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Fetch the complete member data with relations before sending notification
-    const { data: completeMember } = await supabase
-      .from('loyalty_members')
-      .select(`
-        *,
-        customer:customers(
-          id,
-          name,
-          phone_number
-        )
-      `)
-      .eq('id', member.id)
+    // Get customer details that we already have
+    const { data: customer } = await supabase
+      .from('customers')
+      .select('id, first_name, last_name, mobile_number')
+      .eq('id', validatedData.customer_id)
       .single();
     
-    if (completeMember) {
-      // Send welcome SMS notification (using internal function that doesn't require permission check)
-      const { sendLoyaltyNotificationInternal } = await import('./loyalty-notifications');
-      const notificationResult = await sendLoyaltyNotificationInternal({
-        member_id: member.id,
-        type: 'welcome',
-        data: {
-          welcome_points: welcomeBonus
+    if (customer?.mobile_number) {
+      try {
+        // Queue the welcome SMS directly
+        const { JobQueue } = await import('@/lib/background-jobs');
+        const jobQueue = JobQueue.getInstance();
+        
+        // Format phone number
+        let phoneNumber = customer.mobile_number;
+        if (phoneNumber.startsWith('0')) {
+          phoneNumber = '+44' + phoneNumber.substring(1);
         }
-      });
-      
-      if (notificationResult.error) {
-        console.error('Failed to send welcome SMS:', notificationResult.error);
-        console.error('Member data:', completeMember);
+        
+        const customerName = `${customer.first_name} ${customer.last_name}`;
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://management.orangejelly.co.uk';
+        const fullPortalUrl = `${baseUrl}/loyalty/portal?token=${member.access_token}`;
+        
+        // Create short link for the portal
+        const { createShortLinkInternal } = await import('./short-links');
+        const shortLinkResult = await createShortLinkInternal({
+          destination_url: fullPortalUrl,
+          link_type: 'loyalty_portal',
+          metadata: {
+            member_id: member.id,
+            customer_id: customer.id,
+            customer_name: customerName
+          }
+        });
+        
+        let portalUrl = fullPortalUrl;
+        if (shortLinkResult.success && shortLinkResult.data) {
+          portalUrl = shortLinkResult.data.full_url;
+        }
+        
+        const message = `Welcome to The Anchor VIP Club, ${customerName}! You've earned ${welcomeBonus} points. View your rewards: ${portalUrl}`;
+        
+        await jobQueue.enqueue('send_sms', {
+          to: phoneNumber,
+          message: message,
+          customerId: customer.id,
+          type: 'custom'
+        });
+        
+        console.log('Welcome SMS queued for', customerName);
+      } catch (error) {
+        console.error('Failed to queue welcome SMS:', error);
         // Don't fail the enrollment if SMS fails
       }
-    } else {
-      console.error('Could not fetch complete member data for notification');
     }
     
     revalidatePath('/loyalty/admin/members');

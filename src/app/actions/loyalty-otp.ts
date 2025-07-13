@@ -324,3 +324,64 @@ export async function endPortalSession(sessionToken: string) {
     return { error: 'An unexpected error occurred' };
   }
 }
+
+// Validate direct access token
+export async function validateTokenAccess(token: string) {
+  try {
+    const supabase = await createClient();
+    
+    // Find member by access token
+    const { data: member, error } = await supabase
+      .from('loyalty_members')
+      .select(`
+        id,
+        customer_id,
+        available_points,
+        total_points,
+        lifetime_points,
+        lifetime_events,
+        status,
+        tier:loyalty_tiers(
+          id,
+          name,
+          level,
+          icon
+        ),
+        customer:customers!inner(
+          id,
+          first_name,
+          last_name,
+          mobile_number
+        )
+      `)
+      .eq('access_token', token)
+      .eq('status', 'active')
+      .single();
+    
+    if (error || !member) {
+      return { error: 'Invalid or expired link' };
+    }
+    
+    // Type assertion for the joined data
+    const memberData = member as any;
+    
+    return { 
+      success: true, 
+      member: {
+        id: memberData.id,
+        customer_id: memberData.customer_id,
+        name: `${memberData.customer.first_name} ${memberData.customer.last_name}`,
+        phone_number: memberData.customer.mobile_number,
+        available_points: memberData.available_points,
+        total_points: memberData.total_points,
+        lifetime_points: memberData.lifetime_points,
+        lifetime_events: memberData.lifetime_events,
+        tier: memberData.tier,
+        status: memberData.status
+      }
+    };
+  } catch (error) {
+    console.error('Token validation error:', error);
+    return { error: 'An unexpected error occurred' };
+  }
+}

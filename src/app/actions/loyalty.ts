@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { logAuditEvent } from './audit';
 import { createClient } from '@/lib/supabase/server';
+import { enrollLoyaltyMember } from './loyalty-members';
 
 // Validation schemas
 const CheckInSchema = z.object({
@@ -274,7 +275,6 @@ export async function enrollCustomer(formData: FormData) {
     });
     
     // Use the actual enrollment function from loyalty-members.ts
-    const { enrollLoyaltyMember } = await import('./loyalty-members');
     const result = await enrollLoyaltyMember({
       customer_id: validatedData.customerId,
       status: 'active'
