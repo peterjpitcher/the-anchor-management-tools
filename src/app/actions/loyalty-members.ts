@@ -249,15 +249,19 @@ export async function enrollLoyaltyMember(formData: LoyaltyMemberFormData) {
       }
     });
     
-    // Send welcome SMS notification
-    const { sendLoyaltyNotification } = await import('./loyalty-notifications');
-    await sendLoyaltyNotification({
+    // Send welcome SMS notification (using internal function that doesn't require permission check)
+    const { sendLoyaltyNotificationInternal } = await import('./loyalty-notifications');
+    const notificationResult = await sendLoyaltyNotificationInternal({
       member_id: member.id,
       type: 'welcome',
       data: {
         welcome_points: welcomeBonus
       }
     });
+    
+    if (notificationResult.error) {
+      console.error('Failed to send welcome SMS:', notificationResult.error);
+    }
     
     revalidatePath('/loyalty/admin/members');
     revalidatePath('/loyalty/admin');

@@ -128,10 +128,10 @@ export async function processEventCheckIn(data: z.infer<typeof CheckInSchema>) {
     
     // Send SMS notification if points were earned
     if (result?.points_earned && result.points_earned > 0) {
-      const { sendLoyaltyNotification } = await import('./loyalty-notifications');
+      const { sendLoyaltyNotificationInternal } = await import('./loyalty-notifications');
       
       // Send points earned notification
-      await sendLoyaltyNotification({
+      await sendLoyaltyNotificationInternal({
         member_id: result.member_id || validatedData.customer_id,
         type: 'points_earned',
         data: {
@@ -149,7 +149,7 @@ export async function processEventCheckIn(data: z.infer<typeof CheckInSchema>) {
           .eq('name', tierResult.newTier)
           .single();
         
-        await sendLoyaltyNotification({
+        await sendLoyaltyNotificationInternal({
           member_id: result.member_id || validatedData.customer_id,
           type: 'tier_upgrade',
           data: {
@@ -163,7 +163,7 @@ export async function processEventCheckIn(data: z.infer<typeof CheckInSchema>) {
       // Send achievement notifications
       if (achievementResult && 'newAchievements' in achievementResult && achievementResult.newAchievements && achievementResult.newAchievements.length > 0) {
         for (const achievement of achievementResult.newAchievements) {
-          await sendLoyaltyNotification({
+          await sendLoyaltyNotificationInternal({
             member_id: result.member_id || validatedData.customer_id,
             type: 'achievement',
             data: {

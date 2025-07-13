@@ -21,15 +21,10 @@ const BulkNotificationSchema = z.object({
   schedule_for: z.string().datetime().optional()
 });
 
-// Send loyalty-related SMS notification to a member
-export async function sendLoyaltyNotification(data: z.infer<typeof LoyaltyNotificationSchema>) {
+// Internal function for system-initiated notifications (no permission check)
+async function sendLoyaltyNotificationInternal(data: z.infer<typeof LoyaltyNotificationSchema>) {
   try {
     const supabase = await createClient();
-    
-    const hasPermission = await checkUserPermission('loyalty', 'manage');
-    if (!hasPermission) {
-      return { error: 'You do not have permission to send notifications' };
-    }
     
     // Validate input
     const validatedData = LoyaltyNotificationSchema.parse(data);
@@ -146,6 +141,19 @@ export async function sendLoyaltyNotification(data: z.infer<typeof LoyaltyNotifi
     return { error: 'Failed to send notification' };
   }
 }
+
+// Public function with permission check
+export async function sendLoyaltyNotification(data: z.infer<typeof LoyaltyNotificationSchema>) {
+  const hasPermission = await checkUserPermission('loyalty', 'manage');
+  if (!hasPermission) {
+    return { error: 'You do not have permission to send notifications' };
+  }
+  
+  return sendLoyaltyNotificationInternal(data);
+}
+
+// Export internal function for system use (e.g., enrollment, automated notifications)
+export { sendLoyaltyNotificationInternal };
 
 // Send bulk notifications to loyalty members
 export async function sendBulkLoyaltyNotification(data: z.infer<typeof BulkNotificationSchema>) {
@@ -305,7 +313,7 @@ export async function sendAutomatedLoyaltyNotifications() {
         .is('welcome_sent', null);
       
       for (const member of newMembers || []) {
-        await sendLoyaltyNotification({
+        await sendLoyaltyNotificationInternal({
           member_id: member.id,
           type: 'welcome',
           data: {
@@ -354,7 +362,7 @@ export async function sendAutomatedLoyaltyNotifications() {
           .limit(1);
         
         if (availableRewards && availableRewards.length > 0) {
-          await sendLoyaltyNotification({
+          await sendLoyaltyNotificationInternal({
             member_id: member.id,
             type: 'reward_available',
             data: {
