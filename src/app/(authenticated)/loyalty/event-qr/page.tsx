@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
-import { todaysEvent } from '@/lib/mock-data/loyalty-demo';
+// Removed mock data import
 import Link from 'next/link';
 import { DocumentArrowDownIcon } from '@heroicons/react/24/outline';
 
@@ -17,7 +17,8 @@ export default function EventQRPage() {
   const generateQRCode = async () => {
     setLoading(true);
     
-    const url = `${window.location.origin}/loyalty/checkin?event=${todaysEvent.id}`;
+    // For now, generate a generic QR code that will show event selection
+    const url = `${window.location.origin}/loyalty/checkin`;
     const dataUrl = await QRCode.toDataURL(url, {
       width: 400,
       margin: 2,
@@ -54,7 +55,7 @@ export default function EventQRPage() {
           <div className="mb-6 flex justify-between items-start">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Event QR Code</h1>
-              <p className="text-gray-600 mt-1">For tonight&apos;s event: {todaysEvent.name}</p>
+              <p className="text-gray-600 mt-1">Generate QR codes for customer check-in</p>
             </div>
             <Link
               href="/loyalty/event-qr/batch"
@@ -103,8 +104,8 @@ export default function EventQRPage() {
         <div className="h-[297mm] w-[210mm] p-12 flex flex-col items-center justify-center" style={{ pageBreakAfter: 'always' }}>
           <div className="text-center">
             <h1 className="text-6xl font-bold mb-4">THE ANCHOR VIPs</h1>
-            <h2 className="text-3xl mb-2">{todaysEvent.name}</h2>
-            <p className="text-2xl text-gray-600 mb-12">{new Date(todaysEvent.date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+            <h2 className="text-3xl mb-2">Event Check-In</h2>
+            <p className="text-2xl text-gray-600 mb-12">{new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
             
             <div className="mb-12">
               <img src={qrDataUrl} alt="Event QR" className="w-96 h-96 mx-auto" />
@@ -129,7 +130,7 @@ export default function EventQRPage() {
             <div key={num} className="h-[148.5mm] p-8 flex flex-col items-center justify-center border-b border-dashed border-gray-400">
               <div className="text-center">
                 <h1 className="text-4xl font-bold mb-2">THE ANCHOR VIPs</h1>
-                <h2 className="text-2xl mb-8">{todaysEvent.name}</h2>
+                <h2 className="text-2xl mb-8">Event Check-In</h2>
                 
                 <div className="mb-8">
                   <img src={qrDataUrl} alt="Event QR" className="w-56 h-56 mx-auto" />
@@ -150,7 +151,7 @@ export default function EventQRPage() {
             <div key={num} className="h-[148.5mm] w-[105mm] p-6 flex flex-col items-center justify-center border-r border-b border-dashed border-gray-400">
               <div className="text-center">
                 <h1 className="text-2xl font-bold mb-1">THE ANCHOR VIPs</h1>
-                <h2 className="text-lg mb-4">{todaysEvent.name}</h2>
+                <h2 className="text-lg mb-4">Event Check-In</h2>
                 
                 <div className="mb-4">
                   <img src={qrDataUrl} alt="Event QR" className="w-32 h-32 mx-auto" />
