@@ -70,19 +70,19 @@ export default async function SimpleDashboardPage() {
         <div className="bg-white overflow-hidden shadow rounded-lg">
           <div className="px-4 py-5 sm:p-6">
             <dt className="text-sm font-medium text-gray-500 truncate">Today&apos;s Events</dt>
-            <dd className="mt-1 text-3xl font-semibold text-gray-900">{todayEvents.length}</dd>
+            <dd className="mt-1 text-2xl sm:text-3xl font-semibold text-gray-900">{todayEvents.length}</dd>
           </div>
         </div>
         <div className="bg-white overflow-hidden shadow rounded-lg">
           <div className="px-4 py-5 sm:p-6">
             <dt className="text-sm font-medium text-gray-500 truncate">Total Customers</dt>
-            <dd className="mt-1 text-3xl font-semibold text-gray-900">{stats.totalCustomers}</dd>
+            <dd className="mt-1 text-2xl sm:text-3xl font-semibold text-gray-900">{stats.totalCustomers}</dd>
           </div>
         </div>
         <Link href="/messages" className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow">
           <div className="px-4 py-5 sm:p-6">
             <dt className="text-sm font-medium text-gray-500 truncate">Unread Messages</dt>
-            <dd className="mt-1 text-3xl font-semibold text-gray-900">{stats.unreadMessages}</dd>
+            <dd className="mt-1 text-2xl sm:text-3xl font-semibold text-gray-900">{stats.unreadMessages}</dd>
           </div>
         </Link>
       </div>
@@ -97,7 +97,7 @@ export default async function SimpleDashboardPage() {
                 <Link
                   key={event.id}
                   href={`/events/${event.id}`}
-                  className="block hover:bg-gray-50 -mx-4 px-4 py-3 transition duration-150 ease-in-out rounded"
+                  className="block hover:bg-gray-50 active:bg-gray-100 -mx-4 px-4 py-3 transition duration-150 ease-in-out rounded touch-manipulation"
                 >
                   <div className="flex items-center justify-between">
                     <div>
@@ -105,8 +105,8 @@ export default async function SimpleDashboardPage() {
                       <p className="text-sm text-gray-500">{event.time}</p>
                     </div>
                     <div className="flex items-center text-sm text-gray-500">
-                      <UsersIcon className="h-5 w-5 mr-1" />
-                      {event.bookingCount}/{event.capacity || '∞'}
+                      <UsersIcon className="h-5 w-5 mr-1 flex-shrink-0" />
+                      <span className="whitespace-nowrap">{event.bookingCount}/{event.capacity || '∞'}</span>
                     </div>
                   </div>
                 </Link>
@@ -138,7 +138,7 @@ export default async function SimpleDashboardPage() {
                   <Link
                     key={event.id}
                     href={`/events/${event.id}`}
-                    className="block hover:bg-gray-50 -mx-4 px-4 py-3 transition duration-150 ease-in-out rounded"
+                    className="block hover:bg-gray-50 active:bg-gray-100 -mx-4 px-4 py-3 transition duration-150 ease-in-out rounded touch-manipulation"
                   >
                     <div className="flex items-center justify-between">
                       <div>
@@ -149,8 +149,8 @@ export default async function SimpleDashboardPage() {
                         </p>
                       </div>
                       <div className="flex items-center text-sm text-gray-500">
-                        <UsersIcon className="h-5 w-5 mr-1" />
-                        {event.bookingCount}/{event.capacity || '∞'}
+                        <UsersIcon className="h-5 w-5 mr-1 flex-shrink-0" />
+                        <span className="whitespace-nowrap">{event.bookingCount}/{event.capacity || '∞'}</span>
                       </div>
                     </div>
                   </Link>
@@ -167,26 +167,26 @@ export default async function SimpleDashboardPage() {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Link href="/events/new" className="bg-white shadow rounded-lg p-4 text-center hover:shadow-md transition-shadow">
-          <CalendarIcon className="h-8 w-8 mx-auto text-gray-400 mb-2" />
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <Link href="/events/new" className="bg-white shadow rounded-lg p-6 sm:p-4 text-center hover:shadow-md active:shadow-lg transition-shadow touch-manipulation">
+          <CalendarIcon className="h-10 w-10 sm:h-8 sm:w-8 mx-auto text-gray-400 mb-2" />
           <p className="text-sm font-medium text-gray-900">New Event</p>
         </Link>
-        <Link href="/customers" className="bg-white shadow rounded-lg p-4 text-center hover:shadow-md transition-shadow">
-          <UsersIcon className="h-8 w-8 mx-auto text-gray-400 mb-2" />
+        <Link href="/customers" className="bg-white shadow rounded-lg p-6 sm:p-4 text-center hover:shadow-md active:shadow-lg transition-shadow touch-manipulation">
+          <UsersIcon className="h-10 w-10 sm:h-8 sm:w-8 mx-auto text-gray-400 mb-2" />
           <p className="text-sm font-medium text-gray-900">Customers</p>
         </Link>
-        <Link href="/messages" className="bg-white shadow rounded-lg p-4 text-center hover:shadow-md transition-shadow">
+        <Link href="/messages" className="bg-white shadow rounded-lg p-6 sm:p-4 text-center hover:shadow-md active:shadow-lg transition-shadow touch-manipulation">
           <div className="relative inline-block">
-            <ChatBubbleLeftIcon className="h-8 w-8 mx-auto text-gray-400 mb-2" />
+            <ChatBubbleLeftIcon className="h-10 w-10 sm:h-8 sm:w-8 mx-auto text-gray-400 mb-2" />
             {stats.unreadMessages > 0 && (
-              <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full"></span>
+              <span className="absolute -top-1 -right-1 h-4 w-4 sm:h-3 sm:w-3 bg-red-500 rounded-full"></span>
             )}
           </div>
           <p className="text-sm font-medium text-gray-900">Messages</p>
         </Link>
-        <Link href="/private-bookings/new" className="bg-white shadow rounded-lg p-4 text-center hover:shadow-md transition-shadow">
-          <PlusIcon className="h-8 w-8 mx-auto text-gray-400 mb-2" />
+        <Link href="/private-bookings/new" className="bg-white shadow rounded-lg p-6 sm:p-4 text-center hover:shadow-md active:shadow-lg transition-shadow touch-manipulation">
+          <PlusIcon className="h-10 w-10 sm:h-8 sm:w-8 mx-auto text-gray-400 mb-2" />
           <p className="text-sm font-medium text-gray-900">Private Booking</p>
         </Link>
       </div>

@@ -34,6 +34,7 @@ const statusColors: Record<BookingStatus, string> = {
 
 export default function CalendarView({ bookings }: CalendarViewProps) {
   const [currentDate, setCurrentDate] = useState(new Date())
+  const [viewMode, setViewMode] = useState<'calendar' | 'agenda'>('calendar')
   
   // Get the first day of the month
   const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
@@ -89,52 +90,90 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
     return `${year}-${month}-${dayStr}`
   }
 
+  // Get bookings for current month in agenda view
+  const monthBookings = bookings.filter(booking => {
+    const bookingDate = new Date(booking.event_date)
+    return bookingDate.getMonth() === currentDate.getMonth() && 
+           bookingDate.getFullYear() === currentDate.getFullYear()
+  }).sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime())
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
       {/* Calendar Header */}
-      <div className="px-6 py-4 border-b border-gray-200">
-        <div className="flex items-center justify-between">
+      <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <h2 className="text-xl font-semibold text-gray-900">
             {currentDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
           </h2>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+            {/* View Mode Toggle - Mobile Only */}
+            <div className="flex bg-gray-100 rounded-lg p-1 sm:hidden">
+              <button
+                onClick={() => setViewMode('calendar')}
+                className={`px-3 py-1 text-sm font-medium rounded ${
+                  viewMode === 'calendar' ? 'bg-white text-gray-900 shadow' : 'text-gray-600'
+                }`}
+              >
+                Calendar
+              </button>
+              <button
+                onClick={() => setViewMode('agenda')}
+                className={`px-3 py-1 text-sm font-medium rounded ${
+                  viewMode === 'agenda' ? 'bg-white text-gray-900 shadow' : 'text-gray-600'
+                }`}
+              >
+                Agenda
+              </button>
+            </div>
             <button
               onClick={() => setCurrentDate(new Date())}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              className="px-3 sm:px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
             >
               Today
             </button>
-            <button
-              onClick={() => navigateMonth('prev')}
-              className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <ChevronLeftIcon className="h-5 w-5" />
-            </button>
-            <button
-              onClick={() => navigateMonth('next')}
-              className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <ChevronRightIcon className="h-5 w-5" />
-            </button>
+            <div className="flex">
+              <button
+                onClick={() => navigateMonth('prev')}
+                className="p-2 text-gray-600 hover:bg-gray-100 rounded-l-lg border border-r-0 border-gray-300 transition-colors"
+              >
+                <ChevronLeftIcon className="h-5 w-5" />
+              </button>
+              <button
+                onClick={() => navigateMonth('next')}
+                className="p-2 text-gray-600 hover:bg-gray-100 rounded-r-lg border border-gray-300 transition-colors"
+              >
+                <ChevronRightIcon className="h-5 w-5" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
       
-      {/* Days of Week Header */}
-      <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-200">
-        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-          <div key={day} className="px-2 py-3 text-center text-sm font-medium text-gray-700">
-            {day}
+      {/* Show Calendar View on Desktop, Selected View on Mobile */}
+      {(viewMode === 'calendar' || window.innerWidth >= 640) ? (
+        <>
+          {/* Days of Week Header */}
+          <div className="hidden sm:grid grid-cols-7 bg-gray-50 border-b border-gray-200">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+              <div key={day} className="px-2 py-3 text-center text-sm font-medium text-gray-700">
+                {day}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      
-      {/* Calendar Grid */}
-      <div className="grid grid-cols-7 divide-x divide-y divide-gray-200">
+          <div className="grid sm:hidden grid-cols-7 bg-gray-50 border-b border-gray-200">
+            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+              <div key={index} className="py-2 text-center text-xs font-medium text-gray-700">
+                {day}
+              </div>
+            ))}
+          </div>
+          
+          {/* Calendar Grid */}
+          <div className="grid grid-cols-7 divide-x divide-y divide-gray-200">
         {calendarDays.map((day, index) => (
           <div
             key={index}
-            className={`min-h-[120px] p-2 ${
+            className={`min-h-[80px] sm:min-h-[120px] p-1 sm:p-2 ${
               day === null ? 'bg-gray-50' : 'bg-white hover:bg-gray-50'
             } ${isToday(day || 0) ? 'bg-blue-50' : ''}`}
           >
@@ -146,24 +185,26 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                   {day}
                 </div>
                 <div className="space-y-1">
-                  {bookingsByDate[getDateString(day)]?.slice(0, 3).map((booking) => (
+                  {/* Show fewer bookings on mobile */}
+                  {bookingsByDate[getDateString(day)]?.slice(0, window.innerWidth < 640 ? 1 : 3).map((booking) => (
                     <Link
                       key={booking.id}
                       href={`/private-bookings/${booking.id}`}
-                      className={`block px-2 py-1 text-xs rounded border ${
+                      className={`block px-1 sm:px-2 py-0.5 sm:py-1 text-xs rounded border ${
                         statusColors[booking.status]
                       } hover:opacity-80 transition-opacity`}
                     >
-                      <div className="font-medium truncate">{booking.customer_name}</div>
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <ClockIcon className="h-3 w-3" />
-                        {formatTime12Hour(booking.start_time)}
+                      <div className="font-medium truncate hidden sm:block">{booking.customer_name}</div>
+                      <div className="flex items-center gap-1 sm:mt-0.5">
+                        <ClockIcon className="h-3 w-3 hidden sm:block" />
+                        <span className="sm:hidden">{formatTime12Hour(booking.start_time).replace(':00', '')}</span>
+                        <span className="hidden sm:inline">{formatTime12Hour(booking.start_time)}</span>
                       </div>
                     </Link>
                   ))}
-                  {bookingsByDate[getDateString(day)]?.length > 3 && (
-                    <div className="text-xs text-gray-500 px-2">
-                      +{bookingsByDate[getDateString(day)].length - 3} more
+                  {bookingsByDate[getDateString(day)]?.length > (window.innerWidth < 640 ? 1 : 3) && (
+                    <div className="text-xs text-gray-500 px-1 sm:px-2">
+                      +{bookingsByDate[getDateString(day)].length - (window.innerWidth < 640 ? 1 : 3)} more
                     </div>
                   )}
                 </div>

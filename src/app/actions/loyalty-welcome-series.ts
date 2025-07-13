@@ -60,15 +60,10 @@ const WELCOME_SERIES_TEMPLATES = [
   }
 ];
 
-// Start welcome series for a new member
-export async function startWelcomeSeries(data: z.infer<typeof WelcomeSeriesSchema>) {
+// Internal function for system-initiated welcome series (no permission check)
+async function startWelcomeSeriesInternal(data: z.infer<typeof WelcomeSeriesSchema>) {
   try {
     const supabase = await createClient();
-    
-    const hasPermission = await checkUserPermission('loyalty', 'manage');
-    if (!hasPermission) {
-      return { error: 'You do not have permission to manage welcome series' };
-    }
     
     const validatedData = WelcomeSeriesSchema.parse(data);
     
@@ -210,6 +205,19 @@ export async function startWelcomeSeries(data: z.infer<typeof WelcomeSeriesSchem
     return { error: 'Failed to start welcome series' };
   }
 }
+
+// Public function with permission check
+export async function startWelcomeSeries(data: z.infer<typeof WelcomeSeriesSchema>) {
+  const hasPermission = await checkUserPermission('loyalty', 'manage');
+  if (!hasPermission) {
+    return { error: 'You do not have permission to manage welcome series' };
+  }
+  
+  return startWelcomeSeriesInternal(data);
+}
+
+// Export internal function for system use (e.g., enrollment, automated triggers)
+export { startWelcomeSeriesInternal };
 
 // Get welcome email content
 export function getWelcomeEmailContent(template: string, data: any): { subject: string; html: string; text: string } {

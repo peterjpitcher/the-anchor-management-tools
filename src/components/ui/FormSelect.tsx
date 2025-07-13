@@ -29,7 +29,7 @@ const FormSelect = React.forwardRef<HTMLSelectElement, FormSelectProps>(
             id={selectId}
             className={`block w-full rounded-lg border ${
               error ? 'border-red-300' : 'border-gray-300'
-            } px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm ${
+            } px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px] ${
               props.disabled ? 'bg-gray-50 cursor-not-allowed' : ''
             } ${className}`}
             aria-invalid={error ? 'true' : 'false'}
