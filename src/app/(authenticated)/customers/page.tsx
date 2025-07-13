@@ -373,7 +373,7 @@ export default function CustomersPage() {
                 A list of all customers including their name and mobile number.
               </p>
             </div>
-            <div className="flex space-x-3">
+            <div className="flex flex-wrap gap-2 sm:gap-3">
               {hasPermission('customers', 'manage') && (
                 <Link href="/settings/customer-labels">
                   <Button variant="outline">
@@ -398,15 +398,15 @@ export default function CustomersPage() {
               placeholder="Search customers..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+              className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               autoComplete="off"
             />
-            <div className="flex items-center space-x-2">
-              <FunnelIcon className="h-5 w-5 text-gray-400" />
-              <div className="flex space-x-2">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+              <FunnelIcon className="h-5 w-5 text-gray-400 hidden sm:block" />
+              <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => setFilter('all')}
-                  className={`px-3 py-1 text-sm rounded-full transition-colors ${
+                  className={`px-4 py-2 sm:px-3 sm:py-1 text-sm rounded-full transition-colors min-h-[36px] sm:min-h-0 ${
                     filter === 'all' 
                       ? 'bg-green-600 text-white' 
                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -416,7 +416,7 @@ export default function CustomersPage() {
                 </button>
                 <button
                   onClick={() => setFilter('regular')}
-                  className={`px-3 py-1 text-sm rounded-full transition-colors ${
+                  className={`px-4 py-2 sm:px-3 sm:py-1 text-sm rounded-full transition-colors min-h-[36px] sm:min-h-0 ${
                     filter === 'regular' 
                       ? 'bg-green-600 text-white' 
                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -426,7 +426,7 @@ export default function CustomersPage() {
                 </button>
                 <button
                   onClick={() => setFilter('non-regular')}
-                  className={`px-3 py-1 text-sm rounded-full transition-colors ${
+                  className={`px-4 py-2 sm:px-3 sm:py-1 text-sm rounded-full transition-colors min-h-[36px] sm:min-h-0 ${
                     filter === 'non-regular' 
                       ? 'bg-green-600 text-white' 
                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -564,7 +564,7 @@ export default function CustomersPage() {
                                     }
                                   }
                                 }}
-                                className="text-xs px-2 py-1 bg-amber-600 text-white rounded hover:bg-amber-700"
+                                className="text-xs px-3 py-1.5 bg-amber-600 text-white rounded hover:bg-amber-700 min-h-[28px]"
                               >
                                 Enroll
                               </button>
@@ -627,11 +627,11 @@ export default function CustomersPage() {
           <div className="block md:hidden">
             <ul className="divide-y divide-gray-200 bg-white shadow overflow-hidden sm:rounded-lg">
             {customersWithLoyalty.map(customer => (
-              <li key={customer.id} className="px-4 py-4 sm:px-6">
+              <li key={customer.id} className="px-4 py-4 sm:px-6 hover:bg-gray-50 transition-colors">
                  <div className="flex items-center justify-between">
                    <Link href={`/customers/${customer.id}`} className="block hover:bg-gray-50 flex-1 min-w-0">
                       <div className="flex items-center">
-                          <p className="text-sm font-medium text-blue-600 truncate">
+                          <p className="text-base sm:text-sm font-medium text-blue-600 truncate">
                               <CustomerName customer={customer} />
                           </p>
                           {unreadCounts[customer.id] > 0 && (
@@ -650,14 +650,14 @@ export default function CustomersPage() {
                           setEditingCustomer(customer)
                           setShowForm(true)
                         }}
-                        className="p-1 text-gray-500 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                        className="p-2 text-gray-500 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 min-w-[44px] min-h-[44px] flex items-center justify-center"
                         aria-label="Edit customer"
                       >
                         <PencilIcon className="h-5 w-5" />
                       </button>
                       <button
                         onClick={() => handleDeleteCustomer(customer)}
-                        className="p-1 text-red-500 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                        className="p-2 text-red-500 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 min-w-[44px] min-h-[44px] flex items-center justify-center"
                         aria-label="Delete customer"
                       >
                         <TrashIcon className="h-5 w-5" />
@@ -727,7 +727,7 @@ export default function CustomersPage() {
                                 }
                               }
                             }}
-                            className="text-xs px-2 py-1 bg-amber-600 text-white rounded hover:bg-amber-700"
+                            className="text-xs px-3 py-1.5 bg-amber-600 text-white rounded hover:bg-amber-700 min-h-[28px]"
                           >
                             Enroll
                           </button>

@@ -102,10 +102,10 @@ export default function NewPrivateBookingPage() {
           <p className="text-gray-600 mt-1">Create a new venue hire booking</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-6 sm:space-y-8">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-6">
           {/* Customer Information */}
-          <div className="bg-gray-50 rounded-lg p-4 sm:p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+          <div className="bg-gray-50 rounded-lg p-4">
+            <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-4 flex items-center">
               <UserIcon className="h-5 w-5 mr-2 text-gray-400" />
               Customer Information
             </h3>
@@ -137,7 +137,7 @@ export default function NewPrivateBookingPage() {
                     value={customerFirstName}
                     onChange={(e) => setCustomerFirstName(e.target.value)}
                     required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                     placeholder="John"
                   />
                 </div>
@@ -151,7 +151,7 @@ export default function NewPrivateBookingPage() {
                     name="customer_last_name"
                     value={customerLastName}
                     onChange={(e) => setCustomerLastName(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                     placeholder="Smith"
                   />
                 </div>
@@ -169,8 +169,10 @@ export default function NewPrivateBookingPage() {
                     name="contact_phone"
                     value={contactPhone}
                     onChange={(e) => setContactPhone(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                     placeholder="07700 900000"
+                    autoComplete="tel"
+                    inputMode="tel"
                   />
                 </div>
               </div>
@@ -186,16 +188,17 @@ export default function NewPrivateBookingPage() {
                   name="contact_email"
                   value={contactEmail}
                   onChange={(e) => setContactEmail(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                   placeholder="john@example.com"
+                  autoComplete="email"
                 />
               </div>
             </div>
           </div>
 
           {/* Event Details */}
-          <div className="bg-gray-50 rounded-lg p-4 sm:p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+          <div className="bg-gray-50 rounded-lg p-4">
+            <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-4 flex items-center">
               <CalendarIcon className="h-5 w-5 mr-2 text-gray-400" />
               Event Details
             </h3>
@@ -213,7 +216,7 @@ export default function NewPrivateBookingPage() {
                   defaultValue={defaultDate}
                   min={today}
                   max={maxDate}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                 />
               </div>
               <div>
@@ -225,7 +228,7 @@ export default function NewPrivateBookingPage() {
                   type="text"
                   id="event_type"
                   name="event_type"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                   placeholder="Birthday Party, Wedding, Corporate Event..."
                 />
               </div>
@@ -237,7 +240,7 @@ export default function NewPrivateBookingPage() {
                 <select
                   id="source"
                   name="source"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-3 py-3 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px] bg-white"
                 >
                   <option value="">Select source...</option>
                   <option value="phone">Phone</option>
@@ -262,7 +265,7 @@ export default function NewPrivateBookingPage() {
                   name="start_time"
                   required
                   defaultValue="18:00"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                 />
               </div>
               <div>
@@ -274,7 +277,7 @@ export default function NewPrivateBookingPage() {
                   id="end_time"
                   name="end_time"
                   defaultValue="23:00"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                 />
               </div>
               <div>
@@ -287,7 +290,7 @@ export default function NewPrivateBookingPage() {
                   id="guest_count"
                   name="guest_count"
                   min="1"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                   placeholder="50"
                 />
               </div>
@@ -295,8 +298,8 @@ export default function NewPrivateBookingPage() {
           </div>
 
           {/* Setup Details */}
-          <div className="bg-gray-50 rounded-lg p-4 sm:p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+          <div className="bg-gray-50 rounded-lg p-4">
+            <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-4 flex items-center">
               <BuildingOfficeIcon className="h-5 w-5 mr-2 text-gray-400" />
               Setup Details
             </h3>
@@ -310,9 +313,9 @@ export default function NewPrivateBookingPage() {
                   type="date"
                   id="setup_date"
                   name="setup_date"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                 />
-                <p className="mt-1 text-xs text-gray-500">Leave blank if same as event date</p>
+                <p className="mt-1 text-xs text-gray-500 px-1">Leave blank if same as event date</p>
               </div>
               <div>
                 <label htmlFor="setup_time" className="block text-sm font-medium text-gray-700 mb-1">
@@ -322,16 +325,16 @@ export default function NewPrivateBookingPage() {
                   type="time"
                   id="setup_time"
                   name="setup_time"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                 />
-                <p className="mt-1 text-xs text-gray-500">When vendors can start setup</p>
+                <p className="mt-1 text-xs text-gray-500 px-1">When vendors can start setup</p>
               </div>
             </div>
           </div>
 
           {/* Financial Details */}
-          <div className="bg-gray-50 rounded-lg p-4 sm:p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+          <div className="bg-gray-50 rounded-lg p-4">
+            <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-4 flex items-center">
               <CurrencyPoundIcon className="h-5 w-5 mr-2 text-gray-400" />
               Financial Details (Optional)
             </h3>
@@ -348,9 +351,9 @@ export default function NewPrivateBookingPage() {
                   step="0.01"
                   min="0"
                   defaultValue="250"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                 />
-                <p className="mt-1 text-xs text-gray-500">Default is £250</p>
+                <p className="mt-1 text-xs text-gray-500 px-1">Default is £250</p>
               </div>
               <div>
                 <label htmlFor="balance_due_date" className="block text-sm font-medium text-gray-700 mb-1">
@@ -360,16 +363,16 @@ export default function NewPrivateBookingPage() {
                   type="date"
                   id="balance_due_date"
                   name="balance_due_date"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                 />
-                <p className="mt-1 text-xs text-gray-500">Leave blank to auto-calculate (7 days before event)</p>
+                <p className="mt-1 text-xs text-gray-500 px-1">Leave blank to auto-calculate (7 days before event)</p>
               </div>
             </div>
           </div>
 
           {/* Additional Information */}
-          <div className="bg-gray-50 rounded-lg p-4 sm:p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+          <div className="bg-gray-50 rounded-lg p-4">
+            <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-4 flex items-center">
               <DocumentTextIcon className="h-5 w-5 mr-2 text-gray-400" />
               Additional Information
             </h3>
@@ -383,7 +386,7 @@ export default function NewPrivateBookingPage() {
                   id="customer_requests"
                   name="customer_requests"
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                   placeholder="Special requests, dietary requirements, decorations..."
                 />
               </div>
@@ -396,7 +399,7 @@ export default function NewPrivateBookingPage() {
                   id="internal_notes"
                   name="internal_notes"
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                   placeholder="Staff notes, setup requirements, important reminders..."
                 />
               </div>
@@ -409,7 +412,7 @@ export default function NewPrivateBookingPage() {
                   id="special_requirements"
                   name="special_requirements"
                   rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                   placeholder="Equipment needs, layout preferences, technical requirements..."
                 />
               </div>
@@ -422,7 +425,7 @@ export default function NewPrivateBookingPage() {
                   id="accessibility_needs"
                   name="accessibility_needs"
                   rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                   placeholder="Wheelchair access, hearing loops, dietary restrictions..."
                 />
               </div>
@@ -438,17 +441,17 @@ export default function NewPrivateBookingPage() {
 
           {/* Form Actions */}
           <div className="sticky bottom-0 -mx-4 sm:-mx-6 px-4 sm:px-6 py-4 bg-white border-t sm:relative sm:mx-0 sm:px-0">
-            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 sm:gap-4">
+            <div className="flex flex-col sm:flex-row sm:justify-end gap-3">
               <Link
                 href="/private-bookings"
-                className="w-full sm:w-auto px-4 py-3 sm:py-2 text-center text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                className="w-full sm:w-auto px-4 py-3 text-center text-base sm:text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 active:bg-gray-100 min-h-[44px] transition-colors touch-manipulation"
               >
                 Cancel
               </Link>
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full sm:w-auto px-6 py-3 sm:py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] font-medium"
+                className="w-full sm:w-auto px-6 py-3 bg-green-600 text-white text-base sm:text-sm rounded-lg hover:bg-green-700 active:bg-green-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] font-medium touch-manipulation"
               >
                 {isSubmitting ? 'Creating...' : 'Create Booking'}
               </button>

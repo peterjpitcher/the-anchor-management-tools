@@ -158,14 +158,14 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
     {
       label: 'Details',
       content: (
-        <dl className="sm:divide-y sm:divide-gray-200">
+        <dl className="divide-y divide-gray-200">
           {displayFields.map((field, index) => (
             <div
               key={index}
-              className={`py-3 sm:py-3 sm:grid sm:grid-cols-4 sm:gap-4 ${field.isFullWidth ? 'sm:grid-cols-1' : ''}`}
+              className={`py-3 flex flex-col sm:grid sm:grid-cols-4 sm:gap-4 ${field.isFullWidth ? 'sm:grid-cols-1' : ''}`}
             >
-              <dt className="text-sm font-medium text-gray-500">{field.label}</dt>
-              <dd className={`mt-1 text-sm text-gray-900 sm:mt-0 ${field.isFullWidth ? '' : 'sm:col-span-3'}`}>
+              <dt className="text-sm font-medium text-gray-500 mb-1 sm:mb-0">{field.label}</dt>
+              <dd className={`text-sm text-gray-900 ${field.isFullWidth ? '' : 'sm:col-span-3'}`}>
                 {field.isBadge ? (
                     <span
                         className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium 
@@ -176,9 +176,11 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
                         {field.value}
                     </span>
                 ) : field.isEmail ? (
-                    <a href={`mailto:${field.value}`} className="text-blue-600 hover:text-blue-900">{field.value}</a>
+                    <a href={`mailto:${field.value}`} className="text-blue-600 hover:text-blue-900 break-all">{field.value}</a>
                 ) : field.isPhone ? (
                     <a href={`tel:${field.value}`} className="text-blue-600 hover:text-blue-900">{field.value}</a>
+                ) : field.isFullWidth ? (
+                    <span className="break-words">{field.value}</span>
                 ) : (
                     field.value
                 )}
@@ -222,21 +224,24 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
         <div className="bg-white shadow sm:rounded-lg">
         <div className="px-4 py-5 sm:p-6">
           <div className="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:justify-between sm:items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
                 {employee.first_name} {employee.last_name}
               </h1>
               <p className="mt-1 text-sm text-gray-500">
-                {employee.job_title} - <Link href="/employees" className="font-medium text-blue-600 hover:text-blue-900">Back to all employees</Link>
+                <span className="truncate">{employee.job_title}</span>
+                <span className="hidden sm:inline"> - </span>
+                <Link href="/employees" className="font-medium text-blue-600 hover:text-blue-900 sm:inline-block block mt-1 sm:mt-0">Back to all employees</Link>
               </p>
             </div>
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <Link 
                 href={`/employees/${employee.employee_id}/edit`} 
-                className="inline-flex items-center justify-center rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap min-h-[44px] bg-green-600 text-white shadow-sm hover:bg-green-700 focus:ring-green-500 px-6 py-3 md:py-2 text-base md:text-sm"
+                className="inline-flex items-center justify-center rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap min-h-[44px] bg-green-600 text-white shadow-sm hover:bg-green-700 focus:ring-green-500 px-4 sm:px-6 py-3 md:py-2 text-sm sm:text-base"
               >
-                <PencilSquareIcon className="-ml-0.5 mr-1.5 h-5 w-5" aria-hidden="true" />
-                Edit
+                <PencilSquareIcon className="-ml-0.5 mr-1.5 h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
+                <span className="hidden sm:inline">Edit</span>
+                <span className="sm:hidden">Edit</span>
               </Link>
               <DeleteEmployeeButton
                 employeeId={employee.employee_id}
@@ -250,16 +255,16 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
       <EmployeeRecentChanges employeeId={employee.employee_id} />
 
       <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-        <Tabs tabs={tabs} />
+        <Tabs tabs={tabs} className="mobile-tabs" />
       </div>
 
       {/* Employee Notes Section */}
       <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <h3 className="text-xl leading-6 font-semibold text-gray-900 mb-1">
+        <div className="px-4 py-4 sm:p-6">
+          <h3 className="text-lg sm:text-xl leading-6 font-semibold text-gray-900 mb-1">
             Employee Notes
           </h3>
-          <p className="text-sm text-gray-500 mb-4">Record of time-stamped updates and comments.</p>
+          <p className="text-xs sm:text-sm text-gray-500 mb-4">Record of time-stamped updates and comments.</p>
 
           <AddEmployeeNoteForm employeeId={employee.employee_id} />
 
@@ -273,17 +278,17 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
 
       {/* Employee Attachments Section */}
       <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <h3 className="text-xl leading-6 font-semibold text-gray-900 mb-1">
+        <div className="px-4 py-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-4">
+            <div className="min-w-0 flex-1">
+              <h3 className="text-lg sm:text-xl leading-6 font-semibold text-gray-900 mb-1">
                 Employee Attachments
               </h3>
-              <p className="text-sm text-gray-500">Scanned documents and other attached files.</p>
+              <p className="text-xs sm:text-sm text-gray-500">Scanned documents and other attached files.</p>
             </div>
             <Link
               href="/settings/categories"
-              className="text-sm text-blue-600 hover:text-blue-900"
+              className="text-xs sm:text-sm text-blue-600 hover:text-blue-900 whitespace-nowrap"
             >
               Manage Categories
             </Link>

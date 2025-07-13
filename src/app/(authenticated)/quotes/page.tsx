@@ -83,65 +83,70 @@ export default function QuotesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-2xl font-bold">Quotes</h1>
-            <p className="text-gray-600 mt-1">Manage quotes and estimates for your vendors</p>
-          </div>
-          <div className="flex gap-2">
-            <Button 
-              variant="outline"
-              onClick={() => router.push('/invoices')}
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              Invoices
-            </Button>
-            <Button onClick={() => router.push('/quotes/new')}>
-              <Plus className="h-4 w-4 mr-2" />
-              New Quote
-            </Button>
+      <div className="mb-6">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold">Quotes</h1>
+              <p className="text-sm sm:text-base text-gray-600 mt-1">Manage quotes and estimates for your vendors</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button 
+                variant="outline"
+                onClick={() => router.push('/invoices')}
+                className="text-sm sm:text-base"
+              >
+                <FileText className="h-4 w-4 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Invoices</span>
+                <span className="sm:hidden">Inv</span>
+              </Button>
+              <Button onClick={() => router.push('/quotes/new')} className="text-sm sm:text-base">
+                <Plus className="h-4 w-4 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">New Quote</span>
+                <span className="sm:hidden">New</span>
+              </Button>
+            </div>
           </div>
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-lg shadow-sm border p-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+          <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-4 lg:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Pending</p>
-                <p className="text-2xl font-semibold mt-1">£{summary.total_pending.toFixed(2)}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Pending</p>
+                <p className="text-lg sm:text-xl lg:text-2xl font-semibold mt-0.5 sm:mt-1 truncate">£{summary.total_pending.toFixed(2)}</p>
               </div>
-              <TrendingUp className="h-8 w-8 text-blue-500" />
+              <TrendingUp className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-blue-500 flex-shrink-0 ml-2" />
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm border p-6">
+          <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-4 lg:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Expired</p>
-                <p className="text-2xl font-semibold mt-1">£{summary.total_expired.toFixed(2)}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Expired</p>
+                <p className="text-lg sm:text-xl lg:text-2xl font-semibold mt-0.5 sm:mt-1 truncate">£{summary.total_expired.toFixed(2)}</p>
               </div>
-              <Clock className="h-8 w-8 text-yellow-500" />
+              <Clock className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-yellow-500 flex-shrink-0 ml-2" />
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm border p-6">
+          <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-4 lg:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Accepted</p>
-                <p className="text-2xl font-semibold mt-1">£{summary.total_accepted.toFixed(2)}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Accepted</p>
+                <p className="text-lg sm:text-xl lg:text-2xl font-semibold mt-0.5 sm:mt-1 truncate">£{summary.total_accepted.toFixed(2)}</p>
               </div>
-              <TrendingUp className="h-8 w-8 text-green-500" />
+              <TrendingUp className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-green-500 flex-shrink-0 ml-2" />
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm border p-6">
+          <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-4 lg:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Drafts</p>
-                <p className="text-2xl font-semibold mt-1">{summary.draft_count}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Drafts</p>
+                <p className="text-lg sm:text-xl lg:text-2xl font-semibold mt-0.5 sm:mt-1">{summary.draft_count}</p>
               </div>
-              <FileEdit className="h-8 w-8 text-gray-500" />
+              <FileEdit className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-gray-500 flex-shrink-0 ml-2" />
             </div>
           </div>
         </div>
@@ -153,12 +158,13 @@ export default function QuotesPage() {
       )}
 
       <div className="bg-white rounded-lg shadow-sm border">
-        <div className="p-4 border-b flex flex-col md:flex-row gap-4 justify-between items-center">
-          <div className="flex flex-col md:flex-row gap-2 flex-1">
+        <div className="p-3 sm:p-4 border-b">
+          <div className="flex flex-col lg:flex-row gap-3 sm:gap-4 justify-between items-stretch lg:items-center">
+            <div className="flex flex-col sm:flex-row gap-2 flex-1">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as QuoteStatus | 'all')}
-              className="px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-2 text-sm sm:text-base border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[40px] sm:min-h-[44px]"
             >
               <option value="all">All Quotes</option>
               <option value="draft">Draft</option>
@@ -176,11 +182,13 @@ export default function QuotesPage() {
               className="px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 flex-1"
             />
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm">
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
+            <div className="flex gap-2 flex-shrink-0">
+              <Button variant="outline" size="sm" className="text-sm">
+                <Download className="h-4 w-4 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Export</span>
+                <span className="sm:hidden">Exp</span>
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -197,8 +205,10 @@ export default function QuotesPage() {
             )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <>
+            {/* Desktop Table */}
+            <div className="hidden lg:block overflow-x-auto">
+              <table className="w-full">
               <thead>
                 <tr className="border-b bg-gray-50">
                   <th className="text-left p-4 font-medium text-gray-700">Quote #</th>
@@ -255,37 +265,100 @@ export default function QuotesPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+            
+            {/* Mobile Card View */}
+            <div className="lg:hidden">
+              <div className="space-y-3 p-3 sm:p-4">
+                {filteredQuotes.map((quote) => {
+                  const isExpired = quote.status === 'expired'
+                  const isAccepted = quote.status === 'accepted'
+                  const isDraft = quote.status === 'draft'
+                  
+                  return (
+                    <div 
+                      key={quote.id}
+                      onClick={() => router.push(`/quotes/${quote.id}`)}
+                      className="bg-white border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+                    >
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-gray-900">{quote.quote_number}</p>
+                          {quote.reference && (
+                            <p className="text-sm text-gray-500 truncate">{quote.reference}</p>
+                          )}
+                          <p className="text-sm text-gray-600 mt-1">{quote.vendor?.name || '-'}</p>
+                        </div>
+                        <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(quote.status)}`}>
+                          {quote.status.charAt(0).toUpperCase() + quote.status.slice(1)}
+                        </span>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3 text-sm mb-3">
+                        <div>
+                          <p className="text-gray-500">Date</p>
+                          <p className="font-medium">{new Date(quote.quote_date).toLocaleDateString('en-GB')}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500">Valid Until</p>
+                          <p className="font-medium">{new Date(quote.valid_until).toLocaleDateString('en-GB')}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex justify-between items-center pt-3 border-t">
+                        <p className="text-lg font-semibold">£{quote.total_amount.toFixed(2)}</p>
+                        <div onClick={(e) => e.stopPropagation()}>
+                          {quote.status === 'accepted' && !quote.converted_to_invoice_id && (
+                            <Button
+                              size="sm"
+                              onClick={() => router.push(`/quotes/${quote.id}/convert`)}
+                              className="text-sm"
+                            >
+                              <ArrowRight className="h-3 w-3 mr-1" />
+                              Convert
+                            </Button>
+                          )}
+                          {quote.converted_to_invoice_id && (
+                            <span className="text-sm text-green-600 font-medium">Converted</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </>
         )}
       </div>
 
       {/* Quick Actions */}
-      <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="mt-6 sm:mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         <Button
           variant="outline"
-          className="h-24 flex flex-col items-center justify-center gap-2"
+          className="h-20 sm:h-24 flex flex-col items-center justify-center gap-1 sm:gap-2 p-3 sm:p-4"
           onClick={() => router.push('/invoices/vendors')}
         >
-          <FileText className="h-8 w-8" />
-          <span>Vendors</span>
+          <FileText className="h-6 w-6 sm:h-8 sm:w-8" />
+          <span className="text-xs sm:text-sm">Vendors</span>
         </Button>
         
         <Button
           variant="outline"
-          className="h-24 flex flex-col items-center justify-center gap-2"
+          className="h-20 sm:h-24 flex flex-col items-center justify-center gap-1 sm:gap-2 p-3 sm:p-4"
           onClick={() => router.push('/invoices/catalog')}
         >
-          <Package className="h-8 w-8" />
-          <span>Line Item Catalog</span>
+          <Package className="h-6 w-6 sm:h-8 sm:w-8" />
+          <span className="text-xs sm:text-sm text-center">Line Item Catalog</span>
         </Button>
         
         <Button
           variant="outline"
-          className="h-24 flex flex-col items-center justify-center gap-2"
+          className="h-20 sm:h-24 flex flex-col items-center justify-center gap-1 sm:gap-2 p-3 sm:p-4 sm:col-span-2 lg:col-span-1"
         >
-          <Download className="h-8 w-8" />
-          <span>Export Quotes</span>
+          <Download className="h-6 w-6 sm:h-8 sm:w-8" />
+          <span className="text-xs sm:text-sm">Export Quotes</span>
         </Button>
       </div>
     </div>

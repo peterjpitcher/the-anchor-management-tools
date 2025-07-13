@@ -259,24 +259,24 @@ export default function RewardManagementPage() {
       )}
 
       {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Reward Management</h1>
-            <p className="mt-1 text-gray-500">
+      <div className="mb-6 sm:mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Reward Management</h1>
+            <p className="mt-1 text-sm sm:text-base text-gray-500">
               Manage loyalty program rewards and inventory
             </p>
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
             <Link
               href="/loyalty/admin"
-              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+              className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 min-h-[40px]"
             >
               Back to Dashboard
             </Link>
             <button
               onClick={() => setShowForm(true)}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-amber-600 hover:bg-amber-700"
+              className="inline-flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 min-h-[40px]"
             >
               <PlusIcon className="h-4 w-4 mr-2" />
               Add Reward
@@ -286,13 +286,13 @@ export default function RewardManagementPage() {
       </div>
 
       {/* Filters */}
-      <div className="mb-6 flex flex-wrap gap-3">
-        <div className="flex items-center space-x-2">
+      <div className="mb-6 flex flex-col sm:flex-row gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
           <label className="text-sm font-medium text-gray-700">Status:</label>
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as any)}
-            className="rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 sm:text-sm"
+            className="rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 text-sm min-h-[38px]"
           >
             <option value="all">All Rewards</option>
             <option value="active">Active Only</option>
@@ -300,12 +300,12 @@ export default function RewardManagementPage() {
           </select>
         </div>
         
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
           <label className="text-sm font-medium text-gray-700">Category:</label>
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 sm:text-sm"
+            className="rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 text-sm min-h-[38px]"
           >
             <option value="all">All Categories</option>
             {Object.entries(categories).map(([key, cat]) => (
@@ -318,50 +318,50 @@ export default function RewardManagementPage() {
       </div>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white rounded-lg shadow p-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
+        <div className="bg-white rounded-lg shadow p-3 sm:p-4">
           <div className="flex items-center">
-            <GiftIcon className="h-8 w-8 text-amber-600 mr-3" />
-            <div>
-              <p className="text-sm text-gray-500">Total Rewards</p>
-              <p className="text-xl font-semibold">{stats?.totalRewards || 0}</p>
+            <GiftIcon className="h-6 w-6 sm:h-8 sm:w-8 text-amber-600 mr-2 sm:mr-3 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm text-gray-500">Total Rewards</p>
+              <p className="text-lg sm:text-xl font-semibold">{stats?.totalRewards || 0}</p>
             </div>
           </div>
         </div>
         
-        <div className="bg-white rounded-lg shadow p-4">
+        <div className="bg-white rounded-lg shadow p-3 sm:p-4">
           <div className="flex items-center">
-            <CheckCircleIcon className="h-8 w-8 text-green-600 mr-3" />
-            <div>
-              <p className="text-sm text-gray-500">Active</p>
-              <p className="text-xl font-semibold">{stats?.activeRewards || 0}</p>
+            <CheckCircleIcon className="h-6 w-6 sm:h-8 sm:w-8 text-green-600 mr-2 sm:mr-3 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm text-gray-500">Active</p>
+              <p className="text-lg sm:text-xl font-semibold">{stats?.activeRewards || 0}</p>
             </div>
           </div>
         </div>
         
-        <div className="bg-white rounded-lg shadow p-4">
+        <div className="bg-white rounded-lg shadow p-3 sm:p-4">
           <div className="flex items-center">
-            <ExclamationTriangleIcon className="h-8 w-8 text-yellow-600 mr-3" />
-            <div>
-              <p className="text-sm text-gray-500">Low Stock</p>
-              <p className="text-xl font-semibold">{stats?.lowStockCount || 0}</p>
+            <ExclamationTriangleIcon className="h-6 w-6 sm:h-8 sm:w-8 text-yellow-600 mr-2 sm:mr-3 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm text-gray-500">Low Stock</p>
+              <p className="text-lg sm:text-xl font-semibold">{stats?.lowStockCount || 0}</p>
             </div>
           </div>
         </div>
         
-        <div className="bg-white rounded-lg shadow p-4">
+        <div className="bg-white rounded-lg shadow p-3 sm:p-4">
           <div className="flex items-center">
-            <ChartBarIcon className="h-8 w-8 text-purple-600 mr-3" />
-            <div>
-              <p className="text-sm text-gray-500">Total Redemptions</p>
-              <p className="text-xl font-semibold">{stats?.totalRedemptions || 0}</p>
+            <ChartBarIcon className="h-6 w-6 sm:h-8 sm:w-8 text-purple-600 mr-2 sm:mr-3 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm text-gray-500">Total Redemptions</p>
+              <p className="text-lg sm:text-xl font-semibold">{stats?.totalRedemptions || 0}</p>
             </div>
           </div>
         </div>
       </div>
 
       {/* Rewards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
         {filteredRewards.map(reward => {
           const category = categories[reward.category as keyof typeof categories] || {
             name: reward.category,
@@ -377,9 +377,9 @@ export default function RewardManagementPage() {
                 reward.active ? 'border-gray-200' : 'border-gray-300 opacity-75'
               }`}
             >
-              <div className="p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
+              <div className="p-4 sm:p-6">
+                <div className="flex items-start justify-between mb-3 sm:mb-4">
+                  <div className="min-w-0 flex-1 mr-2">
                     <div className="flex items-center space-x-2 mb-2">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${category.color}`}>
                         {category.icon} {category.name}
@@ -390,26 +390,28 @@ export default function RewardManagementPage() {
                         </span>
                       )}
                     </div>
-                    <h3 className="text-lg font-semibold text-gray-900">{reward.name}</h3>
-                    <p className="text-sm text-gray-500 mt-1">{reward.description}</p>
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900 line-clamp-2">{reward.name}</h3>
+                    <p className="text-xs sm:text-sm text-gray-500 mt-1 line-clamp-2">{reward.description}</p>
                   </div>
-                  <div className="flex items-center space-x-1">
+                  <div className="flex items-center gap-1 flex-shrink-0">
                     <button
                       onClick={() => startEdit(reward)}
-                      className="p-1 text-gray-400 hover:text-gray-600"
+                      className="p-1.5 sm:p-1 text-gray-400 hover:text-gray-600 touch-target"
+                      aria-label="Edit reward"
                     >
                       <PencilIcon className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleDelete(reward.id)}
-                      className="p-1 text-gray-400 hover:text-red-600"
+                      className="p-1.5 sm:p-1 text-gray-400 hover:text-red-600 touch-target"
+                      aria-label="Delete reward"
                     >
                       <TrashIcon className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
 
-                <div className="space-y-2 text-sm">
+                <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
                   <div className="flex items-center justify-between">
                     <span className="text-gray-500">Points Cost:</span>
                     <span className="font-semibold text-amber-600">{reward.points_cost} pts</span>
@@ -448,10 +450,10 @@ export default function RewardManagementPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 flex items-center justify-between">
+                <div className="mt-3 sm:mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <button
                     onClick={() => toggleActive(reward)}
-                    className={`inline-flex items-center px-3 py-1 border rounded-md text-xs font-medium ${
+                    className={`inline-flex items-center justify-center px-3 py-1.5 sm:py-1 border rounded-md text-xs font-medium min-h-[32px] ${
                       reward.active
                         ? 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
                         : 'border-green-300 text-green-700 bg-green-50 hover:bg-green-100'
@@ -468,7 +470,7 @@ export default function RewardManagementPage() {
                           handleRestockReward(reward.id, parseInt(newInventory));
                         }
                       }}
-                      className="text-xs text-amber-600 hover:text-amber-700"
+                      className="text-xs text-amber-600 hover:text-amber-700 font-medium"
                     >
                       Restock →
                     </button>
@@ -508,19 +510,19 @@ export default function RewardManagementPage() {
       {/* Add/Edit Form Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-            <div className="px-6 py-4 border-b">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="px-4 sm:px-6 py-4 border-b flex-shrink-0">
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold">
+                <h2 className="text-lg sm:text-xl font-semibold">
                   {editingReward ? 'Edit Reward' : 'Add New Reward'}
                 </h2>
-                <button onClick={resetForm} className="text-gray-400 hover:text-gray-600">
-                  <XMarkIcon className="h-6 w-6" />
+                <button onClick={resetForm} className="text-gray-400 hover:text-gray-600 p-1">
+                  <XMarkIcon className="h-5 w-5 sm:h-6 sm:w-6" />
                 </button>
               </div>
             </div>
             
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Name *
@@ -529,7 +531,7 @@ export default function RewardManagementPage() {
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 min-h-[40px]"
                   required
                 />
               </div>
@@ -542,7 +544,7 @@ export default function RewardManagementPage() {
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   rows={3}
-                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 min-h-[40px]"
                 />
               </div>
               
@@ -554,7 +556,7 @@ export default function RewardManagementPage() {
                   <select
                     value={formData.category}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value as any })}
-                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 min-h-[40px]"
                   >
                     {Object.entries(categories).map(([key, cat]) => (
                       <option key={key} value={key}>
@@ -573,7 +575,7 @@ export default function RewardManagementPage() {
                     min="1"
                     value={formData.points_cost}
                     onChange={(e) => setFormData({ ...formData, points_cost: parseInt(e.target.value) })}
-                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 min-h-[40px]"
                     required
                   />
                 </div>
@@ -592,7 +594,7 @@ export default function RewardManagementPage() {
                       ...formData, 
                       inventory: e.target.value ? parseInt(e.target.value) : undefined 
                     })}
-                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 min-h-[40px]"
                     placeholder="Unlimited"
                   />
                 </div>
@@ -609,7 +611,7 @@ export default function RewardManagementPage() {
                       ...formData, 
                       daily_limit: e.target.value ? parseInt(e.target.value) : undefined 
                     })}
-                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 min-h-[40px]"
                     placeholder="No limit"
                   />
                 </div>
@@ -622,7 +624,7 @@ export default function RewardManagementPage() {
                 <select
                   value={formData.tier_required || ''}
                   onChange={(e) => setFormData({ ...formData, tier_required: e.target.value || undefined })}
-                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 min-h-[40px]"
                 >
                   <option value="">Available to all tiers</option>
                   {Object.entries(LOYALTY_CONFIG.tiers).map(([key, tier]) => (
@@ -639,24 +641,24 @@ export default function RewardManagementPage() {
                   id="active"
                   checked={formData.active}
                   onChange={(e) => setFormData({ ...formData, active: e.target.checked })}
-                  className="h-4 w-4 text-amber-600 focus:ring-amber-500 border-gray-300 rounded"
+                  className="h-5 w-5 text-amber-600 focus:ring-amber-500 border-gray-300 rounded"
                 />
                 <label htmlFor="active" className="ml-2 block text-sm text-gray-900">
                   Active (available for redemption)
                 </label>
               </div>
               
-              <div className="flex justify-end space-x-3 pt-4">
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-4">
                 <button
                   type="button"
                   onClick={resetForm}
-                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                  className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 min-h-[40px]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-amber-600 hover:bg-amber-700"
+                  className="w-full sm:w-auto px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 min-h-[40px]"
                 >
                   {editingReward ? 'Update Reward' : 'Create Reward'}
                 </button>

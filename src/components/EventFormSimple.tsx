@@ -124,7 +124,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
 
             {/* Basic Information */}
             <div className="col-span-full">
-              <h3 className="text-lg font-medium leading-6 text-gray-900">Basic Information</h3>
+              <h3 className="text-base sm:text-lg font-medium leading-6 text-gray-900">Basic Information</h3>
             </div>
 
             <div className="sm:col-span-4">
@@ -138,7 +138,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 />
               </div>
             </div>
@@ -226,7 +226,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                       }
                     }
                   }}
-                  className="block w-full rounded-lg px-3 py-2 border border-gray-300 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  className="block w-full rounded-lg px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px] bg-white"
                 >
                   <option value="">No category</option>
                   {categories.map((cat) => (
@@ -251,7 +251,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   min={minDate}
                   max={maxDate}
                   required
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 />
               </div>
             </div>
@@ -267,7 +267,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
                   required
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 />
               </div>
             </div>
@@ -282,7 +282,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   id="end_time"
                   value={endTime}
                   onChange={(e) => setEndTime(e.target.value)}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 />
               </div>
             </div>
@@ -290,7 +290,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
 
             {/* Event Details */}
             <div className="col-span-full">
-              <h3 className="text-lg font-medium leading-6 text-gray-900">Event Details</h3>
+              <h3 className="text-base sm:text-lg font-medium leading-6 text-gray-900">Event Details</h3>
             </div>
 
             <div className="sm:col-span-2">
@@ -305,7 +305,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   onChange={(e) => setCapacity(e.target.value)}
                   min="1"
                   placeholder="Unlimited"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 />
               </div>
             </div>
@@ -319,7 +319,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   id="status"
                   value={eventStatus}
                   onChange={(e) => setEventStatus(e.target.value)}
-                  className="block w-full rounded-lg px-3 py-2 border border-gray-300 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  className="block w-full rounded-lg px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px] bg-white"
                 >
                   <option value="scheduled">Scheduled</option>
                   <option value="cancelled">Cancelled</option>
@@ -344,7 +344,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   }}
                   min="0"
                   step="0.01"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 />
               </div>
             </div>
@@ -360,7 +360,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   id="performer_name"
                   value={performerName}
                   onChange={(e) => setPerformerName(e.target.value)}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 />
               </div>
             </div>
@@ -374,7 +374,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   id="performer_type"
                   value={performerType}
                   onChange={(e) => setPerformerType(e.target.value)}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 >
                   <option value="">Select type...</option>
                   <option value="MusicGroup">Music Group / Band</option>
@@ -389,7 +389,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
 
             {/* Additional Timing Information */}
             <div className="col-span-full">
-              <h3 className="text-lg font-medium leading-6 text-gray-900">Additional Timing</h3>
+              <h3 className="text-base sm:text-lg font-medium leading-6 text-gray-900">Additional Timing</h3>
             </div>
 
             <div className="sm:col-span-2">
@@ -404,7 +404,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   onChange={(e) => setDurationMinutes(e.target.value)}
                   min="1"
                   placeholder="e.g., 180"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 />
               </div>
             </div>
@@ -419,7 +419,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   id="doors_time"
                   value={doorsTime}
                   onChange={(e) => setDoorsTime(e.target.value)}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 />
               </div>
             </div>
@@ -434,7 +434,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   id="last_entry_time"
                   value={lastEntryTime}
                   onChange={(e) => setLastEntryTime(e.target.value)}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 />
               </div>
             </div>
@@ -450,14 +450,14 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   value={bookingUrl}
                   onChange={(e) => setBookingUrl(e.target.value)}
                   placeholder="https://example.com/book"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 />
               </div>
             </div>
 
             {/* SEO & Content */}
             <div className="col-span-full">
-              <h3 className="text-lg font-medium leading-6 text-gray-900">SEO & Content</h3>
+              <h3 className="text-base sm:text-lg font-medium leading-6 text-gray-900">SEO & Content</h3>
             </div>
 
             <div className="sm:col-span-3">
@@ -471,7 +471,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   value={slug}
                   onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
                   placeholder="event-name-2024-01-01"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 />
               </div>
             </div>
@@ -488,7 +488,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   onChange={(e) => setMetaTitle(e.target.value)}
                   maxLength={60}
                   placeholder="SEO page title"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 />
               </div>
             </div>
@@ -505,7 +505,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   onChange={(e) => setMetaDescription(e.target.value)}
                   maxLength={160}
                   placeholder="SEO page description"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 />
               </div>
             </div>
@@ -522,7 +522,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   onChange={(e) => setShortDescription(e.target.value)}
                   maxLength={500}
                   placeholder="Brief description for event listings"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 />
               </div>
             </div>
@@ -538,7 +538,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   value={longDescription}
                   onChange={(e) => setLongDescription(e.target.value)}
                   placeholder="Detailed description for the event page"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 />
               </div>
             </div>
@@ -554,7 +554,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   value={highlights}
                   onChange={(e) => setHighlights(e.target.value)}
                   placeholder="Great prizes, Fun atmosphere, Live music"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 />
               </div>
             </div>
@@ -570,20 +570,22 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   value={keywords}
                   onChange={(e) => setKeywords(e.target.value)}
                   placeholder="music, live band, entertainment, pub"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 />
               </div>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-x-6 border-t border-gray-900/10 px-4 py-4 sm:px-8">
-          <Button type="button" variant="secondary" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? 'Saving...' : event ? 'Update Event' : 'Create Event'}
-          </Button>
+        <div className="sticky bottom-0 -mx-4 sm:mx-0 bg-white border-t border-gray-900/10 px-4 py-4 sm:px-8">
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
+            <Button type="button" variant="secondary" onClick={onCancel} className="w-full sm:w-auto">
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
+              {isSubmitting ? 'Saving...' : event ? 'Update Event' : 'Create Event'}
+            </Button>
+          </div>
         </div>
       </div>
     </form>

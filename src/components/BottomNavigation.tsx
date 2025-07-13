@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
-import { CalendarIcon, UserGroupIcon, PencilSquareIcon, EnvelopeIcon, BuildingOfficeIcon, IdentificationIcon, DocumentTextIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, UserGroupIcon, PencilSquareIcon, EnvelopeIcon, BuildingOfficeIcon, IdentificationIcon, DocumentTextIcon, HomeIcon, StarIcon } from '@heroicons/react/24/outline'
 import { useEffect, useState, useMemo } from 'react'
 import { getUnreadMessageCount } from '@/app/actions/messagesActions'
 import { usePermissions } from '@/contexts/PermissionContext'
@@ -51,13 +51,15 @@ export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps)
   // Filter navigation items based on permissions
   const navigationItems = useMemo(() => {
     const allNavigationItems: NavigationItem[] = [
+      { name: 'Dashboard', href: '/', icon: HomeIcon, permission: { module: 'dashboard', action: 'view' } },
       { name: 'Events', href: '/events', icon: CalendarIcon, permission: { module: 'events', action: 'view' } },
-      { name: 'Private', href: '/private-bookings', icon: BuildingOfficeIcon, permission: { module: 'private_bookings', action: 'view' } },
       { name: 'Customers', href: '/customers', icon: UserGroupIcon, permission: { module: 'customers', action: 'view' } },
-      { name: 'Employees', href: '/employees', icon: IdentificationIcon, permission: { module: 'employees', action: 'view' } },
       { name: 'Messages', href: '/messages', icon: EnvelopeIcon, permission: { module: 'messages', action: 'view' } },
-      { name: 'Invoices', href: '/invoices', icon: DocumentTextIcon, permission: { module: 'invoices', action: 'view' } },
+      { name: 'Private', href: '/private-bookings', icon: BuildingOfficeIcon, permission: { module: 'private_bookings', action: 'view' } },
+      { name: 'VIP Club', href: '/loyalty/admin', icon: StarIcon, permission: { module: 'loyalty', action: 'view' } },
+      { name: 'Employees', href: '/employees', icon: IdentificationIcon, permission: { module: 'employees', action: 'view' } },
       { name: 'Notes', href: '#', icon: PencilSquareIcon, action: true },
+      { name: 'Invoices', href: '/invoices', icon: DocumentTextIcon, permission: { module: 'invoices', action: 'view' } },
     ]
     
     if (permissionsLoading) return [];

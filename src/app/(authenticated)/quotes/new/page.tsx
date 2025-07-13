@@ -399,10 +399,10 @@ export default function NewQuotePage() {
           )}
         </div>
 
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <h2 className="text-lg font-semibold mb-4">Quote Summary</h2>
+        <div className="bg-white rounded-lg shadow-sm border p-4 sm:p-6">
+          <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Quote Summary</h2>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1">
@@ -446,25 +446,25 @@ export default function NewQuotePage() {
               </div>
             </div>
 
-            <div className="bg-gray-50 rounded-lg p-4">
-              <h3 className="font-semibold mb-3">Summary</h3>
-              <div className="space-y-2">
-                <div className="flex justify-between">
+            <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
+              <h3 className="font-semibold text-sm sm:text-base mb-2 sm:mb-3">Summary</h3>
+              <div className="space-y-1.5 sm:space-y-2">
+                <div className="flex justify-between text-sm sm:text-base">
                   <span>Subtotal:</span>
                   <span className="font-medium">£{totals.subtotal.toFixed(2)}</span>
                 </div>
                 {totals.discount > 0 && (
-                  <div className="flex justify-between text-green-600">
+                  <div className="flex justify-between text-green-600 text-sm sm:text-base">
                     <span>Quote Discount:</span>
                     <span>-£{totals.discount.toFixed(2)}</span>
                   </div>
                 )}
-                <div className="flex justify-between">
+                <div className="flex justify-between text-sm sm:text-base">
                   <span>VAT:</span>
                   <span className="font-medium">£{totals.vat.toFixed(2)}</span>
                 </div>
                 <div className="border-t pt-2">
-                  <div className="flex justify-between text-lg font-semibold">
+                  <div className="flex justify-between text-base sm:text-lg font-semibold">
                     <span>Total:</span>
                     <span>£{totals.total.toFixed(2)}</span>
                   </div>
@@ -474,17 +474,19 @@ export default function NewQuotePage() {
           </div>
         </div>
 
-        <div className="flex justify-end gap-4">
+        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 sm:gap-4">
           <Button
             type="button"
             variant="outline"
             onClick={() => router.push('/quotes')}
+            className="w-full sm:w-auto"
           >
             Cancel
           </Button>
           <Button
             type="submit"
             disabled={loading || lineItems.length === 0}
+            className="w-full sm:w-auto"
           >
             {loading ? 'Creating...' : 'Create Quote'}
           </Button>

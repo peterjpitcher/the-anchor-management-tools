@@ -195,8 +195,8 @@ export default function NewInvoicePage() {
             Back to Invoices
           </Button>
         </Link>
-        <h1 className="text-3xl font-bold mb-2">New Invoice</h1>
-        <p className="text-muted-foreground">Create a new invoice</p>
+        <h1 className="text-2xl sm:text-3xl font-bold mb-2">New Invoice</h1>
+        <p className="text-sm sm:text-base text-muted-foreground">Create a new invoice</p>
       </div>
 
       {error && (
@@ -217,7 +217,7 @@ export default function NewInvoicePage() {
               <select
                 value={vendorId}
                 onChange={(e) => setVendorId(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-h-[44px]"
                 required
               >
                 <option value="">Select a vendor</option>
@@ -237,7 +237,7 @@ export default function NewInvoicePage() {
                 type="text"
                 value={reference}
                 onChange={(e) => setReference(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                 placeholder="PO number or reference"
               />
             </div>
@@ -250,7 +250,7 @@ export default function NewInvoicePage() {
                 type="date"
                 value={invoiceDate}
                 onChange={(e) => setInvoiceDate(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                 required
               />
             </div>
@@ -263,7 +263,7 @@ export default function NewInvoicePage() {
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                 required
               />
             </div>
@@ -271,15 +271,15 @@ export default function NewInvoicePage() {
         </div>
 
         <div className="bg-white rounded-lg shadow-sm border p-6">
-          <div className="flex justify-between items-center mb-4">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-4">
             <h2 className="text-lg font-semibold">Line Items</h2>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {catalogItems.length > 0 && (
                 <details className="relative">
-                  <summary className="btn btn-secondary cursor-pointer">
+                  <summary className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-md cursor-pointer text-sm">
                     Add from Catalog
                   </summary>
-                  <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-lg border p-4 z-10 max-h-96 overflow-y-auto">
+                  <div className="absolute right-0 sm:right-0 left-0 sm:left-auto mt-2 w-full sm:w-96 bg-white rounded-lg shadow-lg border p-4 z-10 max-h-64 sm:max-h-96 overflow-y-auto">
                     {catalogItems.map(item => (
                       <button
                         key={item.id}
@@ -297,9 +297,10 @@ export default function NewInvoicePage() {
                   </div>
                 </details>
               )}
-              <Button type="button" onClick={addLineItem}>
-                <PlusCircle className="h-4 w-4 mr-2" />
-                Add Line Item
+              <Button type="button" onClick={addLineItem} className="text-sm">
+                <PlusCircle className="h-4 w-4 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Add Line Item</span>
+                <span className="sm:hidden">Add Item</span>
               </Button>
             </div>
           </div>
@@ -312,8 +313,8 @@ export default function NewInvoicePage() {
             <div className="space-y-4">
               {lineItems.map((item) => (
                 <div key={item.id} className="border rounded-lg p-4">
-                  <div className="grid grid-cols-12 gap-4">
-                    <div className="col-span-12 md:col-span-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
+                    <div className="sm:col-span-2 lg:col-span-5">
                       <label className="block text-sm font-medium mb-1">
                         Description
                       </label>
@@ -321,13 +322,13 @@ export default function NewInvoicePage() {
                         type="text"
                         value={item.description}
                         onChange={(e) => updateLineItem(item.id, { description: e.target.value })}
-                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                         placeholder="Item description"
                         required
                       />
                     </div>
 
-                    <div className="col-span-4 md:col-span-2">
+                    <div className="sm:col-span-1 lg:col-span-2">
                       <label className="block text-sm font-medium mb-1">
                         Quantity
                       </label>
@@ -335,14 +336,14 @@ export default function NewInvoicePage() {
                         type="number"
                         value={item.quantity}
                         onChange={(e) => updateLineItem(item.id, { quantity: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                         min="0"
                         step="0.01"
                         required
                       />
                     </div>
 
-                    <div className="col-span-4 md:col-span-2">
+                    <div className="sm:col-span-1 lg:col-span-2">
                       <label className="block text-sm font-medium mb-1">
                         Unit Price (£)
                       </label>
@@ -350,14 +351,14 @@ export default function NewInvoicePage() {
                         type="number"
                         value={item.unit_price}
                         onChange={(e) => updateLineItem(item.id, { unit_price: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                         min="0"
                         step="0.01"
                         required
                       />
                     </div>
 
-                    <div className="col-span-2 md:col-span-1">
+                    <div className="sm:col-span-1 lg:col-span-1">
                       <label className="block text-sm font-medium mb-1">
                         Disc %
                       </label>
@@ -365,14 +366,14 @@ export default function NewInvoicePage() {
                         type="number"
                         value={item.discount_percentage}
                         onChange={(e) => updateLineItem(item.id, { discount_percentage: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                         min="0"
                         max="100"
                         step="0.01"
                       />
                     </div>
 
-                    <div className="col-span-2 md:col-span-1">
+                    <div className="sm:col-span-1 lg:col-span-1">
                       <label className="block text-sm font-medium mb-1">
                         VAT %
                       </label>
@@ -380,25 +381,26 @@ export default function NewInvoicePage() {
                         type="number"
                         value={item.vat_rate}
                         onChange={(e) => updateLineItem(item.id, { vat_rate: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                         min="0"
                         step="0.01"
                       />
                     </div>
 
-                    <div className="col-span-12 md:col-span-1 flex items-end">
+                    <div className="sm:col-span-2 lg:col-span-1 flex items-end">
                       <button
                         type="button"
                         onClick={() => removeLineItem(item.id)}
-                        className="w-full md:w-auto p-2 text-red-600 hover:bg-red-50 rounded-md"
+                        className="w-full p-2 text-red-600 hover:bg-red-50 rounded-md border border-red-200 min-h-[44px]"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4 mx-auto" />
                       </button>
                     </div>
                   </div>
 
-                  <div className="mt-2 text-right text-sm text-gray-600">
-                    Line Total: £{calculateLineTotal(item).toFixed(2)}
+                  <div className="mt-3 pt-3 border-t flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Line Total:</span>
+                    <span className="font-semibold">£{calculateLineTotal(item).toFixed(2)}</span>
                   </div>
                 </div>
               ))}
@@ -419,7 +421,7 @@ export default function NewInvoicePage() {
                   type="number"
                   value={invoiceDiscountPercentage}
                   onChange={(e) => setInvoiceDiscountPercentage(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                   min="0"
                   max="100"
                   step="0.01"
@@ -433,7 +435,7 @@ export default function NewInvoicePage() {
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
                   rows={3}
                   placeholder="Payment terms, special instructions, etc."
                 />
@@ -446,7 +448,7 @@ export default function NewInvoicePage() {
                 <textarea
                   value={internalNotes}
                   onChange={(e) => setInternalNotes(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
                   rows={3}
                   placeholder="Private notes about this invoice"
                 />
@@ -481,20 +483,24 @@ export default function NewInvoicePage() {
           </div>
         </div>
 
-        <div className="flex justify-end gap-4">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => router.push('/invoices')}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            disabled={loading || lineItems.length === 0}
-          >
-            {loading ? 'Creating...' : 'Create Invoice'}
-          </Button>
+        <div className="sticky bottom-0 bg-white border-t -mx-6 px-6 py-4 sm:relative sm:mx-0 sm:px-0 sm:py-0 sm:border-0">
+          <div className="flex flex-col sm:flex-row sm:justify-end gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => router.push('/invoices')}
+              className="w-full sm:w-auto"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={loading || lineItems.length === 0}
+              className="w-full sm:w-auto"
+            >
+              {loading ? 'Creating...' : 'Create Invoice'}
+            </Button>
+          </div>
         </div>
       </form>
     </div>

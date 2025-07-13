@@ -244,39 +244,42 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
           Back to Quotes
         </Button>
 
-        <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">Quote {quote.quote_number}</h1>
-            <div className="flex items-center gap-4">
+        <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-4">
+          <div className="order-1">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-2">Quote {quote.quote_number}</h1>
+            <div className="flex flex-wrap items-center gap-2 sm:gap-4">
               <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(quote.status)}`}>
                 {getStatusIcon(quote.status)}
                 {quote.status.charAt(0).toUpperCase() + quote.status.slice(1).replace('_', ' ')}
               </span>
               {quote.reference && (
-                <span className="text-gray-600">
+                <span className="text-sm sm:text-base text-gray-600">
                   Reference: {quote.reference}
                 </span>
               )}
             </div>
           </div>
           
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 order-2 lg:order-2">
             {quote.status === 'draft' && (
               <>
                 <Button
                   onClick={() => handleStatusChange('sent')}
                   disabled={processing}
+                  className="text-sm sm:text-base"
                 >
-                  <Mail className="h-4 w-4 mr-2" />
-                  Mark as Sent
+                  <Mail className="h-4 w-4 mr-1 sm:mr-2" />
+                  <span className="hidden sm:inline">Mark as Sent</span>
+                  <span className="sm:hidden">Send</span>
                 </Button>
                 <Button
                   variant="outline"
                   onClick={() => router.push(`/quotes/${quote.id}/edit`)}
                   disabled={processing}
+                  className="text-sm sm:text-base"
                 >
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit
+                  <Edit className="h-4 w-4 mr-1 sm:mr-2" />
+                  <span>Edit</span>
                 </Button>
               </>
             )}
@@ -286,19 +289,21 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
                 <Button
                   onClick={() => handleStatusChange('accepted')}
                   disabled={processing}
-                  className="bg-green-600 hover:bg-green-700 text-white"
+                  className="bg-green-600 hover:bg-green-700 text-white text-sm sm:text-base"
                 >
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  Mark as Accepted
+                  <CheckCircle className="h-4 w-4 mr-1 sm:mr-2" />
+                  <span className="hidden sm:inline">Mark as Accepted</span>
+                  <span className="sm:hidden">Accept</span>
                 </Button>
                 <Button
                   variant="outline"
                   onClick={() => handleStatusChange('rejected')}
                   disabled={processing}
-                  className="text-red-600 hover:bg-red-50"
+                  className="text-red-600 hover:bg-red-50 text-sm sm:text-base"
                 >
-                  <XCircle className="h-4 w-4 mr-2" />
-                  Mark as Rejected
+                  <XCircle className="h-4 w-4 mr-1 sm:mr-2" />
+                  <span className="hidden sm:inline">Mark as Rejected</span>
+                  <span className="sm:hidden">Reject</span>
                 </Button>
               </>
             )}
@@ -307,10 +312,11 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               <Button
                 onClick={handleConvertToInvoice}
                 disabled={processing}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
+                className="bg-blue-600 hover:bg-blue-700 text-white text-sm sm:text-base"
               >
-                <FileText className="h-4 w-4 mr-2" />
-                Convert to Invoice
+                <FileText className="h-4 w-4 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Convert to Invoice</span>
+                <span className="sm:hidden">Convert</span>
               </Button>
             )}
 
@@ -319,9 +325,11 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
                 variant="outline"
                 onClick={() => setShowEmailModal(true)}
                 disabled={processing}
+                className="text-sm sm:text-base"
               >
-                <Mail className="h-4 w-4 mr-2" />
-                Send Email
+                <Mail className="h-4 w-4 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Send Email</span>
+                <span className="sm:hidden">Email</span>
               </Button>
             )}
             
@@ -329,9 +337,11 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               variant="outline"
               onClick={() => window.open(`/api/quotes/${quote.id}/pdf`, '_blank')}
               disabled={processing}
+              className="text-sm sm:text-base"
             >
-              <Download className="h-4 w-4 mr-2" />
-              Download PDF
+              <Download className="h-4 w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Download PDF</span>
+              <span className="sm:hidden">PDF</span>
             </Button>
 
             {quote.status === 'draft' && (
@@ -339,10 +349,10 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
                 variant="outline"
                 onClick={handleDelete}
                 disabled={processing}
-                className="text-red-600 hover:bg-red-50"
+                className="text-red-600 hover:bg-red-50 text-sm sm:text-base"
               >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete
+                <Trash2 className="h-4 w-4 mr-1 sm:mr-2" />
+                <span>Delete</span>
               </Button>
             )}
           </div>
@@ -355,37 +365,37 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white rounded-lg shadow-sm border p-6">
-            <h2 className="text-lg font-semibold mb-4">Quote Details</h2>
+          <div className="bg-white rounded-lg shadow-sm border p-4 sm:p-6">
+            <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Quote Details</h2>
             
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
               <div>
-                <h3 className="font-medium text-sm text-gray-600 mb-1">From</h3>
-                <p className="font-medium">Orange Jelly Limited</p>
-                <p className="text-sm text-gray-600">The Anchor, Horton Road</p>
-                <p className="text-sm text-gray-600">Stanwell Moor Village, Surrey</p>
-                <p className="text-sm text-gray-600">TW19 6AQ</p>
-                <p className="text-sm text-gray-600">VAT: GB315203647</p>
+                <h3 className="font-medium text-xs sm:text-sm text-gray-600 mb-1">From</h3>
+                <p className="font-medium text-sm sm:text-base">Orange Jelly Limited</p>
+                <p className="text-xs sm:text-sm text-gray-600">The Anchor, Horton Road</p>
+                <p className="text-xs sm:text-sm text-gray-600">Stanwell Moor Village, Surrey</p>
+                <p className="text-xs sm:text-sm text-gray-600">TW19 6AQ</p>
+                <p className="text-xs sm:text-sm text-gray-600">VAT: GB315203647</p>
               </div>
 
               <div>
-                <h3 className="font-medium text-sm text-gray-600 mb-1">To</h3>
+                <h3 className="font-medium text-xs sm:text-sm text-gray-600 mb-1">To</h3>
                 {quote.vendor ? (
                   <>
-                    <p className="font-medium">{quote.vendor.name}</p>
+                    <p className="font-medium text-sm sm:text-base">{quote.vendor.name}</p>
                     {quote.vendor.contact_name && (
-                      <p className="text-sm text-gray-600">{quote.vendor.contact_name}</p>
+                      <p className="text-xs sm:text-sm text-gray-600">{quote.vendor.contact_name}</p>
                     )}
                     {quote.vendor.email && (
-                      <p className="text-sm text-gray-600">{quote.vendor.email}</p>
+                      <p className="text-xs sm:text-sm text-gray-600 break-all">{quote.vendor.email}</p>
                     )}
                     {quote.vendor.phone && (
-                      <p className="text-sm text-gray-600">{quote.vendor.phone}</p>
+                      <p className="text-xs sm:text-sm text-gray-600">{quote.vendor.phone}</p>
                     )}
                     {quote.vendor.address && (
-                      <p className="text-sm text-gray-600 whitespace-pre-line">{quote.vendor.address}</p>
+                      <p className="text-xs sm:text-sm text-gray-600 whitespace-pre-line">{quote.vendor.address}</p>
                     )}
                   </>
                 ) : (
@@ -394,26 +404,27 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-6 mt-6 pt-6 border-t">
+            <div className="grid grid-cols-2 gap-4 sm:gap-6 mt-4 sm:mt-6 pt-4 sm:pt-6 border-t">
               <div>
-                <p className="text-sm text-gray-600">Quote Date</p>
-                <p className="font-medium">
+                <p className="text-xs sm:text-sm text-gray-600">Quote Date</p>
+                <p className="font-medium text-sm sm:text-base">
                   {new Date(quote.quote_date).toLocaleDateString('en-GB')}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-600">Valid Until</p>
-                <p className="font-medium">
+                <p className="text-xs sm:text-sm text-gray-600">Valid Until</p>
+                <p className="font-medium text-sm sm:text-base">
                   {new Date(quote.valid_until).toLocaleDateString('en-GB')}
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm border p-6">
-            <h2 className="text-lg font-semibold mb-4">Line Items</h2>
+          <div className="bg-white rounded-lg shadow-sm border p-4 sm:p-6">
+            <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Line Items</h2>
             
-            <div className="overflow-x-auto">
+            {/* Desktop Table */}
+            <div className="hidden lg:block overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b">
@@ -453,23 +464,65 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
                 </tbody>
               </table>
             </div>
+            
+            {/* Mobile Card View */}
+            <div className="lg:hidden space-y-3">
+              {quote.line_items?.map((item) => {
+                const lineSubtotal = item.quantity * item.unit_price
+                const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
+                const lineAfterDiscount = lineSubtotal - lineDiscount
+                const itemShare = subtotal > 0 ? lineAfterDiscount / subtotal : 0
+                const lineAfterQuoteDiscount = lineAfterDiscount - (quoteDiscount * itemShare)
+                const lineVat = lineAfterQuoteDiscount * (item.vat_rate / 100)
+                const lineTotal = lineAfterQuoteDiscount + lineVat
 
-            <div className="mt-6 pt-6 border-t space-y-2">
-              <div className="flex justify-between text-sm">
+                return (
+                  <div key={item.id} className="border rounded-lg p-3">
+                    <p className="font-medium text-sm mb-2">{item.description}</p>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-gray-500">Qty:</span> {item.quantity}
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Unit Price:</span> £{item.unit_price.toFixed(2)}
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Discount:</span> 
+                        {item.discount_percentage > 0 ? (
+                          <span className="text-green-600"> -{item.discount_percentage}%</span>
+                        ) : (
+                          <span> -</span>
+                        )}
+                      </div>
+                      <div>
+                        <span className="text-gray-500">VAT:</span> {item.vat_rate}%
+                      </div>
+                    </div>
+                    <div className="mt-2 pt-2 border-t flex justify-between">
+                      <span className="text-sm font-medium">Total:</span>
+                      <span className="text-sm font-medium">£{lineTotal.toFixed(2)}</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t space-y-2">
+              <div className="flex justify-between text-xs sm:text-sm">
                 <span>Subtotal:</span>
                 <span>£{subtotal.toFixed(2)}</span>
               </div>
               {quote.quote_discount_percentage > 0 && (
-                <div className="flex justify-between text-sm text-green-600">
+                <div className="flex justify-between text-xs sm:text-sm text-green-600">
                   <span>Quote Discount ({quote.quote_discount_percentage}%):</span>
                   <span>-£{quoteDiscount.toFixed(2)}</span>
                 </div>
               )}
-              <div className="flex justify-between text-sm">
+              <div className="flex justify-between text-xs sm:text-sm">
                 <span>VAT:</span>
                 <span>£{vat.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-lg font-semibold pt-2 border-t">
+              <div className="flex justify-between text-base sm:text-lg font-semibold pt-2 border-t">
                 <span>Total:</span>
                 <span>£{quote.total_amount.toFixed(2)}</span>
               </div>
@@ -477,20 +530,20 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
           </div>
 
           {(quote.notes || quote.internal_notes) && (
-            <div className="bg-white rounded-lg shadow-sm border p-6">
-              <h2 className="text-lg font-semibold mb-4">Notes</h2>
+            <div className="bg-white rounded-lg shadow-sm border p-4 sm:p-6">
+              <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Notes</h2>
               
               {quote.notes && (
                 <div className="mb-4">
-                  <h3 className="font-medium text-sm text-gray-600 mb-1">Quote Notes</h3>
-                  <p className="text-sm whitespace-pre-wrap">{quote.notes}</p>
+                  <h3 className="font-medium text-xs sm:text-sm text-gray-600 mb-1">Quote Notes</h3>
+                  <p className="text-xs sm:text-sm whitespace-pre-wrap">{quote.notes}</p>
                 </div>
               )}
               
               {quote.internal_notes && (
                 <div>
-                  <h3 className="font-medium text-sm text-gray-600 mb-1">Internal Notes</h3>
-                  <p className="text-sm whitespace-pre-wrap bg-yellow-50 p-3 rounded-md">
+                  <h3 className="font-medium text-xs sm:text-sm text-gray-600 mb-1">Internal Notes</h3>
+                  <p className="text-xs sm:text-sm whitespace-pre-wrap bg-yellow-50 p-2 sm:p-3 rounded-md">
                     {quote.internal_notes}
                   </p>
                 </div>
@@ -500,17 +553,17 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
         </div>
 
         <div className="space-y-6">
-          <div className="bg-white rounded-lg shadow-sm border p-6">
-            <h2 className="text-lg font-semibold mb-4">Quote Status</h2>
+          <div className="bg-white rounded-lg shadow-sm border p-4 sm:p-6">
+            <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Quote Status</h2>
             
             <div className="space-y-4">
               <div>
-                <p className="text-sm text-gray-600">Total Amount</p>
-                <p className="text-2xl font-bold">£{quote.total_amount.toFixed(2)}</p>
+                <p className="text-xs sm:text-sm text-gray-600">Total Amount</p>
+                <p className="text-xl sm:text-2xl font-bold">£{quote.total_amount.toFixed(2)}</p>
               </div>
               
               <div>
-                <p className="text-sm text-gray-600">Status</p>
+                <p className="text-xs sm:text-sm text-gray-600">Status</p>
                 <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(quote.status)}`}>
                   {getStatusIcon(quote.status)}
                   {quote.status.charAt(0).toUpperCase() + quote.status.slice(1).replace('_', ' ')}
@@ -519,16 +572,16 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               
               {quote.converted_to_invoice_id && (
                 <div>
-                  <p className="text-sm text-gray-600">Converted to Invoice</p>
-                  <p className="text-sm font-medium text-green-600">
+                  <p className="text-xs sm:text-sm text-gray-600">Converted to Invoice</p>
+                  <p className="text-xs sm:text-sm font-medium text-green-600">
                     {quote.converted_invoice?.invoice_number}
                   </p>
                 </div>
               )}
 
               {isExpired && quote.status === 'sent' && (
-                <div className="p-3 bg-yellow-50 rounded-md">
-                  <p className="text-sm text-yellow-800">
+                <div className="p-2 sm:p-3 bg-yellow-50 rounded-md">
+                  <p className="text-xs sm:text-sm text-yellow-800">
                     This quote has expired
                   </p>
                 </div>
@@ -536,8 +589,8 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm border p-6">
-            <h2 className="text-lg font-semibold mb-4">Actions</h2>
+          <div className="bg-white rounded-lg shadow-sm border p-4 sm:p-6">
+            <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Actions</h2>
             
             <div className="space-y-2">
               <Button

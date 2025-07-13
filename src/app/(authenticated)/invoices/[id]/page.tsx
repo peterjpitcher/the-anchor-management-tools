@@ -192,38 +192,41 @@ export default function InvoiceDetailPage() {
           Back to Invoices
         </Button>
 
-        <div className="flex justify-between items-start">
+        <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-4">
           <div>
-            <h1 className="text-3xl font-bold mb-2">Invoice {invoice.invoice_number}</h1>
-            <div className="flex items-center gap-4">
+            <h1 className="text-2xl sm:text-3xl font-bold mb-2">Invoice {invoice.invoice_number}</h1>
+            <div className="flex flex-wrap items-center gap-2 sm:gap-4">
               <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(invoice.status)}`}>
                 {getStatusIcon(invoice.status)}
                 {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1).replace('_', ' ')}
               </span>
               {invoice.reference && (
-                <span className="text-gray-600">
+                <span className="text-sm sm:text-base text-gray-600">
                   Reference: {invoice.reference}
                 </span>
               )}
             </div>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {invoice.status === 'draft' && (
               <>
                 <Button
                   onClick={() => handleStatusChange('sent')}
                   disabled={actionLoading}
+                  className="text-sm"
                 >
-                  <Mail className="h-4 w-4 mr-2" />
-                  Mark as Sent
+                  <Mail className="h-4 w-4 mr-1 sm:mr-2" />
+                  <span className="hidden sm:inline">Mark as Sent</span>
+                  <span className="sm:hidden">Send</span>
                 </Button>
                 <Button
                   variant="outline"
                   onClick={() => router.push(`/invoices/${invoice.id}/edit`)}
                   disabled={actionLoading}
+                  className="text-sm"
                 >
-                  <Edit className="h-4 w-4 mr-2" />
+                  <Edit className="h-4 w-4 mr-1 sm:mr-2" />
                   Edit
                 </Button>
               </>
@@ -233,10 +236,11 @@ export default function InvoiceDetailPage() {
               <Button
                 onClick={() => handleStatusChange('paid')}
                 disabled={actionLoading}
-                className="bg-green-600 hover:bg-green-700 text-white"
+                className="bg-green-600 hover:bg-green-700 text-white text-sm"
               >
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Mark as Paid
+                <CheckCircle className="h-4 w-4 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Mark as Paid</span>
+                <span className="sm:hidden">Paid</span>
               </Button>
             )}
 
@@ -246,9 +250,11 @@ export default function InvoiceDetailPage() {
                   variant="outline"
                   onClick={() => setShowEmailModal(true)}
                   disabled={actionLoading}
+                  className="text-sm"
                 >
-                  <Mail className="h-4 w-4 mr-2" />
-                  Send Email
+                  <Mail className="h-4 w-4 mr-1 sm:mr-2" />
+                  <span className="hidden sm:inline">Send Email</span>
+                  <span className="sm:hidden">Email</span>
                 </Button>
                 {(invoice.status === 'overdue' || 
                   (invoice.status === 'sent' && new Date(invoice.due_date) < new Date())) && (
@@ -256,10 +262,11 @@ export default function InvoiceDetailPage() {
                     variant="outline"
                     onClick={() => setShowChaseModal(true)}
                     disabled={actionLoading}
-                    className="border-orange-500 text-orange-600 hover:bg-orange-50"
+                    className="border-orange-500 text-orange-600 hover:bg-orange-50 text-sm"
                   >
-                    <Clock className="h-4 w-4 mr-2" />
-                    Chase Payment
+                    <Clock className="h-4 w-4 mr-1 sm:mr-2" />
+                    <span className="hidden sm:inline">Chase Payment</span>
+                    <span className="sm:hidden">Chase</span>
                   </Button>
                 )}
               </>
@@ -269,9 +276,11 @@ export default function InvoiceDetailPage() {
               variant="outline"
               onClick={() => window.open(`/api/invoices/${invoice.id}/pdf`, '_blank')}
               disabled={actionLoading}
+              className="text-sm"
             >
-              <Download className="h-4 w-4 mr-2" />
-              Download PDF
+              <Download className="h-4 w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Download PDF</span>
+              <span className="sm:hidden">PDF</span>
             </Button>
 
             {invoice.status === 'draft' && (
@@ -279,9 +288,9 @@ export default function InvoiceDetailPage() {
                 variant="outline"
                 onClick={handleDelete}
                 disabled={actionLoading}
-                className="text-red-600 hover:bg-red-50"
+                className="text-red-600 hover:bg-red-50 text-sm"
               >
-                <Trash2 className="h-4 w-4 mr-2" />
+                <Trash2 className="h-4 w-4 mr-1 sm:mr-2" />
                 Delete
               </Button>
             )}
@@ -295,12 +304,12 @@ export default function InvoiceDetailPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-white rounded-lg shadow-sm border p-6">
             <h2 className="text-lg font-semibold mb-4">Invoice Details</h2>
             
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
               <div>
                 <h3 className="font-medium text-sm text-gray-600 mb-1">From</h3>
                 <p className="font-medium">Orange Jelly Limited</p>
@@ -334,7 +343,7 @@ export default function InvoiceDetailPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-6 mt-6 pt-6 border-t">
+            <div className="grid grid-cols-2 gap-4 sm:gap-6 mt-6 pt-6 border-t">
               <div>
                 <p className="text-sm text-gray-600">Invoice Date</p>
                 <p className="font-medium">
@@ -353,7 +362,8 @@ export default function InvoiceDetailPage() {
           <div className="bg-white rounded-lg shadow-sm border p-6">
             <h2 className="text-lg font-semibold mb-4">Line Items</h2>
             
-            <div className="overflow-x-auto">
+            {/* Desktop Table */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b">
@@ -392,6 +402,49 @@ export default function InvoiceDetailPage() {
                   })}
                 </tbody>
               </table>
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="md:hidden space-y-3">
+              {invoice.line_items?.map((item) => {
+                const lineSubtotal = item.quantity * item.unit_price
+                const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
+                const lineAfterDiscount = lineSubtotal - lineDiscount
+                const itemShare = subtotal > 0 ? lineAfterDiscount / subtotal : 0
+                const lineAfterInvoiceDiscount = lineAfterDiscount - (invoiceDiscount * itemShare)
+                const lineVat = lineAfterInvoiceDiscount * (item.vat_rate / 100)
+                const lineTotal = lineAfterInvoiceDiscount + lineVat
+
+                return (
+                  <div key={item.id} className="border rounded-lg p-4 bg-gray-50">
+                    <div className="font-medium text-sm mb-2">{item.description}</div>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Quantity:</span>
+                        <span>{item.quantity}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Unit Price:</span>
+                        <span>£{item.unit_price.toFixed(2)}</span>
+                      </div>
+                      {item.discount_percentage > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Discount:</span>
+                          <span className="text-green-600">-{item.discount_percentage}%</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">VAT:</span>
+                        <span>{item.vat_rate}%</span>
+                      </div>
+                    </div>
+                    <div className="mt-2 pt-2 border-t flex justify-between font-medium">
+                      <span>Total:</span>
+                      <span>£{lineTotal.toFixed(2)}</span>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
 
             <div className="mt-6 pt-6 border-t space-y-2">

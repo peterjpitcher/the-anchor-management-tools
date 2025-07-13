@@ -132,12 +132,12 @@ export function CategoryAnalyticsWidget() {
   return (
     <div className="bg-white rounded-lg shadow">
       <div className="p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-medium text-gray-900 flex items-center">
-            <TagIcon className="h-5 w-5 mr-2 text-purple-600" />
+        <div className="flex items-start sm:items-center justify-between mb-4">
+          <h3 className="text-base sm:text-lg font-medium text-gray-900 flex items-center">
+            <TagIcon className="h-5 w-5 mr-2 text-purple-600 flex-shrink-0" />
             Category Analytics
           </h3>
-          <span className="text-sm text-gray-500">
+          <span className="text-xs sm:text-sm text-gray-500 whitespace-nowrap">
             {totalAttendees.toLocaleString()} total attendees
           </span>
         </div>
@@ -173,18 +173,18 @@ export function CategoryAnalyticsWidget() {
                     {topCategory.category.name}
                   </span>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="grid grid-cols-3 gap-1 sm:gap-2 text-xs">
                   <div>
-                    <span className="text-gray-500">Events</span>
-                    <p className="font-semibold">{topCategory.totalEvents}</p>
+                    <span className="text-gray-500 text-xs">Events</span>
+                    <p className="font-semibold text-sm">{topCategory.totalEvents}</p>
                   </div>
                   <div>
-                    <span className="text-gray-500">Avg Attendance</span>
-                    <p className="font-semibold">{topCategory.averageAttendance}</p>
+                    <span className="text-gray-500 text-xs">Avg Attendance</span>
+                    <p className="font-semibold text-sm">{topCategory.averageAttendance}</p>
                   </div>
                   <div>
-                    <span className="text-gray-500">Unique Customers</span>
-                    <p className="font-semibold">{topCategory.uniqueCustomers}</p>
+                    <span className="text-gray-500 text-xs">Unique Customers</span>
+                    <p className="font-semibold text-sm">{topCategory.uniqueCustomers}</p>
                   </div>
                 </div>
               </div>
@@ -214,7 +214,7 @@ export function CategoryAnalyticsWidget() {
                           {stat.totalEvents} events
                         </span>
                       </div>
-                      <div className="flex items-center space-x-3 text-xs text-gray-600">
+                      <div className="flex items-center space-x-1 sm:space-x-3 text-xs text-gray-600">
                         <span className="flex items-center">
                           <UserGroupIcon className="h-3 w-3 mr-1" />
                           {stat.uniqueCustomers}

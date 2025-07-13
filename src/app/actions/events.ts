@@ -149,6 +149,21 @@ const eventSchema = z.object({
   })
 })
 
+// Helper function to generate a URL-friendly slug
+function generateSlug(name: string, date: string): string {
+  // Convert name to lowercase and replace spaces/special chars with hyphens
+  const nameSlug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
+    .substring(0, 100) // Limit length
+  
+  // Add date to ensure uniqueness
+  const dateStr = new Date(date).toISOString().split('T')[0] // YYYY-MM-DD
+  
+  return `${nameSlug}-${dateStr}`
+}
+
 export async function createEvent(formData: FormData) {
   try {
     const supabase = await createClient()
@@ -255,10 +270,13 @@ export async function createEvent(formData: FormData) {
       return { error: 'An event with this name already exists on this date' }
     }
 
-    // Create event
+    // Generate slug for the event
+    const slug = generateSlug(data.name, data.date)
+    
+    // Create event with slug
     const { data: event, error } = await supabase
       .from('events')
-      .insert(data)
+      .insert({ ...data, slug })
       .select()
       .single()
 
@@ -380,10 +398,13 @@ export async function updateEvent(id: string, formData: FormData) {
       }
     }
 
-    // Update event
+    // Generate new slug if name or date changed
+    const slug = generateSlug(data.name, data.date)
+    
+    // Update event with new slug
     const { data: event, error } = await supabase
       .from('events')
-      .update(data)
+      .update({ ...data, slug })
       .eq('id', id)
       .select()
       .single()

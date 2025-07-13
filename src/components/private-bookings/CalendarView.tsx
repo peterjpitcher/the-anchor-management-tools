@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { 
   ChevronLeftIcon, 
@@ -35,6 +35,16 @@ const statusColors: Record<BookingStatus, string> = {
 export default function CalendarView({ bookings }: CalendarViewProps) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [viewMode, setViewMode] = useState<'calendar' | 'agenda'>('calendar')
+  const [isMobile, setIsMobile] = useState(false)
+  
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 640)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
   
   // Get the first day of the month
   const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
@@ -150,7 +160,7 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
       </div>
       
       {/* Show Calendar View on Desktop, Selected View on Mobile */}
-      {(viewMode === 'calendar' || window.innerWidth >= 640) ? (
+      {(viewMode === 'calendar' || !isMobile) ? (
         <>
           {/* Days of Week Header */}
           <div className="hidden sm:grid grid-cols-7 bg-gray-50 border-b border-gray-200">
@@ -186,7 +196,7 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                 </div>
                 <div className="space-y-1">
                   {/* Show fewer bookings on mobile */}
-                  {bookingsByDate[getDateString(day)]?.slice(0, window.innerWidth < 640 ? 1 : 3).map((booking) => (
+                  {bookingsByDate[getDateString(day)]?.slice(0, isMobile ? 1 : 3).map((booking) => (
                     <Link
                       key={booking.id}
                       href={`/private-bookings/${booking.id}`}
@@ -202,9 +212,9 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                       </div>
                     </Link>
                   ))}
-                  {bookingsByDate[getDateString(day)]?.length > (window.innerWidth < 640 ? 1 : 3) && (
+                  {bookingsByDate[getDateString(day)]?.length > (isMobile ? 1 : 3) && (
                     <div className="text-xs text-gray-500 px-1 sm:px-2">
-                      +{bookingsByDate[getDateString(day)].length - (window.innerWidth < 640 ? 1 : 3)} more
+                      +{bookingsByDate[getDateString(day)].length - (isMobile ? 1 : 3)} more
                     </div>
                   )}
                 </div>
@@ -212,10 +222,66 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
             )}
           </div>
         ))}
-      </div>
+          </div>
+        </>
+      ) : (
+        /* Agenda View - Mobile Only */
+        <div className="divide-y divide-gray-200">
+          {monthBookings.length === 0 ? (
+            <div className="px-4 py-8 text-center text-gray-500">
+              No bookings for this month
+            </div>
+          ) : (
+            monthBookings.map((booking) => {
+              const bookingDate = new Date(booking.event_date)
+              const isToday = bookingDate.toDateString() === new Date().toDateString()
+              
+              return (
+                <Link
+                  key={booking.id}
+                  href={`/private-bookings/${booking.id}`}
+                  className={`block px-4 py-4 hover:bg-gray-50 ${isToday ? 'bg-blue-50' : ''}`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${statusColors[booking.status]}`}>
+                          {booking.status}
+                        </span>
+                        {isToday && (
+                          <span className="text-xs font-medium text-blue-600">Today</span>
+                        )}
+                      </div>
+                      <h3 className="font-medium text-gray-900">{booking.customer_name}</h3>
+                      {booking.event_type && (
+                        <p className="text-sm text-gray-600 mt-0.5">{booking.event_type}</p>
+                      )}
+                      <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
+                        <span>
+                          {bookingDate.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <ClockIcon className="h-4 w-4" />
+                          {formatTime12Hour(booking.start_time)}
+                          {booking.end_time && ` - ${formatTime12Hour(booking.end_time)}`}
+                        </span>
+                        {booking.guest_count && (
+                          <span>{booking.guest_count} guests</span>
+                        )}
+                      </div>
+                    </div>
+                    <ChevronRightIcon className="h-5 w-5 text-gray-400 flex-shrink-0 ml-2" />
+                  </div>
+                </Link>
+              )
+            })
+          )}
+        </div>
+      )}
       
-      {/* Legend */}
-      <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
+      {/* Legend - Show only in calendar view */}
+      {(viewMode === 'calendar' || !isMobile) && (
+        <div className="px-4 sm:px-6 py-4 bg-gray-50 border-t border-gray-200">
         <div className="flex flex-wrap gap-4 text-sm">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded bg-gray-200 border border-gray-300"></div>
@@ -238,7 +304,8 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
             <span className="text-gray-600">Cancelled</span>
           </div>
         </div>
-      </div>
+        </div>
+      )}
     </div>
   )
 }

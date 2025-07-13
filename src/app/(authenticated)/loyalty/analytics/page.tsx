@@ -236,19 +236,19 @@ export default function LoyaltyAnalyticsPage() {
       )}
 
       {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Loyalty Analytics</h1>
-            <p className="mt-1 text-gray-500">
+      <div className="mb-6 sm:mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Loyalty Analytics</h1>
+            <p className="mt-1 text-sm sm:text-base text-gray-500">
               Track performance and member engagement for The Anchor VIP Club
             </p>
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
             <select
               value={dateRange}
               onChange={(e) => setDateRange(e.target.value as any)}
-              className="rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+              className="rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 text-sm min-h-[40px]"
             >
               <option value="week">Last 7 days</option>
               <option value="month">Last 30 days</option>
@@ -257,7 +257,7 @@ export default function LoyaltyAnalyticsPage() {
             </select>
             <Link
               href="/loyalty/admin"
-              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+              className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 min-h-[40px]"
             >
               Back to Dashboard
             </Link>
@@ -266,24 +266,24 @@ export default function LoyaltyAnalyticsPage() {
       </div>
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+      <div className="grid grid-cols-1 gap-3 sm:gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-6 sm:mb-8">
         {stats.map((stat) => (
           <div key={stat.name} className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
-              <div className="flex items-center">
+            <div className="p-4 sm:p-5">
+              <div className="flex items-start">
                 <div className="flex-shrink-0">
-                  <stat.icon className="h-6 w-6 text-gray-400" />
+                  <stat.icon className="h-5 w-5 sm:h-6 sm:w-6 text-gray-400" />
                 </div>
-                <div className="ml-5 w-0 flex-1">
+                <div className="ml-3 sm:ml-5 w-0 flex-1">
                   <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
+                    <dt className="text-xs sm:text-sm font-medium text-gray-500 truncate">
                       {stat.name}
                     </dt>
-                    <dd className="flex items-baseline">
-                      <div className="text-2xl font-semibold text-gray-900">
+                    <dd className="flex items-baseline flex-wrap">
+                      <div className="text-lg sm:text-2xl font-semibold text-gray-900">
                         {stat.value}
                       </div>
-                      <div className={`ml-2 flex items-baseline text-sm font-semibold ${
+                      <div className={`ml-2 flex items-baseline text-xs sm:text-sm font-semibold ${
                         stat.changeType === 'positive' ? 'text-green-600' : 'text-gray-600'
                       }`}>
                         {stat.change}
@@ -301,8 +301,8 @@ export default function LoyaltyAnalyticsPage() {
       </div>
 
       {/* Tier Distribution */}
-      <div className="bg-white shadow rounded-lg p-6 mb-8">
-        <h2 className="text-lg font-medium text-gray-900 mb-4">Member Distribution by Tier</h2>
+      <div className="bg-white shadow rounded-lg p-4 sm:p-6 mb-6 sm:mb-8">
+        <h2 className="text-base sm:text-lg font-medium text-gray-900 mb-4">Member Distribution by Tier</h2>
         <div className="space-y-4">
           {Object.entries(analyticsData.tierDistribution).map(([tier, count]) => {
             const percentage = (count / analyticsData.totalMembers) * 100;
@@ -335,10 +335,10 @@ export default function LoyaltyAnalyticsPage() {
       </div>
 
       {/* Popular Times and Rewards */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8 mb-6 sm:mb-8">
         {/* Popular Check-in Times */}
-        <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Peak Check-in Times</h2>
+        <div className="bg-white shadow rounded-lg p-4 sm:p-6">
+          <h2 className="text-base sm:text-lg font-medium text-gray-900 mb-4">Peak Check-in Times</h2>
           <div className="space-y-3">
             <div className="flex items-center justify-between text-sm font-medium text-gray-500">
               <span>Day</span>
@@ -368,8 +368,8 @@ export default function LoyaltyAnalyticsPage() {
         </div>
 
         {/* Most Popular Rewards */}
-        <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Most Redeemed Rewards</h2>
+        <div className="bg-white shadow rounded-lg p-4 sm:p-6">
+          <h2 className="text-base sm:text-lg font-medium text-gray-900 mb-4">Most Redeemed Rewards</h2>
           <div className="space-y-3">
             {analyticsData.mostPopularRewards.map((reward, index) => (
               <div key={reward.name} className="flex items-center justify-between">
@@ -389,9 +389,9 @@ export default function LoyaltyAnalyticsPage() {
 
       {/* Member Engagement Analysis */}
       {engagementData && (
-        <div className="bg-white shadow rounded-lg p-6 mb-8">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Member Engagement Analysis</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white shadow rounded-lg p-4 sm:p-6 mb-6 sm:mb-8">
+          <h2 className="text-base sm:text-lg font-medium text-gray-900 mb-4">Member Engagement Analysis</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
             {/* Engagement Cohorts */}
             <div>
               <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Activity Levels</h3>
@@ -449,25 +449,27 @@ export default function LoyaltyAnalyticsPage() {
       )}
 
       {/* Monthly Trends Chart (Simplified) */}
-      <div className="bg-white shadow rounded-lg p-6">
-        <h2 className="text-lg font-medium text-gray-900 mb-4">Monthly Growth Trends</h2>
-        <div className="overflow-x-auto">
+      <div className="bg-white shadow rounded-lg p-4 sm:p-6">
+        <h2 className="text-base sm:text-lg font-medium text-gray-900 mb-4">Monthly Growth Trends</h2>
+        <div className="overflow-x-auto -mx-4 sm:mx-0">
           <table className="min-w-full divide-y divide-gray-200">
             <thead>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Month
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Total Members
+                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <span className="hidden sm:inline">Total Members</span>
+                  <span className="sm:hidden">Members</span>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Check-ins
+                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <span className="hidden sm:inline">Check-ins</span>
+                  <span className="sm:hidden">Visits</span>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="hidden sm:table-cell px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Points Issued
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Growth
                 </th>
               </tr>
@@ -481,28 +483,28 @@ export default function LoyaltyAnalyticsPage() {
                   
                 return (
                   <tr key={month.month}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-900">
                       {month.month}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500">
                       {month.members.toLocaleString()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500">
                       {month.checkIns.toLocaleString()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="hidden sm:table-cell px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500">
                       {month.points.toLocaleString()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm">
                       <span className={`flex items-center ${
                         parseFloat(growth) > 0 ? 'text-green-600' : 
                         parseFloat(growth) < 0 ? 'text-red-600' : 
                         'text-gray-500'
                       }`}>
                         {parseFloat(growth) > 0 ? (
-                          <ArrowUpIcon className="h-4 w-4 mr-1" />
+                          <ArrowUpIcon className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                         ) : parseFloat(growth) < 0 ? (
-                          <ArrowDownIcon className="h-4 w-4 mr-1" />
+                          <ArrowDownIcon className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                         ) : null}
                         {growth}%
                       </span>
@@ -516,39 +518,39 @@ export default function LoyaltyAnalyticsPage() {
       </div>
 
       {/* Quick Actions */}
-      <div className="mt-8 bg-gray-50 rounded-lg p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="mt-6 sm:mt-8 bg-gray-50 rounded-lg p-4 sm:p-6">
+        <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
           <Link
             href="/loyalty/admin/members"
-            className="flex items-center p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow"
+            className="flex items-center p-3 sm:p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow"
           >
-            <UserGroupIcon className="h-8 w-8 text-amber-600 mr-3" />
-            <div>
-              <p className="font-medium text-gray-900">View All Members</p>
-              <p className="text-sm text-gray-500">Browse and manage</p>
+            <UserGroupIcon className="h-6 w-6 sm:h-8 sm:w-8 text-amber-600 mr-3 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="font-medium text-gray-900 text-sm sm:text-base">View All Members</p>
+              <p className="text-xs sm:text-sm text-gray-500">Browse and manage</p>
             </div>
           </Link>
           
           <Link
             href="/messages/bulk"
-            className="flex items-center p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow"
+            className="flex items-center p-3 sm:p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow"
           >
-            <ArrowTrendingUpIcon className="h-8 w-8 text-amber-600 mr-3" />
-            <div>
-              <p className="font-medium text-gray-900">Send Campaign</p>
-              <p className="text-sm text-gray-500">Target VIP members</p>
+            <ArrowTrendingUpIcon className="h-6 w-6 sm:h-8 sm:w-8 text-amber-600 mr-3 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="font-medium text-gray-900 text-sm sm:text-base">Send Campaign</p>
+              <p className="text-xs sm:text-sm text-gray-500">Target VIP members</p>
             </div>
           </Link>
           
           <Link
             href="/loyalty/admin/rewards"
-            className="flex items-center p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow"
+            className="flex items-center p-3 sm:p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow"
           >
-            <GiftIcon className="h-8 w-8 text-amber-600 mr-3" />
-            <div>
-              <p className="font-medium text-gray-900">Manage Rewards</p>
-              <p className="text-sm text-gray-500">Update catalog</p>
+            <GiftIcon className="h-6 w-6 sm:h-8 sm:w-8 text-amber-600 mr-3 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="font-medium text-gray-900 text-sm sm:text-base">Manage Rewards</p>
+              <p className="text-xs sm:text-sm text-gray-500">Update catalog</p>
             </div>
           </Link>
         </div>

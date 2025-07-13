@@ -145,7 +145,7 @@ export default function NewEmployeePage() {
     {
       label: 'Personal Details',
       content: (
-        <div className="p-6 space-y-4">
+        <div className="p-4 sm:p-6 space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-gray-700">
@@ -155,7 +155,7 @@ export default function NewEmployeePage() {
                 type="text"
                 value={formData.first_name}
                 onChange={(e) => updateField('first_name', e.target.value)}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 required
               />
             </div>
@@ -167,7 +167,7 @@ export default function NewEmployeePage() {
                 type="text"
                 value={formData.last_name}
                 onChange={(e) => updateField('last_name', e.target.value)}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 required
               />
             </div>
@@ -179,7 +179,7 @@ export default function NewEmployeePage() {
                 type="email"
                 value={formData.email_address}
                 onChange={(e) => updateField('email_address', e.target.value)}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 required
               />
             </div>
@@ -191,7 +191,7 @@ export default function NewEmployeePage() {
                 type="text"
                 value={formData.job_title}
                 onChange={(e) => updateField('job_title', e.target.value)}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 required
               />
             </div>
@@ -203,7 +203,7 @@ export default function NewEmployeePage() {
                 type="date"
                 value={formData.employment_start_date}
                 onChange={(e) => updateField('employment_start_date', e.target.value)}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 required
               />
             </div>
@@ -214,7 +214,7 @@ export default function NewEmployeePage() {
               <select
                 value={formData.status}
                 onChange={(e) => updateField('status', e.target.value)}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               >
                 <option value="Active">Active</option>
                 <option value="Former">Former</option>
@@ -229,7 +229,7 @@ export default function NewEmployeePage() {
                 type="date"
                 value={formData.date_of_birth || ''}
                 onChange={(e) => updateField('date_of_birth', e.target.value)}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
             <div>
@@ -240,7 +240,7 @@ export default function NewEmployeePage() {
                 type="tel"
                 value={formData.phone_number || ''}
                 onChange={(e) => updateField('phone_number', e.target.value)}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
             <div>
@@ -251,7 +251,7 @@ export default function NewEmployeePage() {
                 type="date"
                 value={formData.employment_end_date || ''}
                 onChange={(e) => updateField('employment_end_date', e.target.value)}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
             <div className="sm:col-span-2">
@@ -262,7 +262,7 @@ export default function NewEmployeePage() {
                 value={formData.address || ''}
                 onChange={(e) => updateField('address', e.target.value)}
                 rows={3}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
           </div>
@@ -272,7 +272,7 @@ export default function NewEmployeePage() {
     {
       label: 'Financial Details',
       content: (
-        <div className="p-6 space-y-4">
+        <div className="p-4 sm:p-6 space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-gray-700">
@@ -283,7 +283,7 @@ export default function NewEmployeePage() {
                 value={formData.ni_number || ''}
                 onChange={(e) => updateField('ni_number', e.target.value)}
                 placeholder="AA123456A"
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
             <div>
@@ -294,7 +294,7 @@ export default function NewEmployeePage() {
                 type="text"
                 value={formData.payee_name || ''}
                 onChange={(e) => updateField('payee_name', e.target.value)}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
             <div>
@@ -305,7 +305,7 @@ export default function NewEmployeePage() {
                 type="text"
                 value={formData.bank_name || ''}
                 onChange={(e) => updateField('bank_name', e.target.value)}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
             <div>
@@ -325,7 +325,7 @@ export default function NewEmployeePage() {
                 }}
                 placeholder="00-00-00"
                 maxLength={8}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
             <div>
@@ -343,7 +343,7 @@ export default function NewEmployeePage() {
                 }}
                 placeholder="8 digits"
                 maxLength={8}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
             <div className="sm:col-span-2">
@@ -354,7 +354,7 @@ export default function NewEmployeePage() {
                 value={formData.branch_address || ''}
                 onChange={(e) => updateField('branch_address', e.target.value)}
                 rows={2}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
           </div>
@@ -364,7 +364,7 @@ export default function NewEmployeePage() {
     {
       label: 'Health Records',
       content: (
-        <div className="p-6 space-y-4">
+        <div className="p-4 sm:p-6 space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-gray-700">
@@ -374,7 +374,7 @@ export default function NewEmployeePage() {
                 type="text"
                 value={formData.doctor_name || ''}
                 onChange={(e) => updateField('doctor_name', e.target.value)}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
             <div className="sm:col-span-2">
@@ -385,7 +385,7 @@ export default function NewEmployeePage() {
                 value={formData.doctor_address || ''}
                 onChange={(e) => updateField('doctor_address', e.target.value)}
                 rows={2}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
             <div className="sm:col-span-2">
@@ -396,7 +396,7 @@ export default function NewEmployeePage() {
                 value={formData.allergies || ''}
                 onChange={(e) => updateField('allergies', e.target.value)}
                 rows={2}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
             <div className="sm:col-span-2">
@@ -407,7 +407,7 @@ export default function NewEmployeePage() {
                 value={formData.illness_history || ''}
                 onChange={(e) => updateField('illness_history', e.target.value)}
                 rows={3}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
             <div className="sm:col-span-2">
@@ -418,7 +418,7 @@ export default function NewEmployeePage() {
                 value={formData.recent_treatment || ''}
                 onChange={(e) => updateField('recent_treatment', e.target.value)}
                 rows={2}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
             <div className="sm:col-span-2">
@@ -502,7 +502,7 @@ export default function NewEmployeePage() {
                         type="text"
                         value={formData.disability_reg_number || ''}
                         onChange={(e) => updateField('disability_reg_number', e.target.value)}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                        className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                       />
                     </div>
                     <div>
@@ -513,7 +513,7 @@ export default function NewEmployeePage() {
                         type="date"
                         value={formData.disability_reg_expiry_date || ''}
                         onChange={(e) => updateField('disability_reg_expiry_date', e.target.value)}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                        className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                       />
                     </div>
                     <div>
@@ -524,7 +524,7 @@ export default function NewEmployeePage() {
                         value={formData.disability_details || ''}
                         onChange={(e) => updateField('disability_details', e.target.value)}
                         rows={3}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                        className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                       />
                     </div>
                   </>
@@ -548,11 +548,11 @@ export default function NewEmployeePage() {
                 Fill in the employee information across all tabs. All data is saved when you click &quot;Save and Close&quot;.
               </p>
             </div>
-            <div className="flex-shrink-0 flex space-x-2">
+            <div className="flex-shrink-0 flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
               <button
                 onClick={handleSaveAndClose}
                 disabled={isLoading}
-                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center justify-center px-4 py-3 sm:py-2 border border-transparent rounded-lg shadow-sm text-base sm:text-sm font-medium text-white bg-green-600 hover:bg-green-700 active:bg-green-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] transition-colors touch-manipulation"
               >
                 {isLoading ? (
                   <>
@@ -568,7 +568,7 @@ export default function NewEmployeePage() {
               </button>
               <Link
                 href="/employees"
-                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                className="inline-flex items-center justify-center px-4 py-3 sm:py-2 border border-gray-300 rounded-lg shadow-sm text-base sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 active:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 min-h-[44px] transition-colors touch-manipulation"
               >
                 <X className="-ml-1 mr-2 h-4 w-4" />
                 Cancel

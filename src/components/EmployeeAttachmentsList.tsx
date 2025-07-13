@@ -62,7 +62,7 @@ function DeleteAttachmentButton({ employeeId, attachmentId, storagePath, attachm
       <button
         onClick={() => setIsOpen(true)}
         type="button"
-        className="font-medium text-red-600 hover:text-red-500 disabled:opacity-50"
+        className="p-2 sm:p-1 font-medium text-red-600 hover:text-red-500 disabled:opacity-50 touch-target"
         title="Delete Attachment"
       >
         <TrashIcon className="h-5 w-5" />
@@ -70,13 +70,13 @@ function DeleteAttachmentButton({ employeeId, attachmentId, storagePath, attachm
       </button>
 
       {isOpen && (
-        <div className="relative z-20" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div className="relative z-50" aria-labelledby="modal-title" role="dialog" aria-modal="true">
           <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
-          <div className="fixed inset-0 z-10 overflow-y-auto">
+          <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
               <form 
                 action={dispatch} // The form element for the modal
-                className="relative transform overflow-hidden rounded-lg bg-white px-4 pt-5 pb-4 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6"
+                className="relative transform overflow-hidden rounded-lg bg-white px-4 pt-5 pb-4 text-left shadow-xl transition-all sm:my-8 w-full max-w-lg sm:p-6"
               >
                  <input type="hidden" name="employee_id" value={employeeId} />
                  <input type="hidden" name="attachment_id" value={attachmentId} />
@@ -204,22 +204,24 @@ export default function EmployeeAttachmentsList({ attachments, categoriesMap, em
   return (
     <ul role="list" className="divide-y divide-gray-200 rounded-md border border-gray-200 mt-4">
       {attachments.map((attachment) => (
-        <li key={attachment.attachment_id} className="flex items-center justify-between py-3 pl-3 pr-4 text-sm">
-          <div className="flex w-0 flex-1 items-center">
-            <PaperClipIcon className="h-5 w-5 flex-shrink-0 text-gray-400" aria-hidden="true" />
-            <span className="ml-2 w-0 flex-1 truncate">
-                {attachment.file_name} 
-                <span className="text-xs text-gray-500 ml-2">({formatBytes(attachment.file_size_bytes)})</span>
-                {attachment.description && <span className="block text-xs text-gray-500">{attachment.description}</span>}
-                <span className="block text-xs text-gray-400">Category: {categoriesMap.get(attachment.category_id) || 'Unknown'}</span>
-            </span>
+        <li key={attachment.attachment_id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-3 px-3 sm:pl-3 sm:pr-4 text-sm">
+          <div className="flex items-start sm:items-center w-full sm:w-0 sm:flex-1 mb-2 sm:mb-0">
+            <PaperClipIcon className="h-5 w-5 flex-shrink-0 text-gray-400 mt-0.5 sm:mt-0" aria-hidden="true" />
+            <div className="ml-2 flex-1 min-w-0">
+              <p className="font-medium text-gray-900 break-words">
+                {attachment.file_name}
+              </p>
+              <p className="text-xs text-gray-500">({formatBytes(attachment.file_size_bytes)})</p>
+              {attachment.description && <p className="text-xs text-gray-500 mt-1">{attachment.description}</p>}
+              <p className="text-xs text-gray-400 mt-1">Category: {categoriesMap.get(attachment.category_id) || 'Unknown'}</p>
+            </div>
           </div>
-          <div className="ml-4 flex-shrink-0 flex items-center space-x-3">
+          <div className="flex items-center gap-3 sm:gap-2 sm:ml-4 self-end sm:self-auto">
             {isViewable(attachment.mime_type) && (
               <button 
                   onClick={() => handleView(attachment)}
                   type="button" 
-                  className="font-medium text-blue-600 hover:text-blue-500 disabled:opacity-50"
+                  className="p-2 sm:p-1 font-medium text-blue-600 hover:text-blue-500 disabled:opacity-50 touch-target"
                   title="View Attachment"
                   disabled={viewing === attachment.attachment_id}
               >
@@ -230,7 +232,7 @@ export default function EmployeeAttachmentsList({ attachments, categoriesMap, em
             <button 
                 onClick={() => handleDownload(attachment)}
                 type="button" 
-                className="font-medium text-secondary hover:text-secondary-emphasis disabled:opacity-50"
+                className="p-2 sm:p-1 font-medium text-secondary hover:text-secondary-emphasis disabled:opacity-50 touch-target"
                 title="Download Attachment"
                 disabled={downloading === attachment.attachment_id}
             >

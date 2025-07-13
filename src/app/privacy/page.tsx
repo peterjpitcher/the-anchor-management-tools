@@ -13,19 +13,19 @@ export default function PrivacyPolicy() {
   });
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-4">Privacy Policy</h1>
-      <p className="text-sm text-gray-600 mb-8">Last updated: {lastUpdated}</p>
+    <div className="max-w-4xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
+      <h1 className="text-2xl sm:text-3xl font-bold mb-3 sm:mb-4">Privacy Policy</h1>
+      <p className="text-xs sm:text-sm text-gray-600 mb-6 sm:mb-8">Last updated: {lastUpdated}</p>
 
-      <div className="prose prose-gray max-w-none space-y-8">
+      <div className="prose prose-gray max-w-none space-y-6 sm:space-y-8">
         <section>
-          <h2 className="text-2xl font-semibold mb-4">1. Introduction</h2>
-          <p className="mb-4">
+          <h2 className="text-xl sm:text-2xl font-semibold mb-3 sm:mb-4">1. Introduction</h2>
+          <p className="mb-3 sm:mb-4 text-sm sm:text-base">
             The Anchor (&quot;we&quot;, &quot;our&quot;, or &quot;us&quot;) is committed to protecting your personal data. 
             This privacy policy explains how we collect, use, and protect your information 
             when you use our management tools and services.
           </p>
-          <div className="bg-gray-50 p-4 rounded-lg">
+          <div className="bg-gray-50 p-3 sm:p-4 rounded-lg text-sm sm:text-base">
             <p className="font-semibold mb-2">Data Controller:</p>
             <p>The Anchor<br />
             Horton Road<br />
@@ -37,10 +37,10 @@ export default function PrivacyPolicy() {
         </section>
 
         <section>
-          <h2 className="text-2xl font-semibold mb-4">2. Information We Collect</h2>
+          <h2 className="text-xl sm:text-2xl font-semibold mb-3 sm:mb-4">2. Information We Collect</h2>
           
-          <h3 className="text-xl font-semibold mb-2">2.1 Information You Provide</h3>
-          <ul className="list-disc pl-6 mb-4 space-y-1">
+          <h3 className="text-lg sm:text-xl font-semibold mb-2">2.1 Information You Provide</h3>
+          <ul className="list-disc pl-5 sm:pl-6 mb-3 sm:mb-4 space-y-1 text-sm sm:text-base">
             <li>Name and contact details (email, phone number)</li>
             <li>Date of birth (for age verification)</li>
             <li>Booking information and preferences</li>
@@ -49,8 +49,8 @@ export default function PrivacyPolicy() {
             <li>Employee information (for staff members)</li>
           </ul>
 
-          <h3 className="text-xl font-semibold mb-2">2.2 Information We Collect Automatically</h3>
-          <ul className="list-disc pl-6 mb-4 space-y-1">
+          <h3 className="text-lg sm:text-xl font-semibold mb-2">2.2 Information We Collect Automatically</h3>
+          <ul className="list-disc pl-5 sm:pl-6 mb-3 sm:mb-4 space-y-1 text-sm sm:text-base">
             <li>Login information and access times</li>
             <li>IP address and device information</li>
             <li>Usage data and preferences</li>
@@ -59,9 +59,9 @@ export default function PrivacyPolicy() {
         </section>
 
         <section>
-          <h2 className="text-2xl font-semibold mb-4">3. Legal Basis for Processing</h2>
-          <p className="mb-4">We process your personal data based on:</p>
-          <ul className="list-disc pl-6 mb-4 space-y-2">
+          <h2 className="text-xl sm:text-2xl font-semibold mb-3 sm:mb-4">3. Legal Basis for Processing</h2>
+          <p className="mb-3 sm:mb-4 text-sm sm:text-base">We process your personal data based on:</p>
+          <ul className="list-disc pl-5 sm:pl-6 mb-3 sm:mb-4 space-y-1.5 sm:space-y-2 text-sm sm:text-base">
             <li><strong>Contract:</strong> To manage your bookings and provide our services</li>
             <li><strong>Legitimate Interests:</strong> For customer service, security, and business improvement</li>
             <li><strong>Consent:</strong> For marketing communications (SMS/email)</li>
@@ -70,8 +70,8 @@ export default function PrivacyPolicy() {
         </section>
 
         <section>
-          <h2 className="text-2xl font-semibold mb-4">4. How We Use Your Information</h2>
-          <ul className="list-disc pl-6 mb-4 space-y-1">
+          <h2 className="text-xl sm:text-2xl font-semibold mb-3 sm:mb-4">4. How We Use Your Information</h2>
+          <ul className="list-disc pl-5 sm:pl-6 mb-3 sm:mb-4 space-y-1 text-sm sm:text-base">
             <li>Process and manage bookings</li>
             <li>Send booking confirmations and reminders</li>
             <li>Provide customer support</li>
@@ -84,9 +84,9 @@ export default function PrivacyPolicy() {
         </section>
 
         <section>
-          <h2 className="text-2xl font-semibold mb-4">5. Data Sharing</h2>
-          <p className="mb-4">We may share your data with:</p>
-          <ul className="list-disc pl-6 mb-4 space-y-2">
+          <h2 className="text-xl sm:text-2xl font-semibold mb-3 sm:mb-4">5. Data Sharing</h2>
+          <p className="mb-3 sm:mb-4 text-sm sm:text-base">We may share your data with:</p>
+          <ul className="list-disc pl-5 sm:pl-6 mb-3 sm:mb-4 space-y-1.5 sm:space-y-2 text-sm sm:text-base">
             <li><strong>Service Providers:</strong> Twilio (SMS), Supabase (database), payment processors</li>
             <li><strong>Legal Requirements:</strong> When required by law or court order</li>
             <li><strong>Business Transfers:</strong> In case of merger or acquisition</li>
@@ -95,8 +95,8 @@ export default function PrivacyPolicy() {
         </section>
 
         <section>
-          <h2 className="text-2xl font-semibold mb-4">6. Data Retention</h2>
-          <div className="bg-gray-50 p-4 rounded-lg">
+          <h2 className="text-xl sm:text-2xl font-semibold mb-3 sm:mb-4">6. Data Retention</h2>
+          <div className="bg-gray-50 p-3 sm:p-4 rounded-lg text-sm sm:text-base">
             <ul className="space-y-2">
               <li><strong>Customer data:</strong> 2 years after last interaction</li>
               <li><strong>Booking records:</strong> 7 years for tax purposes</li>
@@ -109,45 +109,45 @@ export default function PrivacyPolicy() {
         </section>
 
         <section>
-          <h2 className="text-2xl font-semibold mb-4">7. Your Rights</h2>
-          <p className="mb-4">Under GDPR, you have the right to:</p>
-          <div className="grid md:grid-cols-2 gap-4 mb-4">
-            <div className="border border-gray-200 p-4 rounded-lg">
-              <h4 className="font-semibold mb-2">Access</h4>
-              <p className="text-sm">Request a copy of your personal data</p>
+          <h2 className="text-xl sm:text-2xl font-semibold mb-3 sm:mb-4">7. Your Rights</h2>
+          <p className="mb-3 sm:mb-4 text-sm sm:text-base">Under GDPR, you have the right to:</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
+            <div className="border border-gray-200 p-3 sm:p-4 rounded-lg">
+              <h4 className="font-semibold mb-1 sm:mb-2 text-sm sm:text-base">Access</h4>
+              <p className="text-xs sm:text-sm">Request a copy of your personal data</p>
             </div>
-            <div className="border border-gray-200 p-4 rounded-lg">
-              <h4 className="font-semibold mb-2">Rectification</h4>
-              <p className="text-sm">Correct inaccurate data</p>
+            <div className="border border-gray-200 p-3 sm:p-4 rounded-lg">
+              <h4 className="font-semibold mb-1 sm:mb-2 text-sm sm:text-base">Rectification</h4>
+              <p className="text-xs sm:text-sm">Correct inaccurate data</p>
             </div>
-            <div className="border border-gray-200 p-4 rounded-lg">
-              <h4 className="font-semibold mb-2">Erasure</h4>
-              <p className="text-sm">Request deletion of your data</p>
+            <div className="border border-gray-200 p-3 sm:p-4 rounded-lg">
+              <h4 className="font-semibold mb-1 sm:mb-2 text-sm sm:text-base">Erasure</h4>
+              <p className="text-xs sm:text-sm">Request deletion of your data</p>
             </div>
-            <div className="border border-gray-200 p-4 rounded-lg">
-              <h4 className="font-semibold mb-2">Portability</h4>
-              <p className="text-sm">Receive your data in a portable format</p>
+            <div className="border border-gray-200 p-3 sm:p-4 rounded-lg">
+              <h4 className="font-semibold mb-1 sm:mb-2 text-sm sm:text-base">Portability</h4>
+              <p className="text-xs sm:text-sm">Receive your data in a portable format</p>
             </div>
-            <div className="border border-gray-200 p-4 rounded-lg">
-              <h4 className="font-semibold mb-2">Object</h4>
-              <p className="text-sm">Object to certain processing</p>
+            <div className="border border-gray-200 p-3 sm:p-4 rounded-lg">
+              <h4 className="font-semibold mb-1 sm:mb-2 text-sm sm:text-base">Object</h4>
+              <p className="text-xs sm:text-sm">Object to certain processing</p>
             </div>
-            <div className="border border-gray-200 p-4 rounded-lg">
-              <h4 className="font-semibold mb-2">Restrict</h4>
-              <p className="text-sm">Limit how we use your data</p>
+            <div className="border border-gray-200 p-3 sm:p-4 rounded-lg">
+              <h4 className="font-semibold mb-1 sm:mb-2 text-sm sm:text-base">Restrict</h4>
+              <p className="text-xs sm:text-sm">Limit how we use your data</p>
             </div>
           </div>
-          <p className="mb-4">
-            To exercise these rights, contact us at <a href="mailto:privacy@theanchorpub.co.uk" className="text-blue-600 hover:underline">privacy@theanchorpub.co.uk</a>
+          <p className="mb-3 sm:mb-4 text-sm sm:text-base">
+            To exercise these rights, contact us at <a href="mailto:privacy@theanchorpub.co.uk" className="text-blue-600 hover:underline break-all">privacy@theanchorpub.co.uk</a>
           </p>
         </section>
 
         <section>
-          <h2 className="text-2xl font-semibold mb-4">8. Data Security</h2>
-          <p className="mb-4">
+          <h2 className="text-xl sm:text-2xl font-semibold mb-3 sm:mb-4">8. Data Security</h2>
+          <p className="mb-3 sm:mb-4 text-sm sm:text-base">
             We implement appropriate technical and organizational measures to protect your data, including:
           </p>
-          <ul className="list-disc pl-6 mb-4 space-y-1">
+          <ul className="list-disc pl-5 sm:pl-6 mb-3 sm:mb-4 space-y-1 text-sm sm:text-base">
             <li>Encryption in transit (HTTPS)</li>
             <li>Access controls and authentication</li>
             <li>Regular security reviews</li>
@@ -158,24 +158,24 @@ export default function PrivacyPolicy() {
         </section>
 
         <section>
-          <h2 className="text-2xl font-semibold mb-4">9. Cookies</h2>
-          <p className="mb-4">
+          <h2 className="text-xl sm:text-2xl font-semibold mb-3 sm:mb-4">9. Cookies</h2>
+          <p className="mb-3 sm:mb-4 text-sm sm:text-base">
             We use essential cookies for authentication and session management. 
             These are necessary for the service to function and cannot be disabled.
           </p>
         </section>
 
         <section>
-          <h2 className="text-2xl font-semibold mb-4">10. Children&apos;s Privacy</h2>
-          <p className="mb-4">
+          <h2 className="text-xl sm:text-2xl font-semibold mb-3 sm:mb-4">10. Children&apos;s Privacy</h2>
+          <p className="mb-3 sm:mb-4 text-sm sm:text-base">
             Our services are not intended for children under 18. We do not knowingly 
             collect data from children. Age verification is required for certain services.
           </p>
         </section>
 
         <section>
-          <h2 className="text-2xl font-semibold mb-4">11. International Transfers</h2>
-          <p className="mb-4">
+          <h2 className="text-xl sm:text-2xl font-semibold mb-3 sm:mb-4">11. International Transfers</h2>
+          <p className="mb-3 sm:mb-4 text-sm sm:text-base">
             Your data may be processed outside the UK/EEA by our service providers 
             (e.g., Twilio in the US). We ensure appropriate safeguards are in place 
             through standard contractual clauses.
@@ -183,11 +183,11 @@ export default function PrivacyPolicy() {
         </section>
 
         <section>
-          <h2 className="text-2xl font-semibold mb-4">12. Marketing Communications</h2>
-          <p className="mb-4">
+          <h2 className="text-xl sm:text-2xl font-semibold mb-3 sm:mb-4">12. Marketing Communications</h2>
+          <p className="mb-3 sm:mb-4 text-sm sm:text-base">
             If you have opted in to receive marketing communications:
           </p>
-          <ul className="list-disc pl-6 mb-4 space-y-1">
+          <ul className="list-disc pl-5 sm:pl-6 mb-3 sm:mb-4 space-y-1 text-sm sm:text-base">
             <li>You can opt out at any time by replying STOP to SMS messages</li>
             <li>We will only send relevant communications about our events and offers</li>
             <li>Your consent is recorded with timestamp and version</li>
@@ -196,12 +196,12 @@ export default function PrivacyPolicy() {
         </section>
 
         <section>
-          <h2 className="text-2xl font-semibold mb-4">13. Complaints</h2>
-          <p className="mb-4">
+          <h2 className="text-xl sm:text-2xl font-semibold mb-3 sm:mb-4">13. Complaints</h2>
+          <p className="mb-3 sm:mb-4 text-sm sm:text-base">
             If you have concerns about our data processing, please contact us first. 
             You also have the right to complain to the Information Commissioner&apos;s Office (ICO):
           </p>
-          <div className="bg-gray-50 p-4 rounded-lg">
+          <div className="bg-gray-50 p-3 sm:p-4 rounded-lg text-sm sm:text-base">
             <p>Information Commissioner&apos;s Office<br />
             Wycliffe House<br />
             Water Lane<br />
@@ -212,8 +212,8 @@ export default function PrivacyPolicy() {
         </section>
 
         <section>
-          <h2 className="text-2xl font-semibold mb-4">14. Changes to This Policy</h2>
-          <p className="mb-4">
+          <h2 className="text-xl sm:text-2xl font-semibold mb-3 sm:mb-4">14. Changes to This Policy</h2>
+          <p className="mb-3 sm:mb-4 text-sm sm:text-base">
             We may update this policy from time to time. We will notify you of significant 
             changes via email or through the service. The &quot;Last updated&quot; date at the top 
             shows when this policy was last revised.
@@ -221,13 +221,13 @@ export default function PrivacyPolicy() {
         </section>
 
         <section className="border-t pt-8">
-          <h2 className="text-2xl font-semibold mb-4">15. Contact Us</h2>
-          <p className="mb-4">
+          <h2 className="text-xl sm:text-2xl font-semibold mb-3 sm:mb-4">15. Contact Us</h2>
+          <p className="mb-3 sm:mb-4 text-sm sm:text-base">
             For any questions about this privacy policy or your personal data:
           </p>
-          <div className="bg-blue-50 p-6 rounded-lg">
-            <p className="font-semibold mb-2">Data Protection Contact:</p>
-            <p>Email: <a href="mailto:privacy@theanchorpub.co.uk" className="text-blue-600 hover:underline">privacy@theanchorpub.co.uk</a><br />
+          <div className="bg-blue-50 p-4 sm:p-6 rounded-lg">
+            <p className="font-semibold mb-2 text-sm sm:text-base">Data Protection Contact:</p>
+            <p className="text-sm sm:text-base">Email: <a href="mailto:privacy@theanchorpub.co.uk" className="text-blue-600 hover:underline break-all">privacy@theanchorpub.co.uk</a><br />
             Phone: 01753 682 707<br />
             Post: The Anchor, Horton Road, Staines-upon-Thames, Surrey TW19 6BJ</p>
           </div>
