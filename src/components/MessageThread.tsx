@@ -21,16 +21,18 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
+  
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+    }
   }
 
-  // Only scroll when a new message is sent, not on initial load or refresh
+  // Scroll to bottom only on initial load
   useEffect(() => {
-    if (sending) {
-      scrollToBottom()
-    }
-  }, [sending])
+    scrollToBottom()
+  }, [])
 
   const handleSend = async () => {
     if (!newMessage.trim() || sending) return
@@ -45,6 +47,7 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
         toast.success('Message sent')
         setNewMessage('')
         onMessageSent?.()
+        setTimeout(scrollToBottom, 100) // Scroll after message is added to the list
       }
     } catch {
       toast.error('Failed to send message')
@@ -96,7 +99,7 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
   return (
     <div className="flex flex-col h-[500px] bg-white rounded-lg border border-gray-200">
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <p className="text-gray-500 text-sm">No messages yet. Start a conversation!</p>
