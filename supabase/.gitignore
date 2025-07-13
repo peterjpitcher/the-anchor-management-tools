@@ -1,0 +1,18 @@
+# Supabase gitignore
+
+# Config with sensitive data
+config.toml
+
+# Temporary files
+.temp
+.DS_Store
+
+# Local database files
+.branches
+
+# Backup files
+*.backup
+*.bak
+
+# Don't commit the original backups
+migrations/original_backup/

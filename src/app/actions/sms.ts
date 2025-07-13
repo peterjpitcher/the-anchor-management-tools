@@ -98,6 +98,24 @@ export async function sendBookingConfirmationSync(bookingId: string) {
       process.env.TWILIO_AUTH_TOKEN
     )
 
+    // Check if customer is a loyalty member and generate QR code if applicable
+    let qrCodeUrl = '';
+    const { data: loyaltyMember } = await supabase
+      .from('loyalty_members')
+      .select('id')
+      .eq('customer_id', booking.customer.id)
+      .eq('status', 'active')
+      .single();
+    
+    if (loyaltyMember) {
+      // Generate QR code for loyalty check-in
+      const { generateBookingQRCode } = await import('./loyalty-checkins');
+      const qrResult = await generateBookingQRCode(booking.event.id, booking.id);
+      if (qrResult.qrUrl) {
+        qrCodeUrl = qrResult.qrUrl;
+      }
+    }
+
     // Prepare variables for template
     const templateVariables = {
       customer_name: `${booking.customer.first_name} ${booking.customer.last_name}`,
@@ -111,7 +129,9 @@ export async function sendBookingConfirmationSync(bookingId: string) {
       seats: booking.seats?.toString() || '0',
       venue_name: 'The Anchor',
       contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707',
-      booking_reference: booking.id.substring(0, 8).toUpperCase()
+      booking_reference: booking.id.substring(0, 8).toUpperCase(),
+      qr_code_url: qrCodeUrl,
+      loyalty_checkin_url: qrCodeUrl || `${process.env.NEXT_PUBLIC_APP_URL}/loyalty/checkin?event=${booking.event.id}`
     };
 
     // Try to get template from database
@@ -136,6 +156,7 @@ export async function sendBookingConfirmationSync(bookingId: string) {
             eventName: booking.event.name,
             eventDate: new Date(booking.event.date),
             eventTime: booking.event.time,
+            qrCodeUrl: qrCodeUrl,
           })
         : smsTemplates.reminderOnly({
             firstName: booking.customer.first_name,
@@ -217,6 +238,45 @@ export async function sendBookingConfirmationSync(bookingId: string) {
       process.env.TWILIO_MESSAGING_SERVICE_SID ? 'MessagingServiceSID' : 'FromNumber');
   } catch (error) {
     console.error('Failed to send SMS for bookingId:', bookingId, error)
+  }
+}
+
+// Send OTP message
+export async function sendOTPMessage(phoneNumber: string, message: string) {
+  try {
+    if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
+      throw new Error('Twilio credentials not configured');
+    }
+    
+    const twilioClientInstance = twilio(
+      process.env.TWILIO_ACCOUNT_SID,
+      process.env.TWILIO_AUTH_TOKEN
+    );
+    
+    const messageParams: TwilioMessageCreateParams = {
+      body: message,
+      to: phoneNumber,
+    };
+    
+    if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
+      messageParams.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
+    } else if (process.env.TWILIO_PHONE_NUMBER) {
+      messageParams.from = process.env.TWILIO_PHONE_NUMBER;
+    } else {
+      throw new Error('No Twilio sender configured');
+    }
+    
+    const twilioMessage = await twilioClientInstance.messages.create(messageParams);
+    
+    console.log('OTP SMS sent successfully:', {
+      sid: twilioMessage.sid,
+      to: twilioMessage.to
+    });
+    
+    return { success: true, messageSid: twilioMessage.sid };
+  } catch (error) {
+    console.error('Failed to send OTP SMS:', error);
+    throw error;
   }
 }
 

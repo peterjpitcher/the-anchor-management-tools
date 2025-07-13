@@ -9,12 +9,15 @@ export const smsTemplates = {
     eventName: string
     eventDate: Date
     eventTime: string
+    qrCodeUrl?: string
   }) => {
     const formattedDate = new Date(params.eventDate).toLocaleDateString('en-GB', {
       month: 'long',
       day: 'numeric',
     })
-    return `Hi ${params.firstName}, your booking for ${params.seats} people for our ${params.eventName} on ${formattedDate} at ${params.eventTime} is confirmed! See you then. The Anchor 01753682707`
+    const baseMessage = `Hi ${params.firstName}, your booking for ${params.seats} people for our ${params.eventName} on ${formattedDate} at ${params.eventTime} is confirmed!`
+    const qrMessage = params.qrCodeUrl ? ` Check-in with QR: ${params.qrCodeUrl}` : ''
+    return `${baseMessage}${qrMessage} See you then. The Anchor 01753682707`
   },
 
   reminderOnly: (params: {

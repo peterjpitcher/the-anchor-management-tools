@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 import { todaysEvent } from '@/lib/mock-data/loyalty-demo';
+import Link from 'next/link';
+import { DocumentArrowDownIcon } from '@heroicons/react/24/outline';
 
 export default function EventQRPage() {
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
@@ -49,9 +51,18 @@ export default function EventQRPage() {
       {/* Screen view */}
       <div className="print:hidden">
         <div className="max-w-4xl mx-auto p-6">
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-gray-900">Event QR Code</h1>
-            <p className="text-gray-600 mt-1">For tonight&apos;s event: {todaysEvent.name}</p>
+          <div className="mb-6 flex justify-between items-start">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Event QR Code</h1>
+              <p className="text-gray-600 mt-1">For tonight&apos;s event: {todaysEvent.name}</p>
+            </div>
+            <Link
+              href="/loyalty/event-qr/batch"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-amber-600 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500"
+            >
+              <DocumentArrowDownIcon className="h-5 w-5 mr-2" />
+              Batch Generate
+            </Link>
           </div>
 
           <div className="bg-white rounded-lg shadow p-8">

@@ -8,6 +8,7 @@ export type JobType =
   | 'generate_report'
   | 'process_webhook'
   | 'update_sms_health'
+  | 'send_welcome_email'
 
 export interface JobPayload {
   send_sms: {
@@ -44,6 +45,17 @@ export interface JobPayload {
   }
   update_sms_health: {
     customerId?: string
+  }
+  send_welcome_email: {
+    series_id: string
+    member_id: string
+    customer_id: string
+    template_id: string
+    template_name: string
+    customer_name: string
+    customer_email: string
+    tier_name: string
+    current_points: number
   }
 }
 

@@ -1,16 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getUpcomingBirthdays, sendBirthdayReminders } from '@/app/actions/employee-birthdays';
+import { getAllBirthdays, sendBirthdayReminders } from '@/app/actions/employee-birthdays';
 import { usePermissions } from '@/contexts/PermissionContext';
 import Link from 'next/link';
 import { 
   CakeIcon,
   EnvelopeIcon,
   ArrowLeftIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  CalendarIcon
 } from '@heroicons/react/24/outline';
-import { format } from 'date-fns';
+import { format, getMonth, addDays } from 'date-fns';
 import toast from 'react-hot-toast';
 import { Badge } from '@/components/ui/Badge';
 
@@ -25,18 +26,22 @@ interface EmployeeBirthday {
   turning_age: number;
 }
 
+const monthNames = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
 export default function EmployeeBirthdaysPage() {
   const { hasPermission } = usePermissions();
   const [birthdays, setBirthdays] = useState<EmployeeBirthday[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [daysAhead, setDaysAhead] = useState(30);
 
   useEffect(() => {
     const loadBirthdays = async () => {
       setLoading(true);
       try {
-        const result = await getUpcomingBirthdays(daysAhead);
+        const result = await getAllBirthdays();
         if (result.error) {
           toast.error(result.error);
         } else if (result.birthdays) {
@@ -50,8 +55,7 @@ export default function EmployeeBirthdaysPage() {
     };
     
     loadBirthdays();
-  }, [daysAhead]);
-
+  }, []);
 
   const handleSendReminders = async () => {
     if (!hasPermission('employees', 'manage')) {
@@ -74,24 +78,50 @@ export default function EmployeeBirthdaysPage() {
     }
   };
 
-  const getUpcomingBirthdayDate = (dob: string, daysUntil: number) => {
-    const today = new Date();
-    const birthdayDate = new Date(today);
-    birthdayDate.setDate(today.getDate() + daysUntil);
-    return birthdayDate;
+  const getUpcomingBirthdayDate = (daysUntil: number) => {
+    return addDays(new Date(), daysUntil);
   };
 
+  const getCountdownText = (days: number) => {
+    if (days === 0) return 'Today! 🎉';
+    if (days === 1) return 'Tomorrow';
+    if (days <= 7) return `In ${days} days`;
+    if (days <= 30) return `In ${Math.floor(days / 7)} week${Math.floor(days / 7) !== 1 ? 's' : ''}`;
+    return `In ${Math.floor(days / 30)} month${Math.floor(days / 30) !== 1 ? 's' : ''}`;
+  };
 
-  const groupedBirthdays = birthdays.reduce((acc, birthday) => {
-    const key = birthday.days_until_birthday === 0 ? 'today' :
-               birthday.days_until_birthday <= 7 ? 'thisWeek' :
-               birthday.days_until_birthday <= 14 ? 'nextWeek' :
-               'later';
+  const getCountdownBadgeVariant = (days: number) => {
+    if (days === 0) return 'error';
+    if (days <= 7) return 'warning';
+    if (days <= 30) return 'info';
+    return 'default';
+  };
+
+  // Group birthdays by month
+  const groupedByMonth = birthdays.reduce((acc, birthday) => {
+    const birthdayDate = getUpcomingBirthdayDate(birthday.days_until_birthday);
+    const monthIndex = getMonth(birthdayDate);
+    const monthName = monthNames[monthIndex];
     
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(birthday);
+    if (!acc[monthName]) {
+      acc[monthName] = {
+        monthIndex,
+        birthdays: []
+      };
+    }
+    
+    acc[monthName].birthdays.push(birthday);
     return acc;
-  }, {} as Record<string, EmployeeBirthday[]>);
+  }, {} as Record<string, { monthIndex: number; birthdays: EmployeeBirthday[] }>);
+
+  // Sort months in chronological order starting from current month
+  const currentMonth = getMonth(new Date());
+  const sortedMonths = Object.entries(groupedByMonth)
+    .sort(([, a], [, b]) => {
+      const aIndex = a.monthIndex >= currentMonth ? a.monthIndex : a.monthIndex + 12;
+      const bIndex = b.monthIndex >= currentMonth ? b.monthIndex : b.monthIndex + 12;
+      return aIndex - bIndex;
+    });
 
   if (!hasPermission('employees', 'view')) {
     return (
@@ -119,33 +149,20 @@ export default function EmployeeBirthdaysPage() {
                   Employee Birthdays
                 </h1>
                 <p className="mt-1 text-sm text-gray-500">
-                  Upcoming birthdays and reminder management
+                  All employee birthdays throughout the year
                 </p>
               </div>
             </div>
-            <div className="flex items-center space-x-3">
-              <select
-                value={daysAhead}
-                onChange={(e) => setDaysAhead(Number(e.target.value))}
-                className="rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+            {hasPermission('employees', 'manage') && (
+              <button
+                onClick={handleSendReminders}
+                disabled={sending}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
               >
-                <option value={7}>Next 7 days</option>
-                <option value={14}>Next 14 days</option>
-                <option value={30}>Next 30 days</option>
-                <option value={60}>Next 60 days</option>
-                <option value={90}>Next 90 days</option>
-              </select>
-              {hasPermission('employees', 'manage') && (
-                <button
-                  onClick={handleSendReminders}
-                  disabled={sending}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
-                >
-                  <EnvelopeIcon className="h-4 w-4 mr-2" />
-                  {sending ? 'Sending...' : 'Send Weekly Reminders'}
-                </button>
-              )}
-            </div>
+                <EnvelopeIcon className="h-4 w-4 mr-2" />
+                {sending ? 'Sending...' : 'Send Weekly Reminders'}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -160,7 +177,6 @@ export default function EmployeeBirthdaysPage() {
             <h3 className="text-sm font-medium text-blue-800">Automatic Birthday Reminders</h3>
             <div className="mt-2 text-sm text-blue-700">
               <p>Birthday reminders are automatically sent to manager@the-anchor.pub every morning at 8 AM for employees with birthdays exactly 1 week away.</p>
-              <p className="mt-1">Use the &quot;Send Weekly Reminders&quot; button to manually trigger reminders for testing.</p>
             </div>
           </div>
         </div>
@@ -177,144 +193,62 @@ export default function EmployeeBirthdaysPage() {
       ) : birthdays.length === 0 ? (
         <div className="bg-white shadow sm:rounded-lg text-center py-12">
           <CakeIcon className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No upcoming birthdays</h3>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">No birthdays found</h3>
           <p className="mt-1 text-sm text-gray-500">
-            No employee birthdays in the next {daysAhead} days.
+            No active employees have birthdays recorded.
           </p>
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Today's Birthdays */}
-          {groupedBirthdays.today && (
-            <div className="bg-white shadow sm:rounded-lg overflow-hidden">
-              <div className="bg-red-600 px-4 py-3">
-                <h2 className="text-lg font-medium text-white flex items-center">
-                  <CakeIcon className="h-5 w-5 mr-2" />
-                  Today&apos;s Birthdays! 🎉
+          {sortedMonths.map(([monthName, { birthdays: monthBirthdays }]) => (
+            <div key={monthName} className="bg-white shadow sm:rounded-lg overflow-hidden">
+              <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h2 className="text-lg font-medium text-gray-900 flex items-center">
+                  <CalendarIcon className="h-5 w-5 mr-2 text-gray-400" />
+                  {monthName}
+                  <span className="ml-2 text-sm text-gray-500">({monthBirthdays.length} birthday{monthBirthdays.length !== 1 ? 's' : ''})</span>
                 </h2>
               </div>
               <ul className="divide-y divide-gray-200">
-                {groupedBirthdays.today.map((birthday) => (
-                  <li key={birthday.employee_id} className="px-4 py-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-lg font-medium text-gray-900">
-                          {birthday.first_name} {birthday.last_name}
-                        </p>
-                        <p className="text-sm text-gray-500">{birthday.job_title || 'No title'}</p>
+                {monthBirthdays.map((birthday) => {
+                  const birthdayDate = getUpcomingBirthdayDate(birthday.days_until_birthday);
+                  return (
+                    <li key={birthday.employee_id} className="px-4 py-4 hover:bg-gray-50">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center">
+                            <Link
+                              href={`/employees/${birthday.employee_id}`}
+                              className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                            >
+                              {birthday.first_name} {birthday.last_name}
+                            </Link>
+                            {birthday.days_until_birthday === 0 && (
+                              <span className="ml-2 text-xl">🎉</span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-500">{birthday.job_title || 'No title'}</p>
+                        </div>
+                        <div className="text-right ml-4">
+                          <div className="flex items-center justify-end space-x-2">
+                            <span className="text-sm font-medium text-gray-900">
+                              {format(new Date(birthday.date_of_birth), 'MMMM d')}
+                            </span>
+                            <Badge variant={getCountdownBadgeVariant(birthday.days_until_birthday) as any}>
+                              {getCountdownText(birthday.days_until_birthday)}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1">
+                            Turning {birthday.turning_age}
+                          </p>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <Badge variant="error">Today!</Badge>
-                        <p className="text-sm text-gray-500 mt-1">Turning {birthday.turning_age}</p>
-                      </div>
-                    </div>
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
-          )}
-
-          {/* This Week */}
-          {groupedBirthdays.thisWeek && (
-            <div className="bg-white shadow sm:rounded-lg overflow-hidden">
-              <div className="bg-yellow-100 px-4 py-3">
-                <h2 className="text-lg font-medium text-yellow-800">This Week</h2>
-              </div>
-              <ul className="divide-y divide-gray-200">
-                {groupedBirthdays.thisWeek.map((birthday) => (
-                  <li key={birthday.employee_id} className="px-4 py-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <Link
-                          href={`/employees/${birthday.employee_id}`}
-                          className="text-sm font-medium text-blue-600 hover:text-blue-700"
-                        >
-                          {birthday.first_name} {birthday.last_name}
-                        </Link>
-                        <p className="text-sm text-gray-500">{birthday.job_title || 'No title'}</p>
-                      </div>
-                      <div className="text-right">
-                        <Badge variant="warning">
-                          {birthday.days_until_birthday === 1 ? 'Tomorrow' : `In ${birthday.days_until_birthday} days`}
-                        </Badge>
-                        <p className="text-sm text-gray-500 mt-1">
-                          {format(getUpcomingBirthdayDate(birthday.date_of_birth, birthday.days_until_birthday), 'EEEE, MMM d')}
-                        </p>
-                        <p className="text-xs text-gray-400">Turning {birthday.turning_age}</p>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Next Week */}
-          {groupedBirthdays.nextWeek && (
-            <div className="bg-white shadow sm:rounded-lg overflow-hidden">
-              <div className="bg-blue-50 px-4 py-3">
-                <h2 className="text-lg font-medium text-blue-800">Next Week</h2>
-              </div>
-              <ul className="divide-y divide-gray-200">
-                {groupedBirthdays.nextWeek.map((birthday) => (
-                  <li key={birthday.employee_id} className="px-4 py-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <Link
-                          href={`/employees/${birthday.employee_id}`}
-                          className="text-sm font-medium text-blue-600 hover:text-blue-700"
-                        >
-                          {birthday.first_name} {birthday.last_name}
-                        </Link>
-                        <p className="text-sm text-gray-500">{birthday.job_title || 'No title'}</p>
-                      </div>
-                      <div className="text-right">
-                        <Badge variant="info">In {birthday.days_until_birthday} days</Badge>
-                        <p className="text-sm text-gray-500 mt-1">
-                          {format(getUpcomingBirthdayDate(birthday.date_of_birth, birthday.days_until_birthday), 'EEEE, MMM d')}
-                        </p>
-                        <p className="text-xs text-gray-400">Turning {birthday.turning_age}</p>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Later */}
-          {groupedBirthdays.later && (
-            <div className="bg-white shadow sm:rounded-lg overflow-hidden">
-              <div className="bg-gray-50 px-4 py-3">
-                <h2 className="text-lg font-medium text-gray-700">Later This Month</h2>
-              </div>
-              <ul className="divide-y divide-gray-200">
-                {groupedBirthdays.later.map((birthday) => (
-                  <li key={birthday.employee_id} className="px-4 py-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <Link
-                          href={`/employees/${birthday.employee_id}`}
-                          className="text-sm font-medium text-blue-600 hover:text-blue-700"
-                        >
-                          {birthday.first_name} {birthday.last_name}
-                        </Link>
-                        <p className="text-sm text-gray-500">{birthday.job_title || 'No title'}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm text-gray-600">
-                          {format(getUpcomingBirthdayDate(birthday.date_of_birth, birthday.days_until_birthday), 'EEEE, MMM d')}
-                        </p>
-                        <p className="text-xs text-gray-400">
-                          In {birthday.days_until_birthday} days • Turning {birthday.turning_age}
-                        </p>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          ))}
         </div>
       )}
     </div>

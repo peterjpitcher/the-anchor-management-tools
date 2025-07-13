@@ -1,6 +1,7 @@
 import { google } from 'googleapis';
-import { isCalendarConfigured } from './google-calendar';
+import { isCalendarConfigured, getOAuth2Client } from './google-calendar';
 import type { Employee } from '@/types/database';
+import { format, getYear } from 'date-fns';
 
 // Minimal employee type for birthday sync
 interface EmployeeBirthday {
@@ -11,54 +12,9 @@ interface EmployeeBirthday {
   date_of_birth: string | null;
   email_address: string | null;
 }
-import { format, getYear } from 'date-fns';
 
 // Initialize the calendar API
 const calendar = google.calendar('v3');
-
-// Get OAuth2 client (copied from google-calendar.ts to reuse)
-async function getOAuth2Client() {
-  try {
-    // Check for OAuth2 configuration first
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_REDIRECT_URL
-    );
-
-    // Use service account if available (recommended for server-to-server)
-    if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
-      const serviceAccount = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
-      
-      // Fix escaped newlines in private key if needed
-      if (serviceAccount.private_key && typeof serviceAccount.private_key === 'string') {
-        if (serviceAccount.private_key.includes('\\n') && !serviceAccount.private_key.includes('\n')) {
-          serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
-        }
-      }
-      
-      const auth = new google.auth.GoogleAuth({
-        credentials: serviceAccount,
-        scopes: ['https://www.googleapis.com/auth/calendar']
-      });
-      
-      return await auth.getClient();
-    }
-
-    // Otherwise use OAuth2 with refresh token
-    if (process.env.GOOGLE_REFRESH_TOKEN) {
-      oauth2Client.setCredentials({
-        refresh_token: process.env.GOOGLE_REFRESH_TOKEN
-      });
-      return oauth2Client;
-    }
-
-    throw new Error('Google Calendar authentication not configured');
-  } catch (error) {
-    console.error('Error in getOAuth2Client:', error);
-    throw error;
-  }
-}
 
 // Generate a unique event ID for an employee's birthday
 function generateBirthdayEventId(employeeId: string): string {
@@ -69,6 +25,13 @@ function generateBirthdayEventId(employeeId: string): string {
 
 // Create or update a birthday calendar event
 export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Employee): Promise<string | null> {
+  console.log('[Birthday Calendar] Starting calendar sync for employee:', {
+    employeeId: employee.employee_id,
+    name: `${employee.first_name} ${employee.last_name}`,
+    hasDOB: !!employee.date_of_birth,
+    isConfigured: isCalendarConfigured()
+  });
+
   try {
     if (!isCalendarConfigured()) {
       console.warn('[Birthday Calendar] Not configured. Skipping calendar sync.');
@@ -80,8 +43,10 @@ export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Emp
       return null;
     }
 
+    console.log('[Birthday Calendar] Getting auth client...');
     const auth = await getOAuth2Client();
     const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
+    console.log('[Birthday Calendar] Using calendar ID:', calendarId);
     
     // Parse date of birth
     const dob = new Date(employee.date_of_birth);
@@ -137,8 +102,18 @@ export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Emp
       }
     };
     
+    console.log('[Birthday Calendar] Event object prepared:', {
+      summary: event.summary,
+      eventId: eventId,
+      startDate: format(startDate, 'yyyy-MM-dd'),
+      recurrence: event.recurrence
+    });
+
+    let response;
+    
     try {
       // Try to get existing event
+      console.log('[Birthday Calendar] Checking for existing event:', eventId);
       const existingEvent = await calendar.events.get({
         auth: auth as any,
         calendarId,
@@ -146,32 +121,63 @@ export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Emp
       });
       
       // Update existing event
-      const response = await calendar.events.update({
+      console.log('[Birthday Calendar] Updating existing event:', eventId);
+      response = await calendar.events.update({
         auth: auth as any,
         calendarId,
         eventId,
         requestBody: event
       });
-      
-      console.log('[Birthday Calendar] Updated birthday event:', eventId);
-      return response.data.id || null;
+      console.log('[Birthday Calendar] Event updated successfully:', response.data.id);
     } catch (error: any) {
       if (error.code === 404) {
         // Create new event
-        const response = await calendar.events.insert({
+        console.log('[Birthday Calendar] Creating new event...');
+        response = await calendar.events.insert({
           auth: auth as any,
           calendarId,
           requestBody: event
         });
-        
-        console.log('[Birthday Calendar] Created birthday event:', eventId);
-        return response.data.id || null;
+        console.log('[Birthday Calendar] Event created successfully:', {
+          id: response.data.id,
+          link: response.data.htmlLink
+        });
       } else {
         throw error;
       }
     }
+    
+    return response.data.id || null;
   } catch (error: any) {
-    console.error('[Birthday Calendar] Sync failed:', error.message);
+    // Provide more detailed error information
+    console.error('[Birthday Calendar] Sync failed:', {
+      errorCode: error.code,
+      errorMessage: error.message,
+      errorDetails: error.errors,
+      stack: error.stack
+    });
+    
+    if (error.message?.includes('authentication')) {
+      console.error('[Birthday Calendar] Authentication error:', error.message);
+      console.error('Please check your Google Calendar configuration in environment variables.');
+    } else if (error.code === 404) {
+      console.error('[Birthday Calendar] Calendar not found. Please check GOOGLE_CALENDAR_ID:', process.env.GOOGLE_CALENDAR_ID);
+      console.error('Ensure the calendar exists and is accessible by the service account.');
+    } else if (error.code === 403) {
+      console.error('[Birthday Calendar] Permission denied. Service account email:', error.email);
+      console.error('Please ensure the service account has been granted access to the calendar.');
+      console.error('1. Go to Google Calendar settings');
+      console.error('2. Find the calendar and click "Settings and sharing"');
+      console.error('3. Under "Share with specific people", add the service account email');
+      console.error('4. Grant "Make changes to events" permission');
+    } else if (error.code === 400) {
+      console.error('[Birthday Calendar] Bad request. Check the event data format.');
+      console.error('Error details:', error.errors);
+    } else {
+      console.error('[Birthday Calendar] Unexpected error:', error.message || error);
+    }
+    
+    // Don't throw the error, just return null to allow the operation to proceed
     return null;
   }
 }

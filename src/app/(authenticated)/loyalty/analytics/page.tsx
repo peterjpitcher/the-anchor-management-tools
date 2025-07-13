@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getLoyaltyStats } from '@/app/actions/loyalty';
+import { getLoyaltyAnalytics, getMemberEngagementMetrics } from '@/app/actions/loyalty-analytics';
 import { usePermissions } from '@/contexts/PermissionContext';
 import { LoyaltySettingsService } from '@/lib/config/loyalty-settings';
 import { 
@@ -62,10 +62,24 @@ interface AnalyticsData {
   }>;
 }
 
+interface EngagementData {
+  engagementCohorts: {
+    veryActive: number;
+    active: number;
+    occasional: number;
+    dormant: number;
+    new: number;
+  };
+  visitFrequency: Record<string, number>;
+  pointsDistribution: Record<string, number>;
+  totalMembers: number;
+}
+
 export default function LoyaltyAnalyticsPage() {
   const { hasPermission } = usePermissions();
   const [loading, setLoading] = useState(true);
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
+  const [engagementData, setEngagementData] = useState<EngagementData | null>(null);
   const [dateRange, setDateRange] = useState<'week' | 'month' | 'quarter' | 'year'>('month');
   const [programOperational, setProgramOperational] = useState(false);
 
@@ -91,57 +105,48 @@ export default function LoyaltyAnalyticsPage() {
   const loadAnalytics = async () => {
     setLoading(true);
     try {
-      // In production, this would fetch real analytics data
-      // For now, we'll use mock data
-      const mockAnalytics: AnalyticsData = {
-        totalMembers: 1247,
-        newMembersThisWeek: 23,
-        memberGrowthRate: 12.5,
-        tierDistribution: {
-          member: 820,
-          bronze: 285,
-          silver: 98,
-          gold: 37,
-          platinum: 7
-        },
-        activeMembers: 892,
-        averageVisitsPerMember: 3.2,
-        checkInRate: 78.5,
-        totalPointsIssued: 125400,
-        totalPointsRedeemed: 48600,
-        redemptionRate: 38.7,
-        averagePointsPerMember: 101,
-        mostPopularRewards: [
-          { name: 'Free Pint', redemptions: 234, category: 'drinks' },
-          { name: 'Nachos', redemptions: 156, category: 'snacks' },
-          { name: 'Dessert of the Day', redemptions: 89, category: 'desserts' }
-        ],
-        checkInsByDayOfWeek: {
-          'Monday': 120,
-          'Tuesday': 145,
-          'Wednesday': 189,
-          'Thursday': 210,
-          'Friday': 342,
-          'Saturday': 298,
-          'Sunday': 156
-        },
-        checkInsByHour: {
-          '17': 45,
-          '18': 89,
-          '19': 156,
-          '20': 210,
-          '21': 178,
-          '22': 92
-        },
-        monthlyTrends: [
-          { month: 'Jan', members: 980, checkIns: 2450, points: 12250 },
-          { month: 'Feb', members: 1050, checkIns: 2680, points: 13400 },
-          { month: 'Mar', members: 1120, checkIns: 2890, points: 14450 },
-          { month: 'Apr', members: 1247, checkIns: 3120, points: 15600 }
-        ]
-      };
+      // Fetch real analytics data
+      const result = await getLoyaltyAnalytics({ range: dateRange });
       
-      setAnalyticsData(mockAnalytics);
+      if (result.error) {
+        console.error('Error loading analytics:', result.error);
+        return;
+      }
+      
+      if (result.data) {
+        // Map the data to the expected format
+        const analytics: AnalyticsData = {
+          totalMembers: result.data.totalMembers,
+          newMembersThisWeek: result.data.newMembersThisWeek,
+          memberGrowthRate: result.data.memberGrowthRate,
+          tierDistribution: {
+            member: result.data.tierDistribution.member || 0,
+            bronze: result.data.tierDistribution.bronze || 0,
+            silver: result.data.tierDistribution.silver || 0,
+            gold: result.data.tierDistribution.gold || 0,
+            platinum: result.data.tierDistribution.platinum || 0
+          },
+          activeMembers: result.data.activeMembers,
+          averageVisitsPerMember: result.data.averageVisitsPerMember,
+          checkInRate: result.data.checkInRate,
+          totalPointsIssued: result.data.totalPointsIssued,
+          totalPointsRedeemed: result.data.totalPointsRedeemed,
+          redemptionRate: result.data.redemptionRate,
+          averagePointsPerMember: result.data.averagePointsPerMember,
+          mostPopularRewards: result.data.mostPopularRewards,
+          checkInsByDayOfWeek: result.data.checkInsByDayOfWeek,
+          checkInsByHour: result.data.checkInsByHour,
+          monthlyTrends: result.data.monthlyTrends
+        };
+        
+        setAnalyticsData(analytics);
+        
+        // Load engagement metrics
+        const engagementResult = await getMemberEngagementMetrics();
+        if (engagementResult.data) {
+          setEngagementData(engagementResult.data);
+        }
+      }
     } catch (error) {
       console.error('Error loading analytics:', error);
     } finally {
@@ -342,20 +347,23 @@ export default function LoyaltyAnalyticsPage() {
             {Object.entries(analyticsData.checkInsByDayOfWeek)
               .sort(([, a], [, b]) => b - a)
               .slice(0, 5)
-              .map(([day, count]) => (
-                <div key={day} className="flex items-center justify-between">
-                  <span className="text-sm">{day}</span>
-                  <div className="flex items-center">
-                    <div className="w-32 bg-gray-200 rounded-full h-2 mr-3">
-                      <div 
-                        className="bg-amber-600 h-2 rounded-full" 
-                        style={{ width: `${(count / 342) * 100}%` }}
-                      />
+              .map(([day, count]) => {
+                const maxCount = Math.max(...Object.values(analyticsData.checkInsByDayOfWeek));
+                return (
+                  <div key={day} className="flex items-center justify-between">
+                    <span className="text-sm">{day}</span>
+                    <div className="flex items-center">
+                      <div className="w-32 bg-gray-200 rounded-full h-2 mr-3">
+                        <div 
+                          className="bg-amber-600 h-2 rounded-full" 
+                          style={{ width: `${(count / maxCount) * 100}%` }}
+                        />
+                      </div>
+                      <span className="text-sm font-medium w-12 text-right">{count}</span>
                     </div>
-                    <span className="text-sm font-medium w-12 text-right">{count}</span>
                   </div>
-                </div>
-              ))}
+                );
+              })}
           </div>
         </div>
 
@@ -378,6 +386,67 @@ export default function LoyaltyAnalyticsPage() {
           </div>
         </div>
       </div>
+
+      {/* Member Engagement Analysis */}
+      {engagementData && (
+        <div className="bg-white shadow rounded-lg p-6 mb-8">
+          <h2 className="text-lg font-medium text-gray-900 mb-4">Member Engagement Analysis</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Engagement Cohorts */}
+            <div>
+              <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Activity Levels</h3>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm">Very Active (7d)</span>
+                  <span className="text-sm font-medium">{engagementData.engagementCohorts.veryActive}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm">Active (30d)</span>
+                  <span className="text-sm font-medium">{engagementData.engagementCohorts.active}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm">Occasional (90d)</span>
+                  <span className="text-sm font-medium">{engagementData.engagementCohorts.occasional}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm">Dormant (90d+)</span>
+                  <span className="text-sm font-medium">{engagementData.engagementCohorts.dormant}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm">New Members</span>
+                  <span className="text-sm font-medium">{engagementData.engagementCohorts.new}</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Visit Frequency */}
+            <div>
+              <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Visit Frequency</h3>
+              <div className="space-y-2">
+                {Object.entries(engagementData.visitFrequency).map(([range, count]) => (
+                  <div key={range} className="flex justify-between items-center">
+                    <span className="text-sm">{range} visits</span>
+                    <span className="text-sm font-medium">{count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            {/* Points Balance */}
+            <div>
+              <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Points Balance</h3>
+              <div className="space-y-2">
+                {Object.entries(engagementData.pointsDistribution).map(([range, count]) => (
+                  <div key={range} className="flex justify-between items-center">
+                    <span className="text-sm">{range} points</span>
+                    <span className="text-sm font-medium">{count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Monthly Trends Chart (Simplified) */}
       <div className="bg-white shadow rounded-lg p-6">
