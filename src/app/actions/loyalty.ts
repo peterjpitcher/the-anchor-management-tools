@@ -263,7 +263,7 @@ export async function getMemberDetails(phoneNumber: string) {
 export async function enrollCustomer(formData: FormData) {
   try {
     // Check staff permissions
-    const hasPermission = await checkUserPermission('customers', 'manage');
+    const hasPermission = await checkUserPermission('loyalty', 'manage');
     if (!hasPermission) {
       return { error: 'You do not have permission to enroll customers' };
     }
@@ -273,11 +273,19 @@ export async function enrollCustomer(formData: FormData) {
       phoneNumber: formData.get('phoneNumber')
     });
     
-    // This would integrate with loyalty-members.ts enrollLoyaltyMember
-    // For now, return a placeholder
-    return { error: 'Enrollment will be available when loyalty system is enabled' };
+    // Use the actual enrollment function from loyalty-members.ts
+    const { enrollLoyaltyMember } = await import('./loyalty-members');
+    const result = await enrollLoyaltyMember({
+      customer_id: validatedData.customerId,
+      status: 'active'
+    });
+    
+    return result;
   } catch (error) {
     console.error('Enroll customer error:', error);
+    if (error instanceof z.ZodError) {
+      return { error: error.errors[0].message };
+    }
     return { error: 'Failed to enroll customer' };
   }
 }
