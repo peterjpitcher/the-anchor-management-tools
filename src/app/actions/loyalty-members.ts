@@ -249,18 +249,41 @@ export async function enrollLoyaltyMember(formData: LoyaltyMemberFormData) {
       }
     });
     
-    // Send welcome SMS notification (using internal function that doesn't require permission check)
-    const { sendLoyaltyNotificationInternal } = await import('./loyalty-notifications');
-    const notificationResult = await sendLoyaltyNotificationInternal({
-      member_id: member.id,
-      type: 'welcome',
-      data: {
-        welcome_points: welcomeBonus
-      }
-    });
+    // Add a small delay to ensure database propagation
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
-    if (notificationResult.error) {
-      console.error('Failed to send welcome SMS:', notificationResult.error);
+    // Fetch the complete member data with relations before sending notification
+    const { data: completeMember } = await supabase
+      .from('loyalty_members')
+      .select(`
+        *,
+        customer:customers(
+          id,
+          name,
+          phone_number
+        )
+      `)
+      .eq('id', member.id)
+      .single();
+    
+    if (completeMember) {
+      // Send welcome SMS notification (using internal function that doesn't require permission check)
+      const { sendLoyaltyNotificationInternal } = await import('./loyalty-notifications');
+      const notificationResult = await sendLoyaltyNotificationInternal({
+        member_id: member.id,
+        type: 'welcome',
+        data: {
+          welcome_points: welcomeBonus
+        }
+      });
+      
+      if (notificationResult.error) {
+        console.error('Failed to send welcome SMS:', notificationResult.error);
+        console.error('Member data:', completeMember);
+        // Don't fail the enrollment if SMS fails
+      }
+    } else {
+      console.error('Could not fetch complete member data for notification');
     }
     
     revalidatePath('/loyalty/admin/members');
