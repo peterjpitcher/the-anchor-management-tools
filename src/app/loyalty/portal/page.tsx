@@ -13,7 +13,7 @@ import {
   ChartBarIcon
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
-import { validatePortalSession, endPortalSession } from '@/app/actions/loyalty-otp';
+import { validatePortalSession, endPortalSession, validateTokenAccess } from '@/app/actions/loyalty-otp';
 import { getMemberTierProgress } from '@/app/actions/loyalty-tiers';
 import { getMemberRedemptions } from '@/app/actions/loyalty-redemptions';
 import { createRedemption } from '@/app/actions/loyalty-redemptions';
@@ -35,7 +35,29 @@ export default function LoyaltyPortalPage() {
   }, []);
 
   const validateSession = async () => {
-    // Get session token from cookie
+    // Check for token in URL first
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlToken = urlParams.get('token');
+    
+    if (urlToken) {
+      // Validate token directly
+      try {
+        const result = await validateTokenAccess(urlToken);
+        if (result.success && result.member) {
+          setMember(result.member);
+          loadMemberData(result.member.id);
+          // Set session cookie for future visits
+          document.cookie = `loyalty_session=${urlToken}; path=/; max-age=2592000`; // 30 days
+          // Remove token from URL for cleaner appearance
+          window.history.replaceState({}, document.title, window.location.pathname);
+          return;
+        }
+      } catch (error) {
+        console.error('Token validation error:', error);
+      }
+    }
+    
+    // Otherwise check for session token from cookie
     const cookies = document.cookie.split(';');
     const sessionCookie = cookies.find(c => c.trim().startsWith('loyalty_session='));
     

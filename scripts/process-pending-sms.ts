@@ -1,5 +1,6 @@
 #!/usr/bin/env tsx
 
+import { JobQueue } from '../src/lib/background-jobs';
 import { createClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
 import { resolve } from 'path';
@@ -8,7 +9,7 @@ import { resolve } from 'path';
 dotenv.config({ path: resolve(process.cwd(), '.env.local') });
 
 async function processPendingSMS() {
-  console.log('🔍 Checking pending SMS jobs...\n');
+  console.log('🚀 Processing pending SMS jobs...\n');
   
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -19,15 +20,18 @@ async function processPendingSMS() {
   
   const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
   
-  // Get all pending jobs
-  const { data: pendingJobs, error } = await supabase
+  // First check what jobs we have
+  const { data: pendingJobs, error: checkError } = await supabase
     .from('background_jobs')
     .select('*')
     .eq('status', 'pending')
-    .order('created_at', { ascending: true });
+    .eq('type', 'send_sms')
+    .lte('scheduled_for', new Date().toISOString())
+    .order('created_at', { ascending: true })
+    .limit(10);
     
-  if (error) {
-    console.error('❌ Error fetching jobs:', error);
+  if (checkError) {
+    console.error('❌ Error fetching jobs:', checkError);
     return;
   }
   
@@ -36,43 +40,52 @@ async function processPendingSMS() {
     return;
   }
   
-  console.log(`📱 Found ${pendingJobs.length} pending jobs:\n`);
+  console.log(`📱 Found ${pendingJobs.length} pending SMS jobs to process:\n`);
   
   for (const job of pendingJobs) {
     console.log(`\n📨 Job ID: ${job.id}`);
-    console.log(`   Type: ${job.type}`);
     console.log(`   Created: ${new Date(job.created_at).toLocaleString()}`);
-    console.log(`   Payload:`, JSON.stringify(job.payload, null, 2));
     
     // Check if this is a loyalty welcome message
     if (job.payload.message && job.payload.message.includes('Welcome to The Anchor VIP Club')) {
       console.log('   ✨ This is a loyalty welcome message!');
-    }
-    
-    // Get customer info if available
-    if (job.payload.customerId) {
-      const { data: customer } = await supabase
-        .from('customers')
-        .select('name, phone_number')
-        .eq('id', job.payload.customerId)
-        .single();
-        
-      if (customer) {
-        console.log(`   Customer: ${customer.name}`);
-        console.log(`   Phone: ${customer.phone_number}`);
-      }
+      console.log(`   To: ${job.payload.to}`);
+      console.log(`   Message: ${job.payload.message.substring(0, 60)}...`);
     }
   }
   
-  console.log('\n\n💡 To process these jobs:');
-  console.log('1. In development: Run the job processor manually');
-  console.log('   - Visit http://localhost:3000/api/jobs/process');
-  console.log('   - Or run: curl http://localhost:3000/api/jobs/process');
-  console.log('\n2. In production: Jobs are processed automatically every 5 minutes via cron');
-  console.log('\n3. Make sure Twilio is configured in your .env.local:');
-  console.log('   - TWILIO_ACCOUNT_SID');
-  console.log('   - TWILIO_AUTH_TOKEN');
-  console.log('   - TWILIO_PHONE_NUMBER');
+  console.log('\n\n⚙️  Processing jobs...\n');
+  
+  try {
+    const jobQueue = JobQueue.getInstance();
+    
+    // Process the jobs
+    await jobQueue.processJobs(10);
+    
+    console.log('\n✅ Job processing complete');
+    
+    // Check results
+    const { data: results } = await supabase
+      .from('background_jobs')
+      .select('id, status, error')
+      .in('id', pendingJobs.map(j => j.id));
+      
+    if (results) {
+      console.log('\n📊 Results:');
+      results.forEach(job => {
+        if (job.status === 'completed') {
+          console.log(`   ✅ ${job.id}: Completed`);
+        } else if (job.status === 'failed') {
+          console.log(`   ❌ ${job.id}: Failed - ${job.error}`);
+        } else {
+          console.log(`   ⏳ ${job.id}: ${job.status}`);
+        }
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ Error processing jobs:', error);
+  }
 }
 
 processPendingSMS()

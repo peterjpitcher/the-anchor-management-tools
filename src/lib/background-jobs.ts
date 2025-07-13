@@ -200,8 +200,11 @@ export class JobQueue {
         .insert({
           customer_id: payload.customerId,
           direction: 'outbound',
+          message_sid: result.sid,
+          twilio_message_sid: result.sid,
           body: payload.message,
           status: 'sent',
+          twilio_status: 'queued',
           from_number: process.env.TWILIO_PHONE_NUMBER,
           to_number: payload.to,
           message_type: 'sms'

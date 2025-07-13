@@ -74,9 +74,10 @@ async function startWelcomeSeriesInternal(data: z.infer<typeof WelcomeSeriesSche
         *,
         customer:customers!inner(
           id,
-          name,
+          first_name,
+          last_name,
           email_address,
-          phone_number
+          mobile_number
         ),
         tier:loyalty_tiers(
           name,
@@ -136,10 +137,10 @@ async function startWelcomeSeriesInternal(data: z.infer<typeof WelcomeSeriesSche
         customer_id: customer.id,
         template_id: template.id,
         template_name: template.template,
-        customer_name: customer.name,
+        customer_name: `${customer.first_name} ${customer.last_name}`,
         customer_email: customer.email_address,
         tier_name: member.tier?.name || 'Member',
-        current_points: member.points_balance
+        current_points: member.available_points || 0
       };
       
       const jobId = await jobQueue.enqueue(
@@ -167,10 +168,10 @@ async function startWelcomeSeriesInternal(data: z.infer<typeof WelcomeSeriesSche
       .eq('id', series.id);
     
     // Send immediate welcome SMS if phone number exists
-    if (customer.phone_number) {
+    if (customer.mobile_number) {
       await jobQueue.enqueue('send_sms', {
-        to: customer.phone_number,
-        message: `Welcome to The Anchor VIP Club! You've earned ${member.welcome_bonus_awarded || 50} bonus points. Show this message to claim your welcome drink! 🍻`,
+        to: customer.mobile_number,
+        message: `Welcome to The Anchor VIP Club! You've earned ${member.available_points || 50} bonus points. Show this message to claim your welcome drink! 🍻`,
         type: 'custom' as const,
         customerId: customer.id
       });
@@ -185,7 +186,7 @@ async function startWelcomeSeriesInternal(data: z.infer<typeof WelcomeSeriesSche
       new_values: {
         member_id: validatedData.member_id,
         email_count: WELCOME_SERIES_TEMPLATES.length,
-        has_phone: !!customer.phone_number
+        has_phone: !!customer.mobile_number
       }
     });
     
@@ -194,7 +195,7 @@ async function startWelcomeSeriesInternal(data: z.infer<typeof WelcomeSeriesSche
       data: {
         series_id: series.id,
         emails_scheduled: emailJobs.length,
-        sms_sent: !!customer.phone_number
+        sms_sent: !!customer.mobile_number
       }
     };
   } catch (error) {
