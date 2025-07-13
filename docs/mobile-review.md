@@ -40,10 +40,47 @@ This document tracks the mobile responsiveness review of all pages and component
 
 ### Login Page
 - **Path**: `/src/app/auth/login/page.tsx`
-- **Issues Found**: [Not yet reviewed]
+- **Issues Found**: 
+  - **Small Input Padding** (Lines 136, 154): px-3 py-2 results in ~32px height, below 44px minimum
+  - **Inconsistent Button Padding** (Line 176): py-3 on mobile vs py-2 on desktop
 
 ### Reset Password Page
 - **Path**: `/src/app/auth/reset-password/page.tsx`
+- **Issues Found**: [Not yet reviewed]
+
+### Home Page
+- **Path**: `/src/app/page.tsx`
+- **Issues Found**: Simple redirect page - no issues
+
+### Check-in Page
+- **Path**: `/src/app/checkin/page.tsx`
+- **Issues Found**: Simple redirect with spinner - no issues
+
+### Loyalty Landing Page
+- **Path**: `/src/app/loyalty/page.tsx`
+- **Issues Found**: 
+  - **Large Heading** (Line 89): text-5xl might overflow on small screens
+  - **Button Spacing** (Lines 99-103, 230-234): Insufficient gap for stacked buttons
+  - **Phone Link** (Line 238): Needs larger padding for touch
+  - **Grid Breakpoints** (Line 159): Jumps from 1 to 2 columns, awkward on tablets
+
+### Loyalty Portal Login
+- **Path**: `/src/app/loyalty/portal/login/page.tsx`
+- **Issues Found**: 
+  - **Phone Input** (Line 128): Could use more padding for touch
+  - **OTP Input** (Line 175): tracking-wider might cause overflow
+  - **Text Links** (Lines 195-212): "Change number" and "Resend code" need larger touch areas
+
+### Loyalty Portal
+- **Path**: `/src/app/loyalty/portal/page.tsx`
+- **Issues Found**: [Not yet reviewed]
+
+### Privacy Policy
+- **Path**: `/src/app/privacy/page.tsx`
+- **Issues Found**: [Not yet reviewed]
+
+### Loyalty Demo Page
+- **Path**: `/src/app/loyalty/demo/page.tsx`
 - **Issues Found**: [Not yet reviewed]
 
 ## 2. Authenticated Pages
@@ -79,7 +116,11 @@ This document tracks the mobile responsiveness review of all pages and component
 
 ### Employees Module
 - **Employee List**: `/src/app/(authenticated)/employees/page.tsx`
-  - **Issues Found**: [Not yet reviewed]
+  - **Issues Found**: 
+    - **Button Overflow** (Lines 108-175): Header buttons might overflow on small screens
+    - **Status Filters** (Lines 200-243): Take significant horizontal space, may wrap poorly
+    - **Inconsistent Button Heights** (Line 170): min-h-[44px] mixed with other styles
+    - **Otherwise Good**: Has responsive desktop/mobile views (Lines 269-360)
 - **Employee Detail**: `/src/app/(authenticated)/employees/[employee_id]/page.tsx`
   - **Issues Found**: [Not yet reviewed]
 - **New Employee**: `/src/app/(authenticated)/employees/new/page.tsx`
@@ -89,9 +130,16 @@ This document tracks the mobile responsiveness review of all pages and component
 
 ### Events Module
 - **Event List**: `/src/app/(authenticated)/events/page.tsx`
-  - **Issues Found**: [Not yet reviewed]
+  - **Issues Found**: 
+    - **Non-Responsive Table** (Lines 92-183): No mobile layout, will cause horizontal scrolling
+    - **Header Button Overflow** (Lines 50-66): Action buttons may overlap on small screens
+    - **Small Touch Targets** (Lines 161-178): "View | Edit" links too close together
+    - **No Mobile Layout**: Needs complete mobile redesign like Employee page
 - **Event Detail**: `/src/app/(authenticated)/events/[id]/page.tsx`
-  - **Issues Found**: [Not yet reviewed]
+  - **Issues Found**: 
+    - **Modal Scrolling** (Lines 324-329): max-w-lg might cause issues on small screens
+    - **Button Overflow** (Lines 378-405): 5 action buttons might overflow despite flex-wrap
+    - **Otherwise Good**: Has responsive desktop/mobile views (Lines 208-319)
 - **New Event**: `/src/app/(authenticated)/events/new/page.tsx`
   - **Issues Found**: [Not yet reviewed]
 - **Edit Event**: `/src/app/(authenticated)/events/[id]/edit/page.tsx`
@@ -107,7 +155,11 @@ This document tracks the mobile responsiveness review of all pages and component
 
 ### Messages Module
 - **Message List**: `/src/app/(authenticated)/messages/page.tsx`
-  - **Issues Found**: [Not yet reviewed]
+  - **Issues Found**: 
+    - **Header Button Overflow** (Lines 87-103): No responsive layout, will cause horizontal scroll
+    - **Inconsistent Button Heights** (Line 90): Only one button has min-h-[44px]
+    - **Conversation List** (Lines 114-149): Not optimized for mobile, content gets squeezed
+    - **Small Touch Targets**: Throughout conversation list
 - **Bulk Messaging**: `/src/app/(authenticated)/messages/bulk/page.tsx`
   - **Issues Found**: [Not yet reviewed]
 
