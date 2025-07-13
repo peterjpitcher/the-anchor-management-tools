@@ -228,6 +228,8 @@ let useEffect: typeof import('react')['useEffect']
 let useCallback: typeof import('react')['useCallback']
 
 if (typeof window !== 'undefined') {
+  // Dynamic import for client-side only
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require('react')
   useState = React.useState
   useEffect = React.useEffect

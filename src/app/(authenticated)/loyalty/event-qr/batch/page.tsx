@@ -156,7 +156,7 @@ export default function BatchQRPage() {
   if (!canManageEvents) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-500">You don't have permission to manage event QR codes.</p>
+        <p className="text-gray-500">You don&apos;t have permission to manage event QR codes.</p>
       </div>
     );
   }

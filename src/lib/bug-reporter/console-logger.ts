@@ -8,7 +8,7 @@ export interface LogEntry {
 export class ConsoleLogger {
   private logs: LogEntry[] = [];
   private maxLogs = 1000;
-  private originalMethods: { [key: string]: Function } = {};
+  private originalMethods: { [key: string]: (...args: any[]) => void } = {};
   
   constructor() {
     this.interceptConsole();

@@ -26,7 +26,7 @@ export async function getLoyaltyAnalytics(params: z.infer<typeof DateRangeSchema
     
     // Calculate date range
     const now = new Date();
-    let startDate = new Date();
+    const startDate = new Date();
     
     switch (range) {
       case 'week':

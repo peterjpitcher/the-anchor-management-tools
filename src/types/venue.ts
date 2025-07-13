@@ -24,4 +24,4 @@ export interface CreateVenueSpaceInput {
   active?: boolean;
 }
 
-export interface UpdateVenueSpaceInput extends Partial<CreateVenueSpaceInput> {}
+export type UpdateVenueSpaceInput = Partial<CreateVenueSpaceInput>

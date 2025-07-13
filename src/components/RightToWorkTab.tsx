@@ -148,7 +148,7 @@ export default function RightToWorkTab({ employeeId }: RightToWorkTabProps) {
                 <div className="ml-3">
                   <h3 className="text-sm font-medium text-yellow-800">Document Expiring Soon</h3>
                   <p className="mt-1 text-sm text-yellow-700">
-                    This employee's right to work document expires on {new Date(rightToWork.document_expiry_date!).toLocaleDateString()}.
+                    This employee&apos;s right to work document expires on {new Date(rightToWork.document_expiry_date!).toLocaleDateString()}.
                     Please ensure you obtain updated documentation before expiry.
                   </p>
                 </div>
@@ -164,7 +164,7 @@ export default function RightToWorkTab({ employeeId }: RightToWorkTabProps) {
                   <h3 className="text-sm font-medium text-red-800">Follow-up Required</h3>
                   <p className="mt-1 text-sm text-red-700">
                     A follow-up check was due on {new Date(rightToWork.follow_up_date!).toLocaleDateString()}.
-                    Please verify the employee's right to work status immediately.
+                    Please verify the employee&apos;s right to work status immediately.
                   </p>
                 </div>
               </div>
@@ -178,7 +178,7 @@ export default function RightToWorkTab({ employeeId }: RightToWorkTabProps) {
                 <div className="ml-3">
                   <h3 className="text-sm font-medium text-green-800">Right to Work Verified</h3>
                   <p className="mt-1 text-sm text-green-700">
-                    This employee's right to work has been verified and is currently valid.
+                    This employee&apos;s right to work has been verified and is currently valid.
                   </p>
                 </div>
               </div>
@@ -399,7 +399,7 @@ export default function RightToWorkTab({ employeeId }: RightToWorkTabProps) {
           <ul>
             <li>You must check original documents - copies are not acceptable</li>
             <li>Documents must be valid at the time of checking</li>
-            <li>You must check that photos match the employee's appearance</li>
+            <li>You must check that photos match the employee&apos;s appearance</li>
             <li>For List B documents, you must conduct follow-up checks before expiry</li>
             <li>Keep copies of all documents checked for your records</li>
             <li>Failure to conduct proper checks can result in civil penalties</li>

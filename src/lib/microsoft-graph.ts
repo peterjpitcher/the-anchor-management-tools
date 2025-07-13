@@ -330,7 +330,7 @@ export async function testEmailConnection(): Promise<{
     console.error('Email connection test failed:', error)
     
     let errorMessage = 'Failed to connect to Microsoft Graph'
-    let details = { error: error.message }
+    const details = { error: error.message }
 
     if (error.statusCode === 401) {
       errorMessage = 'Authentication failed. Check your client credentials.'

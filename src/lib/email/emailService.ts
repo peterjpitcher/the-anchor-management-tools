@@ -1,4 +1,6 @@
 import { isGraphConfigured } from '@/lib/microsoft-graph';
+import { Client } from '@microsoft/microsoft-graph-client';
+import { ClientSecretCredential } from '@azure/identity';
 
 interface EmailOptions {
   to: string;
@@ -104,8 +106,6 @@ export async function sendSimpleEmail(
  * Helper to get the configured graph client
  */
 function getGraphClient() {
-  const { Client } = require('@microsoft/microsoft-graph-client');
-  const { ClientSecretCredential } = require('@azure/identity');
   
   const credential = new ClientSecretCredential(
     process.env.MICROSOFT_TENANT_ID!,

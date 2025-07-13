@@ -168,7 +168,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
 
     setIsSubmitting(true)
     try {
-      let finalCustomerId = customerId
+      const finalCustomerId = customerId
 
       // Create new customer if needed
       if (showNewCustomerForm && !customerId) {

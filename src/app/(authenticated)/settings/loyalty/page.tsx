@@ -280,7 +280,7 @@ export default function LoyaltySettingsPage() {
             <p className="font-medium mb-1">Why separate configuration from operations?</p>
             <p>
               This allows you to fully set up rewards, tiers, and achievements before launching. 
-              When you're ready, simply toggle the operational status to start awarding points and sending messages.
+              When you&apos;re ready, simply toggle the operational status to start awarding points and sending messages.
             </p>
           </div>
         </div>
