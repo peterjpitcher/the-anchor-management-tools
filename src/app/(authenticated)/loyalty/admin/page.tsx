@@ -96,45 +96,49 @@ export default function LoyaltyAdminPage() {
       {/* Header */}
       <div className="md:flex md:items-center md:justify-between mb-8">
         <div className="flex-1 min-w-0">
-          <h1 className="text-3xl font-bold text-gray-900">Loyalty Program Dashboard</h1>
-          <p className="mt-1 text-gray-500">Monitor and manage The Anchor VIP Club</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Loyalty Program Dashboard</h1>
+          <p className="mt-1 text-sm sm:text-base text-gray-500">Monitor and manage The Anchor VIP Club</p>
         </div>
-        <div className="mt-4 flex md:mt-0 md:ml-4 space-x-3">
+        <div className="mt-4 flex flex-wrap md:mt-0 md:ml-4 gap-2 sm:gap-3">
           <Link
             href="/loyalty/admin/rewards"
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            className="inline-flex items-center px-3 py-2 sm:px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
           >
-            <GiftIcon className="h-4 w-4 mr-2" />
-            Rewards
+            <GiftIcon className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Rewards</span>
+            <span className="sm:hidden">Rewards</span>
           </Link>
           <Link
             href="/loyalty/admin/achievements"
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            className="inline-flex items-center px-3 py-2 sm:px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
           >
-            <TrophyIcon className="h-4 w-4 mr-2" />
-            Achievements
+            <TrophyIcon className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Achievements</span>
+            <span className="sm:hidden">Achieve</span>
           </Link>
           <Link
             href="/loyalty/admin/challenges"
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            className="inline-flex items-center px-3 py-2 sm:px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
           >
-            <CalendarDaysIcon className="h-4 w-4 mr-2" />
-            Challenges
+            <CalendarDaysIcon className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Challenges</span>
+            <span className="sm:hidden">Challenge</span>
           </Link>
           <Link
             href="/loyalty/analytics"
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            className="inline-flex items-center px-3 py-2 sm:px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
           >
-            <ChartBarIcon className="h-4 w-4 mr-2" />
-            Analytics
+            <ChartBarIcon className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Analytics</span>
+            <span className="sm:hidden">Analytics</span>
           </Link>
         </div>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
         <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
+          <div className="p-4 sm:p-5">
             <div className="flex items-center">
               <div className="flex-shrink-0">
                 <UserGroupIcon className="h-6 w-6 text-gray-400" />
@@ -150,7 +154,7 @@ export default function LoyaltyAdminPage() {
         </div>
 
         <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
+          <div className="p-4 sm:p-5">
             <div className="flex items-center">
               <div className="flex-shrink-0">
                 <ChartBarIcon className="h-6 w-6 text-gray-400" />
@@ -168,7 +172,7 @@ export default function LoyaltyAdminPage() {
         </div>
 
         <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
+          <div className="p-4 sm:p-5">
             <div className="flex items-center">
               <div className="flex-shrink-0">
                 <GiftIcon className="h-6 w-6 text-gray-400" />
@@ -184,7 +188,7 @@ export default function LoyaltyAdminPage() {
         </div>
 
         <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
+          <div className="p-4 sm:p-5">
             <div className="flex items-center">
               <div className="flex-shrink-0">
                 <TrophyIcon className="h-6 w-6 text-gray-400" />
@@ -232,10 +236,10 @@ export default function LoyaltyAdminPage() {
         <div className="px-4 py-5 sm:p-6">
           <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">Quick Actions</h3>
           
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Link
               href="/loyalty/admin/enroll"
-              className="relative rounded-lg border border-gray-300 bg-white px-6 py-5 shadow-sm flex items-center space-x-3 hover:border-gray-400 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-amber-500"
+              className="relative rounded-lg border border-gray-300 bg-white px-4 py-4 sm:px-6 sm:py-5 shadow-sm flex items-center space-x-3 hover:border-gray-400 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-amber-500"
             >
               <div className="flex-shrink-0">
                 <UserGroupIcon className="h-6 w-6 text-gray-600" />
@@ -249,7 +253,7 @@ export default function LoyaltyAdminPage() {
 
             <Link
               href="/loyalty/admin/import"
-              className="relative rounded-lg border border-gray-300 bg-white px-6 py-5 shadow-sm flex items-center space-x-3 hover:border-gray-400 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-amber-500"
+              className="relative rounded-lg border border-gray-300 bg-white px-4 py-4 sm:px-6 sm:py-5 shadow-sm flex items-center space-x-3 hover:border-gray-400 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-amber-500"
             >
               <div className="flex-shrink-0">
                 <ArrowUpIcon className="h-6 w-6 text-gray-600" />
@@ -263,7 +267,7 @@ export default function LoyaltyAdminPage() {
 
             <Link
               href="/loyalty/admin/export"
-              className="relative rounded-lg border border-gray-300 bg-white px-6 py-5 shadow-sm flex items-center space-x-3 hover:border-gray-400 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-amber-500"
+              className="relative rounded-lg border border-gray-300 bg-white px-4 py-4 sm:px-6 sm:py-5 shadow-sm flex items-center space-x-3 hover:border-gray-400 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-amber-500"
             >
               <div className="flex-shrink-0">
                 <ArrowDownIcon className="h-6 w-6 text-gray-600" />
@@ -277,7 +281,7 @@ export default function LoyaltyAdminPage() {
 
             <Link
               href="/loyalty/admin/campaigns"
-              className="relative rounded-lg border border-gray-300 bg-white px-6 py-5 shadow-sm flex items-center space-x-3 hover:border-gray-400 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-amber-500"
+              className="relative rounded-lg border border-gray-300 bg-white px-4 py-4 sm:px-6 sm:py-5 shadow-sm flex items-center space-x-3 hover:border-gray-400 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-amber-500"
             >
               <div className="flex-shrink-0">
                 <ChartBarIcon className="h-6 w-6 text-gray-600" />
@@ -291,7 +295,7 @@ export default function LoyaltyAdminPage() {
 
             <Link
               href="/loyalty/training"
-              className="relative rounded-lg border border-gray-300 bg-white px-6 py-5 shadow-sm flex items-center space-x-3 hover:border-gray-400 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-amber-500"
+              className="relative rounded-lg border border-gray-300 bg-white px-4 py-4 sm:px-6 sm:py-5 shadow-sm flex items-center space-x-3 hover:border-gray-400 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-amber-500"
             >
               <div className="flex-shrink-0">
                 <svg className="h-6 w-6 text-gray-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">

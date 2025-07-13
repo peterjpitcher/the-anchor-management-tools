@@ -170,7 +170,7 @@ export default function LoyaltyPortalPage() {
             <div className="flex items-center space-x-4">
               <VIPClubLogo size="small" />
               <div>
-                <h1 className="text-xl font-bold text-gray-900">
+                <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">
                   Welcome back, {customer?.name?.split(' ')[0]}!
                 </h1>
                 <div className="flex items-center space-x-2 mt-1">
@@ -199,8 +199,8 @@ export default function LoyaltyPortalPage() {
 
       {/* Navigation Tabs */}
       <div className="bg-white border-b">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <nav className="flex space-x-8">
+        <div className="max-w-4xl mx-auto">
+          <nav className="flex overflow-x-auto scrollbar-hide">
             {[
               { id: 'overview', label: 'Overview', icon: ChartBarIcon },
               { id: 'rewards', label: 'Rewards', icon: GiftIcon },
@@ -210,14 +210,14 @@ export default function LoyaltyPortalPage() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
+                className={`py-4 px-4 sm:px-6 border-b-2 font-medium text-sm flex items-center space-x-1 sm:space-x-2 whitespace-nowrap flex-shrink-0 ${
                   activeTab === tab.id
                     ? 'border-amber-500 text-amber-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                <tab.icon className="h-5 w-5" />
-                <span>{tab.label}</span>
+                <tab.icon className="h-4 w-4 sm:h-5 sm:w-5" />
+                <span className="text-xs sm:text-sm">{tab.label}</span>
               </button>
             ))}
           </nav>
@@ -231,18 +231,18 @@ export default function LoyaltyPortalPage() {
             {/* Points Summary */}
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Your Points</h2>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-3 gap-2 sm:gap-4">
                 <div className="text-center">
-                  <p className="text-3xl font-bold text-amber-600">{member.available_points}</p>
-                  <p className="text-sm text-gray-500">Available</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-amber-600">{member.available_points}</p>
+                  <p className="text-xs sm:text-sm text-gray-500">Available</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-3xl font-bold text-gray-600">{member.lifetime_points}</p>
-                  <p className="text-sm text-gray-500">Lifetime</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-gray-600">{member.lifetime_points}</p>
+                  <p className="text-xs sm:text-sm text-gray-500">Lifetime</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-3xl font-bold text-gray-600">{member.lifetime_events}</p>
-                  <p className="text-sm text-gray-500">Events</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-gray-600">{member.lifetime_events}</p>
+                  <p className="text-xs sm:text-sm text-gray-500">Events</p>
                 </div>
               </div>
             </div>
@@ -337,7 +337,7 @@ export default function LoyaltyPortalPage() {
                             <button
                               onClick={() => handleRedeemReward(reward)}
                               disabled={!canRedeem || requiresTier}
-                              className="ml-4 px-4 py-2 bg-amber-600 text-white rounded-lg font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                              className="ml-4 px-3 py-2 sm:px-4 bg-amber-600 text-white rounded-lg font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm sm:text-base min-h-[40px] min-w-[70px]"
                               title={
                                 !canRedeem ? 'Not enough points' : 
                                 requiresTier ? `Requires ${reward.tier?.name} tier` : 

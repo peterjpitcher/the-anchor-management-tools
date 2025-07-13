@@ -238,7 +238,7 @@ function CheckInPageContent() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center space-x-4">
@@ -250,55 +250,61 @@ function CheckInPageContent() {
             Back to Event
           </Link>
         </div>
-        <h1 className="text-3xl font-bold text-gray-900 mt-4">Event Check-In</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mt-4">Event Check-In</h1>
         {currentEvent && (
-          <p className="mt-2 text-gray-600">
+          <p className="mt-2 text-sm sm:text-base text-gray-600">
             {currentEvent.title} - {new Date(currentEvent.start_date).toLocaleDateString()}
           </p>
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-8">
         {/* Check-in Methods */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 order-2 lg:order-1">
           {/* Method Selection */}
           <div className="bg-white shadow rounded-lg p-6 mb-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Check-In Method</h2>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
               <button
                 onClick={() => setMethod('qr')}
-                className={`p-4 rounded-lg border-2 transition-colors ${
+                className={`p-3 sm:p-4 rounded-lg border-2 transition-colors min-h-[60px] sm:min-h-[80px] ${
                   method === 'qr' 
                     ? 'border-amber-500 bg-amber-50' 
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
               >
-                <QrCodeIcon className="h-8 w-8 mx-auto mb-2 text-gray-700" />
-                <p className="text-sm font-medium">QR Code</p>
+                <div className="flex sm:flex-col items-center sm:items-center justify-center">
+                  <QrCodeIcon className="h-6 w-6 sm:h-8 sm:w-8 mb-0 sm:mb-2 mr-2 sm:mr-0 text-gray-700" />
+                  <p className="text-sm font-medium">QR Code</p>
+                </div>
               </button>
               
               <button
                 onClick={() => setMethod('phone')}
-                className={`p-4 rounded-lg border-2 transition-colors ${
+                className={`p-3 sm:p-4 rounded-lg border-2 transition-colors min-h-[60px] sm:min-h-[80px] ${
                   method === 'phone' 
                     ? 'border-amber-500 bg-amber-50' 
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
               >
-                <PhoneIcon className="h-8 w-8 mx-auto mb-2 text-gray-700" />
-                <p className="text-sm font-medium">Phone Number</p>
+                <div className="flex sm:flex-col items-center sm:items-center justify-center">
+                  <PhoneIcon className="h-6 w-6 sm:h-8 sm:w-8 mb-0 sm:mb-2 mr-2 sm:mr-0 text-gray-700" />
+                  <p className="text-sm font-medium">Phone Number</p>
+                </div>
               </button>
               
               <button
                 onClick={() => setMethod('manual')}
-                className={`p-4 rounded-lg border-2 transition-colors ${
+                className={`p-3 sm:p-4 rounded-lg border-2 transition-colors min-h-[60px] sm:min-h-[80px] ${
                   method === 'manual' 
                     ? 'border-amber-500 bg-amber-50' 
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
               >
-                <UserPlusIcon className="h-8 w-8 mx-auto mb-2 text-gray-700" />
-                <p className="text-sm font-medium">Manual Search</p>
+                <div className="flex sm:flex-col items-center sm:items-center justify-center">
+                  <UserPlusIcon className="h-6 w-6 sm:h-8 sm:w-8 mb-0 sm:mb-2 mr-2 sm:mr-0 text-gray-700" />
+                  <p className="text-sm font-medium">Manual Search</p>
+                </div>
               </button>
             </div>
           </div>
@@ -306,11 +312,11 @@ function CheckInPageContent() {
           {/* Check-in Interface */}
           <div className="bg-white shadow rounded-lg p-6">
             {state === 'success' && checkInResult ? (
-              <div className="text-center py-8">
-                <CheckCircleIcon className="h-16 w-16 text-green-500 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">Check-In Successful!</h3>
+              <div className="text-center py-6 sm:py-8">
+                <CheckCircleIcon className="h-12 w-12 sm:h-16 sm:w-16 text-green-500 mx-auto mb-4" />
+                <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">Check-In Successful!</h3>
                 <div className="mb-4">
-                  <p className="text-gray-600">
+                  <p className="text-sm sm:text-base text-gray-600">
                     {checkInResult.points_earned} points awarded
                   </p>
                   {((checkInResult.newAchievements && checkInResult.newAchievements.length > 0) || checkInResult.tierUpgraded) && (
@@ -396,7 +402,9 @@ function CheckInPageContent() {
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">Scan QR Code</h3>
                     {showScanner ? (
                       <div>
-                        <video id="qr-video" className="w-full rounded-lg mb-4" />
+                        <div className="relative aspect-square sm:aspect-video max-w-md mx-auto mb-4">
+                          <video id="qr-video" className="w-full h-full rounded-lg object-cover" />
+                        </div>
                         <button
                           onClick={() => {
                             setShowScanner(false);
@@ -406,7 +414,7 @@ function CheckInPageContent() {
                               stream.getTracks().forEach(track => track.stop());
                             }
                           }}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                          className="w-full px-4 py-3 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 min-h-[44px]"
                         >
                           Cancel Scanning
                         </button>
@@ -433,7 +441,7 @@ function CheckInPageContent() {
                             setShowScanner(false);
                           }
                         }}
-                        className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-amber-600 hover:bg-amber-700"
+                        className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent rounded-md shadow-sm text-sm sm:text-base font-medium text-white bg-amber-600 hover:bg-amber-700 min-h-[44px]"
                       >
                         <QrCodeIcon className="h-5 w-5 mr-2" />
                         Start Scanner
@@ -455,13 +463,13 @@ function CheckInPageContent() {
                           onChange={(e) => setSearchQuery(e.target.value)}
                           onKeyPress={(e) => e.key === 'Enter' && searchCustomers()}
                           placeholder={method === 'phone' ? 'Enter phone number...' : 'Search by name or phone...'}
-                          className="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                          className="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 px-3 py-2 min-h-[44px]"
                         />
                       </div>
                       <button
                         onClick={searchCustomers}
                         disabled={state === 'searching'}
-                        className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50"
+                        className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 min-h-[44px]"
                       >
                         {state === 'searching' ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -477,15 +485,15 @@ function CheckInPageContent() {
                         {customers.map(customer => (
                           <div
                             key={customer.id}
-                            className="p-4 border rounded-lg hover:bg-gray-50 cursor-pointer"
+                            className="p-4 border rounded-lg hover:bg-gray-50 cursor-pointer min-h-[80px]"
                             onClick={() => handleManualCheckIn(customer)}
                           >
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="font-medium text-gray-900">{customer.name}</p>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-gray-900 truncate">{customer.name}</p>
                                 <p className="text-sm text-gray-500">{customer.phone_number}</p>
                                 {customer.loyalty_members?.[0] && (
-                                  <div className="mt-1 flex items-center space-x-2">
+                                  <div className="mt-1 flex flex-wrap items-center gap-2">
                                     <span className="text-xs px-2 py-1 rounded-full" style={{
                                       backgroundColor: `${customer.loyalty_members[0].tier?.color}20`,
                                       color: customer.loyalty_members[0].tier?.color
@@ -500,7 +508,7 @@ function CheckInPageContent() {
                               </div>
                               <button
                                 disabled={state === 'processing'}
-                                className="text-amber-600 hover:text-amber-700"
+                                className="text-amber-600 hover:text-amber-700 font-medium whitespace-nowrap px-2 py-1"
                               >
                                 Check In →
                               </button>
@@ -528,8 +536,8 @@ function CheckInPageContent() {
         </div>
 
         {/* Recent Check-ins */}
-        <div className="lg:col-span-1">
-          <div className="bg-white shadow rounded-lg p-6">
+        <div className="lg:col-span-1 order-1 lg:order-2">
+          <div className="bg-white shadow rounded-lg p-4 sm:p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Check-Ins</h3>
             {recentCheckIns.length > 0 ? (
               <div className="space-y-3">

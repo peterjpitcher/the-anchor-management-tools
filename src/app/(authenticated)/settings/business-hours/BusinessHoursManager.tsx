@@ -72,7 +72,8 @@ export function BusinessHoursManager() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="overflow-x-auto">
+      {/* Desktop Table */}
+      <div className="hidden lg:block overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead>
             <tr>
@@ -99,10 +100,10 @@ export function BusinessHoursManager() {
           <tbody className="bg-white divide-y divide-gray-200">
             {reorderedHours.map((dayHours) => (
               <tr key={dayHours.day_of_week}>
-                <td className="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                <td className="px-2 sm:px-3 py-3 sm:py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                   {DAY_NAMES[dayHours.day_of_week]}
                 </td>
-                <td className="px-3 py-4 whitespace-nowrap">
+                <td className="px-2 sm:px-3 py-3 sm:py-4 whitespace-nowrap">
                   <input
                     type="checkbox"
                     checked={dayHours.is_closed}
@@ -110,40 +111,40 @@ export function BusinessHoursManager() {
                     className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
                   />
                 </td>
-                <td className="px-3 py-4 whitespace-nowrap">
+                <td className="px-2 sm:px-3 py-3 sm:py-4 whitespace-nowrap">
                   <input
                     type="time"
                     value={dayHours.opens || ''}
                     onChange={(e) => handleTimeChange(dayHours.day_of_week, 'opens', e.target.value)}
                     disabled={dayHours.is_closed}
-                    className="block w-full px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100"
+                    className="block w-full px-2 sm:px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100 min-h-[40px]"
                   />
                 </td>
-                <td className="px-3 py-4 whitespace-nowrap">
+                <td className="px-2 sm:px-3 py-3 sm:py-4 whitespace-nowrap">
                   <input
                     type="time"
                     value={dayHours.closes || ''}
                     onChange={(e) => handleTimeChange(dayHours.day_of_week, 'closes', e.target.value)}
                     disabled={dayHours.is_closed}
-                    className="block w-full px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100"
+                    className="block w-full px-2 sm:px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100 min-h-[40px]"
                   />
                 </td>
-                <td className="px-3 py-4 whitespace-nowrap">
+                <td className="px-2 sm:px-3 py-3 sm:py-4 whitespace-nowrap">
                   <input
                     type="time"
                     value={dayHours.kitchen_opens || ''}
                     onChange={(e) => handleTimeChange(dayHours.day_of_week, 'kitchen_opens', e.target.value)}
                     disabled={dayHours.is_closed}
-                    className="block w-full px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100"
+                    className="block w-full px-2 sm:px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100 min-h-[40px]"
                   />
                 </td>
-                <td className="px-3 py-4 whitespace-nowrap">
+                <td className="px-2 sm:px-3 py-3 sm:py-4 whitespace-nowrap">
                   <input
                     type="time"
                     value={dayHours.kitchen_closes || ''}
                     onChange={(e) => handleTimeChange(dayHours.day_of_week, 'kitchen_closes', e.target.value)}
                     disabled={dayHours.is_closed}
-                    className="block w-full px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100"
+                    className="block w-full px-2 sm:px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100 min-h-[40px]"
                   />
                 </td>
               </tr>
@@ -151,9 +152,74 @@ export function BusinessHoursManager() {
           </tbody>
         </table>
       </div>
+      
+      {/* Mobile Card View */}
+      <div className="lg:hidden space-y-3">
+        {reorderedHours.map((dayHours) => (
+          <div key={dayHours.day_of_week} className="border rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-gray-900">
+                {DAY_NAMES[dayHours.day_of_week]}
+              </h3>
+              <label className="flex items-center text-sm">
+                <input
+                  type="checkbox"
+                  checked={dayHours.is_closed}
+                  onChange={(e) => handleTimeChange(dayHours.day_of_week, 'is_closed', e.target.checked)}
+                  className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded mr-2"
+                />
+                Closed
+              </label>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Opens</label>
+                <input
+                  type="time"
+                  value={dayHours.opens || ''}
+                  onChange={(e) => handleTimeChange(dayHours.day_of_week, 'opens', e.target.value)}
+                  disabled={dayHours.is_closed}
+                  className="block w-full px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100 min-h-[40px]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Closes</label>
+                <input
+                  type="time"
+                  value={dayHours.closes || ''}
+                  onChange={(e) => handleTimeChange(dayHours.day_of_week, 'closes', e.target.value)}
+                  disabled={dayHours.is_closed}
+                  className="block w-full px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100 min-h-[40px]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Kitchen Opens</label>
+                <input
+                  type="time"
+                  value={dayHours.kitchen_opens || ''}
+                  onChange={(e) => handleTimeChange(dayHours.day_of_week, 'kitchen_opens', e.target.value)}
+                  disabled={dayHours.is_closed}
+                  className="block w-full px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100 min-h-[40px]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Kitchen Closes</label>
+                <input
+                  type="time"
+                  value={dayHours.kitchen_closes || ''}
+                  onChange={(e) => handleTimeChange(dayHours.day_of_week, 'kitchen_closes', e.target.value)}
+                  disabled={dayHours.is_closed}
+                  className="block w-full px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100 min-h-[40px]"
+                />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
 
-      <div className="flex justify-end">
-        <Button type="submit" disabled={isSaving}>
+      <div className="flex justify-end pt-4">
+        <Button type="submit" disabled={isSaving} className="w-full sm:w-auto">
           {isSaving ? 'Saving...' : 'Save Changes'}
         </Button>
       </div>

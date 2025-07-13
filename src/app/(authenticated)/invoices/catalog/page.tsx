@@ -150,12 +150,12 @@ export default function LineItemCatalogPage() {
         </Button>
       </Link>
       
-      <div className="mb-8 flex justify-between items-center">
+      <div className="mb-8 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Line Item Catalog</h1>
-          <p className="text-muted-foreground">Manage reusable line items for invoices and quotes</p>
+          <h1 className="text-2xl sm:text-3xl font-bold mb-2">Line Item Catalog</h1>
+          <p className="text-sm sm:text-base text-muted-foreground">Manage reusable line items for invoices and quotes</p>
         </div>
-        <Button onClick={() => openForm()}>
+        <Button onClick={() => openForm()} className="w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
           Add Item
         </Button>
@@ -177,64 +177,111 @@ export default function LineItemCatalogPage() {
           </Button>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow-sm border">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b bg-gray-50">
-                  <th className="text-left p-4 font-medium text-gray-700">Name</th>
-                  <th className="text-left p-4 font-medium text-gray-700">Description</th>
-                  <th className="text-right p-4 font-medium text-gray-700">Default Price</th>
-                  <th className="text-right p-4 font-medium text-gray-700">VAT Rate</th>
-                  <th className="text-right p-4 font-medium text-gray-700">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => (
-                  <tr key={item.id} className="border-b hover:bg-gray-50">
-                    <td className="p-4">
-                      <div className="font-medium">{item.name}</div>
-                    </td>
-                    <td className="p-4 text-gray-600">
-                      {item.description || '-'}
-                    </td>
-                    <td className="p-4 text-right">
-                      £{item.default_price.toFixed(2)}
-                    </td>
-                    <td className="p-4 text-right">
-                      {item.default_vat_rate}%
-                    </td>
-                    <td className="p-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openForm(item)}
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDelete(item)}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </td>
+        <>
+          {/* Desktop Table */}
+          <div className="hidden md:block bg-white rounded-lg shadow-sm border">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b bg-gray-50">
+                    <th className="text-left p-4 font-medium text-gray-700">Name</th>
+                    <th className="text-left p-4 font-medium text-gray-700">Description</th>
+                    <th className="text-right p-4 font-medium text-gray-700">Default Price</th>
+                    <th className="text-right p-4 font-medium text-gray-700">VAT Rate</th>
+                    <th className="text-right p-4 font-medium text-gray-700">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {items.map((item) => (
+                    <tr key={item.id} className="border-b hover:bg-gray-50">
+                      <td className="p-4">
+                        <div className="font-medium">{item.name}</div>
+                      </td>
+                      <td className="p-4 text-gray-600">
+                        {item.description || '-'}
+                      </td>
+                      <td className="p-4 text-right">
+                        £{item.default_price.toFixed(2)}
+                      </td>
+                      <td className="p-4 text-right">
+                        {item.default_vat_rate}%
+                      </td>
+                      <td className="p-4 text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openForm(item)}
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDelete(item)}
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+
+          {/* Mobile Card View */}
+          <div className="md:hidden space-y-3">
+            {items.map((item) => (
+              <div key={item.id} className="bg-white rounded-lg shadow-sm border p-4">
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex-1">
+                    <h3 className="font-medium text-gray-900">{item.name}</h3>
+                    {item.description && (
+                      <p className="text-sm text-gray-600 mt-1">{item.description}</p>
+                    )}
+                  </div>
+                  <div className="flex gap-2 ml-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openForm(item)}
+                      className="min-h-[40px] min-w-[40px] p-2"
+                    >
+                      <Edit2 className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDelete(item)}
+                      className="text-red-600 hover:text-red-800 min-h-[40px] min-w-[40px] p-2"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <div>
+                    <span className="text-gray-500">Price:</span>
+                    <span className="font-medium ml-1">£{item.default_price.toFixed(2)}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">VAT:</span>
+                    <span className="font-medium ml-1">{item.default_vat_rate}%</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {/* Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-4 border-b">
               <h2 className="text-lg font-semibold">
                 {editingItem ? 'Edit Catalog Item' : 'Add Catalog Item'}
@@ -257,7 +304,7 @@ export default function LineItemCatalogPage() {
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                   required
                   disabled={formLoading}
                 />
@@ -270,13 +317,13 @@ export default function LineItemCatalogPage() {
                 <textarea
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
                   rows={3}
                   disabled={formLoading}
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">
                     Default Price (£) <span className="text-red-500">*</span>
@@ -285,7 +332,7 @@ export default function LineItemCatalogPage() {
                     type="number"
                     value={formData.default_price}
                     onChange={(e) => setFormData({ ...formData, default_price: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                     step="0.01"
                     min="0"
                     required
@@ -301,7 +348,7 @@ export default function LineItemCatalogPage() {
                     type="number"
                     value={formData.default_vat_rate}
                     onChange={(e) => setFormData({ ...formData, default_vat_rate: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                     step="0.01"
                     min="0"
                     max="100"

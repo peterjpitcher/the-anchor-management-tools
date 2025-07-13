@@ -47,10 +47,10 @@ export default async function EventsPage() {
                 Manage your events and track bookings
               </p>
             </div>
-            <div className="flex space-x-3">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <Link
                 href="/settings/event-categories"
-                className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                className="inline-flex items-center justify-center px-4 py-3 sm:py-2 border border-gray-300 shadow-sm text-base sm:text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 active:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 min-h-[44px] transition-colors touch-manipulation w-full sm:w-auto"
               >
                 <Cog6ToothIcon className="-ml-1 mr-2 h-5 w-5 text-gray-500" />
                 Manage Categories
@@ -89,7 +89,9 @@ export default async function EventsPage() {
               </div>
             </div>
           ) : (
-            <table className="min-w-full divide-y divide-gray-200">
+            <>
+            {/* Desktop Table */}
+            <table className="hidden sm:table min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -181,6 +183,80 @@ export default async function EventsPage() {
                 })}
               </tbody>
             </table>
+            
+            {/* Mobile Cards */}
+            <div className="sm:hidden">
+              {futureEvents.map((event) => {
+                const eventDate = new Date(event.date)
+                const isToday = event.date === today
+                const isFull = event.capacity && event.booked_seats >= event.capacity
+                
+                return (
+                  <div key={event.id} className={`p-4 border-b border-gray-200 ${isToday ? 'bg-yellow-50' : ''}`}>
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex-1">
+                        <Link href={`/events/${event.id}`} className="text-base font-medium text-gray-900 hover:text-blue-600">
+                          {event.name}
+                        </Link>
+                        {event.category && (
+                          <div className="mt-1">
+                            <span 
+                              className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                              style={{ 
+                                backgroundColor: `${event.category.color}20`,
+                                color: event.category.color 
+                              }}
+                            >
+                              {event.category.name}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      {isToday && <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">Today</span>}
+                    </div>
+                    
+                    <div className="text-sm text-gray-600 mb-2">
+                      <div>{formatDate(eventDate)} at {event.time}</div>
+                    </div>
+                    
+                    <div className="mb-3">
+                      <div className="flex justify-between text-sm text-gray-900 mb-1">
+                        <span>Bookings</span>
+                        <span>{event.booked_seats} / {event.capacity || '∞'}</span>
+                      </div>
+                      {event.capacity && (
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className={`h-2 rounded-full ${
+                              isFull ? 'bg-red-600' : 
+                              event.booked_seats / event.capacity > 0.8 ? 'bg-yellow-500' : 
+                              'bg-green-500'
+                            }`}
+                            style={{ width: `${Math.min((event.booked_seats / event.capacity) * 100, 100)}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="flex gap-3">
+                      <Link 
+                        href={`/events/${event.id}`} 
+                        className="flex-1 text-center py-2 px-4 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 active:bg-blue-200 transition-colors touch-manipulation"
+                      >
+                        View Details
+                      </Link>
+                      <Link 
+                        href={`/events/${event.id}/edit`} 
+                        className="px-4 py-2 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation"
+                      >
+                        <PencilSquareIcon className="h-5 w-5" />
+                      </Link>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            </>
           )}
         </div>
       </div>
@@ -192,7 +268,8 @@ export default async function EventsPage() {
             <h2 className="text-lg font-medium text-gray-900 inline">Past Events ({pastEvents.length})</h2>
           </summary>
           <div className="border-t border-gray-200">
-            <table className="min-w-full divide-y divide-gray-200">
+            {/* Desktop Table */}
+            <table className="hidden sm:table min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -245,6 +322,41 @@ export default async function EventsPage() {
                 ))}
               </tbody>
             </table>
+            
+            {/* Mobile Cards */}
+            <div className="sm:hidden">
+              {pastEvents.slice(-20).reverse().map((event) => (
+                <div key={event.id} className="p-4 border-b border-gray-200">
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex-1">
+                      <Link href={`/events/${event.id}`} className="text-base font-medium text-gray-600 hover:text-gray-900">
+                        {event.name}
+                      </Link>
+                    </div>
+                  </div>
+                  
+                  <div className="text-sm text-gray-500 mb-2">
+                    <div>{formatDate(new Date(event.date))}</div>
+                    <div>Attendance: {event.booked_seats}</div>
+                  </div>
+                  
+                  <div className="flex gap-3">
+                    <Link 
+                      href={`/events/${event.id}`} 
+                      className="flex-1 text-center py-2 px-4 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation"
+                    >
+                      View Details
+                    </Link>
+                    <Link 
+                      href={`/events/${event.id}/edit`} 
+                      className="px-4 py-2 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation"
+                    >
+                      <PencilSquareIcon className="h-5 w-5" />
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </details>
       )}

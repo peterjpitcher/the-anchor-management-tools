@@ -97,19 +97,19 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
   }
 
   return (
-    <div className="flex flex-col h-[500px] bg-white rounded-lg border border-gray-200">
+    <div className="flex flex-col h-[400px] sm:h-[500px] md:h-[600px] bg-white rounded-lg border border-gray-200">
       {/* Messages area */}
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
-            <p className="text-gray-500 text-sm">No messages yet. Start a conversation!</p>
+            <p className="text-gray-500 text-sm sm:text-base text-center">No messages yet. Start a conversation!</p>
           </div>
         ) : (
           Object.entries(groupedMessages).map(([date, dateMessages]) => (
           <div key={date}>
             {/* Date separator */}
             <div className="flex items-center justify-center mb-4">
-              <span className="px-3 py-1 text-xs text-gray-500 bg-gray-200 rounded-full">
+              <span className="px-3 py-1 text-xs sm:text-sm text-gray-500 bg-gray-200 rounded-full">
                 {date === new Date().toLocaleDateString() ? 'Today' : date}
               </span>
             </div>
@@ -124,7 +124,7 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
               return (
                 <div key={message.id}>
                   <div className={`flex ${isInbound ? 'justify-start' : 'justify-end'} mb-2`}>
-                    <div className={`max-w-[70%] ${isInbound ? 'order-1' : 'order-2'}`}>
+                    <div className={`max-w-[85%] sm:max-w-[70%] ${isInbound ? 'order-1' : 'order-2'}`}>
                       <div
                         className={`px-4 py-2 rounded-2xl ${
                           isInbound
@@ -132,14 +132,14 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
                             : 'bg-blue-500 text-white rounded-tr-sm'
                         }`}
                       >
-                        <p className="text-sm whitespace-pre-wrap break-words">{message.body}</p>
+                        <p className="text-sm sm:text-base whitespace-pre-wrap break-words">{message.body}</p>
                       </div>
                       <div className={`flex items-center mt-1 ${isInbound ? 'justify-start' : 'justify-end'}`}>
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs sm:text-sm text-gray-500">
                           {getMessageTime(message.created_at)}
                         </span>
                         {showStatus && message.twilio_status && (
-                          <span className="ml-2 text-xs text-gray-500">
+                          <span className="ml-2 text-xs sm:text-sm text-gray-500">
                             • {getStatusText(message.twilio_status)}
                           </span>
                         )}
@@ -166,8 +166,8 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
                 onKeyPress={handleKeyPress}
                 placeholder="Message"
                 rows={1}
-                className="w-full px-4 py-2.5 pr-12 text-sm bg-gray-100 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                style={{ minHeight: '40px', maxHeight: '120px' }}
+                className="w-full px-4 py-3 sm:py-2.5 pr-12 text-base sm:text-sm bg-gray-100 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                style={{ minHeight: '44px', maxHeight: '120px' }}
                 onInput={(e) => {
                   e.currentTarget.style.height = 'auto'
                   e.currentTarget.style.height = Math.min(e.currentTarget.scrollHeight, 120) + 'px'
@@ -177,17 +177,17 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
               <button
                 onClick={handleSend}
                 disabled={!newMessage.trim() || sending}
-                className={`absolute right-1 bottom-1 p-1.5 rounded-full transition-all ${
+                className={`absolute right-1 bottom-1.5 sm:bottom-1 p-2 sm:p-1.5 rounded-full transition-all touch-manipulation ${
                   newMessage.trim() && !sending
                     ? 'bg-blue-500 text-white hover:bg-blue-600 scale-100'
                     : 'bg-blue-500 text-white scale-0'
                 }`}
               >
-                <PaperAirplaneIcon className="h-4 w-4 -rotate-45" />
+                <PaperAirplaneIcon className="h-5 w-5 sm:h-4 sm:w-4 -rotate-45" />
               </button>
             </div>
           </div>
-          <p className="mt-1.5 text-xs text-gray-400 text-center">
+          <p className="mt-1.5 text-xs sm:text-sm text-gray-400 text-center">
             Text Message • SMS
           </p>
         </div>

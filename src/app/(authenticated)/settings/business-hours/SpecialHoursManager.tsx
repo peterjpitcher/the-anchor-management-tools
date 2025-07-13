@@ -126,7 +126,7 @@ export function SpecialHoursManager() {
                 required
                 value={formData.date}
                 onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 text-sm min-h-[40px]"
               />
             </div>
             
@@ -203,7 +203,7 @@ export function SpecialHoursManager() {
                 value={formData.note}
                 onChange={(e) => setFormData({ ...formData, note: e.target.value })}
                 placeholder="e.g., Christmas Day, Bank Holiday"
-                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 text-sm min-h-[40px]"
               />
             </div>
           </div>

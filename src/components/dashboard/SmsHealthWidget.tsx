@@ -172,14 +172,14 @@ export function SmsHealthWidget() {
   return (
     <div className="bg-white shadow rounded-lg">
       <div className="px-4 py-5 sm:p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg leading-6 font-medium text-gray-900 flex items-center">
-            <ChatBubbleLeftRightIcon className="h-5 w-5 text-blue-600 mr-2" />
+        <div className="flex justify-between items-start sm:items-center mb-4">
+          <h3 className="text-base sm:text-lg leading-6 font-medium text-gray-900 flex items-center">
+            <ChatBubbleLeftRightIcon className="h-5 w-5 text-blue-600 mr-2 flex-shrink-0" />
             SMS Health
           </h3>
           <Link
             href="/settings/sms-health"
-            className="text-sm text-indigo-600 hover:text-indigo-500"
+            className="text-xs sm:text-sm text-indigo-600 hover:text-indigo-500 whitespace-nowrap"
           >
             View Details
           </Link>
@@ -189,8 +189,8 @@ export function SmsHealthWidget() {
         <div className="mb-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-3xl font-semibold text-gray-900">{stats.deliveryRate}%</p>
-              <p className="text-sm text-gray-500">Delivery Rate</p>
+              <p className="text-2xl sm:text-3xl font-semibold text-gray-900">{stats.deliveryRate}%</p>
+              <p className="text-xs sm:text-sm text-gray-500">Delivery Rate</p>
             </div>
             <div className="flex items-center">
               {stats.deliveryTrend > 0 ? (
@@ -214,17 +214,17 @@ export function SmsHealthWidget() {
         <div className="grid grid-cols-3 gap-2 mb-4 text-center">
           <div className="bg-green-50 rounded-lg p-2">
             <CheckCircleIcon className="h-5 w-5 text-green-600 mx-auto mb-1" />
-            <p className="text-lg font-semibold text-green-900">{stats.activeCustomers}</p>
+            <p className="text-base sm:text-lg font-semibold text-green-900">{stats.activeCustomers}</p>
             <p className="text-xs text-green-700">Active</p>
           </div>
           <div className="bg-yellow-50 rounded-lg p-2">
             <ExclamationTriangleIcon className="h-5 w-5 text-yellow-600 mx-auto mb-1" />
-            <p className="text-lg font-semibold text-yellow-900">{stats.problemCustomers.length}</p>
+            <p className="text-base sm:text-lg font-semibold text-yellow-900">{stats.problemCustomers.length}</p>
             <p className="text-xs text-yellow-700">Issues</p>
           </div>
           <div className="bg-red-50 rounded-lg p-2">
             <XCircleIcon className="h-5 w-5 text-red-600 mx-auto mb-1" />
-            <p className="text-lg font-semibold text-red-900">{stats.suspendedCustomers}</p>
+            <p className="text-base sm:text-lg font-semibold text-red-900">{stats.suspendedCustomers}</p>
             <p className="text-xs text-red-700">Suspended</p>
           </div>
         </div>
@@ -232,7 +232,7 @@ export function SmsHealthWidget() {
         {/* Problem Customers */}
         {stats.problemCustomers.length > 0 && (
           <div className="mb-4">
-            <h4 className="text-sm font-medium text-gray-700 mb-2">Customers with Issues</h4>
+            <h4 className="text-sm sm:text-base font-medium text-gray-700 mb-2">Customers with Issues</h4>
             <div className="space-y-2">
               {stats.problemCustomers.map((customer, index) => (
                 <div key={index} className="flex items-center justify-between text-sm bg-yellow-50 rounded p-2">
@@ -254,7 +254,7 @@ export function SmsHealthWidget() {
         {/* Recent Failures */}
         {stats.recentFailures.length > 0 && (
           <div className="pt-4 border-t border-gray-200">
-            <h4 className="text-sm font-medium text-gray-700 mb-2">Recent Failures</h4>
+            <h4 className="text-sm sm:text-base font-medium text-gray-700 mb-2">Recent Failures</h4>
             <div className="space-y-1">
               {stats.recentFailures.slice(0, 3).map((failure, index) => (
                 <div key={index} className="text-xs text-gray-600">

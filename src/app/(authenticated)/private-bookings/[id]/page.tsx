@@ -124,8 +124,8 @@ function PaymentModal({ isOpen, onClose, bookingId, type, amount, onSuccess }: P
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <div className="bg-white rounded-t-lg sm:rounded-lg shadow-xl max-w-md w-full max-h-[90vh] sm:max-h-[80vh] overflow-y-auto">
         <div className="px-6 py-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-gray-900">
@@ -148,7 +148,7 @@ function PaymentModal({ isOpen, onClose, bookingId, type, amount, onSuccess }: P
               onChange={(e) => setCustomAmount(e.target.value)}
               step="0.01"
               min="0"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
               required
             />
           </div>
@@ -169,7 +169,7 @@ function PaymentModal({ isOpen, onClose, bookingId, type, amount, onSuccess }: P
                     value={method.value}
                     checked={paymentMethod === method.value}
                     onChange={(e) => setPaymentMethod(e.target.value as 'cash' | 'card' | 'invoice')}
-                    className="mr-3"
+                    className="mr-3 h-5 w-5"
                   />
                   <method.icon className="h-5 w-5 mr-2 text-gray-400" />
                   <span className="text-sm text-gray-900">{method.label}</span>
@@ -182,14 +182,14 @@ function PaymentModal({ isOpen, onClose, bookingId, type, amount, onSuccess }: P
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+              className="px-4 py-3 sm:py-2 text-base sm:text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 active:bg-gray-100 min-h-[44px] transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              className="px-4 py-3 sm:py-2 text-base sm:text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 min-h-[44px] transition-colors"
             >
               {isSubmitting ? 'Recording...' : 'Record Payment'}
             </button>
@@ -235,8 +235,8 @@ function StatusModal({ isOpen, onClose, bookingId, currentStatus, onSuccess }: S
   const availableStatuses = statusFlow[currentStatus] || []
 
   return (
-    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <div className="bg-white rounded-t-lg sm:rounded-lg shadow-xl max-w-md w-full max-h-[90vh] sm:max-h-[80vh] overflow-y-auto">
         <div className="px-6 py-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-gray-900">Change Booking Status</h3>
@@ -269,7 +269,7 @@ function StatusModal({ isOpen, onClose, bookingId, currentStatus, onSuccess }: S
                         value={status}
                         checked={newStatus === status}
                         onChange={(e) => setNewStatus(e.target.value as BookingStatus)}
-                        className="mr-3"
+                        className="mr-3 h-5 w-5"
                       />
                       <StatusIcon className="h-5 w-5 mr-2 text-gray-400" />
                       <div className="flex-1">
@@ -287,14 +287,14 @@ function StatusModal({ isOpen, onClose, bookingId, currentStatus, onSuccess }: S
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                  className="px-4 py-3 sm:py-2 text-base sm:text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 active:bg-gray-100 min-h-[44px] transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSubmit}
                   disabled={isSubmitting || newStatus === currentStatus}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  className="px-4 py-3 sm:py-2 text-base sm:text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 min-h-[44px] transition-colors"
                 >
                   {isSubmitting ? 'Updating...' : 'Update Status'}
                 </button>
@@ -448,8 +448,8 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <div className="bg-white rounded-t-lg sm:rounded-lg shadow-xl max-w-full sm:max-w-2xl w-full max-h-[90vh] sm:max-h-[80vh] overflow-y-auto">
         <div className="px-6 py-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-gray-900">Add Booking Item</h3>
@@ -545,7 +545,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                   const item = items.find(i => i.id === e.target.value)
                   setSelectedItem(item || null)
                 }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                 required
               >
                 <option value="">Select...</option>
@@ -575,7 +575,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                 type="text"
                 value={customDescription}
                 onChange={(e) => setCustomDescription(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                 required
                 readOnly={itemType === 'electricity'}
               />
@@ -595,7 +595,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                 onChange={(e) => setCustomPrice(e.target.value)}
                 step="0.01"
                 min="0"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                 required
                 placeholder="Enter total price"
               />
@@ -612,7 +612,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                   value={quantity}
                   onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
                   min="1"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                   required
                   readOnly={itemType === 'electricity'}
                 />
@@ -631,7 +631,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                   onChange={(e) => setCustomPrice(e.target.value)}
                   step="0.01"
                   min="0"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                   required={itemType === 'other' || itemType === 'vendor' || itemType === 'electricity'}
                   readOnly={(itemType !== 'other' && itemType !== 'vendor' && !!selectedItem) || itemType === 'electricity'}
                 />
@@ -653,14 +653,14 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                   placeholder="Amount"
                   min="0"
                   step="0.01"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                 />
               </div>
               <div>
                 <select
                   value={discountType}
                   onChange={(e) => setDiscountType(e.target.value as 'percent' | 'fixed')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                 >
                   <option value="percent">Percentage (%)</option>
                   <option value="fixed">Fixed Amount (£)</option>
@@ -678,7 +678,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
             />
           </div>
 
@@ -687,14 +687,14 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+              className="px-4 py-3 sm:py-2 text-base sm:text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 active:bg-gray-100 min-h-[44px] transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              className="px-4 py-3 sm:py-2 text-base sm:text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 min-h-[44px] transition-colors"
             >
               {isSubmitting ? 'Adding...' : 'Add Item'}
             </button>
@@ -752,8 +752,8 @@ function DiscountModal({ isOpen, onClose, bookingId, currentTotal, onSuccess }: 
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <div className="bg-white rounded-t-lg sm:rounded-lg shadow-xl max-w-md w-full max-h-[90vh] sm:max-h-[80vh] overflow-y-auto">
         <div className="px-6 py-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-gray-900">Apply Booking Discount</h3>
@@ -807,7 +807,7 @@ function DiscountModal({ isOpen, onClose, bookingId, currentTotal, onSuccess }: 
               step="0.01"
               min="0"
               max={discountType === 'percent' ? '100' : undefined}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
               required
             />
           </div>
@@ -820,7 +820,7 @@ function DiscountModal({ isOpen, onClose, bookingId, currentTotal, onSuccess }: 
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
               required
               placeholder="e.g., Early bird discount, loyalty customer, etc."
             />
@@ -850,14 +850,14 @@ function DiscountModal({ isOpen, onClose, bookingId, currentTotal, onSuccess }: 
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+              className="px-4 py-3 sm:py-2 text-base sm:text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 active:bg-gray-100 min-h-[44px] transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting || !discountAmount}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              className="px-4 py-3 sm:py-2 text-base sm:text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 min-h-[44px] transition-colors"
             >
               {isSubmitting ? 'Applying...' : 'Apply Discount'}
             </button>
@@ -968,7 +968,7 @@ function EditItemModal({ isOpen, onClose, item, onSuccess }: EditItemModalProps)
                 value={quantity}
                 onChange={(e) => setQuantity(parseInt(e.target.value) || 0)}
                 min="1"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                 required
               />
             </div>
@@ -983,7 +983,7 @@ function EditItemModal({ isOpen, onClose, item, onSuccess }: EditItemModalProps)
                 onChange={(e) => setUnitPrice(e.target.value)}
                 min="0"
                 step="0.01"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
                 required
               />
             </div>
@@ -1023,7 +1023,7 @@ function EditItemModal({ isOpen, onClose, item, onSuccess }: EditItemModalProps)
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              className="w-full px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 min-h-[44px]"
               placeholder="e.g., Special pricing agreement, discount reason, etc."
             />
           </div>
@@ -1041,14 +1041,14 @@ function EditItemModal({ isOpen, onClose, item, onSuccess }: EditItemModalProps)
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+              className="px-4 py-3 sm:py-2 text-base sm:text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 active:bg-gray-100 min-h-[44px] transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              className="px-4 py-3 sm:py-2 text-base sm:text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 min-h-[44px] transition-colors"
             >
               {isSubmitting ? 'Saving...' : 'Save Changes'}
             </button>

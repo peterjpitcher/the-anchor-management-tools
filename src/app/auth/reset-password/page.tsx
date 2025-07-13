@@ -59,10 +59,10 @@ function ResetPasswordForm() {
             />
           </div>
           
-          <h1 className="text-3xl font-bold text-white mb-4">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white mb-4">
             Check your email
           </h1>
-          <p className="text-green-100 mb-8">
+          <p className="text-sm sm:text-base text-green-100 mb-8">
             We&apos;ve sent a password reset link to {email}
           </p>
           
@@ -95,10 +95,10 @@ function ResetPasswordForm() {
           </div>
           
           {/* Title */}
-          <h1 className="text-3xl font-bold text-white">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">
             Reset your password
           </h1>
-          <p className="mt-2 text-sm text-green-100">
+          <p className="mt-2 text-xs sm:text-sm text-green-100">
             Enter your email address and we&apos;ll send you a reset link
           </p>
         </div>
@@ -123,7 +123,7 @@ function ResetPasswordForm() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 block w-full rounded-lg border border-green-800/50 bg-white/10 backdrop-blur px-3 py-2 text-white placeholder-green-200 shadow-sm focus:border-white focus:ring-white sm:text-sm"
+              className="mt-1 block w-full rounded-lg border border-green-800/50 bg-white/10 backdrop-blur px-4 py-3 text-base text-white placeholder-green-200 shadow-sm focus:border-white focus:ring-white min-h-[44px]"
               placeholder="you@example.com"
             />
           </div>
@@ -133,7 +133,7 @@ function ResetPasswordForm() {
             <button
               type="submit"
               disabled={isLoading}
-              className="inline-flex w-full items-center justify-center rounded-lg bg-white px-6 py-3 md:py-2 text-base md:text-sm font-medium text-sidebar shadow-sm hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-sidebar disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] transition-colors duration-150"
+              className="inline-flex w-full items-center justify-center rounded-lg bg-white px-6 py-3 text-base font-medium text-sidebar shadow-sm hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-sidebar disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px] transition-colors duration-150 touch-manipulation"
             >
               {isLoading ? (
                 <>

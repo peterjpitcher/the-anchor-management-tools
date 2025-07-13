@@ -163,7 +163,7 @@ export default function RedemptionPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center space-x-4">
@@ -175,29 +175,29 @@ export default function RedemptionPage() {
             Back
           </Link>
         </div>
-        <h1 className="text-3xl font-bold text-gray-900 mt-4">Redemption Terminal</h1>
-        <p className="mt-2 text-gray-600">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mt-4">Redemption Terminal</h1>
+        <p className="mt-2 text-sm sm:text-base text-gray-600">
           Process customer reward redemptions
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-8">
         {/* Main Redemption Interface */}
         <div className="lg:col-span-2">
           <div className="bg-white shadow rounded-lg p-6">
             {state === 'success' && redemptionResult ? (
-              <div className="text-center py-8">
-                <CheckCircleIcon className="h-20 w-20 text-green-500 mx-auto mb-4" />
-                <h2 className="text-3xl font-bold text-green-600 mb-2">VALID</h2>
-                <p className="text-xl font-semibold text-gray-900 mb-4">
+              <div className="text-center py-6 sm:py-8">
+                <CheckCircleIcon className="h-16 w-16 sm:h-20 sm:w-20 text-green-500 mx-auto mb-4" />
+                <h2 className="text-2xl sm:text-3xl font-bold text-green-600 mb-2">VALID</h2>
+                <p className="text-lg sm:text-xl font-semibold text-gray-900 mb-4 px-4">
                   {redemptionResult.reward_name}
                 </p>
                 
-                <div className="bg-green-50 rounded-lg p-6 mb-6 max-w-md mx-auto">
-                  <p className="text-lg text-green-900 font-medium mb-2">
+                <div className="bg-green-50 rounded-lg p-4 sm:p-6 mb-6 max-w-md mx-auto">
+                  <p className="text-base sm:text-lg text-green-900 font-medium mb-2">
                     Serve the customer their reward:
                   </p>
-                  <p className="text-green-700">
+                  <p className="text-sm sm:text-base text-green-700">
                     {redemptionResult.reward_description}
                   </p>
                 </div>
@@ -221,15 +221,15 @@ export default function RedemptionPage() {
                 
                 <button
                   onClick={reset}
-                  className="inline-flex items-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-gray-600 hover:bg-gray-700"
+                  className="inline-flex items-center px-6 py-3 border border-transparent rounded-md shadow-sm text-sm sm:text-base font-medium text-white bg-gray-600 hover:bg-gray-700 min-h-[44px]"
                 >
                   Done - Next Customer
                 </button>
               </div>
             ) : state === 'expired' ? (
-              <div className="text-center py-8">
-                <ClockIcon className="h-20 w-20 text-orange-500 mx-auto mb-4" />
-                <h2 className="text-2xl font-bold text-orange-600 mb-2">Code Expired</h2>
+              <div className="text-center py-6 sm:py-8">
+                <ClockIcon className="h-16 w-16 sm:h-20 sm:w-20 text-orange-500 mx-auto mb-4" />
+                <h2 className="text-xl sm:text-2xl font-bold text-orange-600 mb-2">Code Expired</h2>
                 <p className="text-gray-600 mb-6">{errorMessage}</p>
                 
                 <div className="bg-orange-50 rounded-lg p-4 mb-6 max-w-md mx-auto">
@@ -246,9 +246,9 @@ export default function RedemptionPage() {
                 </button>
               </div>
             ) : state === 'already-used' ? (
-              <div className="text-center py-8">
-                <ExclamationTriangleIcon className="h-20 w-20 text-red-500 mx-auto mb-4" />
-                <h2 className="text-2xl font-bold text-red-600 mb-2">Already Redeemed</h2>
+              <div className="text-center py-6 sm:py-8">
+                <ExclamationTriangleIcon className="h-16 w-16 sm:h-20 sm:w-20 text-red-500 mx-auto mb-4" />
+                <h2 className="text-xl sm:text-2xl font-bold text-red-600 mb-2">Already Redeemed</h2>
                 <p className="text-gray-600 mb-6">{errorMessage}</p>
                 
                 <div className="bg-red-50 rounded-lg p-4 mb-6 max-w-md mx-auto">
@@ -265,9 +265,9 @@ export default function RedemptionPage() {
                 </button>
               </div>
             ) : state === 'error' ? (
-              <div className="text-center py-8">
-                <XCircleIcon className="h-20 w-20 text-red-500 mx-auto mb-4" />
-                <h2 className="text-2xl font-bold text-red-600 mb-2">Invalid Code</h2>
+              <div className="text-center py-6 sm:py-8">
+                <XCircleIcon className="h-16 w-16 sm:h-20 sm:w-20 text-red-500 mx-auto mb-4" />
+                <h2 className="text-xl sm:text-2xl font-bold text-red-600 mb-2">Invalid Code</h2>
                 <p className="text-gray-600 mb-6">{errorMessage || 'Please check and try again'}</p>
                 
                 <button
@@ -288,7 +288,9 @@ export default function RedemptionPage() {
                 
                 {showScanner ? (
                   <div>
-                    <video id="qr-video" className="w-full rounded-lg mb-4" />
+                    <div className="relative aspect-square max-w-md mx-auto mb-4">
+                      <video id="qr-video" className="w-full h-full rounded-lg object-cover" />
+                    </div>
                     <button
                       onClick={() => {
                         setShowScanner(false);
@@ -315,7 +317,7 @@ export default function RedemptionPage() {
                           id="code"
                           value={code}
                           onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
-                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent text-2xl font-mono text-center uppercase"
+                          className="w-full px-4 py-4 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent text-xl sm:text-2xl font-mono text-center uppercase min-h-[60px]"
                           placeholder="ABC1234"
                           pattern="[A-Z0-9]+"
                           maxLength={10}
@@ -327,7 +329,7 @@ export default function RedemptionPage() {
                       
                       <button
                         type="submit"
-                        className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-amber-600 hover:bg-amber-700"
+                        className="w-full inline-flex items-center justify-center px-6 py-4 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-amber-600 hover:bg-amber-700 min-h-[56px]"
                       >
                         Redeem Code
                       </button>
@@ -344,7 +346,7 @@ export default function RedemptionPage() {
                     
                     <button
                       onClick={handleQRScan}
-                      className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-blue-600 hover:bg-blue-700"
+                      className="w-full inline-flex items-center justify-center px-6 py-4 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-blue-600 hover:bg-blue-700 min-h-[56px]"
                     >
                       <QrCodeIcon className="h-5 w-5 mr-2" />
                       Scan QR Code
@@ -372,19 +374,19 @@ export default function RedemptionPage() {
                     className="p-3 border rounded-lg hover:bg-gray-50 cursor-pointer"
                     onClick={() => handlePendingRedemption(redemption)}
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">
                           {redemption.reward?.name}
                         </p>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-gray-500 truncate">
                           {redemption.member?.customer?.name}
                         </p>
                         <p className="text-xs text-gray-500 mt-1">
                           Code: <span className="font-mono">{redemption.code}</span>
                         </p>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right flex-shrink-0">
                         <p className="text-xs text-gray-500">
                           {new Date(redemption.created_at).toLocaleTimeString('en-GB', {
                             hour: '2-digit',

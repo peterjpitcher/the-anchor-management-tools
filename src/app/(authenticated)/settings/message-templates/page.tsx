@@ -252,10 +252,10 @@ export default function MessageTemplatesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Message Templates</h1>
-            <p className="mt-1 text-sm text-gray-500">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Message Templates</h1>
+            <p className="mt-1 text-xs sm:text-sm text-gray-500">
               Manage SMS templates for automated messages
             </p>
           </div>
@@ -265,50 +265,51 @@ export default function MessageTemplatesPage() {
             setEditingTemplate(null)
             setShowForm(true)
           }}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+          className="inline-flex items-center justify-center px-3 py-2 sm:px-4 border border-transparent text-xs sm:text-sm font-medium rounded-lg shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 whitespace-nowrap"
         >
-          <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
-          New Template
+          <PlusIcon className="-ml-1 mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" />
+          <span className="hidden sm:inline">New Template</span>
+          <span className="sm:hidden">New</span>
         </button>
       </div>
 
       {/* Template Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-semibold mb-4">
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="bg-white rounded-lg p-4 sm:p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">
               {editingTemplate ? 'Edit Template' : 'New Template'}
             </h2>
 
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Name</label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700">Name</label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm"
+                  className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm text-sm min-h-[40px]"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">Description</label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700">Description</label>
                 <input
                   type="text"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm"
+                  className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm text-sm min-h-[40px]"
                 />
               </div>
 
               {!editingTemplate && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Type</label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700">Type</label>
                   <select
                     value={formData.template_type}
                     onChange={(e) => setFormData({ ...formData, template_type: e.target.value as MessageTemplate['template_type'] })}
-                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm"
+                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm text-sm min-h-[40px]"
                   >
                     {Object.entries(TEMPLATE_TYPES).map(([key, label]) => (
                       <option key={key} value={key}>{label}</option>
@@ -318,11 +319,11 @@ export default function MessageTemplatesPage() {
               )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">Send Timing</label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700">Send Timing</label>
                 <select
                   value={formData.send_timing}
                   onChange={(e) => setFormData({ ...formData, send_timing: e.target.value as 'immediate' | '1_hour' | '12_hours' | '24_hours' | '7_days' | 'custom' })}
-                  className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm"
+                  className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm text-sm min-h-[40px]"
                 >
                   {Object.entries(TIMING_OPTIONS).map(([key, label]) => (
                     <option key={key} value={key}>{label}</option>
@@ -332,14 +333,14 @@ export default function MessageTemplatesPage() {
 
               {formData.send_timing === 'custom' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Hours before event</label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700">Hours before event</label>
                   <input
                     type="number"
                     min="1"
                     max="720"
                     value={formData.custom_timing_hours || ''}
                     onChange={(e) => setFormData({ ...formData, custom_timing_hours: e.target.value ? parseInt(e.target.value) : null })}
-                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm"
+                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm text-sm min-h-[40px]"
                     placeholder="Enter hours (1-720)"
                   />
                   <p className="mt-1 text-sm text-gray-500">Maximum 30 days (720 hours)</p>
@@ -347,21 +348,21 @@ export default function MessageTemplatesPage() {
               )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
                   Template Content
-                  <span className="text-xs text-gray-500 ml-2">
+                  <span className="text-xs text-gray-500 block sm:inline sm:ml-2">
                     ({formData.content.length} chars, ~{Math.ceil(formData.content.length / 160)} segments)
                   </span>
                 </label>
                 
                 {/* Variable buttons */}
-                <div className="mb-2 flex flex-wrap gap-2">
+                <div className="mb-2 flex flex-wrap gap-1.5 sm:gap-2">
                   {Object.entries(AVAILABLE_VARIABLES).map(([key, desc]) => (
                     <button
                       key={key}
                       type="button"
                       onClick={() => insertVariable(key)}
-                      className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
+                      className="inline-flex items-center px-1.5 py-0.5 sm:px-2 sm:py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
                       title={desc}
                     >
                       {`{{${key}}}`}
@@ -380,27 +381,27 @@ export default function MessageTemplatesPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Preview</label>
-                <div className="p-4 bg-gray-100 rounded-md">
-                  <p className="text-sm whitespace-pre-wrap">{preview}</p>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Preview</label>
+                <div className="p-3 sm:p-4 bg-gray-100 rounded-md">
+                  <p className="text-xs sm:text-sm whitespace-pre-wrap">{preview}</p>
                 </div>
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end space-x-3">
+            <div className="mt-4 sm:mt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:gap-3">
               <button
                 onClick={() => {
                   setShowForm(false)
                   setEditingTemplate(null)
                   resetForm()
                 }}
-                className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className="w-full sm:w-auto px-3 py-2 sm:px-4 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
-                className="px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+                className="w-full sm:w-auto px-3 py-2 sm:px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
               >
                 {editingTemplate ? 'Update' : 'Create'} Template
               </button>
@@ -417,42 +418,42 @@ export default function MessageTemplatesPage() {
 
           return (
             <div key={type} className="bg-white shadow rounded-lg">
-              <div className="px-4 py-5 sm:p-6">
-                <h3 className="text-lg font-medium mb-4">{label}</h3>
+              <div className="px-3 py-4 sm:px-4 sm:py-5 lg:p-6">
+                <h3 className="text-base sm:text-lg font-medium mb-3 sm:mb-4">{label}</h3>
                 
                 {typeTemplates.length === 0 ? (
-                  <p className="text-gray-500 text-sm">No templates configured</p>
+                  <p className="text-gray-500 text-xs sm:text-sm">No templates configured</p>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-3 sm:space-y-4">
                     {typeTemplates.map((template) => (
                       <div
                         key={template.id}
-                        className={`border rounded-lg p-4 ${
+                        className={`border rounded-lg p-3 sm:p-4 ${
                           !template.is_active ? 'bg-gray-50 opacity-60' : ''
                         }`}
                       >
-                        <div className="flex justify-between items-start">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
                           <div className="flex-1">
-                            <div className="flex items-center">
-                              <h4 className="font-medium">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <h4 className="font-medium text-sm sm:text-base">
                                 {template.name}
                                 {template.is_default && (
-                                  <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                                  <span className="text-xs bg-green-100 text-green-800 px-1.5 py-0.5 sm:px-2 sm:py-1 rounded">
                                     Default
                                   </span>
                                 )}
                               </h4>
                             </div>
                             {template.description && (
-                              <p className="text-sm text-gray-500 mt-1">{template.description}</p>
+                              <p className="text-xs sm:text-sm text-gray-500 mt-1">{template.description}</p>
                             )}
-                            <p className="text-sm text-gray-700 mt-2 whitespace-pre-wrap bg-gray-50 p-2 rounded">
+                            <p className="text-xs sm:text-sm text-gray-700 mt-2 whitespace-pre-wrap bg-gray-50 p-2 rounded overflow-x-auto">
                               {template.content}
                             </p>
-                            <div className="mt-2 flex items-center space-x-4 text-xs text-gray-500">
-                              <span>{template.character_count} characters</span>
+                            <div className="mt-2 flex flex-wrap gap-2 sm:gap-4 text-xs text-gray-500">
+                              <span>{template.character_count} chars</span>
                               <span>{template.estimated_segments} segment{template.estimated_segments !== 1 ? 's' : ''}</span>
-                              <span>Variables: {template.variables.join(', ')}</span>
+                              <span className="hidden sm:inline">Variables: {template.variables.join(', ')}</span>
                               {template.send_timing && (
                                 <span>
                                   Timing: {
@@ -465,10 +466,10 @@ export default function MessageTemplatesPage() {
                             </div>
                           </div>
                           
-                          <div className="flex items-center space-x-2 ml-4">
+                          <div className="flex items-center space-x-1.5 sm:space-x-2 self-end sm:self-auto">
                             <button
                               onClick={() => toggleActive(template)}
-                              className={`text-sm ${
+                              className={`text-xs sm:text-sm px-2 py-1 rounded ${
                                 template.is_active
                                   ? 'text-yellow-600 hover:text-yellow-700'
                                   : 'text-green-600 hover:text-green-700'
@@ -478,16 +479,16 @@ export default function MessageTemplatesPage() {
                             </button>
                             <button
                               onClick={() => editTemplate(template)}
-                              className="text-blue-600 hover:text-blue-900"
+                              className="text-blue-600 hover:text-blue-900 p-1 min-h-[32px] min-w-[32px]"
                             >
-                              <PencilIcon className="h-5 w-5" />
+                              <PencilIcon className="h-4 w-4 sm:h-5 sm:w-5" />
                             </button>
                             {!template.is_default && (
                               <button
                                 onClick={() => handleDelete(template.id)}
-                                className="text-red-600 hover:text-red-900"
+                                className="text-red-600 hover:text-red-900 p-1 min-h-[32px] min-w-[32px]"
                               >
-                                <TrashIcon className="h-5 w-5" />
+                                <TrashIcon className="h-4 w-4 sm:h-5 sm:w-5" />
                               </button>
                             )}
                           </div>
@@ -503,16 +504,16 @@ export default function MessageTemplatesPage() {
       </div>
 
       {/* Help Section */}
-      <div className="mt-8 bg-blue-50 rounded-lg p-6">
-        <h3 className="text-lg font-medium mb-2">Available Variables</h3>
-        <p className="text-sm text-gray-600 mb-4">
+      <div className="mt-6 sm:mt-8 bg-blue-50 rounded-lg p-4 sm:p-6">
+        <h3 className="text-base sm:text-lg font-medium mb-2">Available Variables</h3>
+        <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
           Use these variables in your templates. They will be automatically replaced with actual values when messages are sent.
         </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2 text-xs sm:text-sm">
           {Object.entries(AVAILABLE_VARIABLES).map(([key, desc]) => (
-            <div key={key}>
-              <code className="text-green-600">{`{{${key}}}`}</code>
-              <span className="text-gray-600 ml-2">- {desc}</span>
+            <div key={key} className="flex items-start">
+              <code className="text-green-600 text-xs flex-shrink-0">{`{{${key}}}`}</code>
+              <span className="text-gray-600 ml-1.5 sm:ml-2">- {desc}</span>
             </div>
           ))}
         </div>

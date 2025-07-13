@@ -86,29 +86,34 @@ export default function InvoicesPage() {
 
   return (
     <div className="space-y-6">
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Invoices</h1>
-          <p className="text-muted-foreground">Manage your invoices and payments</p>
+          <h1 className="text-2xl sm:text-3xl font-bold mb-2">Invoices</h1>
+          <p className="text-sm sm:text-base text-muted-foreground">Manage your invoices and payments</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
             onClick={() => router.push('/quotes')}
+            className="flex-1 sm:flex-initial"
           >
-            <FileText className="h-4 w-4 mr-2" />
-            Quotes
+            <FileText className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Quotes</span>
+            <span className="sm:hidden">Quotes</span>
           </Button>
           <Button
             variant="outline"
             onClick={() => router.push('/invoices/recurring')}
+            className="flex-1 sm:flex-initial"
           >
-            <Calendar className="h-4 w-4 mr-2" />
-            Recurring
+            <Calendar className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Recurring</span>
+            <span className="sm:hidden">Recurring</span>
           </Button>
-          <Button onClick={() => router.push('/invoices/new')}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Invoice
+          <Button onClick={() => router.push('/invoices/new')} className="flex-1 sm:flex-initial">
+            <Plus className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">New Invoice</span>
+            <span className="sm:hidden">New</span>
           </Button>
         </div>
       </div>
@@ -158,41 +163,43 @@ export default function InvoicesPage() {
       </div>
 
       <div className="bg-white rounded-lg shadow-sm border">
-        <div className="p-4 border-b flex flex-col md:flex-row gap-4 justify-between">
-          <div className="flex gap-2">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as InvoiceStatus | 'all')}
-              className="px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Invoices</option>
-              <option value="draft">Draft</option>
-              <option value="sent">Sent</option>
-              <option value="partially_paid">Partially Paid</option>
-              <option value="paid">Paid</option>
-              <option value="overdue">Overdue</option>
-              <option value="void">Void</option>
-              <option value="written_off">Written Off</option>
-            </select>
-            
-            <input
-              type="text"
-              placeholder="Search invoices..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+        <div className="p-4 border-b">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as InvoiceStatus | 'all')}
+                className="w-full sm:w-auto px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-h-[44px]"
+              >
+                <option value="all">All Invoices</option>
+                <option value="draft">Draft</option>
+                <option value="sent">Sent</option>
+                <option value="partially_paid">Partially Paid</option>
+                <option value="paid">Paid</option>
+                <option value="overdue">Overdue</option>
+                <option value="void">Void</option>
+                <option value="written_off">Written Off</option>
+              </select>
+              
+              <input
+                type="text"
+                placeholder="Search invoices..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full sm:w-auto flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+              />
+            </div>
 
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => router.push('/invoices/export')}>
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-            <Button variant="outline" onClick={() => router.push('/invoices/recurring')}>
-              <Calendar className="h-4 w-4 mr-2" />
-              Recurring
-            </Button>
+            <div className="flex gap-2 sm:hidden">
+              <Button variant="outline" onClick={() => router.push('/invoices/export')} className="flex-1">
+                <Download className="h-4 w-4 mr-1" />
+                Export
+              </Button>
+              <Button variant="outline" onClick={() => router.push('/invoices/recurring')} className="flex-1">
+                <Calendar className="h-4 w-4 mr-1" />
+                Recurring
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -209,61 +216,135 @@ export default function InvoicesPage() {
             )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b bg-gray-50">
-                  <th className="text-left p-4 font-medium text-gray-700">Invoice #</th>
-                  <th className="text-left p-4 font-medium text-gray-700">Vendor</th>
-                  <th className="text-left p-4 font-medium text-gray-700">Date</th>
-                  <th className="text-left p-4 font-medium text-gray-700">Due Date</th>
-                  <th className="text-left p-4 font-medium text-gray-700">Status</th>
-                  <th className="text-right p-4 font-medium text-gray-700">Amount</th>
-                  <th className="text-right p-4 font-medium text-gray-700">Balance</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredInvoices.map((invoice) => (
-                  <tr 
-                    key={invoice.id} 
-                    className="border-b hover:bg-gray-50 cursor-pointer"
-                    onClick={() => router.push(`/invoices/${invoice.id}`)}
-                  >
-                    <td className="p-4">
-                      <div className="font-medium">{invoice.invoice_number}</div>
-                      {invoice.reference && (
-                        <div className="text-sm text-gray-500">{invoice.reference}</div>
-                      )}
-                    </td>
-                    <td className="p-4">{invoice.vendor?.name || '-'}</td>
-                    <td className="p-4 text-sm">
-                      {new Date(invoice.invoice_date).toLocaleDateString('en-GB')}
-                    </td>
-                    <td className="p-4 text-sm">
-                      {new Date(invoice.due_date).toLocaleDateString('en-GB')}
-                    </td>
-                    <td className="p-4">
-                      <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(invoice.status)}`}>
-                        {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1).replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td className="p-4 text-right font-medium">
-                      £{invoice.total_amount.toFixed(2)}
-                    </td>
-                    <td className="p-4 text-right">
-                      {invoice.status === 'paid' ? (
-                        <span className="text-green-600">Paid</span>
-                      ) : (
-                        <span className={invoice.status === 'overdue' ? 'text-red-600 font-medium' : ''}>
-                          £{(invoice.total_amount - invoice.paid_amount).toFixed(2)}
-                        </span>
-                      )}
-                    </td>
+          <>
+            {/* Desktop Table */}
+            <div className="hidden lg:block overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b bg-gray-50">
+                    <th className="text-left p-4 font-medium text-gray-700">Invoice #</th>
+                    <th className="text-left p-4 font-medium text-gray-700">Vendor</th>
+                    <th className="text-left p-4 font-medium text-gray-700">Date</th>
+                    <th className="text-left p-4 font-medium text-gray-700">Due Date</th>
+                    <th className="text-left p-4 font-medium text-gray-700">Status</th>
+                    <th className="text-right p-4 font-medium text-gray-700">Amount</th>
+                    <th className="text-right p-4 font-medium text-gray-700">Balance</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {filteredInvoices.map((invoice) => (
+                    <tr 
+                      key={invoice.id} 
+                      className="border-b hover:bg-gray-50 cursor-pointer"
+                      onClick={() => router.push(`/invoices/${invoice.id}`)}
+                    >
+                      <td className="p-4">
+                        <div className="font-medium">{invoice.invoice_number}</div>
+                        {invoice.reference && (
+                          <div className="text-sm text-gray-500">{invoice.reference}</div>
+                        )}
+                      </td>
+                      <td className="p-4">{invoice.vendor?.name || '-'}</td>
+                      <td className="p-4 text-sm">
+                        {new Date(invoice.invoice_date).toLocaleDateString('en-GB')}
+                      </td>
+                      <td className="p-4 text-sm">
+                        {new Date(invoice.due_date).toLocaleDateString('en-GB')}
+                      </td>
+                      <td className="p-4">
+                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(invoice.status)}`}>
+                          {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1).replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="p-4 text-right font-medium">
+                        £{invoice.total_amount.toFixed(2)}
+                      </td>
+                      <td className="p-4 text-right">
+                        {invoice.status === 'paid' ? (
+                          <span className="text-green-600">Paid</span>
+                        ) : (
+                          <span className={invoice.status === 'overdue' ? 'text-red-600 font-medium' : ''}>
+                            £{(invoice.total_amount - invoice.paid_amount).toFixed(2)}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="lg:hidden">
+              <div className="space-y-3 p-4">
+                {filteredInvoices.map((invoice) => {
+                  const isOverdue = invoice.status === 'overdue'
+                  const isPaid = invoice.status === 'paid'
+                  
+                  return (
+                    <div 
+                      key={invoice.id}
+                      onClick={() => router.push(`/invoices/${invoice.id}`)}
+                      className="bg-white border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+                    >
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex-1">
+                          <div className="font-semibold text-gray-900">
+                            {invoice.invoice_number}
+                          </div>
+                          <div className="text-sm text-gray-600 mt-1">
+                            {invoice.vendor?.name || 'No vendor'}
+                          </div>
+                          {invoice.reference && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              Ref: {invoice.reference}
+                            </div>
+                          )}
+                        </div>
+                        <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(invoice.status)}`}>
+                          {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1).replace('_', ' ')}
+                        </span>
+                      </div>
+
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Invoice Date:</span>
+                          <span className="font-medium">
+                            {new Date(invoice.invoice_date).toLocaleDateString('en-GB')}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Due Date:</span>
+                          <span className={`font-medium ${isOverdue ? 'text-red-600' : ''}`}>
+                            {new Date(invoice.due_date).toLocaleDateString('en-GB')}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 pt-3 border-t flex justify-between items-center">
+                        <div>
+                          <div className="text-xs text-gray-500">Total Amount</div>
+                          <div className="font-semibold text-lg">
+                            £{invoice.total_amount.toFixed(2)}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xs text-gray-500">Balance</div>
+                          {isPaid ? (
+                            <div className="font-semibold text-green-600">Paid</div>
+                          ) : (
+                            <div className={`font-semibold ${isOverdue ? 'text-red-600' : ''}`}>
+                              £{(invoice.total_amount - invoice.paid_amount).toFixed(2)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </>
         )}
       </div>
 

@@ -168,48 +168,48 @@ export default function SMSHealthDashboard() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">SMS Health Dashboard</h1>
-          <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">SMS Health Dashboard</h1>
+          <p className="mt-1 text-xs sm:text-sm text-gray-500">
             Monitor SMS delivery health and customer messaging status
           </p>
         </div>
       
       {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-500">Total Customers</p>
-          <p className="text-2xl font-bold">{stats.totalCustomers}</p>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-4 sm:mb-6">
+        <div className="bg-white rounded-lg shadow p-3 sm:p-4">
+          <p className="text-xs sm:text-sm text-gray-500">Total Customers</p>
+          <p className="text-lg sm:text-2xl font-bold">{stats.totalCustomers}</p>
         </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-500">Active</p>
-          <p className="text-2xl font-bold text-green-600">{stats.activeCustomers}</p>
+        <div className="bg-white rounded-lg shadow p-3 sm:p-4">
+          <p className="text-xs sm:text-sm text-gray-500">Active</p>
+          <p className="text-lg sm:text-2xl font-bold text-green-600">{stats.activeCustomers}</p>
         </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-500">Suspended</p>
-          <p className="text-2xl font-bold text-yellow-600">{stats.suspendedCustomers}</p>
+        <div className="bg-white rounded-lg shadow p-3 sm:p-4">
+          <p className="text-xs sm:text-sm text-gray-500">Suspended</p>
+          <p className="text-lg sm:text-2xl font-bold text-yellow-600">{stats.suspendedCustomers}</p>
         </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-500">Invalid Numbers</p>
-          <p className="text-2xl font-bold text-red-600">{stats.invalidNumbers}</p>
+        <div className="bg-white rounded-lg shadow p-3 sm:p-4">
+          <p className="text-xs sm:text-sm text-gray-500">Invalid Numbers</p>
+          <p className="text-lg sm:text-2xl font-bold text-red-600">{stats.invalidNumbers}</p>
         </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-500">Total Spent</p>
-          <p className="text-2xl font-bold">${stats.totalSpent.toFixed(2)}</p>
+        <div className="bg-white rounded-lg shadow p-3 sm:p-4">
+          <p className="text-xs sm:text-sm text-gray-500">Total Spent</p>
+          <p className="text-lg sm:text-2xl font-bold">${stats.totalSpent.toFixed(2)}</p>
         </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-500">Delivery Rate</p>
-          <p className="text-2xl font-bold">{stats.overallDeliveryRate}%</p>
+        <div className="bg-white rounded-lg shadow p-3 sm:p-4">
+          <p className="text-xs sm:text-sm text-gray-500">Delivery Rate</p>
+          <p className="text-lg sm:text-2xl font-bold">{stats.overallDeliveryRate}%</p>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <div className="flex space-x-2">
+      <div className="bg-white rounded-lg shadow p-3 sm:p-4 mb-4 sm:mb-6">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setFilter('all')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+            className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium flex-shrink-0 ${
               filter === 'all' 
                 ? 'bg-green-600 text-white' 
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -219,7 +219,7 @@ export default function SMSHealthDashboard() {
           </button>
           <button
             onClick={() => setFilter('active')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+            className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium flex-shrink-0 ${
               filter === 'active' 
                 ? 'bg-green-600 text-white' 
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -229,7 +229,7 @@ export default function SMSHealthDashboard() {
           </button>
           <button
             onClick={() => setFilter('at_risk')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+            className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium flex-shrink-0 ${
               filter === 'at_risk' 
                 ? 'bg-green-600 text-white' 
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -239,7 +239,7 @@ export default function SMSHealthDashboard() {
           </button>
           <button
             onClick={() => setFilter('suspended')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+            className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium flex-shrink-0 ${
               filter === 'suspended' 
                 ? 'bg-green-600 text-white' 
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -249,7 +249,7 @@ export default function SMSHealthDashboard() {
           </button>
           <button
             onClick={() => setFilter('invalid_number')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+            className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium flex-shrink-0 ${
               filter === 'invalid_number' 
                 ? 'bg-green-600 text-white' 
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -262,32 +262,34 @@ export default function SMSHealthDashboard() {
 
       {/* Customer Table */}
       <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Customer
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Failures
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Delivery Rate
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Cost
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Last Success
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Actions
-              </th>
-            </tr>
-          </thead>
+        {/* Desktop Table */}
+        <div className="hidden lg:block">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Customer
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Failures
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Delivery Rate
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Cost
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Last Success
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
+                </th>
+              </tr>
+            </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {filteredCustomers.map((customer) => (
               <tr key={customer.id} className="hover:bg-gray-50">
@@ -353,6 +355,82 @@ export default function SMSHealthDashboard() {
             ))}
           </tbody>
         </table>
+        </div>
+        
+        {/* Mobile Card View */}
+        <div className="lg:hidden">
+          <div className="divide-y divide-gray-200">
+            {filteredCustomers.map((customer) => (
+              <div key={customer.id} className="p-4 hover:bg-gray-50">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-gray-900">
+                      {customer.first_name} {customer.last_name}
+                    </div>
+                    <div className="text-sm text-gray-500">{customer.mobile_number}</div>
+                  </div>
+                  <div className="flex items-center ml-2">
+                    {getStatusIcon(customer.messaging_status)}
+                    <span className={`ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClass(customer.messaging_status)}`}>
+                      {customer.messaging_status}
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4 mb-3 text-sm">
+                  <div>
+                    <span className="text-gray-500">Failures:</span>
+                    <div className="font-medium">
+                      Consec: {customer.consecutive_failures}, 30d: {customer.total_failures_30d}
+                    </div>
+                    {customer.last_failure_type && (
+                      <div className="text-xs text-red-600 mt-1">{customer.last_failure_type}</div>
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Delivery Rate:</span>
+                    <div className="font-medium">
+                      {customer.delivery_rate}% ({customer.messages_delivered}/{customer.total_messages_sent})
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4 mb-3 text-sm">
+                  <div>
+                    <span className="text-gray-500">Cost:</span>
+                    <div className="font-medium">${customer.total_cost_usd.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Last Success:</span>
+                    <div className="font-medium">
+                      {customer.last_successful_delivery 
+                        ? formatDate(customer.last_successful_delivery)
+                        : 'Never'}
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex justify-end">
+                  {customer.messaging_status === 'active' ? (
+                    <button
+                      onClick={() => suspendCustomer(customer.id)}
+                      className="px-4 py-2 text-sm font-medium text-yellow-600 bg-yellow-50 rounded-lg hover:bg-yellow-100"
+                    >
+                      Suspend
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => reactivateCustomer(customer.id)}
+                      className="px-4 py-2 text-sm font-medium text-green-600 bg-green-50 rounded-lg hover:bg-green-100"
+                    >
+                      Reactivate
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
         
         {filteredCustomers.length === 0 && (
           <div className="text-center py-8 text-gray-500">
@@ -362,9 +440,9 @@ export default function SMSHealthDashboard() {
       </div>
 
       {/* Automatic Deactivation Rules */}
-      <div className="mt-8 bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-semibold mb-4">Automatic Deactivation Rules</h2>
-        <ul className="space-y-2 text-sm text-gray-600">
+      <div className="mt-6 sm:mt-8 bg-white rounded-lg shadow p-4 sm:p-6">
+        <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Automatic Deactivation Rules</h2>
+        <ul className="space-y-2 text-xs sm:text-sm text-gray-600">
           <li>• <strong>Invalid Number:</strong> Immediate suspension on detection</li>
           <li>• <strong>Carrier Violations:</strong> Suspended after 3 consecutive failures</li>
           <li>• <strong>General Failures:</strong> Suspended after 5 consecutive failures</li>

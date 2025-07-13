@@ -41,12 +41,12 @@ function CollapsibleSection({ title, description, icon: Icon, children, defaultO
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-4 py-6 sm:p-8 flex items-center justify-between hover:bg-gray-50 transition-colors"
+        className="w-full px-4 py-5 sm:p-8 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors touch-manipulation"
       >
         <div className="flex items-center space-x-3">
           {Icon && <Icon className="h-5 w-5 text-gray-400" />}
           <div className="text-left">
-            <h3 className="text-lg font-medium leading-6 text-gray-900">{title}</h3>
+            <h3 className="text-base sm:text-lg font-medium leading-6 text-gray-900">{title}</h3>
             {description && <p className="mt-1 text-sm text-gray-500">{description}</p>}
           </div>
         </div>
@@ -57,7 +57,7 @@ function CollapsibleSection({ title, description, icon: Icon, children, defaultO
         )}
       </button>
       {isOpen && (
-        <div className="border-t border-gray-200 px-4 py-6 sm:p-8">
+        <div className="border-t border-gray-200 px-4 py-5 sm:p-8">
           {children}
         </div>
       )}
@@ -279,7 +279,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
           </div>
@@ -293,7 +293,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 id="category"
                 value={categoryId}
                 onChange={(e) => handleCategoryChange(e.target.value)}
-                className="block w-full rounded-lg px-3 py-2 border border-gray-300 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px] bg-white"
               >
                 <option value="">No category</option>
                 {categories.map((cat) => (
@@ -318,7 +318,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 min={minDate}
                 max={maxDate}
                 required
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
           </div>
@@ -332,7 +332,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 id="status"
                 value={eventStatus}
                 onChange={(e) => setEventStatus(e.target.value)}
-                className="block w-full rounded-lg px-3 py-2 border border-gray-300 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px] bg-white"
               >
                 <option value="scheduled">Scheduled</option>
                 <option value="cancelled">Cancelled</option>
@@ -354,7 +354,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 onChange={(e) => setCapacity(e.target.value)}
                 min="1"
                 placeholder="Unlimited"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
           </div>
@@ -380,7 +380,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 value={time}
                 onChange={(e) => setTime(e.target.value)}
                 required
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
           </div>
@@ -395,7 +395,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 id="end_time"
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
           </div>
@@ -412,7 +412,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 onChange={(e) => setDurationMinutes(e.target.value)}
                 min="1"
                 placeholder="e.g., 180"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
           </div>
@@ -427,7 +427,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 id="doors_time"
                 value={doorsTime}
                 onChange={(e) => setDoorsTime(e.target.value)}
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
           </div>
@@ -442,7 +442,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 id="last_entry_time"
                 value={lastEntryTime}
                 onChange={(e) => setLastEntryTime(e.target.value)}
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
           </div>
@@ -472,7 +472,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 }}
                 min="0"
                 step="0.01"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
           </div>
@@ -488,7 +488,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 value={bookingUrl}
                 onChange={(e) => setBookingUrl(e.target.value)}
                 placeholder="https://example.com/book"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
           </div>
@@ -514,7 +514,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 value={performerName}
                 onChange={(e) => setPerformerName(e.target.value)}
                 placeholder="e.g., DJ John, The Blues Band"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
           </div>
@@ -528,7 +528,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 id="performer_type"
                 value={performerType}
                 onChange={(e) => setPerformerType(e.target.value)}
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               >
                 <option value="">Select type...</option>
                 <option value="MusicGroup">Music Group / Band</option>
@@ -562,7 +562,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 value={slug}
                 onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
                 placeholder="event-name-2024-01-01"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
           </div>
@@ -579,7 +579,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 onChange={(e) => setMetaTitle(e.target.value)}
                 maxLength={60}
                 placeholder="SEO page title"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
               <p className="mt-1 text-xs text-gray-500">{metaTitle.length}/60 characters</p>
             </div>
@@ -597,7 +597,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 onChange={(e) => setMetaDescription(e.target.value)}
                 maxLength={160}
                 placeholder="SEO page description"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
               <p className="mt-1 text-xs text-gray-500">{metaDescription.length}/160 characters</p>
             </div>
@@ -615,7 +615,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 onChange={(e) => setShortDescription(e.target.value)}
                 maxLength={500}
                 placeholder="Brief description for event listings"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
               <p className="mt-1 text-xs text-gray-500">{shortDescription.length}/500 characters</p>
             </div>
@@ -632,7 +632,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 value={longDescription}
                 onChange={(e) => setLongDescription(e.target.value)}
                 placeholder="Detailed description for the event page"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
           </div>
@@ -648,7 +648,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 value={highlights}
                 onChange={(e) => setHighlights(e.target.value)}
                 placeholder="Great prizes, Fun atmosphere, Live music"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
               <p className="mt-1 text-xs text-gray-500">Separate multiple highlights with commas</p>
             </div>
@@ -665,7 +665,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 value={keywords}
                 onChange={(e) => setKeywords(e.target.value)}
                 placeholder="music, live band, entertainment, pub"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
               <p className="mt-1 text-xs text-gray-500">Separate keywords with commas for better SEO</p>
             </div>
@@ -692,7 +692,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 value={galleryImageUrls}
                 onChange={(e) => setGalleryImageUrls(e.target.value)}
                 placeholder="https://example.com/image1.jpg, https://example.com/image2.jpg"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
               <p className="mt-1 text-xs text-gray-500">Separate multiple image URLs with commas</p>
             </div>
@@ -709,7 +709,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 value={posterImageUrl}
                 onChange={(e) => setPosterImageUrl(e.target.value)}
                 placeholder="https://example.com/poster.jpg"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
           </div>
@@ -725,7 +725,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 value={thumbnailImageUrl}
                 onChange={(e) => setThumbnailImageUrl(e.target.value)}
                 placeholder="https://example.com/thumbnail.jpg"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
           </div>
@@ -741,7 +741,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 value={promoVideoUrl}
                 onChange={(e) => setPromoVideoUrl(e.target.value)}
                 placeholder="https://youtube.com/watch?v=..."
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
             </div>
           </div>
@@ -757,7 +757,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 value={highlightVideoUrls}
                 onChange={(e) => setHighlightVideoUrls(e.target.value)}
                 placeholder="https://youtube.com/watch?v=..., https://vimeo.com/..."
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
               <p className="mt-1 text-xs text-gray-500">Separate multiple video URLs with commas</p>
             </div>
@@ -766,13 +766,15 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
       </CollapsibleSection>
 
       {/* Form Actions */}
-      <div className="flex items-center justify-end gap-x-6">
-        <Button type="button" variant="secondary" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Saving...' : event ? 'Update Event' : 'Create Event'}
-        </Button>
+      <div className="sticky bottom-0 -mx-4 sm:mx-0 px-4 sm:px-0 py-4 bg-white border-t sm:border-0 sm:relative sm:py-0">
+        <div className="flex flex-col sm:flex-row sm:justify-end gap-3">
+          <Button type="button" variant="secondary" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? 'Saving...' : event ? 'Update Event' : 'Create Event'}
+          </Button>
+        </div>
       </div>
     </form>
   )

@@ -134,21 +134,21 @@ export default function EmployeeBirthdaysPage() {
   return (
     <div className="space-y-6">
       <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
+        <div className="px-4 py-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center space-x-3 sm:space-x-4">
               <Link
                 href="/employees"
                 className="text-gray-400 hover:text-gray-500"
               >
-                <ArrowLeftIcon className="h-5 w-5" />
+                <ArrowLeftIcon className="h-4 w-4 sm:h-5 sm:w-5" />
               </Link>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900 flex items-center">
-                  <CakeIcon className="h-8 w-8 mr-2 text-pink-500" />
+                <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 flex items-center">
+                  <CakeIcon className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 mr-1.5 sm:mr-2 text-pink-500" />
                   Employee Birthdays
                 </h1>
-                <p className="mt-1 text-sm text-gray-500">
+                <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-gray-500">
                   All employee birthdays throughout the year
                 </p>
               </div>
@@ -157,10 +157,11 @@ export default function EmployeeBirthdaysPage() {
               <button
                 onClick={handleSendReminders}
                 disabled={sending}
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
+                className="inline-flex items-center px-3 py-2 sm:px-4 border border-transparent text-xs sm:text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 whitespace-nowrap"
               >
-                <EnvelopeIcon className="h-4 w-4 mr-2" />
-                {sending ? 'Sending...' : 'Send Weekly Reminders'}
+                <EnvelopeIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
+                <span className="hidden sm:inline">{sending ? 'Sending...' : 'Send Weekly Reminders'}</span>
+                <span className="sm:hidden">{sending ? 'Sending...' : 'Send Reminders'}</span>
               </button>
             )}
           </div>
@@ -168,14 +169,14 @@ export default function EmployeeBirthdaysPage() {
       </div>
 
       {/* Info Banner */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
         <div className="flex">
           <div className="flex-shrink-0">
-            <ExclamationTriangleIcon className="h-5 w-5 text-blue-400" />
+            <ExclamationTriangleIcon className="h-4 w-4 sm:h-5 sm:w-5 text-blue-400" />
           </div>
-          <div className="ml-3">
-            <h3 className="text-sm font-medium text-blue-800">Automatic Birthday Reminders</h3>
-            <div className="mt-2 text-sm text-blue-700">
+          <div className="ml-2 sm:ml-3">
+            <h3 className="text-xs sm:text-sm font-medium text-blue-800">Automatic Birthday Reminders</h3>
+            <div className="mt-1 sm:mt-2 text-xs sm:text-sm text-blue-700">
               <p>Birthday reminders are automatically sent to manager@the-anchor.pub every morning at 8 AM for employees with birthdays exactly 1 week away.</p>
             </div>
           </div>
@@ -202,43 +203,46 @@ export default function EmployeeBirthdaysPage() {
         <div className="space-y-6">
           {sortedMonths.map(([monthName, { birthdays: monthBirthdays }]) => (
             <div key={monthName} className="bg-white shadow sm:rounded-lg overflow-hidden">
-              <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
-                <h2 className="text-lg font-medium text-gray-900 flex items-center">
-                  <CalendarIcon className="h-5 w-5 mr-2 text-gray-400" />
-                  {monthName}
-                  <span className="ml-2 text-sm text-gray-500">({monthBirthdays.length} birthday{monthBirthdays.length !== 1 ? 's' : ''})</span>
+              <div className="bg-gray-50 px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200">
+                <h2 className="text-base sm:text-lg font-medium text-gray-900 flex flex-wrap items-center">
+                  <CalendarIcon className="h-4 w-4 sm:h-5 sm:w-5 mr-1.5 sm:mr-2 text-gray-400" />
+                  <span>{monthName}</span>
+                  <span className="ml-2 text-xs sm:text-sm text-gray-500">({monthBirthdays.length} birthday{monthBirthdays.length !== 1 ? 's' : ''})</span>
                 </h2>
               </div>
               <ul className="divide-y divide-gray-200">
                 {monthBirthdays.map((birthday) => {
                   const birthdayDate = getUpcomingBirthdayDate(birthday.days_until_birthday);
                   return (
-                    <li key={birthday.employee_id} className="px-4 py-4 hover:bg-gray-50">
-                      <div className="flex items-center justify-between">
+                    <li key={birthday.employee_id} className="px-3 sm:px-4 py-3 sm:py-4 hover:bg-gray-50">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
                         <div className="flex-1">
                           <div className="flex items-center">
                             <Link
                               href={`/employees/${birthday.employee_id}`}
-                              className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                              className="text-sm font-medium text-blue-600 hover:text-blue-700 truncate"
                             >
                               {birthday.first_name} {birthday.last_name}
                             </Link>
                             {birthday.days_until_birthday === 0 && (
-                              <span className="ml-2 text-xl">🎉</span>
+                              <span className="ml-1.5 sm:ml-2 text-base sm:text-xl">🎉</span>
                             )}
                           </div>
-                          <p className="text-sm text-gray-500">{birthday.job_title || 'No title'}</p>
+                          <p className="text-xs sm:text-sm text-gray-500 truncate">{birthday.job_title || 'No title'}</p>
                         </div>
-                        <div className="text-right ml-4">
-                          <div className="flex items-center justify-end space-x-2">
-                            <span className="text-sm font-medium text-gray-900">
-                              {format(new Date(birthday.date_of_birth), 'MMMM d')}
+                        <div className="flex sm:block items-center justify-between sm:text-right sm:ml-4">
+                          <div className="flex items-center sm:justify-end space-x-1.5 sm:space-x-2">
+                            <span className="text-xs sm:text-sm font-medium text-gray-900">
+                              {format(new Date(birthday.date_of_birth), 'MMM d')}
                             </span>
-                            <Badge variant={getCountdownBadgeVariant(birthday.days_until_birthday) as any}>
+                            <Badge 
+                              variant={getCountdownBadgeVariant(birthday.days_until_birthday) as any}
+                              className="text-xs px-1.5 py-0.5 sm:px-2 sm:py-1"
+                            >
                               {getCountdownText(birthday.days_until_birthday)}
                             </Badge>
                           </div>
-                          <p className="text-xs text-gray-500 mt-1">
+                          <p className="text-xs text-gray-500 sm:mt-1">
                             Turning {birthday.turning_age}
                           </p>
                         </div>
