@@ -175,7 +175,9 @@ export async function startWelcomeSeries(data: z.infer<typeof WelcomeSeriesSchem
     if (customer.phone_number) {
       await jobQueue.enqueue('send_sms', {
         to: customer.phone_number,
-        message: `Welcome to The Anchor VIP Club! You've earned ${member.welcome_bonus_awarded || 50} bonus points. Show this message to claim your welcome drink! 🍻`
+        message: `Welcome to The Anchor VIP Club! You've earned ${member.welcome_bonus_awarded || 50} bonus points. Show this message to claim your welcome drink! 🍻`,
+        type: 'custom' as const,
+        customerId: customer.id
       });
     }
     
