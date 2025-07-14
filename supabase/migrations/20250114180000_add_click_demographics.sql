@@ -19,7 +19,7 @@ CREATE INDEX IF NOT EXISTS idx_short_link_clicks_device_type ON short_link_click
 -- Index on the timestamp column directly (the date casting will use this index)
 CREATE INDEX IF NOT EXISTS idx_short_link_clicks_clicked_at ON short_link_clicks(clicked_at);
 
--- Create a view for daily click aggregations
+-- Create a view for daily click aggregations (simplified without nested aggregations)
 CREATE OR REPLACE VIEW short_link_daily_stats AS
 SELECT 
   sl.id as short_link_id,
@@ -30,15 +30,7 @@ SELECT
   COUNT(DISTINCT slc.ip_address) as unique_visitors,
   COUNT(CASE WHEN slc.device_type = 'mobile' THEN 1 END) as mobile_clicks,
   COUNT(CASE WHEN slc.device_type = 'desktop' THEN 1 END) as desktop_clicks,
-  COUNT(CASE WHEN slc.device_type = 'tablet' THEN 1 END) as tablet_clicks,
-  jsonb_object_agg(
-    COALESCE(slc.country, 'Unknown'), 
-    COUNT(*) FILTER (WHERE slc.country IS NOT NULL)
-  ) FILTER (WHERE slc.country IS NOT NULL) as country_distribution,
-  jsonb_object_agg(
-    COALESCE(slc.browser, 'Unknown'), 
-    COUNT(*) FILTER (WHERE slc.browser IS NOT NULL)
-  ) FILTER (WHERE slc.browser IS NOT NULL) as browser_distribution
+  COUNT(CASE WHEN slc.device_type = 'tablet' THEN 1 END) as tablet_clicks
 FROM short_links sl
 LEFT JOIN short_link_clicks slc ON sl.id = slc.short_link_id
 WHERE slc.clicked_at IS NOT NULL
@@ -47,7 +39,7 @@ GROUP BY sl.id, sl.short_code, sl.link_type, slc.clicked_at::date;
 -- Grant permissions on the view
 GRANT SELECT ON short_link_daily_stats TO authenticated;
 
--- Create a function to get analytics for a specific link with date range
+-- Create a function to get analytics for a specific link with date range (simplified)
 CREATE OR REPLACE FUNCTION get_short_link_analytics(
   p_short_code VARCHAR,
   p_days INTEGER DEFAULT 30
@@ -72,26 +64,46 @@ BEGIN
       INTERVAL '1 day'
     )::DATE AS date
   ),
-  click_data AS (
+  daily_stats AS (
     SELECT 
       slc.clicked_at::date as click_date,
       COUNT(*) as total_clicks,
       COUNT(DISTINCT slc.ip_address) as unique_visitors,
       COUNT(CASE WHEN slc.device_type = 'mobile' THEN 1 END) as mobile_clicks,
       COUNT(CASE WHEN slc.device_type = 'desktop' THEN 1 END) as desktop_clicks,
-      COUNT(CASE WHEN slc.device_type = 'tablet' THEN 1 END) as tablet_clicks,
-      jsonb_object_agg(
-        COALESCE(slc.country, 'Unknown'), 
-        COUNT(*)
-      ) FILTER (WHERE slc.country IS NOT NULL) as country_data,
-      jsonb_object_agg(
-        COALESCE(slc.browser, 'Unknown'), 
-        COUNT(*)
-      ) FILTER (WHERE slc.browser IS NOT NULL) as browser_data,
-      jsonb_object_agg(
-        COALESCE(slc.referrer, 'Direct'), 
-        COUNT(*)
-      ) FILTER (WHERE slc.referrer IS NOT NULL) as referrer_data
+      COUNT(CASE WHEN slc.device_type = 'tablet' THEN 1 END) as tablet_clicks
+    FROM short_links sl
+    INNER JOIN short_link_clicks slc ON sl.id = slc.short_link_id
+    WHERE sl.short_code = p_short_code
+      AND slc.clicked_at >= CURRENT_DATE - INTERVAL '1 day' * (p_days - 1)
+    GROUP BY slc.clicked_at::date
+  ),
+  country_stats AS (
+    SELECT 
+      slc.clicked_at::date as click_date,
+      jsonb_object_agg(COALESCE(slc.country, 'Unknown'), count(*)) as countries
+    FROM short_links sl
+    INNER JOIN short_link_clicks slc ON sl.id = slc.short_link_id
+    WHERE sl.short_code = p_short_code
+      AND slc.clicked_at >= CURRENT_DATE - INTERVAL '1 day' * (p_days - 1)
+      AND slc.country IS NOT NULL
+    GROUP BY slc.clicked_at::date
+  ),
+  browser_stats AS (
+    SELECT 
+      slc.clicked_at::date as click_date,
+      jsonb_object_agg(COALESCE(slc.browser, 'Unknown'), count(*)) as browsers
+    FROM short_links sl
+    INNER JOIN short_link_clicks slc ON sl.id = slc.short_link_id
+    WHERE sl.short_code = p_short_code
+      AND slc.clicked_at >= CURRENT_DATE - INTERVAL '1 day' * (p_days - 1)
+      AND slc.browser IS NOT NULL
+    GROUP BY slc.clicked_at::date
+  ),
+  referrer_stats AS (
+    SELECT 
+      slc.clicked_at::date as click_date,
+      jsonb_object_agg(COALESCE(slc.referrer, 'Direct'), count(*)) as referrers
     FROM short_links sl
     INNER JOIN short_link_clicks slc ON sl.id = slc.short_link_id
     WHERE sl.short_code = p_short_code
@@ -100,16 +112,19 @@ BEGIN
   )
   SELECT 
     ds.date,
-    COALESCE(cd.total_clicks, 0),
-    COALESCE(cd.unique_visitors, 0),
-    COALESCE(cd.mobile_clicks, 0),
-    COALESCE(cd.desktop_clicks, 0),
-    COALESCE(cd.tablet_clicks, 0),
-    cd.country_data,
-    cd.browser_data,
-    cd.referrer_data
+    COALESCE(dst.total_clicks, 0),
+    COALESCE(dst.unique_visitors, 0),
+    COALESCE(dst.mobile_clicks, 0),
+    COALESCE(dst.desktop_clicks, 0),
+    COALESCE(dst.tablet_clicks, 0),
+    cs.countries,
+    bs.browsers,
+    rs.referrers
   FROM date_series ds
-  LEFT JOIN click_data cd ON ds.date = cd.click_date
+  LEFT JOIN daily_stats dst ON ds.date = dst.click_date
+  LEFT JOIN country_stats cs ON ds.date = cs.click_date
+  LEFT JOIN browser_stats bs ON ds.date = bs.click_date
+  LEFT JOIN referrer_stats rs ON ds.date = rs.click_date
   ORDER BY ds.date;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
