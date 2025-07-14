@@ -202,6 +202,7 @@ export async function getShortLinkAnalytics(shortCode: string) {
         )
       `)
       .eq('short_code', shortCode)
+      .order('clicked_at', { ascending: false, foreignTable: 'short_link_clicks' })
       .single();
     
     if (error || !link) {

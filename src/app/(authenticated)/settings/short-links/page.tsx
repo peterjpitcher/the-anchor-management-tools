@@ -323,30 +323,39 @@ export default function ShortLinksPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold">Short Links</h1>
-          <p className="text-gray-600 mt-2">Create and manage vip-club.uk short links</p>
-        </div>
-        <div className="flex gap-3">
-          <Button 
-            variant="secondary"
-            onClick={() => {
-              setShowVolumeChart(true);
-              loadVolumeData(volumePeriod);
-            }}
-          >
-            <ChartBarIcon className="h-5 w-5 mr-2" />
-            View Volume Chart
-          </Button>
-          <Button onClick={() => setShowCreateModal(true)}>
-            <LinkIcon className="h-5 w-5 mr-2" />
-            Create Short Link
-          </Button>
+      <div className="mb-8">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold">Short Links</h1>
+            <p className="text-gray-600 mt-1 text-sm sm:text-base">Create and manage vip-club.uk short links</p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+            <Button 
+              variant="secondary"
+              onClick={() => {
+                setShowVolumeChart(true);
+                loadVolumeData(volumePeriod);
+              }}
+              className="w-full sm:w-auto justify-center"
+            >
+              <ChartBarIcon className="h-5 w-5 mr-2" />
+              <span className="hidden sm:inline">View Volume Chart</span>
+              <span className="sm:hidden">Volume</span>
+            </Button>
+            <Button 
+              onClick={() => setShowCreateModal(true)}
+              className="w-full sm:w-auto justify-center"
+            >
+              <LinkIcon className="h-5 w-5 mr-2" />
+              <span className="hidden sm:inline">Create Short Link</span>
+              <span className="sm:hidden">Create</span>
+            </Button>
+          </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      {/* Desktop Table View */}
+      <div className="hidden lg:block bg-white rounded-lg shadow overflow-hidden">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
@@ -433,6 +442,69 @@ export default function ShortLinksPage() {
         
         {links.length === 0 && (
           <div className="text-center py-8">
+            <LinkIcon className="mx-auto h-12 w-12 text-gray-400" />
+            <h3 className="mt-2 text-sm font-medium text-gray-900">No short links</h3>
+            <p className="mt-1 text-sm text-gray-500">Get started by creating a new short link.</p>
+          </div>
+        )}
+      </div>
+
+      {/* Mobile Card View */}
+      <div className="lg:hidden space-y-3">
+        {links.map((link) => (
+          <div key={link.id} className="bg-white rounded-lg shadow p-4">
+            <div className="flex justify-between items-start mb-3">
+              <div className="flex-1 min-w-0 mr-4">
+                <code className="text-sm font-mono bg-gray-100 px-2 py-1 rounded inline-block mb-2">
+                  vip-club.uk/{link.short_code}
+                </code>
+                <p className="text-xs text-gray-600 truncate">{link.destination_url}</p>
+              </div>
+              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                {link.link_type}
+              </span>
+            </div>
+            
+            <div className="flex justify-between items-center text-sm text-gray-500 mb-3">
+              <span>{link.click_count || 0} clicks</span>
+              <span>{new Date(link.created_at).toLocaleDateString()}</span>
+            </div>
+            
+            <div className="flex justify-between border-t pt-3">
+              <button
+                onClick={() => handleCopyLink(link)}
+                className="text-blue-600 hover:text-blue-900 p-2"
+                title="Copy link"
+              >
+                <ClipboardDocumentIcon className="h-5 w-5" />
+              </button>
+              <button
+                onClick={() => handleViewAnalytics(link)}
+                className="text-green-600 hover:text-green-900 p-2"
+                title="View analytics"
+              >
+                <ChartBarIcon className="h-5 w-5" />
+              </button>
+              <button
+                onClick={() => handleEdit(link)}
+                className="text-indigo-600 hover:text-indigo-900 p-2"
+                title="Edit"
+              >
+                <PencilIcon className="h-5 w-5" />
+              </button>
+              <button
+                onClick={() => handleDelete(link.id)}
+                className="text-red-600 hover:text-red-900 p-2"
+                title="Delete"
+              >
+                <TrashIcon className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+        ))}
+        
+        {links.length === 0 && (
+          <div className="bg-white rounded-lg shadow p-8 text-center">
             <LinkIcon className="mx-auto h-12 w-12 text-gray-400" />
             <h3 className="mt-2 text-sm font-medium text-gray-900">No short links</h3>
             <p className="mt-1 text-sm text-gray-500">Get started by creating a new short link.</p>
@@ -535,7 +607,7 @@ export default function ShortLinksPage() {
         </form>
       </Modal>
 
-      {/* Analytics Modal */}
+      {/* Analytics Modal - Make it larger on desktop */}
       <Modal
         isOpen={showAnalyticsModal}
         onClose={() => {
@@ -543,12 +615,13 @@ export default function ShortLinksPage() {
           setAnalytics(null);
         }}
         title="Link Analytics"
+        className="sm:max-w-4xl"
       >
         {selectedLink && analytics && (
-          <div className="space-y-6">
-            <div className="bg-gray-50 rounded-lg p-4">
-              <p className="text-sm text-gray-600">Short Link</p>
-              <p className="font-mono">vip-club.uk/{selectedLink.short_code}</p>
+          <div className="space-y-4 max-h-[80vh] overflow-y-auto">
+            <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
+              <p className="text-xs sm:text-sm text-gray-600">Short Link</p>
+              <p className="font-mono text-sm sm:text-base">vip-club.uk/{selectedLink.short_code}</p>
             </div>
             
             <div className="grid grid-cols-2 gap-4">
@@ -645,32 +718,55 @@ export default function ShortLinksPage() {
 
             {analytics.short_link_clicks && analytics.short_link_clicks.length > 0 && (
               <div>
-                <h4 className="font-medium mb-2">Recent Clicks</h4>
-                <div className="max-h-40 overflow-y-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Time</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Device</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Location</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {analytics.short_link_clicks.slice(0, 10).map((click: any, idx: number) => (
-                        <tr key={idx}>
-                          <td className="px-4 py-2 text-sm">
-                            {new Date(click.clicked_at).toLocaleString()}
-                          </td>
-                          <td className="px-4 py-2 text-sm">
-                            {click.device_type || 'Unknown'}
-                          </td>
-                          <td className="px-4 py-2 text-sm">
-                            {click.country || 'Unknown'}
-                          </td>
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="font-medium">All Clicks ({analytics.short_link_clicks.length})</h4>
+                  <span className="text-sm text-gray-500">Showing all</span>
+                </div>
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="max-h-96 overflow-y-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50 sticky top-0">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Time</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 hidden sm:table-cell">Device</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Location</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 hidden md:table-cell">Browser</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {analytics.short_link_clicks
+                          .sort((a: any, b: any) => new Date(b.clicked_at).getTime() - new Date(a.clicked_at).getTime())
+                          .map((click: any, idx: number) => (
+                          <tr key={click.id || idx} className="hover:bg-gray-50">
+                            <td className="px-3 py-2 text-xs sm:text-sm">
+                              <div>
+                                <div className="font-medium">{new Date(click.clicked_at).toLocaleDateString()}</div>
+                                <div className="text-gray-500">{new Date(click.clicked_at).toLocaleTimeString()}</div>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 text-xs sm:text-sm hidden sm:table-cell">
+                              <span className={`inline-flex px-2 text-xs leading-5 font-semibold rounded-full ${
+                                click.device_type === 'mobile' ? 'bg-green-100 text-green-800' :
+                                click.device_type === 'desktop' ? 'bg-blue-100 text-blue-800' :
+                                'bg-gray-100 text-gray-800'
+                              }`}>
+                                {click.device_type || 'Unknown'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-xs sm:text-sm">
+                              <div>
+                                <div>{click.country || 'Unknown'}</div>
+                                {click.city && <div className="text-gray-500 text-xs">{click.city}</div>}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 text-xs sm:text-sm hidden md:table-cell">
+                              {click.browser || 'Unknown'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             )}
@@ -775,6 +871,7 @@ export default function ShortLinksPage() {
           setVolumeData(null);
         }}
         title="Short Link Volume Analytics"
+        className="sm:max-w-5xl"
       >
         <div className="space-y-4">
           {/* Period Selector */}
