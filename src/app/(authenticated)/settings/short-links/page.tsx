@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
-import { LinkIcon, ChartBarIcon, TrashIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
+import { LinkIcon, ChartBarIcon, TrashIcon, ClipboardDocumentIcon, PencilIcon } from '@heroicons/react/24/outline';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { FormInput } from '@/components/ui/FormInput';
@@ -27,6 +27,7 @@ export default function ShortLinksPage() {
   const [links, setLinks] = useState<ShortLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
   const [selectedLink, setSelectedLink] = useState<ShortLink | null>(null);
   const [analytics, setAnalytics] = useState<any>(null);
@@ -37,6 +38,7 @@ export default function ShortLinksPage() {
   const [customCode, setCustomCode] = useState('');
   const [expiresIn, setExpiresIn] = useState('never');
   const [creating, setCreating] = useState(false);
+  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     loadLinks();
@@ -93,10 +95,7 @@ export default function ShortLinksPage() {
         toast.success('Copied to clipboard!');
         
         setShowCreateModal(false);
-        setDestinationUrl('');
-        setCustomCode('');
-        setLinkType('custom');
-        setExpiresIn('never');
+        resetForm();
         loadLinks();
       }
     } catch (error) {
@@ -122,8 +121,78 @@ export default function ShortLinksPage() {
     toast.success('Link copied to clipboard!');
   };
 
+  const handleEdit = (link: ShortLink) => {
+    setSelectedLink(link);
+    setDestinationUrl(link.destination_url);
+    setLinkType(link.link_type);
+    setCustomCode(link.short_code);
+    
+    // Calculate expiry
+    if (link.expires_at) {
+      const expiryDate = new Date(link.expires_at);
+      const now = new Date();
+      const diffDays = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (diffDays <= 1) setExpiresIn('1d');
+      else if (diffDays <= 7) setExpiresIn('7d');
+      else if (diffDays <= 30) setExpiresIn('30d');
+      else setExpiresIn('never');
+    } else {
+      setExpiresIn('never');
+    }
+    
+    setShowEditModal(true);
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedLink) return;
+    
+    setUpdating(true);
+
+    try {
+      let expiresAt: string | null = null;
+      if (expiresIn !== 'never') {
+        const date = new Date();
+        if (expiresIn === '1d') date.setDate(date.getDate() + 1);
+        else if (expiresIn === '7d') date.setDate(date.getDate() + 7);
+        else if (expiresIn === '30d') date.setDate(date.getDate() + 30);
+        expiresAt = date.toISOString();
+      }
+
+      const { error } = await supabase
+        .from('short_links')
+        .update({
+          destination_url: destinationUrl,
+          link_type: linkType,
+          expires_at: expiresAt,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedLink.id);
+
+      if (error) {
+        toast.error('Failed to update short link');
+        return;
+      }
+
+      toast.success('Short link updated');
+      setShowEditModal(false);
+      resetForm();
+      loadLinks();
+    } catch (error) {
+      toast.error('Failed to update short link');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   const handleDelete = async (linkId: string) => {
-    if (!confirm('Are you sure you want to delete this short link?')) return;
+    const link = links.find(l => l.id === linkId);
+    if (!link) return;
+    
+    const message = `Are you sure you want to delete this short link?\n\nvip-club.uk/${link.short_code}\n\nAnyone clicking this link will be redirected to the-anchor.pub`;
+    
+    if (!confirm(message)) return;
 
     try {
       const { error } = await supabase
@@ -138,6 +207,14 @@ export default function ShortLinksPage() {
     } catch (error) {
       toast.error('Failed to delete short link');
     }
+  };
+
+  const resetForm = () => {
+    setDestinationUrl('');
+    setCustomCode('');
+    setLinkType('custom');
+    setExpiresIn('never');
+    setSelectedLink(null);
   };
 
   if (loading) {
@@ -225,6 +302,13 @@ export default function ShortLinksPage() {
                     title="View analytics"
                   >
                     <ChartBarIcon className="h-5 w-5" />
+                  </button>
+                  <button
+                    onClick={() => handleEdit(link)}
+                    className="text-indigo-600 hover:text-indigo-900 mr-3"
+                    title="Edit"
+                  >
+                    <PencilIcon className="h-5 w-5" />
                   </button>
                   <button
                     onClick={() => handleDelete(link.id)}
@@ -408,6 +492,95 @@ export default function ShortLinksPage() {
             )}
           </div>
         )}
+      </Modal>
+
+      {/* Edit Modal */}
+      <Modal
+        isOpen={showEditModal}
+        onClose={() => {
+          setShowEditModal(false);
+          resetForm();
+        }}
+        title="Edit Short Link"
+      >
+        <form onSubmit={handleUpdate} className="space-y-4">
+          <div className="bg-gray-50 rounded-lg p-4 mb-4">
+            <p className="text-sm text-gray-600">Short Link</p>
+            <p className="font-mono">vip-club.uk/{selectedLink?.short_code}</p>
+          </div>
+
+          <div>
+            <label htmlFor="edit-destination" className="block text-sm font-medium text-gray-700">
+              Destination URL
+            </label>
+            <FormInput
+              id="edit-destination"
+              type="url"
+              value={destinationUrl}
+              onChange={(e) => setDestinationUrl(e.target.value)}
+              placeholder="https://example.com/page"
+              required
+            />
+          </div>
+
+          <div>
+            <label htmlFor="edit-type" className="block text-sm font-medium text-gray-700">
+              Link Type
+            </label>
+            <FormSelect
+              id="edit-type"
+              value={linkType}
+              onChange={(e) => setLinkType(e.target.value)}
+              options={[
+                { value: 'custom', label: 'Custom' },
+                { value: 'loyalty_portal', label: 'Loyalty Portal' },
+                { value: 'event_checkin', label: 'Event Check-in' },
+                { value: 'promotion', label: 'Promotion' },
+                { value: 'reward_redemption', label: 'Reward Redemption' }
+              ]}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="edit-expires" className="block text-sm font-medium text-gray-700">
+              Expires
+            </label>
+            <FormSelect
+              id="edit-expires"
+              value={expiresIn}
+              onChange={(e) => setExpiresIn(e.target.value)}
+              options={[
+                { value: 'never', label: 'Never' },
+                { value: '1d', label: 'In 1 day' },
+                { value: '7d', label: 'In 7 days' },
+                { value: '30d', label: 'In 30 days' }
+              ]}
+            />
+          </div>
+
+          <div className="flex justify-end space-x-3 pt-4">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setShowEditModal(false);
+                resetForm();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={updating}>
+              {updating ? (
+                <>
+                  <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                  Updating...
+                </>
+              ) : (
+                'Update Link'
+              )}
+            </Button>
+          </div>
+        </form>
       </Modal>
     </div>
   );
