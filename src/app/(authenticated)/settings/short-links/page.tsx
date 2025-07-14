@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
-import { LinkIcon, ChartBarIcon, TrashIcon, ClipboardDocumentIcon, PencilIcon } from '@heroicons/react/24/outline';
+import { LinkIcon, ChartBarIcon, TrashIcon, ClipboardDocumentIcon, PencilIcon, CalendarDaysIcon, DevicePhoneMobileIcon, ComputerDesktopIcon, GlobeAltIcon } from '@heroicons/react/24/outline';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { FormInput } from '@/components/ui/FormInput';
@@ -10,6 +10,7 @@ import { FormSelect } from '@/components/ui/FormSelect';
 import toast from 'react-hot-toast';
 import { createShortLink, getShortLinkAnalytics } from '@/app/actions/short-links';
 import { Loader2 } from 'lucide-react';
+import { LineChart } from '@/components/ui/LineChart';
 
 interface ShortLink {
   id: string;
@@ -29,8 +30,12 @@ export default function ShortLinksPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
+  const [showVolumeChart, setShowVolumeChart] = useState(false);
   const [selectedLink, setSelectedLink] = useState<ShortLink | null>(null);
   const [analytics, setAnalytics] = useState<any>(null);
+  const [volumeData, setVolumeData] = useState<any>(null);
+  const [volumePeriod, setVolumePeriod] = useState('30');
+  const [loadingVolume, setLoadingVolume] = useState(false);
   
   // Form states
   const [destinationUrl, setDestinationUrl] = useState('');
@@ -58,6 +63,41 @@ export default function ShortLinksPage() {
       toast.error('Failed to load short links');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadVolumeData = async (days: string) => {
+    setLoadingVolume(true);
+    try {
+      const { data, error } = await supabase.rpc('get_all_links_analytics', {
+        p_days: parseInt(days)
+      });
+
+      if (error) throw error;
+
+      // Transform data for chart display
+      const chartData = data?.map((link: any) => {
+        const dataPoints = link.click_dates.map((date: string, index: number) => ({
+          date,
+          value: link.click_counts[index]
+        }));
+        
+        return {
+          shortCode: link.short_code,
+          linkType: link.link_type,
+          destinationUrl: link.destination_url,
+          totalClicks: link.total_clicks,
+          uniqueVisitors: link.unique_visitors,
+          data: dataPoints
+        };
+      }) || [];
+
+      setVolumeData(chartData);
+    } catch (error) {
+      console.error('Error loading volume data:', error);
+      toast.error('Failed to load analytics data');
+    } finally {
+      setLoadingVolume(false);
     }
   };
 
@@ -109,9 +149,65 @@ export default function ShortLinksPage() {
     setSelectedLink(link);
     setShowAnalyticsModal(true);
     
-    const result = await getShortLinkAnalytics(link.short_code);
-    if (result.success && result.data) {
-      setAnalytics(result.data);
+    try {
+      // Get basic analytics from action
+      const result = await getShortLinkAnalytics(link.short_code);
+      
+      // Get enhanced analytics with demographics
+      const { data: enhancedData, error } = await supabase.rpc('get_short_link_analytics', {
+        p_short_code: link.short_code,
+        p_days: 30
+      });
+
+      if (error) throw error;
+
+      // Process demographic data
+      const demographics = {
+        devices: { mobile: 0, desktop: 0, tablet: 0 },
+        countries: {} as Record<string, number>,
+        browsers: {} as Record<string, number>,
+        referrers: {} as Record<string, number>,
+        dailyData: enhancedData || []
+      };
+
+      enhancedData?.forEach((day: any) => {
+        demographics.devices.mobile += day.mobile_clicks;
+        demographics.devices.desktop += day.desktop_clicks;
+        demographics.devices.tablet += day.tablet_clicks;
+
+        // Aggregate country data
+        if (day.top_countries) {
+          Object.entries(day.top_countries).forEach(([country, count]) => {
+            demographics.countries[country] = (demographics.countries[country] || 0) + Number(count);
+          });
+        }
+
+        // Aggregate browser data
+        if (day.top_browsers) {
+          Object.entries(day.top_browsers).forEach(([browser, count]) => {
+            demographics.browsers[browser] = (demographics.browsers[browser] || 0) + Number(count);
+          });
+        }
+
+        // Aggregate referrer data
+        if (day.top_referrers) {
+          Object.entries(day.top_referrers).forEach(([referrer, count]) => {
+            demographics.referrers[referrer] = (demographics.referrers[referrer] || 0) + Number(count);
+          });
+        }
+      });
+
+      setAnalytics({
+        ...result.data,
+        demographics,
+        chartData: enhancedData?.map((day: any) => ({
+          date: day.click_date,
+          value: day.total_clicks
+        })) || []
+      });
+    } catch (error) {
+      console.error('Error loading analytics:', error);
+      toast.error('Failed to load analytics');
     }
   };
 
@@ -232,10 +328,22 @@ export default function ShortLinksPage() {
           <h1 className="text-3xl font-bold">Short Links</h1>
           <p className="text-gray-600 mt-2">Create and manage vip-club.uk short links</p>
         </div>
-        <Button onClick={() => setShowCreateModal(true)}>
-          <LinkIcon className="h-5 w-5 mr-2" />
-          Create Short Link
-        </Button>
+        <div className="flex gap-3">
+          <Button 
+            variant="secondary"
+            onClick={() => {
+              setShowVolumeChart(true);
+              loadVolumeData(volumePeriod);
+            }}
+          >
+            <ChartBarIcon className="h-5 w-5 mr-2" />
+            View Volume Chart
+          </Button>
+          <Button onClick={() => setShowCreateModal(true)}>
+            <LinkIcon className="h-5 w-5 mr-2" />
+            Create Short Link
+          </Button>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -437,7 +545,7 @@ export default function ShortLinksPage() {
         title="Link Analytics"
       >
         {selectedLink && analytics && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             <div className="bg-gray-50 rounded-lg p-4">
               <p className="text-sm text-gray-600">Short Link</p>
               <p className="font-mono">vip-club.uk/{selectedLink.short_code}</p>
@@ -459,29 +567,105 @@ export default function ShortLinksPage() {
               </div>
             </div>
 
+            {/* Click Trends Chart */}
+            {analytics.chartData && analytics.chartData.length > 0 && (
+              <div>
+                <h4 className="font-medium mb-2">Click Trends (Last 30 Days)</h4>
+                <LineChart 
+                  data={analytics.chartData}
+                  height={200}
+                  color="#3B82F6"
+                  label="Daily Clicks"
+                />
+              </div>
+            )}
+
+            {/* Demographics Section */}
+            {analytics.demographics && (
+              <>
+                {/* Device Types */}
+                <div>
+                  <h4 className="font-medium mb-3">Device Types</h4>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-gray-50 rounded-lg p-3 text-center">
+                      <DevicePhoneMobileIcon className="h-6 w-6 mx-auto mb-1 text-gray-600" />
+                      <p className="text-xs text-gray-600">Mobile</p>
+                      <p className="text-lg font-semibold">{analytics.demographics.devices.mobile || 0}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3 text-center">
+                      <ComputerDesktopIcon className="h-6 w-6 mx-auto mb-1 text-gray-600" />
+                      <p className="text-xs text-gray-600">Desktop</p>
+                      <p className="text-lg font-semibold">{analytics.demographics.devices.desktop || 0}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3 text-center">
+                      <GlobeAltIcon className="h-6 w-6 mx-auto mb-1 text-gray-600" />
+                      <p className="text-xs text-gray-600">Tablet</p>
+                      <p className="text-lg font-semibold">{analytics.demographics.devices.tablet || 0}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Top Countries */}
+                {Object.keys(analytics.demographics.countries).length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2">Top Countries</h4>
+                    <div className="space-y-2">
+                      {Object.entries(analytics.demographics.countries)
+                        .sort(([, a], [, b]) => Number(b) - Number(a))
+                        .slice(0, 5)
+                        .map(([country, count]) => (
+                          <div key={country} className="flex justify-between items-center bg-gray-50 rounded px-3 py-2">
+                            <span className="text-sm">{country || 'Unknown'}</span>
+                            <span className="text-sm font-medium">{String(count)}</span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Top Browsers */}
+                {Object.keys(analytics.demographics.browsers).length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2">Top Browsers</h4>
+                    <div className="space-y-2">
+                      {Object.entries(analytics.demographics.browsers)
+                        .sort(([, a], [, b]) => Number(b) - Number(a))
+                        .slice(0, 5)
+                        .map(([browser, count]) => (
+                          <div key={browser} className="flex justify-between items-center bg-gray-50 rounded px-3 py-2">
+                            <span className="text-sm">{browser}</span>
+                            <span className="text-sm font-medium">{String(count)}</span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
             {analytics.short_link_clicks && analytics.short_link_clicks.length > 0 && (
               <div>
                 <h4 className="font-medium mb-2">Recent Clicks</h4>
-                <div className="max-h-60 overflow-y-auto">
+                <div className="max-h-40 overflow-y-auto">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Time</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">IP</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Referrer</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Device</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Location</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {analytics.short_link_clicks.map((click: any, idx: number) => (
+                      {analytics.short_link_clicks.slice(0, 10).map((click: any, idx: number) => (
                         <tr key={idx}>
                           <td className="px-4 py-2 text-sm">
                             {new Date(click.clicked_at).toLocaleString()}
                           </td>
-                          <td className="px-4 py-2 text-sm font-mono">
-                            {click.ip_address || 'N/A'}
+                          <td className="px-4 py-2 text-sm">
+                            {click.device_type || 'Unknown'}
                           </td>
-                          <td className="px-4 py-2 text-sm truncate max-w-xs">
-                            {click.referrer || 'Direct'}
+                          <td className="px-4 py-2 text-sm">
+                            {click.country || 'Unknown'}
                           </td>
                         </tr>
                       ))}
@@ -581,6 +765,129 @@ export default function ShortLinksPage() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Volume Chart Modal */}
+      <Modal
+        isOpen={showVolumeChart}
+        onClose={() => {
+          setShowVolumeChart(false);
+          setVolumeData(null);
+        }}
+        title="Short Link Volume Analytics"
+      >
+        <div className="space-y-4">
+          {/* Period Selector */}
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-medium text-gray-700">Time Period</h3>
+            <div className="flex gap-2">
+              {['30', '60', '90'].map((days) => (
+                <button
+                  key={days}
+                  onClick={() => {
+                    setVolumePeriod(days);
+                    loadVolumeData(days);
+                  }}
+                  className={`px-3 py-1 text-sm rounded-md ${
+                    volumePeriod === days
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {days} Days
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {loadingVolume ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+            </div>
+          ) : volumeData && volumeData.length > 0 ? (
+            <div className="space-y-6">
+              {/* Summary Stats */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-blue-50 rounded-lg p-4 text-center">
+                  <p className="text-sm text-blue-600">Active Links</p>
+                  <p className="text-2xl font-bold text-blue-900">{volumeData.length}</p>
+                </div>
+                <div className="bg-green-50 rounded-lg p-4 text-center">
+                  <p className="text-sm text-green-600">Total Clicks</p>
+                  <p className="text-2xl font-bold text-green-900">
+                    {volumeData.reduce((sum: number, link: any) => sum + link.totalClicks, 0)}
+                  </p>
+                </div>
+                <div className="bg-purple-50 rounded-lg p-4 text-center">
+                  <p className="text-sm text-purple-600">Unique Visitors</p>
+                  <p className="text-2xl font-bold text-purple-900">
+                    {volumeData.reduce((sum: number, link: any) => sum + link.uniqueVisitors, 0)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Individual Link Charts */}
+              <div className="space-y-6 max-h-96 overflow-y-auto">
+                {volumeData.map((link: any) => (
+                  <div key={link.shortCode} className="border rounded-lg p-4">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <p className="font-mono text-sm text-blue-600">vip-club.uk/{link.shortCode}</p>
+                        <p className="text-xs text-gray-500 truncate max-w-md">{link.destinationUrl}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold">{link.totalClicks} clicks</p>
+                        <p className="text-xs text-gray-500">{link.uniqueVisitors} unique</p>
+                      </div>
+                    </div>
+                    <LineChart
+                      data={link.data}
+                      height={150}
+                      color="#3B82F6"
+                      showGrid={false}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {/* Export Button */}
+              <div className="pt-4 border-t">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    // Create CSV export
+                    const csv = [
+                      ['Short Code', 'Destination', 'Total Clicks', 'Unique Visitors'],
+                      ...volumeData.map((link: any) => [
+                        link.shortCode,
+                        link.destinationUrl,
+                        link.totalClicks,
+                        link.uniqueVisitors
+                      ])
+                    ].map(row => row.join(',')).join('\n');
+                    
+                    const blob = new Blob([csv], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `short-links-analytics-${volumePeriod}-days.csv`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    
+                    toast.success('Analytics exported');
+                  }}
+                >
+                  Export Analytics
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <ChartBarIcon className="mx-auto h-12 w-12 text-gray-400" />
+              <p className="mt-2 text-sm text-gray-500">No click data available for this period</p>
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   );

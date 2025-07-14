@@ -193,7 +193,12 @@ export async function getShortLinkAnalytics(shortCode: string) {
           clicked_at,
           user_agent,
           ip_address,
-          referrer
+          referrer,
+          country,
+          city,
+          device_type,
+          browser,
+          os
         )
       `)
       .eq('short_code', shortCode)
