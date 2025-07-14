@@ -41,8 +41,8 @@ BEGIN
       sl.destination_url,
       array_agg(ds.date ORDER BY ds.date) as dates,
       array_agg(COALESCE(ldc.daily_clicks, 0) ORDER BY ds.date) as clicks,
-      COALESCE(SUM(ldc.daily_clicks), 0) as total_click_count,
-      COALESCE(SUM(ldc.daily_unique), 0) as unique_visitor_count
+      COALESCE(SUM(ldc.daily_clicks), 0)::BIGINT as total_click_count,
+      COALESCE(SUM(ldc.daily_unique), 0)::BIGINT as unique_visitor_count
     FROM short_links sl
     CROSS JOIN date_series ds
     LEFT JOIN link_daily_clicks ldc ON 
