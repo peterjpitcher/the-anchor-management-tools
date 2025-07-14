@@ -110,7 +110,7 @@ export async function createShortLinkInternal(data: {
     };
   } catch (error) {
     console.error('Internal short link error:', error);
-    return { error: 'Failed to create short link' };
+    return { error: `Failed to create short link: ${error instanceof Error ? error.message : 'Unknown error'}` };
   }
 }
 

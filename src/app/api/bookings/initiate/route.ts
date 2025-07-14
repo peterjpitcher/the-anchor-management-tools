@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
         time,
         capacity,
         event_status,
-        bookings(count)
+        bookings(seats)
       `)
       .eq('id', event_id)
       .single();
@@ -59,9 +59,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Check capacity
-    const bookingCount = event.bookings?.[0]?.count || 0;
+    const bookedSeats = event.bookings?.reduce((sum: number, booking: any) => sum + (booking.seats || 0), 0) || 0;
     const capacity = event.capacity || 100;
-    const availableSeats = capacity - bookingCount;
+    const availableSeats = capacity - bookedSeats;
 
     if (availableSeats < 1) {
       return createErrorResponse(
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
     const confirmationUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'}/booking-confirmation/${bookingToken}`;
     const { data: shortLink, error: linkError } = await createShortLinkInternal({
       destination_url: confirmationUrl,
-      link_type: 'booking_confirmation',
+      link_type: 'custom',
       expires_at: expiresAt.toISOString(),
       metadata: {
         type: 'booking_confirmation',

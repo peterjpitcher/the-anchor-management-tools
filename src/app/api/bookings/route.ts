@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
         time,
         capacity,
         event_status,
-        bookings(count)
+        bookings(seats)
       `)
       .eq('id', event_id)
       .single();
@@ -64,9 +64,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Check capacity
-    const bookingCount = event.bookings?.[0]?.count || 0;
+    const bookedSeats = event.bookings?.reduce((sum: number, booking: any) => sum + (booking.seats || 0), 0) || 0;
     const capacity = event.capacity || 100;
-    const availableSeats = capacity - bookingCount;
+    const availableSeats = capacity - bookedSeats;
 
     if (availableSeats < seats) {
       return createErrorResponse(

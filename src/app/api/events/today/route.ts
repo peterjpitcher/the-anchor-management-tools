@@ -19,7 +19,7 @@ export async function GET(_request: NextRequest) {
           color,
           icon
         ),
-        bookings(count)
+        bookings(seats)
       `)
       .eq('date', today)
       .eq('event_status', 'scheduled')
@@ -31,10 +31,10 @@ export async function GET(_request: NextRequest) {
 
     // Transform events to Schema.org format
     const schemaEvents = events?.map(event => {
-      const bookingCount = event.bookings?.[0]?.count || 0;
+      const bookedSeats = event.bookings?.reduce((sum: number, booking: any) => sum + (booking.seats || 0), 0) || 0;
       return {
         id: event.id,
-        ...eventToSchema(event, bookingCount),
+        ...eventToSchema(event, bookedSeats),
       };
     }) || [];
 
