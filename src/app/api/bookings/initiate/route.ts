@@ -15,15 +15,27 @@ const initiateBookingSchema = z.object({
 
 export async function POST(request: NextRequest) {
   return withApiAuth(async (_req, apiKey) => {
-    const body = await request.json();
+    try {
+      // Create a response object to track errors
+      const debugInfo = {
+        timestamp: new Date().toISOString(),
+        apiKeyId: apiKey?.id || 'unknown',
+        errors: [] as string[],
+        warnings: [] as string[],
+      };
+      
+      const body = await request.json();
+      debugInfo.requestBody = body;
     
     // Validate input
     const validation = initiateBookingSchema.safeParse(body);
     if (!validation.success) {
+      debugInfo.errors.push(`Validation failed: ${validation.error.errors[0].message}`);
       return createErrorResponse(
         validation.error.errors[0].message,
         'VALIDATION_ERROR',
-        400
+        400,
+        { debug: debugInfo }
       );
     }
 
@@ -46,7 +58,8 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (eventError || !event) {
-      return createErrorResponse('Event not found', 'NOT_FOUND', 404);
+      debugInfo.errors.push(`Event not found: ${eventError?.message || 'No event returned'}`);
+      return createErrorResponse('Event not found', 'NOT_FOUND', 404, { debug: debugInfo });
     }
 
     // Validate event status
@@ -109,8 +122,11 @@ export async function POST(request: NextRequest) {
       });
 
     if (pendingError) {
-      console.error('Failed to create pending booking:', pendingError);
-      return createErrorResponse('Failed to initiate booking', 'DATABASE_ERROR', 500);
+      debugInfo.errors.push(`Database error: ${pendingError.message}`);
+      return createErrorResponse('Failed to initiate booking', 'DATABASE_ERROR', 500, {
+        debug: debugInfo,
+        pendingError: pendingError.message
+      });
     }
 
     // Create short link for confirmation
@@ -127,8 +143,11 @@ export async function POST(request: NextRequest) {
     });
 
     if (linkError || !shortLink) {
-      console.error('Failed to create short link:', linkError);
-      return createErrorResponse('Failed to create confirmation link', 'SYSTEM_ERROR', 500);
+      debugInfo.errors.push(`Short link error: ${linkError?.message || 'No link created'}`);
+      return createErrorResponse('Failed to create confirmation link', 'SYSTEM_ERROR', 500, {
+        debug: debugInfo,
+        linkError: linkError?.message
+      });
     }
 
     // Prepare SMS message
@@ -147,9 +166,11 @@ export async function POST(request: NextRequest) {
     
     try {
       if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
-        console.log('Skipping SMS - Twilio not configured');
+        debugInfo.warnings.push('Twilio credentials not configured');
+        smsSent = false;
       } else if (!process.env.TWILIO_PHONE_NUMBER && !process.env.TWILIO_MESSAGING_SERVICE_SID) {
-        console.log('Skipping SMS - No sender configured');
+        debugInfo.warnings.push('Twilio sender not configured');
+        smsSent = false;
       } else {
         const twilioClient = twilio(
           process.env.TWILIO_ACCOUNT_SID,
@@ -168,7 +189,7 @@ export async function POST(request: NextRequest) {
         }
 
         const twilioMessage = await twilioClient.messages.create(messageParams);
-        console.log('Booking initiation SMS sent successfully:', twilioMessage.sid);
+        debugInfo.smsSid = twilioMessage.sid;
         smsSent = true;
 
         // Calculate segments and cost
@@ -196,8 +217,10 @@ export async function POST(request: NextRequest) {
           })
           .eq('token', bookingToken);
       }
-    } catch (smsError) {
-      console.error('Failed to send SMS:', smsError);
+    } catch (smsError: any) {
+      debugInfo.errors.push(`SMS error: ${smsError?.message || 'Unknown SMS error'}`);
+      debugInfo.smsError = smsError?.message;
+      smsSent = false;
       // Don't fail the request if SMS fails - they can still use the link
     }
 
@@ -230,7 +253,26 @@ export async function POST(request: NextRequest) {
       },
       customer_exists: !!existingCustomer,
       sms_sent: smsSent,
+      debug: process.env.NODE_ENV !== 'production' ? debugInfo : undefined,
+      _debug_summary: {
+        errors: debugInfo.errors.length,
+        warnings: debugInfo.warnings.length,
+        sms_attempted: !!process.env.TWILIO_ACCOUNT_SID,
+        sms_sent: smsSent,
+      }
     }, 201);
+    } catch (unexpectedError: any) {
+      // Catch any unexpected errors
+      return createErrorResponse(
+        'An unexpected error occurred',
+        'INTERNAL_ERROR',
+        500,
+        {
+          error: unexpectedError?.message || 'Unknown error',
+          stack: process.env.NODE_ENV !== 'production' ? unexpectedError?.stack : undefined
+        }
+      );
+    }
   }, ['write:bookings'], request);
 }
 
