@@ -6,7 +6,7 @@ export async function GET(_request: NextRequest) {
   return withApiAuth(async (_req, _apiKey) => {
     const supabase = createAdminClient();
     
-    // Get parent recurring events
+    // Get all events (since we no longer have recurring events)
     const { data: recurringEvents, error } = await supabase
       .from('events')
       .select(`
@@ -19,21 +19,17 @@ export async function GET(_request: NextRequest) {
           icon
         )
       `)
-      .eq('is_recurring', true)
-      .is('parent_event_id', null)
       .order('name', { ascending: true });
 
     if (error) {
       return createErrorResponse('Failed to fetch recurring events', 'DATABASE_ERROR', 500);
     }
 
-    // Transform to include recurrence information
+    // Transform events
     const formattedEvents = recurringEvents?.map(event => ({
       id: event.id,
       name: event.name,
-      description: event.description,
       category: event.category,
-      recurrence_rule: event.recurrence_rule || 'weekly',
       default_time: event.time,
       default_capacity: event.capacity,
       performer: event.performer_name ? {
@@ -42,7 +38,7 @@ export async function GET(_request: NextRequest) {
       } : undefined,
       price: {
         amount: event.price || 0,
-        currency: event.price_currency || 'GBP',
+        currency: 'GBP',
         is_free: event.is_free !== false,
       },
     })) || [];

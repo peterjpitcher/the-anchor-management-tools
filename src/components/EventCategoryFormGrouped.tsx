@@ -12,7 +12,6 @@ import {
   InformationCircleIcon,
   CalendarIcon,
   MegaphoneIcon,
-  PhotoIcon,
   CogIcon
 } from '@heroicons/react/24/outline'
 
@@ -97,12 +96,6 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
   const [defaultLastEntryTime, setDefaultLastEntryTime] = useState(category?.default_last_entry_time?.substring(0, 5) ?? '')
   const [defaultBookingUrl, setDefaultBookingUrl] = useState(category?.default_booking_url ?? '')
   
-  // Media fields
-  const [galleryImageUrls, setGalleryImageUrls] = useState(category?.gallery_image_urls?.join(', ') ?? '')
-  const [posterImageUrl, setPosterImageUrl] = useState(category?.poster_image_url ?? '')
-  const [thumbnailImageUrl, setThumbnailImageUrl] = useState(category?.thumbnail_image_url ?? '')
-  const [promoVideoUrl, setPromoVideoUrl] = useState(category?.promo_video_url ?? '')
-  const [highlightVideoUrls, setHighlightVideoUrls] = useState(category?.highlight_video_urls?.join(', ') ?? '')
   
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -124,8 +117,8 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
         is_active: isActive,
         sort_order: parseInt(sortOrder) || 0,
         default_image_url: imageUrl || null,
-        thumbnail_image_url: thumbnailImageUrl || imageUrl || null,
-        poster_image_url: posterImageUrl || imageUrl || null,
+        thumbnail_image_url: imageUrl || null,
+        poster_image_url: imageUrl || null,
         default_start_time: defaultStartTime || null,
         default_end_time: defaultEndTime || null,
         default_capacity: defaultCapacity ? parseInt(defaultCapacity) : null,
@@ -142,10 +135,6 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
         long_description: longDescription.trim() || undefined,
         highlights: highlights ? highlights.split(',').map(h => h.trim()).filter(h => h) : [],
         keywords: keywords ? keywords.split(',').map(k => k.trim()).filter(k => k) : [],
-        // Media fields
-        gallery_image_urls: galleryImageUrls ? galleryImageUrls.split(',').map(url => url.trim()).filter(url => url) : [],
-        promo_video_url: promoVideoUrl.trim() || undefined,
-        highlight_video_urls: highlightVideoUrls ? highlightVideoUrls.split(',').map(url => url.trim()).filter(url => url) : [],
         // Additional timing fields
         default_duration_minutes: defaultDurationMinutes ? parseInt(defaultDurationMinutes) : null,
         default_doors_time: defaultDoorsTime.trim() || undefined,
@@ -180,8 +169,8 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
               entityId={category?.id || 'new'}
               entityType="category"
               currentImageUrl={imageUrl}
-              label="Category Image"
-              helpText="Upload a square image for this category (recommended: 1080x1080px)"
+              label="Default Event Image"
+              helpText="Upload a default square image for events in this category (recommended: 1080x1080px)"
               onImageUploaded={(url) => setImageUrl(url)}
               onImageDeleted={() => setImageUrl('')}
             />
@@ -659,97 +648,6 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
         </div>
       </CollapsibleSection>
 
-      {/* Media Section */}
-      <CollapsibleSection 
-        title="Media & Gallery" 
-        description="Additional images and videos for this category"
-        icon={PhotoIcon}
-        defaultOpen={false}
-      >
-        <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
-          <div className="col-span-full">
-            <label htmlFor="gallery_image_urls" className="block text-sm font-medium leading-6 text-gray-900">
-              Gallery Images
-            </label>
-            <div className="mt-2">
-              <textarea
-                id="gallery_image_urls"
-                rows={3}
-                value={galleryImageUrls}
-                onChange={(e) => setGalleryImageUrls(e.target.value)}
-                placeholder="https://example.com/image1.jpg, https://example.com/image2.jpg"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-              />
-              <p className="mt-1 text-xs text-gray-500">Separate multiple image URLs with commas</p>
-            </div>
-          </div>
-
-          <div className="sm:col-span-3">
-            <label htmlFor="poster_image_url" className="block text-sm font-medium leading-6 text-gray-900">
-              Poster Image URL
-            </label>
-            <div className="mt-2">
-              <input
-                type="url"
-                id="poster_image_url"
-                value={posterImageUrl}
-                onChange={(e) => setPosterImageUrl(e.target.value)}
-                placeholder="https://example.com/poster.jpg"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-              />
-            </div>
-          </div>
-
-          <div className="sm:col-span-3">
-            <label htmlFor="thumbnail_image_url" className="block text-sm font-medium leading-6 text-gray-900">
-              Thumbnail Image URL
-            </label>
-            <div className="mt-2">
-              <input
-                type="url"
-                id="thumbnail_image_url"
-                value={thumbnailImageUrl}
-                onChange={(e) => setThumbnailImageUrl(e.target.value)}
-                placeholder="https://example.com/thumbnail.jpg"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-              />
-            </div>
-          </div>
-
-          <div className="col-span-full">
-            <label htmlFor="promo_video_url" className="block text-sm font-medium leading-6 text-gray-900">
-              Promo Video URL
-            </label>
-            <div className="mt-2">
-              <input
-                type="url"
-                id="promo_video_url"
-                value={promoVideoUrl}
-                onChange={(e) => setPromoVideoUrl(e.target.value)}
-                placeholder="https://youtube.com/watch?v=..."
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-              />
-            </div>
-          </div>
-
-          <div className="col-span-full">
-            <label htmlFor="highlight_video_urls" className="block text-sm font-medium leading-6 text-gray-900">
-              Highlight Videos
-            </label>
-            <div className="mt-2">
-              <textarea
-                id="highlight_video_urls"
-                rows={2}
-                value={highlightVideoUrls}
-                onChange={(e) => setHighlightVideoUrls(e.target.value)}
-                placeholder="https://youtube.com/watch?v=..., https://vimeo.com/..."
-                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-              />
-              <p className="mt-1 text-xs text-gray-500">Separate multiple video URLs with commas</p>
-            </div>
-          </div>
-        </div>
-      </CollapsibleSection>
 
       {/* Form Actions */}
       <div className="flex items-center justify-end gap-x-6">

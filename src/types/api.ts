@@ -42,7 +42,6 @@ export interface MenuItem {
   name: string;
   description?: string | null;
   price: number;
-  price_currency: string;
   calories?: number | null;
   dietary_info: string[];
   allergens: string[];

@@ -369,8 +369,8 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
                       </span>
                     )}
                   </div>
-                  {event.description && (
-                    <p className="mt-2 text-sm text-gray-600">{event.description}</p>
+                  {event.short_description && (
+                    <p className="mt-2 text-sm text-gray-600">{event.short_description}</p>
                   )}
                 </div>
               </div>

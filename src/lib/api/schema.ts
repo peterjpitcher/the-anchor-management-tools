@@ -221,7 +221,7 @@ export function eventToSchema(event: any, bookingCount: number = 0, faqs?: any[]
   const schema: SchemaEvent = {
     '@type': 'Event',
     name: event.name,
-    description: event.short_description || event.description,
+    description: event.short_description,
     startDate: startDateTime,
     endDate: endDateTime,
     eventStatus: getEventStatus(event.event_status),
@@ -236,7 +236,7 @@ export function eventToSchema(event: any, bookingCount: number = 0, faqs?: any[]
       '@type': 'Offer',
       url: event.booking_url || `${process.env.NEXT_PUBLIC_APP_URL}/events/${event.slug || event.id}`,
       price: event.price?.toString() || '0',
-      priceCurrency: event.price_currency || 'GBP',
+      priceCurrency: 'GBP',
       availability: remainingSeats > 0 
         ? (remainingSeats < 10 ? SCHEMA_AVAILABILITY.LIMITED : SCHEMA_AVAILABILITY.IN_STOCK)
         : SCHEMA_AVAILABILITY.SOLD_OUT,
@@ -254,7 +254,7 @@ export function eventToSchema(event: any, bookingCount: number = 0, faqs?: any[]
     url: `${process.env.NEXT_PUBLIC_APP_URL}/events/${event.slug || event.id}`,
     identifier: event.id,
     keywords: event.keywords?.join(', '),
-    about: event.long_description || event.description,
+    about: event.long_description,
     duration,
     doorTime: event.doors_time ? `${event.date}T${event.doors_time}+00:00` : undefined,
     video: videos.length > 0 ? videos : undefined,
@@ -304,7 +304,7 @@ export function menuToSchema(sections: any[]): SchemaMenu {
         offers: {
           '@type': 'Offer',
           price: item.price.toString(),
-          priceCurrency: item.price_currency || 'GBP',
+          priceCurrency: 'GBP',
           availability: SCHEMA_AVAILABILITY.IN_STOCK,
         },
         nutrition: item.calories ? {

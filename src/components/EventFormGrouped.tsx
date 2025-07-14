@@ -13,7 +13,6 @@ import {
   InformationCircleIcon,
   CalendarIcon,
   MegaphoneIcon,
-  PhotoIcon,
   ClockIcon,
   UserGroupIcon
 } from '@heroicons/react/24/outline'
@@ -97,12 +96,6 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
   const [durationMinutes, setDurationMinutes] = useState(event?.duration_minutes?.toString() ?? '')
   const [lastEntryTime, setLastEntryTime] = useState(event?.last_entry_time ?? '')
   
-  // Media fields
-  const [galleryImageUrls, setGalleryImageUrls] = useState(event?.gallery_image_urls?.join(', ') ?? '')
-  const [posterImageUrl, setPosterImageUrl] = useState(event?.poster_image_url ?? '')
-  const [thumbnailImageUrl, setThumbnailImageUrl] = useState(event?.thumbnail_image_url ?? '')
-  const [promoVideoUrl, setPromoVideoUrl] = useState(event?.promo_video_url ?? '')
-  const [highlightVideoUrls, setHighlightVideoUrls] = useState(event?.highlight_video_urls?.join(', ') ?? '')
   
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -134,9 +127,9 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
         price: parseFloat(price) || 0,
         is_free: isFree,
         hero_image_url: imageUrl || null,
-        // Set other image URLs to match the single image
-        thumbnail_image_url: thumbnailImageUrl || imageUrl || null,
-        poster_image_url: posterImageUrl || imageUrl || null,
+        // Set other image URLs to match the single image (for backwards compatibility)
+        thumbnail_image_url: imageUrl || null,
+        poster_image_url: imageUrl || null,
         // SEO and content fields
         slug: slug.trim() || undefined,
         short_description: shortDescription.trim() || undefined,
@@ -145,10 +138,6 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
         meta_title: metaTitle.trim() || undefined,
         meta_description: metaDescription.trim() || undefined,
         keywords: keywords ? keywords.split(',').map(k => k.trim()).filter(k => k) : [],
-        // Media fields
-        gallery_image_urls: galleryImageUrls ? galleryImageUrls.split(',').map(url => url.trim()).filter(url => url) : [],
-        promo_video_url: promoVideoUrl.trim() || undefined,
-        highlight_video_urls: highlightVideoUrls ? highlightVideoUrls.split(',').map(url => url.trim()).filter(url => url) : [],
         // Additional timing and booking fields
         booking_url: bookingUrl.trim() || undefined,
         doors_time: doorsTime || null,
@@ -673,97 +662,6 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
         </div>
       </CollapsibleSection>
 
-      {/* Media Section */}
-      <CollapsibleSection 
-        title="Media & Gallery" 
-        description="Additional images and videos for this event"
-        icon={PhotoIcon}
-        defaultOpen={false}
-      >
-        <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
-          <div className="col-span-full">
-            <label htmlFor="gallery_image_urls" className="block text-sm font-medium leading-6 text-gray-900">
-              Gallery Images
-            </label>
-            <div className="mt-2">
-              <textarea
-                id="gallery_image_urls"
-                rows={3}
-                value={galleryImageUrls}
-                onChange={(e) => setGalleryImageUrls(e.target.value)}
-                placeholder="https://example.com/image1.jpg, https://example.com/image2.jpg"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
-              />
-              <p className="mt-1 text-xs text-gray-500">Separate multiple image URLs with commas</p>
-            </div>
-          </div>
-
-          <div className="sm:col-span-3">
-            <label htmlFor="poster_image_url" className="block text-sm font-medium leading-6 text-gray-900">
-              Poster Image URL
-            </label>
-            <div className="mt-2">
-              <input
-                type="url"
-                id="poster_image_url"
-                value={posterImageUrl}
-                onChange={(e) => setPosterImageUrl(e.target.value)}
-                placeholder="https://example.com/poster.jpg"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
-              />
-            </div>
-          </div>
-
-          <div className="sm:col-span-3">
-            <label htmlFor="thumbnail_image_url" className="block text-sm font-medium leading-6 text-gray-900">
-              Thumbnail Image URL
-            </label>
-            <div className="mt-2">
-              <input
-                type="url"
-                id="thumbnail_image_url"
-                value={thumbnailImageUrl}
-                onChange={(e) => setThumbnailImageUrl(e.target.value)}
-                placeholder="https://example.com/thumbnail.jpg"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
-              />
-            </div>
-          </div>
-
-          <div className="col-span-full">
-            <label htmlFor="promo_video_url" className="block text-sm font-medium leading-6 text-gray-900">
-              Promo Video URL
-            </label>
-            <div className="mt-2">
-              <input
-                type="url"
-                id="promo_video_url"
-                value={promoVideoUrl}
-                onChange={(e) => setPromoVideoUrl(e.target.value)}
-                placeholder="https://youtube.com/watch?v=..."
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
-              />
-            </div>
-          </div>
-
-          <div className="col-span-full">
-            <label htmlFor="highlight_video_urls" className="block text-sm font-medium leading-6 text-gray-900">
-              Highlight Videos
-            </label>
-            <div className="mt-2">
-              <textarea
-                id="highlight_video_urls"
-                rows={2}
-                value={highlightVideoUrls}
-                onChange={(e) => setHighlightVideoUrls(e.target.value)}
-                placeholder="https://youtube.com/watch?v=..., https://vimeo.com/..."
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
-              />
-              <p className="mt-1 text-xs text-gray-500">Separate multiple video URLs with commas</p>
-            </div>
-          </div>
-        </div>
-      </CollapsibleSection>
 
       {/* Form Actions */}
       <div className="sticky bottom-0 -mx-4 sm:mx-0 px-4 sm:px-0 py-4 bg-white border-t sm:border-0 sm:relative sm:py-0">

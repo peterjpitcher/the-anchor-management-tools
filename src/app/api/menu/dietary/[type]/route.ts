@@ -30,7 +30,6 @@ export async function GET(
         name,
         description,
         price,
-        price_currency,
         calories,
         dietary_info,
         allergens,
@@ -71,7 +70,7 @@ export async function GET(
         offers: {
           '@type': 'Offer',
           price: item.price.toString(),
-          priceCurrency: item.price_currency || 'GBP',
+          priceCurrency: 'GBP',
           availability: SCHEMA_AVAILABILITY.IN_STOCK,
         },
         nutrition: item.calories ? {

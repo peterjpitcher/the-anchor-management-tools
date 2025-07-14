@@ -6,19 +6,13 @@ export interface Event {
   capacity: number | null;
   category_id?: string | null;
   created_at: string;
-  description?: string | null;
   end_time?: string | null;
   event_status?: string;
   performer_name?: string | null;
   performer_type?: string | null;
   price?: number;
-  price_currency?: string;
   is_free?: boolean;
   booking_url?: string | null;
-  image_urls?: string[];
-  is_recurring?: boolean;
-  recurrence_rule?: string | null;
-  parent_event_id?: string | null;
   // Phase 1 SEO fields
   slug: string;
   short_description?: string | null;

@@ -15,7 +15,6 @@ export async function GET(_request: NextRequest) {
         name,
         description,
         price,
-        price_currency,
         calories,
         dietary_info,
         allergens,
@@ -48,7 +47,7 @@ export async function GET(_request: NextRequest) {
       offers: {
         '@type': 'Offer',
         price: special.price.toString(),
-        priceCurrency: special.price_currency || 'GBP',
+        priceCurrency: 'GBP',
         availability: SCHEMA_AVAILABILITY.IN_STOCK,
         availableAtOrFrom: special.available_from,
         availableThrough: special.available_until,
