@@ -16,8 +16,8 @@ ADD COLUMN IF NOT EXISTS utm_campaign VARCHAR(100);
 -- Create indexes for demographic queries
 CREATE INDEX IF NOT EXISTS idx_short_link_clicks_country ON short_link_clicks(country);
 CREATE INDEX IF NOT EXISTS idx_short_link_clicks_device_type ON short_link_clicks(device_type);
--- Use proper casting instead of DATE() function for the index
-CREATE INDEX IF NOT EXISTS idx_short_link_clicks_clicked_date ON short_link_clicks((clicked_at::date));
+-- Index on the timestamp column directly (the date casting will use this index)
+CREATE INDEX IF NOT EXISTS idx_short_link_clicks_clicked_at ON short_link_clicks(clicked_at);
 
 -- Create a view for daily click aggregations
 CREATE OR REPLACE VIEW short_link_daily_stats AS
