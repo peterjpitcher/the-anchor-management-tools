@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { parseUserAgent, parseQueryParams, getCountryFromHeaders, getCityFromHeaders, getRegionFromHeaders } from '@/lib/user-agent-parser';
 
 export async function GET(
   request: NextRequest,
@@ -45,13 +46,26 @@ export async function GET(
     // Track the click asynchronously (don't wait for it)
     Promise.resolve().then(async () => {
       try {
+        const userAgent = request.headers.get('user-agent');
+        const { deviceType, browser, os } = parseUserAgent(userAgent);
+        const utmParams = parseQueryParams(request.url);
+        
         await supabase
           .from('short_link_clicks')
           .insert({
             short_link_id: link.id,
-            user_agent: request.headers.get('user-agent'),
+            user_agent: userAgent,
             referrer: request.headers.get('referer'),
-            ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip')
+            ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip'),
+            country: getCountryFromHeaders(request.headers),
+            city: getCityFromHeaders(request.headers),
+            region: getRegionFromHeaders(request.headers),
+            device_type: deviceType,
+            browser,
+            os,
+            utm_source: utmParams.utm_source,
+            utm_medium: utmParams.utm_medium,
+            utm_campaign: utmParams.utm_campaign
           });
           
         await supabase
