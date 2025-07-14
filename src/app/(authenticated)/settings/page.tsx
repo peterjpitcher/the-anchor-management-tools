@@ -14,7 +14,8 @@ import {
   CommandLineIcon,
   ClockIcon,
   PlayIcon,
-  SparklesIcon
+  SparklesIcon,
+  LinkIcon
 } from '@heroicons/react/24/outline';
 import { checkUserPermission } from '@/app/actions/rbac';
 import type { ModuleName, ActionType } from '@/types/rbac';
@@ -150,6 +151,13 @@ const settingsSections = [
     permission: { module: 'settings', action: 'manage' },
   },
   {
+    name: 'Short Links',
+    description: 'Create and manage vip-club.uk short links',
+    href: '/settings/short-links',
+    icon: LinkIcon,
+    permission: { module: 'settings', action: 'manage' },
+  },
+  {
     name: 'Cron Job Testing',
     description: 'Manually trigger cron jobs for testing purposes',
     href: '/settings/cron-test',
@@ -190,10 +198,10 @@ export default async function SettingsPage() {
     s.href === '/profile' || s.href === '/users' || s.href === '/roles'
   );
   const systemSettingsSections = visibleSections.filter(s => 
-    s.href.includes('/settings/') && !s.name.includes('SMS') && !s.name.includes('Audit') && !s.name.includes('API Keys') && !s.name.includes('Twilio') && !s.name.includes('Cron')
+    s.href.includes('/settings/') && !s.name.includes('SMS') && !s.name.includes('Audit') && !s.name.includes('API Keys') && !s.name.includes('Twilio') && !s.name.includes('Cron') && !s.name.includes('Short Links')
   );
   const monitoringSections = visibleSections.filter(s => 
-    s.name.includes('SMS') || s.name.includes('Audit') || s.name.includes('API Keys') || s.name.includes('Twilio') || s.name.includes('Cron')
+    s.name.includes('SMS') || s.name.includes('Audit') || s.name.includes('API Keys') || s.name.includes('Twilio') || s.name.includes('Cron') || s.name.includes('Short Links')
   );
 
   return (
