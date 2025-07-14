@@ -6,7 +6,7 @@ import { ukPhoneRegex } from '@/lib/validation';
 import { formatPhoneForStorage, formatPhoneForDisplay } from '@/lib/validation';
 import { generatePhoneVariants } from '@/lib/utils';
 import { createShortLinkInternal } from '@/app/actions/short-links';
-import { sendSms } from '@/app/actions/sms';
+import twilio from 'twilio';
 
 const initiateBookingSchema = z.object({
   event_id: z.string().uuid(),
@@ -141,13 +141,62 @@ export async function POST(request: NextRequest) {
       ? `Hi ${existingCustomer.first_name}, please confirm your booking for ${event.name} on ${new Date(event.date).toLocaleDateString('en-GB')} at ${event.time}. Click here to confirm: ${shortLink.full_url}`
       : `Welcome to The Anchor! Please confirm your booking for ${event.name} on ${new Date(event.date).toLocaleDateString('en-GB')} at ${event.time}. Click here to confirm: ${shortLink.full_url}`;
 
-    // Send SMS
-    const { error: smsError } = await sendSms({
-      to: standardizedPhone,
-      body: smsMessage,
-    });
+    // Send SMS and store details for later recording
+    let smsSent = false;
+    let smsDetails = null;
+    
+    try {
+      if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
+        console.log('Skipping SMS - Twilio not configured');
+      } else if (!process.env.TWILIO_PHONE_NUMBER && !process.env.TWILIO_MESSAGING_SERVICE_SID) {
+        console.log('Skipping SMS - No sender configured');
+      } else {
+        const twilioClient = twilio(
+          process.env.TWILIO_ACCOUNT_SID,
+          process.env.TWILIO_AUTH_TOKEN
+        );
 
-    if (smsError) {
+        const messageParams: any = {
+          body: smsMessage,
+          to: standardizedPhone,
+        };
+
+        if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
+          messageParams.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
+        } else if (process.env.TWILIO_PHONE_NUMBER) {
+          messageParams.from = process.env.TWILIO_PHONE_NUMBER;
+        }
+
+        const twilioMessage = await twilioClient.messages.create(messageParams);
+        console.log('Booking initiation SMS sent successfully:', twilioMessage.sid);
+        smsSent = true;
+
+        // Calculate segments and cost
+        const messageLength = smsMessage.length;
+        const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153);
+        const costUsd = segments * 0.04;
+
+        // Store SMS details in pending_bookings metadata for later recording
+        smsDetails = {
+          message_sid: twilioMessage.sid,
+          body: smsMessage,
+          from_number: twilioMessage.from || process.env.TWILIO_PHONE_NUMBER || '',
+          to_number: twilioMessage.to,
+          segments,
+          cost_usd: costUsd,
+          sent_at: new Date().toISOString(),
+        };
+
+        await supabase
+          .from('pending_bookings')
+          .update({
+            metadata: {
+              initial_sms: smsDetails,
+            }
+          })
+          .eq('token', bookingToken);
+      }
+    } catch (smsError) {
       console.error('Failed to send SMS:', smsError);
       // Don't fail the request if SMS fails - they can still use the link
     }
@@ -163,7 +212,7 @@ export async function POST(request: NextRequest) {
         event_id,
         mobile_number: displayPhone,
         customer_exists: !!existingCustomer,
-        sms_sent: !smsError,
+        sms_sent: smsSent,
       },
     });
 
@@ -180,7 +229,7 @@ export async function POST(request: NextRequest) {
         available_seats: availableSeats,
       },
       customer_exists: !!existingCustomer,
-      sms_sent: !smsError,
+      sms_sent: smsSent,
     }, 201);
   }, ['write:bookings'], request);
 }
