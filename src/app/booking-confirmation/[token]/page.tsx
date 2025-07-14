@@ -64,7 +64,6 @@ export default function BookingConfirmationPage() {
             name,
             date,
             time,
-            location,
             capacity
           ),
           customer:customers(
@@ -220,12 +219,6 @@ export default function BookingConfirmationPage() {
                   <span>{pendingBooking.event.time}</span>
                 </div>
                 
-                {pendingBooking.event.location && (
-                  <div className="flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-gray-500" />
-                    <span>{pendingBooking.event.location}</span>
-                  </div>
-                )}
               </div>
             </div>
 
