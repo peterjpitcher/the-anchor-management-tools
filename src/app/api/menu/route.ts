@@ -19,7 +19,6 @@ export async function GET(_request: NextRequest) {
           name,
           description,
           price,
-          price_currency,
           calories,
           dietary_info,
           allergens,

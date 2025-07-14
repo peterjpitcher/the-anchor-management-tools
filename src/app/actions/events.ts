@@ -45,7 +45,6 @@ const eventSchema = z.object({
   ),
   category_id: z.string().uuid().nullable().optional(),
   // Content fields
-  description: z.string().max(2000).nullable().optional(),
   short_description: z.string().max(500).nullable().optional(),
   long_description: z.string().nullable().optional(),
   highlights: z.array(z.string()).default([]),
@@ -82,7 +81,6 @@ const eventSchema = z.object({
     (val) => val === '' ? 0 : Number(val),
     z.number().min(0).max(99999.99).default(0)
   ),
-  price_currency: z.string().default('GBP'),
   is_free: z.boolean().default(false),
   booking_url: z.string().nullable().optional().transform(val => {
     if (!val || val.trim() === '') return null
@@ -199,7 +197,6 @@ export async function createEvent(formData: FormData) {
           price: category.default_price,
           is_free: category.default_is_free,
           // Content defaults
-          description: category.description,
           short_description: category.short_description,
           long_description: category.long_description,
           highlights: category.highlights,
@@ -226,7 +223,6 @@ export async function createEvent(formData: FormData) {
       time: formatTimeToHHMM(formData.get('time') as string || categoryDefaults.time) as string,
       capacity: formData.get('capacity') as string || categoryDefaults.capacity?.toString(),
       category_id: categoryId,
-      description: formData.get('description') as string || categoryDefaults.description || null,
       short_description: formData.get('short_description') as string || categoryDefaults.short_description || null,
       long_description: formData.get('long_description') as string || categoryDefaults.long_description || null,
       highlights: formData.get('highlights') ? JSON.parse(formData.get('highlights') as string) : categoryDefaults.highlights || [],
@@ -241,7 +237,6 @@ export async function createEvent(formData: FormData) {
       performer_name: formData.get('performer_name') as string || null,
       performer_type: formData.get('performer_type') as string || categoryDefaults.performer_type || null,
       price: formData.get('price') as string || categoryDefaults.price?.toString() || '0',
-      price_currency: formData.get('price_currency') as string || 'GBP',
       is_free: formData.get('is_free') ? formData.get('is_free') === 'true' : categoryDefaults.is_free || false,
       booking_url: formData.get('booking_url') as string || categoryDefaults.booking_url || null,
       hero_image_url: formData.get('hero_image_url') as string || categoryDefaults.hero_image_url || null,
@@ -331,7 +326,6 @@ export async function updateEvent(id: string, formData: FormData) {
       time: formatTimeToHHMM(formData.get('time') as string) as string,
       capacity: formData.get('capacity') as string,
       category_id: formData.get('category_id') as string || null,
-      description: formData.get('description') as string || null,
       short_description: formData.get('short_description') as string || null,
       long_description: formData.get('long_description') as string || null,
       highlights: formData.get('highlights') ? JSON.parse(formData.get('highlights') as string) : [],
@@ -346,7 +340,6 @@ export async function updateEvent(id: string, formData: FormData) {
       performer_name: formData.get('performer_name') as string || null,
       performer_type: formData.get('performer_type') as string || null,
       price: formData.get('price') as string || '0',
-      price_currency: formData.get('price_currency') as string || 'GBP',
       is_free: formData.get('is_free') === 'true',
       booking_url: formData.get('booking_url') as string || null,
       hero_image_url: formData.get('hero_image_url') as string || null,
