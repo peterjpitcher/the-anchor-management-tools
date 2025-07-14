@@ -41,7 +41,7 @@ export async function GET(_request: NextRequest) {
           color,
           icon
         ),
-        bookings(count),
+        bookings(seats),
         event_faqs(
           id,
           question,
@@ -78,10 +78,10 @@ export async function GET(_request: NextRequest) {
 
     // Transform events to Schema.org format with FAQs
     const schemaEvents = events?.map(event => {
-      const bookingCount = event.bookings?.[0]?.count || 0;
+      const bookedSeats = event.bookings?.reduce((sum: number, booking: any) => sum + (booking.seats || 0), 0) || 0;
       
       // Filter out sold out events if requested
-      if (availableOnly && event.capacity && bookingCount >= event.capacity) {
+      if (availableOnly && event.capacity && bookedSeats >= event.capacity) {
         return null;
       }
       
@@ -92,7 +92,7 @@ export async function GET(_request: NextRequest) {
         id: event.id,
         slug: event.slug,
         highlights: event.highlights || [],
-        ...eventToSchema(event, bookingCount, faqs),
+        ...eventToSchema(event, bookedSeats, faqs),
       };
     }).filter(Boolean) || [];
 

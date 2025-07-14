@@ -934,13 +934,6 @@ For testing, use your API key with test phone numbers:
 - Provide fallback contact methods
 - Monitor SMS opt-out errors
 
-## Support
-
-### Technical Support
-- **Email**: support@orangejelly.co.uk
-- **Phone**: 01797 363355
-- **Hours**: Monday-Friday, 9 AM - 5 PM GMT
-
 ### API Status
 Check API status and announcements: https://status.orangejelly.co.uk
 
