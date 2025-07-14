@@ -155,7 +155,7 @@ const settingsSections = [
     description: 'Create and manage vip-club.uk short links',
     href: '/settings/short-links',
     icon: LinkIcon,
-    permission: { module: 'settings', action: 'manage' },
+    permission: null, // Allow all authenticated users
   },
   {
     name: 'Cron Job Testing',
@@ -198,10 +198,10 @@ export default async function SettingsPage() {
     s.href === '/profile' || s.href === '/users' || s.href === '/roles'
   );
   const systemSettingsSections = visibleSections.filter(s => 
-    s.href.includes('/settings/') && !s.name.includes('SMS') && !s.name.includes('Audit') && !s.name.includes('API Keys') && !s.name.includes('Twilio') && !s.name.includes('Cron') && !s.name.includes('Short Links')
+    s.href.includes('/settings/') && !s.name.includes('SMS') && !s.name.includes('Audit') && !s.name.includes('API Keys') && !s.name.includes('Twilio') && !s.name.includes('Cron')
   );
   const monitoringSections = visibleSections.filter(s => 
-    s.name.includes('SMS') || s.name.includes('Audit') || s.name.includes('API Keys') || s.name.includes('Twilio') || s.name.includes('Cron') || s.name.includes('Short Links')
+    s.name.includes('SMS') || s.name.includes('Audit') || s.name.includes('API Keys') || s.name.includes('Twilio') || s.name.includes('Cron')
   );
 
   return (
