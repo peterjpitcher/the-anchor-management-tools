@@ -4,6 +4,12 @@ import type { NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname
+  const hostname = request.headers.get('host') || ''
+  
+  // Skip auth for vip-club.uk domain (short links)
+  if (hostname.includes('vip-club.uk')) {
+    return NextResponse.next()
+  }
   
   // Skip middleware for:
   // - Static assets
