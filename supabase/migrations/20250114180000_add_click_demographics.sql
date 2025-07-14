@@ -16,7 +16,8 @@ ADD COLUMN IF NOT EXISTS utm_campaign VARCHAR(100);
 -- Create indexes for demographic queries
 CREATE INDEX IF NOT EXISTS idx_short_link_clicks_country ON short_link_clicks(country);
 CREATE INDEX IF NOT EXISTS idx_short_link_clicks_device_type ON short_link_clicks(device_type);
-CREATE INDEX IF NOT EXISTS idx_short_link_clicks_clicked_date ON short_link_clicks(DATE(clicked_at));
+-- Use proper casting instead of DATE() function for the index
+CREATE INDEX IF NOT EXISTS idx_short_link_clicks_clicked_date ON short_link_clicks((clicked_at::date));
 
 -- Create a view for daily click aggregations
 CREATE OR REPLACE VIEW short_link_daily_stats AS
@@ -24,7 +25,7 @@ SELECT
   sl.id as short_link_id,
   sl.short_code,
   sl.link_type,
-  DATE(slc.clicked_at) as click_date,
+  slc.clicked_at::date as click_date,
   COUNT(*) as total_clicks,
   COUNT(DISTINCT slc.ip_address) as unique_visitors,
   COUNT(CASE WHEN slc.device_type = 'mobile' THEN 1 END) as mobile_clicks,
@@ -41,7 +42,7 @@ SELECT
 FROM short_links sl
 LEFT JOIN short_link_clicks slc ON sl.id = slc.short_link_id
 WHERE slc.clicked_at IS NOT NULL
-GROUP BY sl.id, sl.short_code, sl.link_type, DATE(slc.clicked_at);
+GROUP BY sl.id, sl.short_code, sl.link_type, slc.clicked_at::date;
 
 -- Grant permissions on the view
 GRANT SELECT ON short_link_daily_stats TO authenticated;
@@ -73,7 +74,7 @@ BEGIN
   ),
   click_data AS (
     SELECT 
-      DATE(slc.clicked_at) as click_date,
+      slc.clicked_at::date as click_date,
       COUNT(*) as total_clicks,
       COUNT(DISTINCT slc.ip_address) as unique_visitors,
       COUNT(CASE WHEN slc.device_type = 'mobile' THEN 1 END) as mobile_clicks,
@@ -95,7 +96,7 @@ BEGIN
     INNER JOIN short_link_clicks slc ON sl.id = slc.short_link_id
     WHERE sl.short_code = p_short_code
       AND slc.clicked_at >= CURRENT_DATE - INTERVAL '1 day' * (p_days - 1)
-    GROUP BY DATE(slc.clicked_at)
+    GROUP BY slc.clicked_at::date
   )
   SELECT 
     ds.date,
@@ -140,7 +141,7 @@ BEGIN
       sl.short_code,
       sl.link_type,
       sl.destination_url,
-      DATE(slc.clicked_at) as click_date,
+      slc.clicked_at::date as click_date,
       COUNT(*) as daily_clicks,
       COUNT(DISTINCT slc.ip_address) as daily_unique
     FROM short_links sl
