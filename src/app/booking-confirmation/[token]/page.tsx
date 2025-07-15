@@ -22,6 +22,8 @@ interface PendingBooking {
     date: string;
     time: string;
     capacity: number;
+    hero_image_url?: string | null;
+    thumbnail_image_url?: string | null;
   } | null;
   customer?: {
     id: string;
@@ -70,7 +72,9 @@ export default function BookingConfirmationPage() {
             name,
             date,
             time,
-            capacity
+            capacity,
+            hero_image_url,
+            thumbnail_image_url
           ),
           customer:customers(
             id,
@@ -185,11 +189,9 @@ export default function BookingConfirmationPage() {
             <Image 
               src="/logo.png" 
               alt="The Anchor" 
-              width={60}
-              height={60}
-              className="mr-3"
+              width={80}
+              height={80}
             />
-            <h1 className="text-2xl font-bold text-white">The Anchor</h1>
           </div>
         </div>
         <div className="flex items-center justify-center p-8">
@@ -307,6 +309,19 @@ export default function BookingConfirmationPage() {
           </h1>
           
           <div className="space-y-6">
+            {/* Event Image */}
+            {pendingBooking.event.hero_image_url && (
+              <div className="w-full h-48 relative rounded-lg overflow-hidden">
+                <Image 
+                  src={pendingBooking.event.hero_image_url}
+                  alt={pendingBooking.event.name}
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 768px) 100vw, 672px"
+                />
+              </div>
+            )}
+            
             {/* Event Details */}
             <div className="bg-gray-50 rounded-lg p-4 space-y-3">
               <h2 className="text-lg font-semibold">{pendingBooking.event.name}</h2>
