@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
   return withApiAuth(async (_req, apiKey) => {
     try {
       // Create a response object to track errors
-      const debugInfo = {
+      const debugInfo: any = {
         timestamp: new Date().toISOString(),
         apiKeyId: apiKey?.id || 'unknown',
         errors: [] as string[],
