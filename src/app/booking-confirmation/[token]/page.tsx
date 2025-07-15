@@ -15,18 +15,19 @@ interface PendingBooking {
   customer_id: string | null;
   expires_at: string;
   confirmed_at: string | null;
+  metadata?: any;
   event: {
     id: string;
     name: string;
     date: string;
     time: string;
     capacity: number;
-  };
+  } | null;
   customer?: {
     id: string;
     first_name: string;
     last_name: string;
-  };
+  } | null;
 }
 
 export default function BookingConfirmationPage() {
@@ -65,7 +66,7 @@ export default function BookingConfirmationPage() {
           expires_at,
           confirmed_at,
           metadata,
-          event:events(
+          event:events!inner(
             id,
             name,
             date,
@@ -98,13 +99,27 @@ export default function BookingConfirmationPage() {
         return;
       }
 
-      setPendingBooking(data as PendingBooking);
+      // Cast the data correctly - handle both array and object cases
+      const pendingBookingData: PendingBooking = {
+        id: data.id,
+        token: data.token,
+        event_id: data.event_id,
+        mobile_number: data.mobile_number,
+        customer_id: data.customer_id,
+        expires_at: data.expires_at,
+        confirmed_at: data.confirmed_at,
+        metadata: data.metadata,
+        event: Array.isArray(data.event) ? data.event[0] : data.event,
+        customer: Array.isArray(data.customer) ? data.customer[0] : data.customer,
+      };
+
+      setPendingBooking(pendingBookingData);
       
       // Pre-fill customer details if they exist
-      if (data.customer) {
+      if (pendingBookingData.customer) {
         setCustomerDetails({
-          first_name: data.customer.first_name,
-          last_name: data.customer.last_name,
+          first_name: pendingBookingData.customer.first_name,
+          last_name: pendingBookingData.customer.last_name,
         });
       }
     } catch (err) {
@@ -175,8 +190,16 @@ export default function BookingConfirmationPage() {
     );
   }
 
-  if (!pendingBooking) {
-    return null;
+  if (!pendingBooking || !pendingBooking.event) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        <div className="max-w-md w-full bg-white rounded-lg shadow-md p-6 text-center">
+          <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h1 className="text-xl font-semibold mb-2">Booking Error</h1>
+          <p className="text-gray-600">Invalid booking data</p>
+        </div>
+      </div>
+    );
   }
 
   if (confirmed) {
