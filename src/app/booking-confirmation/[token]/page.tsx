@@ -15,7 +15,6 @@ interface PendingBooking {
   customer_id: string | null;
   expires_at: string;
   confirmed_at: string | null;
-  metadata?: any;
   event: {
     id: string;
     name: string;
@@ -65,8 +64,7 @@ export default function BookingConfirmationPage() {
           customer_id,
           expires_at,
           confirmed_at,
-          metadata,
-          event:events!inner(
+          event:events(
             id,
             name,
             date,
@@ -82,10 +80,19 @@ export default function BookingConfirmationPage() {
         .eq('token', token)
         .single();
 
-      if (error || !data) {
+      if (error) {
+        console.error('Error loading pending booking:', error);
+        setError(`Database error: ${error.message}`);
+        return;
+      }
+      
+      if (!data) {
+        console.error('No pending booking found for token:', token);
         setError('Invalid or expired booking link');
         return;
       }
+      
+      console.log('Loaded pending booking:', data);
 
       // Check if already confirmed
       if (data.confirmed_at) {
@@ -108,7 +115,6 @@ export default function BookingConfirmationPage() {
         customer_id: data.customer_id,
         expires_at: data.expires_at,
         confirmed_at: data.confirmed_at,
-        metadata: data.metadata,
         event: Array.isArray(data.event) ? data.event[0] : data.event,
         customer: Array.isArray(data.customer) ? data.customer[0] : data.customer,
       };
