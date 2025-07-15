@@ -126,13 +126,8 @@ export default function BookingConfirmationPage() {
 
       setPendingBooking(pendingBookingData);
       
-      // Pre-fill customer details if they exist
-      if (pendingBookingData.customer) {
-        setCustomerDetails({
-          first_name: pendingBookingData.customer.first_name,
-          last_name: pendingBookingData.customer.last_name,
-        });
-      }
+      // Don't pre-fill customer details for existing customers
+      // They can't change their details during booking
     } catch (err) {
       console.error('Error loading pending booking:', err);
       setError('Failed to load booking details');
@@ -379,6 +374,18 @@ export default function BookingConfirmationPage() {
                 </div>
                 <p className="text-sm text-gray-600">
                   Phone Number: {formatPhoneForDisplay(pendingBooking.mobile_number)}
+                </p>
+              </div>
+            )}
+            
+            {/* Show existing customer info */}
+            {!needsCustomerDetails && pendingBooking.customer && (
+              <div className="bg-blue-50 rounded-lg p-4">
+                <p className="text-sm text-blue-900">
+                  Booking for: <span className="font-semibold">{pendingBooking.customer.first_name} {pendingBooking.customer.last_name}</span>
+                </p>
+                <p className="text-sm text-blue-700 mt-1">
+                  Phone: {formatPhoneForDisplay(pendingBooking.mobile_number)}
                 </p>
               </div>
             )}
