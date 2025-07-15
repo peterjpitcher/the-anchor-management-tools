@@ -20,7 +20,6 @@ interface PendingBooking {
     name: string;
     date: string;
     time: string;
-    location: string;
     capacity: number;
   };
   customer?: {
@@ -58,7 +57,14 @@ export default function BookingConfirmationPage() {
       const { data, error } = await supabase
         .from('pending_bookings')
         .select(`
-          *,
+          id,
+          token,
+          event_id,
+          mobile_number,
+          customer_id,
+          expires_at,
+          confirmed_at,
+          metadata,
           event:events(
             id,
             name,
