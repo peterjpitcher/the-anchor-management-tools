@@ -89,14 +89,15 @@ export async function POST(request: NextRequest) {
     const phoneVariants = generatePhoneVariants(standardizedPhone);
 
     // Check if customer exists
-    const { data: existingCustomer } = await supabase
+    const { data: customers } = await supabase
       .from('customers')
-      .select('id, first_name, last_name, sms_opt_in, sms_opt_out')
-      .or(phoneVariants.map(variant => `mobile_number.eq.${variant}`).join(','))
-      .single();
+      .select('id, first_name, last_name, sms_opt_in')
+      .or(phoneVariants.map(variant => `mobile_number.eq.${variant}`).join(','));
+    
+    const existingCustomer = customers && customers.length > 0 ? customers[0] : null;
 
-    // Check if customer has opted out
-    if (existingCustomer?.sms_opt_out) {
+    // Check if customer has opted out (sms_opt_in = false)
+    if (existingCustomer && existingCustomer.sms_opt_in === false) {
       return createErrorResponse(
         'This phone number has opted out of SMS communications',
         'SMS_OPT_OUT',
