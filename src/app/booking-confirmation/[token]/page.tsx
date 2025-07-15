@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/Button';
 import { Loader2, Calendar, Clock, MapPin, Users, CheckCircle, XCircle } from 'lucide-react';
 import { formatPhoneForDisplay } from '@/lib/validation';
+import Image from 'next/image';
 
 interface PendingBooking {
   id: string;
@@ -178,19 +179,47 @@ export default function BookingConfirmationPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-sidebar p-4">
+          <div className="max-w-2xl mx-auto flex items-center justify-center">
+            <Image 
+              src="/logo.png" 
+              alt="The Anchor" 
+              width={60}
+              height={60}
+              className="mr-3"
+            />
+            <h1 className="text-2xl font-bold text-white">The Anchor</h1>
+          </div>
+        </div>
+        <div className="flex items-center justify-center p-8">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <div className="max-w-md w-full bg-white rounded-lg shadow-md p-6 text-center">
-          <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-          <h1 className="text-xl font-semibold mb-2">Booking Error</h1>
-          <p className="text-gray-600">{error}</p>
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-sidebar p-4 mb-8">
+          <div className="max-w-2xl mx-auto flex items-center justify-center">
+            <Image 
+              src="/logo.png" 
+              alt="The Anchor" 
+              width={60}
+              height={60}
+              className="mr-3"
+            />
+            <h1 className="text-2xl font-bold text-white">The Anchor</h1>
+          </div>
+        </div>
+        <div className="flex items-center justify-center p-4">
+          <div className="max-w-md w-full bg-white rounded-lg shadow-md p-6 text-center">
+            <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <h1 className="text-xl font-semibold mb-2">Booking Error</h1>
+            <p className="text-gray-600">{error}</p>
+          </div>
         </div>
       </div>
     );
@@ -198,11 +227,25 @@ export default function BookingConfirmationPage() {
 
   if (!pendingBooking || !pendingBooking.event) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <div className="max-w-md w-full bg-white rounded-lg shadow-md p-6 text-center">
-          <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-          <h1 className="text-xl font-semibold mb-2">Booking Error</h1>
-          <p className="text-gray-600">Invalid booking data</p>
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-sidebar p-4 mb-8">
+          <div className="max-w-2xl mx-auto flex items-center justify-center">
+            <Image 
+              src="/logo.png" 
+              alt="The Anchor" 
+              width={60}
+              height={60}
+              className="mr-3"
+            />
+            <h1 className="text-2xl font-bold text-white">The Anchor</h1>
+          </div>
+        </div>
+        <div className="flex items-center justify-center p-4">
+          <div className="max-w-md w-full bg-white rounded-lg shadow-md p-6 text-center">
+            <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <h1 className="text-xl font-semibold mb-2">Booking Error</h1>
+            <p className="text-gray-600">Invalid booking data</p>
+          </div>
         </div>
       </div>
     );
@@ -210,16 +253,30 @@ export default function BookingConfirmationPage() {
 
   if (confirmed) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <div className="max-w-md w-full bg-white rounded-lg shadow-md p-6 text-center">
-          <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold mb-2">Booking Confirmed!</h1>
-          <p className="text-gray-600 mb-4">
-            Your booking for {pendingBooking.event.name} has been confirmed.
-          </p>
-          <p className="text-sm text-gray-500">
-            Redirecting to your booking details...
-          </p>
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-sidebar p-4 mb-8">
+          <div className="max-w-2xl mx-auto flex items-center justify-center">
+            <Image 
+              src="/logo.png" 
+              alt="The Anchor" 
+              width={60}
+              height={60}
+              className="mr-3"
+            />
+            <h1 className="text-2xl font-bold text-white">The Anchor</h1>
+          </div>
+        </div>
+        <div className="flex items-center justify-center p-4">
+          <div className="max-w-md w-full bg-white rounded-lg shadow-md p-6 text-center">
+            <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
+            <h1 className="text-2xl font-bold mb-2">Booking Confirmed!</h1>
+            <p className="text-gray-600 mb-4">
+              Your booking for {pendingBooking.event.name} has been confirmed.
+            </p>
+            <p className="text-sm text-gray-500">
+              Redirecting to your booking details...
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -228,10 +285,26 @@ export default function BookingConfirmationPage() {
   const needsCustomerDetails = !pendingBooking.customer_id;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-2xl mx-auto">
+    <div className="min-h-screen bg-gray-50">
+      <div className="bg-sidebar p-4 mb-8">
+        <div className="max-w-2xl mx-auto flex items-center justify-center">
+          <Image 
+            src="/logo.png" 
+            alt="The Anchor" 
+            width={60}
+            height={60}
+            className="mr-3"
+          />
+          <h1 className="text-2xl font-bold text-white">The Anchor</h1>
+        </div>
+      </div>
+      <div className="max-w-2xl mx-auto p-4">
         <div className="bg-white rounded-lg shadow-md p-6">
-          <h1 className="text-2xl font-bold mb-6">Confirm Your Booking</h1>
+          <h1 className="text-2xl font-bold mb-6">
+            {pendingBooking.customer ? 
+              `Welcome back, ${pendingBooking.customer.first_name}!` : 
+              'Confirm Your Booking'}
+          </h1>
           
           <div className="space-y-6">
             {/* Event Details */}
