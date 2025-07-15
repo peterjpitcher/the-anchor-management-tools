@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
 
     // Create short link for confirmation
     const confirmationUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'}/booking-confirmation/${bookingToken}`;
-    const { data: shortLink, error: linkError } = await createShortLinkInternal({
+    const shortLinkResult = await createShortLinkInternal({
       destination_url: confirmationUrl,
       link_type: 'custom',
       expires_at: expiresAt.toISOString(),
@@ -142,13 +142,16 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    if (linkError || !shortLink) {
-      debugInfo.errors.push(`Short link error: ${linkError?.message || 'No link created'}`);
+    if ('error' in shortLinkResult || !shortLinkResult.data) {
+      const errorMessage = 'error' in shortLinkResult ? shortLinkResult.error : 'No link created';
+      debugInfo.errors.push(`Short link error: ${errorMessage}`);
       return createErrorResponse('Failed to create confirmation link', 'SYSTEM_ERROR', 500, {
         debug: debugInfo,
-        linkError: linkError?.message
+        linkError: errorMessage
       });
     }
+    
+    const shortLink = shortLinkResult.data;
 
     // Prepare SMS message
     const displayPhone = formatPhoneForDisplay(standardizedPhone);
