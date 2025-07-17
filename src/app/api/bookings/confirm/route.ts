@@ -190,6 +190,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if customer already has a booking for this event
+    const { data: existingBooking } = await supabase
+      .from('bookings')
+      .select('id')
+      .eq('customer_id', customerId)
+      .eq('event_id', pendingBooking.event_id)
+      .single();
+
+    if (existingBooking) {
+      return NextResponse.json(
+        { error: 'You already have a booking for this event' },
+        { status: 400 }
+      );
+    }
+
     // Create the actual booking
     const { data: booking, error: bookingError } = await supabase
       .from('bookings')
@@ -204,8 +219,17 @@ export async function POST(request: NextRequest) {
 
     if (bookingError) {
       console.error('Failed to create booking:', bookingError);
+      
+      // Check if it's a duplicate booking error
+      if (bookingError.code === '23505' || bookingError.message?.includes('duplicate')) {
+        return NextResponse.json(
+          { error: 'You already have a booking for this event' },
+          { status: 400 }
+        );
+      }
+      
       return NextResponse.json(
-        { error: 'Failed to create booking' },
+        { error: 'Failed to create booking. Please try again or contact support.' },
         { status: 500 }
       );
     }
