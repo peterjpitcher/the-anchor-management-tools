@@ -308,7 +308,7 @@ export default function BookingConfirmationPage() {
           <div className="space-y-6">
             {/* Event Image */}
             {pendingBooking.event.hero_image_url && (
-              <div className="w-full h-48 relative rounded-lg overflow-hidden">
+              <div className="w-full aspect-square relative rounded-lg overflow-hidden">
                 <img 
                   src={pendingBooking.event.hero_image_url}
                   alt={pendingBooking.event.name}
