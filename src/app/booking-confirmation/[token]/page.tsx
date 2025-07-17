@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/Button';
-import { Loader2, Calendar, Clock, MapPin, Users, CheckCircle, XCircle } from 'lucide-react';
+import { Loader2, Calendar, Clock, Users, CheckCircle, XCircle } from 'lucide-react';
 import { formatPhoneForDisplay } from '@/lib/validation';
 import Image from 'next/image';
 
@@ -143,17 +143,25 @@ export default function BookingConfirmationPage() {
     setConfirmationError(null);
     
     try {
+      const requestBody: any = {
+        token,
+        seats,
+      };
+      
+      // Only include customer details if they have values
+      if (customerDetails.first_name) {
+        requestBody.first_name = customerDetails.first_name;
+      }
+      if (customerDetails.last_name) {
+        requestBody.last_name = customerDetails.last_name;
+      }
+      
       const response = await fetch('/api/bookings/confirm', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          token,
-          seats,
-          first_name: customerDetails.first_name,
-          last_name: customerDetails.last_name,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const result = await response.json();
@@ -307,12 +315,10 @@ export default function BookingConfirmationPage() {
             {/* Event Image */}
             {pendingBooking.event.hero_image_url && (
               <div className="w-full h-48 relative rounded-lg overflow-hidden">
-                <Image 
+                <img 
                   src={pendingBooking.event.hero_image_url}
                   alt={pendingBooking.event.name}
-                  fill
-                  className="object-cover"
-                  sizes="(max-width: 768px) 100vw, 672px"
+                  className="w-full h-full object-cover"
                 />
               </div>
             )}
