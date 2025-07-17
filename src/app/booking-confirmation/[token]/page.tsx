@@ -214,9 +214,7 @@ export default function BookingConfirmationPage() {
               alt="The Anchor" 
               width={60}
               height={60}
-              className="mr-3"
             />
-            <h1 className="text-2xl font-bold text-white">The Anchor</h1>
           </div>
         </div>
         <div className="flex items-center justify-center p-4">
@@ -240,9 +238,7 @@ export default function BookingConfirmationPage() {
               alt="The Anchor" 
               width={60}
               height={60}
-              className="mr-3"
             />
-            <h1 className="text-2xl font-bold text-white">The Anchor</h1>
           </div>
         </div>
         <div className="flex items-center justify-center p-4">
@@ -266,9 +262,7 @@ export default function BookingConfirmationPage() {
               alt="The Anchor" 
               width={60}
               height={60}
-              className="mr-3"
             />
-            <h1 className="text-2xl font-bold text-white">The Anchor</h1>
           </div>
         </div>
         <div className="flex items-center justify-center p-4">
