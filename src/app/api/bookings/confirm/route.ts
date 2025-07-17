@@ -198,40 +198,51 @@ export async function POST(request: NextRequest) {
       .eq('event_id', pendingBooking.event_id)
       .single();
 
+    let booking;
+    
     if (existingBooking) {
-      return NextResponse.json(
-        { error: 'You already have a booking for this event' },
-        { status: 400 }
-      );
-    }
+      // Update existing booking with new seat count
+      const { data: updatedBooking, error: updateError } = await supabase
+        .from('bookings')
+        .update({
+          seats,
+          notes: 'Booking updated via SMS link',
+        })
+        .eq('id', existingBooking.id)
+        .select('id')
+        .single();
 
-    // Create the actual booking
-    const { data: booking, error: bookingError } = await supabase
-      .from('bookings')
-      .insert({
-        event_id: pendingBooking.event_id,
-        customer_id: customerId,
-        seats,
-        notes: 'Booking confirmed via SMS link',
-      })
-      .select('id')
-      .single();
-
-    if (bookingError) {
-      console.error('Failed to create booking:', bookingError);
-      
-      // Check if it's a duplicate booking error
-      if (bookingError.code === '23505' || bookingError.message?.includes('duplicate')) {
+      if (updateError) {
+        console.error('Failed to update booking:', updateError);
         return NextResponse.json(
-          { error: 'You already have a booking for this event' },
-          { status: 400 }
+          { error: 'Failed to update booking. Please try again or contact support.' },
+          { status: 500 }
         );
       }
       
-      return NextResponse.json(
-        { error: 'Failed to create booking. Please try again or contact support.' },
-        { status: 500 }
-      );
+      booking = updatedBooking;
+    } else {
+      // Create new booking
+      const { data: newBooking, error: bookingError } = await supabase
+        .from('bookings')
+        .insert({
+          event_id: pendingBooking.event_id,
+          customer_id: customerId,
+          seats,
+          notes: 'Booking confirmed via SMS link',
+        })
+        .select('id')
+        .single();
+
+      if (bookingError) {
+        console.error('Failed to create booking:', bookingError);
+        return NextResponse.json(
+          { error: 'Failed to create booking. Please try again or contact support.' },
+          { status: 500 }
+        );
+      }
+      
+      booking = newBooking;
     }
 
     // Update pending booking as confirmed
