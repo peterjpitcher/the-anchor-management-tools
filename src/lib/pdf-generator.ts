@@ -1,4 +1,5 @@
 import puppeteer from 'puppeteer'
+import chromium from '@sparticuz/chromium'
 import { generateCompactInvoiceHTML } from './invoice-template-compact'
 import { generateCompactQuoteHTML } from './quote-template-compact'
 import type { InvoiceWithDetails, QuoteWithDetails } from '@/types/invoices'
@@ -11,22 +12,21 @@ export async function generateInvoicePDF(invoice: InvoiceWithDetails): Promise<B
     // Launch puppeteer with optimized settings for serverless environments
     browser = await puppeteer.launch({
       headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process', // Required for some serverless environments
-        '--disable-gpu',
-        '--disable-web-security',
-        '--disable-features=IsolateOrigins',
-        '--disable-site-isolation-trials'
-      ],
-      ...(process.env.VERCEL && {
-        executablePath: '/usr/bin/chromium-browser'
-      })
+      args: process.env.VERCEL
+        ? chromium.args
+        : [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu'
+          ],
+      executablePath: process.env.VERCEL
+        ? await chromium.executablePath()
+        : puppeteer.executablePath()
     })
     
     const page = await browser.newPage()
@@ -88,22 +88,21 @@ export async function generateQuotePDF(quote: QuoteWithDetails): Promise<Buffer>
     // Launch puppeteer with optimized settings
     browser = await puppeteer.launch({
       headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu',
-        '--disable-web-security',
-        '--disable-features=IsolateOrigins',
-        '--disable-site-isolation-trials'
-      ],
-      ...(process.env.VERCEL && {
-        executablePath: '/usr/bin/chromium-browser'
-      })
+      args: process.env.VERCEL
+        ? chromium.args
+        : [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu'
+          ],
+      executablePath: process.env.VERCEL
+        ? await chromium.executablePath()
+        : puppeteer.executablePath()
     })
     
     const page = await browser.newPage()
@@ -164,22 +163,21 @@ export async function generatePDFFromHTML(html: string): Promise<Buffer> {
   try {
     browser = await puppeteer.launch({
       headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu',
-        '--disable-web-security',
-        '--disable-features=IsolateOrigins',
-        '--disable-site-isolation-trials'
-      ],
-      ...(process.env.VERCEL && {
-        executablePath: '/usr/bin/chromium-browser'
-      })
+      args: process.env.VERCEL
+        ? chromium.args
+        : [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu'
+          ],
+      executablePath: process.env.VERCEL
+        ? await chromium.executablePath()
+        : puppeteer.executablePath()
     })
     
     const page = await browser.newPage()
