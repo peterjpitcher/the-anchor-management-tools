@@ -4,7 +4,6 @@ import { createClient } from '@/lib/supabase/server';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { generatePDFFromHTML } from '@/lib/pdf-generator';
 import { formatDate } from '@/lib/dateUtils';
-import { formatPhoneForDisplay } from '@/lib/validation';
 import QRCode from 'qrcode';
 
 interface EventWithDetails {
@@ -82,14 +81,14 @@ export async function generateEventReservationPosters(eventId: string) {
       return { error: 'No active bookings found for this event' };
     }
     
-    // Fetch upcoming events for QR codes
-    const today = new Date().toISOString().split('T')[0];
+    // Fetch upcoming events for QR codes - only events after the current event
     const { data: upcomingEvents, error: upcomingError } = await supabase
       .from('events')
       .select('id, name, date, time, slug')
-      .gte('date', today)
+      .or(`date.gt.${event.date},and(date.eq.${event.date},time.gt.${event.time})`)
       .order('date', { ascending: true })
-      .limit(6); // Show up to 6 upcoming events
+      .order('time', { ascending: true })
+      .limit(3); // Show only the next 3 events
       
     if (upcomingError) {
       console.error('Upcoming events fetch error:', upcomingError);
@@ -148,7 +147,7 @@ function generateReservationPostersHTML(
     ? `${process.env.NEXT_PUBLIC_APP_URL}/logo-black.png`
     : 'https://management.orangejelly.co.uk/logo-black.png';
     
-  const contactPhone = formatPhoneForDisplay(process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707');
+  const contactPhone = '01753 682707';
   
   // Generate pages for each booking
   const pages = event.bookings.map((booking, index) => {
@@ -190,6 +189,7 @@ function generateReservationPostersHTML(
                       <div class="event-info">
                         <div class="event-name-small">${upEvent.name}</div>
                         <div class="event-date-small">${formatDate(upEvent.date)}</div>
+                        <div class="event-time-small">${upEvent.time}</div>
                       </div>
                     </div>
                   `).join('')}
@@ -397,6 +397,11 @@ function generateReservationPostersHTML(
           
           .event-date-small {
             color: #000;
+          }
+          
+          .event-time-small {
+            color: #000;
+            font-weight: 600;
           }
           
           .divider {
