@@ -101,8 +101,8 @@ export async function generateEventReservationPosters(eventId: string) {
     if (upcomingEvents) {
       for (const upEvent of upcomingEvents) {
         try {
-          // Generate URL for public website
-          const bookingUrl = `https://theanchorwindsor.com/events/${upEvent.slug}`;
+          // Generate URL for public website using the correct domain
+          const bookingUrl = `https://www.the-anchor.pub/events/${upEvent.slug}`;
           const qrCode = await QRCode.toDataURL(bookingUrl, {
             width: 200,
             margin: 0,
