@@ -9,7 +9,7 @@ import { EventCategory } from '@/types/event-categories'
 type Event = BaseEvent & {
   category?: EventCategory | null
 }
-import { PlusIcon, TrashIcon, UserGroupIcon, ClipboardDocumentIcon, PencilSquareIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, TrashIcon, UserGroupIcon, ClipboardDocumentIcon, PencilSquareIcon, DocumentArrowDownIcon } from '@heroicons/react/24/outline'
 import { BookingForm } from '@/components/BookingForm'
 import { AddAttendeesModalWithCategories } from '@/components/AddAttendeesModalWithCategories'
 import toast from 'react-hot-toast'
@@ -17,6 +17,7 @@ import { sendBookingConfirmationSync } from '@/app/actions/sms'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { Button } from '@/components/ui/Button'
 import { EventTemplateManager } from '@/components/EventTemplateManager'
+import { generateEventReservationPosters } from '@/app/actions/event-reservation-posters'
 
 type BookingWithCustomer = Omit<Booking, 'customer'> & {
   customer: Pick<Customer, 'first_name' | 'last_name' | 'id'>
@@ -193,6 +194,53 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
     }).catch(() => {
       toast.error('Failed to copy to clipboard')
     })
+  }
+
+  const handleDownloadReservationPosters = async () => {
+    if (!event) return
+    
+    if (activeBookings.length === 0) {
+      toast.error('No active bookings to generate posters for')
+      return
+    }
+
+    const loadingToast = toast.loading('Generating reservation posters...')
+    
+    try {
+      const result = await generateEventReservationPosters(event.id)
+      
+      if (result.error) {
+        toast.error(result.error, { id: loadingToast })
+        return
+      }
+      
+      if (result.success && result.pdf && result.filename) {
+        // Convert base64 to blob
+        const binaryString = atob(result.pdf)
+        const bytes = new Uint8Array(binaryString.length)
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i)
+        }
+        const pdfBlob = new Blob([bytes], { type: 'application/pdf' })
+        
+        // Create download link
+        const url = URL.createObjectURL(pdfBlob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = result.filename
+        document.body.appendChild(link)
+        link.click()
+        
+        // Cleanup
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+        
+        toast.success('Reservation posters downloaded!', { id: loadingToast })
+      }
+    } catch (error) {
+      console.error('Error downloading reservation posters:', error)
+      toast.error('Failed to generate reservation posters', { id: loadingToast })
+    }
   }
 
   if (isLoading) return <div className="p-6 text-center">Loading event details...</div>
@@ -385,6 +433,14 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
               <Button onClick={handleCopyAttendeeList} variant="secondary">
                 <ClipboardDocumentIcon className="h-5 w-5 mr-2" />
                 Copy List
+              </Button>
+              <Button 
+                onClick={handleDownloadReservationPosters} 
+                variant="secondary"
+                disabled={activeBookings.length === 0}
+              >
+                <DocumentArrowDownIcon className="h-5 w-5 mr-2" />
+                Download Posters
               </Button>
               <Button onClick={() => setShowAddAttendeesModal(true)}>
                 <UserGroupIcon className="h-5 w-5 mr-2" />
