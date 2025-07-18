@@ -19,8 +19,14 @@ export async function generateInvoicePDF(invoice: InvoiceWithDetails): Promise<B
         '--no-first-run',
         '--no-zygote',
         '--single-process', // Required for some serverless environments
-        '--disable-gpu'
-      ]
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins',
+        '--disable-site-isolation-trials'
+      ],
+      ...(process.env.VERCEL && {
+        executablePath: '/usr/bin/chromium-browser'
+      })
     })
     
     const page = await browser.newPage()
@@ -90,8 +96,14 @@ export async function generateQuotePDF(quote: QuoteWithDetails): Promise<Buffer>
         '--no-first-run',
         '--no-zygote',
         '--single-process',
-        '--disable-gpu'
-      ]
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins',
+        '--disable-site-isolation-trials'
+      ],
+      ...(process.env.VERCEL && {
+        executablePath: '/usr/bin/chromium-browser'
+      })
     })
     
     const page = await browser.newPage()
@@ -160,8 +172,14 @@ export async function generatePDFFromHTML(html: string): Promise<Buffer> {
         '--no-first-run',
         '--no-zygote',
         '--single-process',
-        '--disable-gpu'
-      ]
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins',
+        '--disable-site-isolation-trials'
+      ],
+      ...(process.env.VERCEL && {
+        executablePath: '/usr/bin/chromium-browser'
+      })
     })
     
     const page = await browser.newPage()

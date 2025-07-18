@@ -5,6 +5,7 @@ import { checkUserPermission } from '@/app/actions/rbac';
 import { generatePDFFromHTML } from '@/lib/pdf-generator';
 import { formatDate } from '@/lib/dateUtils';
 import { formatPhoneForDisplay } from '@/lib/validation';
+import QRCode from 'qrcode';
 
 interface EventWithDetails {
   id: string;
@@ -19,6 +20,14 @@ interface EventWithDetails {
       last_name: string;
     };
   }[];
+}
+
+interface UpcomingEvent {
+  id: string;
+  name: string;
+  date: string;
+  time: string;
+  slug: string;
 }
 
 export async function generateEventReservationPosters(eventId: string) {
@@ -73,11 +82,47 @@ export async function generateEventReservationPosters(eventId: string) {
       return { error: 'No active bookings found for this event' };
     }
     
+    // Fetch upcoming events for QR codes
+    const today = new Date().toISOString().split('T')[0];
+    const { data: upcomingEvents, error: upcomingError } = await supabase
+      .from('events')
+      .select('id, name, date, time, slug')
+      .gte('date', today)
+      .order('date', { ascending: true })
+      .limit(6); // Show up to 6 upcoming events
+      
+    if (upcomingError) {
+      console.error('Upcoming events fetch error:', upcomingError);
+      // Continue without upcoming events
+    }
+    
+    // Generate QR codes for upcoming events
+    const eventsWithQR: (UpcomingEvent & { qrCode: string })[] = [];
+    if (upcomingEvents) {
+      for (const upEvent of upcomingEvents) {
+        try {
+          // Generate URL for public website
+          const bookingUrl = `https://theanchorwindsor.com/events/${upEvent.slug}`;
+          const qrCode = await QRCode.toDataURL(bookingUrl, {
+            width: 200,
+            margin: 0,
+            color: {
+              dark: '#000000',
+              light: '#FFFFFF'
+            }
+          });
+          eventsWithQR.push({ ...upEvent, qrCode });
+        } catch (err) {
+          console.error('QR code generation error:', err);
+        }
+      }
+    }
+    
     // Generate HTML for all reservation posters
     const html = generateReservationPostersHTML({
       ...event,
       bookings: bookings as any
-    });
+    }, eventsWithQR);
     
     // Generate PDF
     const pdfBuffer = await generatePDFFromHTML(html);
@@ -95,7 +140,10 @@ export async function generateEventReservationPosters(eventId: string) {
   }
 }
 
-function generateReservationPostersHTML(event: EventWithDetails): string {
+function generateReservationPostersHTML(
+  event: EventWithDetails, 
+  upcomingEvents: (UpcomingEvent & { qrCode: string })[] = []
+): string {
   const logoUrl = process.env.NEXT_PUBLIC_APP_URL 
     ? `${process.env.NEXT_PUBLIC_APP_URL}/logo-black.png`
     : 'https://management.orangejelly.co.uk/logo-black.png';
@@ -130,28 +178,48 @@ function generateReservationPostersHTML(event: EventWithDetails): string {
             </div>
           </div>
           
-          <!-- Footer Call to Action -->
-          <div class="footer-cta">
-            <p class="cta-text">Want to book a table for future events?</p>
-            <div class="contact-options">
-              <div class="contact-item">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
-                </svg>
-                <span>Call ${contactPhone}</span>
+          <!-- Footer with upcoming events and contact -->
+          <div class="footer-section">
+            ${upcomingEvents.length > 0 ? `
+              <div class="upcoming-events">
+                <p class="upcoming-title">Upcoming Events - Scan to Book!</p>
+                <div class="events-grid">
+                  ${upcomingEvents.map(upEvent => `
+                    <div class="event-qr">
+                      <img src="${upEvent.qrCode}" alt="QR Code for ${upEvent.name}" class="qr-code" />
+                      <div class="event-info">
+                        <div class="event-name-small">${upEvent.name}</div>
+                        <div class="event-date-small">${formatDate(upEvent.date)}</div>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
               </div>
-              <div class="contact-item">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
-                </svg>
-                <span>WhatsApp ${contactPhone}</span>
-              </div>
-              <div class="contact-item">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                  <circle cx="12" cy="7" r="4"/>
-                </svg>
-                <span>Ask our team at the bar</span>
+              <div class="divider"></div>
+            ` : ''}
+            
+            <div class="footer-cta">
+              <p class="cta-text">Want to book a table for events?</p>
+              <div class="contact-options">
+                <div class="contact-item">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                  </svg>
+                  <span>Call ${contactPhone}</span>
+                </div>
+                <div class="contact-item">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+                  </svg>
+                  <span>WhatsApp ${contactPhone}</span>
+                </div>
+                <div class="contact-item">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                    <circle cx="12" cy="7" r="4"/>
+                  </svg>
+                  <span>Ask our team at the bar</span>
+                </div>
               </div>
             </div>
           </div>
@@ -208,23 +276,23 @@ function generateReservationPostersHTML(event: EventWithDetails): string {
             justify-content: space-between;
             border: 3px solid #000;
             border-radius: 20px;
-            padding: 30mm 20mm;
+            padding: 20mm 15mm;
             position: relative;
           }
           
           .logo-container {
             text-align: center;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
           }
           
           .logo {
-            height: 80px;
+            height: 60px;
             width: auto;
           }
           
           .reserved-section {
             text-align: center;
-            margin: 40px 0;
+            margin: 20px 0;
           }
           
           .reserved-text {
@@ -250,8 +318,8 @@ function generateReservationPostersHTML(event: EventWithDetails): string {
           
           .event-details {
             text-align: center;
-            margin: 40px 0;
-            padding: 30px;
+            margin: 20px 0;
+            padding: 20px;
             background: #fff;
             border: 2px solid #000;
             border-radius: 15px;
@@ -283,11 +351,63 @@ function generateReservationPostersHTML(event: EventWithDetails): string {
             color: #000;
           }
           
+          .footer-section {
+            width: 100%;
+          }
+          
+          .upcoming-events {
+            margin-bottom: 20px;
+          }
+          
+          .upcoming-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #000;
+            text-align: center;
+            margin-bottom: 15px;
+          }
+          
+          .events-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+          }
+          
+          .event-qr {
+            text-align: center;
+          }
+          
+          .qr-code {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 5px;
+            display: block;
+          }
+          
+          .event-info {
+            font-size: 10px;
+            line-height: 1.2;
+          }
+          
+          .event-name-small {
+            font-weight: 600;
+            color: #000;
+          }
+          
+          .event-date-small {
+            color: #000;
+          }
+          
+          .divider {
+            height: 2px;
+            background: #000;
+            margin: 20px 0;
+          }
+          
           .footer-cta {
             width: 100%;
             text-align: center;
-            padding-top: 30px;
-            border-top: 2px solid #000;
           }
           
           .cta-text {
