@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { generateInvoiceHTML } from '@/lib/invoice-template'
+import { generateInvoicePDF } from '@/lib/pdf-generator'
 import { checkUserPermission } from '@/app/actions/rbac'
 
 export async function GET(
@@ -44,29 +44,32 @@ export async function GET(
     return new NextResponse('Invoice not found', { status: 404 })
   }
 
-  // Generate HTML invoice
-  const html = generateInvoiceHTML({
-    invoice,
-    logoUrl: '/logo-black.png'
-  })
-  
-  // Log invoice generation
-  await supabase.from('invoice_audit_logs').insert({
-    invoice_id: invoiceId,
-    action: 'pdf_generated',
-    performed_by: user.id,
-    performed_at: new Date().toISOString(),
-    details: { 
-      invoice_number: invoice.invoice_number,
-      ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip')
-    }
-  })
+  try {
+    // Generate PDF
+    const pdfBuffer = await generateInvoicePDF(invoice)
+    
+    // Log invoice generation
+    await supabase.from('invoice_audit_logs').insert({
+      invoice_id: invoiceId,
+      action: 'pdf_generated',
+      performed_by: user.id,
+      performed_at: new Date().toISOString(),
+      details: { 
+        invoice_number: invoice.invoice_number,
+        ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip')
+      }
+    })
 
-  // Return HTML with appropriate headers
-  return new NextResponse(html, {
-    headers: {
-      'Content-Type': 'text/html',
-      'Content-Disposition': `inline; filename="invoice-${invoice.invoice_number}.html"`,
-    },
-  })
+    // Return PDF with appropriate headers
+    return new NextResponse(pdfBuffer, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="invoice-${invoice.invoice_number}.pdf"`,
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+      },
+    })
+  } catch (error) {
+    console.error('Error generating invoice PDF:', error)
+    return new NextResponse('Failed to generate PDF', { status: 500 })
+  }
 }
