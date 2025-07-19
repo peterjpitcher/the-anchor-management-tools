@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
       .from('invoices')
       .select(`
         *,
-        vendor:vendors(*),
+        vendor:invoice_vendors(*),
         line_items:invoice_line_items(*)
       `)
       .gte('invoice_date', startDate)
