@@ -1,9 +1,19 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Button } from '@/components/ui/Button'
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Textarea } from '@/components/ui-v2/forms/Textarea'
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { Plus, Edit2, Trash2, X, ChevronLeft, Package } from 'lucide-react'
-import Link from 'next/link'
 import { getLineItemCatalog, createCatalogItem, updateCatalogItem, deleteCatalogItem } from '@/app/actions/invoices'
 import type { LineItemCatalogItem } from '@/types/invoices'
 
@@ -132,54 +142,47 @@ export default function LineItemCatalogPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading catalog...</p>
+      <Page title="Loading...">
+        <div className="flex items-center justify-center h-64">
+          <Spinner size="lg" />
         </div>
-      </div>
+      </Page>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <Link href="/invoices">
-        <Button variant="ghost" className="mb-4">
-          <ChevronLeft className="h-4 w-4 mr-2" />
-          Back to Invoices
-        </Button>
-      </Link>
-      
-      <div className="mb-8 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold mb-2">Line Item Catalog</h1>
-          <p className="text-sm sm:text-base text-muted-foreground">Manage reusable line items for invoices and quotes</p>
-        </div>
-        <Button onClick={() => openForm()} className="w-full sm:w-auto">
-          <Plus className="h-4 w-4 mr-2" />
+    <Page
+      title="Line Item Catalog"
+      description="Manage reusable line items for invoices and quotes"
+      breadcrumbs={[
+        { label: 'Invoices', href: '/invoices' },
+        { label: 'Line Items' }
+      ]}
+      actions={
+        <Button onClick={() => openForm()} leftIcon={<Plus className="h-4 w-4" />}>
           Add Item
         </Button>
-      </div>
-
+      }
+    >
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg">
-          {error}
-        </div>
+        <Alert variant="error" description={error} className="mb-6" />
       )}
 
       {items.length === 0 ? (
-        <div className="bg-white rounded-lg shadow-sm border p-12 text-center">
-          <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-500 mb-4">No catalog items found. Add common line items for quick reuse.</p>
-          <Button onClick={() => openForm()}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Your First Item
-          </Button>
-        </div>
+        <EmptyState icon={<Package className="h-12 w-12" />}
+          title="No catalog items found"
+          description="Add common line items for quick reuse."
+          action={
+            <Button onClick={() => openForm()} leftIcon={<Plus className="h-4 w-4" />}>
+              Add Your First Item
+            </Button>
+          }
+        />
       ) : (
         <>
           {/* Desktop Table */}
-          <div className="hidden md:block bg-white rounded-lg shadow-sm border">
+          <div className="hidden md:block">
+            <Card>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -209,17 +212,20 @@ export default function LineItemCatalogPage() {
                       <td className="p-4 text-right">
                         <div className="flex justify-end gap-2">
                           <Button
-                            variant="ghost"
+                            variant="secondary"
                             size="sm"
                             onClick={() => openForm(item)}
+                            aria-label="Edit item"
+                            iconOnly
                           >
                             <Edit2 className="h-4 w-4" />
                           </Button>
                           <Button
-                            variant="ghost"
+                            variant="danger"
                             size="sm"
                             onClick={() => handleDelete(item)}
-                            className="text-red-600 hover:text-red-800"
+                            aria-label="Delete item"
+                            iconOnly
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -230,12 +236,13 @@ export default function LineItemCatalogPage() {
                 </tbody>
               </table>
             </div>
+            </Card>
           </div>
 
           {/* Mobile Card View */}
           <div className="md:hidden space-y-3">
             {items.map((item) => (
-              <div key={item.id} className="bg-white rounded-lg shadow-sm border p-4">
+              <Card key={item.id} className="p-4">
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex-1">
                     <h3 className="font-medium text-gray-900">{item.name}</h3>
@@ -245,18 +252,20 @@ export default function LineItemCatalogPage() {
                   </div>
                   <div className="flex gap-2 ml-4">
                     <Button
-                      variant="ghost"
+                      variant="secondary"
                       size="sm"
                       onClick={() => openForm(item)}
-                      className="min-h-[40px] min-w-[40px] p-2"
+                      aria-label="Edit item"
+                      iconOnly
                     >
                       <Edit2 className="h-4 w-4" />
                     </Button>
                     <Button
-                      variant="ghost"
+                      variant="danger"
                       size="sm"
                       onClick={() => handleDelete(item)}
-                      className="text-red-600 hover:text-red-800 min-h-[40px] min-w-[40px] p-2"
+                      aria-label="Delete item"
+                      iconOnly
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -272,39 +281,49 @@ export default function LineItemCatalogPage() {
                     <span className="font-medium ml-1">{item.default_vat_rate}%</span>
                   </div>
                 </div>
-              </div>
+              </Card>
             ))}
           </div>
         </>
       )}
 
       {/* Form Modal */}
-      {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-4 border-b">
-              <h2 className="text-lg font-semibold">
-                {editingItem ? 'Edit Catalog Item' : 'Add Catalog Item'}
-              </h2>
-              <button
-                onClick={closeForm}
-                className="text-gray-400 hover:text-gray-600"
-                disabled={formLoading}
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+      <Modal
+        open={showForm}
+        onClose={closeForm}
+        title={editingItem ? 'Edit Catalog Item' : 'Add Catalog Item'}
+        size="sm"
+        footer={
+          <ModalActions>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={closeForm}
+              disabled={formLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="catalog-form"
+              disabled={formLoading}
+              loading={formLoading}
+            >
+              {editingItem ? 'Save Changes' : 'Add Item'}
+            </Button>
+          </ModalActions>
+        }
+      >
 
-            <form onSubmit={handleSubmit} className="p-4 space-y-4">
+        <form id="catalog-form" onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1">
                   Name <span className="text-red-500">*</span>
                 </label>
-                <input
+                <Input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                   required
                   disabled={formLoading}
                 />
@@ -314,10 +333,9 @@ export default function LineItemCatalogPage() {
                 <label className="block text-sm font-medium mb-1">
                   Description
                 </label>
-                <textarea
+                <Textarea
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
                   rows={3}
                   disabled={formLoading}
                 />
@@ -328,11 +346,10 @@ export default function LineItemCatalogPage() {
                   <label className="block text-sm font-medium mb-1">
                     Default Price (£) <span className="text-red-500">*</span>
                   </label>
-                  <input
+                  <Input
                     type="number"
                     value={formData.default_price}
                     onChange={(e) => setFormData({ ...formData, default_price: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                     step="0.01"
                     min="0"
                     required
@@ -344,11 +361,10 @@ export default function LineItemCatalogPage() {
                   <label className="block text-sm font-medium mb-1">
                     VAT Rate (%) <span className="text-red-500">*</span>
                   </label>
-                  <input
+                  <Input
                     type="number"
                     value={formData.default_vat_rate}
                     onChange={(e) => setFormData({ ...formData, default_vat_rate: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                     step="0.01"
                     min="0"
                     max="100"
@@ -358,23 +374,8 @@ export default function LineItemCatalogPage() {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={closeForm}
-                  disabled={formLoading}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={formLoading}>
-                  {formLoading ? 'Saving...' : (editingItem ? 'Save Changes' : 'Add Item')}
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
+        </form>
+      </Modal>
+    </Page>
   )
 }

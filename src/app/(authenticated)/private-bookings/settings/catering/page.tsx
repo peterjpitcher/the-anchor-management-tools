@@ -4,7 +4,6 @@ import Link from 'next/link'
 import type { CateringPackage } from '@/types/private-bookings'
 import { 
   PlusIcon, 
-  ArrowLeftIcon,
   SparklesIcon,
   CurrencyPoundIcon,
   CheckIcon,
@@ -12,6 +11,17 @@ import {
 } from '@heroicons/react/24/outline'
 import { createCateringPackage, updateCateringPackage, deleteCateringPackage } from '@/app/actions/privateBookingActions'
 import { CateringPackageDeleteButton } from '@/components/CateringPackageDeleteButton'
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Select } from '@/components/ui-v2/forms/Select'
+import { Textarea } from '@/components/ui-v2/forms/Textarea'
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 
 async function handleCreatePackage(formData: FormData) {
   'use server'
@@ -101,316 +111,232 @@ export default async function CateringPackagesPage() {
     return acc
   }, {} as Record<string, CateringPackage[]>) || {}
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link
-                href="/private-bookings"
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <ArrowLeftIcon className="h-5 w-5" />
-              </Link>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">Catering Packages</h1>
-                <p className="text-gray-600 mt-1">Manage food and drink options for private events</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+  const packageTypeOptions = [
+    { value: 'buffet', label: 'Buffet' },
+    { value: 'sit-down', label: 'Sit Down Meal' },
+    { value: 'canapes', label: 'Canapés' },
+    { value: 'drinks', label: 'Drinks Package' },
+    { value: 'pizza', label: 'Pizza' },
+    { value: 'other', label: 'Other' }
+  ]
 
-      <div className="px-4 sm:px-6 lg:px-8 py-8">
-        {/* Add New Package Form */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <PlusIcon className="h-5 w-5 text-blue-600" />
-            Add New Package
-          </h2>
+  const pricingModelOptions = [
+    { value: 'per_head', label: 'Per Person' },
+    { value: 'total_value', label: 'Total Value' }
+  ]
+
+  const statusOptions = [
+    { value: 'true', label: 'Active' },
+    { value: 'false', label: 'Inactive' }
+  ]
+
+  return (
+    <Page
+      title="Catering Packages"
+      description="Manage food and drink options for private events"
+      actions={
+        <LinkButton href="/private-bookings" variant="secondary">Back</LinkButton>
+      }
+    >
+      {/* Add New Package Form */}
+      <Card>
+        <Section 
+          title="Add New Package"
+          icon={<PlusIcon className="h-5 w-5 text-blue-600" />}
+        >
           <form action={handleCreatePackage} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="lg:col-span-2">
-                <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                  Package Name
-                </label>
-                <input
+              <FormGroup label="Package Name" required className="lg:col-span-2">
+                <Input
                   type="text"
                   id="name"
                   name="name"
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="e.g., Classic Buffet"
                 />
-              </div>
-              <div>
-                <label htmlFor="package_type" className="block text-sm font-medium text-gray-700 mb-1">
-                  Type
-                </label>
-                <select
+              </FormGroup>
+              <FormGroup label="Type" required>
+                <Select
                   id="package_type"
                   name="package_type"
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="buffet">Buffet</option>
-                  <option value="sit-down">Sit Down Meal</option>
-                  <option value="canapes">Canapés</option>
-                  <option value="drinks">Drinks Package</option>
-                  <option value="pizza">Pizza</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-              <div>
-                <label htmlFor="cost_per_head" className="block text-sm font-medium text-gray-700 mb-1">
-                  Price (£)
-                </label>
-                <input
+                  options={packageTypeOptions}
+                />
+              </FormGroup>
+              <FormGroup label="Price (£)" required>
+                <Input
                   type="number"
                   id="cost_per_head"
                   name="cost_per_head"
                   required
                   min="0"
                   step="0.01"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="25.00"
                 />
-              </div>
-              <div>
-                <label htmlFor="pricing_model" className="block text-sm font-medium text-gray-700 mb-1">
-                  Pricing Model
-                </label>
-                <select
+              </FormGroup>
+              <FormGroup label="Pricing Model" required>
+                <Select
                   id="pricing_model"
                   name="pricing_model"
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="per_head">Per Person</option>
-                  <option value="total_value">Total Value</option>
-                </select>
-              </div>
+                  options={pricingModelOptions}
+                />
+              </FormGroup>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div>
-                <label htmlFor="minimum_guests" className="block text-sm font-medium text-gray-700 mb-1">
-                  Minimum Guests
-                </label>
-                <input
+              <FormGroup label="Minimum Guests">
+                <Input
                   type="number"
                   id="minimum_guests"
                   name="minimum_guests"
                   min="0"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="20"
                 />
-              </div>
-              <div>
-                <label htmlFor="active" className="block text-sm font-medium text-gray-700 mb-1">
-                  Status
-                </label>
-                <select
+              </FormGroup>
+              <FormGroup label="Status">
+                <Select
                   id="active"
                   name="active"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="true">Active</option>
-                  <option value="false">Inactive</option>
-                </select>
-              </div>
+                  options={statusOptions}
+                />
+              </FormGroup>
             </div>
             
-            <div>
-              <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
-                Description
-              </label>
-              <textarea
+            <FormGroup label="Description">
+              <Textarea
                 id="description"
                 name="description"
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Brief description of the package..."
               />
-            </div>
+            </FormGroup>
             
-            <div>
-              <label htmlFor="dietary_notes" className="block text-sm font-medium text-gray-700 mb-1">
-                Dietary Information &amp; Notes
-              </label>
-              <textarea
+            <FormGroup label="Dietary Information & Notes">
+              <Textarea
                 id="dietary_notes"
                 name="dietary_notes"
                 rows={4}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Vegetarian options available&#10;Can accommodate gluten-free&#10;Contains nuts&#10;Halal options on request"
               />
-            </div>
+            </FormGroup>
             
-            <button
-              type="submit"
-              className="w-full md:w-auto px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
+            <Button type="submit">
               Add Package
-            </button>
+            </Button>
           </form>
-        </div>
+        </Section>
+      </Card>
 
-        {/* Existing Packages */}
-        {Object.keys(packagesByType || {}).length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-            <SparklesIcon className="mx-auto h-12 w-12 text-gray-400" />
-            <p className="mt-4 text-gray-500">No catering packages configured yet.</p>
-            <p className="text-sm text-gray-400 mt-1">Add your first package using the form above.</p>
-          </div>
-        ) : (
-          <div className="space-y-8">
-            {(Object.entries(packagesByType || {}) as [string, any[]][]).map(([type, typePackages]) => (
-              <div key={type} className="bg-white rounded-xl shadow-sm border border-gray-200">
-                <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
-                  <h3 className="text-lg font-semibold text-gray-900 capitalize">
-                    {type.replace('_', ' ')} Packages
-                  </h3>
-                </div>
-                
+      {/* Existing Packages */}
+      {Object.keys(packagesByType || {}).length === 0 ? (
+        <Card>
+          <EmptyState icon={<SparklesIcon className="h-12 w-12" />}
+            title="No catering packages configured yet"
+            description="Add your first package using the form above."
+          />
+        </Card>
+      ) : (
+        <div className="space-y-6">
+          {(Object.entries(packagesByType || {}) as [string, any[]][]).map(([type, typePackages]) => (
+            <Card key={type}>
+              <Section 
+                title={`${type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')} Packages`}
+              >
                 <div className="divide-y divide-gray-200">
                   {typePackages?.map((pkg) => (
-                    <div key={pkg.id} className="p-6">
+                    <div key={pkg.id} className="py-6 first:pt-0 last:pb-0">
                       <form action={handleUpdatePackage} className="space-y-4">
                         <input type="hidden" name="packageId" value={pkg.id} />
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                          <div className="lg:col-span-2">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Package Name
-                            </label>
-                            <input
+                          <FormGroup label="Package Name" className="lg:col-span-2">
+                            <Input
                               type="text"
                               name="name"
                               defaultValue={pkg.name}
                               required
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Type
-                            </label>
-                            <select
+                          </FormGroup>
+                          <FormGroup label="Type">
+                            <Select
                               name="package_type"
                               defaultValue={pkg.package_type}
                               required
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            >
-                              <option value="buffet">Buffet</option>
-                              <option value="sit-down">Sit Down Meal</option>
-                              <option value="canapes">Canapés</option>
-                              <option value="drinks">Drinks Package</option>
-                              <option value="pizza">Pizza</option>
-                              <option value="other">Other</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              <CurrencyPoundIcon className="h-4 w-4 inline mr-1" />
-                              {pkg.pricing_model === 'total_value' ? 'Total Price' : 'Per Head'}
-                            </label>
-                            <input
+                              options={packageTypeOptions}
+                            />
+                          </FormGroup>
+                          <FormGroup 
+                            label={pkg.pricing_model === 'total_value' ? 'Total Price' : 'Per Head'}
+                          >
+                            <Input
                               type="number"
                               name="cost_per_head"
                               defaultValue={pkg.cost_per_head}
                               required
                               min="0"
                               step="0.01"
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              <UserGroupIcon className="h-4 w-4 inline mr-1" />
-                              Min Order
-                            </label>
-                            <input
+                          </FormGroup>
+                          <FormGroup 
+                            label="Min Order"
+                          >
+                            <Input
                               type="number"
                               name="minimum_guests"
                               defaultValue={pkg.minimum_guests || ''}
                               min="0"
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             />
-                          </div>
+                          </FormGroup>
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Pricing Model
-                            </label>
-                            <select
+                          <FormGroup label="Pricing Model">
+                            <Select
                               name="pricing_model"
                               defaultValue={pkg.pricing_model || 'per_head'}
                               required
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            >
-                              <option value="per_head">Per Person</option>
-                              <option value="total_value">Total Value</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Status
-                            </label>
-                            <select
+                              options={pricingModelOptions}
+                            />
+                          </FormGroup>
+                          <FormGroup label="Status">
+                            <Select
                               name="active"
                               defaultValue={pkg.active ? 'true' : 'false'}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            >
-                              <option value="true">Active</option>
-                              <option value="false">Inactive</option>
-                            </select>
-                          </div>
+                              options={statusOptions}
+                            />
+                          </FormGroup>
                         </div>
                         
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Description
-                          </label>
-                          <textarea
+                        <FormGroup label="Description">
+                          <Textarea
                             name="description"
                             defaultValue={pkg.description || ''}
                             rows={2}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           />
-                        </div>
+                        </FormGroup>
                         
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Dietary Information &amp; Notes
-                          </label>
-                          <textarea
+                        <FormGroup label="Dietary Information & Notes">
+                          <Textarea
                             name="dietary_notes"
                             defaultValue={pkg.dietary_notes || ''}
                             rows={4}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           />
-                        </div>
+                        </FormGroup>
                         
                         <div className="flex items-center gap-2">
-                          <button
-                            type="submit"
-                            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-1"
+                          <Button type="submit"
+                            variant="primary"
+                            size="sm"
+                            leftIcon={<CheckIcon className="h-4 w-4" />}
                           >
-                            <CheckIcon className="h-4 w-4" />
                             Update
-                          </button>
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            pkg.active 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-gray-100 text-gray-800'
-                          }`}>
+                          </Button>
+                          <Badge
+                            variant={pkg.active ? 'success' : 'secondary'}
+                          >
                             {pkg.active ? 'Active' : 'Inactive'}
-                          </span>
+                          </Badge>
                         </div>
                       </form>
                       
@@ -424,11 +350,11 @@ export default async function CateringPackagesPage() {
                     </div>
                   ))}
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+              </Section>
+            </Card>
+          ))}
+        </div>
+      )}
+    </Page>
   )
 }

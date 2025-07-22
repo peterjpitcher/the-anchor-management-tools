@@ -2,9 +2,19 @@
 
 import { useState, useEffect } from 'react'
 import { getVendors, createVendor, updateVendor, deleteVendor } from '@/app/actions/vendors'
-import { Button } from '@/components/ui/Button'
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Textarea } from '@/components/ui-v2/forms/Textarea'
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { Plus, Edit2, Trash2, X, ChevronLeft } from 'lucide-react'
-import Link from 'next/link'
 import type { InvoiceVendor } from '@/types/invoices'
 
 interface VendorFormData {
@@ -152,7 +162,7 @@ export default function VendorsPage() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
+          <Spinner size="lg" />
           <p className="mt-4 text-gray-600">Loading vendors...</p>
         </div>
       </div>
@@ -160,41 +170,35 @@ export default function VendorsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <Link href="/invoices">
-        <Button variant="ghost" className="mb-4">
-          <ChevronLeft className="h-4 w-4 mr-2" />
-          Back to Invoices
-        </Button>
-      </Link>
-      
-      <div className="mb-8 flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Vendors</h1>
-          <p className="text-muted-foreground">Manage your invoice vendors</p>
-        </div>
-        <Button onClick={() => openForm()}>
-          <Plus className="h-4 w-4 mr-2" />
+    <Page
+      title="Vendors"
+      description="Manage your invoice vendors"
+      breadcrumbs={[
+        { label: 'Invoices', href: '/invoices' },
+        { label: 'Vendors' }
+      ]}
+      actions={
+        <Button onClick={() => openForm()} leftIcon={<Plus className="h-4 w-4" />}>
           Add Vendor
         </Button>
-      </div>
-
+      }
+    >
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg">
-          {error}
-        </div>
+        <Alert variant="error" description={error} className="mb-6" />
       )}
 
       {vendors.length === 0 ? (
-        <div className="bg-white rounded-lg shadow-sm border p-12 text-center">
-          <p className="text-gray-500 mb-4">No vendors found. Add your first vendor to get started.</p>
-          <Button onClick={() => openForm()}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Your First Vendor
-          </Button>
-        </div>
+        <EmptyState
+          title="No vendors found"
+          description="Add your first vendor to get started."
+          action={
+            <Button onClick={() => openForm()} leftIcon={<Plus className="h-4 w-4" />}>
+              Add Your First Vendor
+            </Button>
+          }
+        />
       ) : (
-        <div className="bg-white rounded-lg shadow-sm border">
+        <Card>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -235,16 +239,19 @@ export default function VendorsPage() {
                       <div className="flex justify-end gap-2">
                         <Button
                           size="sm"
-                          variant="outline"
+                          variant="secondary"
                           onClick={() => openForm(vendor)}
+                          aria-label="Edit vendor"
+                          iconOnly
                         >
                           <Edit2 className="h-4 w-4" />
                         </Button>
                         <Button
                           size="sm"
-                          variant="outline"
+                          variant="danger"
                           onClick={() => handleDelete(vendor)}
-                          className="text-red-600 hover:bg-red-50"
+                          aria-label="Delete vendor"
+                          iconOnly
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -255,60 +262,63 @@ export default function VendorsPage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </Card>
       )}
 
-      {showForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b flex justify-between items-center">
-              <h2 className="text-xl font-semibold">
-                {editingVendor ? 'Edit Vendor' : 'Add New Vendor'}
-              </h2>
-              <button
-                onClick={closeForm}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+      <Modal
+        open={showForm}
+        onClose={closeForm}
+        title={editingVendor ? 'Edit Vendor' : 'Add New Vendor'}
+        size="lg"
+        footer={
+          <ModalActions>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={closeForm}
+              disabled={formLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="vendor-form"
+              disabled={formLoading}
+              loading={formLoading}
+            >
+              {editingVendor ? 'Update' : 'Create'} Vendor
+            </Button>
+          </ModalActions>
+        }
+      >
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form id="vendor-form" onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium mb-1">
-                    Company Name <span className="text-red-500">*</span>
-                  </label>
-                  <input
+                <FormGroup label="Company Name" required className="md:col-span-2">
+                  <Input
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     required
                   />
-                </div>
+                </FormGroup>
 
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Contact Name
-                  </label>
-                  <input
+                <FormGroup label="Contact Name">
+                  <Input
                     type="text"
                     value={formData.contact_name}
                     onChange={(e) => setFormData({ ...formData, contact_name: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
-                </div>
+                </FormGroup>
 
                 <div>
                   <label className="block text-sm font-medium mb-1">
                     Email
                   </label>
-                  <input
+                  <Input
                     type="email"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
@@ -316,11 +326,10 @@ export default function VendorsPage() {
                   <label className="block text-sm font-medium mb-1">
                     Phone
                   </label>
-                  <input
+                  <Input
                     type="tel"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
@@ -328,11 +337,10 @@ export default function VendorsPage() {
                   <label className="block text-sm font-medium mb-1">
                     VAT Number
                   </label>
-                  <input
+                  <Input
                     type="text"
                     value={formData.vat_number}
                     onChange={(e) => setFormData({ ...formData, vat_number: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
@@ -340,11 +348,10 @@ export default function VendorsPage() {
                   <label className="block text-sm font-medium mb-1">
                     Payment Terms (days)
                   </label>
-                  <input
+                  <Input
                     type="number"
                     value={formData.payment_terms}
                     onChange={(e) => setFormData({ ...formData, payment_terms: parseInt(e.target.value) || 30 })}
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     min="0"
                   />
                 </div>
@@ -353,10 +360,9 @@ export default function VendorsPage() {
                   <label className="block text-sm font-medium mb-1">
                     Address
                   </label>
-                  <textarea
+                  <Textarea
                     value={formData.address}
                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     rows={3}
                   />
                 </div>
@@ -365,35 +371,15 @@ export default function VendorsPage() {
                   <label className="block text-sm font-medium mb-1">
                     Notes
                   </label>
-                  <textarea
+                  <Textarea
                     value={formData.notes}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     rows={3}
                   />
                 </div>
               </div>
-
-              <div className="flex justify-end gap-4 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={closeForm}
-                  disabled={formLoading}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={formLoading}
-                >
-                  {formLoading ? 'Saving...' : (editingVendor ? 'Update' : 'Create')} Vendor
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
+        </form>
+      </Modal>
+    </Page>
   )
 }

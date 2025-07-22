@@ -2,8 +2,12 @@
 
 import { useState } from 'react'
 import { sendInvoiceViaEmail } from '@/app/actions/email'
-import { Button } from '@/components/ui/Button'
-import { X, Send, Loader2 } from 'lucide-react'
+import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Textarea } from '@/components/ui-v2/forms/Textarea'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { Send } from 'lucide-react'
 import type { InvoiceWithDetails } from '@/types/invoices'
 
 interface EmailInvoiceModalProps {
@@ -38,8 +42,6 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  if (!isOpen) return null
-
   async function handleSend() {
     if (!recipientEmail) {
       setError('Please enter a recipient email address')
@@ -72,100 +74,75 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
-          <h2 className="text-xl font-semibold">Email Invoice</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-            disabled={sending}
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="p-6 space-y-4">
-          {error && (
-            <div className="p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg">
-              {error}
-            </div>
-          )}
-
-          <div>
-            <label className="block text-sm font-medium mb-1">
-              To Email Address <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="email"
-              value={recipientEmail}
-              onChange={(e) => setRecipientEmail(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="customer@example.com"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">
-              Subject
-            </label>
-            <input
-              type="text"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">
-              Message
-            </label>
-            <textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows={10}
-            />
-          </div>
-
-          <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-sm text-gray-600">
-              <strong>Attachment:</strong> Invoice {invoice.invoice_number} (PDF format)
-            </p>
-            <p className="text-sm text-gray-600 mt-1">
-              The invoice will be attached as a PDF file for professional presentation and easy printing.
-            </p>
-          </div>
-        </div>
-
-        <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-4">
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      title="Email Invoice"
+      size="lg"
+      footer={
+        <ModalActions>
           <Button
-            variant="outline"
+            variant="secondary"
             onClick={onClose}
             disabled={sending}
           >
             Cancel
           </Button>
-          <Button
-            onClick={handleSend}
-            disabled={sending || !recipientEmail}
+          <Button onClick={handleSend}
+            disabled={!recipientEmail}
+            loading={sending}
+            leftIcon={<Send className="h-4 w-4" />}
           >
-            {sending ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Sending...
-              </>
-            ) : (
-              <>
-                <Send className="h-4 w-4 mr-2" />
-                Send Email
-              </>
-            )}
+            Send Email
           </Button>
+        </ModalActions>
+      }
+    >
+      <div className="space-y-4">
+        {error && (
+          <Alert variant="error" description={error} />
+        )}
+
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            To Email Address <span className="text-red-500">*</span>
+          </label>
+          <Input
+            type="email"
+            value={recipientEmail}
+            onChange={(e) => setRecipientEmail(e.target.value)}
+            placeholder="customer@example.com"
+            required
+          />
         </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            Subject
+          </label>
+          <Input
+            type="text"
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            Message
+          </label>
+          <Textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={10}
+          />
+        </div>
+
+        <Alert variant="info"
+          title="Attachment"
+          description={`Invoice ${invoice.invoice_number} (PDF format) will be attached for professional presentation and easy printing.`}
+        />
       </div>
-    </div>
+    </Modal>
   )
 }

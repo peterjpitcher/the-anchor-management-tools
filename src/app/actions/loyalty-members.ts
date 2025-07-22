@@ -49,7 +49,7 @@ export async function getLoyaltyMembers(filters?: {
       .from('loyalty_members')
       .select(`
         *,
-        customer:customers(id, name, email_address, phone_number),
+        customer:customers(id, first_name, last_name, mobile_number),
         tier:loyalty_tiers(*)
       `)
       .order('created_at', { ascending: false });
@@ -95,7 +95,7 @@ export async function getLoyaltyMember(memberId: string) {
       .from('loyalty_members')
       .select(`
         *,
-        customer:customers(id, name, email_address, phone_number),
+        customer:customers(id, first_name, last_name, mobile_number),
         tier:loyalty_tiers(*)
       `)
       .eq('id', memberId)
@@ -127,7 +127,7 @@ export async function getLoyaltyMemberByCustomer(customerId: string) {
       .from('loyalty_members')
       .select(`
         *,
-        customer:customers(id, name, email_address, phone_number),
+        customer:customers(id, first_name, last_name, mobile_number),
         tier:loyalty_tiers(*)
       `)
       .eq('customer_id', customerId)
@@ -851,7 +851,7 @@ export async function exportLoyaltyMembers(options?: {
       resource_id: 'bulk_export',
       operation_status: 'success',
       new_values: {
-        record_count: exportData.length,
+        record_badge: exportData.length,
         filters: options
       }
     });

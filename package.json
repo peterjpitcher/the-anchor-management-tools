@@ -28,7 +28,10 @@
     "test:all": "tsx tests/run-all-tests.ts",
     "test:all:parallel": "tsx tests/run-all-tests.ts --parallel",
     "test:smoke": "playwright test smoke-test.spec.ts",
-    "test:suite": "tsx tests/run-all-tests.ts --suite"
+    "test:suite": "tsx tests/run-all-tests.ts --suite",
+    "test:table-bookings": "playwright test --config=tests/table-bookings.config.ts",
+    "test:table-bookings:ui": "playwright test --config=tests/table-bookings.config.ts --ui",
+    "test:table-bookings:api": "playwright test tests/table-bookings-api.spec.ts"
   },
   "dependencies": {
     "@azure/identity": "^4.10.2",
@@ -39,6 +42,7 @@
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/ssr": "^0.6.1",
     "@types/jszip": "^3.4.0",
+    "@types/node-fetch": "^2.6.12",
     "@types/papaparse": "^5.3.16",
     "@types/qrcode": "^1.5.5",
     "@zxing/browser": "^0.1.5",
@@ -52,12 +56,14 @@
     "lru-cache": "^11.1.0",
     "lucide-react": "^0.522.0",
     "next": "15.3.3",
+    "node-fetch": "^2.7.0",
     "papaparse": "^5.5.3",
     "puppeteer": "^24.12.1",
     "qrcode": "^1.5.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-hot-toast": "^2.5.2",
+    "tailwind-merge": "^3.3.1",
     "twilio": "^5.7.0",
     "zod": "^3.25.56"
   },

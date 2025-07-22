@@ -3,14 +3,21 @@
 import { useState, useEffect } from 'react';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { LinkIcon, ChartBarIcon, TrashIcon, ClipboardDocumentIcon, PencilIcon, CalendarDaysIcon, DevicePhoneMobileIcon, ComputerDesktopIcon, GlobeAltIcon } from '@heroicons/react/24/outline';
-import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
-import { FormInput } from '@/components/ui/FormInput';
-import { FormSelect } from '@/components/ui/FormSelect';
+import { Page } from '@/components/ui-v2/layout/Page';
+import { Section } from '@/components/ui-v2/layout/Section';
+import { Card } from '@/components/ui-v2/layout/Card';
+import { Button, IconButton } from '@/components/ui-v2/forms/Button';
+import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal';
+import { Input } from '@/components/ui-v2/forms/Input';
+import { Select } from '@/components/ui-v2/forms/Select';
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
+import { DataTable } from '@/components/ui-v2/display/DataTable';
+import { Badge } from '@/components/ui-v2/display/Badge';
+import { Spinner } from '@/components/ui-v2/feedback/Spinner';
+import { EmptyState } from '@/components/ui-v2/display/EmptyState';
 import toast from 'react-hot-toast';
 import { createShortLink, getShortLinkAnalytics } from '@/app/actions/short-links';
-import { Loader2 } from 'lucide-react';
-import { LineChart } from '@/components/ui/LineChart';
+import { LineChart } from '@/components/charts/LineChart';
 
 interface ShortLink {
   id: string;
@@ -313,217 +320,193 @@ export default function ShortLinksPage() {
     setSelectedLink(null);
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
-    );
-  }
-
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold">Short Links</h1>
-            <p className="text-gray-600 mt-1 text-sm sm:text-base">Create and manage vip-club.uk short links</p>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-            <Button 
-              variant="secondary"
-              onClick={() => {
-                setShowVolumeChart(true);
-                loadVolumeData(volumePeriod);
-              }}
-              className="w-full sm:w-auto justify-center"
-            >
-              <ChartBarIcon className="h-5 w-5 mr-2" />
-              <span className="hidden sm:inline">View Volume Chart</span>
-              <span className="sm:hidden">Volume</span>
-            </Button>
-            <Button 
-              onClick={() => setShowCreateModal(true)}
-              className="w-full sm:w-auto justify-center"
-            >
-              <LinkIcon className="h-5 w-5 mr-2" />
-              <span className="hidden sm:inline">Create Short Link</span>
-              <span className="sm:hidden">Create</span>
-            </Button>
-          </div>
+    <Page
+      title="Short Links"
+      description="Create and manage vip-club.uk short links"
+      breadcrumbs={[
+        { label: 'Settings', href: '/settings' },
+        { label: 'Short Links' }
+      ]}
+      loading={loading}
+      actions={
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+          <Button 
+            variant="secondary"
+            onClick={() => {
+              setShowVolumeChart(true);
+              loadVolumeData(volumePeriod);
+            }}
+            leftIcon={<ChartBarIcon className="h-5 w-5" />}
+          >
+            <span className="hidden sm:inline">View Volume Chart</span>
+            <span className="sm:hidden">Volume</span>
+          </Button>
+          <Button 
+            onClick={() => setShowCreateModal(true)}
+            leftIcon={<LinkIcon className="h-5 w-5" />}
+          >
+            <span className="hidden sm:inline">Create Short Link</span>
+            <span className="sm:hidden">Create</span>
+          </Button>
         </div>
-      </div>
-
-      {/* Desktop Table View */}
-      <div className="hidden lg:block bg-white rounded-lg shadow overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Short Link
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Destination
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Type
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Clicks
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Created
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {links.map((link) => (
-              <tr key={link.id}>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    <code className="text-sm font-mono bg-gray-100 px-2 py-1 rounded">
-                      vip-club.uk/{link.short_code}
-                    </code>
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="text-sm text-gray-900 truncate max-w-xs" title={link.destination_url}>
-                    {link.destination_url}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                    {link.link_type}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {link.click_count || 0}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {new Date(link.created_at).toLocaleDateString()}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <button
-                    onClick={() => handleCopyLink(link)}
-                    className="text-blue-600 hover:text-blue-900 mr-3"
-                    title="Copy link"
-                  >
-                    <ClipboardDocumentIcon className="h-5 w-5" />
-                  </button>
-                  <button
-                    onClick={() => handleViewAnalytics(link)}
-                    className="text-green-600 hover:text-green-900 mr-3"
-                    title="View analytics"
-                  >
-                    <ChartBarIcon className="h-5 w-5" />
-                  </button>
-                  <button
-                    onClick={() => handleEdit(link)}
-                    className="text-indigo-600 hover:text-indigo-900 mr-3"
-                    title="Edit"
-                  >
-                    <PencilIcon className="h-5 w-5" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(link.id)}
-                    className="text-red-600 hover:text-red-900"
-                    title="Delete"
-                  >
-                    <TrashIcon className="h-5 w-5" />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        
-        {links.length === 0 && (
-          <div className="text-center py-8">
-            <LinkIcon className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No short links</h3>
-            <p className="mt-1 text-sm text-gray-500">Get started by creating a new short link.</p>
-          </div>
-        )}
-      </div>
-
-      {/* Mobile Card View */}
-      <div className="lg:hidden space-y-3">
-        {links.map((link) => (
-          <div key={link.id} className="bg-white rounded-lg shadow p-4">
-            <div className="flex justify-between items-start mb-3">
-              <div className="flex-1 min-w-0 mr-4">
-                <code className="text-sm font-mono bg-gray-100 px-2 py-1 rounded inline-block mb-2">
+      }
+    >
+      <Section>
+        <DataTable
+          data={links}
+          getRowKey={(link) => link.id}
+          emptyMessage="No short links"
+          emptyDescription="Get started by creating a new short link."
+          columns={[
+            {
+              key: 'short_code',
+              header: 'Short Link',
+              cell: (link) => (
+                <code className="text-sm font-mono bg-gray-100 px-2 py-1 rounded">
                   vip-club.uk/{link.short_code}
                 </code>
-                <p className="text-xs text-gray-600 truncate">{link.destination_url}</p>
+              ),
+            },
+            {
+              key: 'destination_url',
+              header: 'Destination',
+              cell: (link) => (
+                <div className="text-sm text-gray-900 truncate max-w-xs" title={link.destination_url}>
+                  {link.destination_url}
+                </div>
+              ),
+            },
+            {
+              key: 'link_type',
+              header: 'Type',
+              cell: (link) => (
+                <Badge variant="info" size="sm">
+                  {link.link_type}
+                </Badge>
+              ),
+            },
+            {
+              key: 'click_count',
+              header: 'Clicks',
+              cell: (link) => link.click_count || 0,
+              sortable: true,
+            },
+            {
+              key: 'created_at',
+              header: 'Created',
+              cell: (link) => new Date(link.created_at).toLocaleDateString(),
+              sortable: true,
+            },
+            {
+              key: 'actions',
+              header: 'Actions',
+              align: 'right',
+              cell: (link) => (
+                <div className="flex items-center justify-end gap-1">
+                  <IconButton
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => handleCopyLink(link)}
+                    title="Copy link"
+                  >
+                    <ClipboardDocumentIcon className="h-4 w-4" />
+                  </IconButton>
+                  <IconButton
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => handleViewAnalytics(link)}
+                    title="View analytics"
+                  >
+                    <ChartBarIcon className="h-4 w-4" />
+                  </IconButton>
+                  <IconButton
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => handleEdit(link)}
+                    title="Edit"
+                  >
+                    <PencilIcon className="h-4 w-4" />
+                  </IconButton>
+                  <IconButton
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => handleDelete(link.id)}
+                    title="Delete"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </IconButton>
+                </div>
+              ),
+            },
+          ]}
+          renderMobileCard={(link) => (
+            <Card padding="sm">
+              <div className="flex justify-between items-start mb-3">
+                <div className="flex-1 min-w-0 mr-4">
+                  <code className="text-sm font-mono bg-gray-100 px-2 py-1 rounded inline-block mb-2">
+                    vip-club.uk/{link.short_code}
+                  </code>
+                  <p className="text-xs text-gray-600 truncate">{link.destination_url}</p>
+                </div>
+                <Badge variant="info" size="sm">
+                  {link.link_type}
+                </Badge>
               </div>
-              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                {link.link_type}
-              </span>
-            </div>
-            
-            <div className="flex justify-between items-center text-sm text-gray-500 mb-3">
-              <span>{link.click_count || 0} clicks</span>
-              <span>{new Date(link.created_at).toLocaleDateString()}</span>
-            </div>
-            
-            <div className="flex justify-between border-t pt-3">
-              <button
-                onClick={() => handleCopyLink(link)}
-                className="text-blue-600 hover:text-blue-900 p-2"
-                title="Copy link"
-              >
-                <ClipboardDocumentIcon className="h-5 w-5" />
-              </button>
-              <button
-                onClick={() => handleViewAnalytics(link)}
-                className="text-green-600 hover:text-green-900 p-2"
-                title="View analytics"
-              >
-                <ChartBarIcon className="h-5 w-5" />
-              </button>
-              <button
-                onClick={() => handleEdit(link)}
-                className="text-indigo-600 hover:text-indigo-900 p-2"
-                title="Edit"
-              >
-                <PencilIcon className="h-5 w-5" />
-              </button>
-              <button
-                onClick={() => handleDelete(link.id)}
-                className="text-red-600 hover:text-red-900 p-2"
-                title="Delete"
-              >
-                <TrashIcon className="h-5 w-5" />
-              </button>
-            </div>
-          </div>
-        ))}
-        
-        {links.length === 0 && (
-          <div className="bg-white rounded-lg shadow p-8 text-center">
-            <LinkIcon className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No short links</h3>
-            <p className="mt-1 text-sm text-gray-500">Get started by creating a new short link.</p>
-          </div>
-        )}
-      </div>
+              
+              <div className="flex justify-between items-center text-sm text-gray-500 mb-3">
+                <span>{link.click_count || 0} clicks</span>
+                <span>{new Date(link.created_at).toLocaleDateString()}</span>
+              </div>
+              
+              <div className="flex justify-between border-t pt-3">
+                <IconButton
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => handleCopyLink(link)}
+                  title="Copy link"
+                >
+                  <ClipboardDocumentIcon className="h-4 w-4" />
+                </IconButton>
+                <IconButton
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => handleViewAnalytics(link)}
+                  title="View analytics"
+                >
+                  <ChartBarIcon className="h-4 w-4" />
+                </IconButton>
+                <IconButton
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => handleEdit(link)}
+                  title="Edit"
+                >
+                  <PencilIcon className="h-4 w-4" />
+                </IconButton>
+                <IconButton
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => handleDelete(link.id)}
+                  title="Delete"
+                >
+                  <TrashIcon className="h-4 w-4" />
+                </IconButton>
+              </div>
+            </Card>
+          )}
+        />
+      </Section>
 
       {/* Create Modal */}
       <Modal
-        isOpen={showCreateModal}
+        open={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         title="Create Short Link"
       >
         <form onSubmit={handleCreate} className="space-y-4">
-          <div>
-            <label htmlFor="destination" className="block text-sm font-medium text-gray-700">
-              Destination URL
-            </label>
-            <FormInput
+          <FormGroup label="Destination URL" required>
+            <Input
               id="destination"
               type="url"
               value={destinationUrl}
@@ -531,13 +514,10 @@ export default function ShortLinksPage() {
               placeholder="https://example.com/page"
               required
             />
-          </div>
+          </FormGroup>
 
-          <div>
-            <label htmlFor="type" className="block text-sm font-medium text-gray-700">
-              Link Type
-            </label>
-            <FormSelect
+          <FormGroup label="Link Type">
+            <Select
               id="type"
               value={linkType}
               onChange={(e) => setLinkType(e.target.value)}
@@ -549,13 +529,13 @@ export default function ShortLinksPage() {
                 { value: 'reward_redemption', label: 'Reward Redemption' }
               ]}
             />
-          </div>
+          </FormGroup>
 
-          <div>
-            <label htmlFor="customCode" className="block text-sm font-medium text-gray-700">
-              Custom Code (optional)
-            </label>
-            <FormInput
+          <FormGroup 
+            label="Custom Code (optional)"
+            help="Leave blank to auto-generate. Only lowercase letters, numbers, and hyphens."
+          >
+            <Input
               id="customCode"
               type="text"
               value={customCode}
@@ -563,16 +543,10 @@ export default function ShortLinksPage() {
               placeholder="summer-special"
               pattern="[a-z0-9-]*"
             />
-            <p className="mt-1 text-xs text-gray-500">
-              Leave blank to auto-generate. Only lowercase letters, numbers, and hyphens.
-            </p>
-          </div>
+          </FormGroup>
 
-          <div>
-            <label htmlFor="expires" className="block text-sm font-medium text-gray-700">
-              Expires
-            </label>
-            <FormSelect
+          <FormGroup label="Expires">
+            <Select
               id="expires"
               value={expiresIn}
               onChange={(e) => setExpiresIn(e.target.value)}
@@ -583,9 +557,9 @@ export default function ShortLinksPage() {
                 { value: '30d', label: 'In 30 days' }
               ]}
             />
-          </div>
+          </FormGroup>
 
-          <div className="flex justify-end space-x-3 pt-4">
+          <ModalActions>
             <Button
               type="button"
               variant="secondary"
@@ -593,182 +567,184 @@ export default function ShortLinksPage() {
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={creating}>
-              {creating ? (
-                <>
-                  <Loader2 className="animate-spin h-4 w-4 mr-2" />
-                  Creating...
-                </>
-              ) : (
-                'Create Link'
-              )}
+            <Button type="submit" loading={creating}>
+              Create Link
             </Button>
-          </div>
+          </ModalActions>
         </form>
       </Modal>
 
-      {/* Analytics Modal - Make it larger on desktop */}
+      {/* Analytics Modal */}
       <Modal
-        isOpen={showAnalyticsModal}
+        open={showAnalyticsModal}
         onClose={() => {
           setShowAnalyticsModal(false);
           setAnalytics(null);
         }}
         title="Link Analytics"
-        className="sm:max-w-4xl"
+        size="xl"
       >
         {selectedLink && analytics && (
-          <div className="space-y-4 max-h-[80vh] overflow-y-auto">
-            <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
+          <div className="space-y-4">
+            <Card variant="bordered" padding="sm">
               <p className="text-xs sm:text-sm text-gray-600">Short Link</p>
               <p className="font-mono text-sm sm:text-base">vip-club.uk/{selectedLink.short_code}</p>
-            </div>
+            </Card>
             
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-blue-50 rounded-lg p-4">
+              <Card variant="bordered" padding="sm" className="bg-blue-50">
                 <p className="text-sm text-blue-600">Total Clicks</p>
                 <p className="text-2xl font-bold text-blue-900">{analytics.click_count || 0}</p>
-              </div>
+              </Card>
               
-              <div className="bg-green-50 rounded-lg p-4">
+              <Card variant="bordered" padding="sm" className="bg-green-50">
                 <p className="text-sm text-green-600">Last Clicked</p>
                 <p className="text-sm font-medium text-green-900">
                   {analytics.last_clicked_at 
                     ? new Date(analytics.last_clicked_at).toLocaleString()
                     : 'Never'}
                 </p>
-              </div>
+              </Card>
             </div>
 
             {/* Click Trends Chart */}
             {analytics.chartData && analytics.chartData.length > 0 && (
-              <div>
-                <h4 className="font-medium mb-2">Click Trends (Last 30 Days)</h4>
+              <Section title="Click Trends (Last 30 Days)" variant="gray" padding="sm">
                 <LineChart 
                   data={analytics.chartData}
                   height={200}
                   color="#3B82F6"
                   label="Daily Clicks"
                 />
-              </div>
+              </Section>
             )}
 
             {/* Demographics Section */}
             {analytics.demographics && (
               <>
                 {/* Device Types */}
-                <div>
-                  <h4 className="font-medium mb-3">Device Types</h4>
+                <Section title="Device Types" variant="gray" padding="sm">
                   <div className="grid grid-cols-3 gap-3">
-                    <div className="bg-gray-50 rounded-lg p-3 text-center">
+                    <Card variant="bordered" padding="sm" className="text-center">
                       <DevicePhoneMobileIcon className="h-6 w-6 mx-auto mb-1 text-gray-600" />
                       <p className="text-xs text-gray-600">Mobile</p>
                       <p className="text-lg font-semibold">{analytics.demographics.devices.mobile || 0}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3 text-center">
+                    </Card>
+                    <Card variant="bordered" padding="sm" className="text-center">
                       <ComputerDesktopIcon className="h-6 w-6 mx-auto mb-1 text-gray-600" />
                       <p className="text-xs text-gray-600">Desktop</p>
                       <p className="text-lg font-semibold">{analytics.demographics.devices.desktop || 0}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3 text-center">
+                    </Card>
+                    <Card variant="bordered" padding="sm" className="text-center">
                       <GlobeAltIcon className="h-6 w-6 mx-auto mb-1 text-gray-600" />
                       <p className="text-xs text-gray-600">Tablet</p>
                       <p className="text-lg font-semibold">{analytics.demographics.devices.tablet || 0}</p>
-                    </div>
+                    </Card>
                   </div>
-                </div>
+                </Section>
 
                 {/* Top Countries */}
                 {Object.keys(analytics.demographics.countries).length > 0 && (
-                  <div>
-                    <h4 className="font-medium mb-2">Top Countries</h4>
+                  <Section title="Top Countries" variant="gray" padding="sm">
                     <div className="space-y-2">
                       {Object.entries(analytics.demographics.countries)
                         .sort(([, a], [, b]) => Number(b) - Number(a))
                         .slice(0, 5)
                         .map(([country, count]) => (
-                          <div key={country} className="flex justify-between items-center bg-gray-50 rounded px-3 py-2">
-                            <span className="text-sm">{country || 'Unknown'}</span>
-                            <span className="text-sm font-medium">{String(count)}</span>
-                          </div>
+                          <Card key={country} variant="bordered" padding="sm">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm">{country || 'Unknown'}</span>
+                              <Badge variant="secondary" size="sm">{String(count)}</Badge>
+                            </div>
+                          </Card>
                         ))}
                     </div>
-                  </div>
+                  </Section>
                 )}
 
                 {/* Top Browsers */}
                 {Object.keys(analytics.demographics.browsers).length > 0 && (
-                  <div>
-                    <h4 className="font-medium mb-2">Top Browsers</h4>
+                  <Section title="Top Browsers" variant="gray" padding="sm">
                     <div className="space-y-2">
                       {Object.entries(analytics.demographics.browsers)
                         .sort(([, a], [, b]) => Number(b) - Number(a))
                         .slice(0, 5)
                         .map(([browser, count]) => (
-                          <div key={browser} className="flex justify-between items-center bg-gray-50 rounded px-3 py-2">
-                            <span className="text-sm">{browser}</span>
-                            <span className="text-sm font-medium">{String(count)}</span>
-                          </div>
+                          <Card key={browser} variant="bordered" padding="sm">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm">{browser}</span>
+                              <Badge variant="secondary" size="sm">{String(count)}</Badge>
+                            </div>
+                          </Card>
                         ))}
                     </div>
-                  </div>
+                  </Section>
                 )}
               </>
             )}
 
             {analytics.short_link_clicks && analytics.short_link_clicks.length > 0 && (
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <h4 className="font-medium">All Clicks ({analytics.short_link_clicks.length})</h4>
-                  <span className="text-sm text-gray-500">Showing all</span>
+              <Section 
+                title={`All Clicks (${analytics.short_link_clicks.length})`}
+                variant="gray" 
+                padding="none"
+              >
+                <div className="max-h-96 overflow-y-auto">
+                  <DataTable
+                    data={analytics.short_link_clicks.sort((a: any, b: any) => 
+                      new Date(b.clicked_at).getTime() - new Date(a.clicked_at).getTime()
+                    )}
+                    getRowKey={(click) => click.id || Math.random()}
+                    size="sm"
+                    stickyHeader
+                    columns={[
+                      {
+                        key: 'clicked_at',
+                        header: 'Time',
+                        cell: (click) => (
+                          <div>
+                            <div className="font-medium">{new Date(click.clicked_at).toLocaleDateString()}</div>
+                            <div className="text-gray-500 text-xs">{new Date(click.clicked_at).toLocaleTimeString()}</div>
+                          </div>
+                        ),
+                      },
+                      {
+                        key: 'device_type',
+                        header: 'Device',
+                        hideOnMobile: true,
+                        cell: (click) => (
+                          <Badge 
+                            variant={
+                              click.device_type === 'mobile' ? 'success' :
+                              click.device_type === 'desktop' ? 'info' :
+                              'default'
+                            }
+                            size="sm"
+                          >
+                            {click.device_type || 'Unknown'}
+                          </Badge>
+                        ),
+                      },
+                      {
+                        key: 'location',
+                        header: 'Location',
+                        cell: (click) => (
+                          <div>
+                            <div>{click.country || 'Unknown'}</div>
+                            {click.city && <div className="text-gray-500 text-xs">{click.city}</div>}
+                          </div>
+                        ),
+                      },
+                      {
+                        key: 'browser',
+                        header: 'Browser',
+                        hideOnMobile: true,
+                        cell: (click) => click.browser || 'Unknown',
+                      },
+                    ]}
+                  />
                 </div>
-                <div className="border rounded-lg overflow-hidden">
-                  <div className="max-h-96 overflow-y-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50 sticky top-0">
-                        <tr>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Time</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 hidden sm:table-cell">Device</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Location</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 hidden md:table-cell">Browser</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {analytics.short_link_clicks
-                          .sort((a: any, b: any) => new Date(b.clicked_at).getTime() - new Date(a.clicked_at).getTime())
-                          .map((click: any, idx: number) => (
-                          <tr key={click.id || idx} className="hover:bg-gray-50">
-                            <td className="px-3 py-2 text-xs sm:text-sm">
-                              <div>
-                                <div className="font-medium">{new Date(click.clicked_at).toLocaleDateString()}</div>
-                                <div className="text-gray-500">{new Date(click.clicked_at).toLocaleTimeString()}</div>
-                              </div>
-                            </td>
-                            <td className="px-3 py-2 text-xs sm:text-sm hidden sm:table-cell">
-                              <span className={`inline-flex px-2 text-xs leading-5 font-semibold rounded-full ${
-                                click.device_type === 'mobile' ? 'bg-green-100 text-green-800' :
-                                click.device_type === 'desktop' ? 'bg-blue-100 text-blue-800' :
-                                'bg-gray-100 text-gray-800'
-                              }`}>
-                                {click.device_type || 'Unknown'}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2 text-xs sm:text-sm">
-                              <div>
-                                <div>{click.country || 'Unknown'}</div>
-                                {click.city && <div className="text-gray-500 text-xs">{click.city}</div>}
-                              </div>
-                            </td>
-                            <td className="px-3 py-2 text-xs sm:text-sm hidden md:table-cell">
-                              {click.browser || 'Unknown'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
+              </Section>
             )}
           </div>
         )}
@@ -776,7 +752,7 @@ export default function ShortLinksPage() {
 
       {/* Edit Modal */}
       <Modal
-        isOpen={showEditModal}
+        open={showEditModal}
         onClose={() => {
           setShowEditModal(false);
           resetForm();
@@ -784,16 +760,13 @@ export default function ShortLinksPage() {
         title="Edit Short Link"
       >
         <form onSubmit={handleUpdate} className="space-y-4">
-          <div className="bg-gray-50 rounded-lg p-4 mb-4">
+          <Card variant="bordered" padding="sm">
             <p className="text-sm text-gray-600">Short Link</p>
             <p className="font-mono">vip-club.uk/{selectedLink?.short_code}</p>
-          </div>
+          </Card>
 
-          <div>
-            <label htmlFor="edit-destination" className="block text-sm font-medium text-gray-700">
-              Destination URL
-            </label>
-            <FormInput
+          <FormGroup label="Destination URL" required>
+            <Input
               id="edit-destination"
               type="url"
               value={destinationUrl}
@@ -801,13 +774,10 @@ export default function ShortLinksPage() {
               placeholder="https://example.com/page"
               required
             />
-          </div>
+          </FormGroup>
 
-          <div>
-            <label htmlFor="edit-type" className="block text-sm font-medium text-gray-700">
-              Link Type
-            </label>
-            <FormSelect
+          <FormGroup label="Link Type">
+            <Select
               id="edit-type"
               value={linkType}
               onChange={(e) => setLinkType(e.target.value)}
@@ -819,13 +789,10 @@ export default function ShortLinksPage() {
                 { value: 'reward_redemption', label: 'Reward Redemption' }
               ]}
             />
-          </div>
+          </FormGroup>
 
-          <div>
-            <label htmlFor="edit-expires" className="block text-sm font-medium text-gray-700">
-              Expires
-            </label>
-            <FormSelect
+          <FormGroup label="Expires">
+            <Select
               id="edit-expires"
               value={expiresIn}
               onChange={(e) => setExpiresIn(e.target.value)}
@@ -836,9 +803,9 @@ export default function ShortLinksPage() {
                 { value: '30d', label: 'In 30 days' }
               ]}
             />
-          </div>
+          </FormGroup>
 
-          <div className="flex justify-end space-x-3 pt-4">
+          <ModalActions>
             <Button
               type="button"
               variant="secondary"
@@ -849,29 +816,22 @@ export default function ShortLinksPage() {
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={updating}>
-              {updating ? (
-                <>
-                  <Loader2 className="animate-spin h-4 w-4 mr-2" />
-                  Updating...
-                </>
-              ) : (
-                'Update Link'
-              )}
+            <Button type="submit" loading={updating}>
+              Update Link
             </Button>
-          </div>
+          </ModalActions>
         </form>
       </Modal>
 
       {/* Volume Chart Modal */}
       <Modal
-        isOpen={showVolumeChart}
+        open={showVolumeChart}
         onClose={() => {
           setShowVolumeChart(false);
           setVolumeData(null);
         }}
         title="Short Link Volume Analytics"
-        className="sm:max-w-5xl"
+        size="full"
       >
         <div className="space-y-4">
           {/* Period Selector */}
@@ -879,73 +839,72 @@ export default function ShortLinksPage() {
             <h3 className="text-sm font-medium text-gray-700">Time Period</h3>
             <div className="flex gap-2">
               {['30', '60', '90'].map((days) => (
-                <button
+                <Button
                   key={days}
+                  size="sm"
+                  variant={volumePeriod === days ? 'primary' : 'secondary'}
                   onClick={() => {
                     setVolumePeriod(days);
                     loadVolumeData(days);
                   }}
-                  className={`px-3 py-1 text-sm rounded-md ${
-                    volumePeriod === days
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
                 >
                   {days} Days
-                </button>
+                </Button>
               ))}
             </div>
           </div>
 
           {loadingVolume ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+              <Spinner size="lg" />
             </div>
           ) : volumeData && volumeData.length > 0 ? (
             <div className="space-y-6">
               {/* Summary Stats */}
               <div className="grid grid-cols-3 gap-4">
-                <div className="bg-blue-50 rounded-lg p-4 text-center">
+                <Card variant="bordered" className="bg-blue-50 text-center">
                   <p className="text-sm text-blue-600">Active Links</p>
                   <p className="text-2xl font-bold text-blue-900">{volumeData.length}</p>
-                </div>
-                <div className="bg-green-50 rounded-lg p-4 text-center">
+                </Card>
+                <Card variant="bordered" className="bg-green-50 text-center">
                   <p className="text-sm text-green-600">Total Clicks</p>
                   <p className="text-2xl font-bold text-green-900">
                     {volumeData.reduce((sum: number, link: any) => sum + link.totalClicks, 0)}
                   </p>
-                </div>
-                <div className="bg-purple-50 rounded-lg p-4 text-center">
+                </Card>
+                <Card variant="bordered" className="bg-purple-50 text-center">
                   <p className="text-sm text-purple-600">Unique Visitors</p>
                   <p className="text-2xl font-bold text-purple-900">
                     {volumeData.reduce((sum: number, link: any) => sum + link.uniqueVisitors, 0)}
                   </p>
-                </div>
+                </Card>
               </div>
 
               {/* Individual Link Charts */}
-              <div className="space-y-6 max-h-96 overflow-y-auto">
-                {volumeData.map((link: any) => (
-                  <div key={link.shortCode} className="border rounded-lg p-4">
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <p className="font-mono text-sm text-blue-600">vip-club.uk/{link.shortCode}</p>
-                        <p className="text-xs text-gray-500 truncate max-w-md">{link.destinationUrl}</p>
+              <Section title="Link Performance" variant="gray" padding="sm">
+                <div className="space-y-4 max-h-96 overflow-y-auto">
+                  {volumeData.map((link: any) => (
+                    <Card key={link.shortCode} variant="bordered" padding="sm">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <p className="font-mono text-sm text-blue-600">vip-club.uk/{link.shortCode}</p>
+                          <p className="text-xs text-gray-500 truncate max-w-md">{link.destinationUrl}</p>
+                        </div>
+                        <div className="text-right">
+                          <Badge variant="info" size="sm">{link.totalClicks} clicks</Badge>
+                          <p className="text-xs text-gray-500 mt-1">{link.uniqueVisitors} unique</p>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm font-semibold">{link.totalClicks} clicks</p>
-                        <p className="text-xs text-gray-500">{link.uniqueVisitors} unique</p>
-                      </div>
-                    </div>
-                    <LineChart
-                      data={link.data}
-                      height={150}
-                      color="#3B82F6"
-                      showGrid={false}
-                    />
-                  </div>
-                ))}
-              </div>
+                      <LineChart
+                        data={link.data}
+                        height={150}
+                        color="#3B82F6"
+                        showGrid={false}
+                      />
+                    </Card>
+                  ))}
+                </div>
+              </Section>
 
               {/* Export Button */}
               <div className="pt-4 border-t">
@@ -979,13 +938,13 @@ export default function ShortLinksPage() {
               </div>
             </div>
           ) : (
-            <div className="text-center py-12">
-              <ChartBarIcon className="mx-auto h-12 w-12 text-gray-400" />
-              <p className="mt-2 text-sm text-gray-500">No click data available for this period</p>
-            </div>
+            <EmptyState icon="chart"
+              title="No click data available"
+              description="No clicks have been recorded for this time period"
+            />
           )}
         </div>
       </Modal>
-    </div>
+    </Page>
   );
 }

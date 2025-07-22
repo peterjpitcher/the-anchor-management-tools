@@ -71,7 +71,7 @@ export async function getQuoteSummary() {
       total_pending: 0,
       total_expired: 0,
       total_accepted: 0,
-      draft_count: 0
+      draft_badge: 0
     }
 
     const today = new Date()
@@ -79,7 +79,7 @@ export async function getQuoteSummary() {
 
     quotes?.forEach(quote => {
       if (quote.status === 'draft') {
-        summary.draft_count++
+        summary.draft_badge++
       } else if (quote.status === 'sent') {
         const validUntil = new Date(quote.valid_until)
         if (validUntil < today) {

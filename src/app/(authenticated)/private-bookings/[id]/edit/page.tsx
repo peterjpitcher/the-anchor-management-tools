@@ -3,12 +3,23 @@
 import { useEffect, useState, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { useActionState } from 'react'
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getPrivateBooking, updatePrivateBooking } from '@/app/actions/privateBookingActions'
-import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import type { PrivateBookingWithDetails } from '@/types/private-bookings'
 import CustomerSearchInput from '@/components/CustomerSearchInput'
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Select } from '@/components/ui-v2/forms/Select'
+import { Textarea } from '@/components/ui-v2/forms/Textarea'
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+
 type FormState = { error: string } | { success: boolean } | null
 
 interface Customer {
@@ -79,6 +90,7 @@ export default function EditPrivateBookingPage({
     async (prevState: FormState, formData: FormData) => {
       const result = await updatePrivateBooking(id, formData)
       if (result.success) {
+        toast.success('Private booking updated successfully')
         router.push(`/private-bookings/${id}`)
       }
       return result
@@ -88,61 +100,46 @@ export default function EditPrivateBookingPage({
 
   if (loading) {
     return (
-      <div className="px-4 sm:px-6 lg:px-8">
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
-          <div className="bg-white shadow sm:rounded-lg p-6">
-            <div className="space-y-4">
-              <div className="h-6 bg-gray-200 rounded w-1/3"></div>
-              <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-            </div>
-          </div>
+      <Page title="Edit Private Booking">
+        <div className="flex items-center justify-center p-8">
+          <Spinner size="lg" />
         </div>
-      </div>
+      </Page>
     )
   }
 
   if (error || !booking) {
     return (
-      <div className="px-4 sm:px-6 lg:px-8">
-        <div className="rounded-md bg-red-50 p-4">
-          <p className="text-sm text-red-800">{error || 'Booking not found'}</p>
-        </div>
-      </div>
+      <Page title="Edit Private Booking">
+        <Alert variant="error">
+          {error || 'Booking not found'}
+        </Alert>
+      </Page>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="mb-8">
-        <Link
-          href={`/private-bookings/${id}`}
-          className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700"
-        >
-          <ArrowLeftIcon className="mr-1 h-4 w-4" />
-          Back to booking
-        </Link>
-      </div>
+    <Page
+      title="Edit Private Booking"
+      actions={
+        <LinkButton href={`/private-bookings/${id}`} variant="secondary">
+          Back
+        </LinkButton>
+      }
+    >
+      <Card>
+        {state && 'error' in state && (
+          <Alert variant="error" className="mb-6">
+            {state.error}
+          </Alert>
+        )}
 
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-6">Edit Private Booking</h1>
-
-          {state && 'error' in state && (
-            <div className="rounded-md bg-red-50 p-4 mb-6">
-              <p className="text-sm text-red-800">{state.error}</p>
-            </div>
-          )}
-
-          <form action={formAction} className="space-y-6">
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-              {/* Customer Information */}
-              <div className="col-span-2">
-                <h2 className="text-lg font-medium text-gray-900 mb-4">Customer Information</h2>
-              </div>
-
+        <form action={formAction} className="space-y-6">
+          {/* Customer Information */}
+          <Section title="Customer Information">
+            <div className="space-y-4">
               {/* Customer Search */}
-              <div className="col-span-2">
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Change Customer
                 </label>
@@ -154,283 +151,219 @@ export default function EditPrivateBookingPage({
                 <input type="hidden" name="customer_id" value={selectedCustomer?.id || booking.customer_id || ''} />
               </div>
 
-              <div>
-                <label htmlFor="customer_first_name" className="block text-sm font-medium text-gray-700">
-                  First Name *
-                </label>
-                <input
-                  type="text"
-                  name="customer_first_name"
-                  id="customer_first_name"
-                  required
-                  value={customerFirstName}
-                  onChange={(e) => setCustomerFirstName(e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
-                />
-              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormGroup label="First Name" required>
+                  <Input
+                    type="text"
+                    name="customer_first_name"
+                    id="customer_first_name"
+                    required
+                    value={customerFirstName}
+                    onChange={(e) => setCustomerFirstName(e.target.value)}
+                  />
+                </FormGroup>
 
-              <div>
-                <label htmlFor="customer_last_name" className="block text-sm font-medium text-gray-700">
-                  Last Name
-                </label>
-                <input
-                  type="text"
-                  name="customer_last_name"
-                  id="customer_last_name"
-                  value={customerLastName}
-                  onChange={(e) => setCustomerLastName(e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
-                />
-              </div>
+                <FormGroup label="Last Name">
+                  <Input
+                    type="text"
+                    name="customer_last_name"
+                    id="customer_last_name"
+                    value={customerLastName}
+                    onChange={(e) => setCustomerLastName(e.target.value)}
+                  />
+                </FormGroup>
 
-              <div>
-                <label htmlFor="contact_phone" className="block text-sm font-medium text-gray-700">
-                  Contact Phone
-                </label>
-                <input
-                  type="tel"
-                  name="contact_phone"
-                  id="contact_phone"
-                  value={contactPhone}
-                  onChange={(e) => setContactPhone(e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
-                />
-              </div>
+                <FormGroup label="Contact Phone">
+                  <Input
+                    type="tel"
+                    name="contact_phone"
+                    id="contact_phone"
+                    value={contactPhone}
+                    onChange={(e) => setContactPhone(e.target.value)}
+                  />
+                </FormGroup>
 
-              <div>
-                <label htmlFor="contact_email" className="block text-sm font-medium text-gray-700">
-                  Contact Email
-                </label>
-                <input
-                  type="email"
-                  name="contact_email"
-                  id="contact_email"
-                  value={contactEmail}
-                  onChange={(e) => setContactEmail(e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
-                />
-              </div>
+                <FormGroup label="Contact Email">
+                  <Input
+                    type="email"
+                    name="contact_email"
+                    id="contact_email"
+                    value={contactEmail}
+                    onChange={(e) => setContactEmail(e.target.value)}
+                  />
+                </FormGroup>
 
-              <div>
-                <label htmlFor="event_type" className="block text-sm font-medium text-gray-700">
-                  Event Type
-                </label>
-                <input
-                  type="text"
-                  name="event_type"
-                  id="event_type"
-                  defaultValue={booking.event_type || ''}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
-                  placeholder="Birthday Party, Wedding, Corporate Event..."
-                />
-              </div>
+                <FormGroup label="Event Type">
+                  <Input
+                    type="text"
+                    name="event_type"
+                    id="event_type"
+                    defaultValue={booking.event_type || ''}
+                    placeholder="Birthday Party, Wedding, Corporate Event..."
+                  />
+                </FormGroup>
 
-              <div>
-                <label htmlFor="source" className="block text-sm font-medium text-gray-700">
-                  Booking Source
-                </label>
-                <select
-                  name="source"
-                  id="source"
-                  defaultValue={booking.source || ''}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
+                <FormGroup label="Booking Source">
+                  <Select
+                    name="source"
+                    id="source"
+                    defaultValue={booking.source || ''}
+                    options={[
+                      { value: '', label: 'Select source...' },
+                      { value: 'phone', label: 'Phone' },
+                      { value: 'email', label: 'Email' },
+                      { value: 'walk-in', label: 'Walk-in' },
+                      { value: 'website', label: 'Website' },
+                      { value: 'referral', label: 'Referral' },
+                      { value: 'other', label: 'Other' }
+                    ]}
+                  />
+                </FormGroup>
+
+                <FormGroup 
+                  label="Booking Status"
+                  help="Changing to Confirmed will queue a confirmation SMS"
                 >
-                  <option value="">Select source...</option>
-                  <option value="phone">Phone</option>
-                  <option value="email">Email</option>
-                  <option value="walk-in">Walk-in</option>
-                  <option value="website">Website</option>
-                  <option value="referral">Referral</option>
-                  <option value="other">Other</option>
-                </select>
+                  <Select
+                    name="status"
+                    id="status"
+                    defaultValue={booking.status || 'draft'}
+                    options={[
+                      { value: 'draft', label: 'Draft' },
+                      { value: 'confirmed', label: 'Confirmed' },
+                      { value: 'completed', label: 'Completed' },
+                      { value: 'cancelled', label: 'Cancelled' }
+                    ]}
+                  />
+                </FormGroup>
               </div>
+            </div>
+          </Section>
 
-              <div>
-                <label htmlFor="status" className="block text-sm font-medium text-gray-700">
-                  Booking Status
-                </label>
-                <select
-                  name="status"
-                  id="status"
-                  defaultValue={booking.status || 'draft'}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
-                >
-                  <option value="draft">Draft</option>
-                  <option value="confirmed">Confirmed</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-                <p className="mt-1 text-xs text-gray-500">
-                  Changing to Confirmed will queue a confirmation SMS
-                </p>
-              </div>
-
-              {/* Event Details */}
-              <div className="col-span-2 mt-6">
-                <h2 className="text-lg font-medium text-gray-900 mb-4">Event Details</h2>
-              </div>
-
-              <div>
-                <label htmlFor="event_date" className="block text-sm font-medium text-gray-700">
-                  Event Date *
-                </label>
-                <input
+          {/* Event Details */}
+          <Section title="Event Details">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormGroup label="Event Date" required>
+                <Input
                   type="date"
                   name="event_date"
                   id="event_date"
                   required
                   defaultValue={booking.event_date}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
                 />
-              </div>
+              </FormGroup>
 
-              <div>
-                <label htmlFor="guest_count" className="block text-sm font-medium text-gray-700">
-                  Expected Guests
-                </label>
-                <input
+              <FormGroup label="Expected Guests">
+                <Input
                   type="number"
                   name="guest_count"
                   id="guest_count"
                   min="1"
                   defaultValue={booking.guest_count || ''}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
                 />
-              </div>
+              </FormGroup>
 
-              <div>
-                <label htmlFor="setup_date" className="block text-sm font-medium text-gray-700">
-                  Setup Date
-                </label>
-                <input
+              <FormGroup label="Setup Date">
+                <Input
                   type="date"
                   name="setup_date"
                   id="setup_date"
                   defaultValue={booking.setup_date || ''}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
                 />
-              </div>
+              </FormGroup>
 
-              <div>
-                <label htmlFor="setup_time" className="block text-sm font-medium text-gray-700">
-                  Setup Time
-                </label>
-                <input
+              <FormGroup label="Setup Time">
+                <Input
                   type="time"
                   name="setup_time"
                   id="setup_time"
                   defaultValue={booking.setup_time || ''}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
                 />
-              </div>
+              </FormGroup>
 
-              <div>
-                <label htmlFor="start_time" className="block text-sm font-medium text-gray-700">
-                  Start Time *
-                </label>
-                <input
+              <FormGroup label="Start Time" required>
+                <Input
                   type="time"
                   name="start_time"
                   id="start_time"
                   required
                   defaultValue={booking.start_time}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
                 />
-              </div>
+              </FormGroup>
 
-              <div>
-                <label htmlFor="end_time" className="block text-sm font-medium text-gray-700">
-                  End Time
-                </label>
-                <input
+              <FormGroup label="End Time">
+                <Input
                   type="time"
                   name="end_time"
                   id="end_time"
                   defaultValue={booking.end_time || ''}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
                 />
-              </div>
+              </FormGroup>
+            </div>
+          </Section>
 
-              {/* Notes */}
-              <div className="col-span-2 mt-6">
-                <h2 className="text-lg font-medium text-gray-900 mb-4">Additional Information</h2>
-              </div>
-
-              <div className="col-span-2">
-                <label htmlFor="customer_requests" className="block text-sm font-medium text-gray-700">
-                  Customer Requests
-                </label>
-                <textarea
+          {/* Additional Information */}
+          <Section title="Additional Information">
+            <div className="space-y-4">
+              <FormGroup label="Customer Requests">
+                <Textarea
                   name="customer_requests"
                   id="customer_requests"
                   rows={3}
                   defaultValue={booking.customer_requests || ''}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
                   placeholder="Special requests, dietary requirements, etc."
                 />
-              </div>
+              </FormGroup>
 
-              <div className="col-span-2">
-                <label htmlFor="internal_notes" className="block text-sm font-medium text-gray-700">
-                  Internal Notes
-                </label>
-                <textarea
+              <FormGroup label="Internal Notes">
+                <Textarea
                   name="internal_notes"
                   id="internal_notes"
                   rows={3}
                   defaultValue={booking.internal_notes || ''}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
                   placeholder="Staff notes (not visible to customer)"
                 />
-              </div>
+              </FormGroup>
 
-              <div className="col-span-2">
-                <label htmlFor="special_requirements" className="block text-sm font-medium text-gray-700">
-                  Special Requirements
-                </label>
-                <textarea
+              <FormGroup label="Special Requirements">
+                <Textarea
                   name="special_requirements"
                   id="special_requirements"
                   rows={2}
                   defaultValue={booking.special_requirements || ''}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
                   placeholder="Equipment needs, layout preferences, technical requirements..."
                 />
-              </div>
+              </FormGroup>
 
-              <div className="col-span-2">
-                <label htmlFor="accessibility_needs" className="block text-sm font-medium text-gray-700">
-                  Accessibility Needs
-                </label>
-                <textarea
+              <FormGroup label="Accessibility Needs">
+                <Textarea
                   name="accessibility_needs"
                   id="accessibility_needs"
                   rows={2}
                   defaultValue={booking.accessibility_needs || ''}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
                   placeholder="Wheelchair access, hearing loops, dietary restrictions..."
                 />
-              </div>
+              </FormGroup>
             </div>
+          </Section>
 
-            <div className="flex justify-end space-x-3">
-              <Link
-                href={`/private-bookings/${id}`}
-                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
-              >
-                Cancel
-              </Link>
-              <button
-                type="submit"
-                disabled={isPending}
-                className="inline-flex justify-center rounded-md border border-transparent bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:opacity-50"
-              >
-                {isPending ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
+          <div className="flex justify-end space-x-3 pt-4 border-t">
+            <LinkButton
+              variant="secondary"
+              href={`/private-bookings/${id}`}
+            >
+              Cancel
+            </LinkButton>
+            <Button
+              type="submit"
+              disabled={isPending}
+              loading={isPending}
+            >
+              Save Changes
+            </Button>
+          </div>
+        </form>
+      </Card>
+    </Page>
   )
 }

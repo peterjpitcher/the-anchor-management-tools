@@ -1,8 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import CalendarView from '@/components/private-bookings/CalendarView'
+import { Page } from '@/components/ui-v2/layout/Page'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 
 export default async function PrivateBookingsCalendarPage() {
   const supabase = await createClient()
@@ -43,28 +43,14 @@ export default async function PrivateBookingsCalendarPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center gap-4">
-            <Link
-              href="/private-bookings"
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <ArrowLeftIcon className="h-5 w-5 text-gray-600" />
-            </Link>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Private Bookings Calendar</h1>
-              <p className="text-gray-600 mt-1">View all bookings in calendar format</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="px-4 sm:px-6 lg:px-8 py-8">
-        <CalendarView bookings={bookings || []} />
-      </div>
-    </div>
+    <Page
+      title="Private Bookings Calendar"
+      description="View all bookings in calendar format"
+      actions={
+        <LinkButton href="/private-bookings" variant="secondary">Back</LinkButton>
+      }
+    >
+      <CalendarView bookings={bookings || []} />
+    </Page>
   )
 }

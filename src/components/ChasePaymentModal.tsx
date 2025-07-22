@@ -1,9 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { sendChasePaymentEmail } from '@/app/actions/email'
-import { Button } from '@/components/ui/Button'
-import { X, Send, Loader2, Clock } from 'lucide-react'
+import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Textarea } from '@/components/ui-v2/forms/Textarea'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { Send, Clock } from 'lucide-react'
 import type { InvoiceWithDetails } from '@/types/invoices'
 
 interface ChasePaymentModalProps {
@@ -44,8 +48,6 @@ Orange Jelly Limited
 P.S. I've attached a copy of the invoice for your reference.`
   )
 
-  if (!isOpen) return null
-
   async function handleSend() {
     if (!recipientEmail) {
       setError('Please enter a recipient email address')
@@ -80,109 +82,87 @@ P.S. I've attached a copy of the invoice for your reference.`
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="p-6 border-b flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Clock className="h-6 w-6 text-orange-600" />
-            <div>
-              <h2 className="text-xl font-semibold">Chase Payment</h2>
-              <p className="text-sm text-gray-600">Invoice is {daysOverdue} {daysOverdue === 1 ? 'day' : 'days'} overdue</p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700"
-            disabled={sending}
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-md text-sm">
-              {error}
-            </div>
-          )}
-
-          <div>
-            <label className="block text-sm font-medium mb-1">
-              Send to
-            </label>
-            <input
-              type="email"
-              value={recipientEmail}
-              onChange={(e) => setRecipientEmail(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-              placeholder="customer@example.com"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">
-              Subject
-            </label>
-            <input
-              type="text"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">
-              Message
-            </label>
-            <textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-              rows={12}
-            />
-          </div>
-
-          <div className="bg-orange-50 rounded-lg p-4">
-            <p className="text-sm text-orange-800">
-              <strong>Attachment:</strong> Invoice {invoice.invoice_number} (PDF format)
-            </p>
-            <p className="text-sm text-orange-800 mt-1">
-              A copy of the invoice will be attached as a reminder.
-            </p>
-            <p className="text-sm text-orange-700 mt-2">
-              <strong>Outstanding:</strong> £{outstandingAmount.toFixed(2)} • <strong>Due:</strong> {dueDate.toLocaleDateString('en-GB')}
-            </p>
-          </div>
-        </div>
-
-        <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-4">
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      title="Chase Payment"
+      size="lg"
+      footer={
+        <ModalActions>
           <Button
-            variant="outline"
+            variant="secondary"
             onClick={onClose}
             disabled={sending}
           >
             Cancel
           </Button>
-          <Button
-            onClick={handleSend}
-            disabled={sending || !recipientEmail}
-            className="bg-orange-600 hover:bg-orange-700"
+          <Button onClick={handleSend}
+            disabled={!recipientEmail}
+            loading={sending}
+            leftIcon={<Send className="h-4 w-4" />}
+            className="bg-orange-600 hover:bg-orange-700 focus:ring-orange-500"
           >
-            {sending ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Sending...
-              </>
-            ) : (
-              <>
-                <Send className="h-4 w-4 mr-2" />
-                Send Reminder
-              </>
-            )}
+            Send Reminder
           </Button>
+        </ModalActions>
+      }
+    >
+      <div className="space-y-4">
+        {/* Chase Payment Header */}
+        <div className="flex items-center gap-3 pb-4 border-b">
+          <Clock className="h-6 w-6 text-orange-600" />
+          <div>
+            <p className="text-sm text-gray-600">Invoice is {daysOverdue} {daysOverdue === 1 ? 'day' : 'days'} overdue</p>
+          </div>
         </div>
+
+        {error && (
+          <Alert variant="error">{error}</Alert>
+        )}
+
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            Send to
+          </label>
+          <Input
+            type="email"
+            value={recipientEmail}
+            onChange={(e) => setRecipientEmail(e.target.value)}
+            placeholder="customer@example.com"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            Subject
+          </label>
+          <Input
+            type="text"
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            Message
+          </label>
+          <Textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={12}
+          />
+        </div>
+
+        <Alert variant="warning"
+          title="Attachment"
+          description={`Invoice ${invoice.invoice_number} (PDF format) will be attached as a reminder.`}
+        >
+          <p className="text-sm text-orange-700 mt-2">
+            <strong>Outstanding:</strong> £{outstandingAmount.toFixed(2)} • <strong>Due:</strong> {dueDate.toLocaleDateString('en-GB')}
+          </p>
+        </Alert>
       </div>
-    </div>
+    </Modal>
   )
 }

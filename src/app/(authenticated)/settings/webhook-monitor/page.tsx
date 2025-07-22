@@ -5,12 +5,26 @@ import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { formatDistanceToNow } from 'date-fns'
 import Link from 'next/link'
 import { WebhookLog } from '@/types/database'
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { DataTable, Column } from '@/components/ui-v2/display/DataTable'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { Stat } from '@/components/ui-v2/display/Stat'
+import { Modal } from '@/components/ui-v2/overlay/Modal'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { RefreshCwIcon, TestTubeIcon } from 'lucide-react'
 
 export default function WebhookMonitorPage() {
   const supabase = useSupabase()
   
   const [logs, setLogs] = useState<WebhookLog[]>([])
   const [loading, setLoading] = useState(true)
+  const [selectedLog, setSelectedLog] = useState<WebhookLog | null>(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
   
   const loadLogs = useCallback(async () => {
     setLoading(true)
@@ -34,170 +48,224 @@ export default function WebhookMonitorPage() {
   useEffect(() => {
     loadLogs()
   }, [loadLogs])
-  
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+
+  const getStatusVariant = (status: string) => {
+    switch (status) {
+      case 'success':
+        return 'success'
+      case 'error':
+      case 'exception':
+        return 'error'
+      case 'signature_failed':
+        return 'warning'
+      default:
+        return 'default'
+    }
+  }
+
+  const columns: Column<WebhookLog>[] = [
+    {
+      key: 'processed_at',
+      header: 'Time',
+      cell: (log) => (
+        <span className="text-sm text-gray-900">
+          {formatDistanceToNow(new Date(log.processed_at), { addSuffix: true })}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      cell: (log) => (
+        <Badge variant={getStatusVariant(log.status)} size="sm">
+          {log.status}
+        </Badge>
+      ),
+    },
+    {
+      key: 'type',
+      header: 'Type',
+      cell: (log) => (
+        <span className="text-sm text-gray-900">
+          {log.message_body ? 'Inbound' : 'Status Update'}
+        </span>
+      ),
+    },
+    {
+      key: 'phone',
+      header: 'From/To',
+      cell: (log) => (
+        <div className="text-xs">
+          {log.from_number && <div>From: {log.from_number}</div>}
+          {log.to_number && <div>To: {log.to_number}</div>}
+        </div>
+      ),
+    },
+    {
+      key: 'message',
+      header: 'Message',
+      cell: (log) => (
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Webhook Monitor</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Monitor incoming webhook requests and responses
-          </p>
-        </div>
-        <div className="flex gap-4">
-          <Link
-            href="/settings/webhook-test"
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Test Webhook
-          </Link>
-          <button
-            onClick={() => loadLogs()}
-            className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
-          >
-            Refresh
-          </button>
-        </div>
-      </div>
-      
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Time
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Type
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  From/To
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Message
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Error
-                </th>
-                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {loading ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
-                    Loading webhook logs...
-                  </td>
-                </tr>
-              ) : logs.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
-                    No webhook logs found
-                  </td>
-                </tr>
-              ) : (
-                logs.map((log) => (
-                  <tr key={log.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatDistanceToNow(new Date(log.processed_at), { addSuffix: true })}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        log.status === 'success' ? 'bg-green-100 text-green-800' :
-                        log.status === 'error' || log.status === 'exception' ? 'bg-red-100 text-red-800' :
-                        log.status === 'signature_failed' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {log.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {log.message_body ? 'Inbound' : 'Status Update'}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      <div className="text-xs">
-                        {log.from_number && <div>From: {log.from_number}</div>}
-                        {log.to_number && <div>To: {log.to_number}</div>}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      {log.message_body && (
-                        <div className="max-w-xs truncate" title={log.message_body}>
-                          {log.message_body}
-                        </div>
-                      )}
-                      {log.message_sid && (
-                        <div className="text-xs text-gray-500">
-                          SID: {log.message_sid}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-red-600">
-                      {log.error_message && (
-                        <div className="max-w-xs truncate" title={log.error_message}>
-                          {log.error_message}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-center text-sm">
-                      <button
-                        onClick={() => {
-                          const details = {
-                            ...log,
-                            headers: JSON.stringify(log.headers, null, 2),
-                            params: JSON.stringify(log.params, null, 2),
-                            error_details: JSON.stringify(log.error_details, null, 2)
-                          }
-                          alert(JSON.stringify(details, null, 2))
-                        }}
-                        className="text-indigo-600 hover:text-indigo-900"
-                      >
-                        View Details
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      
-      <div className="mt-8 bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">Webhook Statistics</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-gray-900">
-              {logs.filter(l => l.status === 'success').length}
+          {log.message_body && (
+            <div className="max-w-xs truncate" title={log.message_body}>
+              {log.message_body}
             </div>
-            <div className="text-sm text-gray-500">Successful</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-red-600">
-              {logs.filter(l => l.status === 'error' || l.status === 'exception').length}
+          )}
+          {log.message_sid && (
+            <div className="text-xs text-gray-500">
+              SID: {log.message_sid}
             </div>
-            <div className="text-sm text-gray-500">Errors</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-yellow-600">
-              {logs.filter(l => l.status === 'signature_failed').length}
-            </div>
-            <div className="text-sm text-gray-500">Auth Failed</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-gray-900">
-              {logs.length}
-            </div>
-            <div className="text-sm text-gray-500">Total</div>
-          </div>
+          )}
         </div>
-      </div>
+      ),
+    },
+    {
+      key: 'error',
+      header: 'Error',
+      cell: (log) => (
+        log.error_message && (
+          <div className="max-w-xs truncate text-red-600" title={log.error_message}>
+            {log.error_message}
+          </div>
+        )
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      align: 'center',
+      cell: (log) => (
+        <Button
+          variant="link"
+          size="sm"
+          onClick={() => {
+            setSelectedLog(log)
+            setDetailsOpen(true)
+          }}
+        >
+          View Details
+        </Button>
+      ),
+    },
+  ]
+
+  const breadcrumbs = [
+    { label: 'Settings', href: '/settings' },
+    { label: 'Webhook Monitor' }
+  ]
+
+  const actions = (
+    <div className="flex gap-2">
+      <LinkButton href="/settings/webhook-test"
+        variant="secondary"
+        leftIcon={<TestTubeIcon className="h-4 w-4" />}
+      >
+        Test Webhook
+      </LinkButton>
+      <Button
+        onClick={() => loadLogs()}
+        variant="secondary"
+        leftIcon={<RefreshCwIcon className="h-4 w-4" />}
+      >
+        Refresh
+      </Button>
     </div>
+  )
+
+  const successCount = logs.filter(l => l.status === 'success').length
+  const errorCount = logs.filter(l => l.status === 'error' || l.status === 'exception').length
+  const authFailedCount = logs.filter(l => l.status === 'signature_failed').length
+
+  return (
+    <Page
+      title="Webhook Monitor"
+      description="Monitor incoming webhook requests and responses"
+      breadcrumbs={breadcrumbs}
+      actions={actions}
+    >
+      <Section>
+        <Card>
+          {loading ? (
+            <div className="flex items-center justify-center p-8">
+              <Spinner size="lg" />
+            </div>
+          ) : logs.length === 0 ? (
+            <EmptyState
+              title="No webhook logs found"
+              description="Webhook requests will appear here when they are received."
+              action={
+                <Link href="/settings/webhook-test">
+                  <Button>
+                    Test Webhook
+                  </Button>
+                </Link>
+              }
+            />
+          ) : (
+            <DataTable
+              data={logs}
+              columns={columns}
+              getRowKey={(log) => log.id}
+            />
+          )}
+        </Card>
+      </Section>
+
+      <Section title="Webhook Statistics">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Stat
+            label="Successful"
+            value={successCount}
+          />
+          <Stat
+            label="Errors"
+            value={errorCount}
+          />
+          <Stat
+            label="Auth Failed"
+            value={authFailedCount}
+          />
+          <Stat
+            label="Total"
+            value={logs.length}
+          />
+        </div>
+      </Section>
+
+      <Modal
+        open={detailsOpen}
+        onClose={() => {
+          setDetailsOpen(false)
+          setSelectedLog(null)
+        }}
+        title="Webhook Details"
+        size="lg"
+      >
+        {selectedLog && (
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-medium text-gray-700 mb-1">Headers</h4>
+              <pre className="text-xs bg-gray-50 p-3 rounded overflow-x-auto">
+                {JSON.stringify(selectedLog.headers, null, 2)}
+              </pre>
+            </div>
+            <div>
+              <h4 className="text-sm font-medium text-gray-700 mb-1">Parameters</h4>
+              <pre className="text-xs bg-gray-50 p-3 rounded overflow-x-auto">
+                {JSON.stringify(selectedLog.params, null, 2)}
+              </pre>
+            </div>
+            {selectedLog.error_details && (
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 mb-1">Error Details</h4>
+                <pre className="text-xs bg-gray-50 p-3 rounded overflow-x-auto">
+                  {JSON.stringify(selectedLog.error_details, null, 2)}
+                </pre>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+    </Page>
   )
 }

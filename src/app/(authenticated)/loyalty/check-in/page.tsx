@@ -35,7 +35,7 @@ interface CheckInResult {
   newAchievements?: Array<{
     id: string;
     name: string;
-    description: string;
+    message: string;
     icon: string;
     points_value: number;
   }>;
@@ -360,7 +360,7 @@ function CheckInPageContent() {
                             <span className="text-2xl mr-3">{achievement.icon}</span>
                             <div className="flex-1">
                               <p className="font-semibold text-purple-900">{achievement.name}</p>
-                              <p className="text-sm text-purple-700">{achievement.description}</p>
+                              <p className="text-sm text-purple-700">{achievement.message}</p>
                               {achievement.points_value > 0 && (
                                 <p className="text-xs text-purple-600 mt-1">+{achievement.points_value} bonus points</p>
                               )}

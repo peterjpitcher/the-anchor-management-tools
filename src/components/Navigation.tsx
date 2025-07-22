@@ -2,11 +2,11 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, BuildingOfficeIcon, DocumentTextIcon, StarIcon, LinkIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, BuildingOfficeIcon, DocumentTextIcon, StarIcon, LinkIcon, QueueListIcon } from '@heroicons/react/24/outline'
 import { useEffect, useState, useMemo } from 'react'
 import { getUnreadMessageCount } from '@/app/actions/messagesActions'
 import { usePermissions } from '@/contexts/PermissionContext'
-import { Badge } from '@/components/ui/Badge'
+import { Badge } from '@/components/ui-v2/display/Badge'
 import type { ModuleName, ActionType } from '@/types/rbac'
 
 type NavigationItemWithPermission = {
@@ -25,6 +25,7 @@ const primaryNavigation: NavigationItemWithPermission[] = [
 ];
 
 const secondaryNavigation: NavigationItemWithPermission[] = [
+  { name: 'Table Bookings', href: '/table-bookings', icon: QueueListIcon, permission: { module: 'table_bookings', action: 'view' } },
   { name: 'Private Bookings', href: '/private-bookings', icon: BuildingOfficeIcon, permission: { module: 'private_bookings', action: 'view' } },
   { name: 'VIP Club', href: '/loyalty/admin', icon: StarIcon, permission: { module: 'loyalty', action: 'view' } },
 ];
@@ -53,7 +54,7 @@ export function Navigation({ onQuickAddNoteClick }: NavigationProps) {
     // Load unread count on mount
     async function loadUnreadCount() {
       const result = await getUnreadMessageCount()
-      setUnreadCount(result.count)
+      setUnreadCount(result.badge)
     }
     
     loadUnreadCount()

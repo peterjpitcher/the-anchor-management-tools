@@ -4,9 +4,20 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getQuote, updateQuote } from '@/app/actions/quotes'
 import { getVendors } from '@/app/actions/vendors'
-import { Button } from '@/components/ui/Button'
 import { ArrowLeft, Plus, Trash2 } from 'lucide-react'
 import type { InvoiceVendor, InvoiceLineItemInput, QuoteWithDetails } from '@/types/invoices'
+// UI v2 components
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Select } from '@/components/ui-v2/forms/Select'
+import { Textarea } from '@/components/ui-v2/forms/Textarea'
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { toast } from '@/components/ui-v2/feedback/Toast'
 
 export default function EditQuotePage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
@@ -207,9 +218,11 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
         throw new Error(result.error)
       }
 
+      toast.success('Quote updated successfully')
       router.push(`/quotes/${quoteId}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update quote')
+      toast.error('Failed to update quote')
     } finally {
       setSubmitting(false)
     }
@@ -219,318 +232,275 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+      <Page title="Loading...">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <Spinner size="lg" />
+            <p className="mt-4 text-gray-600">Loading...</p>
+          </div>
         </div>
-      </div>
+      </Page>
     )
   }
 
   if (!quote) {
     return (
-      <div className="space-y-6">
-        <div className="text-center">
-          <p className="text-red-600">{error || 'Quote not found'}</p>
-          <Button
-            variant="outline"
-            onClick={() => router.push('/quotes')}
-            className="mt-4"
-          >
-            Back to Quotes
-          </Button>
-        </div>
-      </div>
+      <Page title="Quote Not Found">
+        <Card>
+          <div className="text-center py-8">
+            <p className="text-red-600 mb-4">{error || 'Quote not found'}</p>
+            <Button
+              variant="secondary"
+              onClick={() => router.push('/quotes')}
+            >
+              Back to Quotes
+            </Button>
+          </div>
+        </Card>
+      </Page>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="mb-8">
-        <Button
-          variant="ghost"
-          onClick={() => router.push(`/quotes/${quoteId}`)}
-          className="mb-4"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Quote
-        </Button>
-        
-        <h1 className="text-3xl font-bold mb-2">Edit Quote {quote.quote_number}</h1>
-        <p className="text-muted-foreground">Update quote details</p>
-      </div>
-
+    <Page
+      title={`Edit Quote ${quote.quote_number}`}
+      description="Update quote details"
+    >
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg">
-          {error}
-        </div>
+        <Alert variant="error" title="Error" description={error} />
       )}
 
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* Quote Details */}
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <h2 className="text-xl font-semibold mb-4">Quote Details</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Vendor *
-              </label>
-              <select
-                value={selectedVendor}
-                onChange={(e) => setSelectedVendor(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value="">Select a vendor</option>
-                {vendors.map((vendor) => (
-                  <option key={vendor.id} value={vendor.id}>
-                    {vendor.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+        <Section title="Quote Details">
+          <Card>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormGroup label="Vendor" required>
+                <Select
+                  value={selectedVendor}
+                  onChange={(e) => setSelectedVendor(e.target.value)}
+                  required
+                >
+                  <option value="">Select a vendor</option>
+                  {vendors.map((vendor) => (
+                    <option key={vendor.id} value={vendor.id}>
+                      {vendor.name}
+                    </option>
+                  ))}
+                </Select>
+              </FormGroup>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Reference/PO Number
-              </label>
-              <input
-                type="text"
-                value={reference}
-                onChange={(e) => setReference(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Optional reference"
-              />
-            </div>
+              <FormGroup label="Reference/PO Number">
+                <Input
+                  type="text"
+                  value={reference}
+                  onChange={(e) => setReference(e.target.value)}
+                  placeholder="Optional reference"
+                />
+              </FormGroup>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Quote Date *
-              </label>
-              <input
-                type="date"
-                value={quoteDate}
-                onChange={(e) => setQuoteDate(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
+              <FormGroup label="Quote Date" required>
+                <Input
+                  type="date"
+                  value={quoteDate}
+                  onChange={(e) => setQuoteDate(e.target.value)}
+                  required
+                />
+              </FormGroup>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Valid Until *
-              </label>
-              <input
-                type="date"
-                value={validUntil}
-                onChange={(e) => setValidUntil(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
+              <FormGroup label="Valid Until" required>
+                <Input
+                  type="date"
+                  value={validUntil}
+                  onChange={(e) => setValidUntil(e.target.value)}
+                  required
+                />
+              </FormGroup>
             </div>
-          </div>
-        </div>
+          </Card>
+        </Section>
 
         {/* Line Items */}
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Line Items</h2>
-            <Button type="button" onClick={addLineItem} size="sm">
-              <Plus className="h-4 w-4 mr-1" />
+        <Section 
+          title="Line Items"
+          actions={
+            <Button type="button" onClick={addLineItem} size="sm" leftIcon={<Plus className="h-4 w-4" />}>
               Add Item
             </Button>
-          </div>
-
-          <div className="space-y-4">
-            {lineItems.map((item, index) => (
-              <div key={index} className="border rounded-lg p-4">
-                <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-                  <div className="md:col-span-3">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Description *
-                    </label>
-                    <input
-                      type="text"
-                      value={item.description}
-                      onChange={(e) => updateLineItem(index, { description: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Qty *
-                    </label>
-                    <input
-                      type="number"
-                      value={item.quantity}
-                      onChange={(e) => updateLineItem(index, { quantity: parseFloat(e.target.value) || 0 })}
-                      className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      min="0.001"
-                      step="0.001"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Unit Price *
-                    </label>
-                    <input
-                      type="number"
-                      value={item.unit_price}
-                      onChange={(e) => updateLineItem(index, { unit_price: parseFloat(e.target.value) || 0 })}
-                      className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      min="0"
-                      step="0.01"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Discount %
-                    </label>
-                    <input
-                      type="number"
-                      value={item.discount_percentage}
-                      onChange={(e) => updateLineItem(index, { discount_percentage: parseFloat(e.target.value) || 0 })}
-                      className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      min="0"
-                      max="100"
-                      step="0.01"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      VAT %
-                    </label>
-                    <select
-                      value={item.vat_rate}
-                      onChange={(e) => updateLineItem(index, { vat_rate: parseFloat(e.target.value) })}
-                      className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="0">0%</option>
-                      <option value="5">5%</option>
-                      <option value="20">20%</option>
-                    </select>
-                  </div>
-
-                  {lineItems.length > 1 && (
-                    <div className="flex items-end">
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => removeLineItem(index)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+          }
+        >
+          <Card>
+            <div className="space-y-4">
+              {lineItems.map((item, index) => (
+                <div key={index} className="border rounded-lg p-4">
+                  <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+                    <div className="md:col-span-3">
+                      <FormGroup label="Description" required>
+                        <Input
+                          type="text"
+                          value={item.description}
+                          onChange={(e) => updateLineItem(index, { description: e.target.value })}
+                          required
+                        />
+                      </FormGroup>
                     </div>
-                  )}
+
+                    <div>
+                      <FormGroup label="Qty" required>
+                        <Input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => updateLineItem(index, { quantity: parseFloat(e.target.value) || 0 })}
+                          min="0.001"
+                          step="0.001"
+                          required
+                        />
+                      </FormGroup>
+                    </div>
+
+                    <div>
+                      <FormGroup label="Unit Price" required>
+                        <Input
+                          type="number"
+                          value={item.unit_price}
+                          onChange={(e) => updateLineItem(index, { unit_price: parseFloat(e.target.value) || 0 })}
+                          min="0"
+                          step="0.01"
+                          required
+                        />
+                      </FormGroup>
+                    </div>
+
+                    <div>
+                      <FormGroup label="Discount %">
+                        <Input
+                          type="number"
+                          value={item.discount_percentage}
+                          onChange={(e) => updateLineItem(index, { discount_percentage: parseFloat(e.target.value) || 0 })}
+                          min="0"
+                          max="100"
+                          step="0.01"
+                        />
+                      </FormGroup>
+                    </div>
+
+                    <div>
+                      <FormGroup label="VAT %">
+                        <Select
+                          value={item.vat_rate}
+                          onChange={(e) => updateLineItem(index, { vat_rate: parseFloat(e.target.value) })}
+                        >
+                          <option value="0">0%</option>
+                          <option value="5">5%</option>
+                          <option value="20">20%</option>
+                        </Select>
+                      </FormGroup>
+                    </div>
+
+                    {lineItems.length > 1 && (
+                      <div className="flex items-end">
+                        <Button
+                          type="button"
+                          variant="danger"
+                          size="sm"
+                          onClick={() => removeLineItem(index)}
+                          iconOnly
+                          leftIcon={<Trash2 className="h-4 w-4" />}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </div>
+              ))}
+            </div>
+          </Card>
+        </Section>
 
         {/* Quote-level Discount and Notes */}
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <h2 className="text-xl font-semibold mb-4">Discount & Notes</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Quote Discount %
-              </label>
-              <input
-                type="number"
-                value={quoteDiscount}
-                onChange={(e) => setQuoteDiscount(parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                min="0"
-                max="100"
-                step="0.01"
-              />
-              <p className="text-sm text-gray-500 mt-1">
-                Applied to subtotal after line item discounts
-              </p>
+        <Section title="Discount & Notes">
+          <Card>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormGroup 
+                label="Quote Discount %"
+                help="Applied to subtotal after line item discounts"
+              >
+                <Input
+                  type="number"
+                  value={quoteDiscount}
+                  onChange={(e) => setQuoteDiscount(parseFloat(e.target.value) || 0)}
+                  min="0"
+                  max="100"
+                  step="0.01"
+                />
+              </FormGroup>
             </div>
-          </div>
 
-          <div className="mt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Notes (visible on quote)
-            </label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows={3}
-              placeholder="Any notes to include on the quote..."
-            />
-          </div>
+            <div className="mt-4">
+              <FormGroup label="Notes (visible on quote)">
+                <Textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={3}
+                  placeholder="Any notes to include on the quote..."
+                />
+              </FormGroup>
+            </div>
 
-          <div className="mt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Internal Notes (not visible on quote)
-            </label>
-            <textarea
-              value={internalNotes}
-              onChange={(e) => setInternalNotes(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows={3}
-              placeholder="Internal notes for your reference..."
-            />
-          </div>
-        </div>
+            <div className="mt-4">
+              <FormGroup label="Internal Notes (not visible on quote)">
+                <Textarea
+                  value={internalNotes}
+                  onChange={(e) => setInternalNotes(e.target.value)}
+                  rows={3}
+                  placeholder="Internal notes for your reference..."
+                />
+              </FormGroup>
+            </div>
+          </Card>
+        </Section>
 
         {/* Totals Summary */}
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <h2 className="text-xl font-semibold mb-4">Summary</h2>
-          
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Subtotal:</span>
-              <span className="font-medium">£{subtotal.toFixed(2)}</span>
-            </div>
-            
-            {quoteDiscountAmount > 0 && (
-              <div className="flex justify-between text-red-600">
-                <span>Quote Discount ({quoteDiscount}%):</span>
-                <span>-£{quoteDiscountAmount.toFixed(2)}</span>
+        <Section title="Summary">
+          <Card>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Subtotal:</span>
+                <span className="font-medium">£{subtotal.toFixed(2)}</span>
               </div>
-            )}
-            
-            <div className="flex justify-between">
-              <span className="text-gray-600">VAT:</span>
-              <span className="font-medium">£{totalVat.toFixed(2)}</span>
+              
+              {quoteDiscountAmount > 0 && (
+                <div className="flex justify-between text-red-600">
+                  <span>Quote Discount ({quoteDiscount}%):</span>
+                  <span>-£{quoteDiscountAmount.toFixed(2)}</span>
+                </div>
+              )}
+              
+              <div className="flex justify-between">
+                <span className="text-gray-600">VAT:</span>
+                <span className="font-medium">£{totalVat.toFixed(2)}</span>
+              </div>
+              
+              <div className="flex justify-between text-lg font-bold border-t pt-2">
+                <span>Total:</span>
+                <span>£{total.toFixed(2)}</span>
+              </div>
             </div>
-            
-            <div className="flex justify-between text-lg font-bold border-t pt-2">
-              <span>Total:</span>
-              <span>£{total.toFixed(2)}</span>
-            </div>
-          </div>
-        </div>
+          </Card>
+        </Section>
 
         {/* Submit Buttons */}
         <div className="flex gap-4">
           <Button
             type="submit"
-            disabled={submitting}
+            loading={submitting}
             className="flex-1"
           >
-            {submitting ? 'Updating...' : 'Update Quote'}
+            Update Quote
           </Button>
           
           <Button
             type="button"
-            variant="outline"
+            variant="secondary"
             onClick={() => router.push(`/quotes/${quoteId}`)}
             disabled={submitting}
           >
@@ -538,6 +508,6 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
           </Button>
         </div>
       </form>
-    </div>
+    </Page>
   )
 }

@@ -3,7 +3,8 @@
 import { useState, useRef } from 'react'
 import { useFormState } from 'react-dom'
 import { uploadEventImage, deleteEventImage, type ImageUploadState } from '@/app/actions/event-images'
-import { Button } from '@/components/ui/Button'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Input } from '@/components/ui-v2/forms/Input'
 import { TrashIcon, PhotoIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 
@@ -176,11 +177,11 @@ export function EventImageUpload({
               <label htmlFor={`alt_text_${imageType}`} className="block text-sm sm:text-base font-medium text-gray-700">
                 Alt Text
               </label>
-              <input
+              <Input
                 type="text"
                 id={`alt_text_${imageType}`}
                 name="alt_text"
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 min-h-[44px]"
+                inputSize="md"
                 placeholder="Describe the image for accessibility"
               />
             </div>
@@ -188,11 +189,11 @@ export function EventImageUpload({
               <label htmlFor={`caption_${imageType}`} className="block text-sm sm:text-base font-medium text-gray-700">
                 Caption
               </label>
-              <input
+              <Input
                 type="text"
                 id={`caption_${imageType}`}
                 name="caption"
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 min-h-[44px]"
+                inputSize="md"
                 placeholder="Optional caption"
               />
             </div>

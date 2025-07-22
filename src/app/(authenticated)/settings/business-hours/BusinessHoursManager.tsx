@@ -3,7 +3,10 @@
 import { useEffect, useState } from 'react'
 import { getBusinessHours, updateBusinessHours } from '@/app/actions/business-hours'
 import { BusinessHours, DAY_NAMES } from '@/types/business-hours'
-import { Button } from '@/components/ui/Button'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Checkbox } from '@/components/ui-v2/forms/Checkbox'
+import { Card } from '@/components/ui-v2/layout/Card'
 import toast from 'react-hot-toast'
 
 export function BusinessHoursManager() {
@@ -104,47 +107,45 @@ export function BusinessHoursManager() {
                   {DAY_NAMES[dayHours.day_of_week]}
                 </td>
                 <td className="px-2 sm:px-3 py-3 sm:py-4 whitespace-nowrap">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={dayHours.is_closed}
                     onChange={(e) => handleTimeChange(dayHours.day_of_week, 'is_closed', e.target.checked)}
-                    className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
                   />
                 </td>
                 <td className="px-2 sm:px-3 py-3 sm:py-4 whitespace-nowrap">
-                  <input
+                  <Input
                     type="time"
                     value={dayHours.opens || ''}
                     onChange={(e) => handleTimeChange(dayHours.day_of_week, 'opens', e.target.value)}
                     disabled={dayHours.is_closed}
-                    className="block w-full px-2 sm:px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100 min-h-[40px]"
+                    fullWidth
                   />
                 </td>
                 <td className="px-2 sm:px-3 py-3 sm:py-4 whitespace-nowrap">
-                  <input
+                  <Input
                     type="time"
                     value={dayHours.closes || ''}
                     onChange={(e) => handleTimeChange(dayHours.day_of_week, 'closes', e.target.value)}
                     disabled={dayHours.is_closed}
-                    className="block w-full px-2 sm:px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100 min-h-[40px]"
+                    fullWidth
                   />
                 </td>
                 <td className="px-2 sm:px-3 py-3 sm:py-4 whitespace-nowrap">
-                  <input
+                  <Input
                     type="time"
                     value={dayHours.kitchen_opens || ''}
                     onChange={(e) => handleTimeChange(dayHours.day_of_week, 'kitchen_opens', e.target.value)}
                     disabled={dayHours.is_closed}
-                    className="block w-full px-2 sm:px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100 min-h-[40px]"
+                    fullWidth
                   />
                 </td>
                 <td className="px-2 sm:px-3 py-3 sm:py-4 whitespace-nowrap">
-                  <input
+                  <Input
                     type="time"
                     value={dayHours.kitchen_closes || ''}
                     onChange={(e) => handleTimeChange(dayHours.day_of_week, 'kitchen_closes', e.target.value)}
                     disabled={dayHours.is_closed}
-                    className="block w-full px-2 sm:px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100 min-h-[40px]"
+                    fullWidth
                   />
                 </td>
               </tr>
@@ -156,70 +157,66 @@ export function BusinessHoursManager() {
       {/* Mobile Card View */}
       <div className="lg:hidden space-y-3">
         {reorderedHours.map((dayHours) => (
-          <div key={dayHours.day_of_week} className="border rounded-lg p-4">
+          <Card key={dayHours.day_of_week} variant="bordered" padding="sm">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-gray-900">
                 {DAY_NAMES[dayHours.day_of_week]}
               </h3>
-              <label className="flex items-center text-sm">
-                <input
-                  type="checkbox"
-                  checked={dayHours.is_closed}
-                  onChange={(e) => handleTimeChange(dayHours.day_of_week, 'is_closed', e.target.checked)}
-                  className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded mr-2"
-                />
-                Closed
-              </label>
+              <Checkbox
+                label="Closed"
+                checked={dayHours.is_closed}
+                onChange={(e) => handleTimeChange(dayHours.day_of_week, 'is_closed', e.target.checked)}
+              />
             </div>
             
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs text-gray-600 mb-1">Opens</label>
-                <input
+                <Input
                   type="time"
                   value={dayHours.opens || ''}
                   onChange={(e) => handleTimeChange(dayHours.day_of_week, 'opens', e.target.value)}
                   disabled={dayHours.is_closed}
-                  className="block w-full px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100 min-h-[40px]"
+                  fullWidth
                 />
               </div>
               <div>
                 <label className="block text-xs text-gray-600 mb-1">Closes</label>
-                <input
+                <Input
                   type="time"
                   value={dayHours.closes || ''}
                   onChange={(e) => handleTimeChange(dayHours.day_of_week, 'closes', e.target.value)}
                   disabled={dayHours.is_closed}
-                  className="block w-full px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100 min-h-[40px]"
+                  fullWidth
                 />
               </div>
               <div>
                 <label className="block text-xs text-gray-600 mb-1">Kitchen Opens</label>
-                <input
+                <Input
                   type="time"
                   value={dayHours.kitchen_opens || ''}
                   onChange={(e) => handleTimeChange(dayHours.day_of_week, 'kitchen_opens', e.target.value)}
                   disabled={dayHours.is_closed}
-                  className="block w-full px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100 min-h-[40px]"
+                  fullWidth
                 />
               </div>
               <div>
                 <label className="block text-xs text-gray-600 mb-1">Kitchen Closes</label>
-                <input
+                <Input
                   type="time"
                   value={dayHours.kitchen_closes || ''}
                   onChange={(e) => handleTimeChange(dayHours.day_of_week, 'kitchen_closes', e.target.value)}
                   disabled={dayHours.is_closed}
-                  className="block w-full px-3 py-2 text-sm border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100 min-h-[40px]"
+                  fullWidth
                 />
               </div>
             </div>
-          </div>
+          </Card>
         ))}
       </div>
 
       <div className="flex justify-end pt-4">
-        <Button type="submit" disabled={isSaving} className="w-full sm:w-auto">
+        <Button type="submit" loading={isSaving} fullWidth={false}>
           {isSaving ? 'Saving...' : 'Save Changes'}
         </Button>
       </div>

@@ -73,7 +73,7 @@ export async function generateEventQRCodes(eventId: string) {
         return {
           bookingId: booking.id,
           customerName: booking.customer?.name,
-          customerEmail: booking.customer?.email_address,
+          customerPhone: booking.customer?.mobile_number,
           qrCode: qrResult.qrCodeImage,
           error: qrResult.error
         };

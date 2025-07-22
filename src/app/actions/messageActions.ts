@@ -36,7 +36,7 @@ export async function getTotalUnreadCount() {
     .is('read_at', null)
   
   if (error) {
-    console.error('Error fetching total unread count:', error)
+    console.error('Error fetching total unread badge: ', error)
     return 0
   }
   

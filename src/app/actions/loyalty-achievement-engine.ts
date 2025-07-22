@@ -554,7 +554,7 @@ export async function initializeDefaultAchievements() {
         });
     }
     
-    return { success: true, count: defaultAchievements.length };
+    return { success: true, badge: defaultAchievements.length };
   } catch (error) {
     console.error('Error initializing achievements:', error);
     return { error: 'Failed to initialize achievements' };

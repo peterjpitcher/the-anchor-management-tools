@@ -10,6 +10,12 @@ import {
   ArrowRightIcon
 } from '@heroicons/react/24/outline';
 import VIPClubLogo from '@/components/loyalty/VIPClubLogo';
+import { Page } from '@/components/ui-v2/layout/Page';
+import { Container } from '@/components/ui-v2/layout/Container';
+import { Section } from '@/components/ui-v2/layout/Section';
+import { Card } from '@/components/ui-v2/layout/Card';
+import { Badge } from '@/components/ui-v2/display/Badge';
+import { Button } from '@/components/ui-v2/forms/Button';
 
 const tiers = [
   {
@@ -77,11 +83,11 @@ const popularRewards = [
 
 export default function LoyaltyLandingPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50">
+    <Page title="VIP Club">
       {/* Hero Section */}
-      <div className="relative overflow-hidden">
+      <Section className="relative overflow-hidden bg-gradient-to-br from-amber-50 to-orange-50">
         <div className="absolute inset-0 bg-gradient-to-br from-amber-600/10 to-orange-600/10" />
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+        <Container size="2xl" className="relative py-24">
           <div className="text-center">
             <div className="mb-8">
               <VIPClubLogo size="large" />
@@ -109,58 +115,64 @@ export default function LoyaltyLandingPage() {
               </Link>
             </div>
           </div>
-        </div>
-      </div>
+        </Container>
+      </Section>
 
       {/* How It Works */}
-      <div id="how-it-works" className="py-16 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <Section id="how-it-works" className="py-16 bg-white">
+        <Container size="2xl">
           <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">
             How It Works
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="text-center">
-              <div className="bg-amber-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <StarIcon className="h-10 w-10 text-amber-600" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">1. Join Free</h3>
-              <p className="text-gray-600">
-                Sign up at your next visit or event booking and start earning immediately
-              </p>
+              <Card variant="bordered" className="border-0">
+                <div className="bg-amber-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <StarIcon className="h-10 w-10 text-amber-600" />
+                </div>
+                <h3 className="text-xl font-semibold mb-2">1. Join Free</h3>
+                <p className="text-gray-600">
+                  Sign up at your next visit or event booking and start earning immediately
+                </p>
+              </Card>
             </div>
             <div className="text-center">
-              <div className="bg-amber-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <ChartBarIcon className="h-10 w-10 text-amber-600" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">2. Earn Points</h3>
-              <p className="text-gray-600">
-                Get points for every event you attend. Higher tiers earn bonus multipliers!
-              </p>
+              <Card variant="bordered" className="border-0">
+                <div className="bg-amber-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <ChartBarIcon className="h-10 w-10 text-amber-600" />
+                </div>
+                <h3 className="text-xl font-semibold mb-2">2. Earn Points</h3>
+                <p className="text-gray-600">
+                  Get points for every event you attend. Higher tiers earn bonus multipliers!
+                </p>
+              </Card>
             </div>
             <div className="text-center">
-              <div className="bg-amber-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <GiftIcon className="h-10 w-10 text-amber-600" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">3. Redeem Rewards</h3>
-              <p className="text-gray-600">
-                Exchange your points for free drinks, food discounts, and exclusive perks
-              </p>
+              <Card variant="bordered" className="border-0">
+                <div className="bg-amber-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <GiftIcon className="h-10 w-10 text-amber-600" />
+                </div>
+                <h3 className="text-xl font-semibold mb-2">3. Redeem Rewards</h3>
+                <p className="text-gray-600">
+                  Exchange your points for free drinks, food discounts, and exclusive perks
+                </p>
+              </Card>
             </div>
           </div>
-        </div>
-      </div>
+        </Container>
+      </Section>
 
       {/* Membership Tiers */}
-      <div className="py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <Section className="py-16">
+        <Container size="2xl">
           <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">
             Membership Tiers
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {tiers.map((tier) => (
-              <div
+              <Card
                 key={tier.name}
-                className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow"
+                interactive
                 style={{ borderTop: `4px solid ${tier.color}` }}
               >
                 <div className="text-center mb-4">
@@ -186,26 +198,27 @@ export default function LoyaltyLandingPage() {
                     </li>
                   ))}
                 </ul>
-              </div>
+              </Card>
             ))}
           </div>
-        </div>
-      </div>
+        </Container>
+      </Section>
 
       {/* Popular Rewards */}
-      <div className="py-16 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <Section className="py-16 bg-white">
+        <Container size="2xl">
           <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">
             Popular Rewards
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {popularRewards.map((reward) => (
-              <div key={reward.name} className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-lg p-6 text-center">
+              <Card key={reward.name} variant="bordered" className="text-center">
                 <span className="text-4xl mb-4 block">{reward.icon}</span>
                 <h3 className="font-semibold text-gray-900 mb-2">{reward.name}</h3>
-                <p className="text-2xl font-bold text-amber-600">{reward.points}</p>
-                <p className="text-sm text-gray-600">points</p>
-              </div>
+                <Badge variant="warning" size="lg" className="text-2xl">
+                  {reward.points} points
+                </Badge>
+              </Card>
             ))}
           </div>
           <div className="text-center mt-8">
@@ -213,12 +226,12 @@ export default function LoyaltyLandingPage() {
               And many more rewards waiting for you!
             </p>
           </div>
-        </div>
-      </div>
+        </Container>
+      </Section>
 
       {/* CTA Section */}
-      <div className="py-16 bg-gradient-to-r from-amber-600 to-orange-600">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <Section className="py-16 bg-gradient-to-r from-amber-600 to-orange-600">
+        <Container size="2xl" className="text-center">
           <h2 className="text-3xl font-bold text-white mb-4">
             Ready to Start Earning?
           </h2>
@@ -240,12 +253,12 @@ export default function LoyaltyLandingPage() {
               Call Us to Join
             </a>
           </div>
-        </div>
-      </div>
+        </Container>
+      </Section>
 
       {/* Footer */}
-      <div className="py-8 bg-gray-900">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <Section className="py-8 bg-gray-900">
+        <Container size="2xl">
           <div className="text-center text-gray-400">
             <p>© 2024 The Anchor. All rights reserved.</p>
             <p className="mt-2">
@@ -254,8 +267,8 @@ export default function LoyaltyLandingPage() {
               <Link href="/terms" className="hover:text-white">Terms & Conditions</Link>
             </p>
           </div>
-        </div>
-      </div>
-    </div>
+        </Container>
+      </Section>
+    </Page>
   );
 }

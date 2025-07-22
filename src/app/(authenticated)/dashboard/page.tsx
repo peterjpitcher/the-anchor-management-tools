@@ -2,6 +2,14 @@ import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
 import { formatDate } from '@/lib/dateUtils'
 import Link from 'next/link'
 import { CalendarIcon, UsersIcon, PlusIcon, ChatBubbleLeftIcon } from '@heroicons/react/24/outline'
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card, CardTitle } from '@/components/ui-v2/layout/Card'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Stat, StatGroup } from '@/components/ui-v2/display/Stat'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { List, SimpleList } from '@/components/ui-v2/display/List'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 
 async function getUpcomingEvents() {
   const supabase = getSupabaseAdminClient()
@@ -57,139 +65,147 @@ export default async function SimpleDashboardPage() {
   const upcomingEvents = events.filter(e => e.date !== new Date().toISOString().split('T')[0])
 
   return (
-    <div className="space-y-6">
-      <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Welcome back! Here&apos;s what&apos;s happening today.
-        </p>
-      </div>
+    <Page
+      title="Dashboard"
+      description="Welcome back! Here's what's happening today."
+    >
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
-            <dt className="text-sm font-medium text-gray-500 truncate">Today&apos;s Events</dt>
-            <dd className="mt-1 text-2xl sm:text-3xl font-semibold text-gray-900">{todayEvents.length}</dd>
-          </div>
-        </div>
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
-            <dt className="text-sm font-medium text-gray-500 truncate">Total Customers</dt>
-            <dd className="mt-1 text-2xl sm:text-3xl font-semibold text-gray-900">{stats.totalCustomers}</dd>
-          </div>
-        </div>
-        <Link href="/messages" className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow">
-          <div className="px-4 py-5 sm:p-6">
-            <dt className="text-sm font-medium text-gray-500 truncate">Unread Messages</dt>
-            <dd className="mt-1 text-2xl sm:text-3xl font-semibold text-gray-900">{stats.unreadMessages}</dd>
-          </div>
-        </Link>
-      </div>
+      <StatGroup>
+        <Stat
+          label="Today's Events"
+          value={todayEvents.length}
+        />
+        <Stat
+          label="Total Customers"
+          value={stats.totalCustomers.toLocaleString()}
+        />
+        <Stat
+          label="Unread Messages"
+          value={stats.unreadMessages}
+          href="/messages"
+          change={stats.unreadMessages > 0 ? `${stats.unreadMessages} new` : undefined}
+          changeType={stats.unreadMessages > 0 ? 'increase' : undefined}
+        />
+      </StatGroup>
 
       {/* Today's Events */}
       {todayEvents.length > 0 && (
-        <div className="bg-white shadow rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
-            <h2 className="text-lg font-medium text-gray-900 mb-4">Today&apos;s Events</h2>
-            <div className="space-y-3">
-              {todayEvents.map((event) => (
-                <Link
-                  key={event.id}
-                  href={`/events/${event.id}`}
-                  className="block hover:bg-gray-50 active:bg-gray-100 -mx-4 px-4 py-3 transition duration-150 ease-in-out rounded touch-manipulation"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{event.name}</p>
-                      <p className="text-sm text-gray-500">{event.time}</p>
-                    </div>
-                    <div className="flex items-center text-sm text-gray-500">
-                      <UsersIcon className="h-5 w-5 mr-1 flex-shrink-0" />
-                      <span className="whitespace-nowrap">{event.bookingCount}/{event.capacity || '∞'}</span>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        </div>
+        <Card 
+          header={<CardTitle>Today&apos;s Events</CardTitle>}
+        >
+          <SimpleList
+            items={todayEvents.map(event => ({
+              id: event.id,
+              title: event.name,
+              subtitle: event.time,
+              href: `/events/${event.id}`,
+              meta: (
+                <div className="flex items-center text-sm text-gray-500">
+                  <UsersIcon className="h-5 w-5 mr-1 flex-shrink-0" />
+                  <span className="whitespace-nowrap">{event.bookingCount}/{event.capacity || '∞'}</span>
+                </div>
+              )
+            }))}
+          />
+        </Card>
       )}
 
       {/* Upcoming Events */}
-      <div className="bg-white shadow rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-medium text-gray-900">Upcoming Events</h2>
-            <Link href="/events" className="text-sm text-blue-600 hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 rounded">
+      <Card 
+        header={
+          <div className="flex items-center justify-between">
+            <CardTitle>Upcoming Events</CardTitle>
+            <LinkButton href="/events" variant="secondary" size="sm">
               View all
-            </Link>
+            </LinkButton>
           </div>
-          
-          {upcomingEvents.length === 0 ? (
-            <p className="text-gray-500 text-sm">No upcoming events scheduled.</p>
-          ) : (
-            <div className="space-y-3">
-              {upcomingEvents.slice(0, 10).map((event) => {
+        }
+      >
+        {upcomingEvents.length === 0 ? (
+          <EmptyState
+            title="No upcoming events"
+            description="No events are scheduled yet."
+            action={
+              <LinkButton href="/events/new" variant="primary">
+                Create Event
+              </LinkButton>
+            }
+          />
+        ) : (
+          <>
+            <SimpleList
+              items={upcomingEvents.slice(0, 10).map((event) => {
                 const eventDate = new Date(event.date)
                 const isThisWeek = eventDate.getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000
                 
-                return (
-                  <Link
-                    key={event.id}
-                    href={`/events/${event.id}`}
-                    className="block hover:bg-gray-50 active:bg-gray-100 -mx-4 px-4 py-3 transition duration-150 ease-in-out rounded touch-manipulation"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{event.name}</p>
-                        <p className="text-sm text-gray-500">
-                          {formatDate(eventDate)} at {event.time}
-                          {isThisWeek && <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">This week</span>}
-                        </p>
-                      </div>
+                return {
+                  id: event.id,
+                  title: event.name,
+                  subtitle: `${formatDate(eventDate)} at ${event.time}`,
+                  href: `/events/${event.id}`,
+                  meta: (
+                    <div className="flex items-center gap-2">
                       <div className="flex items-center text-sm text-gray-500">
                         <UsersIcon className="h-5 w-5 mr-1 flex-shrink-0" />
                         <span className="whitespace-nowrap">{event.bookingCount}/{event.capacity || '∞'}</span>
                       </div>
+                      {isThisWeek && <Badge variant="warning" size="sm">This week</Badge>}
                     </div>
-                  </Link>
-                )
+                  )
+                }
               })}
-              {upcomingEvents.length > 10 && (
-                <p className="text-sm text-gray-500 text-center pt-2">
-                  And {upcomingEvents.length - 10} more events...
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+            />
+            {upcomingEvents.length > 10 && (
+              <div className="text-center pt-4">
+                <Badge variant="secondary" size="sm">
+                  +{upcomingEvents.length - 10} more events
+                </Badge>
+              </div>
+            )}
+          </>
+        )}
+      </Card>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <Link href="/events/new" className="bg-white shadow rounded-lg p-6 sm:p-4 text-center hover:shadow-md active:shadow-lg transition-shadow touch-manipulation">
-          <CalendarIcon className="h-10 w-10 sm:h-8 sm:w-8 mx-auto text-gray-400 mb-2" />
-          <p className="text-sm font-medium text-gray-900">New Event</p>
-        </Link>
-        <Link href="/customers" className="bg-white shadow rounded-lg p-6 sm:p-4 text-center hover:shadow-md active:shadow-lg transition-shadow touch-manipulation">
-          <UsersIcon className="h-10 w-10 sm:h-8 sm:w-8 mx-auto text-gray-400 mb-2" />
-          <p className="text-sm font-medium text-gray-900">Customers</p>
-        </Link>
-        <Link href="/messages" className="bg-white shadow rounded-lg p-6 sm:p-4 text-center hover:shadow-md active:shadow-lg transition-shadow touch-manipulation">
-          <div className="relative inline-block">
-            <ChatBubbleLeftIcon className="h-10 w-10 sm:h-8 sm:w-8 mx-auto text-gray-400 mb-2" />
-            {stats.unreadMessages > 0 && (
-              <span className="absolute -top-1 -right-1 h-4 w-4 sm:h-3 sm:w-3 bg-red-500 rounded-full"></span>
-            )}
-          </div>
-          <p className="text-sm font-medium text-gray-900">Messages</p>
-        </Link>
-        <Link href="/private-bookings/new" className="bg-white shadow rounded-lg p-6 sm:p-4 text-center hover:shadow-md active:shadow-lg transition-shadow touch-manipulation">
-          <PlusIcon className="h-10 w-10 sm:h-8 sm:w-8 mx-auto text-gray-400 mb-2" />
-          <p className="text-sm font-medium text-gray-900">Private Booking</p>
-        </Link>
-      </div>
-    </div>
+      <Section title="Quick Actions">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <Link href="/events/new">
+            <Card interactive className="text-center">
+              <CalendarIcon className="h-10 w-10 sm:h-8 sm:w-8 mx-auto text-gray-400 mb-2" />
+              <p className="text-sm font-medium text-gray-900">New Event</p>
+            </Card>
+          </Link>
+          <Link href="/customers">
+            <Card interactive className="text-center">
+              <UsersIcon className="h-10 w-10 sm:h-8 sm:w-8 mx-auto text-gray-400 mb-2" />
+              <p className="text-sm font-medium text-gray-900">Customers</p>
+            </Card>
+          </Link>
+          <Link href="/messages">
+            <Card interactive className="text-center relative">
+              <div className="relative inline-block">
+                <ChatBubbleLeftIcon className="h-10 w-10 sm:h-8 sm:w-8 mx-auto text-gray-400 mb-2" />
+                {stats.unreadMessages > 0 && (
+                  <Badge 
+                    variant="error" 
+                    size="sm" 
+                    dot 
+                    className="absolute -top-1 -right-1"
+                  />
+                )}
+              </div>
+              <p className="text-sm font-medium text-gray-900">Messages</p>
+            </Card>
+          </Link>
+          <Link href="/private-bookings/new">
+            <Card interactive className="text-center">
+              <PlusIcon className="h-10 w-10 sm:h-8 sm:w-8 mx-auto text-gray-400 mb-2" />
+              <p className="text-sm font-medium text-gray-900">Private Booking</p>
+            </Card>
+          </Link>
+        </div>
+      </Section>
+    </Page>
   )
 }

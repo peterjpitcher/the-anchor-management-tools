@@ -19,7 +19,7 @@ import toast from 'react-hot-toast';
 interface Event {
   id: string;
   title: string;
-  description: string | null;
+  message: string | null;
   start_date: string;
   end_date: string;
   price: number;
@@ -64,7 +64,7 @@ export default function BatchQRPage() {
         // Transform the data to include booking counts
         const eventsWithCounts = (data || []).map(event => ({
           ...event,
-          _count: {
+          _badge: {
             bookings: event.bookings?.[0]?.count || 0
           }
         }));

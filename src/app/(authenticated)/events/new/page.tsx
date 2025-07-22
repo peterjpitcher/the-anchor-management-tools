@@ -4,9 +4,13 @@ import { useRouter } from 'next/navigation'
 import { EventFormGrouped } from '@/components/EventFormGrouped'
 import { createEvent } from '@/app/actions/events'
 import { Event } from '@/types/database'
-import toast from 'react-hot-toast'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 
 export default function NewEventPage() {
   const router = useRouter()
@@ -66,29 +70,29 @@ export default function NewEventPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+      <Page title="Create New Event">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <Spinner size="lg" />
+            <p className="mt-4 text-gray-600">Loading...</p>
+          </div>
         </div>
-      </div>
+      </Page>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Create New Event</h1>
-        <p className="mt-1 text-sm text-gray-600">
-          Add a new event to your calendar
-        </p>
-      </div>
-      
-      <EventFormGrouped 
-        categories={categories}
-        onSubmit={handleSubmit} 
-        onCancel={handleCancel} 
-      />
-    </div>
+    <Page
+      title="Create New Event"
+      description="Add a new event to your calendar"
+    >
+      <Card>
+        <EventFormGrouped 
+          categories={categories}
+          onSubmit={handleSubmit} 
+          onCancel={handleCancel} 
+        />
+      </Card>
+    </Page>
   )
 }

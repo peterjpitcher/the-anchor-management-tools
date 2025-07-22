@@ -8,7 +8,7 @@ import { addEmployeeAttachment } from '@/app/actions/employeeActions';
 import type { AttachmentFormState } from '@/types/actions';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
 import type { AttachmentCategory } from '@/types/database';
-import { Button } from '@/components/ui/Button';
+import { Button } from '@/components/ui-v2/forms/Button';
 
 interface AddEmployeeAttachmentFormProps {
   employeeId: string;

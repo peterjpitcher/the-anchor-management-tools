@@ -149,7 +149,7 @@ export async function resolveShortLink(data: z.infer<typeof ResolveShortLinkSche
         supabase
           .from('short_links')
           .update({
-            click_count: (link.click_count || 0) + 1,
+            click_badge: (link.click_count || 0) + 1,
             last_clicked_at: new Date().toISOString()
           })
           .eq('id', link.id)

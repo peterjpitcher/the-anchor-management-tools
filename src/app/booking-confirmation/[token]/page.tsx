@@ -3,8 +3,16 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { Button } from '@/components/ui/Button';
-import { Loader2, Calendar, Clock, Users, CheckCircle, XCircle } from 'lucide-react';
+import { Button } from '@/components/ui-v2/forms/Button';
+import { Input } from '@/components/ui-v2/forms/Input';
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
+import { Select } from '@/components/ui-v2/forms/Select';
+import { Card } from '@/components/ui-v2/layout/Card';
+import { Section } from '@/components/ui-v2/layout/Section';
+import { Spinner } from '@/components/ui-v2/feedback/Spinner';
+import { Alert } from '@/components/ui-v2/feedback/Alert';
+import { Badge } from '@/components/ui-v2/display/Badge';
+import { Calendar, Clock, Users, CheckCircle, XCircle } from 'lucide-react';
 import { formatPhoneForDisplay } from '@/lib/validation';
 import Image from 'next/image';
 
@@ -198,7 +206,7 @@ export default function BookingConfirmationPage() {
           </div>
         </div>
         <div className="flex items-center justify-center p-8">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <Spinner size="lg" />
         </div>
       </div>
     );
@@ -218,11 +226,11 @@ export default function BookingConfirmationPage() {
           </div>
         </div>
         <div className="flex items-center justify-center p-4">
-          <div className="max-w-md w-full bg-white rounded-lg shadow-md p-6 text-center">
+          <Card className="max-w-md w-full text-center">
             <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
             <h1 className="text-xl font-semibold mb-2">Booking Error</h1>
             <p className="text-gray-600">{error}</p>
-          </div>
+          </Card>
         </div>
       </div>
     );
@@ -242,11 +250,11 @@ export default function BookingConfirmationPage() {
           </div>
         </div>
         <div className="flex items-center justify-center p-4">
-          <div className="max-w-md w-full bg-white rounded-lg shadow-md p-6 text-center">
+          <Card className="max-w-md w-full text-center">
             <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
             <h1 className="text-xl font-semibold mb-2">Booking Error</h1>
             <p className="text-gray-600">Invalid booking data</p>
-          </div>
+          </Card>
         </div>
       </div>
     );
@@ -266,7 +274,7 @@ export default function BookingConfirmationPage() {
           </div>
         </div>
         <div className="flex items-center justify-center p-4">
-          <div className="max-w-md w-full bg-white rounded-lg shadow-md p-6 text-center">
+          <Card className="max-w-md w-full text-center">
             <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
             <h1 className="text-2xl font-bold mb-2">Booking Confirmed!</h1>
             <p className="text-gray-600 mb-4">
@@ -275,7 +283,7 @@ export default function BookingConfirmationPage() {
             <p className="text-sm text-gray-500">
               Redirecting to your booking details...
             </p>
-          </div>
+          </Card>
         </div>
       </div>
     );
@@ -298,7 +306,7 @@ export default function BookingConfirmationPage() {
         </div>
       </div>
       <div className="max-w-2xl mx-auto p-4">
-        <div className="bg-white rounded-lg shadow-md p-6">
+        <Card>
           <h1 className="text-2xl font-bold mb-6">
             {pendingBooking.customer ? 
               `Welcome back, ${pendingBooking.customer.first_name}!` : 
@@ -345,32 +353,24 @@ export default function BookingConfirmationPage() {
               <div className="space-y-4">
                 <h3 className="font-semibold">Your Details</h3>
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="first_name" className="block text-sm font-medium mb-1">
-                      First Name
-                    </label>
-                    <input
+                  <FormGroup label="First Name" required>
+                    <Input
                       type="text"
                       id="first_name"
                       value={customerDetails.first_name}
                       onChange={(e) => setCustomerDetails(prev => ({ ...prev, first_name: e.target.value }))}
-                      className="w-full px-3 py-2 border rounded-md"
                       required
                     />
-                  </div>
-                  <div>
-                    <label htmlFor="last_name" className="block text-sm font-medium mb-1">
-                      Last Name
-                    </label>
-                    <input
+                  </FormGroup>
+                  <FormGroup label="Last Name" required>
+                    <Input
                       type="text"
                       id="last_name"
                       value={customerDetails.last_name}
                       onChange={(e) => setCustomerDetails(prev => ({ ...prev, last_name: e.target.value }))}
-                      className="w-full px-3 py-2 border rounded-md"
                       required
                     />
-                  </div>
+                  </FormGroup>
                 </div>
                 <p className="text-sm text-gray-600">
                   Phone Number: {formatPhoneForDisplay(pendingBooking.mobile_number)}
@@ -380,41 +380,37 @@ export default function BookingConfirmationPage() {
             
             {/* Show existing customer info */}
             {!needsCustomerDetails && pendingBooking.customer && (
-              <div className="bg-blue-50 rounded-lg p-4">
-                <p className="text-sm text-blue-900">
+              <Alert variant="info">
+                <p className="text-sm">
                   Booking for: <span className="font-semibold">{pendingBooking.customer.first_name} {pendingBooking.customer.last_name}</span>
                 </p>
-                <p className="text-sm text-blue-700 mt-1">
+                <p className="text-sm mt-1">
                   Phone: {formatPhoneForDisplay(pendingBooking.mobile_number)}
                 </p>
-              </div>
+              </Alert>
             )}
 
             {/* Seats Selection */}
-            <div className="space-y-2">
-              <label htmlFor="seats" className="block font-semibold">
-                Number of Seats
-              </label>
+            <FormGroup label="Number of Seats">
               <div className="flex items-center gap-4">
                 <Users className="h-5 w-5 text-gray-500" />
-                <select
+                <Select
                   id="seats"
-                  value={seats}
+                  value={seats.toString()}
                   onChange={(e) => setSeats(Number(e.target.value))}
-                  className="px-3 py-2 border rounded-md"
-                >
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
-                    <option key={num} value={num}>{num} {num === 1 ? 'seat' : 'seats'}</option>
-                  ))}
-                </select>
+                  options={[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => ({
+                    value: num.toString(),
+                    label: `${num} ${num === 1 ? 'seat' : 'seats'}`
+                  }))}
+                />
               </div>
-            </div>
+            </FormGroup>
 
             {/* Error Message */}
             {confirmationError && (
-              <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm">
+              <Alert variant="error">
                 {confirmationError}
-              </div>
+              </Alert>
             )}
 
             {/* Action Buttons */}
@@ -423,18 +419,12 @@ export default function BookingConfirmationPage() {
                 onClick={confirmBooking}
                 disabled={confirming || (needsCustomerDetails && (!customerDetails.first_name || !customerDetails.last_name))}
                 className="flex-1"
+                loading={confirming}
               >
-                {confirming ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Confirming...
-                  </>
-                ) : (
-                  'Confirm Booking'
-                )}
+                Confirm Booking
               </Button>
               <Button
-                variant="outline"
+                variant="secondary"
                 onClick={() => router.push('/')}
                 disabled={confirming}
               >
@@ -442,7 +432,7 @@ export default function BookingConfirmationPage() {
               </Button>
             </div>
           </div>
-        </div>
+        </Card>
       </div>
     </div>
   );

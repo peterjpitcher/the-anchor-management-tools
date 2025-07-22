@@ -10,8 +10,6 @@ import {
   applyLabelsRetroactively,
   type CustomerLabel 
 } from '@/app/actions/customer-labels'
-import { Button } from '@/components/ui/Button'
-import { Modal } from '@/components/ui/Modal'
 import { 
   TagIcon, 
   PlusIcon, 
@@ -20,8 +18,21 @@ import {
   SparklesIcon,
   CheckCircleIcon
 } from '@heroicons/react/24/outline'
-import { Loader2 } from 'lucide-react'
-import toast from 'react-hot-toast'
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Modal } from '@/components/ui-v2/overlay/Modal'
+import { Form } from '@/components/ui-v2/forms/Form'
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Textarea } from '@/components/ui-v2/forms/Textarea'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 
 const PRESET_COLORS = [
   { name: 'Green', value: '#10B981' },
@@ -42,6 +53,8 @@ export default function CustomerLabelsPage() {
   const [showForm, setShowForm] = useState(false)
   const [editingLabel, setEditingLabel] = useState<CustomerLabel | null>(null)
   const [applyingRetroactively, setApplyingRetroactively] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState<CustomerLabel | null>(null)
+  const [retroactiveConfirm, setRetroactiveConfirm] = useState(false)
   
   const canView = hasPermission('customers', 'view')
   const canManage = hasPermission('customers', 'manage')
@@ -115,10 +128,6 @@ export default function CustomerLabelsPage() {
   }
 
   async function handleDelete(label: CustomerLabel) {
-    if (!confirm(`Are you sure you want to delete the "${label.name}" label?`)) {
-      return
-    }
-
     try {
       const result = await deleteCustomerLabel(label.id)
       if (result.error) {
@@ -127,15 +136,14 @@ export default function CustomerLabelsPage() {
         toast.success('Label deleted successfully')
         loadLabels()
       }
+      setDeleteConfirm(null)
     } catch {
       toast.error('Failed to delete label')
     }
   }
 
   async function handleApplyRetroactively() {
-    if (!confirm('This will analyze all customers and apply labels based on their history. Continue?')) {
-      return
-    }
+    setRetroactiveConfirm(false)
 
     setApplyingRetroactively(true)
     try {
@@ -166,79 +174,90 @@ export default function CustomerLabelsPage() {
 
   if (!canView) {
     return (
-      <div className="text-center py-12">
-        <p className="text-gray-500">You don&apos;t have permission to view customer labels.</p>
-      </div>
+      <Page title="Customer Labels">
+        <Card>
+          <Alert variant="error"
+            title="Access Denied"
+            description="You don't have permission to view customer labels."
+          />
+        </Card>
+      </Page>
     )
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Customer Labels</h1>
-              <p className="mt-1 text-sm text-gray-500">
-                Organize customers with labels for better targeting and management
-              </p>
-              <p className="mt-1 text-xs text-green-600 flex items-center">
-                <CheckCircleIcon className="mr-1 h-3 w-3" />
-                Labels are automatically updated daily at 2:00 AM
-              </p>
-            </div>
-            {canManage && (
-              <div className="flex space-x-3">
-                <Button
-                  variant="secondary"
-                  onClick={handleApplyRetroactively}
-                  disabled={applyingRetroactively}
-                >
-                  {applyingRetroactively ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Applying...
-                    </>
-                  ) : (
-                    <>
-                      <SparklesIcon className="mr-2 h-4 w-4" />
-                      Apply Retroactively
-                    </>
-                  )}
-                </Button>
+    <Page
+      title="Customer Labels"
+      description="Organize customers with labels for better targeting and management"
+      actions={
+        canManage && (
+          <div className="flex space-x-3">
+            <Button
+              variant="secondary"
+              onClick={() => setRetroactiveConfirm(true)}
+              disabled={applyingRetroactively}
+              loading={applyingRetroactively}
+            >
+              <SparklesIcon className="mr-2 h-4 w-4" />
+              Apply Retroactively
+            </Button>
+            <Button onClick={() => setShowForm(true)}>
+              <PlusIcon className="mr-2 h-4 w-4" />
+              Add Label
+            </Button>
+          </div>
+        )
+      }
+    >
+      {/* Confirmation Dialogs */}
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
+        title="Delete Label"
+        message={`Are you sure you want to delete the "${deleteConfirm?.name}" label?`}
+        confirmText="Delete"
+        type="danger"
+      />
+      
+      <ConfirmDialog
+        open={retroactiveConfirm}
+        onClose={() => setRetroactiveConfirm(false)}
+        onConfirm={handleApplyRetroactively}
+        title="Apply Labels Retroactively"
+        message="This will analyze all customers and apply labels based on their history. Continue?"
+        confirmText="Apply"
+        type="info"
+      />
+
+      {/* Info about daily updates */}
+      <div className="mb-4">
+        <p className="text-sm text-green-600 flex items-center">
+          <CheckCircleIcon className="mr-1 h-4 w-4" />
+          Labels are automatically updated daily at 2:00 AM
+        </p>
+      </div>
+
+      {/* Labels List */}
+      <Card>
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <Spinner size="lg" />
+          </div>
+        ) : labels.length === 0 ? (
+          <EmptyState icon={<TagIcon className="h-12 w-12" />}
+            title="No labels"
+            description="Get started by creating a new label."
+            action={
+              canManage && (
                 <Button onClick={() => setShowForm(true)}>
                   <PlusIcon className="mr-2 h-4 w-4" />
                   Add Label
                 </Button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Labels List */}
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-green-600" />
-            </div>
-          ) : labels.length === 0 ? (
-            <div className="text-center py-8">
-              <TagIcon className="mx-auto h-12 w-12 text-gray-400" />
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No labels</h3>
-              <p className="mt-1 text-sm text-gray-500">Get started by creating a new label.</p>
-              {canManage && (
-                <div className="mt-6">
-                  <Button onClick={() => setShowForm(true)}>
-                    <PlusIcon className="mr-2 h-4 w-4" />
-                    Add Label
-                  </Button>
-                </div>
-              )}
-            </div>
-          ) : (
+              )
+            }
+          />
+        ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {labels.map((label) => (
                 <div
@@ -269,7 +288,7 @@ export default function CustomerLabelsPage() {
                           <PencilIcon className="h-4 w-4" />
                         </button>
                         <button
-                          onClick={() => handleDelete(label)}
+                          onClick={() => setDeleteConfirm(label)}
                           className="p-1 text-gray-400 hover:text-red-500"
                         >
                           <TrashIcon className="h-4 w-4" />
@@ -287,12 +306,11 @@ export default function CustomerLabelsPage() {
               ))}
             </div>
           )}
-        </div>
-      </div>
+        </Card>
 
       {/* Form Modal */}
       <Modal
-        isOpen={showForm}
+        open={showForm}
         onClose={() => {
           setShowForm(false)
           setEditingLabel(null)
@@ -306,33 +324,22 @@ export default function CustomerLabelsPage() {
         }}
         title={editingLabel ? 'Edit Label' : 'Create Label'}
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-              Label Name
-            </label>
-            <input
-              type="text"
-              id="name"
+        <Form onSubmit={handleSubmit}>
+          <FormGroup label="Label Name" required>
+            <Input
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
               required
             />
-          </div>
+          </FormGroup>
 
-          <div>
-            <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-              Description (optional)
-            </label>
-            <textarea
-              id="description"
+          <FormGroup label="Description (optional)">
+            <Textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               rows={2}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
             />
-          </div>
+          </FormGroup>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -374,8 +381,8 @@ export default function CustomerLabelsPage() {
               {editingLabel ? 'Update' : 'Create'} Label
             </Button>
           </div>
-        </form>
+        </Form>
       </Modal>
-    </div>
+    </Page>
   )
 }

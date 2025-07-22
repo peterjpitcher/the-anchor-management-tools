@@ -24,35 +24,35 @@ const WelcomeTemplateSchema = z.object({
 // Define the welcome series emails
 const WELCOME_SERIES_TEMPLATES = [
   {
-    id: 'welcome_immediate',
+    key: 'welcome_immediate',
     name: 'Welcome to VIP Club',
     subject: 'Welcome to The Anchor VIP Club! 🎉',
     delay_days: 0,
     template: 'welcome_immediate'
   },
   {
-    id: 'welcome_day_3',
+    key: 'welcome_day_3',
     name: 'How to Earn Points',
     subject: 'Start earning VIP points at The Anchor',
     delay_days: 3,
     template: 'welcome_day_3'
   },
   {
-    id: 'welcome_week_1',
+    key: 'welcome_week_1',
     name: 'First Week Benefits',
     subject: 'Your VIP benefits this week',
     delay_days: 7,
     template: 'welcome_week_1'
   },
   {
-    id: 'welcome_week_2',
+    key: 'welcome_week_2',
     name: 'Rewards Reminder',
     subject: 'Don\'t forget your VIP rewards!',
     delay_days: 14,
     template: 'welcome_week_2'
   },
   {
-    id: 'welcome_month_1',
+    key: 'welcome_month_1',
     name: 'Monthly Update',
     subject: 'Your first month as a VIP',
     delay_days: 30,
@@ -76,7 +76,6 @@ async function startWelcomeSeriesInternal(data: z.infer<typeof WelcomeSeriesSche
           id,
           first_name,
           last_name,
-          email_address,
           mobile_number
         ),
         tier:loyalty_tiers(
@@ -91,10 +90,10 @@ async function startWelcomeSeriesInternal(data: z.infer<typeof WelcomeSeriesSche
       return { error: 'Member not found' };
     }
     
-    // Check if member has email
+    // Check if member has mobile number for SMS
     const customer = Array.isArray(member.customer) ? member.customer[0] : member.customer;
-    if (!customer?.email_address) {
-      return { error: 'Member does not have an email address' };
+    if (!customer?.mobile_number) {
+      return { error: 'Member does not have a mobile number' };
     }
     
     // Check if welcome series already started
@@ -135,10 +134,11 @@ async function startWelcomeSeriesInternal(data: z.infer<typeof WelcomeSeriesSche
         series_id: series.id,
         member_id: validatedData.member_id,
         customer_id: customer.id,
-        template_id: template.id,
+        template_id: template.key,
         template_name: template.template,
         customer_name: `${customer.first_name} ${customer.last_name}`,
-        customer_email: customer.email_address,
+        customer_email: customer.email || '',
+        customer_phone: customer.mobile_number,
         tier_name: member.tier?.name || 'Member',
         current_points: member.available_points || 0
       };
@@ -154,7 +154,7 @@ async function startWelcomeSeriesInternal(data: z.infer<typeof WelcomeSeriesSche
       
       emailJobs.push({
         job_id: jobId,
-        template_id: template.id,
+        template_id: template.key,
         scheduled_for: scheduledFor.toISOString()
       });
     }
@@ -185,7 +185,7 @@ async function startWelcomeSeriesInternal(data: z.infer<typeof WelcomeSeriesSche
       operation_status: 'success',
       new_values: {
         member_id: validatedData.member_id,
-        email_count: WELCOME_SERIES_TEMPLATES.length,
+        email_badge: WELCOME_SERIES_TEMPLATES.length,
         has_phone: !!customer.mobile_number
       }
     });

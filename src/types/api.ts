@@ -98,7 +98,7 @@ export interface Webhook {
   secret?: string | null;
   is_active: boolean;
   last_triggered_at?: string | null;
-  failure_count: number;
+  failure_badge: number;
   created_at: string;
   updated_at: string;
 }
@@ -110,7 +110,7 @@ export interface WebhookDelivery {
   payload: Record<string, any>;
   response_status?: number | null;
   response_body?: string | null;
-  attempt_count: number;
+  attempt_badge: number;
   delivered_at?: string | null;
   created_at: string;
 }

@@ -1,0 +1,507 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useSupabase } from '@/components/providers/SupabaseProvider';
+import { usePermissions } from '@/contexts/PermissionContext';
+import { 
+  PlusIcon,
+  TrashIcon,
+  PencilIcon
+} from '@heroicons/react/24/outline';
+
+// UI v2 Components
+import { Page } from '@/components/ui-v2/layout/Page';
+import { Card } from '@/components/ui-v2/layout/Card';
+import { Section } from '@/components/ui-v2/layout/Section';
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
+import { Button } from '@/components/ui-v2/forms/Button';
+import { Input } from '@/components/ui-v2/forms/Input';
+import { Select } from '@/components/ui-v2/forms/Select';
+import { Textarea } from '@/components/ui-v2/forms/Textarea';
+import { Checkbox } from '@/components/ui-v2/forms/Checkbox';
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
+import { Alert } from '@/components/ui-v2/feedback/Alert';
+import { Spinner } from '@/components/ui-v2/feedback/Spinner';
+import { DataTable } from '@/components/ui-v2/display/DataTable';
+import { Badge } from '@/components/ui-v2/display/Badge';
+import { Modal } from '@/components/ui-v2/overlay/Modal';
+import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog';
+import { toast } from '@/components/ui-v2/feedback/Toast';
+
+interface SundayLunchMenuItem {
+  id: string;
+  name: string;
+  description?: string;
+  price: number;
+  category: 'main' | 'side' | 'dessert' | 'extra';
+  is_active: boolean;
+  display_order: number;
+  allergens?: string[];
+  dietary_info?: string[];
+}
+
+export default function SundayLunchMenuPage() {
+  const router = useRouter();
+  const supabase = useSupabase();
+  const { hasPermission } = usePermissions();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [menuItems, setMenuItems] = useState<SundayLunchMenuItem[]>([]);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editingItem, setEditingItem] = useState<SundayLunchMenuItem | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+  
+  // Form state
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    price: 25.95,
+    category: 'main' as 'main' | 'side' | 'dessert' | 'extra',
+    is_active: true,
+    allergens: '',
+    dietary_info: ''
+  });
+
+  const canManage = hasPermission('table_bookings', 'manage');
+
+  useEffect(() => {
+    if (canManage) {
+      loadMenuItems();
+    }
+  }, [canManage]);
+
+  async function loadMenuItems() {
+    try {
+      setLoading(true);
+      
+      const { data, error } = await supabase
+        .from('sunday_lunch_menu_items')
+        .select('*')
+        .order('display_order', { ascending: true });
+      
+      if (error) throw error;
+      
+      setMenuItems(data || []);
+    } catch (err: any) {
+      console.error('Error loading menu items:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleEdit(item: SundayLunchMenuItem) {
+    setEditingItem(item);
+    setFormData({
+      name: item.name,
+      description: item.description || '',
+      price: item.price,
+      category: item.category,
+      is_active: item.is_active,
+      allergens: item.allergens?.join(', ') || '',
+      dietary_info: item.dietary_info?.join(', ') || ''
+    });
+    setShowAddModal(true);
+  }
+
+  async function handleSave() {
+    try {
+      setSaving(true);
+      setError(null);
+      
+      const itemData = {
+        name: formData.name,
+        description: formData.description || null,
+        price: formData.price,
+        category: formData.category,
+        is_active: formData.is_active,
+        display_order: editingItem?.display_order || menuItems.length + 1,
+        allergens: formData.allergens ? formData.allergens.split(',').map(a => a.trim()).filter(Boolean) : [],
+        dietary_info: formData.dietary_info ? formData.dietary_info.split(',').map(d => d.trim()).filter(Boolean) : []
+      };
+      
+      if (editingItem) {
+        // Update existing item
+        const { error } = await supabase
+          .from('sunday_lunch_menu_items')
+          .update(itemData)
+          .eq('id', editingItem.id);
+        
+        if (error) throw error;
+        toast.success('Menu item updated successfully');
+      } else {
+        // Add new item
+        const { error } = await supabase
+          .from('sunday_lunch_menu_items')
+          .insert(itemData);
+        
+        if (error) throw error;
+        toast.success('Menu item added successfully');
+      }
+      
+      // Reload menu items to get the latest data
+      await loadMenuItems();
+      
+      // Reset form
+      setShowAddModal(false);
+      setEditingItem(null);
+      setFormData({
+        name: '',
+        description: '',
+        price: 25.95,
+        category: 'main',
+        is_active: true,
+        allergens: '',
+        dietary_info: ''
+      });
+    } catch (err: any) {
+      console.error('Save error:', err);
+      toast.error(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      const { error } = await supabase
+        .from('sunday_lunch_menu_items')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw error;
+      
+      toast.success('Menu item deleted successfully');
+      await loadMenuItems();
+    } catch (err: any) {
+      console.error('Delete error:', err);
+      toast.error(err.message);
+    } finally {
+      setItemToDelete(null);
+    }
+  }
+
+  if (!canManage) {
+    return (
+      <Page title="Sunday Lunch Menu Configuration">
+        <Alert variant="error">
+          You do not have permission to manage the Sunday lunch menu.
+        </Alert>
+      </Page>
+    );
+  }
+
+  if (loading) {
+    return (
+      <Page title="Sunday Lunch Menu Configuration">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <Spinner size="lg" />
+        </div>
+      </Page>
+    );
+  }
+
+  const mainCourses = menuItems.filter(item => item.category === 'main');
+  const sides = menuItems.filter(item => item.category === 'side');
+  const extras = menuItems.filter(item => item.category === 'extra');
+
+  // Define columns for DataTable
+  const mainCourseColumns = [
+    { key: 'name', header: 'Name', className: 'font-medium', cell: (item: SundayLunchMenuItem) => item.name },
+    { key: 'description', header: 'Description', className: 'text-sm text-gray-600', cell: (item: SundayLunchMenuItem) => item.description || '' },
+    { 
+      key: 'price', 
+      header: 'Price',
+      cell: (item: SundayLunchMenuItem) => `£${item.price.toFixed(2)}`
+    },
+    { 
+      key: 'allergens', 
+      header: 'Allergens',
+      cell: (item: SundayLunchMenuItem) => item.allergens?.join(', ') || '-',
+      className: 'text-sm'
+    },
+    { 
+      key: 'is_active', 
+      header: 'Status',
+      cell: (item: SundayLunchMenuItem) => (
+        <Badge variant={item.is_active ? 'success' : 'error'}>
+          {item.is_active ? 'Active' : 'Inactive'}
+        </Badge>
+      )
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      align: 'right' as const,
+      cell: (item: SundayLunchMenuItem) => (
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => handleEdit(item)}
+            leftIcon={<PencilIcon className="h-4 w-4" />}
+          >
+            Edit
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => setItemToDelete(item.id)}
+            leftIcon={<TrashIcon className="h-4 w-4" />}
+          >
+            Delete
+          </Button>
+        </div>
+      )
+    }
+  ];
+
+  const sideColumns = [
+    { key: 'name', header: 'Name', className: 'font-medium', cell: (item: SundayLunchMenuItem) => item.name },
+    { key: 'description', header: 'Description', className: 'text-sm text-gray-600', cell: (item: SundayLunchMenuItem) => item.description || '' },
+    { 
+      key: 'allergens', 
+      header: 'Allergens',
+      cell: (item: SundayLunchMenuItem) => item.allergens?.join(', ') || '-',
+      className: 'text-sm'
+    },
+    { 
+      key: 'dietary_info', 
+      header: 'Dietary Info',
+      cell: (item: SundayLunchMenuItem) => item.dietary_info?.join(', ') || '-',
+      className: 'text-sm'
+    },
+    { 
+      key: 'is_active', 
+      header: 'Status',
+      cell: (item: SundayLunchMenuItem) => (
+        <Badge variant={item.is_active ? 'success' : 'error'}>
+          {item.is_active ? 'Active' : 'Inactive'}
+        </Badge>
+      )
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      align: 'right' as const,
+      cell: (item: SundayLunchMenuItem) => (
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => handleEdit(item)}
+            leftIcon={<PencilIcon className="h-4 w-4" />}
+          >
+            Edit
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => setItemToDelete(item.id)}
+            leftIcon={<TrashIcon className="h-4 w-4" />}
+          >
+            Delete
+          </Button>
+        </div>
+      )
+    }
+  ];
+
+  return (
+    <Page 
+      title="Sunday Lunch Menu Configuration"
+      description="Manage Sunday lunch menu items and pricing"
+      actions={
+        <Button
+          onClick={() => {
+            setEditingItem(null);
+            setFormData({
+              name: '',
+              description: '',
+              price: 15.49,
+              category: 'main',
+              is_active: true,
+              allergens: '',
+              dietary_info: ''
+            });
+            setShowAddModal(true);
+          }}
+          leftIcon={<PlusIcon className="h-5 w-5" />}
+        >
+          Add Menu Item
+        </Button>
+      }
+    >
+      <LinkButton href="/table-bookings/settings" variant="secondary">Back to Settings</LinkButton>
+
+      {error && (
+        <Alert variant="error" className="mt-4">
+          {error}
+        </Alert>
+      )}
+
+      {/* Main Courses */}
+      <Section title="Main Courses" className="mt-6">
+        <Card>
+          <DataTable
+            data={mainCourses}
+            columns={mainCourseColumns}
+            getRowKey={(item) => item.id}
+            emptyMessage="No main courses configured"
+          />
+        </Card>
+      </Section>
+
+      {/* Sides */}
+      <Section title="Sides (Included with Main Course)" className="mt-8">
+        <Card>
+          <DataTable
+            data={sides}
+            columns={sideColumns}
+            getRowKey={(item) => item.id}
+            emptyMessage="No sides configured"
+          />
+        </Card>
+      </Section>
+
+      {/* Extras */}
+      {extras.length > 0 && (
+        <Section title="Optional Extras" className="mt-8">
+          <Card>
+            <DataTable
+              data={extras}
+              columns={mainCourseColumns}
+              getRowKey={(item) => item.id}
+              emptyMessage="No extras configured"
+            />
+          </Card>
+        </Section>
+      )}
+
+      {/* Notes */}
+      <Alert variant="info" className="mt-8">
+        <h3 className="font-medium mb-2">Sunday Lunch Configuration Notes:</h3>
+        <ul className="text-sm space-y-1">
+          <li>• Main courses are individually priced (£9.99 - £15.99)</li>
+          <li>• Each main course includes herb & garlic roast potatoes, seasonal vegetables, Yorkshire pudding and gravy</li>
+          <li>• Vegetarian gravy available on request</li>
+          <li>• Cauliflower cheese is available as an optional extra for £3.99</li>
+          <li>• Pre-orders must be placed at the bar by 1pm on Saturday</li>
+          <li>• Sunday dinners are made from scratch and to order - no pre-orders taken until 1pm Saturday deadline</li>
+          <li>• Allergen and dietary information is displayed to customers during booking</li>
+        </ul>
+      </Alert>
+
+      {/* Add/Edit Modal */}
+      <Modal
+        open={showAddModal}
+        onClose={() => {
+          setShowAddModal(false);
+          setEditingItem(null);
+        }}
+        title={editingItem ? 'Edit Menu Item' : 'Add Menu Item'}
+      >
+        <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="space-y-4">
+          <FormGroup label="Name" required>
+            <Input
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              required
+            />
+          </FormGroup>
+          
+          <FormGroup label="Description">
+            <Textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              rows={2}
+            />
+          </FormGroup>
+          
+          <FormGroup label="Category" required>
+            <Select
+              value={formData.category}
+              onChange={(e) => setFormData({ ...formData, category: e.target.value as 'main' | 'side' | 'dessert' | 'extra' })}
+            >
+              <option value="main">Main Course</option>
+              <option value="side">Side</option>
+              <option value="dessert">Dessert</option>
+              <option value="extra">Extra</option>
+            </Select>
+          </FormGroup>
+          
+          {(formData.category === 'main' || formData.category === 'extra') && (
+            <FormGroup label="Price" required>
+              <Input
+                type="number"
+                value={formData.price}
+                onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) })}
+                step="0.01"
+                min="0"
+                required
+              />
+            </FormGroup>
+          )}
+          
+          <FormGroup label="Allergens" help="Comma separated list">
+            <Input
+              value={formData.allergens}
+              onChange={(e) => setFormData({ ...formData, allergens: e.target.value })}
+              placeholder="Gluten, Nuts, Dairy"
+            />
+          </FormGroup>
+          
+          <FormGroup label="Dietary Info" help="Comma separated list">
+            <Input
+              value={formData.dietary_info}
+              onChange={(e) => setFormData({ ...formData, dietary_info: e.target.value })}
+              placeholder="Vegan, Gluten-free, Vegetarian"
+            />
+          </FormGroup>
+          
+          <Checkbox
+            checked={formData.is_active}
+            onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+            label="Active"
+          />
+          
+          <div className="flex gap-3 pt-4">
+            <Button
+              type="submit"
+              disabled={saving || !formData.name}
+              loading={saving}
+              fullWidth
+            >
+              Save
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setShowAddModal(false);
+                setEditingItem(null);
+              }}
+              fullWidth
+            >
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Delete Confirmation */}
+      <ConfirmDialog
+        open={!!itemToDelete}
+        onClose={() => setItemToDelete(null)}
+        onConfirm={() => itemToDelete && handleDelete(itemToDelete)}
+        title="Delete Menu Item"
+        message="Are you sure you want to delete this menu item? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+      />
+    </Page>
+  );
+}

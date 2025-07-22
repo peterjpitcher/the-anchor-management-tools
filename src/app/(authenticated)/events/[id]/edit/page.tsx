@@ -4,11 +4,14 @@ import { useRouter } from 'next/navigation'
 import { EventFormGrouped } from '@/components/EventFormGrouped'
 import { updateEvent } from '@/app/actions/events'
 import { Event } from '@/types/database'
-import toast from 'react-hot-toast'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { use } from 'react'
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -89,24 +92,31 @@ export default function EditEventPage({ params }: PageProps) {
   }
 
   if (loading || !event) {
-    return <LoadingSpinner text="Loading event..." fullScreen />
+    return (
+      <Page title="Edit Event">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <Spinner size="lg" />
+            <p className="mt-4 text-gray-600">Loading event...</p>
+          </div>
+        </div>
+      </Page>
+    )
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Edit Event</h1>
-        <p className="mt-1 text-sm text-gray-600">
-          Update the details for {event.name}
-        </p>
-      </div>
-      
-      <EventFormGrouped 
-        event={event}
-        categories={categories}
-        onSubmit={handleSubmit} 
-        onCancel={handleCancel} 
-      />
-    </div>
+    <Page
+      title="Edit Event"
+      description={`Update the details for ${event.name}`}
+    >
+      <Card>
+        <EventFormGrouped 
+          event={event}
+          categories={categories}
+          onSubmit={handleSubmit} 
+          onCancel={handleCancel} 
+        />
+      </Card>
+    </Page>
   )
 }

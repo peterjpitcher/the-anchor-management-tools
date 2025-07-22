@@ -11,9 +11,19 @@ import {
 } from '@/app/actions/event-categories'
 import { EventCategory } from '@/types/event-categories'
 import { PlusIcon, PencilIcon, TrashIcon, SparklesIcon } from '@heroicons/react/24/outline'
-import toast from 'react-hot-toast'
-import { Button } from '@/components/ui/Button'
 import { EventCategoryFormGrouped } from '@/components/EventCategoryFormGrouped'
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
+import { DataTable } from '@/components/ui-v2/display/DataTable'
 
 export default function EventCategoriesPage() {
   const [categories, setCategories] = useState<EventCategory[]>([])
@@ -21,6 +31,8 @@ export default function EventCategoriesPage() {
   const [showForm, setShowForm] = useState(false)
   const [editingCategory, setEditingCategory] = useState<EventCategory | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState<EventCategory | null>(null)
+  const [analyzeConfirm, setAnalyzeConfirm] = useState(false)
 
   useEffect(() => {
     loadCategories()
@@ -45,10 +57,6 @@ export default function EventCategoriesPage() {
   }
 
   async function handleDelete(category: EventCategory) {
-    if (!confirm(`Are you sure you want to delete "${category.name}"? This action cannot be undone.`)) {
-      return
-    }
-
     try {
       const result = await deleteEventCategory(category.id)
       
@@ -58,6 +66,7 @@ export default function EventCategoriesPage() {
         toast.success('Category deleted successfully')
         await loadCategories()
       }
+      setDeleteConfirm(null)
     } catch (error) {
       console.error('Error deleting category:', error)
       toast.error('Failed to delete category')
@@ -65,9 +74,7 @@ export default function EventCategoriesPage() {
   }
 
   async function handleAnalyzeHistory() {
-    if (!confirm('This will analyze all historical events and categorize them based on their names. Continue?')) {
-      return
-    }
+    setAnalyzeConfirm(false)
 
     setIsAnalyzing(true)
     try {
@@ -155,193 +162,209 @@ export default function EventCategoriesPage() {
 
   if (showForm) {
     return (
-      <div className="space-y-6">
-        <div className="bg-white shadow sm:rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
-            <h2 className="text-xl font-semibold mb-4">
-              {editingCategory ? 'Edit Event Category' : 'Create Event Category'}
-            </h2>
-            <EventCategoryFormGrouped
-              category={editingCategory}
-              onSubmit={async (data) => {
-                try {
-                  const formData = new FormData()
-                  Object.entries(data).forEach(([key, value]) => {
-                    if (value !== null && value !== undefined) {
-                      if (typeof value === 'object') {
-                        formData.append(key, JSON.stringify(value))
-                      } else {
-                        formData.append(key, value.toString())
-                      }
+      <Page title={editingCategory ? 'Edit Event Category' : 'Create Event Category'}>
+        <Card>
+          <EventCategoryFormGrouped
+            category={editingCategory}
+            onSubmit={async (data) => {
+              try {
+                const formData = new FormData()
+                Object.entries(data).forEach(([key, value]) => {
+                  if (value !== null && value !== undefined) {
+                    if (typeof value === 'object') {
+                      formData.append(key, JSON.stringify(value))
+                    } else {
+                      formData.append(key, value.toString())
                     }
-                  })
-                  
-                  if (editingCategory) {
-                    await updateEventCategoryFromFormData(editingCategory.id, formData)
-                    toast.success('Category updated successfully')
-                  } else {
-                    await createEventCategoryFromFormData(formData)
-                    toast.success('Category created successfully')
                   }
-                  handleCloseForm()
-                } catch (error) {
-                  toast.error('Failed to save category')
+                })
+                
+                if (editingCategory) {
+                  await updateEventCategoryFromFormData(editingCategory.id, formData)
+                  toast.success('Category updated successfully')
+                } else {
+                  await createEventCategoryFromFormData(formData)
+                  toast.success('Category created successfully')
                 }
-              }}
-              onCancel={handleCloseForm}
-            />
-          </div>
-        </div>
-      </div>
+                handleCloseForm()
+              } catch (error) {
+                toast.error('Failed to save category')
+              }
+            }}
+            onCancel={handleCloseForm}
+          />
+        </Card>
+      </Page>
     )
   }
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
-          <p className="mt-4 text-gray-500">Loading categories...</p>
-        </div>
-      </div>
+      <Page title="Event Categories">
+        <Card>
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <Spinner size="lg" />
+              <p className="mt-4 text-gray-500">Loading categories...</p>
+            </div>
+          </div>
+        </Card>
+      </Page>
     )
   }
 
-  return (
-    <div className="space-y-6">
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Event Categories</h1>
-              <p className="mt-1 text-sm text-gray-500">
-                Manage event categories to organize your events and track customer preferences
-              </p>
+  // Define columns for DataTable
+  const columns = [
+    {
+      key: 'name',
+      header: 'Category',
+      sortable: true,
+      cell: (category: EventCategory) => (
+        <div className="flex items-center">
+          <div 
+            className="h-10 w-10 flex-shrink-0 rounded-full flex items-center justify-center text-xl"
+            style={{ backgroundColor: category.color + '20' }}
+          >
+            {renderIcon(category.icon, category.color)}
+          </div>
+          <div className="ml-4">
+            <div className="font-medium text-gray-900">{category.name}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'description',
+      header: 'Description',
+      cell: (category: EventCategory) => (
+        <div className="max-w-xs truncate">
+          {category.description || '-'}
+        </div>
+      ),
+    },
+    {
+      key: 'defaults',
+      header: 'Defaults',
+      cell: (category: EventCategory) => (
+        <div className="space-y-1">
+          {category.default_start_time && (
+            <div className="text-xs">
+              Start: {category.default_start_time}
             </div>
-            <div className="flex space-x-3">
-              <Button
-                onClick={handleAnalyzeHistory}
-                disabled={isAnalyzing}
-                variant="secondary"
-              >
-                <SparklesIcon className="-ml-1 mr-2 h-5 w-5" />
-                {isAnalyzing ? 'Analyzing...' : 'Analyze History'}
-              </Button>
+          )}
+          {category.default_capacity && (
+            <div className="text-xs">
+              Capacity: {category.default_capacity}
+            </div>
+          )}
+          <div className="text-xs">
+            Reminder: {category.default_reminder_hours}h before
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'is_active',
+      header: 'Status',
+      cell: (category: EventCategory) => (
+        <Badge variant={category.is_active ? 'success' : 'default'}>
+          {category.is_active ? 'Active' : 'Inactive'}
+        </Badge>
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      cell: (category: EventCategory) => (
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => handleOpenForm(category)}
+            className="text-blue-600 hover:text-blue-900"
+          >
+            <PencilIcon className="h-5 w-5" />
+            <span className="sr-only">Edit</span>
+          </button>
+          <button
+            onClick={() => setDeleteConfirm(category)}
+            className="text-red-600 hover:text-red-900"
+          >
+            <TrashIcon className="h-5 w-5" />
+            <span className="sr-only">Delete</span>
+          </button>
+        </div>
+      ),
+    },
+  ]
+
+  return (
+    <Page
+      title="Event Categories"
+      description="Manage event categories to organize your events and track customer preferences"
+      actions={
+        <div className="flex space-x-3">
+          <Button
+            onClick={() => setAnalyzeConfirm(true)}
+            disabled={isAnalyzing}
+            variant="secondary"
+            loading={isAnalyzing}
+          >
+            <SparklesIcon className="-ml-1 mr-2 h-5 w-5" />
+            Analyze History
+          </Button>
+          <Button onClick={() => handleOpenForm()}>
+            <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
+            Add Category
+          </Button>
+        </div>
+      }
+    >
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
+        title="Delete Category"
+        message={`Are you sure you want to delete "${deleteConfirm?.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        type="danger"
+      />
+
+      {/* Analyze confirmation */}
+      <ConfirmDialog
+        open={analyzeConfirm}
+        onClose={() => setAnalyzeConfirm(false)}
+        onConfirm={handleAnalyzeHistory}
+        title="Analyze Historical Data"
+        message="This will analyze all historical events and categorize them based on their names. Continue?"
+        confirmText="Analyze"
+        type="info"
+      />
+
+      <Card>
+        {categories.length === 0 ? (
+          <EmptyState
+            title="No categories found"
+            description="Click 'Add Category' to create your first one."
+            action={
               <Button onClick={() => handleOpenForm()}>
                 <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
                 Add Category
               </Button>
-            </div>
-          </div>
+            }
+          />
+        ) : (
+          <DataTable
+            data={categories}
+            getRowKey={(category) => category.id}
+            columns={columns}
+          />
+        )}
+      </Card>
 
-          <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
-            <table className="min-w-full divide-y divide-gray-300">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th scope="col" className="py-3 pl-6 pr-3 text-left text-sm font-semibold text-gray-900">
-                    Category
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                    Description
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                    Defaults
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                    Status
-                  </th>
-                  <th scope="col" className="relative py-3 pl-3 pr-6">
-                    <span className="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 bg-white">
-                {categories.map((category) => (
-                  <tr key={category.id}>
-                    <td className="whitespace-nowrap py-4 pl-6 pr-3 text-sm">
-                      <div className="flex items-center">
-                        <div 
-                          className="h-10 w-10 flex-shrink-0 rounded-full flex items-center justify-center text-xl"
-                          style={{ backgroundColor: category.color + '20' }}
-                        >
-                          {renderIcon(category.icon, category.color)}
-                        </div>
-                        <div className="ml-4">
-                          <div className="font-medium text-gray-900">{category.name}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      <div className="max-w-xs truncate">
-                        {category.description || '-'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      <div className="space-y-1">
-                        {category.default_start_time && (
-                          <div className="text-xs">
-                            Start: {category.default_start_time}
-                          </div>
-                        )}
-                        {category.default_capacity && (
-                          <div className="text-xs">
-                            Capacity: {category.default_capacity}
-                          </div>
-                        )}
-                        <div className="text-xs">
-                          Reminder: {category.default_reminder_hours}h before
-                        </div>
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm">
-                      <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
-                        category.is_active
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {category.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="relative whitespace-nowrap py-4 pl-3 pr-6 text-right text-sm font-medium">
-                      <button
-                        onClick={() => handleOpenForm(category)}
-                        className="text-blue-600 hover:text-blue-900 mr-4"
-                      >
-                        <PencilIcon className="h-5 w-5" />
-                        <span className="sr-only">Edit</span>
-                      </button>
-                      <button
-                        onClick={() => handleDelete(category)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        <TrashIcon className="h-5 w-5" />
-                        <span className="sr-only">Delete</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {categories.length === 0 && (
-              <div className="text-center py-12">
-                <p className="text-sm text-gray-500">
-                  No categories found. Click &quot;Add Category&quot; to create your first one.
-                </p>
-              </div>
-            )}
-          </div>
-
-          <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h3 className="text-sm font-medium text-blue-900">About Historical Analysis</h3>
-            <p className="mt-1 text-sm text-blue-700">
-              The &quot;Analyze History&quot; button will scan all your past events and automatically categorize them based on their names. 
-              It will also build customer preference profiles showing who regularly attends each type of event. 
-              This is a one-time process that helps populate your initial data.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
+      <Alert variant="info"
+        title="About Historical Analysis"
+        description="The 'Analyze History' button will scan all your past events and automatically categorize them based on their names. It will also build customer preference profiles showing who regularly attends each type of event. This is a one-time process that helps populate your initial data."
+      />
+    </Page>
   )
 }

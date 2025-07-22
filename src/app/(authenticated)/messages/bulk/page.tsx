@@ -5,9 +5,21 @@ import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { sendBulkSMS } from '@/app/actions/sms'
 import { enqueueBulkSMSJob } from '@/app/actions/job-queue'
 import { getActiveEventCategories } from '@/app/actions/event-categories'
-import toast from 'react-hot-toast'
 import Link from 'next/link'
 import { formatDate } from '@/lib/dateUtils'
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
+import { Select } from '@/components/ui-v2/forms/Select'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Textarea } from '@/components/ui-v2/forms/Textarea'
+import { Checkbox } from '@/components/ui-v2/forms/Checkbox'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { 
   UserGroupIcon, 
   FunnelIcon,
@@ -21,7 +33,7 @@ import {
   TagIcon
 } from '@heroicons/react/24/outline'
 import { EventCategory } from '@/types/event-categories'
-import { PageLoadingSkeleton } from '@/components/ui/SkeletonLoader'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 
 interface Customer {
   id: string
@@ -72,6 +84,7 @@ export default function BulkMessagePage() {
   const [sending, setSending] = useState(false)
   const [events, setEvents] = useState<Event[]>([])
   const [categories, setCategories] = useState<EventCategory[]>([])
+  const [showConfirm, setShowConfirm] = useState(false)
   const [filters, setFilters] = useState<FilterOptions>({
     smsOptIn: 'opted_in',
     hasBookings: 'all',
@@ -274,9 +287,7 @@ export default function BulkMessagePage() {
       return
     }
 
-    if (!confirm(`Are you sure you want to send this message to ${selectedCustomers.size} customers?`)) {
-      return
-    }
+    // Confirmation is now handled in the button onClick
 
     setSending(true)
 
@@ -362,383 +373,345 @@ export default function BulkMessagePage() {
     }
   }
 
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-          <p className="mt-4 text-gray-500">Loading customers...</p>
+      <Page title="Bulk Message">
+        <div className="flex items-center justify-center h-64">
+          <Spinner size="lg" />
         </div>
-      </div>
+      </Page>
     )
   }
 
-  if (loading) {
-    return <PageLoadingSkeleton />
-  }
-
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <Link
-              href="/messages"
-              className="text-gray-600 hover:text-gray-900"
-            >
-              <ArrowLeftIcon className="h-6 w-6" />
-            </Link>
-            <h1 className="text-3xl font-bold">Bulk Message</h1>
-          </div>
-          <div className="text-sm text-gray-600">
-            {selectedCustomers.size} of {filteredCustomers.length} customers selected
+    <Page
+      title="Bulk Message"
+      breadcrumbs={[
+        { label: 'Messages', href: '/messages' },
+        { label: 'Bulk Message' }
+      ]}
+      actions={
+        <div className="text-sm text-gray-600">
+          {selectedCustomers.size} of {filteredCustomers.length} customers selected
         </div>
-      </div>
+      }
+    >
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Filters and Customer List */}
         <div className="lg:col-span-2 space-y-6">
           {/* Filters */}
-          <div className="bg-white shadow rounded-lg p-6">
-            <h2 className="text-lg font-medium mb-4 flex items-center">
-              <FunnelIcon className="h-5 w-5 mr-2" />
-              Filters
-            </h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">SMS Status</label>
-                <select
-                  value={filters.smsOptIn}
-                  onChange={(e) => setFilters({ ...filters, smsOptIn: e.target.value as 'all' | 'opted_in' | 'not_opted_out' })}
-                  className="block w-full rounded-md border-gray-300 shadow-sm"
-                >
-                  <option value="all">All Customers</option>
-                  <option value="opted_in">Opted In Only</option>
-                  <option value="not_opted_out">Not Opted Out</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Booking Status</label>
-                <select
-                  value={filters.hasBookings}
-                  onChange={(e) => setFilters({ ...filters, hasBookings: e.target.value as 'all' | 'with_bookings' | 'without_bookings' })}
-                  className="block w-full rounded-md border-gray-300 shadow-sm"
-                >
-                  <option value="all">All Customers</option>
-                  <option value="with_bookings">With Bookings</option>
-                  <option value="without_bookings">Without Bookings</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Created After</label>
-                <input
-                  type="date"
-                  value={filters.createdAfter}
-                  onChange={(e) => setFilters({ ...filters, createdAfter: e.target.value })}
-                  className="block w-full rounded-md border-gray-300 shadow-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Created Before</label>
-                <input
-                  type="date"
-                  value={filters.createdBefore}
-                  onChange={(e) => setFilters({ ...filters, createdBefore: e.target.value })}
-                  className="block w-full rounded-md border-gray-300 shadow-sm"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Category Filter</label>
-                <select
-                  value={filters.categoryId}
-                  onChange={(e) => setFilters({ ...filters, categoryId: e.target.value })}
-                  className="block w-full rounded-md border-gray-300 shadow-sm"
-                >
-                  <option value="">All Categories</option>
-                  {categories.map(category => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {filters.categoryId && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Category Attendance</label>
-                  <select
-                    value={filters.categoryAttendance}
-                    onChange={(e) => setFilters({ ...filters, categoryAttendance: e.target.value as 'all' | 'regulars' | 'never_attended' })}
-                    className="block w-full rounded-md border-gray-300 shadow-sm"
+          <Section 
+            title="Filters"
+            icon={<FunnelIcon className="h-5 w-5" />}
+          >
+            <Card>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormGroup label="SMS Status">
+                  <Select
+                    value={filters.smsOptIn}
+                    onChange={(e) => setFilters({ ...filters, smsOptIn: e.target.value as 'all' | 'opted_in' | 'not_opted_out' })}
                   >
                     <option value="all">All Customers</option>
-                    <option value="regulars">Category Regulars</option>
-                    <option value="never_attended">Never Attended Category</option>
-                  </select>
+                    <option value="opted_in">Opted In Only</option>
+                    <option value="not_opted_out">Not Opted Out</option>
+                  </Select>
+                </FormGroup>
+
+                <FormGroup label="Booking Status">
+                  <Select
+                    value={filters.hasBookings}
+                    onChange={(e) => setFilters({ ...filters, hasBookings: e.target.value as 'all' | 'with_bookings' | 'without_bookings' })}
+                  >
+                    <option value="all">All Customers</option>
+                    <option value="with_bookings">With Bookings</option>
+                    <option value="without_bookings">Without Bookings</option>
+                  </Select>
+                </FormGroup>
+
+                <FormGroup label="Created After">
+                  <Input
+                    type="date"
+                    value={filters.createdAfter}
+                    onChange={(e) => setFilters({ ...filters, createdAfter: e.target.value })}
+                  />
+                </FormGroup>
+
+                <FormGroup label="Created Before">
+                  <Input
+                    type="date"
+                    value={filters.createdBefore}
+                    onChange={(e) => setFilters({ ...filters, createdBefore: e.target.value })}
+                  />
+                </FormGroup>
+
+                <div className="md:col-span-2">
+                  <FormGroup label="Category Filter">
+                    <Select
+                      value={filters.categoryId}
+                      onChange={(e) => setFilters({ ...filters, categoryId: e.target.value })}
+                    >
+                      <option value="">All Categories</option>
+                      {categories.map(category => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormGroup>
                 </div>
-              )}
 
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Event Filter</label>
-                <select
-                  value={filters.eventId}
-                  onChange={(e) => setFilters({ ...filters, eventId: e.target.value })}
-                  className="block w-full rounded-md border-gray-300 shadow-sm"
-                >
-                  <option value="">All Events</option>
-                  {events.map(event => (
-                    <option key={event.id} value={event.id}>
-                      {event.name} - {new Date(event.date).toLocaleDateString()} {event.time}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {filters.eventId && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Event Attendance</label>
-                    <select
-                      value={filters.eventAttendance}
-                      onChange={(e) => setFilters({ ...filters, eventAttendance: e.target.value as 'all' | 'attending' | 'not_attending' })}
-                      className="block w-full rounded-md border-gray-300 shadow-sm"
+                {filters.categoryId && (
+                  <FormGroup label="Category Attendance">
+                    <Select
+                      value={filters.categoryAttendance}
+                      onChange={(e) => setFilters({ ...filters, categoryAttendance: e.target.value as 'all' | 'regulars' | 'never_attended' })}
                     >
                       <option value="all">All Customers</option>
-                      <option value="attending">Attending Event</option>
-                      <option value="not_attending">Not Attending Event</option>
-                    </select>
-                  </div>
+                      <option value="regulars">Category Regulars</option>
+                      <option value="never_attended">Never Attended Category</option>
+                    </Select>
+                  </FormGroup>
+                )}
 
-                  {filters.eventAttendance === 'attending' && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Booking Type</label>
-                      <select
-                        value={filters.bookingType}
-                        onChange={(e) => setFilters({ ...filters, bookingType: e.target.value as 'all' | 'bookings_only' | 'reminders_only' })}
-                        className="block w-full rounded-md border-gray-300 shadow-sm"
+                <div className="md:col-span-2">
+                  <FormGroup label="Event Filter">
+                    <Select
+                      value={filters.eventId}
+                      onChange={(e) => setFilters({ ...filters, eventId: e.target.value })}
+                    >
+                      <option value="">All Events</option>
+                      {events.map(event => (
+                        <option key={event.id} value={event.id}>
+                          {event.name} - {new Date(event.date).toLocaleDateString()} {event.time}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormGroup>
+                </div>
+
+                {filters.eventId && (
+                  <>
+                    <FormGroup label="Event Attendance">
+                      <Select
+                        value={filters.eventAttendance}
+                        onChange={(e) => setFilters({ ...filters, eventAttendance: e.target.value as 'all' | 'attending' | 'not_attending' })}
                       >
-                        <option value="all">All Types</option>
-                        <option value="bookings_only">Bookings Only (With Seats)</option>
-                        <option value="reminders_only">Reminders Only (No Seats)</option>
-                      </select>
-                    </div>
-                  )}
-                </>
-              )}
+                        <option value="all">All Customers</option>
+                        <option value="attending">Attending Event</option>
+                        <option value="not_attending">Not Attending Event</option>
+                      </Select>
+                    </FormGroup>
 
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
-                <div className="relative">
-                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                  <input
-                    type="text"
-                    value={filters.searchTerm}
-                    onChange={(e) => setFilters({ ...filters, searchTerm: e.target.value })}
-                    placeholder="Search by name or phone..."
-                    className="block w-full pl-10 rounded-md border-gray-300 shadow-sm"
-                  />
+                    {filters.eventAttendance === 'attending' && (
+                      <FormGroup label="Booking Type">
+                        <Select
+                          value={filters.bookingType}
+                          onChange={(e) => setFilters({ ...filters, bookingType: e.target.value as 'all' | 'bookings_only' | 'reminders_only' })}
+                        >
+                          <option value="all">All Types</option>
+                          <option value="bookings_only">Bookings Only (With Seats)</option>
+                          <option value="reminders_only">Reminders Only (No Seats)</option>
+                        </Select>
+                      </FormGroup>
+                    )}
+                  </>
+                )}
+
+                <div className="md:col-span-2">
+                  <FormGroup label="Search">
+                    <div className="relative">
+                      <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                      <Input
+                        type="text"
+                        value={filters.searchTerm}
+                        onChange={(e) => setFilters({ ...filters, searchTerm: e.target.value })}
+                        placeholder="Search by name or phone..."
+                        className="pl-10"
+                      />
+                    </div>
+                  </FormGroup>
                 </div>
               </div>
-            </div>
-          </div>
+            </Card>
+          </Section>
 
           {/* Customer List */}
-          <div className="bg-white shadow rounded-lg">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-medium flex items-center">
-                  <UserGroupIcon className="h-5 w-5 mr-2" />
-                  Select Recipients ({filteredCustomers.length} customers)
-                </h2>
-                <button
-                  onClick={selectAll}
-                  className="text-sm text-indigo-600 hover:text-indigo-900"
-                >
-                  {selectedCustomers.size === filteredCustomers.length ? 'Deselect All' : 'Select All'}
-                </button>
-              </div>
+          <Section 
+            title={`Select Recipients (${filteredCustomers.length} customers)`}
+            icon={<UserGroupIcon className="h-5 w-5" />}
+            actions={
+              <Button
+                onClick={selectAll}
+                variant="secondary"
+                size="sm"
+              >
+                {selectedCustomers.size === filteredCustomers.length ? 'Deselect All' : 'Select All'}
+              </Button>
+            }
+          >
+            <Card>
               
               {/* Active filters summary */}
               {(filters.eventId || filters.categoryId || filters.smsOptIn !== 'all' || filters.hasBookings !== 'all') && (
-                <div className="mt-2 flex flex-wrap gap-2">
+                <div className="p-4 border-b flex flex-wrap gap-2">
                   {filters.categoryId && (
-                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                    <Badge variant="info" size="sm">
                       <TagIcon className="h-3 w-3 mr-1" />
                       {categories.find(c => c.id === filters.categoryId)?.name}
                       {filters.categoryAttendance === 'regulars' && ' - Regulars'}
                       {filters.categoryAttendance === 'never_attended' && ' - Never Attended'}
-                    </span>
+                    </Badge>
                   )}
                   {filters.eventId && (
-                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                    <Badge variant="info" size="sm">
                       <CalendarIcon className="h-3 w-3 mr-1" />
                       {events.find(e => e.id === filters.eventId)?.name}
                       {filters.eventAttendance === 'attending' && ' - Attending'}
                       {filters.eventAttendance === 'not_attending' && ' - Not Attending'}
                       {filters.bookingType === 'bookings_only' && ' (Bookings)'}
                       {filters.bookingType === 'reminders_only' && ' (Reminders)'}
-                    </span>
+                    </Badge>
                   )}
                   {filters.smsOptIn === 'opted_in' && (
-                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    <Badge variant="success" size="sm">
                       SMS Opted In
-                    </span>
+                    </Badge>
                   )}
                   {filters.hasBookings === 'with_bookings' && (
-                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    <Badge variant="info" size="sm">
                       Has Bookings
-                    </span>
+                    </Badge>
                   )}
                 </div>
               )}
-            </div>
             
-            <div className="max-h-96 overflow-y-auto">
-              {filteredCustomers.length === 0 ? (
-                <div className="p-6 text-center text-gray-500">
-                  No customers match your filters
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-200">
-                  {filteredCustomers.map((customer) => (
-                    <label
-                      key={customer.id}
-                      className="flex items-center p-4 hover:bg-gray-50 cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedCustomers.has(customer.id)}
-                        onChange={() => toggleCustomer(customer.id)}
-                        className="h-4 w-4 text-green-600 rounded border-gray-300 focus:ring-green-500"
-                      />
-                      <div className="ml-3 flex-1">
+              <div className="max-h-96 overflow-y-auto">
+                {filteredCustomers.length === 0 ? (
+                  <div className="p-6 text-center text-gray-500">
+                    No customers match your filters
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-200">
+                    {filteredCustomers.map((customer) => (
+                      <label
+                        key={customer.id}
+                        className="flex items-center p-4 hover:bg-gray-50 cursor-pointer"
+                      >
+                        <Checkbox
+                          checked={selectedCustomers.has(customer.id)}
+                          onChange={(e) => toggleCustomer(customer.id)}
+                        />
+                        <div className="ml-3 flex-1">
                         <div className="text-sm font-medium text-gray-900">{customer.first_name} {customer.last_name}</div>
                         <div className="text-sm text-gray-500">{customer.mobile_number}</div>
                       </div>
                       <div className="ml-3 flex items-center space-x-2">
-                        {customer.sms_opt_in === true && (
-                          <CheckCircleIcon className="h-5 w-5 text-green-500" title="SMS Opted In" />
-                        )}
-                        {customer.sms_opt_in === false && (
-                          <XCircleIcon className="h-5 w-5 text-red-500" title="SMS Opted Out" />
-                        )}
-                        {filters.categoryId && customer.category_preferences?.some(p => p.category_id === filters.categoryId) && (
-                          <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded flex items-center">
-                            <TagIcon className="h-3 w-3 mr-1" />
-                            {(() => {
-                              const pref = customer.category_preferences?.find(p => p.category_id === filters.categoryId)
-                              return pref ? `${pref.times_attended}x` : ''
-                            })()}
-                          </span>
-                        )}
-                        {filters.eventId && customer.event_bookings?.some(b => b.event_id === filters.eventId) && (
-                          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded flex items-center">
-                            <CalendarIcon className="h-3 w-3 mr-1" />
-                            {(() => {
-                              const booking = customer.event_bookings?.find(b => b.event_id === filters.eventId)
-                              return booking?.seats ? `${booking.seats} seats` : 'Reminder'
-                            })()}
-                          </span>
-                        )}
-                        {customer.total_bookings && customer.total_bookings > 0 && (
-                          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                            {customer.total_bookings} bookings
-                          </span>
-                        )}
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+                          {customer.sms_opt_in === true && (
+                            <CheckCircleIcon className="h-5 w-5 text-green-500" title="SMS Opted In" />
+                          )}
+                          {customer.sms_opt_in === false && (
+                            <XCircleIcon className="h-5 w-5 text-red-500" title="SMS Opted Out" />
+                          )}
+                          {filters.categoryId && customer.category_preferences?.some(p => p.category_id === filters.categoryId) && (
+                            <Badge variant="info" size="sm">
+                              <TagIcon className="h-3 w-3 mr-1" />
+                              {(() => {
+                                const pref = customer.category_preferences?.find(p => p.category_id === filters.categoryId)
+                                return pref ? `${pref.times_attended}x` : ''
+                              })()}
+                            </Badge>
+                          )}
+                          {filters.eventId && customer.event_bookings?.some(b => b.event_id === filters.eventId) && (
+                            <Badge variant="info" size="sm">
+                              <CalendarIcon className="h-3 w-3 mr-1" />
+                              {(() => {
+                                const booking = customer.event_bookings?.find(b => b.event_id === filters.eventId)
+                                return booking?.seats ? `${booking.seats} seats` : 'Reminder'
+                              })()}
+                            </Badge>
+                          )}
+                          {customer.total_bookings && customer.total_bookings > 0 && (
+                            <Badge variant="info" size="sm">
+                              {customer.total_bookings} bookings
+                            </Badge>
+                          )}
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Card>
+          </Section>
         </div>
 
         {/* Message Composition */}
         <div className="space-y-6">
-          <div className="bg-white shadow rounded-lg p-6">
-            <h2 className="text-lg font-medium mb-4">Compose Message</h2>
+          <Section title="Compose Message">
+            <Card>
+              <div className="space-y-4">
+                <FormGroup 
+                  label="Message Content"
+                  help={`${customMessage.length} chars, ~${Math.ceil(customMessage.length / 160)} segments`}
+                >
+                  <Textarea
+                    value={customMessage}
+                    onChange={(e) => setCustomMessage(e.target.value)}
+                    rows={6}
+                    placeholder="Type your message here..."
+                  />
+                  <p className="mt-2 text-xs text-gray-500">
+                    Available variables: {"{{customer_name}}"}, {"{{first_name}}"}, {"{{venue_name}}"}, {"{{contact_phone}}"}
+                    {filters.eventId && (
+                      <>, {"{{event_name}}"}, {"{{event_date}}"}, {"{{event_time}}"}</>
+                    )}
+                    {filters.categoryId && (
+                      <>, {"{{category_name}}"}</>
+                    )}
+                  </p>
+                </FormGroup>
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Message Content
-                  <span className="text-xs text-gray-500 ml-2">
-                    ({customMessage.length} chars, ~{Math.ceil(customMessage.length / 160)} segments)
-                  </span>
-                </label>
-                <textarea
-                  value={customMessage}
-                  onChange={(e) => setCustomMessage(e.target.value)}
-                  rows={6}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-                  placeholder="Type your message here..."
-                />
-                <p className="mt-2 text-xs text-gray-500">
-                  Available variables: {"{{customer_name}}"}, {"{{first_name}}"}, {"{{venue_name}}"}, {"{{contact_phone}}"}
-                  {filters.eventId && (
-                    <>, {"{{event_name}}"}, {"{{event_date}}"}, {"{{event_time}}"}</>
-                  )}
-                  {filters.categoryId && (
-                    <>, {"{{category_name}}"}</>
-                  )}
-                </p>
-              </div>
-
-              {/* Preview */}
-              {getMessageContent() && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Preview</label>
-                  <div className="p-3 bg-gray-100 rounded-md text-sm whitespace-pre-wrap">
-                    {getPreviewMessage()}
-                  </div>
-                </div>
-              )}
-
-              {/* Warning */}
-              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-                <div className="flex">
-                  <ExclamationTriangleIcon className="h-5 w-5 text-yellow-400 flex-shrink-0" />
-                  <div className="ml-3">
-                    <h3 className="text-sm font-medium text-yellow-800">Important</h3>
-                    <p className="mt-1 text-sm text-yellow-700">
-                      Messages will only be sent to customers who have not opted out of SMS.
-                      Standard messaging rates apply.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Send Button */}
-              <button
-                onClick={handleSendMessages}
-                disabled={sending || selectedCustomers.size === 0 || !getMessageContent()}
-                className={`w-full flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white ${
-                  sending || selectedCustomers.size === 0 || !getMessageContent()
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : 'bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2'
-                }`}
-              >
-                {sending ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <PaperAirplaneIcon className="h-4 w-4 mr-2" />
-                    Send to {selectedCustomers.size} Customers
-                  </>
+                {/* Preview */}
+                {getMessageContent() && (
+                  <FormGroup label="Preview">
+                    <Card className="bg-gray-50">
+                      <div className="text-sm whitespace-pre-wrap">
+                        {getPreviewMessage()}
+                      </div>
+                    </Card>
+                  </FormGroup>
                 )}
-              </button>
-            </div>
-          </div>
+
+                {/* Warning */}
+                <Alert variant="warning"
+                  title="Important"
+                  description="Messages will only be sent to customers who have not opted out of SMS. Standard messaging rates apply."
+                  icon={<ExclamationTriangleIcon className="h-5 w-5" />}
+                />
+
+                {/* Send Button */}
+                <Button
+                  onClick={() => {
+                    if (!confirm(`Are you sure you want to send this message to ${selectedCustomers.size} customers?`)) {
+                      return
+                    }
+                    handleSendMessages()
+                  }}
+                  disabled={sending || selectedCustomers.size === 0 || !getMessageContent()}
+                  loading={sending}
+                  variant="primary"
+                  className="w-full"
+                >
+                  <PaperAirplaneIcon className="h-4 w-4 mr-2" />
+                  Send to {selectedCustomers.size} Customers
+                </Button>
+              </div>
+            </Card>
+          </Section>
         </div>
       </div>
-    </div>
+    </Page>
   )
 }

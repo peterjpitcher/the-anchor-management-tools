@@ -5,10 +5,22 @@ import { useRouter } from 'next/navigation'
 import { createQuote } from '@/app/actions/quotes'
 import { getVendors } from '@/app/actions/vendors'
 import { getLineItemCatalog } from '@/app/actions/invoices'
-import { Button } from '@/components/ui/Button'
 import { ChevronLeft, PlusCircle, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import type { InvoiceVendor, InvoiceLineItemInput, LineItemCatalogItem } from '@/types/invoices'
+// UI v2 components
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Select } from '@/components/ui-v2/forms/Select'
+import { Textarea } from '@/components/ui-v2/forms/Textarea'
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { Dropdown } from '@/components/ui-v2/navigation/Dropdown'
+import { toast } from '@/components/ui-v2/feedback/Toast'
 
 interface LineItem {
   id: string
@@ -170,9 +182,11 @@ export default function NewQuotePage() {
         throw new Error(result.error)
       }
 
+      toast.success('Quote created successfully')
       router.push(`/quotes/${result.quote?.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create quote')
+      toast.error('Failed to create quote')
       setLoading(false)
     }
   }
@@ -180,318 +194,280 @@ export default function NewQuotePage() {
   const totals = calculateQuoteTotal()
 
   return (
-    <div className="space-y-6">
-      <div className="mb-8">
-        <Link href="/quotes">
-          <Button variant="ghost" className="mb-4">
-            <ChevronLeft className="h-4 w-4 mr-2" />
-            Back to Quotes
-          </Button>
-        </Link>
-        <h1 className="text-3xl font-bold mb-2">New Quote</h1>
-        <p className="text-muted-foreground">Create a new quote</p>
-      </div>
-
+    <Page
+      title="New Quote"
+      description="Create a new quote"
+    >
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg">
-          {error}
-        </div>
+        <Alert variant="error" title="Error" description={error} />
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <h2 className="text-lg font-semibold mb-4">Quote Details</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Vendor <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={vendorId}
-                onChange={(e) => setVendorId(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value="">Select a vendor</option>
-                {vendors.map(vendor => (
-                  <option key={vendor.id} value={vendor.id}>
-                    {vendor.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+        <Section title="Quote Details">
+          <Card>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormGroup label="Vendor" required>
+                <Select
+                  value={vendorId}
+                  onChange={(e) => setVendorId(e.target.value)}
+                  required
+                >
+                  <option value="">Select a vendor</option>
+                  {vendors.map(vendor => (
+                    <option key={vendor.id} value={vendor.id}>
+                      {vendor.name}
+                    </option>
+                  ))}
+                </Select>
+              </FormGroup>
 
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Reference
-              </label>
-              <input
-                type="text"
-                value={reference}
-                onChange={(e) => setReference(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="PO number or reference"
-              />
-            </div>
+              <FormGroup label="Reference">
+                <Input
+                  type="text"
+                  value={reference}
+                  onChange={(e) => setReference(e.target.value)}
+                  placeholder="PO number or reference"
+                />
+              </FormGroup>
 
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Quote Date <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="date"
-                value={quoteDate}
-                onChange={(e) => setQuoteDate(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
+              <FormGroup label="Quote Date" required>
+                <Input
+                  type="date"
+                  value={quoteDate}
+                  onChange={(e) => setQuoteDate(e.target.value)}
+                  required
+                />
+              </FormGroup>
 
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Valid Until <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="date"
-                value={validUntil}
-                onChange={(e) => setValidUntil(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
+              <FormGroup label="Valid Until" required>
+                <Input
+                  type="date"
+                  value={validUntil}
+                  onChange={(e) => setValidUntil(e.target.value)}
+                  required
+                />
+              </FormGroup>
             </div>
-          </div>
-        </div>
+          </Card>
+        </Section>
 
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold">Line Items</h2>
+        <Section 
+          title="Line Items"
+          actions={
             <div className="flex gap-2">
               {catalogItems.length > 0 && (
-                <details className="relative">
-                  <summary className="btn btn-secondary cursor-pointer">
-                    Add from Catalog
-                  </summary>
-                  <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-lg border p-4 z-10 max-h-96 overflow-y-auto">
-                    {catalogItems.map(item => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => addFromCatalog(item)}
-                        className="w-full text-left p-3 hover:bg-gray-50 rounded-md border-b last:border-b-0"
-                      >
+                <Dropdown
+                  label="Add from Catalog"
+                  variant="secondary"
+                  size="sm"
+                  items={catalogItems.map(item => ({
+                    key: item.id,
+                    label: (
+                      <div>
                         <div className="font-medium">{item.name}</div>
                         <div className="text-sm text-gray-600">{item.description}</div>
                         <div className="text-sm mt-1">
                           £{item.default_price.toFixed(2)} • VAT {item.default_vat_rate}%
                         </div>
-                      </button>
-                    ))}
-                  </div>
-                </details>
+                      </div>
+                    ),
+                    onClick: () => addFromCatalog(item)
+                  }))}
+                />
               )}
-              <Button type="button" onClick={addLineItem}>
-                <PlusCircle className="h-4 w-4 mr-2" />
+              <Button type="button" onClick={addLineItem} leftIcon={<PlusCircle className="h-4 w-4" />} size="sm">
                 Add Line Item
               </Button>
             </div>
-          </div>
+          }
+        >
+          <Card>
+            {lineItems.length === 0 ? (
+              <EmptyState title="No line items added yet"
+                action={
+                  <Button type="button" 
+                    onClick={addLineItem} 
+                    leftIcon={<PlusCircle className="h-4 w-4" />}
+                  >
+                    Add Line Item
+                  </Button>
+                }
+              />
+            ) : (
+              <div className="space-y-4">
+                {lineItems.map((item) => (
+                  <div key={item.id} className="border rounded-lg p-4">
+                    <div className="grid grid-cols-12 gap-4">
+                      <div className="col-span-12 md:col-span-5">
+                        <FormGroup label="Description">
+                          <Input
+                            type="text"
+                            value={item.description}
+                            onChange={(e) => updateLineItem(item.id, { description: e.target.value })}
+                            placeholder="Item description"
+                            required
+                          />
+                        </FormGroup>
+                      </div>
 
-          {lineItems.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              No line items added yet. Click &quot;Add Line Item&quot; to begin.
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {lineItems.map((item) => (
-                <div key={item.id} className="border rounded-lg p-4">
-                  <div className="grid grid-cols-12 gap-4">
-                    <div className="col-span-12 md:col-span-5">
-                      <label className="block text-sm font-medium mb-1">
-                        Description
-                      </label>
-                      <input
-                        type="text"
-                        value={item.description}
-                        onChange={(e) => updateLineItem(item.id, { description: e.target.value })}
-                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Item description"
-                        required
-                      />
+                      <div className="col-span-4 md:col-span-2">
+                        <FormGroup label="Quantity">
+                          <Input
+                            type="number"
+                            value={item.quantity}
+                            onChange={(e) => updateLineItem(item.id, { quantity: parseFloat(e.target.value) || 0 })}
+                            min="0"
+                            step="0.01"
+                            required
+                          />
+                        </FormGroup>
+                      </div>
+
+                      <div className="col-span-4 md:col-span-2">
+                        <FormGroup label="Unit Price (£)">
+                          <Input
+                            type="number"
+                            value={item.unit_price}
+                            onChange={(e) => updateLineItem(item.id, { unit_price: parseFloat(e.target.value) || 0 })}
+                            min="0"
+                            step="0.01"
+                            required
+                          />
+                        </FormGroup>
+                      </div>
+
+                      <div className="col-span-2 md:col-span-1">
+                        <FormGroup label="Disc %">
+                          <Input
+                            type="number"
+                            value={item.discount_percentage}
+                            onChange={(e) => updateLineItem(item.id, { discount_percentage: parseFloat(e.target.value) || 0 })}
+                            min="0"
+                            max="100"
+                            step="0.01"
+                          />
+                        </FormGroup>
+                      </div>
+
+                      <div className="col-span-2 md:col-span-1">
+                        <FormGroup label="VAT %">
+                          <Input
+                            type="number"
+                            value={item.vat_rate}
+                            onChange={(e) => updateLineItem(item.id, { vat_rate: parseFloat(e.target.value) || 0 })}
+                            min="0"
+                            step="0.01"
+                          />
+                        </FormGroup>
+                      </div>
+
+                      <div className="col-span-12 md:col-span-1 flex items-end">
+                        <Button
+                          type="button"
+                          onClick={() => removeLineItem(item.id)}
+                          variant="danger"
+                          size="sm"
+                          iconOnly
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
 
-                    <div className="col-span-4 md:col-span-2">
-                      <label className="block text-sm font-medium mb-1">
-                        Quantity
-                      </label>
-                      <input
-                        type="number"
-                        value={item.quantity}
-                        onChange={(e) => updateLineItem(item.id, { quantity: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        min="0"
-                        step="0.01"
-                        required
-                      />
-                    </div>
-
-                    <div className="col-span-4 md:col-span-2">
-                      <label className="block text-sm font-medium mb-1">
-                        Unit Price (£)
-                      </label>
-                      <input
-                        type="number"
-                        value={item.unit_price}
-                        onChange={(e) => updateLineItem(item.id, { unit_price: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        min="0"
-                        step="0.01"
-                        required
-                      />
-                    </div>
-
-                    <div className="col-span-2 md:col-span-1">
-                      <label className="block text-sm font-medium mb-1">
-                        Disc %
-                      </label>
-                      <input
-                        type="number"
-                        value={item.discount_percentage}
-                        onChange={(e) => updateLineItem(item.id, { discount_percentage: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        min="0"
-                        max="100"
-                        step="0.01"
-                      />
-                    </div>
-
-                    <div className="col-span-2 md:col-span-1">
-                      <label className="block text-sm font-medium mb-1">
-                        VAT %
-                      </label>
-                      <input
-                        type="number"
-                        value={item.vat_rate}
-                        onChange={(e) => updateLineItem(item.id, { vat_rate: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        min="0"
-                        step="0.01"
-                      />
-                    </div>
-
-                    <div className="col-span-12 md:col-span-1 flex items-end">
-                      <button
-                        type="button"
-                        onClick={() => removeLineItem(item.id)}
-                        className="w-full md:w-auto p-2 text-red-600 hover:bg-red-50 rounded-md"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                    <div className="mt-2 text-right text-sm text-gray-600">
+                      Line Total: £{calculateLineTotal(item).toFixed(2)}
                     </div>
                   </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </Section>
 
-                  <div className="mt-2 text-right text-sm text-gray-600">
-                    Line Total: £{calculateLineTotal(item).toFixed(2)}
+        <Section title="Quote Summary">
+          <Card>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+              <div className="space-y-4">
+                <FormGroup label="Quote Discount (%)">
+                  <Input
+                    type="number"
+                    value={quoteDiscountPercentage}
+                    onChange={(e) => setQuoteDiscountPercentage(parseFloat(e.target.value) || 0)}
+                    min="0"
+                    max="100"
+                    step="0.01"
+                  />
+                </FormGroup>
+
+                <FormGroup label="Notes (visible on quote)">
+                  <Textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={3}
+                    placeholder="Terms, conditions, special instructions, etc."
+                  />
+                </FormGroup>
+
+                <FormGroup label="Internal Notes">
+                  <Textarea
+                    value={internalNotes}
+                    onChange={(e) => setInternalNotes(e.target.value)}
+                    rows={3}
+                    placeholder="Private notes about this quote"
+                  />
+                </FormGroup>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
+                <h3 className="font-semibold text-sm sm:text-base mb-2 sm:mb-3">Summary</h3>
+                <div className="space-y-1.5 sm:space-y-2">
+                  <div className="flex justify-between text-sm sm:text-base">
+                    <span>Subtotal:</span>
+                    <span className="font-medium">£{totals.subtotal.toFixed(2)}</span>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="bg-white rounded-lg shadow-sm border p-4 sm:p-6">
-          <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Quote Summary</h2>
-          
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Quote Discount (%)
-                </label>
-                <input
-                  type="number"
-                  value={quoteDiscountPercentage}
-                  onChange={(e) => setQuoteDiscountPercentage(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Notes (visible on quote)
-                </label>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  rows={3}
-                  placeholder="Terms, conditions, special instructions, etc."
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Internal Notes
-                </label>
-                <textarea
-                  value={internalNotes}
-                  onChange={(e) => setInternalNotes(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  rows={3}
-                  placeholder="Private notes about this quote"
-                />
-              </div>
-            </div>
-
-            <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
-              <h3 className="font-semibold text-sm sm:text-base mb-2 sm:mb-3">Summary</h3>
-              <div className="space-y-1.5 sm:space-y-2">
-                <div className="flex justify-between text-sm sm:text-base">
-                  <span>Subtotal:</span>
-                  <span className="font-medium">£{totals.subtotal.toFixed(2)}</span>
-                </div>
-                {totals.discount > 0 && (
-                  <div className="flex justify-between text-green-600 text-sm sm:text-base">
-                    <span>Quote Discount:</span>
-                    <span>-£{totals.discount.toFixed(2)}</span>
+                  {totals.discount > 0 && (
+                    <div className="flex justify-between text-green-600 text-sm sm:text-base">
+                      <span>Quote Disbadge: </span>
+                      <span>-£{totals.discount.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm sm:text-base">
+                    <span>VAT:</span>
+                    <span className="font-medium">£{totals.vat.toFixed(2)}</span>
                   </div>
-                )}
-                <div className="flex justify-between text-sm sm:text-base">
-                  <span>VAT:</span>
-                  <span className="font-medium">£{totals.vat.toFixed(2)}</span>
-                </div>
-                <div className="border-t pt-2">
-                  <div className="flex justify-between text-base sm:text-lg font-semibold">
-                    <span>Total:</span>
-                    <span>£{totals.total.toFixed(2)}</span>
+                  <div className="border-t pt-2">
+                    <div className="flex justify-between text-base sm:text-lg font-semibold">
+                      <span>Total:</span>
+                      <span>£{totals.total.toFixed(2)}</span>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+          </Card>
+        </Section>
 
         <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 sm:gap-4">
           <Button
             type="button"
-            variant="outline"
+            variant="secondary"
             onClick={() => router.push('/quotes')}
-            className="w-full sm:w-auto"
+            fullWidth={false}
+            className="sm:w-auto"
           >
             Cancel
           </Button>
           <Button
             type="submit"
-            disabled={loading || lineItems.length === 0}
-            className="w-full sm:w-auto"
+            disabled={lineItems.length === 0}
+            loading={loading}
+            fullWidth={false}
+            className="sm:w-auto"
           >
-            {loading ? 'Creating...' : 'Create Quote'}
+            Create Quote
           </Button>
         </div>
       </form>
-    </div>
+    </Page>
   )
 }

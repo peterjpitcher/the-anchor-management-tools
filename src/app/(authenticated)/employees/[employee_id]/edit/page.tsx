@@ -6,10 +6,15 @@ import { useSupabase } from '@/components/providers/SupabaseProvider';
 import type { Employee, EmployeeFinancialDetails, EmployeeHealthRecord } from '@/types/database';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { Tabs } from '@/components/ui/Tabs';
 import FinancialDetailsForm from '@/components/FinancialDetailsForm';
 import HealthRecordsForm from '@/components/HealthRecordsForm';
 import { use, useState, useEffect, useCallback } from 'react';
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page';
+import { Card } from '@/components/ui-v2/layout/Card';
+import { Tabs } from '@/components/ui-v2/navigation/Tabs';
+import { Spinner } from '@/components/ui-v2/feedback/Spinner';
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
 
 export default function EditEmployeePage({ params: paramsPromise }: { params: Promise<{ employee_id: string }> }) {
   const params = use(paramsPromise);
@@ -95,16 +100,34 @@ export default function EditEmployeePage({ params: paramsPromise }: { params: Pr
 
 
   if (isLoading) {
-    return <div>Loading employee details...</div>
+    return (
+      <Page title="Edit Employee">
+        <div className="flex items-center justify-center p-8">
+          <div className="text-center">
+            <Spinner size="lg" />
+            <p className="mt-4 text-gray-600">Loading employee details...</p>
+          </div>
+        </div>
+      </Page>
+    );
   }
   
   if (!employee) {
-    // This can be a more user-friendly component than just returning null
-    return <div>Employee not found.</div>;
+    return (
+      <Page title="Edit Employee">
+        <Card>
+          <div className="text-center py-12">
+            <h3 className="text-lg font-medium text-gray-900">Employee not found</h3>
+            <p className="mt-1 text-sm text-gray-500">The employee you&apos;re looking for doesn&apos;t exist.</p>
+          </div>
+        </Card>
+      </Page>
+    );
   }
 
   const tabs = [
     {
+        key: 'personal',
         label: 'Personal Details',
         content: (
             <EmployeeForm 
@@ -117,38 +140,33 @@ export default function EditEmployeePage({ params: paramsPromise }: { params: Pr
         )
     },
     {
+        key: 'financial',
         label: 'Financial Details',
         content: <FinancialDetailsForm employeeId={employee.employee_id} financialDetails={financialDetails} />
     },
     {
+        key: 'health',
         label: 'Health Records',
         content: <HealthRecordsForm employeeId={employee.employee_id} healthRecord={healthRecord} />
     }
   ];
 
   return (
-    <div className="space-y-6">
-        <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <div className="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:justify-between sm:items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                Edit: {employee.first_name} {employee.last_name}
-              </h1>
-              <p className="mt-1 text-sm text-gray-500">
-                Update details below or{' '}
-                <Link href={`/employees/${employee.employee_id}`} className="font-medium text-blue-600 hover:text-blue-900">
-                  cancel and return to view
-                </Link>
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-        <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-          <Tabs tabs={tabs} />
-        </div>
-    </div>
+    <Page
+      title={`Edit: ${employee.first_name} ${employee.last_name}`}
+      description="Update employee details"
+      actions={
+        <LinkButton
+          href={`/employees/${employee.employee_id}`}
+          variant="secondary"
+        >
+          Cancel
+        </LinkButton>
+      }
+    >
+      <Card>
+        <Tabs items={tabs} />
+      </Card>
+    </Page>
   );
 }

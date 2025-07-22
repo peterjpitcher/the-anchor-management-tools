@@ -385,7 +385,7 @@ export async function applyLabelsRetroactively(): Promise<{
       resource_id: 'bulk',
       operation_status: 'success',
       additional_info: { 
-        applied_count: data?.length || 0,
+        applied_badge: data?.length || 0,
         timestamp: new Date().toISOString()
       }
     })
@@ -439,7 +439,7 @@ export async function bulkAssignLabel(
       resource_id: labelId,
       operation_status: 'success',
       additional_info: { 
-        customer_count: customerIds.length,
+        customer_badge: customerIds.length,
         customer_ids: customerIds
       }
     })

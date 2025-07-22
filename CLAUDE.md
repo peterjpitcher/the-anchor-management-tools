@@ -714,6 +714,42 @@ supabase db reset
 supabase db push
 ```
 
+### Migration Strategy (IMPORTANT - Updated 2025-07-19)
+
+The project uses **placeholder migrations** to sync with the production database:
+
+1. **Current Approach**: 
+   - 30+ placeholder migration files (`*_remote_placeholder.sql`) maintain sync with remote database
+   - These are NOT actual migrations - they prevent conflicts with already-applied remote migrations
+   - This allows `supabase db push` and `supabase db pull` to work without errors
+
+2. **Why Placeholders?**
+   - The production database had migrations applied that didn't exist locally
+   - Creating placeholders prevents "migration not found" errors
+   - Maintains accurate migration history
+   - Safer than trying to recreate or squash existing migrations
+
+3. **Creating New Migrations**:
+   ```bash
+   # Create new migration
+   supabase migration new feature_name
+   
+   # Edit the file in supabase/migrations/
+   # Then push to remote
+   supabase db push
+   ```
+
+4. **Reference Schema**:
+   - Full database schema available at `/schema.sql` for reference
+   - Use this to understand existing structure when writing new migrations
+   - Do NOT run this file - it's for documentation only
+
+5. **Important Notes**:
+   - NEVER delete the placeholder files
+   - NEVER try to squash migrations on a production database
+   - Always create NEW migrations for changes
+   - The placeholder approach is the recommended way for existing production databases
+
 ## Key Database Tables
 
 - **events** - Event management with categories and capacity

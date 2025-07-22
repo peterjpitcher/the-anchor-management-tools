@@ -1,14 +1,24 @@
 import { getAllRoles, checkUserPermission, getAllUsers } from '@/app/actions/rbac';
 import UserList from './components/UserList';
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page';
+import { Card } from '@/components/ui-v2/layout/Card';
+import { EmptyState } from '@/components/ui-v2/display/EmptyState';
+import { Alert } from '@/components/ui-v2/feedback/Alert';
 
 export default async function UsersPage() {
   // Check permission
   const hasPermission = await checkUserPermission('users', 'view');
   if (!hasPermission) {
     return (
-      <div className="text-center py-12">
-        <p className="text-red-600">You don&apos;t have permission to view this page.</p>
-      </div>
+      <Page title="User Management">
+        <Card>
+          <Alert variant="error"
+            title="Access Denied"
+            description="You don't have permission to view this page."
+          />
+        </Card>
+      </Page>
     );
   }
 
@@ -20,11 +30,14 @@ export default async function UsersPage() {
   
   if (usersResult.error || rolesResult.error) {
     return (
-      <div className="text-center py-12">
-        <p className="text-red-600">
-          {usersResult.error || rolesResult.error}
-        </p>
-      </div>
+      <Page title="User Management">
+        <Card>
+          <Alert variant="error"
+            title="Error loading data"
+            description={usersResult.error || rolesResult.error || 'Failed to load users and roles'}
+          />
+        </Card>
+      </Page>
     );
   }
 
@@ -32,15 +45,11 @@ export default async function UsersPage() {
   const roles = rolesResult.data || [];
 
   return (
-    <div className="space-y-6">
-      <div>
-          <h1 className="text-2xl font-semibold text-gray-900">User Management</h1>
-        <p className="mt-1 text-sm text-gray-600">
-          Manage user roles and permissions
-        </p>
-      </div>
-
+    <Page
+      title="User Management"
+      description="Manage user roles and permissions"
+    >
       <UserList users={users} roles={roles} />
-    </div>
+    </Page>
   );
 }

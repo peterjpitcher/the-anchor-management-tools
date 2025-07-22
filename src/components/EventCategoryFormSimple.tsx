@@ -2,7 +2,11 @@
 
 import { useState } from 'react'
 import { EventCategory } from '@/types/event-categories'
-import { Button } from '@/components/ui/Button'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Select } from '@/components/ui-v2/forms/Select'
+import { Textarea } from '@/components/ui-v2/forms/Textarea'
+import { Checkbox } from '@/components/ui-v2/forms/Checkbox'
 import { SquareImageUpload } from './SquareImageUpload'
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '@/types/event-categories'
 import toast from 'react-hot-toast'
@@ -142,13 +146,13 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                 Category Name *
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="text"
                   id="name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  fullWidth
                 />
               </div>
             </div>
@@ -158,13 +162,13 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                 Sort Order
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="number"
                   id="sort_order"
                   value={sortOrder}
                   onChange={(e) => setSortOrder(e.target.value)}
                   min="0"
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  fullWidth
                 />
               </div>
             </div>
@@ -174,12 +178,12 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                 Description
               </label>
               <div className="mt-2">
-                <textarea
+                <Textarea
                   id="description"
                   rows={3}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  fullWidth
                 />
               </div>
             </div>
@@ -242,12 +246,12 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                 Default Start Time
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="time"
                   id="default_start_time"
                   value={defaultStartTime}
                   onChange={(e) => setDefaultStartTime(e.target.value)}
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  fullWidth
                 />
               </div>
             </div>
@@ -257,12 +261,12 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                 Default End Time
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="time"
                   id="default_end_time"
                   value={defaultEndTime}
                   onChange={(e) => setDefaultEndTime(e.target.value)}
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  fullWidth
                 />
               </div>
             </div>
@@ -272,14 +276,14 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                 Default Capacity
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="number"
                   id="default_capacity"
                   value={defaultCapacity}
                   onChange={(e) => setDefaultCapacity(e.target.value)}
                   min="1"
                   placeholder="Unlimited"
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  fullWidth
                 />
               </div>
             </div>
@@ -289,7 +293,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                 Default Price (£)
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="number"
                   id="default_price"
                   value={defaultPrice}
@@ -299,7 +303,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   }}
                   min="0"
                   step="0.01"
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  fullWidth
                 />
               </div>
             </div>
@@ -309,13 +313,13 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                 Default Performer Name
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="text"
                   id="default_performer_name"
                   value={defaultPerformerName}
                   onChange={(e) => setDefaultPerformerName(e.target.value)}
                   placeholder="e.g., DJ John, The Blues Band"
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  fullWidth
                 />
               </div>
             </div>
@@ -325,11 +329,11 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                 Default Performer Type
               </label>
               <div className="mt-2">
-                <select
+                <Select
                   id="default_performer_type"
                   value={defaultPerformerType}
                   onChange={(e) => setDefaultPerformerType(e.target.value)}
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  fullWidth
                 >
                   <option value="">Select type...</option>
                   <option value="MusicGroup">Music Group / Band</option>
@@ -338,7 +342,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   <option value="DanceGroup">Dance Group</option>
                   <option value="ComedyGroup">Comedy Group</option>
                   <option value="Organization">Organization</option>
-                </select>
+                </Select>
               </div>
             </div>
 
@@ -347,7 +351,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                 Default Duration (minutes)
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="number"
                   id="default_duration_minutes"
                   value={defaultDurationMinutes}
@@ -355,7 +359,7 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                   min="1"
                   max="1440"
                   placeholder="e.g., 180"
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  fullWidth
                 />
               </div>
             </div>
@@ -365,13 +369,13 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                 Default Doors Time
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="text"
                   id="default_doors_time"
                   value={defaultDoorsTime}
                   onChange={(e) => setDefaultDoorsTime(e.target.value)}
                   placeholder="e.g., 30 mins before"
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  fullWidth
                 />
               </div>
             </div>
@@ -381,12 +385,12 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                 Default Last Entry Time
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="time"
                   id="default_last_entry_time"
                   value={defaultLastEntryTime}
                   onChange={(e) => setDefaultLastEntryTime(e.target.value)}
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  fullWidth
                 />
               </div>
             </div>
@@ -396,13 +400,13 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                 Default Booking URL
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="url"
                   id="default_booking_url"
                   value={defaultBookingUrl}
                   onChange={(e) => setDefaultBookingUrl(e.target.value)}
                   placeholder="https://example.com/book"
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  fullWidth
                 />
               </div>
             </div>
@@ -417,13 +421,13 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                 URL Slug
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="text"
                   id="slug"
                   value={slug}
                   onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
                   placeholder="quiz-night"
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  fullWidth
                 />
               </div>
             </div>
@@ -433,14 +437,14 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                 Meta Title
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="text"
                   id="meta_title"
                   value={metaTitle}
                   onChange={(e) => setMetaTitle(e.target.value)}
                   maxLength={60}
                   placeholder="SEO page title"
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  fullWidth
                 />
               </div>
             </div>
@@ -450,14 +454,14 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                 Meta Description
               </label>
               <div className="mt-2">
-                <textarea
+                <Textarea
                   id="meta_description"
                   rows={2}
                   value={metaDescription}
                   onChange={(e) => setMetaDescription(e.target.value)}
                   maxLength={160}
                   placeholder="SEO page description"
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  fullWidth
                 />
               </div>
             </div>
@@ -467,14 +471,14 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                 Short Description
               </label>
               <div className="mt-2">
-                <textarea
+                <Textarea
                   id="short_description"
                   rows={2}
                   value={shortDescription}
                   onChange={(e) => setShortDescription(e.target.value)}
                   maxLength={150}
                   placeholder="Brief description for listings"
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  fullWidth
                 />
               </div>
             </div>
@@ -484,13 +488,13 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                 Long Description
               </label>
               <div className="mt-2">
-                <textarea
+                <Textarea
                   id="long_description"
                   rows={6}
                   value={longDescription}
                   onChange={(e) => setLongDescription(e.target.value)}
                   placeholder="Detailed description for the category page"
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  fullWidth
                 />
               </div>
             </div>
@@ -500,13 +504,13 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                 Highlights (comma-separated)
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="text"
                   id="highlights"
                   value={highlights}
                   onChange={(e) => setHighlights(e.target.value)}
                   placeholder="Great prizes, Fun atmosphere, Weekly event"
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  fullWidth
                 />
               </div>
             </div>
@@ -516,13 +520,13 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
                 Keywords (comma-separated)
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="text"
                   id="keywords"
                   value={keywords}
                   onChange={(e) => setKeywords(e.target.value)}
                   placeholder="quiz, trivia, pub quiz, entertainment"
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                  fullWidth
                 />
               </div>
             </div>
@@ -530,12 +534,10 @@ export function EventCategoryFormSimple({ category, onSubmit, onCancel }: EventC
             <div className="sm:col-span-4">
               <div className="relative flex items-start">
                 <div className="flex h-6 items-center">
-                  <input
+                  <Checkbox
                     id="is_active"
-                    type="checkbox"
                     checked={isActive}
                     onChange={(e) => setIsActive(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
                   />
                 </div>
                 <div className="ml-3 text-sm leading-6">

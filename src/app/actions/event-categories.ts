@@ -536,7 +536,7 @@ export async function categorizeHistoricalEvents() {
       additional_info: { events_categorized: count }
     })
 
-    return { success: true, count: count || 0 }
+    return { success: true, badge: count || 0 }
   } catch (error) {
     console.error('Error categorizing historical events:', error)
     return { error: error instanceof Error ? error.message : 'Failed to categorize historical events' }
@@ -573,7 +573,7 @@ export async function rebuildCustomerCategoryStats() {
       additional_info: { type: 'customer_category_stats', records_created: count }
     })
 
-    return { success: true, count: count || 0 }
+    return { success: true, badge: count || 0 }
   } catch (error) {
     console.error('Error rebuilding customer category stats:', error)
     return { error: error instanceof Error ? error.message : 'Failed to rebuild customer category stats' }

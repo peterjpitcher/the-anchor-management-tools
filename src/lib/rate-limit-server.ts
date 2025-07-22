@@ -3,7 +3,7 @@
 import { headers } from 'next/headers'
 
 // Simple in-memory rate limiter for server actions
-const rateLimitStore = new Map<string, { count: number; resetTime: number }>()
+const rateLimitStore = new Map<string, { badge: number; resetTime: number }>()
 
 class SimpleRateLimiter {
   private windowMs: number
@@ -18,19 +18,19 @@ class SimpleRateLimiter {
     
     if (!data || data.resetTime < now) {
       // New window
-      rateLimitStore.set(key, { count: 1, resetTime: now + this.windowMs })
+      rateLimitStore.set(key, { badge: 1, resetTime: now + this.windowMs })
       return { success: true, remaining: limit - 1 }
     }
     
     // Increment count
-    data.count++
+    data.badge++
     
     // Check limit
-    if (data.count > limit) {
+    if (data.badge > limit) {
       return { success: false, remaining: 0 }
     }
     
-    return { success: true, remaining: limit - data.count }
+    return { success: true, remaining: limit - data.badge }
   }
 }
 

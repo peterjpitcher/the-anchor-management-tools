@@ -1,9 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Link from 'next/link'
 import { 
-  ArrowLeftIcon, 
   ChatBubbleLeftRightIcon,
   PaperAirplaneIcon,
   ClockIcon,
@@ -16,11 +14,22 @@ import { getPrivateBooking } from '@/app/actions/privateBookingActions'
 import { sendSms } from '@/app/actions/sms'
 import type { PrivateBookingWithDetails, PrivateBookingSmsQueue } from '@/types/private-bookings'
 import { formatDateFull, formatTime12Hour, formatDateTime12Hour } from '@/lib/dateUtils'
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Textarea } from '@/components/ui-v2/forms/Textarea'
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { toast } from '@/components/ui-v2/feedback/Toast'
 
 interface SmsTemplate {
   id: string
   name: string
-  description: string
+  message: string
   template: string
 }
 
@@ -28,37 +37,37 @@ const smsTemplates: SmsTemplate[] = [
   {
     id: 'booking_confirmation',
     name: 'Booking Confirmation',
-    description: 'Send when booking is confirmed',
+    message: 'Send when booking is confirmed',
     template: 'Hi {customer_first_name}, your private event booking at The Anchor on {event_date} has been confirmed! We look forward to hosting your {event_type}. If you have any questions, please call us on 01753 682 707. The Anchor Team'
   },
   {
     id: 'deposit_reminder',
     name: 'Deposit Reminder',
-    description: 'Remind customer about deposit payment',
+    message: 'Remind customer about deposit payment',
     template: 'Hi {customer_first_name}, just a reminder that your £{deposit_amount} deposit for your event on {event_date} is due. Please call 01753 682 707 to arrange payment. Thank you! The Anchor'
   },
   {
     id: 'balance_reminder',
     name: 'Balance Reminder',
-    description: 'Remind about final balance',
+    message: 'Remind about final balance',
     template: 'Hi {customer_first_name}, your event at The Anchor is coming up on {event_date}! Your remaining balance of £{balance_due} is due by {balance_due_date}. Please call 01753 682 707 to settle. Looking forward to seeing you!'
   },
   {
     id: 'event_reminder',
     name: 'Event Reminder',
-    description: '24 hours before event',
+    message: '24 hours before event',
     template: 'Hi {customer_first_name}, just a reminder that your event at The Anchor is tomorrow at {start_time}! We\'re all set for your {guest_count} guests. If you need anything, call 01753 682 707. See you tomorrow!'
   },
   {
     id: 'setup_notification',
     name: 'Setup Time Notification',
-    description: 'Notify about setup arrangements',
+    message: 'Notify about setup arrangements',
     template: 'Hi {customer_first_name}, confirming setup for your event on {event_date}. Your vendors/team can access the venue from {setup_time}. The event space will be ready. Any questions? Call 01753 682 707.'
   },
   {
     id: 'thank_you',
     name: 'Thank You Message',
-    description: 'Send after event completion',
+    message: 'Send after event completion',
     template: 'Hi {customer_first_name}, thank you for choosing The Anchor for your event! We hope you and your guests had a wonderful time. We\'d love to welcome you back again soon. Best wishes, The Anchor Team'
   }
 ]
@@ -76,8 +85,6 @@ export default function MessagesPage({
   const [messageToSend, setMessageToSend] = useState<string>('')
   const [sending, setSending] = useState(false)
   const [sentMessages, setSentMessages] = useState<PrivateBookingSmsQueue[]>([])
-  const [error, setError] = useState<string>('')
-  const [success, setSuccess] = useState<string>('')
 
   useEffect(() => {
     params.then(p => {
@@ -110,7 +117,7 @@ export default function MessagesPage({
         customer_first_name: booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there',
         event_date: formatDateFull(booking.event_date),
         event_type: booking.event_type || 'event',
-        guest_count: booking.guest_count?.toString() || 'your',
+        guest_badge: booking.guest_count?.toString() || 'your',
         start_time: formatTime12Hour(booking.start_time),
         setup_time: formatTime12Hour(booking.setup_time || booking.start_time),
         deposit_amount: booking.deposit_amount?.toFixed(0) || '250',
@@ -135,18 +142,16 @@ export default function MessagesPage({
 
   const handleSendMessage = async () => {
     if (!messageToSend.trim()) {
-      setError('Please enter a message to send')
+      toast.error('Please enter a message to send')
       return
     }
 
     if (!booking?.contact_phone) {
-      setError('No phone number available for this booking')
+      toast.error('No phone number available for this booking')
       return
     }
 
     setSending(true)
-    setError('')
-    setSuccess('')
 
     try {
       const result = await sendSms({
@@ -156,9 +161,9 @@ export default function MessagesPage({
       })
 
       if (result.error) {
-        setError(result.error)
+        toast.error(result.error)
       } else {
-        setSuccess('Message sent successfully!')
+        toast.success('Message sent successfully!')
         setMessageToSend('')
         setCustomMessage('')
         setSelectedTemplate('')
@@ -166,7 +171,7 @@ export default function MessagesPage({
         loadBooking(bookingId)
       }
     } catch {
-      setError('Failed to send message')
+      toast.error('Failed to send message')
     } finally {
       setSending(false)
     }
@@ -189,71 +194,54 @@ export default function MessagesPage({
 
   if (loading) {
     return (
-      <div className="px-4 sm:px-6 lg:px-8 animate-pulse">
-        <div className="h-8 bg-gray-200 rounded w-1/4 mb-8"></div>
-        <div className="bg-white shadow rounded-lg p-6">
-          <div className="space-y-4">
-            <div className="h-6 bg-gray-200 rounded w-1/3"></div>
-            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-          </div>
+      <Page title="Send SMS Message">
+        <div className="flex items-center justify-center p-8">
+          <Spinner size="lg" />
         </div>
-      </div>
+      </Page>
     )
   }
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8">
-      <div className="mb-8">
-        <Link
-          href={`/private-bookings/${bookingId}`}
-          className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700"
-        >
-          <ArrowLeftIcon className="mr-1 h-4 w-4" />
-          Back to booking
-        </Link>
-      </div>
-
-      {/* Header */}
-      <div className="bg-white shadow rounded-lg mb-6">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <div className="flex items-center justify-between">
+    <Page
+      title="Send SMS Message"
+      description={`${booking?.customer_name} - ${booking?.contact_phone || 'No phone number'}`}
+      actions={
+        <LinkButton href={`/private-bookings/${bookingId}`} variant="secondary">Back</LinkButton>
+      }
+    >
+      {/* Header Card */}
+      <Card className="mb-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <ChatBubbleLeftRightIcon className="h-6 w-6 text-blue-600" />
             <div>
-              <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-                <ChatBubbleLeftRightIcon className="h-6 w-6 text-blue-600" />
-                Send SMS Message
-              </h2>
-              <p className="text-sm text-gray-500 mt-1">
-                {booking?.customer_name} - {booking?.contact_phone || 'No phone number'}
-              </p>
+              <h3 className="font-medium">SMS Messaging</h3>
+              <p className="text-sm text-gray-500">Send messages to the customer</p>
             </div>
-            {booking?.contact_phone && (
-              <div className="flex items-center text-sm text-gray-500">
-                <DevicePhoneMobileIcon className="h-5 w-5 mr-1" />
-                SMS Ready
-              </div>
-            )}
           </div>
+          {booking?.contact_phone ? (
+            <Badge variant="success">
+              <DevicePhoneMobileIcon className="h-4 w-4 mr-1" />
+              SMS Ready
+            </Badge>
+          ) : (
+            <Badge variant="warning">No Phone Number</Badge>
+          )}
         </div>
 
         {!booking?.contact_phone && (
-          <div className="p-4 bg-yellow-50 border-b border-yellow-200">
-            <p className="text-sm text-yellow-800">
-              No phone number is associated with this booking. Please add a contact phone number to send SMS messages.
-            </p>
-          </div>
+          <Alert variant="warning" className="mt-4">
+            No phone number is associated with this booking. Please add a contact phone number to send SMS messages.
+          </Alert>
         )}
-      </div>
+      </Card>
 
       {/* Message Composer */}
-      <div className="bg-white shadow rounded-lg mb-6">
-        <div className="p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Compose Message</h3>
-
+      <Card className="mb-6">
+        <Section title="Compose Message">
           {/* Template Selection */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Use a template
-            </label>
+          <FormGroup label="Use a template">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {smsTemplates.map((template) => (
                 <button
@@ -266,75 +254,51 @@ export default function MessagesPage({
                   }`}
                 >
                   <div className="font-medium text-gray-900">{template.name}</div>
-                  <div className="text-sm text-gray-500 mt-1">{template.description}</div>
+                  <div className="text-sm text-gray-500 mt-1">{template.message}</div>
                 </button>
               ))}
             </div>
-          </div>
+          </FormGroup>
 
           {/* Custom Message */}
-          <div className="mb-6">
-            <label htmlFor="custom-message" className="block text-sm font-medium text-gray-700 mb-2">
-              Or write a custom message
-            </label>
-            <textarea
-              id="custom-message"
+          <FormGroup label="Or write a custom message">
+            <Textarea
               rows={4}
               value={customMessage}
               onChange={(e) => handleCustomMessageChange(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Type your message here..."
             />
-          </div>
+          </FormGroup>
 
           {/* Message Preview */}
           {messageToSend && (
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Message Preview
-              </label>
+            <FormGroup label="Message Preview">
               <div className="bg-gray-50 rounded-lg p-4">
                 <p className="text-sm text-gray-900 whitespace-pre-wrap">{messageToSend}</p>
                 <p className="text-xs text-gray-500 mt-2">
                   {messageToSend.length} characters ({Math.ceil(messageToSend.length / 160)} SMS segment{Math.ceil(messageToSend.length / 160) > 1 ? 's' : ''})
                 </p>
               </div>
-            </div>
-          )}
-
-          {/* Error/Success Messages */}
-          {error && (
-            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-800">{error}</p>
-            </div>
-          )}
-          {success && (
-            <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-              <p className="text-sm text-green-800">{success}</p>
-            </div>
+            </FormGroup>
           )}
 
           {/* Send Button */}
           <div className="flex justify-end">
-            <button
-              onClick={handleSendMessage}
+            <Button onClick={handleSendMessage}
               disabled={!messageToSend || !booking?.contact_phone || sending}
-              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              loading={sending}
+              leftIcon={<PaperAirplaneIcon className="h-5 w-5" />}
             >
-              <PaperAirplaneIcon className="h-5 w-5 mr-2" />
-              {sending ? 'Sending...' : 'Send Message'}
-            </button>
+              Send Message
+            </Button>
           </div>
-        </div>
-      </div>
+        </Section>
+      </Card>
 
       {/* Message History */}
       {sentMessages.length > 0 && (
-        <div className="bg-white shadow rounded-lg">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="text-lg font-medium text-gray-900">Message History</h3>
-          </div>
-          <div className="p-6">
+        <Card>
+          <Section title="Message History">
             <div className="space-y-4">
               {sentMessages.map((message) => (
                 <div key={message.id} className="flex items-start space-x-3">
@@ -353,9 +317,9 @@ export default function MessagesPage({
                 </div>
               ))}
             </div>
-          </div>
-        </div>
+          </Section>
+        </Card>
       )}
-    </div>
+    </Page>
   )
 }

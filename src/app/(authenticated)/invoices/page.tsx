@@ -3,9 +3,21 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getInvoices, getInvoiceSummary } from '@/app/actions/invoices'
-import { Button } from '@/components/ui/Button'
 import { Plus, Download, FileText, Calendar, Package, Users } from 'lucide-react'
 import type { InvoiceWithDetails, InvoiceStatus } from '@/types/invoices'
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { Stat } from '@/components/ui-v2/display/Stat'
+import { Select } from '@/components/ui-v2/forms/Select'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { DataTable, Column } from '@/components/ui-v2/display/DataTable'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 
 export default function InvoicesPage() {
   const router = useRouter()
@@ -50,16 +62,16 @@ export default function InvoicesPage() {
   }, [statusFilter])
 
 
-  function getStatusColor(status: InvoiceStatus): string {
+  function getStatusBadgeVariant(status: InvoiceStatus): 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info' | 'secondary' {
     switch (status) {
-      case 'draft': return 'bg-gray-100 text-gray-800'
-      case 'sent': return 'bg-blue-100 text-blue-800'
-      case 'partially_paid': return 'bg-yellow-100 text-yellow-800'
-      case 'paid': return 'bg-green-100 text-green-800'
-      case 'overdue': return 'bg-red-100 text-red-800'
-      case 'void': return 'bg-gray-100 text-gray-800'
-      case 'written_off': return 'bg-gray-100 text-gray-800'
-      default: return 'bg-gray-100 text-gray-800'
+      case 'draft': return 'default'
+      case 'sent': return 'info'
+      case 'partially_paid': return 'warning'
+      case 'paid': return 'success'
+      case 'overdue': return 'error'
+      case 'void': return 'secondary'
+      case 'written_off': return 'secondary'
+      default: return 'default'
     }
   }
 
@@ -73,27 +85,92 @@ export default function InvoicesPage() {
     )
   })
 
+  // Define table columns
+  const columns: Column<InvoiceWithDetails>[] = [
+    {
+      key: 'invoice_number',
+      header: 'Invoice #',
+      cell: (invoice) => (
+        <div>
+          <div className="font-medium">{invoice.invoice_number}</div>
+          {invoice.reference && (
+            <div className="text-sm text-gray-500">{invoice.reference}</div>
+          )}
+        </div>
+      ),
+      sortable: true
+    },
+    {
+      key: 'vendor',
+      header: 'Vendor',
+      cell: (invoice) => invoice.vendor?.name || '-',
+      sortable: true
+    },
+    {
+      key: 'invoice_date',
+      header: 'Date',
+      cell: (invoice) => new Date(invoice.invoice_date).toLocaleDateString('en-GB'),
+      sortable: true
+    },
+    {
+      key: 'due_date',
+      header: 'Due Date',
+      cell: (invoice) => new Date(invoice.due_date).toLocaleDateString('en-GB'),
+      sortable: true
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      cell: (invoice) => (
+        <Badge variant={getStatusBadgeVariant(invoice.status)} size="sm">
+          {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1).replace('_', ' ')}
+        </Badge>
+      ),
+      sortable: true
+    },
+    {
+      key: 'total_amount',
+      header: 'Amount',
+      align: 'right',
+      cell: (invoice) => `£${invoice.total_amount.toFixed(2)}`,
+      sortable: true
+    },
+    {
+      key: 'balance',
+      header: 'Balance',
+      align: 'right',
+      cell: (invoice) => {
+        if (invoice.status === 'paid') {
+          return <span className="text-green-600">Paid</span>
+        }
+        return (
+          <span className={invoice.status === 'overdue' ? 'text-red-600 font-medium' : ''}>
+            £{(invoice.total_amount - invoice.paid_amount).toFixed(2)}
+          </span>
+        )
+      },
+      sortable: true
+    }
+  ]
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading invoices...</p>
+      <Page title="Invoices">
+        <div className="flex items-center justify-center h-64">
+          <Spinner size="lg" />
         </div>
-      </div>
+      </Page>
     )
   }
 
   return (
-    <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold mb-2">Invoices</h1>
-          <p className="text-sm sm:text-base text-muted-foreground">Manage your invoices and payments</p>
-        </div>
+    <Page 
+      title="Invoices"
+      description="Manage your invoices and payments"
+      actions={
         <div className="flex flex-wrap gap-2">
           <Button
-            variant="outline"
+            variant="secondary"
             onClick={() => router.push('/quotes')}
             className="flex-1 sm:flex-initial"
           >
@@ -102,7 +179,7 @@ export default function InvoicesPage() {
             <span className="sm:hidden">Quotes</span>
           </Button>
           <Button
-            variant="outline"
+            variant="secondary"
             onClick={() => router.push('/invoices/recurring')}
             className="flex-1 sm:flex-initial"
           >
@@ -116,60 +193,45 @@ export default function InvoicesPage() {
             <span className="sm:hidden">New</span>
           </Button>
         </div>
-      </div>
+      }
+    >
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg">
-          {error}
-        </div>
+        <Alert variant="error" description={error} className="mb-6" />
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-600">Outstanding</span>
-            <FileText className="h-4 w-4 text-gray-400" />
-          </div>
-          <p className="text-2xl font-bold">£{summary.total_outstanding.toFixed(2)}</p>
-          <p className="text-sm text-gray-500 mt-1">Awaiting payment</p>
-        </div>
-
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-600">Overdue</span>
-            <FileText className="h-4 w-4 text-red-400" />
-          </div>
-          <p className="text-2xl font-bold text-red-600">£{summary.total_overdue.toFixed(2)}</p>
-          <p className="text-sm text-gray-500 mt-1">Past due date</p>
-        </div>
-
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-600">This Month</span>
-            <FileText className="h-4 w-4 text-green-400" />
-          </div>
-          <p className="text-2xl font-bold text-green-600">£{summary.total_this_month.toFixed(2)}</p>
-          <p className="text-sm text-gray-500 mt-1">Collected</p>
-        </div>
-
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-600">Drafts</span>
-            <FileText className="h-4 w-4 text-gray-400" />
-          </div>
-          <p className="text-2xl font-bold">{summary.count_draft}</p>
-          <p className="text-sm text-gray-500 mt-1">Unsent invoices</p>
-        </div>
+        <Stat label="Outstanding"
+          value={`£${summary.total_outstanding.toFixed(2)}`}
+          description="Awaiting payment"
+          icon={<FileText />}
+        />
+        <Stat label="Overdue"
+          value={`£${summary.total_overdue.toFixed(2)}`}
+          description="Past due date"
+          icon={<FileText />}
+        />
+        <Stat label="This Month"
+          value={`£${summary.total_this_month.toFixed(2)}`}
+          description="Collected"
+          icon={<FileText />}
+        />
+        <Stat label="Drafts"
+          value={summary.count_draft.toString()}
+          description="Unsent invoices"
+          icon={<FileText />}
+        />
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border">
+      <Card>
         <div className="p-4 border-b">
           <div className="flex flex-col gap-4">
             <div className="flex flex-col sm:flex-row gap-2">
-              <select
+              <Select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as InvoiceStatus | 'all')}
-                className="w-full sm:w-auto px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-h-[44px]"
+                className="w-full sm:w-auto"
+                fullWidth={false}
               >
                 <option value="all">All Invoices</option>
                 <option value="draft">Draft</option>
@@ -179,23 +241,25 @@ export default function InvoicesPage() {
                 <option value="overdue">Overdue</option>
                 <option value="void">Void</option>
                 <option value="written_off">Written Off</option>
-              </select>
+              </Select>
               
-              <input
+              <Input
                 type="text"
                 placeholder="Search invoices..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full sm:w-auto flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                leftIcon={<MagnifyingGlassIcon />}
+                className="w-full sm:w-auto flex-1"
+                fullWidth={false}
               />
             </div>
 
             <div className="flex gap-2 sm:hidden">
-              <Button variant="outline" onClick={() => router.push('/invoices/export')} className="flex-1">
+              <Button variant="secondary" onClick={() => router.push('/invoices/export')} className="flex-1">
                 <Download className="h-4 w-4 mr-1" />
                 Export
               </Button>
-              <Button variant="outline" onClick={() => router.push('/invoices/recurring')} className="flex-1">
+              <Button variant="secondary" onClick={() => router.push('/invoices/recurring')} className="flex-1">
                 <Calendar className="h-4 w-4 mr-1" />
                 Recurring
               </Button>
@@ -203,154 +267,88 @@ export default function InvoicesPage() {
           </div>
         </div>
 
-        {filteredInvoices.length === 0 ? (
-          <div className="p-12 text-center">
-            <p className="text-gray-500 mb-4">
-              {searchTerm ? 'No invoices match your search.' : 'No invoices found.'}
-            </p>
-            {!searchTerm && (
+        <DataTable
+          data={filteredInvoices}
+          columns={columns}
+          getRowKey={(invoice) => invoice.id}
+          onRowClick={(invoice) => router.push(`/invoices/${invoice.id}`)}
+          clickableRows
+          emptyMessage={searchTerm ? 'No invoices match your search.' : 'No invoices found.'}
+          emptyAction={
+            !searchTerm && (
               <Button onClick={() => router.push('/invoices/new')}>
                 <Plus className="h-4 w-4 mr-2" />
                 Create Your First Invoice
               </Button>
-            )}
-          </div>
-        ) : (
-          <>
-            {/* Desktop Table */}
-            <div className="hidden lg:block overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b bg-gray-50">
-                    <th className="text-left p-4 font-medium text-gray-700">Invoice #</th>
-                    <th className="text-left p-4 font-medium text-gray-700">Vendor</th>
-                    <th className="text-left p-4 font-medium text-gray-700">Date</th>
-                    <th className="text-left p-4 font-medium text-gray-700">Due Date</th>
-                    <th className="text-left p-4 font-medium text-gray-700">Status</th>
-                    <th className="text-right p-4 font-medium text-gray-700">Amount</th>
-                    <th className="text-right p-4 font-medium text-gray-700">Balance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredInvoices.map((invoice) => (
-                    <tr 
-                      key={invoice.id} 
-                      className="border-b hover:bg-gray-50 cursor-pointer"
-                      onClick={() => router.push(`/invoices/${invoice.id}`)}
-                    >
-                      <td className="p-4">
-                        <div className="font-medium">{invoice.invoice_number}</div>
-                        {invoice.reference && (
-                          <div className="text-sm text-gray-500">{invoice.reference}</div>
-                        )}
-                      </td>
-                      <td className="p-4">{invoice.vendor?.name || '-'}</td>
-                      <td className="p-4 text-sm">
-                        {new Date(invoice.invoice_date).toLocaleDateString('en-GB')}
-                      </td>
-                      <td className="p-4 text-sm">
-                        {new Date(invoice.due_date).toLocaleDateString('en-GB')}
-                      </td>
-                      <td className="p-4">
-                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(invoice.status)}`}>
-                          {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1).replace('_', ' ')}
-                        </span>
-                      </td>
-                      <td className="p-4 text-right font-medium">
-                        £{invoice.total_amount.toFixed(2)}
-                      </td>
-                      <td className="p-4 text-right">
-                        {invoice.status === 'paid' ? (
-                          <span className="text-green-600">Paid</span>
-                        ) : (
-                          <span className={invoice.status === 'overdue' ? 'text-red-600 font-medium' : ''}>
-                            £{(invoice.total_amount - invoice.paid_amount).toFixed(2)}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Mobile Card View */}
-            <div className="lg:hidden">
-              <div className="space-y-3 p-4">
-                {filteredInvoices.map((invoice) => {
-                  const isOverdue = invoice.status === 'overdue'
-                  const isPaid = invoice.status === 'paid'
-                  
-                  return (
-                    <div 
-                      key={invoice.id}
-                      onClick={() => router.push(`/invoices/${invoice.id}`)}
-                      className="bg-white border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
-                    >
-                      <div className="flex justify-between items-start mb-3">
-                        <div className="flex-1">
-                          <div className="font-semibold text-gray-900">
-                            {invoice.invoice_number}
-                          </div>
-                          <div className="text-sm text-gray-600 mt-1">
-                            {invoice.vendor?.name || 'No vendor'}
-                          </div>
-                          {invoice.reference && (
-                            <div className="text-xs text-gray-500 mt-1">
-                              Ref: {invoice.reference}
-                            </div>
-                          )}
-                        </div>
-                        <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(invoice.status)}`}>
-                          {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1).replace('_', ' ')}
-                        </span>
-                      </div>
-
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Invoice Date:</span>
-                          <span className="font-medium">
-                            {new Date(invoice.invoice_date).toLocaleDateString('en-GB')}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Due Date:</span>
-                          <span className={`font-medium ${isOverdue ? 'text-red-600' : ''}`}>
-                            {new Date(invoice.due_date).toLocaleDateString('en-GB')}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="mt-3 pt-3 border-t flex justify-between items-center">
-                        <div>
-                          <div className="text-xs text-gray-500">Total Amount</div>
-                          <div className="font-semibold text-lg">
-                            £{invoice.total_amount.toFixed(2)}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-xs text-gray-500">Balance</div>
-                          {isPaid ? (
-                            <div className="font-semibold text-green-600">Paid</div>
-                          ) : (
-                            <div className={`font-semibold ${isOverdue ? 'text-red-600' : ''}`}>
-                              £{(invoice.total_amount - invoice.paid_amount).toFixed(2)}
-                            </div>
-                          )}
-                        </div>
-                      </div>
+            )
+          }
+          renderMobileCard={(invoice) => {
+            const isOverdue = invoice.status === 'overdue'
+            const isPaid = invoice.status === 'paid'
+            
+            return (
+              <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer">
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-900">
+                      {invoice.invoice_number}
                     </div>
-                  )
-                })}
-              </div>
-            </div>
-          </>
-        )}
-      </div>
+                    <div className="text-sm text-gray-600 mt-1">
+                      {invoice.vendor?.name || 'No vendor'}
+                    </div>
+                    {invoice.reference && (
+                      <div className="text-xs text-gray-500 mt-1">
+                        Ref: {invoice.reference}
+                      </div>
+                    )}
+                  </div>
+                  <Badge variant={getStatusBadgeVariant(invoice.status)} size="sm">
+                    {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1).replace('_', ' ')}
+                  </Badge>
+                </div>
+
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Invoice Date:</span>
+                    <span className="font-medium">
+                      {new Date(invoice.invoice_date).toLocaleDateString('en-GB')}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Due Date:</span>
+                    <span className={`font-medium ${isOverdue ? 'text-red-600' : ''}`}>
+                      {new Date(invoice.due_date).toLocaleDateString('en-GB')}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-3 pt-3 border-t flex justify-between items-center">
+                  <div>
+                    <div className="text-xs text-gray-500">Total Amount</div>
+                    <div className="font-semibold text-lg">
+                      £{invoice.total_amount.toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-gray-500">Balance</div>
+                    {isPaid ? (
+                      <div className="font-semibold text-green-600">Paid</div>
+                    ) : (
+                      <div className={`font-semibold ${isOverdue ? 'text-red-600' : ''}`}>
+                        £{(invoice.total_amount - invoice.paid_amount).toFixed(2)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            )
+          }}
+        />
+      </Card>
 
       <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <Button
-          variant="outline"
+          variant="secondary"
           onClick={() => router.push('/invoices/vendors')}
           className="flex items-center justify-center gap-2 py-6"
         >
@@ -359,7 +357,7 @@ export default function InvoicesPage() {
         </Button>
         
         <Button
-          variant="outline"
+          variant="secondary"
           onClick={() => router.push('/invoices/catalog')}
           className="flex items-center justify-center gap-2 py-6"
         >
@@ -368,7 +366,7 @@ export default function InvoicesPage() {
         </Button>
         
         <Button
-          variant="outline"
+          variant="secondary"
           onClick={() => router.push('/invoices/export')}
           className="flex items-center justify-center gap-2 py-6"
         >
@@ -376,6 +374,6 @@ export default function InvoicesPage() {
           <span>Export</span>
         </Button>
       </div>
-    </div>
+    </Page>
   )
 }

@@ -4,8 +4,16 @@ import { useState, useEffect, useCallback } from 'react'
 import { getMessages, markAllMessagesAsRead } from '@/app/actions/messagesActions'
 import { formatDistanceToNow } from 'date-fns'
 import Link from 'next/link'
-import toast from 'react-hot-toast'
-import { PageLoadingSkeleton } from '@/components/ui/SkeletonLoader'
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Skeleton, SkeletonCard } from '@/components/ui-v2/feedback/Skeleton'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { List, SimpleList } from '@/components/ui-v2/display/List'
 
 interface Conversation {
   customer: {
@@ -67,73 +75,65 @@ export default function MessagesPage() {
   }
 
   if (loading) {
-    return <PageLoadingSkeleton />
+    return (
+      <Page title="Unread Messages">
+        <Card>
+          <div className="space-y-3">
+            {[...Array(5)].map((_, i) => (
+              <Skeleton key={i} className="h-20" />
+            ))}
+          </div>
+        </Card>
+      </Page>
+    )
   }
   
   return (
-    <div className="space-y-6">
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Unread Messages</h1>
-              <p className="mt-1 text-sm text-gray-500">
-                New conversations from customers
-                {totalUnreadCount > 0 && (
-                  <span className="ml-2 font-medium">({totalUnreadCount} unread message{totalUnreadCount !== 1 ? 's' : ''})</span>
-                )}
-              </p>
-            </div>
-            <div className="flex gap-2">
-          <Link
+    <Page
+      title="Unread Messages"
+      description={`New conversations from customers${totalUnreadCount > 0 ? ` (${totalUnreadCount} unread message${totalUnreadCount !== 1 ? 's' : ''})` : ''}`}
+      actions={
+        <div className="flex gap-2">
+          <LinkButton
             href="/messages/bulk"
-            className="px-6 py-3 md:py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 min-h-[44px]"
+            variant="primary"
           >
             Send Bulk Message
-          </Link>
+          </LinkButton>
           {totalUnreadCount > 0 && (
-            <button
+            <Button
               onClick={handleMarkAllAsRead}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+              variant="secondary"
             >
               Mark all as read
-            </button>
+            </Button>
           )}
-            </div>
-          </div>
         </div>
-      </div>
+      }
+    >
       
       {conversations.length === 0 ? (
-        <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-          <p className="text-lg">No unread messages</p>
-          <p className="text-sm mt-2">All customer messages have been read</p>
-        </div>
+        <Card>
+          <EmptyState
+            title="No unread messages"
+            description="All customer messages have been read"
+          />
+        </Card>
       ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="divide-y divide-gray-200">
-            {conversations.map((conversation) => (
-              <Link
-                key={conversation.customer.id}
-                href={`/customers/${conversation.customer.id}`}
-                className="block p-4 bg-blue-50 hover:bg-blue-100 transition-colors"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-4 mb-1">
-                      <h3 className="font-medium text-gray-900">
-                        {conversation.customer.first_name} {conversation.customer.last_name}
-                      </h3>
-                      {conversation.unreadCount > 0 && (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          {conversation.unreadCount} unread
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-gray-600">
-                      {conversation.customer.mobile_number}
-                    </p>
-                  </div>
+        <Card>
+          <SimpleList
+            items={conversations.map((conversation) => ({
+              id: conversation.customer.id,
+              href: `/customers/${conversation.customer.id}`,
+              title: `${conversation.customer.first_name} ${conversation.customer.last_name}`,
+              subtitle: conversation.customer.mobile_number,
+              meta: (
+                <div className="flex items-center gap-4">
+                  {conversation.messages.filter(m => m.direction === 'inbound' && !m.read_at).length > 0 && (
+                    <Badge variant="info" size="sm">
+                      {conversation.messages.filter(m => m.direction === 'inbound' && !m.read_at).length} unread
+                    </Badge>
+                  )}
                   <div className="text-right">
                     <p className="text-sm text-gray-500">
                       {formatDistanceToNow(new Date(conversation.lastMessageAt), { addSuffix: true })}
@@ -143,11 +143,12 @@ export default function MessagesPage() {
                     </p>
                   </div>
                 </div>
-              </Link>
-            ))}
-          </div>
-        </div>
+              ),
+              className: conversation.messages.filter(m => m.direction === 'inbound' && !m.read_at).length > 0 ? "bg-blue-50" : "",
+            }))}
+          />
+        </Card>
       )}
-    </div>
+    </Page>
   )
 }

@@ -110,13 +110,13 @@ export async function getOAuth2Client() {
         
         // Validate required fields
         if (!serviceAccount.type || serviceAccount.type !== 'service_account') {
-          throw new Error('Invalid service account: type must be "service_account"')
+          throw new Error('Invalid service acbadge: type must be "service_account"')
         }
         if (!serviceAccount.private_key) {
-          throw new Error('Invalid service account: missing private_key')
+          throw new Error('Invalid service acbadge: missing private_key')
         }
         if (!serviceAccount.client_email) {
-          throw new Error('Invalid service account: missing client_email')
+          throw new Error('Invalid service acbadge: missing client_email')
         }
         
         const auth = new google.auth.GoogleAuth({
@@ -133,8 +133,8 @@ export async function getOAuth2Client() {
         console.log('[Google Calendar] Auth client obtained successfully')
         return client
       } catch (error: any) {
-        console.error('Error initializing Google Service Account:', error)
-        throw new Error(`Failed to initialize Google Calendar with service account: ${error.message || error}`)
+        console.error('Error initializing Google Service Acbadge: ', error)
+        throw new Error(`Failed to initialize Google Calendar with service acbadge: ${error.message || error}`)
       }
     }
 
@@ -490,7 +490,7 @@ export async function testCalendarConnection(): Promise<{
       })
       
       console.log('[Google Calendar] Successfully listed events:', {
-        count: eventsResponse.data.items?.length || 0
+        badge: eventsResponse.data.items?.length || 0
       })
       
       return {

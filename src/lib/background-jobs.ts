@@ -35,9 +35,9 @@ export class JobQueue {
       created_at: new Date().toISOString()
     }
     
-    const supabase = createAdminClient()
+    const supabase = await createAdminClient()
     const { data, error } = await supabase
-      .from('background_jobs')
+      .from('jobs')
       .insert(job)
       .select()
       .single()
@@ -61,9 +61,9 @@ export class JobQueue {
    * Process pending jobs
    */
   async processJobs(limit = 10): Promise<void> {
-    const supabase = createAdminClient()
+    const supabase = await createAdminClient()
     const { data: jobs, error } = await supabase
-      .from('background_jobs')
+      .from('jobs')
       .select('*')
       .eq('status', 'pending')
       .lte('scheduled_for', new Date().toISOString())
@@ -91,15 +91,15 @@ export class JobQueue {
    */
   private async processJob(job: any): Promise<void> {
     const startTime = Date.now()
-    const supabase = createAdminClient()
+    const supabase = await createAdminClient()
     
     try {
       // Mark job as processing
       await supabase
-        .from('background_jobs')
+        .from('jobs')
         .update({
           status: 'processing',
-          processed_at: new Date().toISOString(),
+          started_at: new Date().toISOString(),
           attempts: job.attempts + 1
         })
         .eq('id', job.id)
@@ -109,12 +109,12 @@ export class JobQueue {
       
       // Mark as completed
       await supabase
-        .from('background_jobs')
+        .from('jobs')
         .update({
           status: 'completed',
           completed_at: new Date().toISOString(),
           result,
-          duration_ms: Date.now() - startTime
+          updated_at: new Date().toISOString()
         })
         .eq('id', job.id)
       
@@ -132,14 +132,16 @@ export class JobQueue {
       const shouldRetry = job.attempts + 1 < job.max_attempts
       
       await supabase
-        .from('background_jobs')
+        .from('jobs')
         .update({
           status: shouldRetry ? 'pending' : 'failed',
-          error: errorMessage,
+          error_message: errorMessage,
+          failed_at: shouldRetry ? null : new Date().toISOString(),
           // Exponential backoff for retries
           scheduled_for: shouldRetry 
             ? new Date(Date.now() + Math.pow(2, job.attempts) * 60000).toISOString()
-            : undefined
+            : job.scheduled_for,
+          updated_at: new Date().toISOString()
         })
         .eq('id', job.id)
       
@@ -194,7 +196,7 @@ export class JobQueue {
     
     // Log message to database
     if (payload.customerId) {
-      const supabase = createAdminClient()
+      const supabase = await createAdminClient()
       await supabase
         .from('messages')
         .insert({
@@ -217,7 +219,7 @@ export class JobQueue {
   private async processBulkSms(payload: JobPayload['send_bulk_sms']) {
     const { customerIds, message } = payload
     const results = []
-    const supabase = createAdminClient()
+    const supabase = await createAdminClient()
     
     // Process in batches to avoid overloading
     const batchSize = 10
@@ -254,7 +256,7 @@ export class JobQueue {
     const { bookingId, reminderType } = payload
     
     // Get booking details
-    const supabase = createAdminClient()
+    const supabase = await createAdminClient()
     const { data: booking } = await supabase
       .from('bookings')
       .select(`
@@ -392,7 +394,7 @@ export class JobQueue {
   
   private async syncCustomerStats(payload: JobPayload['sync_customer_stats']) {
     const { customerId } = payload
-    const supabase = createAdminClient()
+    const supabase = await createAdminClient()
     
     if (customerId) {
       // Sync single customer
@@ -412,7 +414,7 @@ export class JobQueue {
     const cutoffDate = new Date()
     cutoffDate.setDate(cutoffDate.getDate() - daysToKeep)
     
-    const supabase = createAdminClient()
+    const supabase = await createAdminClient()
     const { data, error } = await supabase
       .from('messages')
       .delete()

@@ -143,7 +143,7 @@ Note: Open HTML files in a browser and use Print > Save as PDF for PDF versions.
         start_date: startDate,
         end_date: endDate,
         export_type: exportType,
-        invoice_count: invoices.length,
+        invoice_badge: invoices.length,
         ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip')
       }
     })

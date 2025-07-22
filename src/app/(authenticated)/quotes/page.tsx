@@ -3,9 +3,23 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getQuotes, getQuoteSummary } from '@/app/actions/quotes'
-import { Button } from '@/components/ui/Button'
 import { Plus, FileText, TrendingUp, Clock, AlertCircle, FileEdit, ChevronLeft, Download, Package, ArrowRight } from 'lucide-react'
 import type { QuoteWithDetails, QuoteStatus } from '@/types/invoices'
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Select } from '@/components/ui-v2/forms/Select'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { Stat, StatGroup } from '@/components/ui-v2/display/Stat'
+import { DataTable } from '@/components/ui-v2/display/DataTable'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { toast } from '@/components/ui-v2/feedback/Toast'
 
 export default function QuotesPage() {
   const router = useRouter()
@@ -18,7 +32,7 @@ export default function QuotesPage() {
     total_pending: 0,
     total_expired: 0,
     total_accepted: 0,
-    draft_count: 0
+    draft_badge: 0
   })
 
   useEffect(() => {
@@ -49,6 +63,17 @@ export default function QuotesPage() {
   }
 
 
+  function getStatusVariant(status: QuoteStatus): 'success' | 'info' | 'warning' | 'error' | 'default' {
+    switch (status) {
+      case 'draft': return 'default'
+      case 'sent': return 'info'
+      case 'accepted': return 'success'
+      case 'rejected': return 'error'
+      case 'expired': return 'warning'
+      default: return 'default'
+    }
+  }
+
   function getStatusColor(status: QuoteStatus): string {
     switch (status) {
       case 'draft': return 'bg-gray-100 text-gray-800'
@@ -72,139 +97,120 @@ export default function QuotesPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading quotes...</p>
+      <Page title="Quotes">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <Spinner size="lg" />
+            <p className="mt-4 text-gray-600">Loading quotes...</p>
+          </div>
         </div>
-      </div>
+      </Page>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="mb-6">
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold">Quotes</h1>
-              <p className="text-sm sm:text-base text-gray-600 mt-1">Manage quotes and estimates for your vendors</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button 
-                variant="outline"
-                onClick={() => router.push('/invoices')}
-                className="text-sm sm:text-base"
-              >
-                <FileText className="h-4 w-4 mr-1 sm:mr-2" />
-                <span className="hidden sm:inline">Invoices</span>
-                <span className="sm:hidden">Inv</span>
-              </Button>
-              <Button onClick={() => router.push('/quotes/new')} className="text-sm sm:text-base">
-                <Plus className="h-4 w-4 mr-1 sm:mr-2" />
-                <span className="hidden sm:inline">New Quote</span>
-                <span className="sm:hidden">New</span>
-              </Button>
-            </div>
-          </div>
+    <Page
+      title="Quotes"
+      description="Manage quotes and estimates for your vendors"
+      actions={
+        <div className="flex flex-wrap gap-2">
+          <LinkButton 
+            href="/invoices"
+            variant="secondary"
+          >
+            <FileText className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Invoices</span>
+            <span className="sm:hidden">Inv</span>
+          </LinkButton>
+          <LinkButton 
+            href="/quotes/new"
+            variant="primary"
+          >
+            <Plus className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">New Quote</span>
+            <span className="sm:hidden">New</span>
+          </LinkButton>
         </div>
+      }
+    >
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
-          <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-4 lg:p-6">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Pending</p>
-                <p className="text-lg sm:text-xl lg:text-2xl font-semibold mt-0.5 sm:mt-1 truncate">£{summary.total_pending.toFixed(2)}</p>
-              </div>
-              <TrendingUp className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-blue-500 flex-shrink-0 ml-2" />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-4 lg:p-6">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Expired</p>
-                <p className="text-lg sm:text-xl lg:text-2xl font-semibold mt-0.5 sm:mt-1 truncate">£{summary.total_expired.toFixed(2)}</p>
-              </div>
-              <Clock className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-yellow-500 flex-shrink-0 ml-2" />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-4 lg:p-6">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Accepted</p>
-                <p className="text-lg sm:text-xl lg:text-2xl font-semibold mt-0.5 sm:mt-1 truncate">£{summary.total_accepted.toFixed(2)}</p>
-              </div>
-              <TrendingUp className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-green-500 flex-shrink-0 ml-2" />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-sm border p-3 sm:p-4 lg:p-6">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Drafts</p>
-                <p className="text-lg sm:text-xl lg:text-2xl font-semibold mt-0.5 sm:mt-1">{summary.draft_count}</p>
-              </div>
-              <FileEdit className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-gray-500 flex-shrink-0 ml-2" />
-            </div>
-          </div>
-        </div>
+      {/* Summary Cards */}
+      <Card>
+        <StatGroup>
+          <Stat label="Pending"
+            value={`£${summary.total_pending.toFixed(2)}`}
+            icon={<TrendingUp className="h-5 w-5 text-blue-500" />}
+          />
+          <Stat label="Expired"
+            value={`£${summary.total_expired.toFixed(2)}`}
+            icon={<Clock className="h-5 w-5 text-yellow-500" />}
+          />
+          <Stat label="Accepted"
+            value={`£${summary.total_accepted.toFixed(2)}`}
+            icon={<TrendingUp className="h-5 w-5 text-green-500" />}
+          />
+          <Stat label="Drafts"
+            value={summary.draft_badge}
+            icon={<FileEdit className="h-5 w-5 text-gray-500" />}
+          />
+        </StatGroup>
+      </Card>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg">
-          {error}
-        </div>
+        <Alert variant="error" title="Error" description={error} />
       )}
 
-      <div className="bg-white rounded-lg shadow-sm border">
-        <div className="p-3 sm:p-4 border-b">
-          <div className="flex flex-col lg:flex-row gap-3 sm:gap-4 justify-between items-stretch lg:items-center">
-            <div className="flex flex-col sm:flex-row gap-2 flex-1">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as QuoteStatus | 'all')}
-              className="px-3 py-2 text-sm sm:text-base border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[40px] sm:min-h-[44px]"
-            >
-              <option value="all">All Quotes</option>
-              <option value="draft">Draft</option>
-              <option value="sent">Sent</option>
-              <option value="accepted">Accepted</option>
-              <option value="rejected">Rejected</option>
-              <option value="expired">Expired</option>
-            </select>
-            
-            <input
-              type="text"
-              placeholder="Search quotes..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 flex-1"
-            />
-          </div>
-            <div className="flex gap-2 flex-shrink-0">
-              <Button variant="outline" size="sm" className="text-sm">
-                <Download className="h-4 w-4 mr-1 sm:mr-2" />
-                <span className="hidden sm:inline">Export</span>
-                <span className="sm:hidden">Exp</span>
-              </Button>
+      <Section
+        title="Quotes List"
+        actions={
+          <Button variant="secondary" size="sm">
+            <Download className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Export</span>
+            <span className="sm:hidden">Exp</span>
+          </Button>
+        }
+      >
+        <Card>
+          <div className="p-4 border-b">
+            <div className="flex flex-col lg:flex-row gap-3 sm:gap-4 justify-between items-stretch lg:items-center">
+              <div className="flex flex-col sm:flex-row gap-2 flex-1">
+                <Select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as QuoteStatus | 'all')}
+                  className="sm:w-auto"
+                >
+                  <option value="all">All Quotes</option>
+                  <option value="draft">Draft</option>
+                  <option value="sent">Sent</option>
+                  <option value="accepted">Accepted</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="expired">Expired</option>
+                </Select>
+                
+                <Input
+                  type="text"
+                  placeholder="Search quotes..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="flex-1"
+                />
+              </div>
             </div>
           </div>
-        </div>
 
-        {filteredQuotes.length === 0 ? (
-          <div className="p-12 text-center">
-            <p className="text-gray-500 mb-4">
-              {searchTerm ? 'No quotes match your search.' : 'No quotes found.'}
-            </p>
-            {!searchTerm && (
-              <Button onClick={() => router.push('/quotes/new')}>
-                <Plus className="h-4 w-4 mr-2" />
-                Create Your First Quote
-              </Button>
-            )}
-          </div>
-        ) : (
+          {filteredQuotes.length === 0 ? (
+            <EmptyState
+              title={searchTerm ? 'No quotes match your search.' : 'No quotes found.'}
+              action={
+                !searchTerm && (
+                  <LinkButton href="/quotes/new">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Your First Quote
+                  </LinkButton>
+                )
+              }
+            />
+          ) : (
           <>
             {/* Desktop Table */}
             <div className="hidden lg:block overflow-x-auto">
@@ -331,36 +337,45 @@ export default function QuotesPage() {
             </div>
           </>
         )}
-      </div>
+        </Card>
+      </Section>
 
       {/* Quick Actions */}
-      <div className="mt-6 sm:mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-        <Button
-          variant="outline"
-          className="h-20 sm:h-24 flex flex-col items-center justify-center gap-1 sm:gap-2 p-3 sm:p-4"
-          onClick={() => router.push('/invoices/vendors')}
-        >
-          <FileText className="h-6 w-6 sm:h-8 sm:w-8" />
-          <span className="text-xs sm:text-sm">Vendors</span>
-        </Button>
-        
-        <Button
-          variant="outline"
-          className="h-20 sm:h-24 flex flex-col items-center justify-center gap-1 sm:gap-2 p-3 sm:p-4"
-          onClick={() => router.push('/invoices/catalog')}
-        >
-          <Package className="h-6 w-6 sm:h-8 sm:w-8" />
-          <span className="text-xs sm:text-sm text-center">Line Item Catalog</span>
-        </Button>
-        
-        <Button
-          variant="outline"
-          className="h-20 sm:h-24 flex flex-col items-center justify-center gap-1 sm:gap-2 p-3 sm:p-4 sm:col-span-2 lg:col-span-1"
-        >
-          <Download className="h-6 w-6 sm:h-8 sm:w-8" />
-          <span className="text-xs sm:text-sm">Export Quotes</span>
-        </Button>
-      </div>
-    </div>
+      <Section title="Quick Actions">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+          <Card className="p-4">
+            <Button
+              variant="secondary"
+              className="w-full h-20 sm:h-24 flex flex-col items-center justify-center gap-1 sm:gap-2"
+              onClick={() => router.push('/invoices/vendors')}
+            >
+              <FileText className="h-6 w-6 sm:h-8 sm:w-8" />
+              <span className="text-xs sm:text-sm">Vendors</span>
+            </Button>
+          </Card>
+          
+          <Card className="p-4">
+            <Button
+              variant="secondary"
+              className="w-full h-20 sm:h-24 flex flex-col items-center justify-center gap-1 sm:gap-2"
+              onClick={() => router.push('/invoices/catalog')}
+            >
+              <Package className="h-6 w-6 sm:h-8 sm:w-8" />
+              <span className="text-xs sm:text-sm text-center">Line Item Catalog</span>
+            </Button>
+          </Card>
+          
+          <Card className="p-4 sm:col-span-2 lg:col-span-1">
+            <Button
+              variant="secondary"
+              className="w-full h-20 sm:h-24 flex flex-col items-center justify-center gap-1 sm:gap-2"
+            >
+              <Download className="h-6 w-6 sm:h-8 sm:w-8" />
+              <span className="text-xs sm:text-sm">Export Quotes</span>
+            </Button>
+          </Card>
+        </div>
+      </Section>
+    </Page>
   )
 }

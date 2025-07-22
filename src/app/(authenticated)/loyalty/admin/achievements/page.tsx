@@ -547,7 +547,7 @@ export default function AchievementManagementPage() {
                     value={formData.criteria.count || ''}
                     onChange={(e) => setFormData({ 
                       ...formData, 
-                      criteria: { ...formData.criteria, count: parseInt(e.target.value) }
+                      criteria: { ...formData.criteria, badge: parseInt(e.target.value) }
                     })}
                     className="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
                     required

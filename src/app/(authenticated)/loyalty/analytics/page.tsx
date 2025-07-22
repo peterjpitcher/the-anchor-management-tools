@@ -17,6 +17,17 @@ import {
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import { Page } from '@/components/ui-v2/layout/Page';
+import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui-v2/layout/Card';
+import { Section } from '@/components/ui-v2/layout/Section';
+import { Alert } from '@/components/ui-v2/feedback/Alert';
+import { Button } from '@/components/ui-v2/forms/Button';
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
+import { Select } from '@/components/ui-v2/forms/Select';
+import { Spinner } from '@/components/ui-v2/feedback/Spinner';
+import { DataTable } from '@/components/ui-v2/display/DataTable';
+import { Stat } from '@/components/ui-v2/display/Stat';
+import { Badge } from '@/components/ui-v2/display/Badge';
 
 interface AnalyticsData {
   // Member metrics
@@ -156,29 +167,17 @@ export default function LoyaltyAnalyticsPage() {
 
   if (!hasPermission('loyalty', 'view')) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-500">You don&apos;t have permission to view analytics.</p>
-      </div>
-    );
-  }
-
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading analytics...</p>
-        </div>
-      </div>
+      <Page title="Loyalty Analytics" error="You don't have permission to view analytics." />
     );
   }
 
   if (!analyticsData) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <p className="text-gray-500">No analytics data available.</p>
-      </div>
+      <Page 
+        title="Loyalty Analytics"
+        description="Track performance and member engagement for The Anchor VIP Club"
+        error="No analytics data available."
+      />
     );
   }
 
@@ -187,8 +186,8 @@ export default function LoyaltyAnalyticsPage() {
       name: 'Total Members',
       value: analyticsData.totalMembers.toLocaleString(),
       change: `+${analyticsData.newMembersThisWeek}`,
-      changeType: 'positive' as const,
-      icon: UserGroupIcon,
+      changeType: 'increase' as const,
+      icon: <UserGroupIcon />,
       description: 'this week'
     },
     {
@@ -196,113 +195,83 @@ export default function LoyaltyAnalyticsPage() {
       value: analyticsData.activeMembers.toLocaleString(),
       change: `${((analyticsData.activeMembers / analyticsData.totalMembers) * 100).toFixed(1)}%`,
       changeType: 'neutral' as const,
-      icon: ArrowTrendingUpIcon,
+      icon: <ArrowTrendingUpIcon />,
       description: 'engagement rate'
     },
     {
       name: 'Points Redeemed',
       value: `${(analyticsData.redemptionRate).toFixed(1)}%`,
       change: `${analyticsData.totalPointsRedeemed.toLocaleString()} pts`,
-      changeType: 'positive' as const,
-      icon: GiftIcon,
+      changeType: 'increase' as const,
+      icon: <GiftIcon />,
       description: 'total redeemed'
     },
     {
       name: 'Check-in Rate',
       value: `${analyticsData.checkInRate}%`,
       change: `${analyticsData.averageVisitsPerMember.toFixed(1)} avg`,
-      changeType: 'positive' as const,
-      icon: ChartBarIcon,
+      changeType: 'increase' as const,
+      icon: <ChartBarIcon />,
       description: 'visits per member'
     }
   ];
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <Page
+      title="Loyalty Analytics"
+      description="Track performance and member engagement for The Anchor VIP Club"
+      loading={loading}
+      actions={
+        <div className="flex gap-3">
+          <Select
+            value={dateRange}
+            onChange={(e) => setDateRange(e.target.value as any)}
+            options={[
+              { value: 'week', label: 'Last 7 days' },
+              { value: 'month', label: 'Last 30 days' },
+              { value: 'quarter', label: 'Last 3 months' },
+              { value: 'year', label: 'Last 12 months' }
+            ]}
+          />
+          <LinkButton href="/loyalty/admin" variant="secondary">
+            Back to Dashboard
+          </LinkButton>
+        </div>
+      }
+    >
       {/* Operational Status Banner */}
       {!programOperational && (
-        <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <div className="flex items-center">
-            <ExclamationTriangleIcon className="h-5 w-5 text-yellow-600 mr-2" />
-            <div>
-              <p className="text-yellow-800 font-medium">Viewing Historical Data</p>
-              <p className="text-sm text-yellow-700">
-                The loyalty program is not operational. Analytics show historical data. New points won&apos;t be earned until you 
-                <Link href="/settings/loyalty" className="ml-1 text-yellow-900 underline">enable operations</Link>.
-              </p>
-            </div>
-          </div>
-        </div>
+        <Alert
+          variant="warning"
+          title="Viewing Historical Data"
+          className="mb-6"
+        >
+          The loyalty program is not operational. Analytics show historical data. New points won't be earned until you
+          <Link href="/settings/loyalty" className="ml-1 text-yellow-900 underline">enable operations</Link>.
+        </Alert>
       )}
 
-      {/* Header */}
-      <div className="mb-6 sm:mb-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Loyalty Analytics</h1>
-            <p className="mt-1 text-sm sm:text-base text-gray-500">
-              Track performance and member engagement for The Anchor VIP Club
-            </p>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-            <select
-              value={dateRange}
-              onChange={(e) => setDateRange(e.target.value as any)}
-              className="rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 text-sm min-h-[40px]"
-            >
-              <option value="week">Last 7 days</option>
-              <option value="month">Last 30 days</option>
-              <option value="quarter">Last 3 months</option>
-              <option value="year">Last 12 months</option>
-            </select>
-            <Link
-              href="/loyalty/admin"
-              className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 min-h-[40px]"
-            >
-              Back to Dashboard
-            </Link>
-          </div>
-        </div>
-      </div>
-
       {/* Key Metrics */}
-      <div className="grid grid-cols-1 gap-3 sm:gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-6 sm:mb-8">
-        {stats.map((stat) => (
-          <div key={stat.name} className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-4 sm:p-5">
-              <div className="flex items-start">
-                <div className="flex-shrink-0">
-                  <stat.icon className="h-5 w-5 sm:h-6 sm:w-6 text-gray-400" />
-                </div>
-                <div className="ml-3 sm:ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-xs sm:text-sm font-medium text-gray-500 truncate">
-                      {stat.name}
-                    </dt>
-                    <dd className="flex items-baseline flex-wrap">
-                      <div className="text-lg sm:text-2xl font-semibold text-gray-900">
-                        {stat.value}
-                      </div>
-                      <div className={`ml-2 flex items-baseline text-xs sm:text-sm font-semibold ${
-                        stat.changeType === 'positive' ? 'text-green-600' : 'text-gray-600'
-                      }`}>
-                        {stat.change}
-                      </div>
-                    </dd>
-                    <dd className="text-xs text-gray-500 mt-1">
-                      {stat.description}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
+      <Section className="mb-6">
+        <div className="grid grid-cols-1 gap-3 sm:gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          {stats.map((stat) => (
+            <Stat key={stat.name}
+              label={stat.name}
+              value={stat.value}
+              change={stat.change}
+              changeType={stat.changeType}
+              icon={stat.icon}
+              description={stat.description}
+            />
+          ))}
+        </div>
+      </Section>
 
       {/* Tier Distribution */}
-      <div className="bg-white shadow rounded-lg p-4 sm:p-6 mb-6 sm:mb-8">
-        <h2 className="text-base sm:text-lg font-medium text-gray-900 mb-4">Member Distribution by Tier</h2>
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Member Distribution by Tier</CardTitle>
+        </CardHeader>
         <div className="space-y-4">
           {Object.entries(analyticsData.tierDistribution).map(([tier, count]) => {
             const percentage = (count / analyticsData.totalMembers) * 100;
@@ -332,13 +301,15 @@ export default function LoyaltyAnalyticsPage() {
             );
           })}
         </div>
-      </div>
+      </Card>
 
       {/* Popular Times and Rewards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8 mb-6 sm:mb-8">
         {/* Popular Check-in Times */}
-        <div className="bg-white shadow rounded-lg p-4 sm:p-6">
-          <h2 className="text-base sm:text-lg font-medium text-gray-900 mb-4">Peak Check-in Times</h2>
+        <Card>
+          <CardHeader>
+            <CardTitle>Peak Check-in Times</CardTitle>
+          </CardHeader>
           <div className="space-y-3">
             <div className="flex items-center justify-between text-sm font-medium text-gray-500">
               <span>Day</span>
@@ -365,11 +336,13 @@ export default function LoyaltyAnalyticsPage() {
                 );
               })}
           </div>
-        </div>
+        </Card>
 
         {/* Most Popular Rewards */}
-        <div className="bg-white shadow rounded-lg p-4 sm:p-6">
-          <h2 className="text-base sm:text-lg font-medium text-gray-900 mb-4">Most Redeemed Rewards</h2>
+        <Card>
+          <CardHeader>
+            <CardTitle>Most Redeemed Rewards</CardTitle>
+          </CardHeader>
           <div className="space-y-3">
             {analyticsData.mostPopularRewards.map((reward, index) => (
               <div key={reward.name} className="flex items-center justify-between">
@@ -384,13 +357,15 @@ export default function LoyaltyAnalyticsPage() {
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Member Engagement Analysis */}
       {engagementData && (
-        <div className="bg-white shadow rounded-lg p-4 sm:p-6 mb-6 sm:mb-8">
-          <h2 className="text-base sm:text-lg font-medium text-gray-900 mb-4">Member Engagement Analysis</h2>
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Member Engagement Analysis</CardTitle>
+          </CardHeader>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
             {/* Engagement Cohorts */}
             <div>
@@ -445,116 +420,104 @@ export default function LoyaltyAnalyticsPage() {
               </div>
             </div>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Monthly Trends Chart (Simplified) */}
-      <div className="bg-white shadow rounded-lg p-4 sm:p-6">
-        <h2 className="text-base sm:text-lg font-medium text-gray-900 mb-4">Monthly Growth Trends</h2>
-        <div className="overflow-x-auto -mx-4 sm:mx-0">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead>
-              <tr>
-                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Month
-                </th>
-                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <span className="hidden sm:inline">Total Members</span>
-                  <span className="sm:hidden">Members</span>
-                </th>
-                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <span className="hidden sm:inline">Check-ins</span>
-                  <span className="sm:hidden">Visits</span>
-                </th>
-                <th className="hidden sm:table-cell px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Points Issued
-                </th>
-                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Growth
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {analyticsData.monthlyTrends.map((month, index) => {
-                const previousMonth = analyticsData.monthlyTrends[index - 1];
-                const growth = previousMonth 
-                  ? ((month.members - previousMonth.members) / previousMonth.members * 100).toFixed(1)
-                  : '0';
-                  
-                return (
-                  <tr key={month.month}>
-                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-900">
-                      {month.month}
-                    </td>
-                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500">
-                      {month.members.toLocaleString()}
-                    </td>
-                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500">
-                      {month.checkIns.toLocaleString()}
-                    </td>
-                    <td className="hidden sm:table-cell px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500">
-                      {month.points.toLocaleString()}
-                    </td>
-                    <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm">
-                      <span className={`flex items-center ${
-                        parseFloat(growth) > 0 ? 'text-green-600' : 
-                        parseFloat(growth) < 0 ? 'text-red-600' : 
-                        'text-gray-500'
-                      }`}>
-                        {parseFloat(growth) > 0 ? (
-                          <ArrowUpIcon className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                        ) : parseFloat(growth) < 0 ? (
-                          <ArrowDownIcon className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                        ) : null}
-                        {growth}%
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      <Card>
+        <CardHeader>
+          <CardTitle>Monthly Growth Trends</CardTitle>
+        </CardHeader>
+        <div className="overflow-x-auto">
+          <DataTable
+            data={analyticsData.monthlyTrends}
+            getRowKey={(item) => item.month}
+            columns={[
+              { key: 'month', header: 'Month', cell: (row) => row.month },
+              { key: 'members', header: 'Total Members', cell: (row) => row.members.toLocaleString() },
+              { key: 'checkIns', header: 'Check-ins', cell: (row) => row.checkIns.toLocaleString() },
+              { key: 'points', header: 'Points Issued', cell: (row) => row.points.toLocaleString(), className: 'hidden sm:table-cell' },
+              {
+                key: 'growth',
+                header: 'Growth',
+                cell: (row) => {
+                  const currentIndex = analyticsData.monthlyTrends.findIndex(trend => trend.month === row.month);
+                  const previousMonth = currentIndex > 0 ? analyticsData.monthlyTrends[currentIndex - 1] : null;
+                  const growth = previousMonth
+                    ? ((row.members - previousMonth.members) / previousMonth.members * 100).toFixed(1)
+                    : '0';
+                  return (
+                    <span className={`flex items-center ${
+                      parseFloat(growth) > 0 ? 'text-green-600' :
+                      parseFloat(growth) < 0 ? 'text-red-600' :
+                      'text-gray-500'
+                    }`}>
+                      {parseFloat(growth) > 0 ? (
+                        <ArrowUpIcon className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                      ) : parseFloat(growth) < 0 ? (
+                        <ArrowDownIcon className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                      ) : null}
+                      {growth}%
+                    </span>
+                  );
+                }
+              }
+            ]}
+          />
         </div>
-      </div>
+      </Card>
 
       {/* Quick Actions */}
-      <div className="mt-6 sm:mt-8 bg-gray-50 rounded-lg p-4 sm:p-6">
-        <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
-          <Link
-            href="/loyalty/admin/members"
-            className="flex items-center p-3 sm:p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow"
-          >
-            <UserGroupIcon className="h-6 w-6 sm:h-8 sm:w-8 text-amber-600 mr-3 flex-shrink-0" />
-            <div className="min-w-0">
-              <p className="font-medium text-gray-900 text-sm sm:text-base">View All Members</p>
-              <p className="text-xs sm:text-sm text-gray-500">Browse and manage</p>
-            </div>
-          </Link>
-          
-          <Link
-            href="/messages/bulk"
-            className="flex items-center p-3 sm:p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow"
-          >
-            <ArrowTrendingUpIcon className="h-6 w-6 sm:h-8 sm:w-8 text-amber-600 mr-3 flex-shrink-0" />
-            <div className="min-w-0">
-              <p className="font-medium text-gray-900 text-sm sm:text-base">Send Campaign</p>
-              <p className="text-xs sm:text-sm text-gray-500">Target VIP members</p>
-            </div>
-          </Link>
-          
-          <Link
-            href="/loyalty/admin/rewards"
-            className="flex items-center p-3 sm:p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow"
-          >
-            <GiftIcon className="h-6 w-6 sm:h-8 sm:w-8 text-amber-600 mr-3 flex-shrink-0" />
-            <div className="min-w-0">
-              <p className="font-medium text-gray-900 text-sm sm:text-base">Manage Rewards</p>
-              <p className="text-xs sm:text-sm text-gray-500">Update catalog</p>
-            </div>
-          </Link>
-        </div>
-      </div>
-    </div>
+      <Section className="mt-6">
+        <Card padding="lg" variant="bordered">
+          <CardHeader>
+            <CardTitle>Quick Actions</CardTitle>
+          </CardHeader>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
+            <Card 
+              interactive
+              onClick={() => window.location.href = '/loyalty/admin/members'}
+              className="hover:shadow-md transition-shadow"
+            >
+              <div className="flex items-center">
+                <UserGroupIcon className="h-6 w-6 sm:h-8 sm:w-8 text-amber-600 mr-3 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="font-medium text-gray-900 text-sm sm:text-base">View All Members</p>
+                  <p className="text-xs sm:text-sm text-gray-500">Browse and manage</p>
+                </div>
+              </div>
+            </Card>
+            
+            <Card 
+              interactive
+              onClick={() => window.location.href = '/messages/bulk'}
+              className="hover:shadow-md transition-shadow"
+            >
+              <div className="flex items-center">
+                <ArrowTrendingUpIcon className="h-6 w-6 sm:h-8 sm:w-8 text-amber-600 mr-3 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="font-medium text-gray-900 text-sm sm:text-base">Send Campaign</p>
+                  <p className="text-xs sm:text-sm text-gray-500">Target VIP members</p>
+                </div>
+              </div>
+            </Card>
+            
+            <Card 
+              interactive
+              onClick={() => window.location.href = '/loyalty/admin/rewards'}
+              className="hover:shadow-md transition-shadow"
+            >
+              <div className="flex items-center">
+                <GiftIcon className="h-6 w-6 sm:h-8 sm:w-8 text-amber-600 mr-3 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="font-medium text-gray-900 text-sm sm:text-base">Manage Rewards</p>
+                  <p className="text-xs sm:text-sm text-gray-500">Update catalog</p>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </Card>
+      </Section>
+    </Page>
   );
 }

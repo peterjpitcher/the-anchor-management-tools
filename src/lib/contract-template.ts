@@ -448,7 +448,7 @@ export function generateContractHTML(data: ContractData): string {
               ${item.description}
               ${hasDiscount ? `
                 <br/><small class="discount-note">
-                  <strong>✓ Discount: ${item.discount_type === 'percent' ? `${item.discount_value}% off` : `£${item.discount_value} off`}</strong>
+                  <strong>✓ Disbadge: ${item.discount_type === 'percent' ? `${item.discount_value}% off` : `£${item.discount_value} off`}</strong>
                   ${item.notes ? ` - ${item.notes}` : ''}
                 </small>
               ` : ''}
@@ -494,7 +494,7 @@ export function generateContractHTML(data: ContractData): string {
               ${item.description}
               ${hasDiscount ? `
                 <br/><small class="discount-note">
-                  <strong>✓ Discount: ${item.discount_type === 'percent' ? `${item.discount_value}% off` : `£${item.discount_value} off`}</strong>
+                  <strong>✓ Disbadge: ${item.discount_type === 'percent' ? `${item.discount_value}% off` : `£${item.discount_value} off`}</strong>
                   ${item.notes ? ` - ${item.notes}` : ''}
                 </small>
               ` : ''}

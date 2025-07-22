@@ -85,7 +85,7 @@ async function sendBirthdayRemindersInternal(daysAhead: number = 7) {
       resource_type: 'employee',
       operation_status: 'success',
       additional_info: {
-        employees_count: upcomingBirthdays.length,
+        employees_badge: upcomingBirthdays.length,
         sent_to: managerEmail,
         employee_names: upcomingBirthdays.map(e => `${e.first_name} ${e.last_name}`).join(', ')
       }

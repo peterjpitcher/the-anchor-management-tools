@@ -240,7 +240,7 @@ export async function sendBulkLoyaltyNotification(data: z.infer<typeof BulkNotif
       .insert({
         notification_type: validatedData.type,
         message: validatedData.message,
-        recipient_count: validMembers.length,
+        recipient_badge: validMembers.length,
         filter_criteria: {
           member_ids: validatedData.member_ids,
           tier_ids: validatedData.tier_ids
@@ -261,7 +261,7 @@ export async function sendBulkLoyaltyNotification(data: z.infer<typeof BulkNotif
       operation_status: 'success',
       new_values: {
         type: validatedData.type,
-        recipient_count: validMembers.length,
+        recipient_badge: validMembers.length,
         scheduled: !!validatedData.schedule_for
       }
     });

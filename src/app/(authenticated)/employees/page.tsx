@@ -1,19 +1,27 @@
 'use client'
 
-import { useState, Fragment, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import Link from 'next/link'
 import type { Employee } from '@/types/database'
-import { Badge } from '@/components/ui/Badge'
-import { PlusIcon, MagnifyingGlassIcon, ArrowDownTrayIcon, ChevronDownIcon, CakeIcon } from '@heroicons/react/24/outline'
-import { Menu, Transition } from '@headlessui/react'
+import { PlusIcon, ArrowDownTrayIcon, ChevronDownIcon, CakeIcon } from '@heroicons/react/24/outline'
 import { formatDate } from '@/lib/dateUtils'
-import toast from 'react-hot-toast'
 import { exportEmployees } from '@/app/actions/employeeExport'
 import { usePagination } from '@/hooks/usePagination'
-import { Pagination } from '@/components/Pagination'
-import { PageLoadingSkeleton } from '@/components/ui/SkeletonLoader'
 import { calculateLengthOfService } from '@/lib/employeeUtils'
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { DataTable } from '@/components/ui-v2/display/DataTable'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { SearchInput } from '@/components/ui-v2/forms/SearchInput'
+import { StatusBadge } from '@/components/ui-v2/display/Badge'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Dropdown } from '@/components/ui-v2/navigation/Dropdown'
+import { Pagination as PaginationV2 } from '@/components/ui-v2/navigation/Pagination'
+import { Skeleton } from '@/components/ui-v2/feedback/Skeleton'
+import { TabNav } from '@/components/ui-v2/navigation/TabNav'
 
 export default function EmployeesPage() {
   const supabase = useSupabase()
@@ -91,159 +99,81 @@ export default function EmployeesPage() {
   }
 
   if (loading) {
-    return <PageLoadingSkeleton />
+    return (
+      <Page title="Employees">
+        <Card>
+          <div className="space-y-3">
+            {[...Array(5)].map((_, i) => (
+              <Skeleton key={i} className="h-16" />
+            ))}
+          </div>
+        </Card>
+      </Page>
+    )
   }
 
   return (
-    <div className="space-y-6">
-        <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <div className="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:justify-between sm:items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Employees</h1>
-              <p className="mt-1 text-sm text-gray-500">
-                {employees.length} total employees ({activeCount} active, {prospectiveCount} prospective, {formerCount} former)
-              </p>
-            </div>
-            <div className="flex-shrink-0 flex space-x-2">
-              <Link 
-                href="/employees/birthdays" 
-                className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-              >
-                <CakeIcon className="-ml-1 mr-2 h-5 w-5" />
-                Birthdays
-              </Link>
-              <Menu as="div" className="relative inline-block text-left">
-                <div>
-                  <Menu.Button
-                    className="inline-flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={employees.length === 0}
-                  >
-                    <ArrowDownTrayIcon className="-ml-1 mr-2 h-5 w-5" />
-                    Export
-                    <ChevronDownIcon className="ml-2 -mr-1 h-5 w-5" />
-                  </Menu.Button>
-                </div>
-                <Transition
-                  as={Fragment}
-                  enter="transition ease-out duration-100"
-                  enterFrom="transform opacity-0 scale-95"
-                  enterTo="transform opacity-100 scale-100"
-                  leave="transition ease-in duration-75"
-                  leaveFrom="transform opacity-100 scale-100"
-                  leaveTo="transform opacity-0 scale-95"
-                >
-                  <Menu.Items className="origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-10">
-                    <div className="py-1">
-                      <Menu.Item>
-                        {({ active }) => (
-                          <button
-                            onClick={() => handleExport('csv')}
-                            className={`${
-                              active ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
-                            } block px-4 py-2 text-sm w-full text-left`}
-                          >
-                            Export as CSV
-                            <span className="block text-xs text-gray-500">Spreadsheet format</span>
-                          </button>
-                        )}
-                      </Menu.Item>
-                      <Menu.Item>
-                        {({ active }) => (
-                          <button
-                            onClick={() => handleExport('json')}
-                            className={`${
-                              active ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
-                            } block px-4 py-2 text-sm w-full text-left`}
-                          >
-                            Export as JSON
-                            <span className="block text-xs text-gray-500">Data integration format</span>
-                          </button>
-                        )}
-                      </Menu.Item>
-                    </div>
-                  </Menu.Items>
-                </Transition>
-              </Menu>
-              <Link 
-                href="/employees/new" 
-                className="inline-flex items-center justify-center rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap min-h-[44px] bg-green-600 text-white shadow-sm hover:bg-green-700 focus:ring-green-500 px-6 py-3 md:py-2 text-base md:text-sm"
-              >
-                <PlusIcon className="-ml-1 mr-2 h-5 w-5 flex-shrink-0" />
-                Add Employee
-              </Link>
-            </div>
-          </div>
+    <Page
+      title="Employees"
+      description={`${employees.length} total employees (${activeCount} active, ${prospectiveCount} prospective, ${formerCount} former)`}
+      actions={
+        <div className="flex-shrink-0 flex space-x-2">
+          <LinkButton
+            href="/employees/birthdays"
+            variant="secondary"
+          >
+            <CakeIcon className="-ml-1 mr-2 h-5 w-5" />
+            Birthdays
+          </LinkButton>
+          <Dropdown label="Export"
+            icon={<ArrowDownTrayIcon className="h-5 w-5" />}
+            items={[
+              {
+                key: 'csv',
+                label: 'Export as CSV',
+                description: 'Spreadsheet format',
+                onClick: () => handleExport('csv'),
+              },
+              {
+                key: 'json',
+                label: 'Export as JSON',
+                description: 'Data integration format',
+                onClick: () => handleExport('json'),
+              },
+            ]}
+            disabled={employees.length === 0}
+            variant="secondary"
+          />
+          <LinkButton
+            href="/employees/new"
+            variant="primary"
+          >
+            <PlusIcon className="-ml-1 mr-2 h-5 w-5 flex-shrink-0" />
+            Add Employee
+          </LinkButton>
         </div>
-      </div>
+      }
+    >
 
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6 border-b border-gray-200">
-          <div className="flex flex-col sm:flex-row gap-4">
-            {/* Search Input */}
-            <div className="flex-1">
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                  placeholder="Search by name, email, or job title..."
-                />
-              </div>
-            </div>
-
-            {/* Status Filter */}
-            <div className="flex items-center space-x-2">
-              <span className="text-sm font-medium text-gray-500">Status:</span>
-              <div className="flex space-x-1">
-                <button
-                  onClick={() => setStatusFilter('all')}
-                  className={`px-3 py-1 text-sm font-medium rounded-full focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
-                    statusFilter === 'all'
-                      ? 'bg-green-600 text-white'
-                      : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-                  }`}
-                >
-                  All ({employees.length})
-                </button>
-                <button
-                  onClick={() => setStatusFilter('Active')}
-                  className={`px-3 py-1 text-sm font-medium rounded-full focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
-                    statusFilter === 'Active'
-                      ? 'bg-green-600 text-white'
-                      : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-                  }`}
-                >
-                  Active ({activeCount})
-                </button>
-                <button
-                  onClick={() => setStatusFilter('Prospective')}
-                  className={`px-3 py-1 text-sm font-medium rounded-full focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
-                    statusFilter === 'Prospective'
-                      ? 'bg-green-600 text-white'
-                      : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-                  }`}
-                >
-                  Prospective ({prospectiveCount})
-                </button>
-                <button
-                  onClick={() => setStatusFilter('Former')}
-                  className={`px-3 py-1 text-sm font-medium rounded-full focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
-                    statusFilter === 'Former'
-                      ? 'bg-green-600 text-white'
-                      : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-                  }`}
-                >
-                  Former ({formerCount})
-                </button>
-              </div>
-            </div>
-          </div>
-
+      <Card>
+        <div className="space-y-4">
+          <SearchInput
+            placeholder="Search by name, email, or job title..."
+            value={searchTerm}
+            onSearch={setSearchTerm}
+          />
+          
+          <TabNav
+            tabs={[
+              { key: 'all', label: 'All', badge: employees.length },
+              { key: 'Active', label: 'Active', badge: activeCount },
+              { key: 'Prospective', label: 'Prospective', badge: prospectiveCount },
+              { key: 'Former', label: 'Former', badge: formerCount },
+            ]}
+            activeKey={statusFilter}
+            onChange={(tab) => setStatusFilter(tab as 'all' | 'Active' | 'Former' | 'Prospective')}
+          />
+          
           {/* Search Results Count */}
           {searchTerm && (
             <div className="mt-2 text-sm text-gray-500">
@@ -251,8 +181,10 @@ export default function EmployeesPage() {
             </div>
           )}
         </div>
+      </Card>
         
-        {employees.length === 0 && (
+      {employees.length === 0 ? (
+        <Card>
           <div className="text-center py-12">
             <h3 className="text-lg font-medium text-gray-900">No employees found</h3>
             <p className="mt-1 text-sm text-gray-500">
@@ -261,117 +193,78 @@ export default function EmployeesPage() {
                 : 'Get started by adding a new employee.'}
             </p>
           </div>
-        )}
-        
-        {employees.length > 0 && (
-          <div>
-            {/* Desktop Table */}
-            <div className="overflow-x-auto hidden md:block">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Name
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Job Title
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Email
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Start Date
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {employees.map((employee) => (
-                    <tr key={employee.employee_id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <Link href={`/employees/${employee.employee_id}`} className="text-blue-600 hover:text-blue-700">
-                          {employee.first_name} {employee.last_name}
-                        </Link>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{employee.job_title}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <a href={`mailto:${employee.email_address}`} className="text-blue-600 hover:text-blue-700">
-                          {employee.email_address}
-                        </a>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <div>
-                          {employee.employment_start_date 
-                            ? formatDate(employee.employment_start_date)
-                            : 'N/A'}
-                        </div>
-                        <div className="text-xs text-gray-400">
-                          {calculateLengthOfService(employee.employment_start_date)}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <Badge variant={employee.status === 'Active' ? 'success' : employee.status === 'Prospective' ? 'info' : 'error'}>
-                          {employee.status}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Mobile List */}
-            <div className="block md:hidden">
-              <ul className="divide-y divide-gray-200">
-                {employees.map((employee) => (
-                  <li key={employee.employee_id} className="px-4 py-4 sm:px-6">
-                    <Link href={`/employees/${employee.employee_id}`} className="block hover:bg-gray-50">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium text-blue-600 truncate">{employee.first_name} {employee.last_name}</p>
-                        <div className="ml-2 flex-shrink-0 flex">
-                          <Badge variant={employee.status === 'Active' ? 'success' : employee.status === 'Prospective' ? 'info' : 'error'}>
-                            {employee.status}
-                          </Badge>
-                        </div>
-                      </div>
-                      <div className="mt-2 sm:flex sm:justify-between">
-                        <div className="sm:flex">
-                          <p className="flex items-center text-sm text-gray-500">{employee.job_title}</p>
-                        </div>
-                        <div className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
-                          <div>
-                            <p>
-                              Started: {employee.employment_start_date 
-                                ? formatDate(employee.employment_start_date)
-                                : 'N/A'}
-                            </p>
-                            <p className="text-xs text-gray-400">
-                              {calculateLengthOfService(employee.employment_start_date)}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )}
-        
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            totalItems={totalCount}
-            itemsPerPage={pageSize}
-            onPageChange={setPage}
+        </Card>
+      ) : (
+        <Card>
+          <DataTable
+            data={employees}
+            getRowKey={(employee) => employee.employee_id}
+            columns={[
+              {
+                key: 'name',
+                header: 'Name',
+                cell: (employee) => (
+                  <Link href={`/employees/${employee.employee_id}`} className="text-blue-600 hover:text-blue-700 font-medium">
+                    {employee.first_name} {employee.last_name}
+                  </Link>
+                ),
+              },
+              {
+                key: 'job_title',
+                header: 'Job Title',
+                cell: (employee) => employee.job_title,
+              },
+              {
+                key: 'email_address',
+                header: 'Email',
+                cell: (employee) => (
+                  <a href={`mailto:${employee.email_address}`} className="text-blue-600 hover:text-blue-700">
+                    {employee.email_address}
+                  </a>
+                ),
+              },
+              {
+                key: 'employment_start_date',
+                header: 'Start Date',
+                cell: (employee) => (
+                  <div>
+                    <div>
+                      {employee.employment_start_date 
+                        ? formatDate(employee.employment_start_date)
+                        : 'N/A'}
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      {calculateLengthOfService(employee.employment_start_date)}
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                key: 'status',
+                header: 'Status',
+                cell: (employee) => (
+                  <StatusBadge
+                    status={employee.status === 'Active' ? 'success' : employee.status === 'Prospective' ? 'pending' : 'inactive'}
+                  >
+                    {employee.status}
+                  </StatusBadge>
+                ),
+              },
+            ]}
           />
-        )}
-      </div>
-    </div>
+          
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <PaginationV2
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={totalCount}
+              itemsPerPage={pageSize}
+              onPageChange={setPage}
+            />
+          )}
+        </Card>
+      )}
+    </Page>
   )
 }

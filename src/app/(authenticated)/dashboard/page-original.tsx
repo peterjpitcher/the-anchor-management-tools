@@ -50,7 +50,7 @@ interface DashboardStats {
 interface RecentActivity {
   id: string
   type: 'booking' | 'message' | 'employee' | 'template'
-  description: string
+  message: string
   timestamp: string
   status?: 'success' | 'warning' | 'error'
 }
@@ -133,7 +133,7 @@ export default function DashboardPage() {
         // Get template count
         const { count: templateCount, error: templateError } = await supabase
           .from('message_templates')
-          .select('*', { count: 'exact' })
+          .select('*', { count: 'exact', head: true })
           .eq('is_active', true)
 
         if (templateError) throw templateError
@@ -178,7 +178,7 @@ export default function DashboardPage() {
           activities.push({
             id: `booking-${booking.event_id}`,
             type: 'booking',
-            description: `New booking: ${booking.seats} seats`,
+            message: `New booking: ${booking.seats} seats`,
             timestamp: booking.created_at,
             status: 'success'
           })
@@ -193,7 +193,7 @@ export default function DashboardPage() {
           activities.push({
             id: `message-${message.created_at}`,
             type: 'message',
-            description: `SMS ${message.twilio_status === 'delivered' ? 'delivered' : 'sent'}`,
+            message: `SMS ${message.twilio_status === 'delivered' ? 'delivered' : 'sent'}`,
             timestamp: message.created_at,
             status: message.twilio_status === 'delivered' ? 'success' : 'warning'
           })
@@ -531,7 +531,7 @@ export default function DashboardPage() {
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-900">{activity.description}</p>
+                      <p className="text-sm text-gray-900">{activity.message}</p>
                       <p className="text-xs text-gray-500">
                         {new Date(activity.timestamp).toLocaleString()}
                       </p>

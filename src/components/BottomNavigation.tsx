@@ -6,7 +6,7 @@ import { CalendarIcon, UserGroupIcon, PencilSquareIcon, EnvelopeIcon, BuildingOf
 import { useEffect, useState, useMemo } from 'react'
 import { getUnreadMessageCount } from '@/app/actions/messagesActions'
 import { usePermissions } from '@/contexts/PermissionContext'
-import { Badge } from '@/components/ui/Badge'
+import { Badge } from '@/components/ui-v2/display/Badge'
 import type { ModuleName, ActionType } from '@/types/rbac'
 
 // ADDED Props interface
@@ -22,7 +22,7 @@ export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps)
     // Load unread count on mount
     async function loadUnreadCount() {
       const result = await getUnreadMessageCount()
-      setUnreadCount(result.count)
+      setUnreadCount(result.badge)
     }
     
     loadUnreadCount()
