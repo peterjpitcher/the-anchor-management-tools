@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { useRouter } from 'next/navigation'
-import toast from 'react-hot-toast'
 import { 
   UserCircleIcon, 
   CameraIcon,
@@ -13,6 +12,19 @@ import {
   ArrowDownTrayIcon
 } from '@heroicons/react/24/outline'
 import Link from 'next/link'
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Toggle } from '@/components/ui-v2/forms/Toggle'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Skeleton } from '@/components/ui-v2/feedback/Skeleton'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 
 interface Profile {
   id: string
@@ -33,6 +45,7 @@ export default function ProfilePage() {
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [fullName, setFullName] = useState('')
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const loadProfile = useCallback(async () => {
     try {
@@ -216,10 +229,6 @@ export default function ProfilePage() {
   }
 
   async function requestAccountDeletion() {
-    if (!confirm('Are you sure you want to request account deletion? This action cannot be undone.')) {
-      return
-    }
-
     try {
       // Log the deletion request
       const { error } = await supabase
@@ -235,6 +244,7 @@ export default function ProfilePage() {
       if (error) throw error
 
       toast.success('Account deletion request submitted. We will contact you within 48 hours.')
+      setShowDeleteConfirm(false)
     } catch (error) {
       console.error('Error requesting deletion:', error)
       toast.error('Failed to submit deletion request')
@@ -242,25 +252,56 @@ export default function ProfilePage() {
   }
 
   if (loading) {
-    return <div className="p-6 text-center">Loading profile...</div>
+    return (
+      <Page title="My Profile">
+        <div className="space-y-6">
+          <Card>
+            <Skeleton className="h-48" />
+          </Card>
+          <Card>
+            <Skeleton className="h-32" />
+          </Card>
+          <Card>
+            <Skeleton className="h-32" />
+          </Card>
+        </div>
+      </Page>
+    )
   }
 
   if (!profile) {
-    return <div className="p-6 text-center">Profile not found</div>
+    return (
+      <Page title="My Profile">
+        <Card>
+          <EmptyState
+            title="Profile not found"
+            description="We couldn't load your profile information."
+            action={
+              <Button onClick={loadProfile}>
+                Try Again
+              </Button>
+            }
+          />
+        </Card>
+      </Page>
+    )
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold text-gray-900 mb-8">My Profile</h1>
+    <Page title="My Profile">
+      {/* Delete confirmation dialog */}
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={requestAccountDeletion}
+        title="Request Account Deletion"
+        message="Are you sure you want to request account deletion? This action cannot be undone."
+        confirmText="Request Deletion"
+      />
 
-      <div className="space-y-6">
-        {/* Profile Information */}
-        <div className="bg-white shadow sm:rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
-            <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">
-              Profile Information
-            </h3>
-
+      {/* Profile Information */}
+      <Section title="Profile Information">
+        <Card>
             <div className="space-y-6">
               {/* Avatar */}
               <div className="flex items-center space-x-6">
@@ -299,82 +340,65 @@ export default function ProfilePage() {
 
               {/* Form Fields */}
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  id="email"
-                  value={profile.email || ''}
-                  disabled
-                  className="mt-1 block w-full rounded-lg border-gray-300 bg-gray-50 shadow-sm sm:text-sm"
-                />
+                <FormGroup label="Email">
+                  <Input
+                    type="email"
+                    value={profile.email || ''}
+                    disabled
+                  />
+                </FormGroup>
               </div>
 
-              <div>
-                <label htmlFor="full_name" className="block text-sm font-medium text-gray-700">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  id="full_name"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 focus:ring-2 sm:text-sm"
-                />
-              </div>
+                <FormGroup label="Full Name">
+                  <Input
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                  />
+                </FormGroup>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Member Since
-                </label>
-                <p className="mt-1 text-sm text-gray-900">
-                  {new Date(profile.created_at).toLocaleDateString('en-GB', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric'
-                  })}
-                </p>
-              </div>
+                <FormGroup label="Member Since">
+                  <p className="text-sm text-gray-900">
+                    {new Date(profile.created_at).toLocaleDateString('en-GB', {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric'
+                    })}
+                  </p>
+                </FormGroup>
 
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={updateProfile}
-                  disabled={saving}
-                  className="inline-flex items-center px-6 py-3 md:py-2 border border-transparent text-base md:text-sm font-medium rounded-lg shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
-                >
-                  {saving ? 'Saving...' : 'Save Changes'}
-                </button>
-              </div>
+                <div className="flex justify-end">
+                  <Button
+                    onClick={updateProfile}
+                    disabled={saving}
+                    loading={saving}
+                    variant="primary"
+                  >
+                    Save Changes
+                  </Button>
+                </div>
             </div>
-          </div>
-        </div>
+          </Card>
+        </Section>
 
         {/* Security Settings */}
-        <div className="bg-white shadow sm:rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
-            <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">
-              Security
-            </h3>
+        <Section title="Security">
+          <Card>
             <div className="space-y-4">
-              <Link
+              <LinkButton
                 href="/profile/change-password"
-                className="inline-flex items-center text-blue-600 hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 rounded"
+                variant="secondary"
               >
                 <KeyIcon className="h-5 w-5 mr-2" />
                 Change Password
-              </Link>
+              </LinkButton>
             </div>
-          </div>
-        </div>
+          </Card>
+        </Section>
 
         {/* Notification Preferences */}
-        <div className="bg-white shadow sm:rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
-            <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">
-              Notification Preferences
-            </h3>
+        <Section title="Notification Preferences">
+          <Card>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center">
@@ -384,19 +408,10 @@ export default function ProfilePage() {
                     <p className="text-sm text-gray-500">Receive booking confirmations and reminders via SMS</p>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => toggleNotification('sms')}
-                  className={`${
-                    profile.sms_notifications ? 'bg-green-600' : 'bg-gray-200'
-                  } relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2`}
-                >
-                  <span
-                    className={`${
-                      profile.sms_notifications ? 'translate-x-5' : 'translate-x-0'
-                    } pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
-                  />
-                </button>
+                <Toggle
+                  checked={profile.sms_notifications}
+                  onChange={() => toggleNotification('sms')}
+                />
               </div>
 
               <div className="flex items-center justify-between">
@@ -407,55 +422,42 @@ export default function ProfilePage() {
                     <p className="text-sm text-gray-500">Receive updates and newsletters via email</p>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => toggleNotification('email')}
-                  className={`${
-                    profile.email_notifications ? 'bg-green-600' : 'bg-gray-200'
-                  } relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2`}
-                >
-                  <span
-                    className={`${
-                      profile.email_notifications ? 'translate-x-5' : 'translate-x-0'
-                    } pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
-                  />
-                </button>
+                <Toggle
+                  checked={profile.email_notifications}
+                  onChange={() => toggleNotification('email')}
+                />
               </div>
             </div>
-          </div>
-        </div>
+          </Card>
+        </Section>
 
         {/* Data & Privacy */}
-        <div className="bg-white shadow sm:rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
-            <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">
-              Data & Privacy
-            </h3>
+        <Section title="Data & Privacy">
+          <Card>
             <div className="space-y-4">
-              <button
+              <Button
                 onClick={exportData}
-                className="inline-flex items-center text-blue-600 hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 rounded"
+                variant="secondary"
               >
                 <ArrowDownTrayIcon className="h-5 w-5 mr-2" />
                 Export My Data
-              </button>
+              </Button>
 
               <div className="pt-4 border-t border-gray-200">
-                <button
-                  onClick={requestAccountDeletion}
-                  className="inline-flex items-center text-red-600 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 rounded"
+                <Button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  variant="danger"
                 >
                   <TrashIcon className="h-5 w-5 mr-2" />
                   Request Account Deletion
-                </button>
+                </Button>
                 <p className="mt-2 text-sm text-gray-500">
                   Once requested, we will contact you within 48 hours to process your deletion request.
                 </p>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
-    </div>
+          </Card>
+        </Section>
+      </Page>
   )
 }

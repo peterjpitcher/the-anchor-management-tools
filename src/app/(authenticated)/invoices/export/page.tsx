@@ -2,7 +2,14 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Button } from '@/components/ui/Button'
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Select } from '@/components/ui-v2/forms/Select'
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { toast } from '@/components/ui-v2/feedback/Toast'
 import { ChevronLeft, Download, Calendar, AlertCircle } from 'lucide-react'
 
 export default function InvoiceExportPage() {
@@ -68,8 +75,9 @@ export default function InvoiceExportPage() {
       a.click()
       window.URL.revokeObjectURL(url)
       document.body.removeChild(a)
+      toast.success('Export downloaded successfully')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to export invoices')
+      toast.error(err instanceof Error ? err.message : 'Failed to export invoices')
     } finally {
       setLoading(false)
     }
@@ -91,31 +99,20 @@ export default function InvoiceExportPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="mb-6">
-        <Button
-          variant="ghost"
-          onClick={() => router.push('/invoices')}
-          className="mb-4"
-        >
-          <ChevronLeft className="h-4 w-4 mr-2" />
-          Back to Invoices
-        </Button>
-
-        <h1 className="text-3xl font-bold mb-2">Export Invoices</h1>
-        <p className="text-muted-foreground">
-          Export invoices as a ZIP file containing individual PDFs
-        </p>
-      </div>
+    <Page
+      title="Export Invoices"
+      description="Export invoices as a ZIP file containing individual PDFs"
+      breadcrumbs={[
+        { label: 'Invoices', href: '/invoices' },
+        { label: 'Export' }
+      ]}
+    >
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg flex items-center gap-2">
-          <AlertCircle className="h-5 w-5 flex-shrink-0" />
-          {error}
-        </div>
+        <Alert variant="error" description={error} className="mb-6" />
       )}
 
-      <div className="bg-white rounded-lg shadow-sm border p-6">
+      <Card className="p-6">
         <h2 className="text-lg font-semibold mb-4">Export Options</h2>
         
         <div className="space-y-4">
@@ -124,25 +121,25 @@ export default function InvoiceExportPage() {
             <div className="flex gap-2 flex-wrap">
               <Button
                 type="button"
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 onClick={() => setQuarterDates(0)}
+                leftIcon={<Calendar className="h-4 w-4" />}
               >
-                <Calendar className="h-4 w-4 mr-1" />
                 Current Quarter
               </Button>
               <Button
                 type="button"
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 onClick={() => setQuarterDates(-1)}
+                leftIcon={<Calendar className="h-4 w-4" />}
               >
-                <Calendar className="h-4 w-4 mr-1" />
                 Last Quarter
               </Button>
               <Button
                 type="button"
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 onClick={() => {
                   const now = new Date()
@@ -151,8 +148,8 @@ export default function InvoiceExportPage() {
                   setStartDate(yearStart.toISOString().split('T')[0])
                   setEndDate(yearEnd.toISOString().split('T')[0])
                 }}
+                leftIcon={<Calendar className="h-4 w-4" />}
               >
-                <Calendar className="h-4 w-4 mr-1" />
                 Current Year
               </Button>
             </div>
@@ -163,11 +160,10 @@ export default function InvoiceExportPage() {
               <label className="block text-sm font-medium mb-1">
                 Start Date <span className="text-red-500">*</span>
               </label>
-              <input
+              <Input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               />
             </div>
@@ -176,30 +172,25 @@ export default function InvoiceExportPage() {
               <label className="block text-sm font-medium mb-1">
                 End Date <span className="text-red-500">*</span>
               </label>
-              <input
+              <Input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               />
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">
-              Invoice Status
-            </label>
-            <select
+          <FormGroup label="Invoice Status">
+            <Select
               value={exportType}
               onChange={(e) => setExportType(e.target.value as typeof exportType)}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Invoices</option>
               <option value="paid">Paid Only</option>
               <option value="unpaid">Unpaid Only</option>
-            </select>
-          </div>
+            </Select>
+          </FormGroup>
         </div>
 
         <div className="mt-6 p-4 bg-blue-50 rounded-lg">
@@ -215,21 +206,21 @@ export default function InvoiceExportPage() {
         <div className="flex justify-end gap-4 mt-6">
           <Button
             type="button"
-            variant="outline"
+            variant="secondary"
             onClick={() => router.push('/invoices')}
             disabled={loading}
           >
             Cancel
           </Button>
-          <Button
-            onClick={handleExport}
+          <Button onClick={handleExport}
             disabled={loading || !startDate || !endDate}
+            loading={loading}
+            leftIcon={<Download className="h-4 w-4" />}
           >
-            <Download className="h-4 w-4 mr-2" />
-            {loading ? 'Preparing Export...' : 'Export Invoices'}
+            Export Invoices
           </Button>
         </div>
-      </div>
-    </div>
+      </Card>
+    </Page>
   )
 }

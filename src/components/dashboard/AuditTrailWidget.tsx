@@ -17,7 +17,7 @@ interface AuditStats {
   totalEventsThisWeek: number
   securityEvents: {
     type: string
-    description: string
+    message: string
     timestamp: string
     user: string
     severity: 'info' | 'warning' | 'critical'
@@ -125,7 +125,7 @@ export function AuditTrailWidget() {
 
         return {
           type: log.operation_type,
-          description,
+          message: description,
           timestamp: log.created_at,
           user: log.user_email,
           severity
@@ -266,7 +266,7 @@ export function AuditTrailWidget() {
                     {event.severity}
                   </span>
                   <div className="flex-1">
-                    <p className="text-gray-900">{event.description}</p>
+                    <p className="text-gray-900">{event.message}</p>
                     <p className="text-xs text-gray-500">
                       {event.user} • {formatDateTime(event.timestamp)}
                     </p>

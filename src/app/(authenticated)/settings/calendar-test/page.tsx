@@ -1,8 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { Button } from '@/components/ui/Button'
 import { CheckCircle2, XCircle, Info, Loader2 } from 'lucide-react'
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+// Code component not implemented yet - using pre tag instead
 
 export default function CalendarTestPage() {
   const [loading, setLoading] = useState(false)
@@ -28,182 +34,152 @@ export default function CalendarTestPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Google Calendar Test</h1>
+    <Page 
+      title="Google Calendar Test"
+      breadcrumbs={[
+        { label: 'Settings', href: '/settings' },
+        { label: 'Calendar Test' }
+      ]}
+    >
       
-      <div className="bg-white shadow sm:rounded-lg mb-6">
-        <div className="px-4 py-5 sm:p-6 border-b border-gray-200">
-          <h2 className="text-lg font-medium text-gray-900">Test Calendar Connection</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            This tool helps diagnose Google Calendar integration issues.
-          </p>
-        </div>
-        <div className="px-4 py-5 sm:p-6">
+      <Section 
+        title="Test Calendar Connection"
+        description="This tool helps diagnose Google Calendar integration issues."
+      >
+        <Card>
           <Button 
             onClick={testConnection} 
             disabled={loading}
+            loading={loading}
+            variant="primary"
             className="mb-4"
           >
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Testing...
-              </>
-            ) : (
-              'Test Connection'
-            )}
+            Test Connection
           </Button>
           
           {result && (
             <div className="space-y-4">
               {/* Status Alert */}
-              <div className={`${result.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'} border rounded-lg p-4`}>
-                <div className="flex">
-                  <div className="flex-shrink-0">
-                    {result.success ? (
-                      <CheckCircle2 className="h-5 w-5 text-green-400" />
-                    ) : (
-                      <XCircle className="h-5 w-5 text-red-400" />
-                    )}
-                  </div>
-                  <div className="ml-3">
-                    <h3 className={`text-sm font-medium ${result.success ? 'text-green-800' : 'text-red-800'}`}>
-                      {result.success ? 'Success' : 'Failed'}
-                    </h3>
-                    <div className={`mt-2 text-sm ${result.success ? 'text-green-700' : 'text-red-700'}`}>
-                      {result.message}
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <Alert variant={result.success ? 'success' : 'error'}
+                title={result.success ? 'Success' : 'Failed'}
+                
+                icon={result.success ? <CheckCircle2 className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
+              />
               
               {/* Configuration Status */}
               {result.configStatus && (
-                <div className="bg-white shadow sm:rounded-lg">
-                  <div className="px-4 py-3 border-b border-gray-200">
-                    <h3 className="text-lg font-medium text-gray-900">Configuration Status</h3>
-                  </div>
-                  <div className="px-4 py-4">
-                    <dl className="grid grid-cols-1 gap-2 text-sm">
-                      <div className="flex justify-between">
-                        <dt className="font-medium">Configured:</dt>
-                        <dd className={result.configStatus.isConfigured ? 'text-green-600' : 'text-red-600'}>
-                          {result.configStatus.isConfigured ? 'Yes' : 'No'}
-                        </dd>
-                      </div>
-                      <div className="flex justify-between">
-                        <dt className="font-medium">Calendar ID:</dt>
-                        <dd className="font-mono text-xs">{result.configStatus.calendarId}</dd>
-                      </div>
-                      <div className="flex justify-between">
-                        <dt className="font-medium">Auth Method:</dt>
-                        <dd>{result.configStatus.authMethod}</dd>
-                      </div>
-                    </dl>
-                  </div>
-                </div>
+                <Card>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Configuration Status</h3>
+                  <dl className="grid grid-cols-1 gap-2 text-sm">
+                    <div className="flex justify-between">
+                      <dt className="font-medium">Configured:</dt>
+                      <dd className={result.configStatus.isConfigured ? 'text-green-600' : 'text-red-600'}>
+                        {result.configStatus.isConfigured ? 'Yes' : 'No'}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="font-medium">Calendar ID:</dt>
+                      <dd className="font-mono text-xs">{result.configStatus.calendarId}</dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="font-medium">Auth Method:</dt>
+                      <dd>{result.configStatus.authMethod}</dd>
+                    </div>
+                  </dl>
+                </Card>
               )}
               
               {/* Details */}
               {result.details && (
-                <div className="bg-white shadow sm:rounded-lg">
-                  <div className="px-4 py-3 border-b border-gray-200">
-                    <h3 className="text-lg font-medium text-gray-900">Details</h3>
-                  </div>
-                  <div className="px-4 py-4">
-                    <pre className="text-xs bg-gray-100 p-3 rounded overflow-auto">
-                      {JSON.stringify(result.details, null, 2)}
-                    </pre>
-                  </div>
-                </div>
+                <Card>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Details</h3>
+                  <pre className="bg-gray-100 p-4 rounded-lg overflow-x-auto text-sm">
+                    <code>{JSON.stringify(result.details, null, 2)}</code>
+                  </pre>
+                </Card>
               )}
               
               {/* Setup Instructions */}
               {!result.success && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="flex">
-                    <div className="flex-shrink-0">
-                      <Info className="h-5 w-5 text-blue-400" />
-                    </div>
-                    <div className="ml-3">
-                      <h3 className="text-sm font-medium text-blue-800">Setup Instructions</h3>
-                      <div className="mt-2 text-sm text-blue-700 space-y-2">
-                        <p className="font-medium">To fix this issue:</p>
-                        {result.details?.errorCode === 404 && (
-                          <ol className="list-decimal list-inside space-y-1">
-                            <li>Check that GOOGLE_CALENDAR_ID is correct in your .env.local</li>
-                            <li>Use either &quot;primary&quot; or the full calendar ID (e.g., &quot;calendar-id@group.calendar.google.com&quot;)</li>
-                          </ol>
-                        )}
-                        {result.details?.errorCode === 403 && (
-                          <ol className="list-decimal list-inside space-y-1">
-                            <li>Go to Google Calendar settings</li>
-                            <li>Find your calendar and click &quot;Settings and sharing&quot;</li>
-                            <li>Under &quot;Share with specific people&quot;, add the service account email</li>
-                            <li>Grant &quot;Make changes to events&quot; permission</li>
-                            <li>The service account email is shown in the Google Cloud Console</li>
-                          </ol>
-                        )}
-                        {!result.configStatus?.isConfigured && (
-                          <div>
-                            <p className="mb-2">Set these environment variables in .env.local:</p>
-                            <ul className="list-disc list-inside space-y-1">
-                              <li>GOOGLE_CALENDAR_ID (required)</li>
-                              <li>GOOGLE_SERVICE_ACCOUNT_KEY (recommended)</li>
-                              <li>Or: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN</li>
-                            </ul>
-                          </div>
-                        )}
+                <Alert variant="info"
+                  title="Setup Instructions"
+                  description="To fix this issue:"
+                  icon={<Info className="h-5 w-5" />}
+                >
+                  <div className="mt-2 space-y-2">
+                    {result.details?.errorCode === 404 && (
+                      <ol className="list-decimal list-inside space-y-1">
+                        <li>Check that GOOGLE_CALENDAR_ID is correct in your .env.local</li>
+                        <li>Use either "primary" or the full calendar ID (e.g., "calendar-id@group.calendar.google.com")</li>
+                      </ol>
+                    )}
+                    {result.details?.errorCode === 403 && (
+                      <ol className="list-decimal list-inside space-y-1">
+                        <li>Go to Google Calendar settings</li>
+                        <li>Find your calendar and click "Settings and sharing"</li>
+                        <li>Under "Share with specific people", add the service account email</li>
+                        <li>Grant "Make changes to events" permission</li>
+                        <li>The service account email is shown in the Google Cloud Console</li>
+                      </ol>
+                    )}
+                    {!result.configStatus?.isConfigured && (
+                      <div>
+                        <p className="mb-2">Set these environment variables in .env.local:</p>
+                        <ul className="list-disc list-inside space-y-1">
+                          <li>GOOGLE_CALENDAR_ID (required)</li>
+                          <li>GOOGLE_SERVICE_ACCOUNT_KEY (recommended)</li>
+                          <li>Or: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN</li>
+                        </ul>
                       </div>
-                    </div>
+                    )}
                   </div>
-                </div>
+                
+            {result.message}</Alert>
               )}
             </div>
           )}
-        </div>
-      </div>
+        </Card>
+      </Section>
       
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6 border-b border-gray-200">
-          <h2 className="text-lg font-medium text-gray-900">Debug Instructions</h2>
-        </div>
-        <div className="px-4 py-5 sm:p-6 space-y-4">
-          <div>
-            <h3 className="font-medium mb-2">1. Check Browser Console</h3>
-            <p className="text-sm text-gray-600">
-              Open Developer Tools (F12) and check the Console tab for detailed logging when creating/updating bookings.
-            </p>
+      <Section title="Debug Instructions">
+        <Card>
+          <div className="space-y-4">
+            <div>
+              <h3 className="font-medium mb-2">1. Check Browser Console</h3>
+              <p className="text-sm text-gray-600">
+                Open Developer Tools (F12) and check the Console tab for detailed logging when creating/updating bookings.
+              </p>
+            </div>
+            
+            <div>
+              <h3 className="font-medium mb-2">2. Run Debug Script</h3>
+              <p className="text-sm text-gray-600 mb-2">
+                From the terminal, run:
+              </p>
+              <pre className="bg-gray-100 p-4 rounded-lg overflow-x-auto text-sm">
+                <code>npm run tsx scripts/debug-google-calendar.ts</code>
+              </pre>
+            </div>
+            
+            <div>
+              <h3 className="font-medium mb-2">3. Check Server Logs</h3>
+              <p className="text-sm text-gray-600">
+                Look for logs starting with [Google Calendar] in your server console when creating bookings.
+              </p>
+            </div>
+            
+            <div>
+              <h3 className="font-medium mb-2">4. Verify Calendar Events</h3>
+              <p className="text-sm text-gray-600">
+                After creating a booking, check the database to see if calendar_event_id is populated:
+              </p>
+              <pre className="bg-gray-100 p-4 rounded-lg overflow-x-auto text-sm">
+                <code>SELECT id, customer_name, calendar_event_id FROM private_bookings ORDER BY created_at DESC LIMIT 5;</code>
+              </pre>
+            </div>
           </div>
-          
-          <div>
-            <h3 className="font-medium mb-2">2. Run Debug Script</h3>
-            <p className="text-sm text-gray-600 mb-2">
-              From the terminal, run:
-            </p>
-            <code className="block bg-gray-100 p-2 rounded text-xs">
-              npm run tsx scripts/debug-google-calendar.ts
-            </code>
-          </div>
-          
-          <div>
-            <h3 className="font-medium mb-2">3. Check Server Logs</h3>
-            <p className="text-sm text-gray-600">
-              Look for logs starting with [Google Calendar] in your server console when creating bookings.
-            </p>
-          </div>
-          
-          <div>
-            <h3 className="font-medium mb-2">4. Verify Calendar Events</h3>
-            <p className="text-sm text-gray-600">
-              After creating a booking, check the database to see if calendar_event_id is populated:
-            </p>
-            <code className="block bg-gray-100 p-2 rounded text-xs">
-              SELECT id, customer_name, calendar_event_id FROM private_bookings ORDER BY created_at DESC LIMIT 5;
-            </code>
-          </div>
-        </div>
-      </div>
-    </div>
+        </Card>
+      </Section>
+    </Page>
   )
 }

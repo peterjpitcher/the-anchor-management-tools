@@ -11,7 +11,7 @@ interface EventTemplate {
   template_type: string
   content: string
   is_active: boolean
-  character_count: number
+  character_badge: number
   estimated_segments: number
 }
 

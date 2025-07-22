@@ -2,7 +2,11 @@
 
 import { useState } from 'react';
 import { DocumentDuplicateIcon, PlusIcon } from '@heroicons/react/24/outline';
-import { Button } from '@/components/ui/Button';
+import { Button, IconButton } from '@/components/ui-v2/forms/Button';
+import { Input } from '@/components/ui-v2/forms/Input';
+import { Checkbox } from '@/components/ui-v2/forms/Checkbox';
+import { Card } from '@/components/ui-v2/layout/Card';
+import { Badge } from '@/components/ui-v2/display/Badge';
 import toast from 'react-hot-toast';
 import { generateApiKey } from './actions';
 import { format } from 'date-fns';
@@ -82,29 +86,28 @@ export default function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
     <div className="space-y-6">
       {/* Create Button */}
       {!showCreateForm && (
-        <Button onClick={() => setShowCreateForm(true)}>
-          <PlusIcon className="h-4 w-4 mr-2" />
+        <Button onClick={() => setShowCreateForm(true)} leftIcon={<PlusIcon className="h-4 w-4" />}>
           Create API Key
         </Button>
       )}
 
       {/* Create Form */}
       {showCreateForm && (
-        <div className="bg-white shadow sm:rounded-lg p-6">
+        <Card variant="default" padding="md">
           <h3 className="text-lg font-semibold mb-4">Create New API Key</h3>
           <form onSubmit={handleCreateKey} className="space-y-4">
             <div>
               <label htmlFor="name" className="block text-sm font-medium text-gray-700">
                 Name *
               </label>
-              <input
+              <Input
                 type="text"
                 id="name"
                 required
-                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 placeholder="e.g., Website Integration"
                 value={newKeyData.name}
                 onChange={(e) => setNewKeyData({ ...newKeyData, name: e.target.value })}
+                fullWidth
               />
             </div>
             
@@ -112,13 +115,13 @@ export default function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
               <label htmlFor="description" className="block text-sm font-medium text-gray-700">
                 Description
               </label>
-              <input
+              <Input
                 type="text"
                 id="description"
-                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 placeholder="Optional description"
                 value={newKeyData.description}
                 onChange={(e) => setNewKeyData({ ...newKeyData, description: e.target.value })}
+                fullWidth
               />
             </div>
             
@@ -128,15 +131,12 @@ export default function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
               </label>
               <div className="space-y-2">
                 {PERMISSION_OPTIONS.map(option => (
-                  <label key={option.value} className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={newKeyData.permissions.includes(option.value)}
-                      onChange={() => handleTogglePermission(option.value)}
-                      className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                    />
-                    <span className="ml-2 text-sm text-gray-700">{option.label}</span>
-                  </label>
+                  <Checkbox
+                    key={option.value}
+                    label={option.label}
+                    checked={newKeyData.permissions.includes(option.value)}
+                    onChange={(e) => handleTogglePermission(option.value)}
+                  />
                 ))}
               </div>
             </div>
@@ -145,17 +145,17 @@ export default function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
               <label htmlFor="rate_limit" className="block text-sm font-medium text-gray-700">
                 Rate Limit (requests per hour)
               </label>
-              <input
+              <Input
                 type="number"
                 id="rate_limit"
-                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
                 value={newKeyData.rate_limit}
                 onChange={(e) => setNewKeyData({ ...newKeyData, rate_limit: parseInt(e.target.value) || 1000 })}
+                fullWidth
               />
             </div>
             
             <div className="flex gap-3">
-              <Button type="submit" disabled={!newKeyData.name || isCreating}>
+              <Button type="submit" loading={isCreating} disabled={!newKeyData.name}>
                 {isCreating ? 'Creating...' : 'Create Key'}
               </Button>
               <Button 
@@ -167,12 +167,12 @@ export default function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
               </Button>
             </div>
           </form>
-        </div>
+        </Card>
       )}
 
       {/* Show newly created key */}
       {showKey && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+        <Card variant="default" padding="sm" className="bg-yellow-50 border-yellow-200">
           <h3 className="font-semibold text-yellow-900 mb-2">New API Key Created</h3>
           <p className="text-sm text-yellow-800 mb-3">
             Save this key now. You won&apos;t be able to see it again.
@@ -181,18 +181,19 @@ export default function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
             <code className="flex-1 bg-white p-2 rounded border border-yellow-300 font-mono text-sm">
               {showKey}
             </code>
-            <button
-              className="p-2 hover:bg-yellow-100 rounded"
+            <IconButton
+              variant="secondary"
               onClick={() => handleCopyKey(showKey)}
+              className="hover:bg-yellow-100"
             >
               <DocumentDuplicateIcon className="h-5 w-5 text-yellow-700" />
-            </button>
+            </IconButton>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* API Keys Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <Card variant="default" padding="none">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
@@ -242,22 +243,18 @@ export default function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
                     : 'Never'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                    key.is_active 
-                      ? 'bg-green-100 text-green-800' 
-                      : 'bg-red-100 text-red-800'
-                  }`}>
+                  <Badge variant={key.is_active ? 'success' : 'error'}>
                     {key.is_active ? 'Active' : 'Inactive'}
-                  </span>
+                  </Badge>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
+      </Card>
 
       {/* Usage Instructions */}
-      <div className="bg-gray-50 rounded-lg p-6">
+      <Card variant="default" padding="md" className="bg-gray-50">
         <h3 className="text-lg font-semibold mb-4">API Usage</h3>
         <div className="space-y-3">
           <div>
@@ -293,7 +290,7 @@ export default function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
             </ul>
           </div>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

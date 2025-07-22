@@ -2,7 +2,6 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { 
-  ArrowLeftIcon,
   ChatBubbleLeftRightIcon,
   CheckIcon,
   XMarkIcon,
@@ -14,6 +13,14 @@ import {
 } from '@heroicons/react/24/outline'
 import { approveSms, rejectSms, sendApprovedSms } from '@/app/actions/privateBookingActions'
 import { formatDateFull, formatDateTime12Hour } from '@/lib/dateUtils'
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 
 async function handleApproveSms(formData: FormData) {
   'use server'
@@ -108,57 +115,175 @@ export default async function SmsQueuePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link
-                href="/private-bookings"
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <ArrowLeftIcon className="h-5 w-5" />
-              </Link>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">SMS Queue</h1>
-                <p className="text-gray-600 mt-1">Review and approve SMS messages for private bookings</p>
-              </div>
-            </div>
+    <Page
+      title="SMS Queue"
+      description="Review and approve SMS messages for private bookings"
+      actions={
+        <LinkButton href="/private-bookings" variant="secondary">Back</LinkButton>
+      }
+    >
+      {/* Pending Messages */}
+      <Section 
+        title="Pending Approval"
+        icon={<ClockIcon className="h-6 w-6 text-amber-600" />}
+        description={`${pendingSms.length} message${pendingSms.length !== 1 ? 's' : ''}`}
+      >
+        {pendingSms.length === 0 ? (
+          <EmptyState icon={<ChatBubbleLeftRightIcon className="h-12 w-12" />}
+            title="No messages pending approval"
+          />
+        ) : (
+          <div className="space-y-4">
+            {pendingSms.map((sms) => (
+              <Card key={sms.id}>
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <Badge variant="warning">
+                        {formatTriggerType(sms.trigger_type)}
+                      </Badge>
+                      {sms.booking && (
+                        <Link
+                          href={`/private-bookings/${sms.booking.id}`}
+                          className="text-sm text-blue-600 hover:text-blue-700"
+                        >
+                          View Booking
+                        </Link>
+                      )}
+                    </div>
+                    
+                    <h3 className="text-lg font-medium text-gray-900 mb-1">
+                      {sms.booking?.customer_first_name && sms.booking?.customer_last_name 
+                        ? `${sms.booking.customer_first_name} ${sms.booking.customer_last_name}`
+                        : sms.booking?.customer_name || 'Unknown Customer'}
+                    </h3>
+                    
+                    <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+                      <span className="flex items-center gap-1">
+                        <PhoneIcon className="h-4 w-4" />
+                        {sms.recipient_phone}
+                      </span>
+                      {sms.booking && (
+                        <span className="flex items-center gap-1">
+                          <CalendarIcon className="h-4 w-4" />
+                          {formatDateFull(sms.booking.event_date)}
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{sms.message_body}</p>
+                    </div>
+                    
+                    <p className="text-xs text-gray-500">
+                      Created {formatDateTime12Hour(sms.created_at)}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex gap-3">
+                  <form action={handleApproveSms} className="inline">
+                    <input type="hidden" name="smsId" value={sms.id} />
+                    <Button type="submit"
+                      variant="primary"
+                      leftIcon={<CheckIcon className="h-4 w-4" />}
+                    >
+                      Approve
+                    </Button>
+                  </form>
+                  
+                  <form action={handleRejectSms} className="inline">
+                    <input type="hidden" name="smsId" value={sms.id} />
+                    <Button type="submit"
+                      variant="danger"
+                      leftIcon={<XMarkIcon className="h-4 w-4" />}
+                    >
+                      Reject
+                    </Button>
+                  </form>
+                </div>
+              </Card>
+            ))}
           </div>
-        </div>
-      </div>
+        )}
+      </Section>
 
-      <div className="px-4 sm:px-6 lg:px-8 py-8">
-        {/* Pending Messages */}
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <ClockIcon className="h-6 w-6 text-amber-600" />
-            Pending Approval ({pendingSms.length})
-          </h2>
-          
-          {pendingSms.length === 0 ? (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
-              <ChatBubbleLeftRightIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">No messages pending approval</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {pendingSms.map((sms) => (
-                <div key={sms.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      {/* Approved Messages */}
+      <Section 
+        title="Approved Messages"
+        icon={<CheckIcon className="h-6 w-6 text-green-600" />}
+        description={`${approvedSms.length} message${approvedSms.length !== 1 ? 's' : ''}`}
+      >
+        {approvedSms.length === 0 ? (
+          <EmptyState icon={<PaperAirplaneIcon className="h-12 w-12" />}
+            title="No approved messages ready to send"
+          />
+        ) : (
+          <div className="space-y-4">
+            {approvedSms.map((sms) => (
+              <Card key={sms.id}>
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <Badge variant="success">Approved</Badge>
+                      <span className="text-xs text-gray-500">
+                        by {sms.approved_by} at {formatDateTime12Hour(sms.approved_at)}
+                      </span>
+                    </div>
+                    
+                    <h3 className="text-lg font-medium text-gray-900 mb-1">
+                      {sms.booking?.customer_first_name && sms.booking?.customer_last_name 
+                        ? `${sms.booking.customer_first_name} ${sms.booking.customer_last_name}`
+                        : sms.booking?.customer_name || 'Unknown Customer'}
+                    </h3>
+                    
+                    <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+                      <span className="flex items-center gap-1">
+                        <PhoneIcon className="h-4 w-4" />
+                        {sms.recipient_phone}
+                      </span>
+                    </div>
+                    
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{sms.message_body}</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <form action={handleSendSms} className="inline">
+                  <input type="hidden" name="smsId" value={sms.id} />
+                  <Button type="submit"
+                    leftIcon={<PaperAirplaneIcon className="h-4 w-4" />}
+                  >
+                    Send Now
+                  </Button>
+                </form>
+              </Card>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      {/* Cancelled Messages */}
+      {cancelledSms.length > 0 && (
+        <Section 
+          title="Cancelled Messages"
+          icon={<XMarkIcon className="h-6 w-6 text-red-600" />}
+          description={`${cancelledSms.length} message${cancelledSms.length !== 1 ? 's' : ''}`}
+        >
+          <div className="space-y-4">
+            {cancelledSms.map((sms) => {
+              const metadata = sms.metadata as any || {}
+              const isDateChange = metadata.cancelled_reason === 'event_date_changed'
+              
+              return (
+                <Card key={sms.id} className="opacity-75">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                          {formatTriggerType(sms.trigger_type)}
-                        </span>
-                        {sms.booking && (
-                          <Link
-                            href={`/private-bookings/${sms.booking.id}`}
-                            className="text-sm text-blue-600 hover:text-blue-700"
-                          >
-                            View Booking
-                          </Link>
+                        <Badge variant="error">Cancelled</Badge>
+                        {isDateChange && (
+                          <Badge variant="warning">Date Changed</Badge>
                         )}
                       </div>
                       
@@ -168,195 +293,41 @@ export default async function SmsQueuePage() {
                           : sms.booking?.customer_name || 'Unknown Customer'}
                       </h3>
                       
-                      <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
-                        <span className="flex items-center gap-1">
-                          <PhoneIcon className="h-4 w-4" />
-                          {sms.recipient_phone}
-                        </span>
-                        {sms.booking && (
-                          <span className="flex items-center gap-1">
-                            <CalendarIcon className="h-4 w-4" />
-                            {formatDateFull(sms.booking.event_date)}
-                          </span>
-                        )}
+                      {isDateChange && metadata.old_date && metadata.new_date && (
+                        <Alert variant="warning" className="mb-3">
+                          <strong>Booking rescheduled:</strong> {formatDateFull(metadata.old_date)} → {formatDateFull(metadata.new_date)}
+                        </Alert>
+                      )}
+                      
+                      <div className="bg-gray-50 rounded-lg p-4 line-through">
+                        <p className="text-sm text-gray-500 whitespace-pre-wrap">{sms.message_body}</p>
                       </div>
                       
-                      <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{sms.message_body}</p>
-                      </div>
-                      
-                      <p className="text-xs text-gray-500">
-                        Created {formatDateTime12Hour(sms.created_at)}
+                      <p className="text-xs text-gray-500 mt-2">
+                        Cancelled {metadata.cancelled_at ? formatDateTime12Hour(metadata.cancelled_at) : 'recently'}
                       </p>
                     </div>
                   </div>
-                  
-                  <div className="flex gap-3">
-                    <form action={handleApproveSms} className="inline">
-                      <input type="hidden" name="smsId" value={sms.id} />
-                      <button
-                        type="submit"
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                      >
-                        <CheckIcon className="h-4 w-4" />
-                        Approve
-                      </button>
-                    </form>
-                    
-                    <form action={handleRejectSms} className="inline">
-                      <input type="hidden" name="smsId" value={sms.id} />
-                      <button
-                        type="submit"
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                      >
-                        <XMarkIcon className="h-4 w-4" />
-                        Reject
-                      </button>
-                    </form>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                </Card>
+              )
+            })}
+          </div>
+        </Section>
+      )}
 
-        {/* Approved Messages */}
+      {/* Info Box */}
+      <Alert variant="info" icon={<ExclamationTriangleIcon className="h-6 w-6" />}>
         <div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <CheckIcon className="h-6 w-6 text-green-600" />
-            Approved Messages ({approvedSms.length})
-          </h2>
-          
-          {approvedSms.length === 0 ? (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
-              <PaperAirplaneIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">No approved messages ready to send</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {approvedSms.map((sms) => (
-                <div key={sms.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          Approved
-                        </span>
-                        <span className="text-xs text-gray-500">
-                          by {sms.approved_by} at {formatDateTime12Hour(sms.approved_at)}
-                        </span>
-                      </div>
-                      
-                      <h3 className="text-lg font-medium text-gray-900 mb-1">
-                        {sms.booking?.customer_first_name && sms.booking?.customer_last_name 
-                          ? `${sms.booking.customer_first_name} ${sms.booking.customer_last_name}`
-                          : sms.booking?.customer_name || 'Unknown Customer'}
-                      </h3>
-                      
-                      <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
-                        <span className="flex items-center gap-1">
-                          <PhoneIcon className="h-4 w-4" />
-                          {sms.recipient_phone}
-                        </span>
-                      </div>
-                      
-                      <div className="bg-gray-50 rounded-lg p-4">
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{sms.message_body}</p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <form action={handleSendSms} className="inline">
-                    <input type="hidden" name="smsId" value={sms.id} />
-                    <button
-                      type="submit"
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      <PaperAirplaneIcon className="h-4 w-4" />
-                      Send Now
-                    </button>
-                  </form>
-                </div>
-              ))}
-            </div>
-          )}
+          <h3 className="text-base font-medium mb-2">SMS Approval Process</h3>
+          <ul className="text-sm space-y-1 list-disc list-inside">
+            <li>All SMS messages for private bookings require approval before sending</li>
+            <li>Messages are automatically queued when booking status changes or payments are received</li>
+            <li>Approved messages must be manually sent using the "Send Now" button</li>
+            <li>Rejected messages are moved to the cancelled status and won't be sent</li>
+            <li>When booking dates change, pending messages are automatically cancelled and new ones created</li>
+          </ul>
         </div>
-
-        {/* Cancelled Messages */}
-        {cancelledSms.length > 0 && (
-          <div className="mt-8">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <XMarkIcon className="h-6 w-6 text-red-600" />
-              Cancelled Messages ({cancelledSms.length})
-            </h2>
-            
-            <div className="space-y-4">
-              {cancelledSms.map((sms) => {
-                const metadata = sms.metadata as any || {}
-                const isDateChange = metadata.cancelled_reason === 'event_date_changed'
-                
-                return (
-                  <div key={sms.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 opacity-75">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                            Cancelled
-                          </span>
-                          {isDateChange && (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                              Date Changed
-                            </span>
-                          )}
-                        </div>
-                        
-                        <h3 className="text-lg font-medium text-gray-900 mb-1">
-                          {sms.booking?.customer_first_name && sms.booking?.customer_last_name 
-                            ? `${sms.booking.customer_first_name} ${sms.booking.customer_last_name}`
-                            : sms.booking?.customer_name || 'Unknown Customer'}
-                        </h3>
-                        
-                        {isDateChange && metadata.old_date && metadata.new_date && (
-                          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3">
-                            <p className="text-sm text-yellow-800">
-                              <strong>Booking rescheduled:</strong> {formatDateFull(metadata.old_date)} → {formatDateFull(metadata.new_date)}
-                            </p>
-                          </div>
-                        )}
-                        
-                        <div className="bg-gray-50 rounded-lg p-4 line-through">
-                          <p className="text-sm text-gray-500 whitespace-pre-wrap">{sms.message_body}</p>
-                        </div>
-                        
-                        <p className="text-xs text-gray-500 mt-2">
-                          Cancelled {metadata.cancelled_at ? formatDateTime12Hour(metadata.cancelled_at) : 'recently'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Info Box */}
-        <div className="mt-8 bg-blue-50 border border-blue-200 rounded-xl p-6">
-          <div className="flex items-start gap-3">
-            <ExclamationTriangleIcon className="h-6 w-6 text-blue-600 flex-shrink-0" />
-            <div>
-              <h3 className="text-base font-medium text-blue-900 mb-2">SMS Approval Process</h3>
-              <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-                <li>All SMS messages for private bookings require approval before sending</li>
-                <li>Messages are automatically queued when booking status changes or payments are received</li>
-                <li>Approved messages must be manually sent using the &quot;Send Now&quot; button</li>
-                <li>Rejected messages are moved to the cancelled status and won&apos;t be sent</li>
-                <li>When booking dates change, pending messages are automatically cancelled and new ones created</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+      </Alert>
+    </Page>
   )
 }

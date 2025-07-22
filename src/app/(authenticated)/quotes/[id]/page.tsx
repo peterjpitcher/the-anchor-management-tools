@@ -4,10 +4,19 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getQuote, updateQuoteStatus, convertQuoteToInvoice, deleteQuote } from '@/app/actions/quotes'
 import { getEmailConfigStatus } from '@/app/actions/email'
-import { Button } from '@/components/ui/Button'
 import { ChevronLeft, FileText, Download, Mail, CheckCircle, XCircle, Edit, Copy, Trash2, Clock } from 'lucide-react'
 import { EmailQuoteModal } from '@/components/EmailQuoteModal'
 import type { QuoteWithDetails, QuoteStatus } from '@/types/invoices'
+// UI v2 components
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 
 export default function QuoteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
@@ -18,6 +27,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
   const [quoteId, setQuoteId] = useState<string | null>(null)
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [emailConfigured, setEmailConfigured] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
   useEffect(() => {
     async function getParams() {
@@ -96,8 +106,10 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
 
       // Reload quote
       await loadQuote()
+      toast.success('Quote status updated successfully')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update status')
+      toast.error('Failed to update quote status')
     } finally {
       setProcessing(false)
     }
@@ -121,10 +133,12 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
       }
 
       if (result.invoice) {
+        toast.success('Quote converted to invoice successfully')
         router.push(`/invoices/${result.invoice.id}`)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to convert to invoice')
+      toast.error('Failed to convert quote to invoice')
     } finally {
       setProcessing(false)
     }
@@ -132,10 +146,6 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
 
   async function handleDelete() {
     if (!quote || processing) return
-
-    if (!confirm('Are you sure you want to delete this quote? This action cannot be undone.')) {
-      return
-    }
 
     setProcessing(true)
     setError(null)
@@ -150,21 +160,23 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
         throw new Error(result.error)
       }
 
+      toast.success('Quote deleted successfully')
       router.push('/quotes')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete quote')
+      toast.error('Failed to delete quote')
       setProcessing(false)
     }
   }
 
-  function getStatusColor(status: QuoteStatus): string {
+  function getStatusVariant(status: QuoteStatus): 'default' | 'info' | 'success' | 'error' | 'warning' {
     switch (status) {
-      case 'draft': return 'bg-gray-100 text-gray-800'
-      case 'sent': return 'bg-blue-100 text-blue-800'
-      case 'accepted': return 'bg-green-100 text-green-800'
-      case 'rejected': return 'bg-red-100 text-red-800'
-      case 'expired': return 'bg-yellow-100 text-yellow-800'
-      default: return 'bg-gray-100 text-gray-800'
+      case 'draft': return 'default'
+      case 'sent': return 'info'
+      case 'accepted': return 'success'
+      case 'rejected': return 'error'
+      case 'expired': return 'warning'
+      default: return 'default'
     }
   }
 
@@ -185,29 +197,32 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading quote...</p>
+      <Page title="Loading...">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <Spinner size="lg" />
+            <p className="mt-4 text-gray-600">Loading quote...</p>
+          </div>
         </div>
-      </div>
+      </Page>
     )
   }
 
   if (!quote) {
     return (
-      <div className="space-y-6">
-        <div className="text-center">
-          <p className="text-red-600">Quote not found</p>
-          <Button
-            variant="outline"
-            onClick={() => router.push('/quotes')}
-            className="mt-4"
-          >
-            Back to Quotes
-          </Button>
-        </div>
-      </div>
+      <Page title="Quote Not Found">
+        <Card>
+          <div className="text-center py-8">
+            <p className="text-red-600 mb-4">Quote not found</p>
+            <Button
+              variant="secondary"
+              onClick={() => router.push('/quotes')}
+            >
+              Back to Quotes
+            </Button>
+          </div>
+        </Card>
+      </Page>
     )
   }
 
@@ -233,143 +248,123 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
   }, 0) || 0
 
   return (
-    <div className="space-y-6">
-      <div className="mb-6">
-        <Button
-          variant="ghost"
-          onClick={() => router.push('/quotes')}
-          className="mb-4"
-        >
-          <ChevronLeft className="h-4 w-4 mr-2" />
-          Back to Quotes
-        </Button>
-
-        <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-4">
-          <div className="order-1">
-            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-2">Quote {quote.quote_number}</h1>
-            <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-              <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(quote.status)}`}>
-                {getStatusIcon(quote.status)}
-                {quote.status.charAt(0).toUpperCase() + quote.status.slice(1).replace('_', ' ')}
-              </span>
-              {quote.reference && (
-                <span className="text-sm sm:text-base text-gray-600">
-                  Reference: {quote.reference}
-                </span>
-              )}
-            </div>
-          </div>
-          
-          <div className="flex flex-wrap gap-2 order-2 lg:order-2">
-            {quote.status === 'draft' && (
-              <>
-                <Button
-                  onClick={() => handleStatusChange('sent')}
-                  disabled={processing}
-                  className="text-sm sm:text-base"
-                >
-                  <Mail className="h-4 w-4 mr-1 sm:mr-2" />
-                  <span className="hidden sm:inline">Mark as Sent</span>
-                  <span className="sm:hidden">Send</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => router.push(`/quotes/${quote.id}/edit`)}
-                  disabled={processing}
-                  className="text-sm sm:text-base"
-                >
-                  <Edit className="h-4 w-4 mr-1 sm:mr-2" />
-                  <span>Edit</span>
-                </Button>
-              </>
-            )}
-            
-            {quote.status === 'sent' && !isExpired && (
-              <>
-                <Button
-                  onClick={() => handleStatusChange('accepted')}
-                  disabled={processing}
-                  className="bg-green-600 hover:bg-green-700 text-white text-sm sm:text-base"
-                >
-                  <CheckCircle className="h-4 w-4 mr-1 sm:mr-2" />
-                  <span className="hidden sm:inline">Mark as Accepted</span>
-                  <span className="sm:hidden">Accept</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => handleStatusChange('rejected')}
-                  disabled={processing}
-                  className="text-red-600 hover:bg-red-50 text-sm sm:text-base"
-                >
-                  <XCircle className="h-4 w-4 mr-1 sm:mr-2" />
-                  <span className="hidden sm:inline">Mark as Rejected</span>
-                  <span className="sm:hidden">Reject</span>
-                </Button>
-              </>
-            )}
-            
-            {quote.status === 'accepted' && !quote.converted_to_invoice_id && (
+    <Page
+      title={`Quote ${quote.quote_number}`}
+      description={quote.reference ? `Reference: ${quote.reference}` : undefined}
+      actions={
+        <div className="flex flex-wrap gap-2">
+          {quote.status === 'draft' && (
+            <>
               <Button
-                onClick={handleConvertToInvoice}
+                onClick={() => handleStatusChange('sent')}
                 disabled={processing}
-                className="bg-blue-600 hover:bg-blue-700 text-white text-sm sm:text-base"
-              >
-                <FileText className="h-4 w-4 mr-1 sm:mr-2" />
-                <span className="hidden sm:inline">Convert to Invoice</span>
-                <span className="sm:hidden">Convert</span>
-              </Button>
-            )}
-
-            {emailConfigured && (
-              <Button
-                variant="outline"
-                onClick={() => setShowEmailModal(true)}
-                disabled={processing}
+                leftIcon={<Mail className="h-4 w-4" />}
                 className="text-sm sm:text-base"
               >
-                <Mail className="h-4 w-4 mr-1 sm:mr-2" />
-                <span className="hidden sm:inline">Send Email</span>
-                <span className="sm:hidden">Email</span>
+                <span className="hidden sm:inline">Mark as Sent</span>
+                <span className="sm:hidden">Send</span>
               </Button>
-            )}
-            
-            <Button
-              variant="outline"
-              onClick={() => window.open(`/api/quotes/${quote.id}/pdf`, '_blank')}
+              <Button
+                variant="secondary"
+                onClick={() => router.push(`/quotes/${quote.id}/edit`)}
+                disabled={processing}
+                leftIcon={<Edit className="h-4 w-4" />}
+                className="text-sm sm:text-base"
+              >
+                <span>Edit</span>
+              </Button>
+            </>
+          )}
+          
+          {quote.status === 'sent' && !isExpired && (
+            <>
+              <Button
+                onClick={() => handleStatusChange('accepted')}
+                disabled={processing}
+                variant="success"
+                leftIcon={<CheckCircle className="h-4 w-4" />}
+                className="text-sm sm:text-base"
+              >
+                <span className="hidden sm:inline">Mark as Accepted</span>
+                <span className="sm:hidden">Accept</span>
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => handleStatusChange('rejected')}
+                disabled={processing}
+                leftIcon={<XCircle className="h-4 w-4" />}
+                className="text-sm sm:text-base"
+              >
+                <span className="hidden sm:inline">Mark as Rejected</span>
+                <span className="sm:hidden">Reject</span>
+              </Button>
+            </>
+          )}
+          
+          {quote.status === 'accepted' && !quote.converted_to_invoice_id && (
+            <Button onClick={handleConvertToInvoice}
               disabled={processing}
+              leftIcon={<FileText className="h-4 w-4" />}
               className="text-sm sm:text-base"
             >
-              <Download className="h-4 w-4 mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Download PDF</span>
-              <span className="sm:hidden">PDF</span>
+              <span className="hidden sm:inline">Convert to Invoice</span>
+              <span className="sm:hidden">Convert</span>
             </Button>
+          )}
 
-            {quote.status === 'draft' && (
-              <Button
-                variant="outline"
-                onClick={handleDelete}
-                disabled={processing}
-                className="text-red-600 hover:bg-red-50 text-sm sm:text-base"
-              >
-                <Trash2 className="h-4 w-4 mr-1 sm:mr-2" />
-                <span>Delete</span>
-              </Button>
-            )}
-          </div>
+          {emailConfigured && (
+            <Button
+              variant="secondary"
+              onClick={() => setShowEmailModal(true)}
+              disabled={processing}
+              leftIcon={<Mail className="h-4 w-4" />}
+              className="text-sm sm:text-base"
+            >
+              <span className="hidden sm:inline">Send Email</span>
+              <span className="sm:hidden">Email</span>
+            </Button>
+          )}
+          
+          <Button
+            variant="secondary"
+            onClick={() => window.open(`/api/quotes/${quote.id}/pdf`, '_blank')}
+            disabled={processing}
+            leftIcon={<Download className="h-4 w-4" />}
+            className="text-sm sm:text-base"
+          >
+            <span className="hidden sm:inline">Download PDF</span>
+            <span className="sm:hidden">PDF</span>
+          </Button>
+
+          {quote.status === 'draft' && (
+            <Button
+              variant="danger"
+              onClick={() => setShowDeleteDialog(true)}
+              disabled={processing}
+              leftIcon={<Trash2 className="h-4 w-4" />}
+              className="text-sm sm:text-base"
+            >
+              <span>Delete</span>
+            </Button>
+          )}
         </div>
+      }
+    >
+      <div className="mb-2">
+        <Badge variant={getStatusVariant(quote.status)}>
+          {getStatusIcon(quote.status)}
+          {quote.status.charAt(0).toUpperCase() + quote.status.slice(1).replace('_', ' ')}
+        </Badge>
       </div>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg">
-          {error}
-        </div>
+        <Alert variant="error" title="Error" description={error} />
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white rounded-lg shadow-sm border p-4 sm:p-6">
-            <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Quote Details</h2>
-            
+          <Section title="Quote Details">
+            <Card>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
               <div>
                 <h3 className="font-medium text-xs sm:text-sm text-gray-600 mb-1">From</h3>
@@ -418,11 +413,11 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
                 </p>
               </div>
             </div>
-          </div>
+            </Card>
+          </Section>
 
-          <div className="bg-white rounded-lg shadow-sm border p-4 sm:p-6">
-            <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Line Items</h2>
-            
+          <Section title="Line Items">
+            <Card>
             {/* Desktop Table */}
             <div className="hidden lg:block overflow-x-auto">
               <table className="w-full">
@@ -487,7 +482,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
                         <span className="text-gray-500">Unit Price:</span> £{item.unit_price.toFixed(2)}
                       </div>
                       <div>
-                        <span className="text-gray-500">Discount:</span> 
+                        <span className="text-gray-500">Disbadge: </span> 
                         {item.discount_percentage > 0 ? (
                           <span className="text-green-600"> -{item.discount_percentage}%</span>
                         ) : (
@@ -527,12 +522,12 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
                 <span>£{quote.total_amount.toFixed(2)}</span>
               </div>
             </div>
-          </div>
+            </Card>
+          </Section>
 
           {(quote.notes || quote.internal_notes) && (
-            <div className="bg-white rounded-lg shadow-sm border p-4 sm:p-6">
-              <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Notes</h2>
-              
+            <Section title="Notes">
+              <Card>
               {quote.notes && (
                 <div className="mb-4">
                   <h3 className="font-medium text-xs sm:text-sm text-gray-600 mb-1">Quote Notes</h3>
@@ -548,14 +543,14 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
                   </p>
                 </div>
               )}
-            </div>
+              </Card>
+            </Section>
           )}
         </div>
 
         <div className="space-y-6">
-          <div className="bg-white rounded-lg shadow-sm border p-4 sm:p-6">
-            <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Quote Status</h2>
-            
+          <Section title="Quote Status">
+            <Card>
             <div className="space-y-4">
               <div>
                 <p className="text-xs sm:text-sm text-gray-600">Total Amount</p>
@@ -564,10 +559,10 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               
               <div>
                 <p className="text-xs sm:text-sm text-gray-600">Status</p>
-                <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(quote.status)}`}>
+                <Badge variant={getStatusVariant(quote.status)}>
                   {getStatusIcon(quote.status)}
                   {quote.status.charAt(0).toUpperCase() + quote.status.slice(1).replace('_', ' ')}
-                </span>
+                </Badge>
               </div>
               
               {quote.converted_to_invoice_id && (
@@ -580,35 +575,31 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               )}
 
               {isExpired && quote.status === 'sent' && (
-                <div className="p-2 sm:p-3 bg-yellow-50 rounded-md">
-                  <p className="text-xs sm:text-sm text-yellow-800">
-                    This quote has expired
-                  </p>
-                </div>
+                <Alert variant="warning" description="This quote has expired" />
               )}
             </div>
-          </div>
+            </Card>
+          </Section>
 
-          <div className="bg-white rounded-lg shadow-sm border p-4 sm:p-6">
-            <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Actions</h2>
-            
+          <Section title="Actions">
+            <Card>
             <div className="space-y-2">
               <Button
-                variant="outline"
-                className="w-full"
+                variant="secondary"
+                fullWidth
                 onClick={() => {
                   navigator.clipboard.writeText(window.location.href)
-                  alert('Link copied to clipboard!')
+                  toast.success('Link copied to clipboard!')
                 }}
+                leftIcon={<Copy className="h-4 w-4" />}
               >
-                <Copy className="h-4 w-4 mr-2" />
                 Copy Link
               </Button>
               
               {quote.status === 'sent' && !isExpired && (
                 <Button
-                  variant="outline"
-                  className="w-full"
+                  variant="secondary"
+                  fullWidth
                   onClick={() => handleStatusChange('expired')}
                   disabled={processing}
                 >
@@ -616,24 +607,35 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
                 </Button>
               )}
             </div>
-          </div>
+            </Card>
+          </Section>
         </div>
       </div>
 
       {quote && (
-        <EmailQuoteModal
-          quote={quote}
-          isOpen={showEmailModal}
-          onClose={() => setShowEmailModal(false)}
-          onSuccess={async () => {
-            // Reload quote to get updated status
-            const result = await getQuote(quoteId!)
-            if (result.quote) {
-              setQuote(result.quote)
-            }
-          }}
-        />
+        <>
+          <EmailQuoteModal
+            quote={quote}
+            isOpen={showEmailModal}
+            onClose={() => setShowEmailModal(false)}
+            onSuccess={async () => {
+              // Reload quote to get updated status
+              const result = await getQuote(quoteId!)
+              if (result.quote) {
+                setQuote(result.quote)
+              }
+            }}
+          />
+          <ConfirmDialog
+            open={showDeleteDialog}
+            onClose={() => setShowDeleteDialog(false)}
+            onConfirm={handleDelete}
+            title="Delete Quote"
+            message="Are you sure you want to delete this quote? This action cannot be undone."
+            confirmText="Delete"
+          />
+        </>
       )}
-    </div>
+    </Page>
   )
 }

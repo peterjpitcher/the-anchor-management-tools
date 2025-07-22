@@ -322,7 +322,7 @@ export interface UserRole {
 export interface CustomerCategoryStats {
   customer_id: string;
   category_id: string;
-  booking_count: number;
+  booking_badge: number;
   total_spent: number;
   last_booking_date: string;
   created_at: string;

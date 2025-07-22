@@ -3,7 +3,16 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getInvoice, recordPayment } from '@/app/actions/invoices'
-import { Button } from '@/components/ui/Button'
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Select } from '@/components/ui-v2/forms/Select'
+import { Textarea } from '@/components/ui-v2/forms/Textarea'
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { toast } from '@/components/ui-v2/feedback/Toast'
 import { ChevronLeft, Save, AlertCircle } from 'lucide-react'
 import type { InvoiceWithDetails, PaymentMethod } from '@/types/invoices'
 
@@ -87,10 +96,8 @@ export default function RecordPaymentPage() {
         throw new Error(result.error)
       }
 
-      setSuccess(true)
-      setTimeout(() => {
-        router.push(`/invoices/${invoice.id}`)
-      }, 1500)
+      toast.success('Payment recorded successfully!')
+      router.push(`/invoices/${invoice.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to record payment')
       setSubmitting(false)
@@ -99,65 +106,50 @@ export default function RecordPaymentPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading invoice...</p>
+      <Page title="Loading...">
+        <div className="flex items-center justify-center h-64">
+          <Spinner size="lg" />
         </div>
-      </div>
+      </Page>
     )
   }
 
   if (!invoice) {
     return (
-      <div className="space-y-6">
-        <div className="bg-red-50 border border-red-200 text-red-600 rounded-lg p-4">
-          {error || 'Invoice not found'}
-        </div>
+      <Page title="Error">
+        <Alert variant="error" description={error || 'Invoice not found'} className="mb-6" />
         <Button
           onClick={() => router.push('/invoices')}
-          className="mt-4"
+          leftIcon={<ChevronLeft className="h-4 w-4" />}
         >
           Back to Invoices
         </Button>
-      </div>
+      </Page>
     )
   }
 
   const outstanding = invoice.total_amount - invoice.paid_amount
 
   return (
-    <div className="space-y-6">
-      <div className="mb-6">
-        <Button
-          variant="ghost"
-          onClick={() => router.push(`/invoices/${invoice.id}`)}
-          className="mb-4"
-        >
-          <ChevronLeft className="h-4 w-4 mr-2" />
-          Back to Invoice
-        </Button>
-
-        <h1 className="text-3xl font-bold mb-2">Record Payment</h1>
-        <p className="text-muted-foreground">
-          Invoice {invoice.invoice_number} - {invoice.vendor?.name}
-        </p>
-      </div>
+    <Page
+      title="Record Payment"
+      description={`Invoice ${invoice.invoice_number} - ${invoice.vendor?.name}`}
+      breadcrumbs={[
+        { label: 'Invoices', href: '/invoices' },
+        { label: invoice.invoice_number, href: `/invoices/${invoice.id}` },
+        { label: 'Payment' }
+      ]}
+    >
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg flex items-center gap-2">
-          <AlertCircle className="h-5 w-5 flex-shrink-0" />
-          {error}
-        </div>
+        <Alert variant="error" description={error} className="mb-6" />
       )}
 
       {success && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 text-green-600 rounded-lg">
-          Payment recorded successfully! Redirecting...
-        </div>
+        <Alert variant="success" description="Payment recorded successfully! Redirecting..." className="mb-6" />
       )}
 
-      <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+      <Card className="p-6 mb-6">
         <h2 className="text-lg font-semibold mb-4">Payment Summary</h2>
         <div className="grid grid-cols-3 gap-4 text-center">
           <div>
@@ -173,53 +165,39 @@ export default function RecordPaymentPage() {
             <p className="text-xl font-bold text-red-600">£{outstanding.toFixed(2)}</p>
           </div>
         </div>
-      </div>
+      </Card>
 
-      <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-sm border p-6">
+      <form onSubmit={handleSubmit}>
+        <Card className="p-6">
         <h2 className="text-lg font-semibold mb-4">Payment Details</h2>
         
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">
-              Payment Date <span className="text-red-500">*</span>
-            </label>
-            <input
+          <FormGroup label="Payment Date" required>
+            <Input
               type="date"
               value={paymentDate}
               onChange={(e) => setPaymentDate(e.target.value)}
               max={new Date().toISOString().split('T')[0]}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
-          </div>
+          </FormGroup>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">
-              Amount (£) <span className="text-red-500">*</span>
-            </label>
-            <input
+          <FormGroup label="Amount (£)" required help={`Maximum: £${outstanding.toFixed(2)}`}>
+            <Input
               type="number"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               min="0.01"
               max={outstanding.toFixed(2)}
               step="0.01"
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
-            <p className="text-sm text-gray-500 mt-1">
-              Maximum: £{outstanding.toFixed(2)}
-            </p>
-          </div>
+          </FormGroup>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">
-              Payment Method <span className="text-red-500">*</span>
-            </label>
-            <select
+          <FormGroup label="Payment Method" required>
+            <Select
               value={paymentMethod}
               onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             >
               <option value="bank_transfer">Bank Transfer</option>
@@ -227,40 +205,32 @@ export default function RecordPaymentPage() {
               <option value="cash">Cash</option>
               <option value="cheque">Cheque</option>
               <option value="other">Other</option>
-            </select>
-          </div>
+            </Select>
+          </FormGroup>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">
-              Reference
-            </label>
-            <input
+          <FormGroup label="Reference">
+            <Input
               type="text"
               value={reference}
               onChange={(e) => setReference(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Transaction reference or cheque number"
             />
-          </div>
+          </FormGroup>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">
-              Notes
-            </label>
-            <textarea
+          <FormGroup label="Notes">
+            <Textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               rows={3}
               placeholder="Any additional notes about this payment"
             />
-          </div>
+          </FormGroup>
         </div>
 
         <div className="flex justify-end gap-4 mt-6">
           <Button
             type="button"
-            variant="outline"
+            variant="secondary"
             onClick={() => router.push(`/invoices/${invoice.id}`)}
             disabled={submitting}
           >
@@ -269,12 +239,14 @@ export default function RecordPaymentPage() {
           <Button
             type="submit"
             disabled={submitting || parseFloat(amount) <= 0 || parseFloat(amount) > outstanding}
+            loading={submitting}
+            leftIcon={<Save className="h-4 w-4" />}
           >
-            <Save className="h-4 w-4 mr-2" />
-            {submitting ? 'Recording...' : 'Record Payment'}
+            Record Payment
           </Button>
         </div>
+        </Card>
       </form>
-    </div>
+    </Page>
   )
 }

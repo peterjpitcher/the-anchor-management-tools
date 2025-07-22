@@ -406,7 +406,7 @@ export function generateCompactQuoteHTML(data: QuoteTemplateData): string {
           <tr>
             <td>
               <div class="item-description">${item.description}</div>
-              ${hasDiscounts && item.discount_percentage > 0 ? `<div class="item-line-discount">Line discount: ${item.discount_percentage}%</div>` : ''}
+              ${hasDiscounts && item.discount_percentage > 0 ? `<div class="item-line-discount">Line disbadge: ${item.discount_percentage}%</div>` : ''}
             </td>
             <td class="text-right">${item.quantity}</td>
             <td class="text-right">${formatCurrency(item.unit_price)}</td>

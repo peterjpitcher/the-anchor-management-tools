@@ -126,8 +126,8 @@ export async function getChallenge(id: string) {
     return { 
       data: {
         ...data,
-        participant_count: participantCount || 0,
-        completion_count: completionCount || 0
+        participant_badge: participantCount || 0,
+        completion_badge: completionCount || 0
       }
     };
   } catch (error) {

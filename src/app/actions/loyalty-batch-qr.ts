@@ -105,7 +105,7 @@ export async function generateEventQRCodes(data: z.infer<typeof BatchQRSchema>) 
         operation_status: 'success',
         new_values: {
           event_id: event.id,
-          booking_count: bookings.length,
+          booking_badge: bookings.length,
           format: 'pdf'
         }
       });
@@ -134,7 +134,7 @@ export async function generateEventQRCodes(data: z.infer<typeof BatchQRSchema>) 
         operation_status: 'success',
         new_values: {
           event_id: event.id,
-          booking_count: bookings.length,
+          booking_badge: bookings.length,
           format: 'individual'
         }
       });

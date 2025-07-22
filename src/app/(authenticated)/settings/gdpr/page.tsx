@@ -4,11 +4,16 @@ import { useState } from 'react'
 import { 
   ShieldCheckIcon, 
   ArrowDownTrayIcon, 
-  TrashIcon,
-  ExclamationTriangleIcon 
+  TrashIcon
 } from '@heroicons/react/24/outline'
 import { exportUserData, deleteUserData } from '@/app/actions/gdpr'
 import toast from 'react-hot-toast'
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui-v2/layout/Card'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
 
 export default function GDPRSettingsPage() {
   const [isExporting, setIsExporting] = useState(false)
@@ -75,149 +80,128 @@ export default function GDPRSettingsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center">
-            <ShieldCheckIcon className="h-8 w-8 mr-3 text-blue-600" />
-            GDPR & Privacy Settings
-          </h1>
-          <p className="mt-2 text-sm text-gray-500">
-            Manage your personal data in compliance with GDPR regulations
-          </p>
-        </div>
-      </div>
+    <Page
+      title="GDPR & Privacy Settings"
+      description="Manage your personal data in compliance with GDPR regulations"
+      breadcrumbs={[
+        { label: 'Settings', href: '/settings' },
+        { label: 'GDPR & Privacy' }
+      ]}
+    >
 
-      {/* Data Export Section */}
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <h3 className="text-lg font-medium leading-6 text-gray-900 flex items-center">
-            <ArrowDownTrayIcon className="h-5 w-5 mr-2 text-gray-400" />
-            Export Your Data
-          </h3>
-          <div className="mt-2 max-w-xl text-sm text-gray-500">
-            <p>
+      <Section className="space-y-6">
+        {/* Data Export Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <ArrowDownTrayIcon className="h-5 w-5 mr-2 text-gray-400" />
+              Export Your Data
+            </CardTitle>
+            <CardDescription className="mt-2 max-w-xl">
               Download a copy of all your personal data stored in our system. 
               This includes your profile, bookings, messages, and activity logs.
-            </p>
-          </div>
-          <div className="mt-5">
-            <button
-              type="button"
+            </CardDescription>
+          </CardHeader>
+          <div className="px-5 pb-5 sm:px-6 sm:pb-6">
+            <Button variant="primary"
               onClick={handleExportData}
-              disabled={isExporting}
-              className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:bg-gray-300"
+              loading={isExporting}
+              leftIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
             >
-              <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
               {isExporting ? 'Exporting...' : 'Export My Data'}
-            </button>
+            </Button>
           </div>
-        </div>
-      </div>
+        </Card>
 
-      {/* Data Deletion Section */}
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <h3 className="text-lg font-medium leading-6 text-gray-900 flex items-center">
-            <TrashIcon className="h-5 w-5 mr-2 text-red-500" />
-            Delete Your Data
-          </h3>
-          <div className="mt-2 max-w-xl text-sm text-gray-500">
-            <p>
+        {/* Data Deletion Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <TrashIcon className="h-5 w-5 mr-2 text-red-500" />
+              Delete Your Data
+            </CardTitle>
+            <CardDescription className="mt-2 max-w-xl">
               Permanently delete all your personal data from our system. 
               This action cannot be undone.
-            </p>
-          </div>
-          
-          {!showDeleteConfirm ? (
-            <div className="mt-5">
-              <button
-                type="button"
+            </CardDescription>
+          </CardHeader>
+          <div className="px-5 pb-5 sm:px-6 sm:pb-6">
+            {!showDeleteConfirm ? (
+              <Button
+                variant="danger"
                 onClick={() => setShowDeleteConfirm(true)}
-                className="inline-flex items-center rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
+                leftIcon={<TrashIcon className="h-4 w-4" />}
               >
-                <TrashIcon className="h-4 w-4 mr-2" />
                 Request Data Deletion
-              </button>
-            </div>
-          ) : (
-            <div className="mt-5 rounded-md bg-red-50 p-4">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <ExclamationTriangleIcon className="h-5 w-5 text-red-400" aria-hidden="true" />
-                </div>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-red-800">
-                    Confirm Data Deletion
-                  </h3>
-                  <div className="mt-2 text-sm text-red-700">
-                    <p>
-                      This will permanently delete all your data. To confirm, 
-                      please enter your email address:
-                    </p>
-                  </div>
-                  <div className="mt-4">
-                    <input
-                      type="email"
-                      value={deleteEmail}
-                      onChange={(e) => setDeleteEmail(e.target.value)}
-                      placeholder="your@email.com"
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 sm:text-sm"
-                    />
-                  </div>
-                  <div className="mt-4 flex gap-3">
-                    <button
-                      type="button"
+              </Button>
+            ) : (
+              <Alert
+                variant="error"
+                title="Confirm Data Deletion"
+                
+              >
+                <div className="mt-4 space-y-4">
+                  <Input
+                    type="email"
+                    value={deleteEmail}
+                    onChange={(e) => setDeleteEmail(e.target.value)}
+                    placeholder="your@email.com"
+                    error={false}
+                  />
+                  <div className="flex gap-3">
+                    <Button
+                      variant="danger"
                       onClick={handleDeleteData}
-                      disabled={isDeleting}
-                      className="inline-flex items-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 disabled:bg-gray-300"
+                      loading={isDeleting}
+                      size="sm"
                     >
                       {isDeleting ? 'Processing...' : 'Confirm Deletion'}
-                    </button>
-                    <button
-                      type="button"
+                    </Button>
+                    <Button
+                      variant="secondary"
                       onClick={() => {
                         setShowDeleteConfirm(false)
                         setDeleteEmail('')
                       }}
-                      className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+                      size="sm"
                     >
                       Cancel
-                    </button>
+                    </Button>
                   </div>
                 </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Privacy Information */}
-      <div className="bg-blue-50 shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <h3 className="text-lg font-medium leading-6 text-gray-900">
-            Your Privacy Rights
-          </h3>
-          <div className="mt-2 text-sm text-gray-700 space-y-2">
-            <p>Under GDPR, you have the following rights:</p>
-            <ul className="list-disc list-inside space-y-1 ml-4">
-              <li>Right to access your personal data</li>
-              <li>Right to rectification of inaccurate data</li>
-              <li>Right to erasure (&quot;right to be forgotten&quot;)</li>
-              <li>Right to data portability</li>
-              <li>Right to object to processing</li>
-              <li>Right to withdraw consent</li>
-            </ul>
-            <p className="mt-4">
-              For more information, please refer to our{' '}
-              <a href="/privacy" className="text-blue-600 hover:text-blue-500 underline">
-                Privacy Policy
-              </a>
-              .
-            </p>
+              
+            This will permanently delete all your data. To confirm, please enter your email address:</Alert>
+            )}
           </div>
-        </div>
-      </div>
-    </div>
+        </Card>
+
+        {/* Privacy Rights Information */}
+        <Card variant="bordered" className="bg-blue-50 border-blue-200">
+          <CardHeader>
+            <CardTitle>Your Privacy Rights</CardTitle>
+          </CardHeader>
+          <div className="px-5 pb-5 sm:px-6 sm:pb-6">
+            <div className="text-sm text-gray-700 space-y-2">
+              <p>Under GDPR, you have the following rights:</p>
+              <ul className="list-disc list-inside space-y-1 ml-4">
+                <li>Right to access your personal data</li>
+                <li>Right to rectification of inaccurate data</li>
+                <li>Right to erasure ("right to be forgotten")</li>
+                <li>Right to data portability</li>
+                <li>Right to object to processing</li>
+                <li>Right to withdraw consent</li>
+              </ul>
+              <p className="mt-4">
+                For more information, please refer to our{' '}
+                <a href="/privacy" className="text-blue-600 hover:text-blue-500 underline">
+                  Privacy Policy
+                </a>
+                .
+              </p>
+            </div>
+          </div>
+        </Card>
+      </Section>
+    </Page>
   )
 }

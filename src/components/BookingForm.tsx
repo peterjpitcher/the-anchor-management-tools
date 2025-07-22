@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import { MagnifyingGlassIcon, UserPlusIcon } from '@heroicons/react/24/outline'
 import { formatDate } from '@/lib/dateUtils'
 import { CustomerWithLoyalty, getLoyalCustomers, sortCustomersByLoyalty } from '@/lib/customerUtils'
-import { Button } from '@/components/ui/Button'
+import { Button } from '@/components/ui-v2/forms/Button'
 import { createBooking } from '@/app/actions/bookings'
 
 interface BookingFormProps {
@@ -308,7 +308,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
             <div className="mt-6 flex flex-col sm:flex-row sm:justify-end gap-3">
               <Button
                 type="button"
-                variant="outline"
+                variant="secondary"
                 onClick={() => {
                   setShowOverwriteConfirm(false)
                   setExistingBookingInfo(null)
@@ -540,7 +540,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
         </Button>
         <Button
           type="button"
-          variant="outline"
+          variant="secondary"
           onClick={onCancel}
           disabled={isSubmitting}
         >

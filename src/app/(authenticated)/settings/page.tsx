@@ -19,6 +19,11 @@ import {
 } from '@heroicons/react/24/outline';
 import { checkUserPermission } from '@/app/actions/rbac';
 import type { ModuleName, ActionType } from '@/types/rbac';
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page';
+import { Card } from '@/components/ui-v2/layout/Card';
+import { Section } from '@/components/ui-v2/layout/Section';
+import { List, SimpleList } from '@/components/ui-v2/display/List';
 
 const settingsSections = [
   // User Management Section
@@ -205,99 +210,55 @@ export default async function SettingsPage() {
   );
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-4 sm:p-6">
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Settings</h1>
-          <p className="mt-1 text-xs sm:text-sm text-gray-500">
-            Manage application settings and configurations
-          </p>
-        </div>
-      </div>
+    <Page
+      title="Settings"
+      description="Manage application settings and configurations"
+    >
 
       {userManagementSections.length > 0 && (
-        <div className="bg-white shadow sm:rounded-lg">
-          <div className="px-4 py-3 border-b border-gray-200">
-            <h2 className="text-base sm:text-lg font-medium text-gray-900">User Management</h2>
-          </div>
-          <ul role="list" className="divide-y divide-gray-200">
-            {userManagementSections.map((section) => (
-              <li key={section.href}>
-                <Link href={section.href} className="block hover:bg-gray-50 px-4 py-3 sm:py-4 sm:px-6">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0">
-                      <section.icon className="h-5 w-5 sm:h-6 sm:w-6 text-gray-400" aria-hidden="true" />
-                    </div>
-                    <div className="ml-3 sm:ml-4 flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{section.name}</p>
-                      <p className="text-xs sm:text-sm text-gray-500 line-clamp-2">{section.description}</p>
-                    </div>
-                    <div className="flex-shrink-0 ml-2">
-                      <ChevronRightIcon className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" aria-hidden="true" />
-                    </div>
-                  </div>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <Section title="User Management">
+          <SimpleList
+            items={userManagementSections.map((section) => ({
+              id: section.href,
+              href: section.href,
+              title: section.name,
+              subtitle: section.description,
+              icon: <section.icon className="h-5 w-5 text-gray-400" />,
+              meta: <ChevronRightIcon className="h-5 w-5 text-gray-400" />,
+            }))}
+          />
+        </Section>
       )}
 
       {systemSettingsSections.length > 0 && (
-        <div className="bg-white shadow sm:rounded-lg">
-          <div className="px-4 py-3 border-b border-gray-200">
-            <h2 className="text-base sm:text-lg font-medium text-gray-900">System Settings</h2>
-          </div>
-          <ul role="list" className="divide-y divide-gray-200">
-            {systemSettingsSections.map((section) => (
-              <li key={section.href}>
-                <Link href={section.href} className="block hover:bg-gray-50 px-4 py-3 sm:py-4 sm:px-6">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0">
-                      <section.icon className="h-5 w-5 sm:h-6 sm:w-6 text-gray-400" aria-hidden="true" />
-                    </div>
-                    <div className="ml-3 sm:ml-4 flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{section.name}</p>
-                      <p className="text-xs sm:text-sm text-gray-500 line-clamp-2">{section.description}</p>
-                    </div>
-                    <div className="flex-shrink-0 ml-2">
-                      <ChevronRightIcon className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" aria-hidden="true" />
-                    </div>
-                  </div>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <Section title="System Settings">
+          <SimpleList
+            items={systemSettingsSections.map((section) => ({
+              id: section.href,
+              href: section.href,
+              title: section.name,
+              subtitle: section.description,
+              icon: <section.icon className="h-5 w-5 text-gray-400" />,
+              meta: <ChevronRightIcon className="h-5 w-5 text-gray-400" />,
+            }))}
+          />
+        </Section>
       )}
 
       {monitoringSections.length > 0 && (
-        <div className="bg-white shadow sm:rounded-lg">
-          <div className="px-4 py-3 border-b border-gray-200">
-            <h2 className="text-base sm:text-lg font-medium text-gray-900">Monitoring & Logs</h2>
-          </div>
-          <ul role="list" className="divide-y divide-gray-200">
-            {monitoringSections.map((section) => (
-              <li key={section.href}>
-                <Link href={section.href} className="block hover:bg-gray-50 px-4 py-3 sm:py-4 sm:px-6">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0">
-                      <section.icon className="h-5 w-5 sm:h-6 sm:w-6 text-gray-400" aria-hidden="true" />
-                    </div>
-                    <div className="ml-3 sm:ml-4 flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{section.name}</p>
-                      <p className="text-xs sm:text-sm text-gray-500 line-clamp-2">{section.description}</p>
-                    </div>
-                    <div className="flex-shrink-0 ml-2">
-                      <ChevronRightIcon className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" aria-hidden="true" />
-                    </div>
-                  </div>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <Section title="Monitoring & Logs">
+          <SimpleList
+            items={monitoringSections.map((section) => ({
+              id: section.href,
+              href: section.href,
+              title: section.name,
+              subtitle: section.description,
+              icon: <section.icon className="h-5 w-5 text-gray-400" />,
+              meta: <ChevronRightIcon className="h-5 w-5 text-gray-400" />,
+            }))}
+          />
+        </Section>
       )}
-    </div>
+    </Page>
   );
 }

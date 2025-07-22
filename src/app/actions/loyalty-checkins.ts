@@ -216,7 +216,7 @@ export async function getEventCheckIns(eventId: string) {
       .from('event_check_ins')
       .select(`
         *,
-        customer:customers(name, email_address, phone_number),
+        customer:customers(first_name, last_name, mobile_number),
         staff:users(email),
         member:loyalty_members(
           tier:loyalty_tiers(name, color, icon)

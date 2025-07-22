@@ -4,9 +4,18 @@ import { useState, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
-import toast from 'react-hot-toast'
-import { Loader2, ArrowLeft } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import Image from 'next/image'
+import { Form, FormActions } from '@/components/ui-v2/forms/Form'
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Container } from '@/components/ui-v2/layout/Container'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 
 // ResetPasswordForm component - Client Component
 function ResetPasswordForm() {
@@ -46,9 +55,9 @@ function ResetPasswordForm() {
 
   if (isSubmitted) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
-        <div className="w-full max-w-md text-center">
-          <div className="mx-auto w-64 mb-2">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        <Container size="sm">
+          <div className="mx-auto w-64 mb-6">
             <Image 
               src="/logo.png" 
               alt="The Anchor Logo" 
@@ -59,28 +68,27 @@ function ResetPasswordForm() {
             />
           </div>
           
-          <h1 className="text-2xl sm:text-3xl font-bold text-white mb-4">
-            Check your email
-          </h1>
-          <p className="text-sm sm:text-base text-green-100 mb-8">
-            We&apos;ve sent a password reset link to {email}
-          </p>
-          
-          <Link
-            href="/auth/login"
-            className="inline-flex items-center text-white underline hover:text-green-100 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-sidebar rounded"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to login
-          </Link>
-        </div>
+          <EmptyState icon={null}
+            title="Check your email"
+            description={`We've sent a password reset link to ${email}`}
+            action={(
+              <LinkButton
+                href="/auth/login"
+                variant="secondary"
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to login
+              </LinkButton>
+            )}
+          />
+        </Container>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+      <Container size="sm">
         <div className="text-center mb-8">
           {/* Logo */}
           <div className="mx-auto w-64 mb-2">
@@ -95,69 +103,60 @@ function ResetPasswordForm() {
           </div>
           
           {/* Title */}
-          <h1 className="text-2xl sm:text-3xl font-bold text-white">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
             Reset your password
           </h1>
-          <p className="mt-2 text-xs sm:text-sm text-green-100">
+          <p className="mt-2 text-xs sm:text-sm text-gray-600">
             Enter your email address and we&apos;ll send you a reset link
           </p>
         </div>
 
-        <form 
-          onSubmit={handleSubmit} 
-          method="POST" 
-          action="#" 
-          autoComplete="on"
-          className="space-y-6"
-        >
-          {/* Email Field */}
-          <div>
-            <label htmlFor="reset-email" className="block text-sm font-medium text-white">
-              Email address
-            </label>
-            <input
-              id="reset-email"
-              name="reset-email"
-              type="email"
-              autoComplete="email"
+        <Card>
+          <Form onSubmit={handleSubmit} autoComplete="on">
+            {/* Email Field */}
+            <FormGroup
+              label="Email address"
               required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 block w-full rounded-lg border border-green-800/50 bg-white/10 backdrop-blur px-4 py-3 text-base text-white placeholder-green-200 shadow-sm focus:border-white focus:ring-white min-h-[44px]"
-              placeholder="you@example.com"
-            />
-          </div>
-
-          {/* Submit Button */}
-          <div>
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="inline-flex w-full items-center justify-center rounded-lg bg-white px-6 py-3 text-base font-medium text-sidebar shadow-sm hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-sidebar disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px] transition-colors duration-150 touch-manipulation"
             >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Sending reset email...
-                </>
-              ) : (
-                'Send reset email'
-              )}
-            </button>
-          </div>
+              <Input
+                id="reset-email"
+                name="reset-email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+              />
+            </FormGroup>
 
-          {/* Back to Login Link */}
-          <div className="text-center">
-            <Link
-              href="/auth/login"
-              className="inline-flex items-center text-sm text-white underline hover:text-green-100 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-sidebar rounded"
-            >
-              <ArrowLeft className="mr-1 h-4 w-4" />
-              Back to login
-            </Link>
-          </div>
-        </form>
-      </div>
+            {/* Submit Button */}
+            <FormActions>
+              <Button
+                type="submit"
+                disabled={isLoading}
+                loading={isLoading}
+                fullWidth
+                size="lg"
+              >
+                Send reset email
+              </Button>
+            </FormActions>
+
+            {/* Back to Login Link */}
+            <div className="text-center mt-4">
+              <LinkButton
+                href="/auth/login"
+                variant="secondary"
+                size="sm"
+              >
+                <ArrowLeft className="mr-1 h-4 w-4" />
+                Back to login
+              </LinkButton>
+            </div>
+          </Form>
+        </Card>
+      </Container>
     </div>
   )
 }
@@ -166,10 +165,8 @@ function ResetPasswordForm() {
 export default function ResetPasswordPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
-        <div className="flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-white" />
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        <Spinner size="lg" />
       </div>
     }>
       <ResetPasswordForm />

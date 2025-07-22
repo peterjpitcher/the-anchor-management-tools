@@ -1,3 +1,10 @@
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
 export function formatBytes(bytes: number, decimals = 2): string {
   if (!+bytes) return '0 Bytes'; // Changed from bytes === 0 to !+bytes to handle null/undefined/NaN
 
@@ -49,4 +56,23 @@ export function generateSlug(text: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .replace(/-+/g, '-')
+}
+
+export function formatPhoneForStorage(phone: string): string {
+  // Clean the phone number - remove all non-digits except leading +
+  const cleaned = phone.replace(/[^\d+]/g, '').replace(/\+/g, (match, offset) => offset === 0 ? match : '');
+  const digitsOnly = cleaned.replace(/^\+/, '');
+  
+  // Convert UK numbers to E164 format
+  if (digitsOnly.startsWith('44') && digitsOnly.length >= 12) {
+    return '+' + digitsOnly;
+  } else if (digitsOnly.startsWith('0') && digitsOnly.length === 11) {
+    // UK number starting with 0
+    return '+44' + digitsOnly.substring(1);
+  } else if (cleaned.startsWith('+')) {
+    return cleaned;
+  } else {
+    // Default to adding UK code if no country code
+    return '+44' + digitsOnly.replace(/^0/, '');
+  }
 }

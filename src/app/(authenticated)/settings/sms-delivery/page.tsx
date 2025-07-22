@@ -4,6 +4,17 @@ import { useEffect, useState } from 'react';
 import { getSmsDeliveryStats, getDeliveryFailureReport } from '@/app/actions/customerSmsActions';
 import Link from 'next/link';
 import { ArrowLeftIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page';
+import { Card } from '@/components/ui-v2/layout/Card';
+import { Section } from '@/components/ui-v2/layout/Section';
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
+import { Badge } from '@/components/ui-v2/display/Badge';
+import { Stat, StatGroup } from '@/components/ui-v2/display/Stat';
+import { DataTable } from '@/components/ui-v2/display/DataTable';
+import { Spinner } from '@/components/ui-v2/feedback/Spinner';
+import { Alert } from '@/components/ui-v2/feedback/Alert';
+import { EmptyState } from '@/components/ui-v2/display/EmptyState';
 
 interface SmsStats {
   messages: {
@@ -70,194 +81,172 @@ export default function SmsDeliveryStatsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-lg">Loading SMS delivery statistics...</div>
-      </div>
+      <Page title="SMS Delivery Statistics">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <Spinner size="lg" />
+            <p className="mt-4 text-gray-600">Loading SMS delivery statistics...</p>
+          </div>
+        </div>
+      </Page>
     );
   }
 
   if (error) {
     return (
-      <div className="p-6">
-        <div className="bg-red-50 border border-red-200 rounded-md p-4">
-          <p className="text-red-800">Error: {error}</p>
-        </div>
-      </div>
+      <Page title="SMS Delivery Statistics">
+        <Card>
+          <Alert
+            variant="error"
+            title="Error loading statistics"
+            
+          />
+        </Card>
+      </Page>
     );
   }
 
-  const statusColors: Record<string, string> = {
-    delivered: 'bg-green-100 text-green-800',
-    sent: 'bg-blue-100 text-blue-800',
-    failed: 'bg-red-100 text-red-800',
-    undelivered: 'bg-red-100 text-red-800',
-    queued: 'bg-yellow-100 text-yellow-800',
-    sending: 'bg-yellow-100 text-yellow-800'
+  const statusVariants: Record<string, 'success' | 'info' | 'error' | 'warning'> = {
+    delivered: 'success',
+    sent: 'info',
+    failed: 'error',
+    undelivered: 'error',
+    queued: 'warning',
+    sending: 'warning'
   };
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-900">SMS Delivery Statistics</h1>
-            <Link
-              href="/settings"
-              className="inline-flex items-center text-sm text-indigo-600 hover:text-indigo-500"
-            >
-              <ArrowLeftIcon className="mr-2 h-4 w-4" />
-              Back to Settings
-            </Link>
-          </div>
-          <p className="mt-1 text-sm text-gray-500">
-            Monitor SMS delivery performance and manage customer messaging preferences
-          </p>
-        </div>
-      </div>
+    <Page
+      title="SMS Delivery Statistics"
+      description="Monitor SMS delivery performance and manage customer messaging preferences"
+      actions={
+        <LinkButton
+          href="/settings"
+          variant="secondary"
+          size="sm"
+        >
+          <ArrowLeftIcon className="mr-2 h-4 w-4" />
+          Back to Settings
+        </LinkButton>
+      }
+    >
 
       {/* Overview Statistics */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <dt className="text-sm font-medium text-gray-500 truncate">Total Messages (30d)</dt>
-            <dd className="mt-1 text-3xl font-semibold text-gray-900">{stats?.messages.total || 0}</dd>
-          </div>
-        </div>
-        
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <dt className="text-sm font-medium text-gray-500 truncate">Delivery Rate</dt>
-            <dd className="mt-1 text-3xl font-semibold text-gray-900">{stats?.messages.deliveryRate || 0}%</dd>
-          </div>
-        </div>
-        
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <dt className="text-sm font-medium text-gray-500 truncate">Total Cost (30d)</dt>
-            <dd className="mt-1 text-3xl font-semibold text-gray-900">${stats?.messages.totalCost || '0.00'}</dd>
-          </div>
-        </div>
-        
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <dt className="text-sm font-medium text-gray-500 truncate">Active Customers</dt>
-            <dd className="mt-1 text-3xl font-semibold text-gray-900">
-              {stats?.customers.active || 0} / {stats?.customers.total || 0}
-            </dd>
-          </div>
-        </div>
-      </div>
+      <Card>
+        <StatGroup>
+          <Stat
+            label="Total Messages (30d)"
+            value={stats?.messages.total || 0}
+          />
+          <Stat
+            label="Delivery Rate"
+            value={`${stats?.messages.deliveryRate || 0}%`}
+          />
+          <Stat
+            label="Total Cost (30d)"
+            value={`$${stats?.messages.totalCost || '0.00'}`}
+          />
+          <Stat
+            label="Active Customers"
+            value={`${stats?.customers.active || 0} / ${stats?.customers.total || 0}`}
+          />
+        </StatGroup>
+      </Card>
 
       {/* Message Status Breakdown */}
       {stats?.messages.byStatus && Object.keys(stats.messages.byStatus).length > 0 && (
-        <div className="bg-white shadow sm:rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
-            <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-              Message Status Breakdown (Last 30 Days)
-            </h3>
+        <Section title="Message Status Breakdown (Last 30 Days)">
+          <Card>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
               {Object.entries(stats.messages.byStatus).map(([status, count]) => (
                 <div key={status} className="text-center">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColors[status] || 'bg-gray-100 text-gray-800'}`}>
+                  <Badge variant={statusVariants[status] || 'info'} size="sm">
                     {status}
-                  </span>
+                  </Badge>
                   <p className="mt-2 text-2xl font-semibold text-gray-900">{count}</p>
                 </div>
               ))}
             </div>
-          </div>
-        </div>
+          </Card>
+        </Section>
       )}
 
       {/* Failed Deliveries */}
       {failedCustomers.length > 0 && (
-        <div className="bg-white shadow sm:rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
-            <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-              Customers with Delivery Issues
-            </h3>
-            <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
-              <table className="min-w-full divide-y divide-gray-300">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Customer
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Mobile Number
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Failures
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Reason
-                    </th>
-                    <th className="relative px-6 py-3">
-                      <span className="sr-only">Actions</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {failedCustomers.map((customer) => (
-                    <tr key={customer.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {customer.first_name} {customer.last_name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {customer.mobile_number}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {customer.sms_delivery_failures}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          customer.sms_opt_in ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                        }`}>
-                          {customer.sms_opt_in ? 'Active' : 'Deactivated'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {customer.sms_deactivation_reason || customer.last_sms_failure_reason || '-'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <Link
-                          href={`/customers/${customer.id}`}
-                          className="text-indigo-600 hover:text-indigo-900"
-                        >
-                          View
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+        <Section title="Customers with Delivery Issues">
+          <Card>
+            <DataTable
+              data={failedCustomers}
+              getRowKey={(customer) => customer.id}
+              columns={[
+                {
+                  key: 'name',
+                  header: 'Customer',
+                  cell: (customer: FailedCustomer) => (
+                    <span className="font-medium text-gray-900">
+                      {customer.first_name} {customer.last_name}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'mobile_number',
+                  header: 'Mobile Number',
+                  cell: (customer: FailedCustomer) => customer.mobile_number,
+                },
+                {
+                  key: 'sms_delivery_failures',
+                  header: 'Failures',
+                  cell: (customer: FailedCustomer) => customer.sms_delivery_failures,
+                },
+                {
+                  key: 'status',
+                  header: 'Status',
+                  cell: (customer: FailedCustomer) => (
+                    <Badge variant={customer.sms_opt_in ? 'success' : 'error'} size="sm">
+                      {customer.sms_opt_in ? 'Active' : 'Deactivated'}
+                    </Badge>
+                  ),
+                },
+                {
+                  key: 'reason',
+                  header: 'Reason',
+                  cell: (customer: FailedCustomer) => (
+                    customer.sms_deactivation_reason || customer.last_sms_failure_reason || '-'
+                  ),
+                },
+                {
+                  key: 'actions',
+                  header: '',
+                  cell: (customer: FailedCustomer) => (
+                    <Link
+                      href={`/customers/${customer.id}`}
+                      className="text-blue-600 hover:text-blue-700"
+                    >
+                      View
+                    </Link>
+                  ),
+                },
+              ]}
+            />
+          </Card>
+        </Section>
       )}
 
       {/* Webhook Configuration Info */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <div className="flex">
-          <div className="flex-shrink-0">
-            <ExclamationTriangleIcon className="h-5 w-5 text-blue-400" aria-hidden="true" />
-          </div>
-          <div className="ml-3">
-            <h3 className="text-sm font-medium text-blue-800">Twilio Webhook Configuration</h3>
-            <div className="mt-2 text-sm text-blue-700">
-              <p>
-                To enable delivery tracking, configure your Twilio webhook URL to:
-              </p>
-              <code className="mt-1 block bg-blue-100 rounded px-2 py-1 text-xs">
-                {process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'}/api/webhooks/twilio
-              </code>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+      <Card>
+        <Alert variant="info"
+          title="Twilio Webhook Configuration"
+          icon={<ExclamationTriangleIcon className="h-5 w-5" />}
+        >
+          <p>
+            To enable delivery tracking, configure your Twilio webhook URL to:
+          </p>
+          <code className="mt-1 block bg-blue-100 rounded px-2 py-1 text-xs">
+            {process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'}/api/webhooks/twilio
+          </code>
+        
+            {error}</Alert>
+      </Card>
+    </Page>
   );
 }

@@ -1,10 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import Link from 'next/link'
 import { formatDateFull } from '@/lib/dateUtils'
 import { 
-  ArrowLeftIcon, 
   PlusIcon, 
   TrashIcon,
   PencilIcon,
@@ -25,6 +23,20 @@ import {
   getVendors
 } from '@/app/actions/privateBookingActions'
 import type { VenueSpace, CateringPackage, Vendor, ItemType } from '@/types/private-bookings'
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Select } from '@/components/ui-v2/forms/Select'
+import { Textarea } from '@/components/ui-v2/forms/Textarea'
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
+import { Modal } from '@/components/ui-v2/overlay/Modal'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
+import { toast } from '@/components/ui-v2/feedback/Toast'
 
 interface BookingItem {
   id: string
@@ -33,7 +45,7 @@ interface BookingItem {
   space_id?: string | null
   package_id?: string | null
   vendor_id?: string | null
-  description: string
+  message: string
   quantity: number
   unit_price: number
   discount_value?: number
@@ -156,6 +168,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
     const result = await addBookingItem(data)
     
     if (result.success) {
+      toast.success('Item added successfully')
       onItemAdded()
       onClose()
       // Reset form
@@ -165,270 +178,14 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
       setCustomPrice('')
       setDiscountAmount('')
       setNotes('')
+    } else {
+      toast.error(result.error || 'Failed to add item')
     }
     
     setIsSubmitting(false)
   }
 
-  if (!isOpen) return null
-
-  return (
-    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-gray-900">Add Booking Item</h3>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-500"
-            >
-              <XMarkIcon className="h-6 w-6" />
-            </button>
-          </div>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {/* Item Type Selection */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Item Type
-            </label>
-            <div className="grid grid-cols-4 gap-2">
-              <button
-                type="button"
-                onClick={() => setItemType('space')}
-                className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
-                  itemType === 'space' 
-                    ? 'border-blue-500 bg-blue-50 text-blue-700' 
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <MapPinIcon className="h-6 w-6 mb-1" />
-                <span className="text-sm">Space</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setItemType('catering')}
-                className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
-                  itemType === 'catering' 
-                    ? 'border-blue-500 bg-blue-50 text-blue-700' 
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <SparklesIcon className="h-6 w-6 mb-1" />
-                <span className="text-sm">Catering</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setItemType('vendor')}
-                className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
-                  itemType === 'vendor' 
-                    ? 'border-blue-500 bg-blue-50 text-blue-700' 
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <UserGroupIcon className="h-6 w-6 mb-1" />
-                <span className="text-sm">Vendor</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setItemType('other')}
-                className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
-                  itemType === 'other' 
-                    ? 'border-blue-500 bg-blue-50 text-blue-700' 
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <ClipboardDocumentListIcon className="h-6 w-6 mb-1" />
-                <span className="text-sm">Other</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Item Selection */}
-          {itemType !== 'other' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Select {itemType === 'space' ? 'Space' : itemType === 'catering' ? 'Package' : 'Vendor'}
-              </label>
-              <select
-                value={selectedItem?.id || ''}
-                onChange={(e) => {
-                  const items = itemType === 'space' ? spaces : itemType === 'catering' ? packages : vendors
-                  const item = items.find(i => i.id === e.target.value)
-                  setSelectedItem(item || null)
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                required
-              >
-                <option value="">Select...</option>
-                {(itemType === 'space' ? spaces : itemType === 'catering' ? packages : vendors).map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                    {itemType === 'space' && 'rate_per_hour' in item && ` (£${item.rate_per_hour}/hr)`}
-                    {itemType === 'catering' && 'cost_per_head' in item && (
-                      item.pricing_model === 'total_value' 
-                        ? ` (£${item.cost_per_head} total)` 
-                        : ` (£${item.cost_per_head}/person)`
-                    )}
-                    {itemType === 'vendor' && 'service_type' in item && item.service_type && ` - ${item.service_type}`}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Custom Description (for 'other' items) */}
-          {itemType === 'other' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Description
-              </label>
-              <input
-                type="text"
-                value={customDescription}
-                onChange={(e) => setCustomDescription(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                required
-              />
-            </div>
-          )}
-
-          {/* Quantity and Price - Different layouts based on pricing model */}
-          {itemType === 'catering' && selectedItem && 'pricing_model' in selectedItem && selectedItem.pricing_model === 'total_value' ? (
-            // Total Value Layout - Single price field
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Total Price (£)
-              </label>
-              <input
-                type="number"
-                value={customPrice || selectedItem.cost_per_head || ''}
-                onChange={(e) => setCustomPrice(e.target.value)}
-                step="0.01"
-                min="0"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                required
-                placeholder="Enter total price"
-              />
-            </div>
-          ) : (
-            // Standard Layout - Quantity and Unit Price
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {itemType === 'catering' ? 'Number of Guests' : 'Quantity'}
-                </label>
-                <input
-                  type="number"
-                  value={quantity}
-                  onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-                  min="1"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Unit Price (£)
-                </label>
-                <input
-                  type="number"
-                  value={customPrice || (selectedItem && (
-                    itemType === 'space' && 'rate_per_hour' in selectedItem ? selectedItem.rate_per_hour :
-                    itemType === 'catering' && 'cost_per_head' in selectedItem ? selectedItem.cost_per_head :
-                    itemType === 'vendor' && 'typical_rate' in selectedItem ? (selectedItem.typical_rate ?? '') :
-                    ''
-                  )) || ''}
-                  onChange={(e) => setCustomPrice(e.target.value)}
-                  step="0.01"
-                  min="0"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  required={itemType === 'other' || itemType === 'vendor'}
-                  readOnly={itemType !== 'other' && itemType !== 'vendor' && !!selectedItem}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Discount */}
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">
-              Discount (optional)
-            </label>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <input
-                  type="number"
-                  value={discountAmount}
-                  onChange={(e) => setDiscountAmount(e.target.value)}
-                  placeholder="Amount"
-                  min="0"
-                  step="0.01"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <select
-                  value={discountType}
-                  onChange={(e) => setDiscountType(e.target.value as 'percent' | 'fixed')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="percent">Percentage (%)</option>
-                  <option value="fixed">Fixed Amount (£)</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Notes (optional)
-            </label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-
-          {/* Total Preview */}
-          {(customPrice || selectedItem) && (
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Total:</span>
-                <span className="text-lg font-semibold text-gray-900">
-                  £{calculateTotal().toFixed(2)}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="flex justify-end gap-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-            >
-              {isSubmitting ? 'Adding...' : 'Add Item'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-
-  function calculateTotal() {
+  const calculateTotal = () => {
     const price = parseFloat(customPrice) || (selectedItem && (
       itemType === 'space' && 'rate_per_hour' in selectedItem ? selectedItem.rate_per_hour :
       itemType === 'catering' && 'cost_per_head' in selectedItem ? selectedItem.cost_per_head :
@@ -449,6 +206,230 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
     
     return Math.max(0, total)
   }
+
+  return (
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      title="Add Booking Item"
+      size="lg"
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Item Type Selection */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Item Type
+          </label>
+          <div className="grid grid-cols-4 gap-2">
+            <button
+              type="button"
+              onClick={() => setItemType('space')}
+              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
+                itemType === 'space' 
+                  ? 'border-blue-500 bg-blue-50 text-blue-700' 
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              <MapPinIcon className="h-6 w-6 mb-1" />
+              <span className="text-sm">Space</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setItemType('catering')}
+              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
+                itemType === 'catering' 
+                  ? 'border-blue-500 bg-blue-50 text-blue-700' 
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              <SparklesIcon className="h-6 w-6 mb-1" />
+              <span className="text-sm">Catering</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setItemType('vendor')}
+              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
+                itemType === 'vendor' 
+                  ? 'border-blue-500 bg-blue-50 text-blue-700' 
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              <UserGroupIcon className="h-6 w-6 mb-1" />
+              <span className="text-sm">Vendor</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setItemType('other')}
+              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
+                itemType === 'other' 
+                  ? 'border-blue-500 bg-blue-50 text-blue-700' 
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              <ClipboardDocumentListIcon className="h-6 w-6 mb-1" />
+              <span className="text-sm">Other</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Item Selection */}
+        {itemType !== 'other' && (
+          <FormGroup
+            label={`Select ${itemType === 'space' ? 'Space' : itemType === 'catering' ? 'Package' : 'Vendor'}`}
+            required
+          >
+            <Select
+              value={selectedItem?.id || ''}
+              onChange={(e) => {
+                const items = itemType === 'space' ? spaces : itemType === 'catering' ? packages : vendors
+                const item = items.find(i => i.id === e.target.value)
+                setSelectedItem(item || null)
+              }}
+              options={[
+                { value: '', label: 'Select...' },
+                ...(itemType === 'space' ? spaces : itemType === 'catering' ? packages : vendors).map((item) => ({
+                  value: item.id,
+                  label: item.name + (
+                    itemType === 'space' && 'rate_per_hour' in item ? ` (£${item.rate_per_hour}/hr)` :
+                    itemType === 'catering' && 'cost_per_head' in item ? (
+                      item.pricing_model === 'total_value' 
+                        ? ` (£${item.cost_per_head} total)` 
+                        : ` (£${item.cost_per_head}/person)`
+                    ) :
+                    itemType === 'vendor' && 'service_type' in item && item.service_type ? ` - ${item.service_type}` :
+                    ''
+                  )
+                }))
+              ]}
+              required
+            />
+          </FormGroup>
+        )}
+
+        {/* Custom Description (for 'other' items) */}
+        {itemType === 'other' && (
+          <FormGroup label="Description" required>
+            <Input
+              type="text"
+              value={customDescription}
+              onChange={(e) => setCustomDescription(e.target.value)}
+              required
+            />
+          </FormGroup>
+        )}
+
+        {/* Quantity and Price - Different layouts based on pricing model */}
+        {itemType === 'catering' && selectedItem && 'pricing_model' in selectedItem && selectedItem.pricing_model === 'total_value' ? (
+          <FormGroup label="Total Price (£)" required>
+            <Input
+              type="number"
+              value={customPrice || selectedItem.cost_per_head || ''}
+              onChange={(e) => setCustomPrice(e.target.value)}
+              step="0.01"
+              min="0"
+              required
+              placeholder="Enter total price"
+            />
+          </FormGroup>
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            <FormGroup 
+              label={itemType === 'catering' ? 'Number of Guests' : 'Quantity'}
+              required
+            >
+              <Input
+                type="number"
+                value={quantity}
+                onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
+                min="1"
+                required
+              />
+            </FormGroup>
+            <FormGroup label="Unit Price (£)" required>
+              <Input
+                type="number"
+                value={customPrice || (selectedItem && (
+                  itemType === 'space' && 'rate_per_hour' in selectedItem ? selectedItem.rate_per_hour :
+                  itemType === 'catering' && 'cost_per_head' in selectedItem ? selectedItem.cost_per_head :
+                  itemType === 'vendor' && 'typical_rate' in selectedItem ? (selectedItem.typical_rate ?? '') :
+                  ''
+                )) || ''}
+                onChange={(e) => setCustomPrice(e.target.value)}
+                step="0.01"
+                min="0"
+                required={itemType === 'other' || itemType === 'vendor'}
+                readOnly={itemType !== 'other' && itemType !== 'vendor' && !!selectedItem}
+              />
+            </FormGroup>
+          </div>
+        )}
+
+        {/* Discount */}
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700">
+            Discount (optional)
+          </label>
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              type="number"
+              value={discountAmount}
+              onChange={(e) => setDiscountAmount(e.target.value)}
+              placeholder="Amount"
+              min="0"
+              step="0.01"
+            />
+            <Select
+              value={discountType}
+              onChange={(e) => setDiscountType(e.target.value as 'percent' | 'fixed')}
+              options={[
+                { value: 'percent', label: 'Percentage (%)' },
+                { value: 'fixed', label: 'Fixed Amount (£)' }
+              ]}
+            />
+          </div>
+        </div>
+
+        {/* Notes */}
+        <FormGroup label="Notes (optional)">
+          <Textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={2}
+          />
+        </FormGroup>
+
+        {/* Total Preview */}
+        {(customPrice || selectedItem) && (
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600">Total:</span>
+              <span className="text-lg font-semibold text-gray-900">
+                £{calculateTotal().toFixed(2)}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex justify-end gap-3 pt-4">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onClose}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            disabled={isSubmitting}
+            loading={isSubmitting}
+          >
+            Add Item
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  )
 }
 
 // Edit Item Modal Component
@@ -480,124 +461,103 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
     })
 
     if (result.success) {
+      toast.success('Item updated successfully')
       onItemUpdated()
       onClose()
+    } else {
+      toast.error(result.error || 'Failed to update item')
     }
 
     setIsSubmitting(false)
   }
 
-  if (!isOpen) return null
-
   return (
-    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-gray-900">Edit Item</h3>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-500"
-            >
-              <XMarkIcon className="h-6 w-6" />
-            </button>
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      title="Edit Item"
+      size="md"
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Item
+          </label>
+          <p className="text-sm text-gray-900">{item.message}</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <FormGroup label="Quantity" required>
+            <Input
+              type="number"
+              value={quantity}
+              onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
+              min="1"
+              required
+            />
+          </FormGroup>
+          <FormGroup label="Unit Price (£)" required>
+            <Input
+              type="number"
+              value={unitPrice}
+              onChange={(e) => setUnitPrice(e.target.value)}
+              step="0.01"
+              min="0"
+              required
+            />
+          </FormGroup>
+        </div>
+
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700">
+            Discount
+          </label>
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              type="number"
+              value={discountAmount}
+              onChange={(e) => setDiscountAmount(e.target.value)}
+              placeholder="Amount"
+              min="0"
+              step="0.01"
+            />
+            <Select
+              value={discountType}
+              onChange={(e) => setDiscountType(e.target.value as 'percent' | 'fixed')}
+              options={[
+                { value: 'percent', label: 'Percentage (%)' },
+                { value: 'fixed', label: 'Fixed Amount (£)' }
+              ]}
+            />
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Item
-            </label>
-            <p className="text-sm text-gray-900">{item.description}</p>
-          </div>
+        <FormGroup label="Notes">
+          <Textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={2}
+          />
+        </FormGroup>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Quantity
-              </label>
-              <input
-                type="number"
-                value={quantity}
-                onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-                min="1"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Unit Price (£)
-              </label>
-              <input
-                type="number"
-                value={unitPrice}
-                onChange={(e) => setUnitPrice(e.target.value)}
-                step="0.01"
-                min="0"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                required
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">
-              Discount
-            </label>
-            <div className="grid grid-cols-2 gap-4">
-              <input
-                type="number"
-                value={discountAmount}
-                onChange={(e) => setDiscountAmount(e.target.value)}
-                placeholder="Amount"
-                min="0"
-                step="0.01"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-              <select
-                value={discountType}
-                onChange={(e) => setDiscountType(e.target.value as 'percent' | 'fixed')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="percent">Percentage (%)</option>
-                <option value="fixed">Fixed Amount (£)</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Notes
-            </label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-
-          <div className="flex justify-end gap-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-            >
-              {isSubmitting ? 'Saving...' : 'Save Changes'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <div className="flex justify-end gap-3 pt-4">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onClose}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            disabled={isSubmitting}
+            loading={isSubmitting}
+          >
+            Save Changes
+          </Button>
+        </div>
+      </form>
+    </Modal>
   )
 }
 
@@ -613,6 +573,7 @@ export default function ItemsPage({
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingItem, setEditingItem] = useState<BookingItem | null>(null)
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null)
 
   useEffect(() => {
     params.then(p => {
@@ -640,12 +601,14 @@ export default function ItemsPage({
   }
 
   const handleDeleteItem = async (itemId: string) => {
-    if (!confirm('Are you sure you want to delete this item?')) return
-    
     const result = await deleteBookingItem(itemId)
     if (result.success) {
+      toast.success('Item deleted successfully')
       loadData(bookingId)
+    } else {
+      toast.error(result.error || 'Failed to delete item')
     }
+    setDeletingItemId(null)
   }
 
   const getItemIcon = (type: ItemType) => {
@@ -663,120 +626,108 @@ export default function ItemsPage({
 
   if (loading) {
     return (
-      <div className="px-4 sm:px-6 lg:px-8 animate-pulse">
-        <div className="h-8 bg-gray-200 rounded w-1/4 mb-8"></div>
-        <div className="bg-white shadow rounded-lg p-6">
-          <div className="space-y-4">
-            <div className="h-6 bg-gray-200 rounded w-1/3"></div>
-            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-          </div>
+      <Page title="Booking Items">
+        <div className="flex items-center justify-center p-8">
+          <Spinner size="lg" />
         </div>
-      </div>
+      </Page>
     )
   }
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8">
-      <div className="mb-8">
-        <Link
-          href={`/private-bookings/${bookingId}`}
-          className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700"
-        >
-          <ArrowLeftIcon className="mr-1 h-4 w-4" />
-          Back to booking
-        </Link>
-      </div>
-
-      <div className="bg-white shadow rounded-lg">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900">Booking Items</h2>
-              <p className="text-sm text-gray-500 mt-1">
-                {booking?.customer_name || `${booking?.customer_first_name || ''} ${booking?.customer_last_name || ''}`.trim() || 'Unknown'} - {booking?.event_date ? formatDateFull(booking.event_date) : 'Date TBD'}
-              </p>
-            </div>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              <PlusIcon className="h-5 w-5 mr-1" />
-              Add Item
-            </button>
-          </div>
-        </div>
-
-        <div className="p-6">
-          {items.length === 0 ? (
-            <div className="text-center py-12">
-              <ClipboardDocumentListIcon className="mx-auto h-12 w-12 text-gray-400" />
-              <p className="mt-4 text-sm text-gray-500">
-                No items added yet. Click &ldquo;Add Item&rdquo; to get started.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {items.map((item) => (
-                <div key={item.id} className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start space-x-3">
-                      <div className="flex-shrink-0 text-gray-400">
-                        {getItemIcon(item.item_type)}
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">
-                          {item.description}
-                        </p>
-                        <div className="mt-1 flex items-center space-x-4 text-sm text-gray-500">
-                          <span>Qty: {item.quantity}</span>
-                          <span>£{item.unit_price.toFixed(2)} each</span>
-                          {item.discount_value && (
-                            <span className="text-green-600">
-                              -{item.discount_type === 'percent' ? `${item.discount_value}%` : `£${item.discount_value.toFixed(2)}`}
-                            </span>
-                          )}
-                        </div>
-                        {item.notes && (
-                          <p className="mt-1 text-sm text-gray-500">{item.notes}</p>
+    <Page
+      title="Booking Items"
+      description={`${booking?.customer_name || `${booking?.customer_first_name || ''} ${booking?.customer_last_name || ''}`.trim() || 'Unknown'} - ${booking?.event_date ? formatDateFull(booking.event_date) : 'Date TBD'}`}
+      actions={
+        <>
+          <LinkButton href={`/private-bookings/${bookingId}`} variant="secondary">
+            Back
+          </LinkButton>
+          <Button
+            onClick={() => setShowAddModal(true)}
+            leftIcon={<PlusIcon className="h-5 w-5" />}
+          >
+            Add Item
+          </Button>
+        </>
+      }
+    >
+      <Card>
+        {items.length === 0 ? (
+          <EmptyState icon={<ClipboardDocumentListIcon className="h-12 w-12" />}
+            title="No items added yet"
+            description="Click 'Add Item' to get started."
+            action={
+              <Button
+                onClick={() => setShowAddModal(true)}
+                leftIcon={<PlusIcon className="h-5 w-5" />}
+              >
+                Add Item
+              </Button>
+            }
+          />
+        ) : (
+          <div className="space-y-4">
+            {items.map((item) => (
+              <div key={item.id} className="border border-gray-200 rounded-lg p-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start space-x-3">
+                    <div className="flex-shrink-0 text-gray-400">
+                      {getItemIcon(item.item_type)}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900">
+                        {item.message}
+                      </p>
+                      <div className="mt-1 flex items-center space-x-4 text-sm text-gray-500">
+                        <span>Qty: {item.quantity}</span>
+                        <span>£{item.unit_price.toFixed(2)} each</span>
+                        {item.discount_value && (
+                          <span className="text-green-600">
+                            -{item.discount_type === 'percent' ? `${item.discount_value}%` : `£${item.discount_value.toFixed(2)}`}
+                          </span>
                         )}
                       </div>
+                      {item.notes && (
+                        <p className="mt-1 text-sm text-gray-500">{item.notes}</p>
+                      )}
                     </div>
-                    <div className="flex items-center space-x-4">
-                      <span className="text-lg font-semibold text-gray-900">
-                        £{item.line_total.toFixed(2)}
-                      </span>
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => setEditingItem(item)}
-                          className="text-gray-400 hover:text-gray-500"
-                        >
-                          <PencilIcon className="h-5 w-5" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteItem(item.id)}
-                          className="text-red-400 hover:text-red-500"
-                        >
-                          <TrashIcon className="h-5 w-5" />
-                        </button>
-                      </div>
+                  </div>
+                  <div className="flex items-center space-x-4">
+                    <span className="text-lg font-semibold text-gray-900">
+                      £{item.line_total.toFixed(2)}
+                    </span>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => setEditingItem(item)}
+                        className="text-gray-400 hover:text-gray-500"
+                      >
+                        <PencilIcon className="h-5 w-5" />
+                      </button>
+                      <button
+                        onClick={() => setDeletingItemId(item.id)}
+                        className="text-red-400 hover:text-red-500"
+                      >
+                        <TrashIcon className="h-5 w-5" />
+                      </button>
                     </div>
                   </div>
                 </div>
-              ))}
+              </div>
+            ))}
 
-              {/* Total */}
-              <div className="border-t pt-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-lg font-medium text-gray-900">Total</span>
-                  <span className="text-2xl font-bold text-gray-900">
-                    £{calculateSubtotal().toFixed(2)}
-                  </span>
-                </div>
+            {/* Total */}
+            <div className="border-t pt-4">
+              <div className="flex justify-between items-center">
+                <span className="text-lg font-medium text-gray-900">Total</span>
+                <span className="text-2xl font-bold text-gray-900">
+                  £{calculateSubtotal().toFixed(2)}
+                </span>
               </div>
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+        )}
+      </Card>
 
       {/* Modals */}
       <AddItemModal
@@ -797,6 +748,16 @@ export default function ItemsPage({
           }}
         />
       )}
-    </div>
+
+      <ConfirmDialog
+        open={!!deletingItemId}
+        onClose={() => setDeletingItemId(null)}
+        onConfirm={() => deletingItemId && handleDeleteItem(deletingItemId)}
+        title="Delete Item"
+        message="Are you sure you want to delete this item? This action cannot be undone."
+        confirmText="Delete"
+        confirmVariant="danger"
+      />
+    </Page>
   )
 }

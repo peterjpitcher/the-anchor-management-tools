@@ -24,7 +24,7 @@ interface ActivityItem {
   id: string
   type: 'booking' | 'message' | 'employee' | 'template' | 'customer' | 'event' | 'role' | 'bulk_message' | 'document' | 'note'
   title: string
-  description: string
+  message: string
   timestamp: string
   status?: 'success' | 'warning' | 'error' | 'info'
   link?: string
@@ -44,12 +44,12 @@ export function EnhancedActivityFeed({ limit = 10, showFilters = false }: Activi
   const [selectedTypes, setSelectedTypes] = useState<string[]>([])
 
   const activityTypes = [
-    { id: 'booking', label: 'Bookings', icon: CalendarIcon },
-    { id: 'message', label: 'Messages', icon: ChatBubbleLeftRightIcon },
-    { id: 'employee', label: 'Employees', icon: UsersIcon },
-    { id: 'customer', label: 'Customers', icon: UserPlusIcon },
-    { id: 'template', label: 'Templates', icon: DocumentTextIcon },
-    { id: 'bulk_message', label: 'Bulk SMS', icon: EnvelopeIcon }
+    { key: 'booking', label: 'Bookings', icon: CalendarIcon },
+    { key: 'message', label: 'Messages', icon: ChatBubbleLeftRightIcon },
+    { key: 'employee', label: 'Employees', icon: UsersIcon },
+    { key: 'customer', label: 'Customers', icon: UserPlusIcon },
+    { key: 'template', label: 'Templates', icon: DocumentTextIcon },
+    { key: 'bulk_message', label: 'Bulk SMS', icon: EnvelopeIcon }
   ]
 
   const loadActivity = useCallback(async () => {
@@ -94,7 +94,7 @@ export function EnhancedActivityFeed({ limit = 10, showFilters = false }: Activi
           id: `booking-${booking.id}`,
           type: 'booking',
           title: 'New Booking',
-          description: `${booking.customers.first_name} ${booking.customers.last_name} booked ${booking.seats} seat${booking.seats !== 1 ? 's' : ''} for ${booking.events.name}`,
+          message: `${booking.customers.first_name} ${booking.customers.last_name} booked ${booking.seats} seat${booking.seats !== 1 ? 's' : ''} for ${booking.events.name}`,
           timestamp: booking.created_at,
           status: 'success',
           link: `/events/${booking.events.id}`
@@ -133,7 +133,7 @@ export function EnhancedActivityFeed({ limit = 10, showFilters = false }: Activi
           id: `message-${message.id}`,
           type: 'message',
           title: message.direction === 'inbound' ? 'SMS Received' : 'SMS Sent',
-          description: `${message.direction === 'inbound' ? 'From' : 'To'} ${customer.first_name} ${customer.last_name}`,
+          message: `${message.direction === 'inbound' ? 'From' : 'To'} ${customer.first_name} ${customer.last_name}`,
           timestamp: message.created_at,
           status: message.twilio_status === 'delivered' ? 'success' : 
                  message.twilio_status === 'failed' ? 'error' : 'info',
@@ -162,7 +162,7 @@ export function EnhancedActivityFeed({ limit = 10, showFilters = false }: Activi
             id: `employee-${log.id}`,
             type: 'employee',
             title: `Employee ${log.operation_type}d`,
-            description: employeeName,
+            message: employeeName,
             timestamp: log.created_at,
             status: log.operation_status === 'success' ? 'success' : 'error',
             user: log.user_email,
@@ -186,7 +186,7 @@ export function EnhancedActivityFeed({ limit = 10, showFilters = false }: Activi
           id: `customer-${customer.id}`,
           type: 'customer',
           title: 'New Customer',
-          description: `${customer.first_name} ${customer.last_name} added`,
+          message: `${customer.first_name} ${customer.last_name} added`,
           timestamp: customer.created_at,
           status: 'success',
           link: `/customers/${customer.id}`
@@ -208,7 +208,7 @@ export function EnhancedActivityFeed({ limit = 10, showFilters = false }: Activi
             id: `template-${log.id}`,
             type: 'template',
             title: `Template ${log.operation_type}d`,
-            description: log.new_values?.name || log.old_values?.name || 'Message template',
+            message: log.new_values?.name || log.old_values?.name || 'Message template',
             timestamp: log.created_at,
             status: 'info',
             user: log.user_email,
@@ -236,7 +236,7 @@ export function EnhancedActivityFeed({ limit = 10, showFilters = false }: Activi
             id: `bulk-${log.id}`,
             type: 'bulk_message',
             title: 'Bulk SMS Sent',
-            description: `Sent to ${recipientCount} recipient${recipientCount !== 1 ? 's' : ''}`,
+            message: `Sent to ${recipientCount} recipient${recipientCount !== 1 ? 's' : ''}`,
             timestamp: log.created_at,
             status: 'success',
             user: log.user_email,
@@ -266,7 +266,7 @@ export function EnhancedActivityFeed({ limit = 10, showFilters = false }: Activi
           id: `note-${note.note_id}`,
           type: 'note',
           title: 'Employee Note Added',
-          description: `Note added for ${employee.first_name} ${employee.last_name}`,
+          message: `Note added for ${employee.first_name} ${employee.last_name}`,
           timestamp: note.created_at,
           status: 'info',
           link: `/employees/${note.employee_id}`
@@ -373,16 +373,16 @@ export function EnhancedActivityFeed({ limit = 10, showFilters = false }: Activi
           <div className="mb-4 flex flex-wrap gap-2">
             {activityTypes.map(type => (
               <button
-                key={type.id}
+                key={type.key}
                 onClick={() => {
                   setSelectedTypes(prev =>
-                    prev.includes(type.id)
-                      ? prev.filter(t => t !== type.id)
-                      : [...prev, type.id]
+                    prev.includes(type.key)
+                      ? prev.filter(t => t !== type.key)
+                      : [...prev, type.key]
                   )
                 }}
                 className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                  selectedTypes.includes(type.id)
+                  selectedTypes.includes(type.key)
                     ? 'bg-indigo-100 text-indigo-700'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
@@ -434,7 +434,7 @@ export function EnhancedActivityFeed({ limit = 10, showFilters = false }: Activi
                             {activity.title}
                           </p>
                           <p className="text-sm text-gray-500">
-                            {activity.description}
+                            {activity.message}
                           </p>
                           {activity.user && (
                             <p className="text-xs text-gray-400 mt-0.5">

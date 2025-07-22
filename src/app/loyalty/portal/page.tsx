@@ -17,8 +17,17 @@ import { validatePortalSession, endPortalSession, validateTokenAccess } from '@/
 import { getMemberTierProgress } from '@/app/actions/loyalty-tiers';
 import { getMemberRedemptions } from '@/app/actions/loyalty-redemptions';
 import { createRedemption } from '@/app/actions/loyalty-redemptions';
-import { Loader2 } from 'lucide-react';
 import VIPClubLogo from '@/components/loyalty/VIPClubLogo';
+import { Page } from '@/components/ui-v2/layout/Page';
+import { Container } from '@/components/ui-v2/layout/Container';
+import { Section } from '@/components/ui-v2/layout/Section';
+import { Card } from '@/components/ui-v2/layout/Card';
+import { Badge } from '@/components/ui-v2/display/Badge';
+import { Button } from '@/components/ui-v2/forms/Button';
+import { Tabs, TabsNav } from '@/components/ui-v2/navigation/Tabs';
+import { ProgressBar } from '@/components/ui-v2/feedback/ProgressBar';
+import { Spinner } from '@/components/ui-v2/feedback/Spinner';
+import { Alert } from '@/components/ui-v2/feedback/Alert';
 
 export default function LoyaltyPortalPage() {
   const router = useRouter();
@@ -167,12 +176,12 @@ export default function LoyaltyPortalPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 flex items-center justify-center">
+      <Page title="VIP Dashboard" className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-amber-600" />
+          <Spinner size="lg" className="mx-auto mb-4 text-amber-600" />
           <p className="text-gray-600">Loading your VIP dashboard...</p>
         </div>
-      </div>
+      </Page>
     );
   }
 
@@ -184,10 +193,10 @@ export default function LoyaltyPortalPage() {
   const customer = member.customer;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50">
+    <Page title="VIP Dashboard" className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50">
       {/* Header */}
       <div className="bg-white shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <Container size="2xl" className="py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <VIPClubLogo size="small" />
@@ -196,62 +205,74 @@ export default function LoyaltyPortalPage() {
                   Welcome back, {customer?.name?.split(' ')[0]}!
                 </h1>
                 <div className="flex items-center space-x-2 mt-1">
-                  <span 
-                    className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium"
+                  <Badge
                     style={{ 
                       backgroundColor: `${tier?.color}20`, 
                       color: tier?.color 
                     }}
                   >
                     {tier?.icon} {tier?.name}
-                  </span>
+                  </Badge>
                 </div>
               </div>
             </div>
-            <button
-              onClick={handleLogout}
-              className="inline-flex items-center text-gray-600 hover:text-gray-900"
+            <Button onClick={handleLogout}
+              variant="secondary"
+              leftIcon={<ArrowRightOnRectangleIcon className="h-5 w-5" />}
             >
-              <ArrowRightOnRectangleIcon className="h-5 w-5 mr-1" />
               Logout
-            </button>
+            </Button>
           </div>
-        </div>
+        </Container>
       </div>
 
       {/* Navigation Tabs */}
       <div className="bg-white border-b">
-        <div className="max-w-4xl mx-auto">
-          <nav className="flex overflow-x-auto scrollbar-hide">
-            {[
-              { id: 'overview', label: 'Overview', icon: ChartBarIcon },
-              { id: 'rewards', label: 'Rewards', icon: GiftIcon },
-              { id: 'history', label: 'History', icon: CalendarIcon },
-              { id: 'benefits', label: 'Benefits', icon: SparklesIcon }
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`py-4 px-4 sm:px-6 border-b-2 font-medium text-sm flex items-center space-x-1 sm:space-x-2 whitespace-nowrap flex-shrink-0 ${
-                  activeTab === tab.id
-                    ? 'border-amber-500 text-amber-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <tab.icon className="h-4 w-4 sm:h-5 sm:w-5" />
-                <span className="text-xs sm:text-sm">{tab.label}</span>
-              </button>
-            ))}
-          </nav>
-        </div>
+        <Container size="2xl">
+          <Tabs
+            activeKey={activeTab}
+            onChange={(key) => setActiveTab(key as any)}
+            variant="underline"
+            align="start"
+            items={[
+              { 
+                key: 'overview', 
+                label: 'Overview', 
+                icon: <ChartBarIcon className="h-4 w-4 sm:h-5 sm:w-5" />,
+                content: null // Content will be rendered below
+              },
+              { 
+                key: 'rewards', 
+                label: 'Rewards', 
+                icon: <GiftIcon className="h-4 w-4 sm:h-5 sm:w-5" />,
+                content: null
+              },
+              { 
+                key: 'history', 
+                label: 'History', 
+                icon: <CalendarIcon className="h-4 w-4 sm:h-5 sm:w-5" />,
+                content: null
+              },
+              { 
+                key: 'benefits', 
+                label: 'Benefits', 
+                icon: <SparklesIcon className="h-4 w-4 sm:h-5 sm:w-5" />,
+                content: null
+              }
+            ]}
+            tabListClassName="overflow-x-auto scrollbar-hide"
+            bordered={false}
+            padded={false}
+          />
+        </Container>
       </div>
 
       {/* Content */}
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <Container size="2xl" className="py-8">
         {activeTab === 'overview' && (
-          <div className="space-y-6">
+          <Section>
             {/* Points Summary */}
-            <div className="bg-white rounded-lg shadow p-6">
+            <Card>
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Your Points</h2>
               <div className="grid grid-cols-3 gap-2 sm:gap-4">
                 <div className="text-center">
@@ -267,11 +288,11 @@ export default function LoyaltyPortalPage() {
                   <p className="text-xs sm:text-sm text-gray-500">Events</p>
                 </div>
               </div>
-            </div>
+            </Card>
 
             {/* Tier Progress */}
             {tierProgress && tierProgress.nextTier && (
-              <div className="bg-white rounded-lg shadow p-6">
+              <Card>
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">Tier Progress</h2>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
@@ -289,25 +310,22 @@ export default function LoyaltyPortalPage() {
                         {tierProgress.eventsToNextTier} events to go
                       </span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="h-2 rounded-full transition-all duration-500"
-                        style={{
-                          width: `${tierProgress.progressPercentage}%`,
-                          backgroundColor: tierProgress.nextTier.color
-                        }}
-                      />
-                    </div>
+                    <ProgressBar
+                      value={tierProgress.progressPercentage}
+                      max={100}
+                      color={tierProgress.nextTier.color}
+                      className="h-2"
+                    />
                   </div>
                 </div>
-              </div>
+              </Card>
             )}
-          </div>
+          </Section>
         )}
 
         {activeTab === 'rewards' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow p-6">
+          <Section>
+            <Card>
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Available Rewards</h2>
               
               {/* Group rewards by category */}
@@ -329,7 +347,7 @@ export default function LoyaltyPortalPage() {
                       const requiresTier = reward.tier_required && reward.tier_required !== member.tier_id;
                       
                       return (
-                        <div key={reward.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                        <Card key={reward.id} variant="bordered" interactive>
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
                               <div className="flex items-center">
@@ -343,9 +361,9 @@ export default function LoyaltyPortalPage() {
                                   {reward.points_cost === 0 ? 'Free' : `${reward.points_cost} points`}
                                 </p>
                                 {reward.inventory !== null && reward.inventory < 10 && (
-                                  <span className="text-xs text-red-600">
+                                  <Badge variant="error" size="sm">
                                     Only {reward.inventory} left!
-                                  </span>
+                                  </Badge>
                                 )}
                               </div>
                               
@@ -356,10 +374,12 @@ export default function LoyaltyPortalPage() {
                               )}
                             </div>
                             
-                            <button
+                            <Button
                               onClick={() => handleRedeemReward(reward)}
                               disabled={!canRedeem || requiresTier}
-                              className="ml-4 px-3 py-2 sm:px-4 bg-amber-600 text-white rounded-lg font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm sm:text-base min-h-[40px] min-w-[70px]"
+                              variant="primary"
+                              size="sm"
+                              className="ml-4 bg-amber-600 hover:bg-amber-700"
                               title={
                                 !canRedeem ? 'Not enough points' : 
                                 requiresTier ? `Requires ${reward.tier?.name} tier` : 
@@ -367,9 +387,9 @@ export default function LoyaltyPortalPage() {
                               }
                             >
                               Redeem
-                            </button>
+                            </Button>
                           </div>
-                        </div>
+                        </Card>
                       );
                     })}
                   </div>
@@ -381,14 +401,14 @@ export default function LoyaltyPortalPage() {
                   No rewards available at the moment
                 </p>
               )}
-            </div>
-          </div>
+            </Card>
+          </Section>
         )}
 
         {activeTab === 'history' && (
-          <div className="space-y-6">
+          <Section>
             {/* Point History */}
-            <div className="bg-white rounded-lg shadow p-6">
+            <Card>
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Points History</h2>
               {pointHistory.length > 0 ? (
                 <div className="space-y-3">
@@ -424,10 +444,10 @@ export default function LoyaltyPortalPage() {
               ) : (
                 <p className="text-gray-500 text-center py-8">No transactions yet</p>
               )}
-            </div>
+            </Card>
             
             {/* Recent Redemptions */}
-            <div className="bg-white rounded-lg shadow p-6">
+            <Card>
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Redemptions</h2>
               {recentRedemptions.length > 0 ? (
                 <div className="space-y-3">
@@ -452,11 +472,9 @@ export default function LoyaltyPortalPage() {
                         </div>
                       </div>
                       {redemption.code && redemption.status === 'pending' && (
-                        <div className="mt-2 p-2 bg-amber-50 rounded text-center">
-                          <p className="text-sm text-amber-800">
-                            Code: <span className="font-mono font-bold">{redemption.code}</span>
-                          </p>
-                        </div>
+                        <Alert variant="warning" size="sm" className="mt-2">
+                          Code: <Badge variant="warning">{redemption.code}</Badge>
+                        </Alert>
                       )}
                     </div>
                   ))}
@@ -464,13 +482,13 @@ export default function LoyaltyPortalPage() {
               ) : (
                 <p className="text-gray-500 text-center py-8">No redemptions yet</p>
               )}
-            </div>
-          </div>
+            </Card>
+          </Section>
         )}
 
         {activeTab === 'benefits' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow p-6">
+          <Section>
+            <Card>
               <h2 className="text-lg font-semibold text-gray-900 mb-4">
                 Your {tier?.name} Benefits
               </h2>
@@ -486,26 +504,24 @@ export default function LoyaltyPortalPage() {
                   ))}
                 </ul>
               )}
-            </div>
+            </Card>
 
             {/* All Tiers */}
             {tierProgress?.allTiers && (
-              <div className="bg-white rounded-lg shadow p-6">
+              <Card>
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">All VIP Tiers</h2>
                 <div className="space-y-4">
                   {tierProgress.allTiers.map((t: any) => (
-                    <div 
+                    <Card 
                       key={t.id} 
-                      className={`border rounded-lg p-4 ${
-                        t.isActive ? 'border-amber-500 bg-amber-50' : 'border-gray-200'
-                      }`}
+                      variant={t.isActive ? 'elevated' : 'bordered'}
                     >
                       <div className="flex items-center justify-between mb-2">
                         <h3 className="font-semibold text-gray-900">
                           {t.icon} {t.name}
                         </h3>
                         {t.isUnlocked && (
-                          <span className="text-sm text-green-600">✓ Unlocked</span>
+                          <Badge variant="success" size="sm">✓ Unlocked</Badge>
                         )}
                       </div>
                       <p className="text-sm text-gray-600">
@@ -516,14 +532,14 @@ export default function LoyaltyPortalPage() {
                           {t.eventsRequired} more events to unlock
                         </p>
                       )}
-                    </div>
+                    </Card>
                   ))}
                 </div>
-              </div>
+              </Card>
             )}
-          </div>
+          </Section>
         )}
-      </div>
-    </div>
+      </Container>
+    </Page>
   );
 }

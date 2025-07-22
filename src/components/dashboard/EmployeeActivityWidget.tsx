@@ -33,7 +33,7 @@ interface EmployeeActivityStats {
     totalDocuments: number
     byCategory: {
       category: string
-      count: number
+      badge: number
     }[]
   }
   notesThisWeek: number
@@ -150,7 +150,7 @@ export function EmployeeActivityWidget() {
           totalDocuments: allAttachments?.length || 0,
           byCategory: Object.entries(categoryStats).map(([category, count]) => ({
             category,
-            count: count as number
+            badge: count as number
           }))
         },
         notesThisWeek,
@@ -296,7 +296,7 @@ export function EmployeeActivityWidget() {
               {stats.documentStats.byCategory.map((cat, index) => (
                 <div key={index} className="flex justify-between text-xs">
                   <span className="text-gray-600">{formatCategoryName(cat.category)}</span>
-                  <span className="text-gray-900 font-medium">{cat.count}</span>
+                  <span className="text-gray-900 font-medium">{cat.badge}</span>
                 </div>
               ))}
             </div>

@@ -1,12 +1,17 @@
 'use client';
 
-import { Fragment, useEffect, useState, useCallback } from 'react';
-import { Dialog, Transition } from '@headlessui/react';
-import { XMarkIcon } from '@heroicons/react/24/outline';
+import { useEffect, useState, useCallback } from 'react';
 import { User } from '@supabase/supabase-js';
 import { Role } from '@/types/rbac';
 import { getUserRoles, assignRolesToUser } from '@/app/actions/rbac';
 import { useRouter } from 'next/navigation';
+import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal';
+import { Button } from '@/components/ui-v2/forms/Button';
+import { Checkbox } from '@/components/ui-v2/forms/Checkbox';
+import { Badge } from '@/components/ui-v2/display/Badge';
+import { Spinner } from '@/components/ui-v2/feedback/Spinner';
+import { Alert } from '@/components/ui-v2/feedback/Alert';
+import toast from 'react-hot-toast';
 
 interface UserRolesModalProps {
   isOpen: boolean;
@@ -47,8 +52,9 @@ export default function UserRolesModal({
     const result = await assignRolesToUser(user.id, Array.from(selectedRoles));
     
     if (result.error) {
-      alert(result.error);
+      toast.error(result.error);
     } else {
+      toast.success('Roles updated successfully');
       router.refresh();
       onClose();
     }
@@ -66,111 +72,66 @@ export default function UserRolesModal({
   };
 
   return (
-    <Transition.Root show={isOpen} as={Fragment}>
-      <Dialog as="div" className="relative z-50" onClose={onClose}>
-        <Transition.Child
-          as={Fragment}
-          enter="ease-out duration-300"
-          enterFrom="opacity-0"
-          enterTo="opacity-100"
-          leave="ease-in duration-200"
-          leaveFrom="opacity-100"
-          leaveTo="opacity-0"
-        >
-          <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" />
-        </Transition.Child>
-
-        <div className="fixed inset-0 z-10 overflow-y-auto">
-          <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-            <Transition.Child
-              as={Fragment}
-              enter="ease-out duration-300"
-              enterFrom="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-              enterTo="opacity-100 translate-y-0 sm:scale-100"
-              leave="ease-in duration-200"
-              leaveFrom="opacity-100 translate-y-0 sm:scale-100"
-              leaveTo="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-            >
-              <Dialog.Panel className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
-                <div className="absolute right-0 top-0 hidden pr-4 pt-4 sm:block">
-                  <button
-                    type="button"
-                    className="rounded-md bg-white text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                    onClick={onClose}
-                  >
-                    <span className="sr-only">Close</span>
-                    <XMarkIcon className="h-6 w-6" aria-hidden="true" />
-                  </button>
-                </div>
-
-                <div className="sm:flex sm:items-start">
-                  <div className="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left w-full">
-                    <Dialog.Title as="h3" className="text-lg font-semibold leading-6 text-gray-900">
-                      Manage User Roles
-                    </Dialog.Title>
-                    <p className="mt-2 text-sm text-gray-600">
-                      {user.email}
-                    </p>
-
-                    <div className="mt-4">
-                      {loading ? (
-                        <div className="text-center py-4">Loading roles...</div>
-                      ) : (
-                        <div className="space-y-3">
-                          {allRoles.map((role) => (
-                            <label
-                              key={role.id}
-                              className="flex items-start space-x-3 cursor-pointer"
-                            >
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4 mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-600"
-                                checked={selectedRoles.has(role.id)}
-                                onChange={() => toggleRole(role.id)}
-                              />
-                              <div className="flex-1">
-                                <div className="text-sm font-medium text-gray-900">
-                                  {role.name}
-                                  {role.is_system && (
-                                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
-                                      System
-                                    </span>
-                                  )}
-                                </div>
-                                {role.description && (
-                                  <p className="text-sm text-gray-500">{role.description}</p>
-                                )}
-                              </div>
-                            </label>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
-                  <button
-                    type="button"
-                    disabled={saving || loading}
-                    onClick={handleSave}
-                    className="inline-flex w-full justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 sm:ml-3 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {saving ? 'Saving...' : 'Save Roles'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </Dialog.Panel>
-            </Transition.Child>
-          </div>
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      title="Manage User Roles"
+      description={user.email}
+      size="md"
+      footer={
+        <ModalActions>
+          <Button
+            onClick={onClose}
+            variant="secondary"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSave}
+            variant="primary"
+            disabled={saving || loading}
+            loading={saving}
+          >
+            Save Roles
+          </Button>
+        </ModalActions>
+      }
+    >
+      {loading ? (
+        <div className="flex items-center justify-center py-8">
+          <Spinner size="lg" />
         </div>
-      </Dialog>
-    </Transition.Root>
+      ) : (
+        <div className="space-y-3">
+          {allRoles.map((role) => (
+            <div key={role.id} className="flex items-start space-x-3">
+              <Checkbox
+                checked={selectedRoles.has(role.id)}
+                onChange={(e) => toggleRole(role.id)}
+                id={`role-${role.id}`}
+              />
+              <label
+                htmlFor={`role-${role.id}`}
+                className="flex-1 cursor-pointer"
+              >
+                <div className="flex items-center">
+                  <span className="text-sm font-medium text-gray-900">
+                    {role.name}
+                  </span>
+                  {role.is_system && (
+                    <Badge variant="default" size="sm" className="ml-2">
+                      System
+                    </Badge>
+                  )}
+                </div>
+                {role.description && (
+                  <p className="text-sm text-gray-500 mt-0.5">{role.description}</p>
+                )}
+              </label>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
   );
 }

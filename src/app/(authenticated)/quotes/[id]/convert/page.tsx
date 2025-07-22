@@ -3,9 +3,16 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getQuote, convertQuoteToInvoice } from '@/app/actions/quotes'
-import { Button } from '@/components/ui/Button'
 import { ArrowLeft, FileText, AlertTriangle } from 'lucide-react'
 import type { QuoteWithDetails } from '@/types/invoices'
+// UI v2 components
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { toast } from '@/components/ui-v2/feedback/Toast'
 
 export default function ConvertQuotePage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
@@ -68,132 +75,114 @@ export default function ConvertQuotePage({ params }: { params: Promise<{ id: str
       }
 
       if (result.invoice) {
+        toast.success('Quote converted to invoice successfully')
         router.push(`/invoices/${result.invoice.id}`)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to convert quote')
+      toast.error('Failed to convert quote to invoice')
       setConverting(false)
     }
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading quote...</p>
+      <Page title="Loading...">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <Spinner size="lg" />
+            <p className="mt-4 text-gray-600">Loading quote...</p>
+          </div>
         </div>
-      </div>
+      </Page>
     )
   }
 
   if (!quote) {
     return (
-      <div className="space-y-6">
-        <div className="text-center">
-          <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-          <p className="text-red-600 mb-4">{error || 'Quote not found'}</p>
-          <Button
-            variant="outline"
-            onClick={() => router.push('/quotes')}
-          >
-            Back to Quotes
-          </Button>
-        </div>
-      </div>
+      <Page title="Convert Quote">
+        <Card>
+          <div className="text-center py-8">
+            <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <p className="text-red-600 mb-4">{error || 'Quote not found'}</p>
+            <Button
+              variant="secondary"
+              onClick={() => router.push('/quotes')}
+            >
+              Back to Quotes
+            </Button>
+          </div>
+        </Card>
+      </Page>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="mb-8">
-        <Button
-          variant="ghost"
-          onClick={() => router.push(`/quotes/${quoteId}`)}
-          className="mb-4"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Quote
-        </Button>
-        
-        <h1 className="text-3xl font-bold mb-2">Convert Quote to Invoice</h1>
-        <p className="text-muted-foreground">Review the quote details before converting</p>
-      </div>
-
+    <Page
+      title="Convert Quote to Invoice"
+      description="Review the quote details before converting"
+    >
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg">
-          {error}
-        </div>
+        <Alert variant="error" title="Error" description={error} />
       )}
 
-      <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
-        <h2 className="text-xl font-semibold mb-4">Quote Details</h2>
-        
-        <div className="space-y-3">
-          <div className="flex justify-between">
-            <span className="text-gray-600">Quote Number:</span>
-            <span className="font-medium">{quote.quote_number}</span>
+      <Section title="Quote Details">
+        <Card>
+          <div className="space-y-3">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Quote Number:</span>
+              <span className="font-medium">{quote.quote_number}</span>
+            </div>
+            
+            <div className="flex justify-between">
+              <span className="text-gray-600">Vendor:</span>
+              <span className="font-medium">{quote.vendor?.name || '-'}</span>
+            </div>
+            
+            <div className="flex justify-between">
+              <span className="text-gray-600">Quote Date:</span>
+              <span className="font-medium">
+                {new Date(quote.quote_date).toLocaleDateString('en-GB')}
+              </span>
+            </div>
+            
+            <div className="flex justify-between">
+              <span className="text-gray-600">Valid Until:</span>
+              <span className="font-medium">
+                {new Date(quote.valid_until).toLocaleDateString('en-GB')}
+              </span>
+            </div>
+            
+            <div className="flex justify-between">
+              <span className="text-gray-600">Total Amount:</span>
+              <span className="font-bold text-lg">£{quote.total_amount.toFixed(2)}</span>
+            </div>
           </div>
-          
-          <div className="flex justify-between">
-            <span className="text-gray-600">Vendor:</span>
-            <span className="font-medium">{quote.vendor?.name || '-'}</span>
-          </div>
-          
-          <div className="flex justify-between">
-            <span className="text-gray-600">Quote Date:</span>
-            <span className="font-medium">
-              {new Date(quote.quote_date).toLocaleDateString('en-GB')}
-            </span>
-          </div>
-          
-          <div className="flex justify-between">
-            <span className="text-gray-600">Valid Until:</span>
-            <span className="font-medium">
-              {new Date(quote.valid_until).toLocaleDateString('en-GB')}
-            </span>
-          </div>
-          
-          <div className="flex justify-between">
-            <span className="text-gray-600">Total Amount:</span>
-            <span className="font-bold text-lg">£{quote.total_amount.toFixed(2)}</span>
-          </div>
-        </div>
-      </div>
+        </Card>
+      </Section>
 
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
-        <div className="flex items-start gap-3">
-          <FileText className="h-5 w-5 text-blue-600 mt-0.5" />
-          <div>
-            <h3 className="font-semibold text-blue-900 mb-1">What happens next?</h3>
-            <ul className="space-y-1 text-sm text-blue-800">
-              <li>• A new invoice will be created with the same details as this quote</li>
-              <li>• The invoice will have status &quot;Draft&quot; and can be edited if needed</li>
-              <li>• The invoice date will be today&apos;s date</li>
-              <li>• Payment will be due in 30 days from today</li>
-              <li>• This quote will be marked as converted and cannot be converted again</li>
-            </ul>
-          </div>
-        </div>
-      </div>
+      <Alert variant="info"
+        title="What happens next?"
+        description="A new invoice will be created with the same details as this quote. The invoice will have status 'Draft' and can be edited if needed. The invoice date will be today's date with payment due in 30 days. This quote will be marked as converted."
+      />
 
       <div className="flex gap-4">
         <Button
           onClick={handleConvert}
-          disabled={converting}
+          loading={converting}
           className="flex-1"
         >
-          {converting ? 'Converting...' : 'Convert to Invoice'}
+          Convert to Invoice
         </Button>
         
         <Button
-          variant="outline"
+          variant="secondary"
           onClick={() => router.push(`/quotes/${quoteId}`)}
           disabled={converting}
         >
           Cancel
         </Button>
       </div>
-    </div>
+    </Page>
   )
 }

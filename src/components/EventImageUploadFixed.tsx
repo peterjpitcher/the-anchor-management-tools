@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react'
 import { uploadEventImage, deleteEventImage } from '@/app/actions/event-images'
-import { Button } from '@/components/ui/Button'
+import { Button } from '@/components/ui-v2/forms/Button'
 import { TrashIcon, PhotoIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 

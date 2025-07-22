@@ -2,6 +2,9 @@ import { Metadata } from 'next';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import ApiKeysManager from './ApiKeysManager';
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page';
+import { Alert } from '@/components/ui-v2/feedback/Alert';
 
 export const metadata: Metadata = {
   title: 'API Keys',
@@ -26,7 +29,14 @@ export default async function ApiKeysPage() {
     : null;
 
   if (roleName !== 'super_admin') {
-    redirect('/dashboard');
+    return (
+      <Page title="API Key Management">
+        <Alert variant="error"
+          title="Access Denied"
+          description="Only super administrators can access this page."
+        />
+      </Page>
+    );
   }
 
   // Fetch existing API keys
@@ -36,9 +46,11 @@ export default async function ApiKeysPage() {
     .order('created_at', { ascending: false });
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold">API Key Management</h1>
+    <Page
+      title="API Key Management"
+      description="Manage API keys for external integrations"
+    >
       <ApiKeysManager initialKeys={apiKeys || []} />
-    </div>
+    </Page>
   );
 }

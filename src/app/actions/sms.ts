@@ -638,7 +638,7 @@ export async function sendBulkSMS(customerIds: string[], message: string) {
     })
     
     logger.info('Bulk SMS job queued', { 
-      metadata: { count: customerIds.length } 
+      metadata: { badge: customerIds.length } 
     })
     
     return { 
@@ -648,7 +648,7 @@ export async function sendBulkSMS(customerIds: string[], message: string) {
   } catch (error) {
     logger.error('Failed to queue bulk SMS', { 
       error: error as Error,
-      metadata: { count: customerIds.length }
+      metadata: { badge: customerIds.length }
     })
     return { error: 'Failed to queue bulk SMS' }
   }

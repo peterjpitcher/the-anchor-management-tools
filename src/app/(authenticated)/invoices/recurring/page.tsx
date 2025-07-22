@@ -3,9 +3,17 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getRecurringInvoices, deleteRecurringInvoice, generateInvoiceFromRecurring, toggleRecurringInvoiceStatus } from '@/app/actions/recurring-invoices'
-import { Button } from '@/components/ui/Button'
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { DataTable, Column } from '@/components/ui-v2/display/DataTable'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { Plus, Calendar, Trash2, Edit, Play, Pause, ChevronLeft } from 'lucide-react'
-import Link from 'next/link'
 import type { RecurringInvoiceWithDetails } from '@/types/invoices'
 
 export default function RecurringInvoicesPage() {
@@ -13,6 +21,7 @@ export default function RecurringInvoicesPage() {
   const [recurringInvoices, setRecurringInvoices] = useState<RecurringInvoiceWithDetails[]>([])
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState<string | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
 
   useEffect(() => {
     loadRecurringInvoices()
@@ -32,10 +41,6 @@ export default function RecurringInvoicesPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Are you sure you want to delete this recurring invoice?')) {
-      return
-    }
-
     setProcessing(id)
     try {
       const formData = new FormData()
@@ -43,15 +48,17 @@ export default function RecurringInvoicesPage() {
       
       const result = await deleteRecurringInvoice(formData)
       if (result.success) {
+        toast.success('Recurring invoice deleted successfully')
         await loadRecurringInvoices()
       } else {
-        alert(result.error || 'Failed to delete recurring invoice')
+        toast.error(result.error || 'Failed to delete recurring invoice')
       }
     } catch (error) {
       console.error('Error deleting recurring invoice:', error)
-      alert('Failed to delete recurring invoice')
+      toast.error('Failed to delete recurring invoice')
     } finally {
       setProcessing(null)
+      setShowDeleteConfirm(null)
     }
   }
 
@@ -64,15 +71,15 @@ export default function RecurringInvoicesPage() {
     try {
       const result = await generateInvoiceFromRecurring(id)
       if (result.success && result.invoice) {
-        alert(`Invoice ${result.invoice.invoice_number} generated successfully`)
+        toast.success(`Invoice ${result.invoice.invoice_number} generated successfully`)
         await loadRecurringInvoices()
         router.push(`/invoices/${result.invoice.id}`)
       } else {
-        alert(result.error || 'Failed to generate invoice')
+        toast.error(result.error || 'Failed to generate invoice')
       }
     } catch (error) {
       console.error('Error generating invoice:', error)
-      alert('Failed to generate invoice')
+      toast.error('Failed to generate invoice')
     } finally {
       setProcessing(null)
     }
@@ -92,13 +99,14 @@ export default function RecurringInvoicesPage() {
       
       const result = await toggleRecurringInvoiceStatus(formData)
       if (result.success) {
+        toast.success(`Recurring invoice ${action}d successfully`)
         await loadRecurringInvoices()
       } else {
-        alert(result.error || `Failed to ${action} recurring invoice`)
+        toast.error(result.error || `Failed to ${action} recurring invoice`)
       }
     } catch (error) {
       console.error(`Error ${action}ing recurring invoice:`, error)
-      alert(`Failed to ${action} recurring invoice`)
+      toast.error(`Failed to ${action} recurring invoice`)
     } finally {
       setProcessing(null)
     }
@@ -128,52 +136,44 @@ export default function RecurringInvoicesPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading recurring invoices...</p>
+      <Page title="Loading...">
+        <div className="flex items-center justify-center h-64">
+          <Spinner size="lg" />
         </div>
-      </div>
+      </Page>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <Link href="/invoices">
-        <Button variant="ghost" className="mb-4">
-          <ChevronLeft className="h-4 w-4 mr-2" />
-          Back to Invoices
+    <Page
+      title="Recurring Invoices"
+      description="Manage automated invoice generation"
+      breadcrumbs={[
+        { label: 'Invoices', href: '/invoices' },
+        { label: 'Recurring' }
+      ]}
+      actions={
+        <Button
+          onClick={() => router.push('/invoices/recurring/new')}
+          leftIcon={<Plus className="h-4 w-4" />}
+        >
+          New Recurring Invoice
         </Button>
-      </Link>
-      
-      <div className="mb-8">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold">Recurring Invoices</h1>
-            <p className="text-gray-600 mt-2">Manage automated invoice generation</p>
-          </div>
-          <Button
-            onClick={() => router.push('/invoices/recurring/new')}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            New Recurring Invoice
-          </Button>
-        </div>
-      </div>
+      }
+    >
 
       {recurringInvoices.length === 0 ? (
-        <div className="bg-white rounded-lg shadow-sm border p-12 text-center">
-          <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No recurring invoices</h3>
-          <p className="text-gray-600 mb-6">Create recurring invoices to automate your billing</p>
-          <Button
-            onClick={() => router.push('/invoices/recurring/new')}
-          >
-            Create First Recurring Invoice
-          </Button>
-        </div>
+        <EmptyState icon="calendar"
+          title="No recurring invoices"
+          description="Create recurring invoices to automate your billing"
+          action={
+            <Button onClick={() => router.push('/invoices/recurring/new')}>
+              Create First Recurring Invoice
+            </Button>
+          }
+        />
       ) : (
-        <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
+        <Card className="overflow-hidden">
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
@@ -242,11 +242,13 @@ export default function RecurringInvoicesPage() {
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex justify-end gap-2">
                       <Button
-                        variant="ghost"
+                        variant="secondary"
                         size="sm"
                         onClick={() => handleToggleStatus(recurring.id, recurring.is_active)}
                         disabled={processing === recurring.id}
+                        loading={processing === recurring.id}
                         title={recurring.is_active ? "Deactivate recurring invoice" : "Activate recurring invoice"}
+                        iconOnly
                       >
                         {recurring.is_active ? (
                           <Pause className="h-4 w-4" />
@@ -255,28 +257,32 @@ export default function RecurringInvoicesPage() {
                         )}
                       </Button>
                       <Button
-                        variant="ghost"
+                        variant="secondary"
                         size="sm"
                         onClick={() => handleGenerateNow(recurring.id)}
                         disabled={processing === recurring.id || !recurring.is_active}
+                        loading={processing === recurring.id}
                         title="Generate invoice now"
+                        iconOnly
                       >
                         <Calendar className="h-4 w-4" />
                       </Button>
                       <Button
-                        variant="ghost"
+                        variant="secondary"
                         size="sm"
                         onClick={() => router.push(`/invoices/recurring/${recurring.id}/edit`)}
                         disabled={processing === recurring.id}
+                        iconOnly
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
                       <Button
-                        variant="ghost"
+                        variant="danger"
                         size="sm"
-                        onClick={() => handleDelete(recurring.id)}
+                        onClick={() => setShowDeleteConfirm(recurring.id)}
                         disabled={processing === recurring.id}
-                        className="text-red-600 hover:text-red-700"
+                        loading={processing === recurring.id}
+                        iconOnly
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -286,8 +292,18 @@ export default function RecurringInvoicesPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </Card>
       )}
-    </div>
+      
+      <ConfirmDialog
+        open={showDeleteConfirm !== null}
+        onClose={() => setShowDeleteConfirm(null)}
+        onConfirm={() => showDeleteConfirm && handleDelete(showDeleteConfirm)}
+        title="Delete Recurring Invoice"
+        message="Are you sure you want to delete this recurring invoice? This action cannot be undone."
+        confirmText="Delete"
+        confirmVariant="danger"
+      />
+    </Page>
   )
 }

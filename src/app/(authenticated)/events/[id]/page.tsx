@@ -12,12 +12,20 @@ type Event = BaseEvent & {
 import { PlusIcon, TrashIcon, UserGroupIcon, ClipboardDocumentIcon, PencilSquareIcon, DocumentArrowDownIcon } from '@heroicons/react/24/outline'
 import { BookingForm } from '@/components/BookingForm'
 import { AddAttendeesModalWithCategories } from '@/components/AddAttendeesModalWithCategories'
-import toast from 'react-hot-toast'
 import { sendBookingConfirmationSync } from '@/app/actions/sms'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
-import { Button } from '@/components/ui/Button'
 import { EventTemplateManager } from '@/components/EventTemplateManager'
 import { generateEventReservationPosters } from '@/app/actions/event-reservation-posters'
+
+// ui-v2 imports
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { DataTable, Column } from '@/components/ui-v2/display/DataTable'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Section } from '@/components/ui-v2/layout/Section'
 
 type BookingWithCustomer = Omit<Booking, 'customer'> & {
   customer: Pick<Customer, 'first_name' | 'last_name' | 'id'>
@@ -243,131 +251,174 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
     }
   }
 
-  if (isLoading) return <div className="p-6 text-center">Loading event details...</div>
-  if (!event) return <div className="p-6 text-center">Event not found.</div>
+  if (!event && !isLoading) return (
+    <Page 
+      title="Event Not Found" 
+      error="The requested event could not be found."
+    />
+  )
 
   const activeBookings = bookings.filter(booking => booking.seats && booking.seats > 0)
   const reminders = bookings.filter(booking => !booking.seats || booking.seats === 0)
   const totalSeats = activeBookings.reduce((sum, booking) => sum + (booking.seats ?? 0), 0)
 
+  // Define columns for bookings table
+  const bookingColumns: Column<BookingWithCustomer>[] = [
+    {
+      key: 'customer',
+      header: 'Customer',
+      cell: (booking) => (
+        <Link
+          href={`/customers/${booking.customer.id}?booking_id=${booking.id}&return_to=/events/${params.id}`}
+          className="text-blue-600 hover:text-blue-800 font-medium"
+        >
+          {booking.customer.first_name} {booking.customer.last_name}
+          {booking.notes && (
+            <p className="text-xs text-gray-500 mt-1 italic whitespace-pre-wrap">
+              {booking.notes}
+            </p>
+          )}
+        </Link>
+      ),
+    },
+    {
+      key: 'created_at',
+      header: 'Created',
+      cell: (booking) => formatDate(booking.created_at),
+      width: '150px',
+    },
+    {
+      key: 'seats',
+      header: 'Seats',
+      cell: (booking) => (
+        <Badge variant="success" size="sm">
+          {booking.seats} {booking.seats === 1 ? 'Seat' : 'Seats'}
+        </Badge>
+      ),
+      width: '100px',
+    },
+    {
+      key: 'actions',
+      header: '',
+      cell: (booking) => (
+        <button
+          onClick={() => handleDeleteBooking(booking.id)}
+          className="text-red-600 hover:text-red-900"
+          title="Delete Booking"
+        >
+          <TrashIcon className="h-5 w-5" />
+          <span className="sr-only">Delete Booking</span>
+        </button>
+      ),
+      align: 'right',
+      width: '50px',
+    },
+  ]
+
+  // Columns for reminders (no seats column)
+  const reminderColumns: Column<BookingWithCustomer>[] = bookingColumns.filter(
+    col => col.key !== 'seats'
+  )
+
   const BookingTable = ({ items, type }: { items: BookingWithCustomer[], type: 'booking' | 'reminder' }) => (
-    <div>
-        {/* Desktop Table */}
-        <div className="hidden md:block">
-            <table className="min-w-full divide-y divide-gray-200">
-            <thead>
-                <tr>
-                <th className="px-4 py-2 text-left text-sm font-medium text-gray-900">Customer</th>
-                <th className="px-4 py-2 text-left text-sm font-medium text-gray-900">Created</th>
+    <DataTable
+      data={items}
+      columns={type === 'booking' ? bookingColumns : reminderColumns}
+      getRowKey={(booking) => booking.id}
+      emptyMessage={`No ${type === 'booking' ? 'bookings' : 'reminders'} found`}
+      size="sm"
+      bordered
+      renderMobileCard={(booking) => (
+        <Card variant="bordered" padding="sm">
+          <div className="space-y-2">
+            <div className="flex justify-between items-start">
+              <Link
+                href={`/customers/${booking.customer.id}?booking_id=${booking.id}&return_to=/events/${params.id}`}
+                className="text-sm font-medium text-blue-600 hover:text-blue-800"
+              >
+                {booking.customer.first_name} {booking.customer.last_name}
+              </Link>
+              <div className="flex items-center gap-2">
                 {type === 'booking' && (
-                    <th className="px-4 py-2 text-left text-sm font-medium text-gray-900">Seats</th>
+                  <Badge variant="success" size="sm">
+                    {booking.seats} {booking.seats === 1 ? 'Seat' : 'Seats'}
+                  </Badge>
                 )}
-                <th className="relative px-4 py-2">
-                    <span className="sr-only">Actions</span>
-                </th>
-                </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-                {items.map(booking => (
-                <tr key={booking.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-2 align-top whitespace-nowrap">
-                    <Link
-                        href={`/customers/${booking.customer.id}?booking_id=${booking.id}&return_to=/events/${params.id}`}
-                        className="text-blue-600 hover:text-blue-800 font-medium"
-                    >
-                        {booking.customer.first_name} {booking.customer.last_name}
-                    </Link>
-                    {booking.notes && (
-                        <p className="text-xs text-gray-500 mt-1 italic whitespace-pre-wrap">
-                        {booking.notes}
-                        </p>
-                    )}
-                    </td>
-                    <td className="px-4 py-2 align-top whitespace-nowrap text-sm text-gray-900">
-                    {formatDate(booking.created_at)}
-                    </td>
-                    {type === 'booking' && (
-                    <td className="px-4 py-2 whitespace-nowrap">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        {booking.seats} {booking.seats === 1 ? 'Seat' : 'Seats'}
-                        </span>
-                    </td>
-                    )}
-                    <td className="px-4 py-2 whitespace-nowrap text-right text-sm font-medium">
-                    <button
-                        onClick={() => handleDeleteBooking(booking.id)}
-                        className="text-red-600 hover:text-red-900"
-                        title="Delete Booking"
-                    >
-                        <TrashIcon className="h-5 w-5" />
-                        <span className="sr-only">Delete Booking</span>
-                    </button>
-                    </td>
-                </tr>
-                ))}
-                {items.length === 0 && (
-                <tr>
-                    <td colSpan={type === 'booking' ? 4 : 3} className="px-4 py-2 text-center text-sm text-gray-500">
-                    No {type === 'booking' ? 'bookings' : 'reminders'} found
-                    </td>
-                </tr>
-                )}
-            </tbody>
-            </table>
-        </div>
-        {/* Mobile List */}
-        <div className="block md:hidden">
-            <ul className="divide-y divide-gray-200">
-                {items.map(booking => (
-                    <li key={booking.id} className="px-4 py-4">
-                        <div className="flex items-center justify-between">
-                             <Link
-                                href={`/customers/${booking.customer.id}?booking_id=${booking.id}&return_to=/events/${params.id}`}
-                                className="text-sm font-medium text-blue-600 hover:text-blue-800 truncate"
-                            >
-                                {booking.customer.first_name} {booking.customer.last_name}
-                            </Link>
-                            <div className="ml-2 flex-shrink-0 flex items-center space-x-2">
-                                {type === 'booking' && (
-                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                        {booking.seats} {booking.seats === 1 ? 'Seat' : 'Seats'}
-                                    </span>
-                                )}
-                                <button
-                                    onClick={() => handleDeleteBooking(booking.id)}
-                                    className="text-red-500 p-1 rounded-full hover:bg-gray-100"
-                                    title="Delete Booking"
-                                >
-                                    <TrashIcon className="h-5 w-5" />
-                                </button>
-                            </div>
-                        </div>
-                        <div className="mt-2 sm:flex sm:justify-between">
-                            <div className="sm:flex">
-                                <p className="text-sm text-gray-500">
-                                    Booked on: {formatDate(booking.created_at)}
-                                </p>
-                            </div>
-                        </div>
-                        {booking.notes && (
-                            <p className="text-sm text-gray-500 mt-2 italic whitespace-pre-wrap">
-                            {booking.notes}
-                            </p>
-                        )}
-                    </li>
-                ))}
-                {items.length === 0 && (
-                    <li className="px-4 py-4 text-center text-sm text-gray-500">
-                        No {type === 'booking' ? 'bookings' : 'reminders'} found
-                    </li>
-                )}
-            </ul>
-        </div>
-    </div>
+                <button
+                  onClick={() => handleDeleteBooking(booking.id)}
+                  className="text-red-500 p-1 rounded-full hover:bg-gray-100"
+                  title="Delete Booking"
+                >
+                  <TrashIcon className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500">Booked on: {formatDate(booking.created_at)}</p>
+            {booking.notes && (
+              <p className="text-xs text-gray-500 italic whitespace-pre-wrap">
+                {booking.notes}
+              </p>
+            )}
+          </div>
+        </Card>
+      )}
+    />
   )
 
   return (
-    <div className="space-y-6">
+    <Page
+      title={event?.name || 'Loading...'}
+      description={event ? `${formatDate(event.date)} at ${event.time}` : ''}
+      loading={isLoading}
+      actions={
+        event && (
+          <div className="flex flex-wrap gap-2">
+            <LinkButton href={`/events/${event.id}/edit`}
+              variant="secondary"
+              leftIcon={<PencilSquareIcon className="h-5 w-5" />}
+            >
+              Edit Event
+            </LinkButton>
+            <Button onClick={handleCopyAttendeeList}
+              variant="secondary"
+              leftIcon={<ClipboardDocumentIcon className="h-5 w-5" />}
+            >
+              Copy List
+            </Button>
+            <Button onClick={handleDownloadReservationPosters} 
+              variant="secondary"
+              disabled={activeBookings.length === 0}
+              leftIcon={<DocumentArrowDownIcon className="h-5 w-5" />}
+            >
+              Download Posters
+            </Button>
+            <Button
+              onClick={() => setShowAddAttendeesModal(true)}
+              leftIcon={<UserGroupIcon className="h-5 w-5" />}
+            >
+              Add Attendees
+            </Button>
+            <Button
+              onClick={() => setShowBookingForm(true)}
+              leftIcon={<PlusIcon className="h-5 w-5" />}
+            >
+              New Booking
+            </Button>
+            <LinkButton href={`/loyalty/check-in?event=${event.id}`}
+              variant="secondary"
+              leftIcon={
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              }
+            >
+              Check-In
+            </LinkButton>
+          </div>
+        )
+      }
+    >
+      <div className="space-y-6">
         {showBookingForm && event && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
@@ -385,118 +436,73 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
         />
       )}
 
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <div className="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:justify-between sm:items-start">
-            <div className="flex-1">
-              <div className="flex items-start space-x-4">
-                {event.hero_image_url && (
-                  <div className="flex-shrink-0">
-                    <img 
-                      src={event.hero_image_url} 
-                      alt={event.name}
-                      className="h-24 w-24 rounded-lg object-cover border border-gray-200"
-                    />
-                  </div>
+        {event && (
+          <Card padding="lg">
+            <div className="flex items-start space-x-4">
+              {event.hero_image_url && (
+                <div className="flex-shrink-0">
+                  <img 
+                    src={event.hero_image_url} 
+                    alt={event.name}
+                    className="h-24 w-24 rounded-lg object-cover border border-gray-200"
+                  />
+                </div>
+              )}
+              <div className="flex-1">
+                {event.category && (
+                  <Badge
+                    size="sm"
+                    style={{ 
+                      backgroundColor: event.category.color + '20',
+                      color: event.category.color 
+                    }}
+                  >
+                    {event.category.name}
+                  </Badge>
                 )}
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900">{event.name}</h1>
-                  <div className="mt-1 flex items-center space-x-2">
-                    <p className="text-sm text-gray-500">
-                      {formatDate(event.date)} at {event.time}
-                    </p>
-                    {event.category && (
-                      <span 
-                        className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
-                        style={{ 
-                          backgroundColor: event.category.color + '20',
-                          color: event.category.color 
-                        }}
-                      >
-                        {event.category.name}
-                      </span>
-                    )}
+                {event.short_description && (
+                  <p className="mt-2 text-sm text-gray-600">{event.short_description}</p>
+                )}
+                <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-500">Capacity:</span>
+                    <span className="ml-2 font-medium">{event.capacity || 'Unlimited'}</span>
                   </div>
-                  {event.short_description && (
-                    <p className="mt-2 text-sm text-gray-600">{event.short_description}</p>
-                  )}
+                  <div>
+                    <span className="text-gray-500">Total Seats:</span>
+                    <span className="ml-2 font-medium">{totalSeats}</span>
+                  </div>
                 </div>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Link href={`/events/${event.id}/edit`}>
-                <Button variant="secondary">
-                  <PencilSquareIcon className="h-5 w-5 mr-2" />
-                  Edit Event
-                </Button>
-              </Link>
-              <Button onClick={handleCopyAttendeeList} variant="secondary">
-                <ClipboardDocumentIcon className="h-5 w-5 mr-2" />
-                Copy List
-              </Button>
-              <Button 
-                onClick={handleDownloadReservationPosters} 
-                variant="secondary"
-                disabled={activeBookings.length === 0}
-              >
-                <DocumentArrowDownIcon className="h-5 w-5 mr-2" />
-                Download Posters
-              </Button>
-              <Button onClick={() => setShowAddAttendeesModal(true)}>
-                <UserGroupIcon className="h-5 w-5 mr-2" />
-                Add Attendees
-              </Button>
-              <Button onClick={() => setShowBookingForm(true)}>
-                <PlusIcon className="h-5 w-5 mr-2" />
-                New Booking
-              </Button>
-              <Link href={`/loyalty/check-in?event=${event.id}`}>
-                <Button variant="secondary">
-                  <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Check-In
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
+          </Card>
+        )}
 
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <h2 className="text-lg font-medium text-gray-900">
-            Active Bookings ({activeBookings.length}) - {totalSeats} seats booked
-            {event.capacity && ` of ${event.capacity}`}
-          </h2>
-          <div className="mt-4 flow-root">
-            <div className="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
-              <div className="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
-                <BookingTable items={activeBookings} type="booking" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+        {event && (
+          <Section
+            title={`Active Bookings (${activeBookings.length})`}
+            description={`${totalSeats} seats booked${event.capacity ? ` of ${event.capacity}` : ''}`}
+            variant="gray"
+          >
+            <BookingTable items={activeBookings} type="booking" />
+          </Section>
+        )}
 
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <h2 className="text-lg font-medium text-gray-900">Reminders ({reminders.length})</h2>
-           <div className="mt-4 flow-root">
-            <div className="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
-              <div className="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
-                <BookingTable items={reminders} type="reminder" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+        {event && (
+          <Section
+            title={`Reminders (${reminders.length})`}
+            variant="gray"
+          >
+            <BookingTable items={reminders} type="reminder" />
+          </Section>
+        )}
 
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <EventTemplateManager eventId={event.id} eventName={event.name} />
-        </div>
+        {event && (
+          <Card>
+            <EventTemplateManager eventId={event.id} eventName={event.name} />
+          </Card>
+        )}
       </div>
-    </div>
+    </Page>
   )
 } 

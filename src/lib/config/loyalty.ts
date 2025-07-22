@@ -127,7 +127,7 @@ export const LOYALTY_CONFIG = {
   rewards: {
     snacks: {
       house_snack: {
-        id: 'reward-snack-1',
+        key: 'reward-snack-1',
         name: 'House Snack',
         description: 'Any starter or bar snack',
         pointsCost: 300,
@@ -135,7 +135,7 @@ export const LOYALTY_CONFIG = {
         category: 'food'
       },
       premium_snack: {
-        id: 'reward-snack-2',
+        key: 'reward-snack-2',
         name: 'Premium Snack',
         description: 'Premium starter or sharing platter',
         pointsCost: 500,
@@ -145,7 +145,7 @@ export const LOYALTY_CONFIG = {
     },
     drinks: {
       house_drink: {
-        id: 'reward-drink-1',
+        key: 'reward-drink-1',
         name: 'House Drink',
         description: 'Any house beer, wine or soft drink',
         pointsCost: 400,
@@ -153,7 +153,7 @@ export const LOYALTY_CONFIG = {
         category: 'drink'
       },
       premium_drink: {
-        id: 'reward-drink-2',
+        key: 'reward-drink-2',
         name: 'Premium Drink',
         description: 'Any premium or cocktail',
         pointsCost: 600,
@@ -162,7 +162,7 @@ export const LOYALTY_CONFIG = {
         category: 'drink'
       },
       bottle_wine: {
-        id: 'reward-drink-3',
+        key: 'reward-drink-3',
         name: 'Bottle of House Wine',
         description: 'Red, white or rosé',
         pointsCost: 1200,
@@ -173,7 +173,7 @@ export const LOYALTY_CONFIG = {
     },
     desserts: {
       any_dessert: {
-        id: 'reward-dessert-1',
+        key: 'reward-dessert-1',
         name: 'Any Dessert',
         description: 'Choose from our dessert menu',
         pointsCost: 400,
@@ -183,7 +183,7 @@ export const LOYALTY_CONFIG = {
     },
     experiences: {
       bring_friend: {
-        id: 'reward-exp-1',
+        key: 'reward-exp-1',
         name: 'Bring a Friend Free',
         description: 'Free entry for you and a guest',
         pointsCost: 750,
@@ -192,7 +192,7 @@ export const LOYALTY_CONFIG = {
         category: 'experience'
       },
       reserved_table: {
-        id: 'reward-exp-2',
+        key: 'reward-exp-2',
         name: 'Reserved Table',
         description: 'Guaranteed table for your party',
         pointsCost: 500,
@@ -201,7 +201,7 @@ export const LOYALTY_CONFIG = {
         category: 'experience'
       },
       birthday_package: {
-        id: 'reward-exp-3',
+        key: 'reward-exp-3',
         name: 'Birthday Package',
         description: 'Cake, decorations & welcome drink',
         pointsCost: 2000,
@@ -212,7 +212,7 @@ export const LOYALTY_CONFIG = {
     },
     credit: {
       credit_5: {
-        id: 'reward-credit-1',
+        key: 'reward-credit-1',
         name: '£5 Credit',
         description: 'Applied to your bill',
         pointsCost: 500,
@@ -220,7 +220,7 @@ export const LOYALTY_CONFIG = {
         category: 'credit'
       },
       credit_10: {
-        id: 'reward-credit-2',
+        key: 'reward-credit-2',
         name: '£10 Credit',
         description: 'Applied to your bill',
         pointsCost: 1000,
@@ -229,7 +229,7 @@ export const LOYALTY_CONFIG = {
         category: 'credit'
       },
       credit_25: {
-        id: 'reward-credit-3',
+        key: 'reward-credit-3',
         name: '£25 Credit',
         description: 'Applied to your bill',
         pointsCost: 2500,
@@ -240,7 +240,7 @@ export const LOYALTY_CONFIG = {
     },
     special: {
       host_event: {
-        id: 'reward-special-1',
+        key: 'reward-special-1',
         name: 'Host Your Own Theme Night',
         description: 'Work with us to create your event',
         pointsCost: 5000,
@@ -249,7 +249,7 @@ export const LOYALTY_CONFIG = {
         category: 'special'
       },
       private_party: {
-        id: 'reward-special-2',
+        key: 'reward-special-2',
         name: 'Private Area for 2 Hours',
         description: 'Reserve our function space',
         pointsCost: 3000,
@@ -264,7 +264,7 @@ export const LOYALTY_CONFIG = {
   achievements: {
     attendance: [
       {
-        id: 'ach-first-timer',
+        key: 'ach-first-timer',
         name: 'First Timer',
         description: 'Attend your first event',
         icon: '🎯',
@@ -272,7 +272,7 @@ export const LOYALTY_CONFIG = {
         criteria: { type: 'attendance_count', value: 1 }
       },
       {
-        id: 'ach-regular',
+        key: 'ach-regular',
         name: 'The Regular',
         description: 'Attend 10 events',
         icon: '📅',
@@ -280,7 +280,7 @@ export const LOYALTY_CONFIG = {
         criteria: { type: 'attendance_count', value: 10 }
       },
       {
-        id: 'ach-superfan',
+        key: 'ach-superfan',
         name: 'Super Fan',
         description: 'Attend 50 total events',
         icon: '🌟',
@@ -288,7 +288,7 @@ export const LOYALTY_CONFIG = {
         criteria: { type: 'attendance_count', value: 50 }
       },
       {
-        id: 'ach-centurion',
+        key: 'ach-centurion',
         name: 'Centurion',
         description: 'Attend 100 events',
         icon: '💯',
@@ -298,7 +298,7 @@ export const LOYALTY_CONFIG = {
     ],
     streaks: [
       {
-        id: 'ach-week-warrior',
+        key: 'ach-week-warrior',
         name: 'Week Warrior',
         description: 'Attend 4 events in one month',
         icon: '🗓️',
@@ -306,7 +306,7 @@ export const LOYALTY_CONFIG = {
         criteria: { type: 'monthly_attendance', value: 4 }
       },
       {
-        id: 'ach-hot-streak',
+        key: 'ach-hot-streak',
         name: 'Hot Streak',
         description: '3 months consecutive attendance',
         icon: '🔥',
@@ -314,7 +314,7 @@ export const LOYALTY_CONFIG = {
         criteria: { type: 'consecutive_months', value: 3 }
       },
       {
-        id: 'ach-loyal-year',
+        key: 'ach-loyal-year',
         name: 'Year of Loyalty',
         description: 'Attend at least once every month for a year',
         icon: '🏆',
@@ -324,7 +324,7 @@ export const LOYALTY_CONFIG = {
     ],
     eventTypes: [
       {
-        id: 'ach-quiz-master',
+        key: 'ach-quiz-master',
         name: 'Quiz Master',
         description: 'Attend 5 quiz nights',
         icon: '🧠',
@@ -332,7 +332,7 @@ export const LOYALTY_CONFIG = {
         criteria: { type: 'event_type_count', eventType: 'quiz', value: 5 }
       },
       {
-        id: 'ach-bingo-regular',
+        key: 'ach-bingo-regular',
         name: 'Bingo Regular',
         description: 'Attend 5 bingo nights',
         icon: '🎱',
@@ -340,7 +340,7 @@ export const LOYALTY_CONFIG = {
         criteria: { type: 'event_type_count', eventType: 'bingo', value: 5 }
       },
       {
-        id: 'ach-karaoke-star',
+        key: 'ach-karaoke-star',
         name: 'Karaoke Star',
         description: 'Perform at karaoke 3 times',
         icon: '🎤',
@@ -348,7 +348,7 @@ export const LOYALTY_CONFIG = {
         criteria: { type: 'event_type_count', eventType: 'karaoke', value: 3 }
       },
       {
-        id: 'ach-drag-enthusiast',
+        key: 'ach-drag-enthusiast',
         name: 'Drag Enthusiast',
         description: 'Attend 3 drag shows',
         icon: '👑',
@@ -356,7 +356,7 @@ export const LOYALTY_CONFIG = {
         criteria: { type: 'event_type_count', eventType: 'drag', value: 3 }
       },
       {
-        id: 'ach-event-explorer',
+        key: 'ach-event-explorer',
         name: 'Event Explorer',
         description: 'Try 5 different event types',
         icon: '🎯',
@@ -366,7 +366,7 @@ export const LOYALTY_CONFIG = {
     ],
     social: [
       {
-        id: 'ach-social-butterfly',
+        key: 'ach-social-butterfly',
         name: 'Social Butterfly',
         description: 'Bring 5 different friends',
         icon: '👥',
@@ -374,7 +374,7 @@ export const LOYALTY_CONFIG = {
         criteria: { type: 'unique_guests', value: 5 }
       },
       {
-        id: 'ach-party-starter',
+        key: 'ach-party-starter',
         name: 'Party Starter',
         description: 'Check in within first 30 minutes of 10 events',
         icon: '🎉',
@@ -382,7 +382,7 @@ export const LOYALTY_CONFIG = {
         criteria: { type: 'early_arrival_count', value: 10 }
       },
       {
-        id: 'ach-influencer',
+        key: 'ach-influencer',
         name: 'The Influencer',
         description: 'Refer 3 new members who attend',
         icon: '📢',
@@ -392,7 +392,7 @@ export const LOYALTY_CONFIG = {
     ],
     seasonal: [
       {
-        id: 'ach-halloween-hero',
+        key: 'ach-halloween-hero',
         name: 'Halloween Hero',
         description: 'Attend in costume on Halloween',
         icon: '🎃',
@@ -400,7 +400,7 @@ export const LOYALTY_CONFIG = {
         criteria: { type: 'seasonal_event', value: 'halloween' }
       },
       {
-        id: 'ach-festive-spirit',
+        key: 'ach-festive-spirit',
         name: 'Festive Spirit',
         description: 'Attend 3 December events',
         icon: '🎄',
@@ -408,7 +408,7 @@ export const LOYALTY_CONFIG = {
         criteria: { type: 'monthly_attendance', month: 12, value: 3 }
       },
       {
-        id: 'ach-summer-sensation',
+        key: 'ach-summer-sensation',
         name: 'Summer Sensation',
         description: 'Attend 5 summer events',
         icon: '☀️',
@@ -416,7 +416,7 @@ export const LOYALTY_CONFIG = {
         criteria: { type: 'seasonal_attendance', season: 'summer', value: 5 }
       },
       {
-        id: 'ach-birthday-celebrant',
+        key: 'ach-birthday-celebrant',
         name: 'Birthday Celebrant',
         description: 'Attend on your birthday',
         icon: '🎂',

@@ -5,18 +5,31 @@ import { useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { CheckCircle, Calendar, Clock, MapPin, Users, Phone } from 'lucide-react';
 import { formatPhoneForDisplay } from '@/lib/validation';
-
+import { Page, Card, Badge, Spinner, Alert, Container } from '@/components/ui-v2';
 
 export default function BookingSuccessPage() {
   const params = useParams();
   const bookingId = params.id as string;
   
-  const [booking, setBooking] = useState<any>(null);
+  const [booking, setBooking] = useState<{
+    id: string;
+    seats: number;
+    event: {
+      name: string;
+      date: string;
+      time: string;
+      location?: string;
+    };
+    customer: {
+      first_name: string;
+      last_name: string;
+    };
+  } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadBooking();
-  }, [bookingId]);
+  }, [bookingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadBooking() {
     try {
@@ -27,13 +40,13 @@ export default function BookingSuccessPage() {
         .select(`
           id,
           seats,
-          event:events!inner(
+          events!event_id(
             name,
             date,
             time,
             location
           ),
-          customer:customers!inner(
+          customers!customer_id(
             first_name,
             last_name
           )
@@ -42,7 +55,28 @@ export default function BookingSuccessPage() {
         .single();
 
       if (!error && data) {
-        setBooking(data);
+        // Type assertion for Supabase joined data
+        const typedData = data as unknown as {
+          id: string;
+          seats: number;
+          events: {
+            name: string;
+            date: string;
+            time: string;
+            location?: string;
+          };
+          customers: {
+            first_name: string;
+            last_name: string;
+          };
+        };
+        
+        setBooking({
+          id: typedData.id,
+          seats: typedData.seats,
+          event: typedData.events,
+          customer: typedData.customers
+        });
       }
     } catch (err) {
       console.error('Error loading booking:', err);
@@ -53,10 +87,22 @@ export default function BookingSuccessPage() {
 
   const confirmationNumber = booking ? `ANH-${new Date().getFullYear()}-${booking.id.slice(0, 8).toUpperCase()}` : '';
 
+  if (loading) {
+    return (
+      <Page title="" spacing={false}>
+        <Container size="sm" className="py-8">
+          <div className="flex items-center justify-center">
+            <Spinner size="lg" />
+          </div>
+        </Container>
+      </Page>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-2xl mx-auto">
-        <div className="bg-white rounded-lg shadow-md p-6">
+    <Page title="" spacing={false}>
+      <Container size="sm" className="py-8">
+        <Card padding="lg">
           <div className="text-center mb-6">
             <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
             <h1 className="text-3xl font-bold mb-2">Booking Confirmed!</h1>
@@ -65,10 +111,11 @@ export default function BookingSuccessPage() {
 
           {booking && (
             <div className="space-y-6">
-              <div className="bg-green-50 p-4 rounded-lg text-center">
-                <p className="text-sm text-gray-600 mb-1">Confirmation Number</p>
-                <p className="text-2xl font-mono font-bold text-green-600">{confirmationNumber}</p>
-              </div>
+              <Alert variant="success"
+                title="Confirmation Number"
+                description={confirmationNumber}
+                className="text-center"
+              />
 
               <div className="border-t pt-6 space-y-4">
                 <h2 className="text-xl font-semibold">{booking.event.name}</h2>
@@ -98,7 +145,9 @@ export default function BookingSuccessPage() {
                   
                   <div className="flex items-center gap-3">
                     <Users className="h-5 w-5 text-gray-500" />
-                    <span>{booking.seats} {booking.seats === 1 ? 'seat' : 'seats'}</span>
+                    <Badge variant="primary">
+                      {booking.seats} {booking.seats === 1 ? 'seat' : 'seats'}
+                    </Badge>
                   </div>
                 </div>
               </div>
@@ -108,18 +157,18 @@ export default function BookingSuccessPage() {
                   A confirmation SMS has been sent to your mobile number with these details.
                 </p>
                 
-                <div className="bg-gray-50 p-4 rounded-lg">
+                <Card variant="bordered" padding="sm">
                   <p className="text-sm font-semibold mb-2">Need Help?</p>
                   <div className="flex items-center gap-2 text-sm">
                     <Phone className="h-4 w-4" />
                     <span>Call us on {formatPhoneForDisplay(process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '+447979797979')}</span>
                   </div>
-                </div>
+                </Card>
               </div>
             </div>
           )}
-        </div>
-      </div>
-    </div>
+        </Card>
+      </Container>
+    </Page>
   );
 }

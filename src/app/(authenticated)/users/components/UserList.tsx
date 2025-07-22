@@ -5,6 +5,9 @@ import { User } from '@supabase/supabase-js';
 import { Role } from '@/types/rbac';
 import UserRolesModal from './UserRolesModal';
 import { format } from 'date-fns';
+import { DataTable, Column } from '@/components/ui-v2/display/DataTable';
+import { Button } from '@/components/ui-v2/forms/Button';
+import { Card } from '@/components/ui-v2/layout/Card';
 
 interface UserListProps {
   users: User[];
@@ -20,58 +23,68 @@ export default function UserList({ users, roles }: UserListProps) {
     setIsRolesModalOpen(true);
   };
 
+  const columns: Column<User>[] = [
+    {
+      key: 'email',
+      header: 'User',
+      cell: (user) => (
+        <div>
+          <div className="text-sm font-medium text-gray-900">
+            {user.email}
+          </div>
+          <div className="text-sm text-gray-500">
+            ID: {user.id}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'created_at',
+      header: 'Created',
+      cell: (user) => (
+        <span className="text-sm text-gray-500">
+          {format(new Date(user.created_at), 'MMM d, yyyy')}
+        </span>
+      ),
+    },
+    {
+      key: 'last_sign_in_at',
+      header: 'Last Sign In',
+      cell: (user) => (
+        <span className="text-sm text-gray-500">
+          {user.last_sign_in_at
+            ? format(new Date(user.last_sign_in_at), 'MMM d, yyyy h:mm a')
+            : 'Never'}
+        </span>
+      ),
+      hideOnMobile: true,
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      cell: (user) => (
+        <Button
+          onClick={() => handleManageRoles(user)}
+          variant="link"
+          size="sm"
+        >
+          Manage Roles
+        </Button>
+      ),
+    },
+  ];
+
   return (
     <>
-      <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
-        <table className="min-w-full divide-y divide-gray-300">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                User
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Created
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Last Sign In
-              </th>
-              <th className="relative px-6 py-3">
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {users.map((user) => (
-              <tr key={user.id}>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm font-medium text-gray-900">
-                    {user.email}
-                  </div>
-                  <div className="text-sm text-gray-500">
-                    ID: {user.id}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {format(new Date(user.created_at), 'MMM d, yyyy')}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {user.last_sign_in_at
-                    ? format(new Date(user.last_sign_in_at), 'MMM d, yyyy h:mm a')
-                    : 'Never'}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <button
-                    onClick={() => handleManageRoles(user)}
-                    className="text-blue-600 hover:text-blue-900"
-                  >
-                    Manage Roles
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <Card padding="none">
+        <DataTable
+          data={users}
+          columns={columns}
+          getRowKey={(user) => user.id}
+          emptyMessage="No users found"
+        />
+      </Card>
 
       {selectedUser && (
         <UserRolesModal

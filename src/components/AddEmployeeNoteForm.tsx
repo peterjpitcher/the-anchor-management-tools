@@ -7,7 +7,8 @@ import { addEmployeeNote } from '@/app/actions/employeeActions';
 import type { NoteFormState } from '@/types/actions';
 import { createClient } from '@/lib/supabase/client'; 
 import type { User } from '@supabase/supabase-js';
-import { Button } from '@/components/ui/Button';
+import { Button } from '@/components/ui-v2/forms/Button';
+import { Textarea } from '@/components/ui-v2/forms/Textarea';
 
 interface AddEmployeeNoteFormProps {
   employeeId: string;
@@ -57,13 +58,14 @@ export default function AddEmployeeNoteForm({ employeeId }: AddEmployeeNoteFormP
         <label htmlFor="note_text" className="sr-only">
           Add a note
         </label>
-        <textarea
+        <Textarea
           rows={3}
           name="note_text"
           id="note_text"
-          className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-green-500 sm:text-sm sm:leading-6"
           placeholder="Add a time-stamped note..."
           defaultValue=""
+          error={!!state?.errors?.note_text}
+          fullWidth
         />
         {state?.errors?.note_text && (
           <p className="mt-1 text-sm text-red-600">{state.errors.note_text}</p>

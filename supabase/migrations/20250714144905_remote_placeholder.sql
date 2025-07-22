@@ -1,0 +1,3 @@
+-- Placeholder for remote migration 20250714144905
+-- This migration was already applied to the remote database
+-- This file exists to keep the migration history in sync

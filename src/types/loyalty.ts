@@ -82,7 +82,7 @@ export interface LoyaltyAchievement {
   points_value: number;
   criteria: {
     type: string;
-    [key: string]: any;
+    [id: string]: any;
   };
   category: string;
   sort_order: number;
@@ -176,7 +176,7 @@ export interface LoyaltyChallenge {
   points_value: number;
   criteria: {
     type: string;
-    [key: string]: any;
+    [id: string]: any;
   };
   category: 'monthly' | 'seasonal' | 'special';
   start_date: string;
@@ -193,7 +193,7 @@ export interface CustomerChallenge {
   member_id: string;
   challenge_id: string;
   progress: Record<string, any>;
-  completed_count: number;
+  completed_badge: number;
   last_completed_at: string | null;
   created_at: string;
   updated_at: string;

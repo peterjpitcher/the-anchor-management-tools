@@ -2,9 +2,20 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
-import toast from 'react-hot-toast'
 import { formatDate } from '@/lib/dateUtils'
 import { ExclamationTriangleIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline'
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { Stat, StatGroup } from '@/components/ui-v2/display/Stat'
+import { DataTable } from '@/components/ui-v2/display/DataTable'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { Tabs } from '@/components/ui-v2/navigation/Tabs'
 
 interface CustomerHealth {
   id: string
@@ -148,122 +159,104 @@ export default function SMSHealthDashboard() {
     }
   }
 
-  const getStatusBadgeClass = (status: string) => {
+  const getStatusBadgeVariant = (status: string): 'success' | 'warning' | 'error' | 'info' => {
     switch (status) {
       case 'active':
-        return 'bg-green-100 text-green-800'
+        return 'success'
       case 'suspended':
-        return 'bg-yellow-100 text-yellow-800'
+        return 'warning'
       case 'invalid_number':
-        return 'bg-red-100 text-red-800'
+        return 'error'
       case 'opted_out':
-        return 'bg-gray-100 text-gray-800'
+        return 'info'
       default:
-        return 'bg-gray-100 text-gray-800'
+        return 'info'
     }
   }
 
   if (loading) {
-    return <div className="p-4">Loading SMS health data...</div>
+    return (
+      <Page title="SMS Health Dashboard">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <Spinner size="lg" />
+            <p className="mt-4 text-gray-600">Loading SMS health data...</p>
+          </div>
+        </div>
+      </Page>
+    )
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">SMS Health Dashboard</h1>
-          <p className="mt-1 text-xs sm:text-sm text-gray-500">
-            Monitor SMS delivery health and customer messaging status
-          </p>
-        </div>
-      
+    <Page
+      title="SMS Health Dashboard"
+      description="Monitor SMS delivery health and customer messaging status"
+    >
       {/* Stats Overview */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-4 sm:mb-6">
-        <div className="bg-white rounded-lg shadow p-3 sm:p-4">
-          <p className="text-xs sm:text-sm text-gray-500">Total Customers</p>
-          <p className="text-lg sm:text-2xl font-bold">{stats.totalCustomers}</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-3 sm:p-4">
-          <p className="text-xs sm:text-sm text-gray-500">Active</p>
-          <p className="text-lg sm:text-2xl font-bold text-green-600">{stats.activeCustomers}</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-3 sm:p-4">
-          <p className="text-xs sm:text-sm text-gray-500">Suspended</p>
-          <p className="text-lg sm:text-2xl font-bold text-yellow-600">{stats.suspendedCustomers}</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-3 sm:p-4">
-          <p className="text-xs sm:text-sm text-gray-500">Invalid Numbers</p>
-          <p className="text-lg sm:text-2xl font-bold text-red-600">{stats.invalidNumbers}</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-3 sm:p-4">
-          <p className="text-xs sm:text-sm text-gray-500">Total Spent</p>
-          <p className="text-lg sm:text-2xl font-bold">${stats.totalSpent.toFixed(2)}</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-3 sm:p-4">
-          <p className="text-xs sm:text-sm text-gray-500">Delivery Rate</p>
-          <p className="text-lg sm:text-2xl font-bold">{stats.overallDeliveryRate}%</p>
-        </div>
-      </div>
+      <Card>
+        <StatGroup>
+          <Stat label="Total Customers" value={stats.totalCustomers} />
+          <Stat label="Active" value={stats.activeCustomers} color="success" />
+          <Stat label="Suspended" value={stats.suspendedCustomers} color="warning" />
+          <Stat label="Invalid Numbers" value={stats.invalidNumbers} color="error" />
+          <Stat label="Total Spent" value={`$${stats.totalSpent.toFixed(2)}`} />
+          <Stat label="Delivery Rate" value={`${stats.overallDeliveryRate}%`} />
+        </StatGroup>
+      </Card>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow p-3 sm:p-4 mb-4 sm:mb-6">
+      <Card>
         <div className="flex flex-wrap gap-2">
-          <button
+          <Button
             onClick={() => setFilter('all')}
-            className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium flex-shrink-0 ${
-              filter === 'all' 
-                ? 'bg-green-600 text-white' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
+            variant={filter === 'all' ? 'primary' : 'secondary'}
+            size="sm"
           >
             All ({customers.length})
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => setFilter('active')}
-            className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium flex-shrink-0 ${
-              filter === 'active' 
-                ? 'bg-green-600 text-white' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
+            variant={filter === 'active' ? 'primary' : 'secondary'}
+            size="sm"
           >
             Active ({stats.activeCustomers})
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => setFilter('at_risk')}
-            className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium flex-shrink-0 ${
-              filter === 'at_risk' 
-                ? 'bg-green-600 text-white' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
+            variant={filter === 'at_risk' ? 'primary' : 'secondary'}
+            size="sm"
           >
             At Risk ({customers.filter(c => c.messaging_status === 'active' && (c.consecutive_failures >= 3 || c.total_failures_30d >= 5)).length})
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => setFilter('suspended')}
-            className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium flex-shrink-0 ${
-              filter === 'suspended' 
-                ? 'bg-green-600 text-white' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
+            variant={filter === 'suspended' ? 'primary' : 'secondary'}
+            size="sm"
           >
             Suspended ({stats.suspendedCustomers})
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => setFilter('invalid_number')}
-            className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium flex-shrink-0 ${
-              filter === 'invalid_number' 
-                ? 'bg-green-600 text-white' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
+            variant={filter === 'invalid_number' ? 'primary' : 'secondary'}
+            size="sm"
           >
             Invalid ({stats.invalidNumbers})
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
 
       {/* Customer Table */}
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-        {/* Desktop Table */}
-        <div className="hidden lg:block">
+      <Section title="Customer Messaging Health">
+        <Card>
+          {filteredCustomers.length === 0 ? (
+            <EmptyState
+              title="No customers found"
+              description="No customers found matching the selected filter"
+            />
+          ) : (
+            <>
+              {/* Desktop Table */}
+              <div className="hidden lg:block">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -304,9 +297,13 @@ export default function SMSHealthDashboard() {
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex items-center">
                     {getStatusIcon(customer.messaging_status)}
-                    <span className={`ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClass(customer.messaging_status)}`}>
+                    <Badge 
+                      variant={getStatusBadgeVariant(customer.messaging_status)} 
+                      size="sm" 
+                      className="ml-2"
+                    >
                       {customer.messaging_status}
-                    </span>
+                    </Badge>
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -371,9 +368,13 @@ export default function SMSHealthDashboard() {
                   </div>
                   <div className="flex items-center ml-2">
                     {getStatusIcon(customer.messaging_status)}
-                    <span className={`ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClass(customer.messaging_status)}`}>
+                    <Badge 
+                      variant={getStatusBadgeVariant(customer.messaging_status)} 
+                      size="sm" 
+                      className="ml-2"
+                    >
                       {customer.messaging_status}
-                    </span>
+                    </Badge>
                   </div>
                 </div>
                 
@@ -431,25 +432,23 @@ export default function SMSHealthDashboard() {
             ))}
           </div>
         </div>
-        
-        {filteredCustomers.length === 0 && (
-          <div className="text-center py-8 text-gray-500">
-            No customers found matching the selected filter
-          </div>
-        )}
-      </div>
+            </>
+          )}
+        </Card>
+      </Section>
 
       {/* Automatic Deactivation Rules */}
-      <div className="mt-6 sm:mt-8 bg-white rounded-lg shadow p-4 sm:p-6">
-        <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Automatic Deactivation Rules</h2>
-        <ul className="space-y-2 text-xs sm:text-sm text-gray-600">
-          <li>• <strong>Invalid Number:</strong> Immediate suspension on detection</li>
-          <li>• <strong>Carrier Violations:</strong> Suspended after 3 consecutive failures</li>
-          <li>• <strong>General Failures:</strong> Suspended after 5 consecutive failures</li>
-          <li>• <strong>High Failure Rate:</strong> Suspended after 10 failures in 30 days</li>
-          <li>• <strong>Opt-Out:</strong> Customer replies with STOP, UNSUBSCRIBE, etc.</li>
-        </ul>
-      </div>
-    </div>
+      <Section title="Automatic Deactivation Rules">
+        <Card>
+          <ul className="space-y-2 text-sm text-gray-600">
+            <li>• <strong>Invalid Number:</strong> Immediate suspension on detection</li>
+            <li>• <strong>Carrier Violations:</strong> Suspended after 3 consecutive failures</li>
+            <li>• <strong>General Failures:</strong> Suspended after 5 consecutive failures</li>
+            <li>• <strong>High Failure Rate:</strong> Suspended after 10 failures in 30 days</li>
+            <li>• <strong>Opt-Out:</strong> Customer replies with STOP, UNSUBSCRIBE, etc.</li>
+          </ul>
+        </Card>
+      </Section>
+    </Page>
   )
 }

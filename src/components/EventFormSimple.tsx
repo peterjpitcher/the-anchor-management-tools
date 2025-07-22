@@ -4,7 +4,10 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Event } from '@/types/database'
 import { EventCategory } from '@/types/event-categories'
-import { Button } from '@/components/ui/Button'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Select } from '@/components/ui-v2/forms/Select'
+import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { SquareImageUpload } from './SquareImageUpload'
 import toast from 'react-hot-toast'
 
@@ -132,13 +135,13 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                 Event Name *
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="text"
                   id="name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                  fullWidth
                 />
               </div>
             </div>
@@ -148,7 +151,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                 Category
               </label>
               <div className="mt-2">
-                <select
+                <Select
                   id="category"
                   value={categoryId}
                   onChange={(e) => {
@@ -226,7 +229,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                       }
                     }
                   }}
-                  className="block w-full rounded-lg px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px] bg-white"
+                  fullWidth
                 >
                   <option value="">No category</option>
                   {categories.map((cat) => (
@@ -234,7 +237,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                       {cat.name}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
             </div>
 
@@ -243,7 +246,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                 Date *
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="date"
                   id="date"
                   value={date}
@@ -251,7 +254,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   min={minDate}
                   max={maxDate}
                   required
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                  fullWidth
                 />
               </div>
             </div>
@@ -261,13 +264,13 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                 Start Time *
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="time"
                   id="time"
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
                   required
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                  fullWidth
                 />
               </div>
             </div>
@@ -277,12 +280,12 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                 End Time
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="time"
                   id="end_time"
                   value={endTime}
                   onChange={(e) => setEndTime(e.target.value)}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                  fullWidth
                 />
               </div>
             </div>
@@ -298,14 +301,14 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                 Capacity
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="number"
                   id="capacity"
                   value={capacity}
                   onChange={(e) => setCapacity(e.target.value)}
                   min="1"
                   placeholder="Unlimited"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                  fullWidth
                 />
               </div>
             </div>
@@ -315,17 +318,17 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                 Status
               </label>
               <div className="mt-2">
-                <select
+                <Select
                   id="status"
                   value={eventStatus}
                   onChange={(e) => setEventStatus(e.target.value)}
-                  className="block w-full rounded-lg px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px] bg-white"
+                  fullWidth
                 >
                   <option value="scheduled">Scheduled</option>
                   <option value="cancelled">Cancelled</option>
                   <option value="postponed">Postponed</option>
                   <option value="sold_out">Sold Out</option>
-                </select>
+                </Select>
               </div>
             </div>
 
@@ -334,7 +337,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                 Price (£)
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="number"
                   id="price"
                   value={price}
@@ -344,7 +347,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   }}
                   min="0"
                   step="0.01"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                  fullWidth
                 />
               </div>
             </div>
@@ -355,12 +358,12 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                 Performer Name
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="text"
                   id="performer_name"
                   value={performerName}
                   onChange={(e) => setPerformerName(e.target.value)}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                  fullWidth
                 />
               </div>
             </div>
@@ -370,11 +373,11 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                 Performer Type
               </label>
               <div className="mt-2">
-                <select
+                <Select
                   id="performer_type"
                   value={performerType}
                   onChange={(e) => setPerformerType(e.target.value)}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                  fullWidth
                 >
                   <option value="">Select type...</option>
                   <option value="MusicGroup">Music Group / Band</option>
@@ -383,7 +386,7 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                   <option value="DanceGroup">Dance Group</option>
                   <option value="ComedyGroup">Comedy Group</option>
                   <option value="Organization">Organization</option>
-                </select>
+                </Select>
               </div>
             </div>
 
@@ -397,14 +400,14 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                 Duration (minutes)
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="number"
                   id="duration_minutes"
                   value={durationMinutes}
                   onChange={(e) => setDurationMinutes(e.target.value)}
                   min="1"
                   placeholder="e.g., 180"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                  fullWidth
                 />
               </div>
             </div>
@@ -414,12 +417,12 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                 Doors Time
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="time"
                   id="doors_time"
                   value={doorsTime}
                   onChange={(e) => setDoorsTime(e.target.value)}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                  fullWidth
                 />
               </div>
             </div>
@@ -429,12 +432,12 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                 Last Entry Time
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="time"
                   id="last_entry_time"
                   value={lastEntryTime}
                   onChange={(e) => setLastEntryTime(e.target.value)}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                  fullWidth
                 />
               </div>
             </div>
@@ -444,13 +447,13 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                 External Booking URL
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="url"
                   id="booking_url"
                   value={bookingUrl}
                   onChange={(e) => setBookingUrl(e.target.value)}
                   placeholder="https://example.com/book"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                  fullWidth
                 />
               </div>
             </div>
@@ -465,13 +468,13 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                 URL Slug
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="text"
                   id="slug"
                   value={slug}
                   onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
                   placeholder="event-name-2024-01-01"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                  fullWidth
                 />
               </div>
             </div>
@@ -481,14 +484,14 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                 Meta Title
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="text"
                   id="meta_title"
                   value={metaTitle}
                   onChange={(e) => setMetaTitle(e.target.value)}
                   maxLength={60}
                   placeholder="SEO page title"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                  fullWidth
                 />
               </div>
             </div>
@@ -498,14 +501,14 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                 Meta Description
               </label>
               <div className="mt-2">
-                <textarea
+                <Textarea
                   id="meta_description"
                   rows={2}
                   value={metaDescription}
                   onChange={(e) => setMetaDescription(e.target.value)}
                   maxLength={160}
                   placeholder="SEO page description"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                  fullWidth
                 />
               </div>
             </div>
@@ -515,14 +518,14 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                 Short Description
               </label>
               <div className="mt-2">
-                <textarea
+                <Textarea
                   id="short_description"
                   rows={2}
                   value={shortDescription}
                   onChange={(e) => setShortDescription(e.target.value)}
                   maxLength={500}
                   placeholder="Brief description for event listings"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                  fullWidth
                 />
               </div>
             </div>
@@ -532,13 +535,13 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                 Long Description
               </label>
               <div className="mt-2">
-                <textarea
+                <Textarea
                   id="long_description"
                   rows={6}
                   value={longDescription}
                   onChange={(e) => setLongDescription(e.target.value)}
                   placeholder="Detailed description for the event page"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                  fullWidth
                 />
               </div>
             </div>
@@ -548,13 +551,13 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                 Highlights (comma-separated)
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="text"
                   id="highlights"
                   value={highlights}
                   onChange={(e) => setHighlights(e.target.value)}
                   placeholder="Great prizes, Fun atmosphere, Live music"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                  fullWidth
                 />
               </div>
             </div>
@@ -564,13 +567,13 @@ export function EventFormSimple({ event, categories, onSubmit, onCancel }: Event
                 Keywords (comma-separated)
               </label>
               <div className="mt-2">
-                <input
+                <Input
                   type="text"
                   id="keywords"
                   value={keywords}
                   onChange={(e) => setKeywords(e.target.value)}
                   placeholder="music, live band, entertainment, pub"
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                  fullWidth
                 />
               </div>
             </div>

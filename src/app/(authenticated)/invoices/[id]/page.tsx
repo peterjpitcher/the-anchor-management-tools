@@ -4,7 +4,16 @@ import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getInvoice, updateInvoiceStatus, deleteInvoice } from '@/app/actions/invoices'
 import { getEmailConfigStatus } from '@/app/actions/email'
-import { Button } from '@/components/ui/Button'
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { DataTable, Column } from '@/components/ui-v2/display/DataTable'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { Download, Mail, Edit, Trash2, Copy, ChevronLeft, CheckCircle, XCircle, Clock } from 'lucide-react'
 import { EmailInvoiceModal } from '@/components/EmailInvoiceModal'
 import { ChasePaymentModal } from '@/components/ChasePaymentModal'
@@ -20,6 +29,7 @@ export default function InvoiceDetailPage() {
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [showChaseModal, setShowChaseModal] = useState(false)
   const [emailConfigured, setEmailConfigured] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const invoiceId = params.id as string
 
@@ -90,10 +100,6 @@ export default function InvoiceDetailPage() {
   async function handleDelete() {
     if (!invoice || actionLoading) return
 
-    if (!confirm('Are you sure you want to delete this invoice? This action cannot be undone.')) {
-      return
-    }
-
     setActionLoading(true)
     setError(null)
 
@@ -107,23 +113,24 @@ export default function InvoiceDetailPage() {
         throw new Error(result.error)
       }
 
+      toast.success('Invoice deleted successfully')
       router.push('/invoices')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete invoice')
+      toast.error(err instanceof Error ? err.message : 'Failed to delete invoice')
       setActionLoading(false)
     }
   }
 
-  function getStatusColor(status: InvoiceStatus): string {
+  function getStatusBadgeVariant(status: InvoiceStatus): 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info' | 'secondary' {
     switch (status) {
-      case 'draft': return 'bg-gray-100 text-gray-800'
-      case 'sent': return 'bg-blue-100 text-blue-800'
-      case 'partially_paid': return 'bg-yellow-100 text-yellow-800'
-      case 'paid': return 'bg-green-100 text-green-800'
-      case 'overdue': return 'bg-red-100 text-red-800'
-      case 'void': return 'bg-gray-100 text-gray-800'
-      case 'written_off': return 'bg-gray-100 text-gray-800'
-      default: return 'bg-gray-100 text-gray-800'
+      case 'draft': return 'default'
+      case 'sent': return 'info'
+      case 'partially_paid': return 'warning'
+      case 'paid': return 'success'
+      case 'overdue': return 'error'
+      case 'void': return 'secondary'
+      case 'written_off': return 'secondary'
+      default: return 'default'
     }
   }
 
@@ -138,28 +145,25 @@ export default function InvoiceDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading invoice...</p>
+      <Page title="Loading...">
+        <div className="flex items-center justify-center h-64">
+          <Spinner size="lg" />
         </div>
-      </div>
+      </Page>
     )
   }
 
   if (error || !invoice) {
     return (
-      <div className="space-y-6">
-        <div className="bg-red-50 border border-red-200 text-red-600 rounded-lg p-4">
-          {error || 'Invoice not found'}
-        </div>
+      <Page title="Invoice Not Found">
+        <Alert variant="error" description={error || 'Invoice not found'} className="mb-6" />
         <Button
           onClick={() => router.push('/invoices')}
-          className="mt-4"
+          leftIcon={<ChevronLeft className="h-4 w-4" />}
         >
           Back to Invoices
         </Button>
-      </div>
+      </Page>
     )
   }
 
@@ -181,25 +185,19 @@ export default function InvoiceDetailPage() {
   }, 0) || 0
 
   return (
-    <div className="space-y-6">
-      <div className="mb-6">
-        <Button
-          variant="ghost"
-          onClick={() => router.push('/invoices')}
-          className="mb-4"
-        >
-          <ChevronLeft className="h-4 w-4 mr-2" />
-          Back to Invoices
-        </Button>
-
-        <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold mb-2">Invoice {invoice.invoice_number}</h1>
+    <Page
+      title={`Invoice ${invoice.invoice_number}`}
+      breadcrumbs={[
+        { label: 'Invoices', href: '/invoices' },
+        { label: invoice.invoice_number }
+      ]}
+    >
+      <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-4 mb-6">
+        <div>
             <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-              <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(invoice.status)}`}>
-                {getStatusIcon(invoice.status)}
+              <Badge variant={getStatusBadgeVariant(invoice.status)} icon={getStatusIcon(invoice.status)}>
                 {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1).replace('_', ' ')}
-              </span>
+              </Badge>
               {invoice.reference && (
                 <span className="text-sm sm:text-base text-gray-600">
                   Reference: {invoice.reference}
@@ -214,19 +212,20 @@ export default function InvoiceDetailPage() {
                 <Button
                   onClick={() => handleStatusChange('sent')}
                   disabled={actionLoading}
-                  className="text-sm"
+                  loading={actionLoading}
+                  size="sm"
+                  leftIcon={<Mail className="h-4 w-4" />}
                 >
-                  <Mail className="h-4 w-4 mr-1 sm:mr-2" />
                   <span className="hidden sm:inline">Mark as Sent</span>
                   <span className="sm:hidden">Send</span>
                 </Button>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   onClick={() => router.push(`/invoices/${invoice.id}/edit`)}
                   disabled={actionLoading}
-                  className="text-sm"
+                  size="sm"
+                  leftIcon={<Edit className="h-4 w-4" />}
                 >
-                  <Edit className="h-4 w-4 mr-1 sm:mr-2" />
                   Edit
                 </Button>
               </>
@@ -236,9 +235,11 @@ export default function InvoiceDetailPage() {
               <Button
                 onClick={() => handleStatusChange('paid')}
                 disabled={actionLoading}
-                className="bg-green-600 hover:bg-green-700 text-white text-sm"
+                loading={actionLoading}
+                variant="success"
+                size="sm"
+                leftIcon={<CheckCircle className="h-4 w-4" />}
               >
-                <CheckCircle className="h-4 w-4 mr-1 sm:mr-2" />
                 <span className="hidden sm:inline">Mark as Paid</span>
                 <span className="sm:hidden">Paid</span>
               </Button>
@@ -247,24 +248,25 @@ export default function InvoiceDetailPage() {
             {emailConfigured && (
               <>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   onClick={() => setShowEmailModal(true)}
                   disabled={actionLoading}
-                  className="text-sm"
+                  size="sm"
+                  leftIcon={<Mail className="h-4 w-4" />}
                 >
-                  <Mail className="h-4 w-4 mr-1 sm:mr-2" />
                   <span className="hidden sm:inline">Send Email</span>
                   <span className="sm:hidden">Email</span>
                 </Button>
                 {(invoice.status === 'overdue' || 
                   (invoice.status === 'sent' && new Date(invoice.due_date) < new Date())) && (
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     onClick={() => setShowChaseModal(true)}
                     disabled={actionLoading}
-                    className="border-orange-500 text-orange-600 hover:bg-orange-50 text-sm"
+                    size="sm"
+                    leftIcon={<Clock className="h-4 w-4" />}
+                    className="border-orange-500 text-orange-600 hover:bg-orange-50"
                   >
-                    <Clock className="h-4 w-4 mr-1 sm:mr-2" />
                     <span className="hidden sm:inline">Chase Payment</span>
                     <span className="sm:hidden">Chase</span>
                   </Button>
@@ -273,40 +275,38 @@ export default function InvoiceDetailPage() {
             )}
 
             <Button
-              variant="outline"
+              variant="secondary"
               onClick={() => window.open(`/api/invoices/${invoice.id}/pdf`, '_blank')}
               disabled={actionLoading}
-              className="text-sm"
+              size="sm"
+              leftIcon={<Download className="h-4 w-4" />}
             >
-              <Download className="h-4 w-4 mr-1 sm:mr-2" />
               <span className="hidden sm:inline">Download PDF</span>
               <span className="sm:hidden">PDF</span>
             </Button>
 
             {invoice.status === 'draft' && (
               <Button
-                variant="outline"
-                onClick={handleDelete}
+                variant="danger"
+                onClick={() => setShowDeleteConfirm(true)}
                 disabled={actionLoading}
-                className="text-red-600 hover:bg-red-50 text-sm"
+                loading={actionLoading}
+                size="sm"
+                leftIcon={<Trash2 className="h-4 w-4" />}
               >
-                <Trash2 className="h-4 w-4 mr-1 sm:mr-2" />
                 Delete
               </Button>
             )}
           </div>
         </div>
-      </div>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg">
-          {error}
-        </div>
+        <Alert variant="error" description={error} className="mb-6" />
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
         <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white rounded-lg shadow-sm border p-6">
+          <Card className="p-6">
             <h2 className="text-lg font-semibold mb-4">Invoice Details</h2>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
@@ -357,9 +357,9 @@ export default function InvoiceDetailPage() {
                 </p>
               </div>
             </div>
-          </div>
+          </Card>
 
-          <div className="bg-white rounded-lg shadow-sm border p-6">
+          <Card className="p-6">
             <h2 className="text-lg font-semibold mb-4">Line Items</h2>
             
             {/* Desktop Table */}
@@ -429,7 +429,7 @@ export default function InvoiceDetailPage() {
                       </div>
                       {item.discount_percentage > 0 && (
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Discount:</span>
+                          <span className="text-gray-600">Disbadge: </span>
                           <span className="text-green-600">-{item.discount_percentage}%</span>
                         </div>
                       )}
@@ -467,10 +467,10 @@ export default function InvoiceDetailPage() {
                 <span>£{invoice.total_amount.toFixed(2)}</span>
               </div>
             </div>
-          </div>
+          </Card>
 
           {(invoice.notes || invoice.internal_notes) && (
-            <div className="bg-white rounded-lg shadow-sm border p-6">
+            <Card className="p-6">
               <h2 className="text-lg font-semibold mb-4">Notes</h2>
               
               {invoice.notes && (
@@ -488,12 +488,12 @@ export default function InvoiceDetailPage() {
                   </p>
                 </div>
               )}
-            </div>
+            </Card>
           )}
         </div>
 
         <div className="space-y-6">
-          <div className="bg-white rounded-lg shadow-sm border p-6">
+          <Card className="p-6">
             <h2 className="text-lg font-semibold mb-4">Payment Status</h2>
             
             <div className="space-y-4">
@@ -516,17 +516,17 @@ export default function InvoiceDetailPage() {
 
               {invoice.status !== 'paid' && invoice.status !== 'void' && (
                 <Button
-                  className="w-full"
+                  fullWidth
                   onClick={() => router.push(`/invoices/${invoice.id}/payment`)}
                 >
                   Record Payment
                 </Button>
               )}
             </div>
-          </div>
+          </Card>
 
           {invoice.payments && invoice.payments.length > 0 && (
-            <div className="bg-white rounded-lg shadow-sm border p-6">
+            <Card className="p-6">
               <h2 className="text-lg font-semibold mb-4">Payment History</h2>
               
               <div className="space-y-3">
@@ -547,37 +547,38 @@ export default function InvoiceDetailPage() {
                   </div>
                 ))}
               </div>
-            </div>
+            </Card>
           )}
 
-          <div className="bg-white rounded-lg shadow-sm border p-6">
+          <Card className="p-6">
             <h2 className="text-lg font-semibold mb-4">Actions</h2>
             
             <div className="space-y-2">
               <Button
-                variant="outline"
-                className="w-full"
+                variant="secondary"
+                fullWidth
                 onClick={() => {
                   navigator.clipboard.writeText(window.location.href)
-                  alert('Link copied to clipboard!')
+                  toast.success('Link copied to clipboard!')
                 }}
+                leftIcon={<Copy className="h-4 w-4" />}
               >
-                <Copy className="h-4 w-4 mr-2" />
                 Copy Link
               </Button>
               
               {invoice.status !== 'void' && invoice.status !== 'written_off' && (
                 <Button
-                  variant="outline"
-                  className="w-full"
+                  variant="secondary"
+                  fullWidth
                   onClick={() => handleStatusChange('void')}
                   disabled={actionLoading}
+                  loading={actionLoading}
                 >
                   Void Invoice
                 </Button>
               )}
             </div>
-          </div>
+          </Card>
         </div>
       </div>
 
@@ -609,6 +610,15 @@ export default function InvoiceDetailPage() {
           />
         </>
       )}
-    </div>
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDelete}
+        title="Delete Invoice"
+        message="Are you sure you want to delete this invoice? This action cannot be undone."
+        confirmText="Delete"
+        confirmVariant="danger"
+      />
+    </Page>
   )
 }

@@ -93,13 +93,13 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
                   <Navigation onQuickAddNoteClick={openAddNoteModal} />
                 </div>
               </div>
-              <div className="flex flex-shrink-0 border-t border-gray-200 p-4">
+              <div className="flex flex-shrink-0 border-t border-green-600 p-4">
                 <button
                   onClick={handleSignOut}
-                  className="group flex w-full items-center px-2 py-2 text-sm font-medium text-white hover:bg-gray-700 hover:text-gray-100 rounded-md"
+                  className="group flex w-full items-center px-2 py-2 text-sm font-medium text-gray-100 hover:bg-green-700 hover:text-white rounded-md"
                 >
                   <ArrowRightOnRectangleIcon
-                    className="mr-3 h-6 w-6 text-gray-200 group-hover:text-gray-100"
+                    className="mr-3 h-6 w-6 text-green-200 group-hover:text-white"
                     aria-hidden="true"
                   />
                   Sign out
@@ -138,10 +138,10 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
                       handleSignOut()
                       setIsMobileMenuOpen(false)
                     }}
-                    className="group flex w-full items-center px-2 py-2 text-sm font-medium text-white hover:bg-gray-700 hover:text-gray-100 rounded-md"
+                    className="group flex w-full items-center px-2 py-2 text-sm font-medium text-gray-100 hover:bg-green-700 hover:text-white rounded-md"
                   >
                     <ArrowRightOnRectangleIcon
-                      className="mr-3 h-6 w-6 text-gray-200 group-hover:text-gray-100"
+                      className="mr-3 h-6 w-6 text-green-200 group-hover:text-white"
                       aria-hidden="true"
                     />
                     Sign out

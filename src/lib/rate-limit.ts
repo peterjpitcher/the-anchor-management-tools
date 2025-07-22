@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 // In-memory store for rate limiting (consider Redis for production)
-const rateLimitStore = new Map<string, { count: number; resetTime: number }>()
+const rateLimitStore = new Map<string, { badge: number; resetTime: number }>()
 
 // Clean up old entries periodically
 setInterval(() => {
@@ -43,7 +43,7 @@ export function createRateLimiter(config: RateLimitConfig) {
     if (!data || data.resetTime < now) {
       // Create new window
       data = {
-        count: 1,
+        badge: 1,
         resetTime: now + windowMs
       }
       rateLimitStore.set(key, data)
@@ -51,10 +51,10 @@ export function createRateLimiter(config: RateLimitConfig) {
     }
     
     // Increment count
-    data.count++
+    data.badge++
     
     // Check if limit exceeded
-    if (data.count > max) {
+    if (data.badge > max) {
       const retryAfter = Math.ceil((data.resetTime - now) / 1000)
       
       return NextResponse.json(

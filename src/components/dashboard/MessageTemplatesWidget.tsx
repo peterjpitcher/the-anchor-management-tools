@@ -17,7 +17,7 @@ interface TemplateStats {
   }[]
   templatesByType: {
     type: string
-    count: number
+    badge: number
   }[]
 }
 
@@ -64,7 +64,7 @@ export function MessageTemplatesWidget() {
       if (messagesError) throw messagesError
 
       // Calculate template usage by analyzing message content
-      const templateUsage = new Map<string, { count: number; lastUsed: string }>()
+      const templateUsage = new Map<string, { badge: number; lastUsed: string }>()
       
       templates?.forEach(template => {
         const matchingMessages = messages?.filter(msg => {
@@ -75,7 +75,7 @@ export function MessageTemplatesWidget() {
 
         if (matchingMessages.length > 0) {
           templateUsage.set(template.name, {
-            count: matchingMessages.length,
+            badge: matchingMessages.length,
             lastUsed: matchingMessages[0].created_at
           })
         }
@@ -96,7 +96,7 @@ export function MessageTemplatesWidget() {
             name,
             type: template?.type || 'custom',
             lastUsed: stats.lastUsed,
-            useCount: stats.count
+            useCount: stats.badge
           }
         })
         .sort((a, b) => new Date(b.lastUsed).getTime() - new Date(a.lastUsed).getTime())
@@ -109,7 +109,7 @@ export function MessageTemplatesWidget() {
         recentlyUsed,
         templatesByType: Object.entries(typeGroups).map(([type, count]) => ({ 
           type, 
-          count: count as number 
+          badge: count as number 
         }))
       })
     } catch (error) {
@@ -203,7 +203,7 @@ export function MessageTemplatesWidget() {
               {stats.templatesByType.map((typeGroup, index) => (
                 <div key={index} className="flex justify-between text-sm">
                   <span className="text-gray-600 capitalize">{typeGroup.type}</span>
-                  <span className="font-medium text-gray-900">{typeGroup.count}</span>
+                  <span className="font-medium text-gray-900">{typeGroup.badge}</span>
                 </div>
               ))}
             </div>

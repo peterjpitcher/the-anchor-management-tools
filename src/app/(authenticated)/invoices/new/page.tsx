@@ -4,16 +4,24 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createInvoice, getLineItemCatalog } from '@/app/actions/invoices'
 import { getVendors } from '@/app/actions/vendors'
-import { Button } from '@/components/ui/Button'
-import { PlusCircle, Trash2, ChevronLeft } from 'lucide-react'
-import Link from 'next/link'
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Select } from '@/components/ui-v2/forms/Select'
+import { Textarea } from '@/components/ui-v2/forms/Textarea'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { PlusCircle, Trash2, ChevronLeft, Package } from 'lucide-react'
 import type { InvoiceVendor } from '@/types/invoices'
 import type { LineItemCatalogItem, InvoiceLineItemInput } from '@/types/invoices'
 
 interface LineItem {
   id: string
   catalog_item_id?: string
-  description: string
+  message: string
   quantity: number
   unit_price: number
   discount_percentage: number
@@ -73,7 +81,7 @@ export default function NewInvoicePage() {
   function addLineItem() {
     const newItem: LineItem = {
       id: crypto.randomUUID(),
-      description: '',
+      message: '',
       quantity: 1,
       unit_price: 0,
       discount_percentage: 0,
@@ -86,7 +94,7 @@ export default function NewInvoicePage() {
     const newItem: LineItem = {
       id: crypto.randomUUID(),
       catalog_item_id: catalogItem.id,
-      description: catalogItem.description,
+      message: catalogItem.description,
       quantity: 1,
       unit_price: catalogItem.default_price,
       discount_percentage: 0,
@@ -113,7 +121,7 @@ export default function NewInvoicePage() {
     return afterDiscount + vat
   }
 
-  function calculateInvoiceTotal(): { subtotal: number; discount: number; vat: number; total: number } {
+  function calculateInvoiceTotal(): { subtotal: number; disbadge: number; vat: number; total: number } {
     const lineSubtotal = lineItems.reduce((acc, item) => {
       const itemSubtotal = item.quantity * item.unit_price
       const itemDiscount = itemSubtotal * (item.discount_percentage / 100)
@@ -134,7 +142,7 @@ export default function NewInvoicePage() {
 
     return {
       subtotal: lineSubtotal,
-      discount: invoiceDiscount,
+      disbadge: invoiceDiscount,
       vat,
       total: afterDiscount + vat
     }
@@ -162,7 +170,7 @@ export default function NewInvoicePage() {
       
       const lineItemsData: InvoiceLineItemInput[] = lineItems.map(item => ({
         catalog_item_id: item.catalog_item_id,
-        description: item.description,
+        description: item.message,
         quantity: item.quantity,
         unit_price: item.unit_price,
         discount_percentage: item.discount_percentage,
@@ -177,9 +185,10 @@ export default function NewInvoicePage() {
         throw new Error(result.error)
       }
 
+      toast.success('Invoice created successfully')
       router.push(`/invoices/${result.invoice?.id}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create invoice')
+      toast.error(err instanceof Error ? err.message : 'Failed to create invoice')
       setLoading(false)
     }
   }
@@ -187,37 +196,27 @@ export default function NewInvoicePage() {
   const totals = calculateInvoiceTotal()
 
   return (
-    <div className="space-y-6">
-      <div className="mb-8">
-        <Link href="/invoices">
-          <Button variant="ghost" className="mb-4">
-            <ChevronLeft className="h-4 w-4 mr-2" />
-            Back to Invoices
-          </Button>
-        </Link>
-        <h1 className="text-2xl sm:text-3xl font-bold mb-2">New Invoice</h1>
-        <p className="text-sm sm:text-base text-muted-foreground">Create a new invoice</p>
-      </div>
-
+    <Page
+      title="New Invoice"
+      description="Create a new invoice"
+      breadcrumbs={[
+        { label: 'Invoices', href: '/invoices' },
+        { label: 'New Invoice' }
+      ]}
+    >
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg">
-          {error}
-        </div>
+        <Alert variant="error" description={error} className="mb-6" />
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="bg-white rounded-lg shadow-sm border p-6">
+        <Card className="p-6">
           <h2 className="text-lg font-semibold mb-4">Invoice Details</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Vendor <span className="text-red-500">*</span>
-              </label>
-              <select
+            <FormGroup label="Vendor" required>
+              <Select
                 value={vendorId}
                 onChange={(e) => setVendorId(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-h-[44px]"
                 required
               >
                 <option value="">Select a vendor</option>
@@ -226,51 +225,39 @@ export default function NewInvoicePage() {
                     {vendor.name}
                   </option>
                 ))}
-              </select>
-            </div>
+              </Select>
+            </FormGroup>
 
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Reference
-              </label>
-              <input
+            <FormGroup label="Reference">
+              <Input
                 type="text"
                 value={reference}
                 onChange={(e) => setReference(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                 placeholder="PO number or reference"
               />
-            </div>
+            </FormGroup>
 
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Invoice Date <span className="text-red-500">*</span>
-              </label>
-              <input
+            <FormGroup label="Invoice Date" required>
+              <Input
                 type="date"
                 value={invoiceDate}
                 onChange={(e) => setInvoiceDate(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                 required
               />
-            </div>
+            </FormGroup>
 
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Due Date <span className="text-red-500">*</span>
-              </label>
-              <input
+            <FormGroup label="Due Date" required>
+              <Input
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                 required
               />
-            </div>
+            </FormGroup>
           </div>
-        </div>
+        </Card>
 
-        <div className="bg-white rounded-lg shadow-sm border p-6">
+        <Card className="p-6">
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-4">
             <h2 className="text-lg font-semibold">Line Items</h2>
             <div className="flex flex-wrap gap-2">
@@ -297,8 +284,7 @@ export default function NewInvoicePage() {
                   </div>
                 </details>
               )}
-              <Button type="button" onClick={addLineItem} className="text-sm">
-                <PlusCircle className="h-4 w-4 mr-1 sm:mr-2" />
+              <Button type="button" onClick={addLineItem} leftIcon={<PlusCircle className="h-4 w-4" />} size="sm">
                 <span className="hidden sm:inline">Add Line Item</span>
                 <span className="sm:hidden">Add Item</span>
               </Button>
@@ -318,11 +304,10 @@ export default function NewInvoicePage() {
                       <label className="block text-sm font-medium mb-1">
                         Description
                       </label>
-                      <input
+                      <Input
                         type="text"
-                        value={item.description}
-                        onChange={(e) => updateLineItem(item.id, { description: e.target.value })}
-                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                        value={item.message}
+                        onChange={(e) => updateLineItem(item.id, { message: e.target.value })}
                         placeholder="Item description"
                         required
                       />
@@ -332,11 +317,10 @@ export default function NewInvoicePage() {
                       <label className="block text-sm font-medium mb-1">
                         Quantity
                       </label>
-                      <input
+                      <Input
                         type="number"
                         value={item.quantity}
                         onChange={(e) => updateLineItem(item.id, { quantity: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                         min="0"
                         step="0.01"
                         required
@@ -347,11 +331,10 @@ export default function NewInvoicePage() {
                       <label className="block text-sm font-medium mb-1">
                         Unit Price (£)
                       </label>
-                      <input
+                      <Input
                         type="number"
                         value={item.unit_price}
                         onChange={(e) => updateLineItem(item.id, { unit_price: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                         min="0"
                         step="0.01"
                         required
@@ -362,11 +345,10 @@ export default function NewInvoicePage() {
                       <label className="block text-sm font-medium mb-1">
                         Disc %
                       </label>
-                      <input
+                      <Input
                         type="number"
                         value={item.discount_percentage}
                         onChange={(e) => updateLineItem(item.id, { discount_percentage: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                         min="0"
                         max="100"
                         step="0.01"
@@ -377,24 +359,25 @@ export default function NewInvoicePage() {
                       <label className="block text-sm font-medium mb-1">
                         VAT %
                       </label>
-                      <input
+                      <Input
                         type="number"
                         value={item.vat_rate}
                         onChange={(e) => updateLineItem(item.id, { vat_rate: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                         min="0"
                         step="0.01"
                       />
                     </div>
 
                     <div className="sm:col-span-2 lg:col-span-1 flex items-end">
-                      <button
+                      <Button
                         type="button"
                         onClick={() => removeLineItem(item.id)}
-                        className="w-full p-2 text-red-600 hover:bg-red-50 rounded-md border border-red-200 min-h-[44px]"
+                        variant="danger"
+                        iconOnly
+                        aria-label="Remove line item"
                       >
-                        <Trash2 className="h-4 w-4 mx-auto" />
-                      </button>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
 
@@ -406,53 +389,41 @@ export default function NewInvoicePage() {
               ))}
             </div>
           )}
-        </div>
+        </Card>
 
-        <div className="bg-white rounded-lg shadow-sm border p-6">
+        <Card className="p-6">
           <h2 className="text-lg font-semibold mb-4">Invoice Summary</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Invoice Discount (%)
-                </label>
-                <input
+              <FormGroup label="Invoice Discount (%)">
+                <Input
                   type="number"
                   value={invoiceDiscountPercentage}
                   onChange={(e) => setInvoiceDiscountPercentage(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                   min="0"
                   max="100"
                   step="0.01"
                 />
-              </div>
+              </FormGroup>
 
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Notes (visible on invoice)
-                </label>
-                <textarea
+              <FormGroup label="Notes (visible on invoice)">
+                <Textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
                   rows={3}
                   placeholder="Payment terms, special instructions, etc."
                 />
-              </div>
+              </FormGroup>
 
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Internal Notes
-                </label>
-                <textarea
+              <FormGroup label="Internal Notes">
+                <Textarea
                   value={internalNotes}
                   onChange={(e) => setInternalNotes(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
                   rows={3}
                   placeholder="Private notes about this invoice"
                 />
-              </div>
+              </FormGroup>
             </div>
 
             <div className="bg-gray-50 rounded-lg p-4">
@@ -462,10 +433,10 @@ export default function NewInvoicePage() {
                   <span>Subtotal:</span>
                   <span className="font-medium">£{totals.subtotal.toFixed(2)}</span>
                 </div>
-                {totals.discount > 0 && (
+                {totals.disbadge > 0 && (
                   <div className="flex justify-between text-green-600">
-                    <span>Invoice Discount:</span>
-                    <span>-£{totals.discount.toFixed(2)}</span>
+                    <span>Invoice Disbadge: </span>
+                    <span>-£{totals.disbadge.toFixed(2)}</span>
                   </div>
                 )}
                 <div className="flex justify-between">
@@ -481,13 +452,13 @@ export default function NewInvoicePage() {
               </div>
             </div>
           </div>
-        </div>
+        </Card>
 
         <div className="sticky bottom-0 bg-white border-t -mx-6 px-6 py-4 sm:relative sm:mx-0 sm:px-0 sm:py-0 sm:border-0">
           <div className="flex flex-col sm:flex-row sm:justify-end gap-3">
             <Button
               type="button"
-              variant="outline"
+              variant="secondary"
               onClick={() => router.push('/invoices')}
               className="w-full sm:w-auto"
             >
@@ -496,13 +467,14 @@ export default function NewInvoicePage() {
             <Button
               type="submit"
               disabled={loading || lineItems.length === 0}
+              loading={loading}
               className="w-full sm:w-auto"
             >
-              {loading ? 'Creating...' : 'Create Invoice'}
+              Create Invoice
             </Button>
           </div>
         </div>
       </form>
-    </div>
+    </Page>
   )
 }

@@ -4,7 +4,10 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Event } from '@/types/database'
 import { EventCategory } from '@/types/event-categories'
-import { Button } from '@/components/ui/Button'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Select } from '@/components/ui-v2/forms/Select'
+import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { SquareImageUpload } from './SquareImageUpload'
 import toast from 'react-hot-toast'
 import { 
@@ -262,13 +265,13 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               Event Name *
             </label>
             <div className="mt-2">
-              <input
+              <Input
                 type="text"
                 id="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                fullWidth
               />
             </div>
           </div>
@@ -278,11 +281,11 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               Category
             </label>
             <div className="mt-2">
-              <select
+              <Select
                 id="category"
                 value={categoryId}
                 onChange={(e) => handleCategoryChange(e.target.value)}
-                className="block w-full rounded-lg px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px] bg-white"
+                fullWidth
               >
                 <option value="">No category</option>
                 {categories.map((cat) => (
@@ -290,7 +293,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                     {cat.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           </div>
 
@@ -299,7 +302,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               Date *
             </label>
             <div className="mt-2">
-              <input
+              <Input
                 type="date"
                 id="date"
                 value={date}
@@ -307,7 +310,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 min={minDate}
                 max={maxDate}
                 required
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                fullWidth
               />
             </div>
           </div>
@@ -317,17 +320,17 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               Status
             </label>
             <div className="mt-2">
-              <select
+              <Select
                 id="status"
                 value={eventStatus}
                 onChange={(e) => setEventStatus(e.target.value)}
-                className="block w-full rounded-lg px-3 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px] bg-white"
+                fullWidth
               >
                 <option value="scheduled">Scheduled</option>
                 <option value="cancelled">Cancelled</option>
                 <option value="postponed">Postponed</option>
                 <option value="sold_out">Sold Out</option>
-              </select>
+              </Select>
             </div>
           </div>
 
@@ -336,14 +339,14 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               Capacity
             </label>
             <div className="mt-2">
-              <input
+              <Input
                 type="number"
                 id="capacity"
                 value={capacity}
                 onChange={(e) => setCapacity(e.target.value)}
                 min="1"
                 placeholder="Unlimited"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                fullWidth
               />
             </div>
           </div>
@@ -363,13 +366,13 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               Start Time *
             </label>
             <div className="mt-2">
-              <input
+              <Input
                 type="time"
                 id="time"
                 value={time}
                 onChange={(e) => setTime(e.target.value)}
                 required
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                fullWidth
               />
             </div>
           </div>
@@ -379,12 +382,12 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               End Time
             </label>
             <div className="mt-2">
-              <input
+              <Input
                 type="time"
                 id="end_time"
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                fullWidth
               />
             </div>
           </div>
@@ -394,14 +397,14 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               Duration (minutes)
             </label>
             <div className="mt-2">
-              <input
+              <Input
                 type="number"
                 id="duration_minutes"
                 value={durationMinutes}
                 onChange={(e) => setDurationMinutes(e.target.value)}
                 min="1"
                 placeholder="e.g., 180"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                fullWidth
               />
             </div>
           </div>
@@ -411,12 +414,12 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               Doors Time
             </label>
             <div className="mt-2">
-              <input
+              <Input
                 type="time"
                 id="doors_time"
                 value={doorsTime}
                 onChange={(e) => setDoorsTime(e.target.value)}
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                fullWidth
               />
             </div>
           </div>
@@ -426,12 +429,12 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               Last Entry Time
             </label>
             <div className="mt-2">
-              <input
+              <Input
                 type="time"
                 id="last_entry_time"
                 value={lastEntryTime}
                 onChange={(e) => setLastEntryTime(e.target.value)}
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                fullWidth
               />
             </div>
           </div>
@@ -451,7 +454,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               Price (£)
             </label>
             <div className="mt-2">
-              <input
+              <Input
                 type="number"
                 id="price"
                 value={price}
@@ -461,7 +464,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 }}
                 min="0"
                 step="0.01"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                fullWidth
               />
             </div>
           </div>
@@ -471,13 +474,13 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               External Booking URL
             </label>
             <div className="mt-2">
-              <input
+              <Input
                 type="url"
                 id="booking_url"
                 value={bookingUrl}
                 onChange={(e) => setBookingUrl(e.target.value)}
                 placeholder="https://example.com/book"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                fullWidth
               />
             </div>
           </div>
@@ -497,13 +500,13 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               Performer Name
             </label>
             <div className="mt-2">
-              <input
+              <Input
                 type="text"
                 id="performer_name"
                 value={performerName}
                 onChange={(e) => setPerformerName(e.target.value)}
                 placeholder="e.g., DJ John, The Blues Band"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                fullWidth
               />
             </div>
           </div>
@@ -513,11 +516,11 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               Performer Type
             </label>
             <div className="mt-2">
-              <select
+              <Select
                 id="performer_type"
                 value={performerType}
                 onChange={(e) => setPerformerType(e.target.value)}
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                fullWidth
               >
                 <option value="">Select type...</option>
                 <option value="MusicGroup">Music Group / Band</option>
@@ -526,7 +529,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 <option value="DanceGroup">Dance Group</option>
                 <option value="ComedyGroup">Comedy Group</option>
                 <option value="Organization">Organization</option>
-              </select>
+              </Select>
             </div>
           </div>
         </div>
@@ -545,13 +548,13 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               URL Slug
             </label>
             <div className="mt-2">
-              <input
+              <Input
                 type="text"
                 id="slug"
                 value={slug}
                 onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
                 placeholder="event-name-2024-01-01"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                fullWidth
               />
             </div>
           </div>
@@ -561,14 +564,14 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               Meta Title
             </label>
             <div className="mt-2">
-              <input
+              <Input
                 type="text"
                 id="meta_title"
                 value={metaTitle}
                 onChange={(e) => setMetaTitle(e.target.value)}
                 maxLength={60}
                 placeholder="SEO page title"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                fullWidth
               />
               <p className="mt-1 text-xs text-gray-500">{metaTitle.length}/60 characters</p>
             </div>
@@ -579,14 +582,14 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               Meta Description
             </label>
             <div className="mt-2">
-              <textarea
+              <Textarea
                 id="meta_description"
                 rows={2}
                 value={metaDescription}
                 onChange={(e) => setMetaDescription(e.target.value)}
                 maxLength={160}
                 placeholder="SEO page description"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                fullWidth
               />
               <p className="mt-1 text-xs text-gray-500">{metaDescription.length}/160 characters</p>
             </div>
@@ -597,14 +600,14 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               Short Description
             </label>
             <div className="mt-2">
-              <textarea
+              <Textarea
                 id="short_description"
                 rows={2}
                 value={shortDescription}
                 onChange={(e) => setShortDescription(e.target.value)}
                 maxLength={500}
                 placeholder="Brief description for event listings"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                fullWidth
               />
               <p className="mt-1 text-xs text-gray-500">{shortDescription.length}/500 characters</p>
             </div>
@@ -615,13 +618,13 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               Long Description
             </label>
             <div className="mt-2">
-              <textarea
+              <Textarea
                 id="long_description"
                 rows={6}
                 value={longDescription}
                 onChange={(e) => setLongDescription(e.target.value)}
                 placeholder="Detailed description for the event page"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                fullWidth
               />
             </div>
           </div>
@@ -631,13 +634,13 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               Highlights
             </label>
             <div className="mt-2">
-              <input
+              <Input
                 type="text"
                 id="highlights"
                 value={highlights}
                 onChange={(e) => setHighlights(e.target.value)}
                 placeholder="Great prizes, Fun atmosphere, Live music"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                fullWidth
               />
               <p className="mt-1 text-xs text-gray-500">Separate multiple highlights with commas</p>
             </div>
@@ -648,13 +651,13 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               Keywords
             </label>
             <div className="mt-2">
-              <input
+              <Input
                 type="text"
                 id="keywords"
                 value={keywords}
                 onChange={(e) => setKeywords(e.target.value)}
                 placeholder="music, live band, entertainment, pub"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                fullWidth
               />
               <p className="mt-1 text-xs text-gray-500">Separate keywords with commas for better SEO</p>
             </div>

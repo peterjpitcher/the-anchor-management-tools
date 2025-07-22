@@ -163,7 +163,6 @@ export default function EnrollCustomerPage() {
                     <p className="font-medium text-gray-900">{customer.name}</p>
                     <p className="text-sm text-gray-500">
                       {customer.phone_number}
-                      {customer.email_address && ` • ${customer.email_address}`}
                     </p>
                   </div>
                   <UserPlusIcon className="h-5 w-5 text-gray-400" />

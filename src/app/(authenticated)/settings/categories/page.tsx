@@ -3,8 +3,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { PlusIcon, TrashIcon, PencilIcon } from '@heroicons/react/24/outline';
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import Link from 'next/link';
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page';
+import { Card } from '@/components/ui-v2/layout/Card';
+import { Section } from '@/components/ui-v2/layout/Section';
+import { Form } from '@/components/ui-v2/forms/Form';
+import { Input } from '@/components/ui-v2/forms/Input';
+import { Button } from '@/components/ui-v2/forms/Button';
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
+import { Alert } from '@/components/ui-v2/feedback/Alert';
+import { Spinner } from '@/components/ui-v2/feedback/Spinner';
+import { EmptyState } from '@/components/ui-v2/display/EmptyState';
 
 interface AttachmentCategory {
   category_id: string;
@@ -99,85 +108,104 @@ export default function CategoriesPage() {
   }
 
   if (loading) {
-    return <LoadingSpinner text="Loading categories..." />;
+    return (
+      <Page title="Attachment Categories" breadcrumbs={[
+        { label: 'Settings', href: '/settings' },
+        { label: 'Categories' }
+      ]}>
+        <div className="flex items-center justify-center p-8">
+          <Spinner />
+        </div>
+      </Page>
+    );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="sm:flex sm:items-center">
-        <div className="sm:flex-auto">
-          <h1 className="text-2xl font-semibold text-gray-900">Attachment Categories</h1>
-          <p className="mt-2 text-sm text-gray-700">
-            Manage categories for employee attachment files.
-          </p>
-        </div>
-        <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
-          <Link
-            href="/employees"
-            className="inline-flex items-center rounded-md bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-100"
-          >
-            Back to Employees
-          </Link>
-        </div>
-      </div>
+    <Page 
+      title="Attachment Categories"
+      breadcrumbs={[
+        { label: 'Settings', href: '/settings' },
+        { label: 'Categories' }
+      ]}
+      actions={
+        <LinkButton
+          href="/employees"
+          variant="secondary"
+        >
+          Back to Employees
+        </LinkButton>
+      }
+    >
+      <p className="text-sm text-gray-700 mb-6">
+        Manage categories for employee attachment files.
+      </p>
 
       {error && (
-        <div className="mt-4 rounded-md bg-red-50 p-4">
-          <p className="text-sm text-red-800">{error}</p>
-        </div>
+        <Alert variant="error"
+          title="Error"
+          description={error}
+          className="mb-6"
+        />
       )}
 
-      <div className="mt-8">
-        <form onSubmit={handleAddCategory} className="mb-6">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={newCategoryName}
-              onChange={(e) => setNewCategoryName(e.target.value)}
-              placeholder="New category name"
-              className="block flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
-            />
-            <button
-              type="submit"
-              className="inline-flex items-center rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500"
-            >
-              <PlusIcon className="h-4 w-4 mr-1" />
-              Add Category
-            </button>
-          </div>
-        </form>
+      <Section title="Add New Category">
+        <Card>
+          <Form onSubmit={handleAddCategory}>
+            <div className="flex gap-2">
+              <Input
+                type="text"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                placeholder="New category name"
+                className="flex-1"
+              />
+              <Button type="submit"
+                leftIcon={<PlusIcon className="h-4 w-4" />}
+              >
+                Add Category
+              </Button>
+            </div>
+          </Form>
+        </Card>
+      </Section>
 
-        <div className="bg-white shadow overflow-hidden sm:rounded-md">
-          <ul className="divide-y divide-gray-200">
-            {categories.length === 0 ? (
-              <li className="px-4 py-4 text-sm text-gray-500">No categories defined yet.</li>
-            ) : (
-              categories.map((category) => (
-                <li key={category.category_id} className="px-4 py-4">
+      <Section title="Categories">
+        <Card>
+          {categories.length === 0 ? (
+            <EmptyState
+              title="No categories defined"
+              description="Add your first category above to get started."
+            />
+          ) : (
+            <div className="divide-y divide-gray-200">
+              {categories.map((category) => (
+                <div key={category.category_id} className="px-4 py-4">
                   {editingId === category.category_id ? (
                     <div className="flex items-center gap-2">
-                      <input
+                      <Input
                         type="text"
                         value={editingName}
                         onChange={(e) => setEditingName(e.target.value)}
-                        className="block flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
+                        className="flex-1"
                         autoFocus
                       />
-                      <button
+                      <Button
                         onClick={() => handleUpdateCategory(category.category_id)}
-                        className="text-green-600 hover:text-green-900"
+                        variant="primary"
+                        size="sm"
                       >
                         Save
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         onClick={() => {
                           setEditingId(null);
                           setEditingName('');
                         }}
-                        className="text-gray-600 hover:text-gray-900"
+                        variant="secondary"
+                        size="sm"
                       >
                         Cancel
-                      </button>
+                      </Button>
                     </div>
                   ) : (
                     <div className="flex items-center justify-between">
@@ -185,30 +213,35 @@ export default function CategoriesPage() {
                         {category.category_name}
                       </span>
                       <div className="flex items-center gap-2">
-                        <button
+                        <Button
                           onClick={() => {
                             setEditingId(category.category_id);
                             setEditingName(category.category_name);
                           }}
-                          className="text-gray-600 hover:text-gray-900"
+                          variant="secondary"
+                          size="sm"
+                          iconOnly
                         >
                           <PencilIcon className="h-4 w-4" />
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           onClick={() => handleDeleteCategory(category.category_id)}
-                          className="text-red-600 hover:text-red-900"
+                          variant="secondary"
+                          size="sm"
+                          className="text-red-600 hover:text-red-700"
+                          iconOnly
                         >
                           <TrashIcon className="h-4 w-4" />
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   )}
-                </li>
-              ))
-            )}
-          </ul>
-        </div>
-      </div>
-    </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </Section>
+    </Page>
   );
 }

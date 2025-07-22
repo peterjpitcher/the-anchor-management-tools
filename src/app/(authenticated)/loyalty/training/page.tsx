@@ -19,7 +19,7 @@ import Image from 'next/image';
 interface TrainingModule {
   id: string;
   title: string;
-  description: string;
+  message: string;
   duration: string;
   icon: any;
   steps: string[];
@@ -27,10 +27,9 @@ interface TrainingModule {
 }
 
 const trainingModules: TrainingModule[] = [
-  {
-    id: 'enrollment',
+  { id: 'enrollment',
     title: 'Enrolling New Members',
-    description: 'Learn how to enroll customers in The Anchor VIP Club',
+    message: 'Learn how to enroll customers in The Anchor VIP Club',
     duration: '5 minutes',
     icon: UserGroupIcon,
     steps: [
@@ -46,10 +45,9 @@ const trainingModules: TrainingModule[] = [
       'Show them how they can check in at events to earn more points'
     ]
   },
-  {
-    id: 'checkin',
+  { id: 'checkin',
     title: 'Event Check-ins',
-    description: 'Help customers check in at events to earn points',
+    message: 'Help customers check in at events to earn points',
     duration: '3 minutes',
     icon: QrCodeIcon,
     steps: [
@@ -66,10 +64,9 @@ const trainingModules: TrainingModule[] = [
       'First-time users can sign up directly from the check-in page'
     ]
   },
-  {
-    id: 'redemption',
+  { id: 'redemption',
     title: 'Processing Redemptions',
-    description: 'Handle reward redemptions for VIP members',
+    message: 'Handle reward redemptions for VIP members',
     duration: '4 minutes',
     icon: GiftIcon,
     steps: [
@@ -87,10 +84,9 @@ const trainingModules: TrainingModule[] = [
       'If a code is invalid, double-check the customer entered it correctly'
     ]
   },
-  {
-    id: 'support',
+  { id: 'support',
     title: 'Customer Support',
-    description: 'Common questions and how to help VIP members',
+    message: 'Common questions and how to help VIP members',
     duration: '6 minutes',
     icon: PhoneIcon,
     steps: [
@@ -216,7 +212,7 @@ export default function StaffTrainingPage() {
                   <selectedModule.icon className="h-8 w-8 text-amber-600 mr-3" />
                   <div>
                     <h2 className="text-xl font-semibold text-gray-900">{selectedModule.title}</h2>
-                    <p className="text-sm text-gray-600">{selectedModule.description}</p>
+                    <p className="text-sm text-gray-600">{selectedModule.message}</p>
                   </div>
                 </div>
               </div>

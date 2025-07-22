@@ -2,9 +2,20 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { fetchTwilioMessages, MessageComparison } from './actions'
-import { ArrowLeftIcon, CheckCircleIcon, XCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
-import Link from 'next/link'
+import { CheckCircleIcon, XCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Checkbox } from '@/components/ui-v2/forms/Checkbox'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { DataTable, Column } from '@/components/ui-v2/display/DataTable'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { Stat } from '@/components/ui-v2/display/Stat'
 
 export default function TwilioMessagesPage() {
   const [loading, setLoading] = useState(false)
@@ -57,19 +68,19 @@ export default function TwilioMessagesPage() {
     return phone
   }
 
-  function getStatusColor(status: string) {
+  function getStatusVariant(status: string): 'success' | 'error' | 'warning' | 'default' {
     switch (status) {
       case 'delivered':
       case 'sent':
-        return 'text-green-600'
+        return 'success'
       case 'failed':
       case 'undelivered':
-        return 'text-red-600'
+        return 'error'
       case 'queued':
       case 'sending':
-        return 'text-yellow-600'
+        return 'warning'
       default:
-        return 'text-gray-600'
+        return 'default'
     }
   }
 
@@ -82,242 +93,245 @@ export default function TwilioMessagesPage() {
     return ''
   }
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <Link
-              href="/settings"
-              className="text-gray-600 hover:text-gray-900"
-            >
-              <ArrowLeftIcon className="h-6 w-6" />
-            </Link>
-            <h1 className="text-3xl font-bold">Twilio Messages Monitor</h1>
+  // Define table columns
+  const columns: Column<MessageComparison>[] = [
+    {
+      key: 'status',
+      header: 'Status',
+      cell: (comparison) => {
+        const msg = comparison.twilioMessage
+        return (
+          <div>
+            <Badge variant={getStatusVariant(msg.status)} size="sm">
+              {msg.status}
+            </Badge>
+            {msg.errorCode && (
+              <div className="text-xs text-red-600 mt-1">
+                Error {msg.errorCode}: {msg.errorMessage}
+              </div>
+            )}
           </div>
-          {unloggedCount !== null && unloggedCount > 0 && (
-            <div className="flex items-center space-x-2 text-amber-600">
-              <ExclamationTriangleIcon className="h-5 w-5" />
-              <span className="font-medium">{unloggedCount} unlogged messages</span>
+        )
+      }
+    },
+    {
+      key: 'direction',
+      header: 'Direction',
+      cell: (comparison) => (
+        <span className="text-sm text-gray-900">
+          {getDirectionIcon(comparison.twilioMessage.direction)}
+          {comparison.twilioMessage.direction}
+        </span>
+      )
+    },
+    {
+      key: 'phone',
+      header: 'From/To',
+      cell: (comparison) => {
+        const msg = comparison.twilioMessage
+        const isOutbound = msg.direction.startsWith('outbound')
+        return (
+          <div className="text-sm">
+            <div className="font-medium text-gray-900">
+              {isOutbound ? 'To:' : 'From:'} {formatPhoneNumber(isOutbound ? msg.to : msg.from)}
             </div>
+            <div className="text-gray-500">
+              {isOutbound ? 'From:' : 'To:'} {formatPhoneNumber(isOutbound ? msg.from : msg.to)}
+            </div>
+          </div>
+        )
+      }
+    },
+    {
+      key: 'message',
+      header: 'Message',
+      cell: (comparison) => (
+        <div>
+          <div className="text-sm text-gray-900 max-w-md truncate" title={comparison.twilioMessage.body}>
+            {comparison.twilioMessage.body}
+          </div>
+          {comparison.dbMessage && comparison.dbMessage.body !== comparison.twilioMessage.body && (
+            <Badge variant="warning" size="sm" className="mt-1">
+              Body mismatch in database
+            </Badge>
           )}
         </div>
-      </div>
+      )
+    },
+    {
+      key: 'date',
+      header: 'Date Sent',
+      cell: (comparison) => {
+        const dateSent = comparison.twilioMessage.dateSent || comparison.twilioMessage.dateCreated
+        return (
+          <span className="text-sm text-gray-500">
+            {dateSent.toLocaleString()}
+          </span>
+        )
+      }
+    },
+    {
+      key: 'segments',
+      header: 'Segments',
+      cell: (comparison) => (
+        <span className="text-sm text-gray-500">
+          {comparison.twilioMessage.numSegments}
+        </span>
+      )
+    },
+    {
+      key: 'logged',
+      header: 'Logged',
+      cell: (comparison) => (
+        comparison.isLogged ? (
+          <CheckCircleIcon className="h-5 w-5 text-green-500" title="Logged in database" />
+        ) : (
+          <XCircleIcon className="h-5 w-5 text-red-500" title="Not found in database" />
+        )
+      )
+    }
+  ]
 
+  return (
+    <Page
+      title="Twilio Messages Monitor"
+      description="Monitor and compare Twilio messages with database records"
+      breadcrumbs={[
+        { label: 'Settings', href: '/settings' },
+        { label: 'Twilio Messages Monitor' }
+      ]}
+      actions={
+        unloggedCount !== null && unloggedCount > 0 && (
+          <Badge variant="warning" size="lg" icon={<ExclamationTriangleIcon className="h-4 w-4" />}>
+            {unloggedCount} unlogged messages
+          </Badge>
+        )
+      }
+    >
       {/* Filters */}
-      <div className="bg-white shadow rounded-lg p-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-            <input
-              type="date"
-              value={dateRange.startDate}
-              onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })}
-              className="block w-full rounded-md border-gray-300 shadow-sm"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
-            <input
-              type="date"
-              value={dateRange.endDate}
-              onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })}
-              className="block w-full rounded-md border-gray-300 shadow-sm"
-            />
-          </div>
+      <Section title="Filters" className="mb-6">
+        <Card>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+              <Input
+                type="date"
+                value={dateRange.startDate}
+                onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })}
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+              <Input
+                type="date"
+                value={dateRange.endDate}
+                onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })}
+              />
+            </div>
 
-          <div className="flex items-end">
-            <label className="flex items-center">
-              <input
-                type="checkbox"
+            <div className="flex items-end">
+              <Checkbox
                 checked={showUnloggedOnly}
                 onChange={(e) => setShowUnloggedOnly(e.target.checked)}
-                className="rounded border-gray-300 text-green-600 focus:ring-green-500 h-4 w-4 mr-2"
+                label="Show unlogged only"
               />
-              <span className="text-sm font-medium text-gray-700">Show unlogged only</span>
-            </label>
-          </div>
+            </div>
 
-          <div className="flex items-end">
-            <button
-              onClick={loadMessages}
-              disabled={loading}
-              className="w-full bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 disabled:bg-gray-400"
-            >
-              {loading ? 'Loading...' : 'Refresh'}
-            </button>
+            <div className="flex items-end">
+              <Button
+                onClick={loadMessages}
+                loading={loading}
+                fullWidth
+              >
+                Refresh
+              </Button>
+            </div>
           </div>
-        </div>
-      </div>
+        </Card>
+      </Section>
 
       {/* Message Comparison Stats */}
       {!showUnloggedOnly && messages.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white shadow rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Messages</p>
-                <p className="text-2xl font-bold">{messages.length}</p>
-              </div>
-              <div className="text-blue-500">
+        <Section className="mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Stat label="Total Messages"
+              value={messages.length.toString()}
+              icon={
                 <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
-              </div>
-            </div>
-          </div>
+              }
+            />
 
-          <div className="bg-white shadow rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Logged in Database</p>
-                <p className="text-2xl font-bold text-green-600">{messages.filter(m => m.isLogged).length}</p>
-              </div>
-              <CheckCircleIcon className="h-8 w-8 text-green-500" />
-            </div>
-          </div>
+            <Stat
+              label="Logged in Database"
+              value={messages.filter(m => m.isLogged).length.toString()}
+              color="success"
+              icon={<CheckCircleIcon className="h-8 w-8 text-green-500" />}
+            />
 
-          <div className="bg-white shadow rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Not Logged</p>
-                <p className="text-2xl font-bold text-amber-600">{unloggedCount || 0}</p>
-              </div>
-              <ExclamationTriangleIcon className="h-8 w-8 text-amber-500" />
-            </div>
+            <Stat label="Not Logged"
+              value={(unloggedCount || 0).toString()}
+              color="warning"
+              icon={<ExclamationTriangleIcon className="h-8 w-8 text-amber-500" />}
+            />
           </div>
-        </div>
+        </Section>
       )}
 
       {/* Messages Table */}
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-medium">
-            {showUnloggedOnly ? 'Unlogged Messages' : 'All Messages'} 
-            {loading && <span className="text-sm text-gray-500 ml-2">(Loading...)</span>}
-          </h2>
-        </div>
-
-        {loading ? (
-          <div className="p-8 text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
-            <p className="mt-4 text-gray-500">Loading messages from Twilio...</p>
-          </div>
-        ) : messages.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">
-            No messages found for the selected date range
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Direction
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    From/To
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Message
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date Sent
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Segments
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Logged
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {messages.map((comparison) => {
-                  const msg = comparison.twilioMessage
-                  const dateSent = msg.dateSent || msg.dateCreated
-                  const isOutbound = msg.direction.startsWith('outbound')
-                  
-                  return (
-                    <tr key={msg.sid} className={comparison.isLogged ? '' : 'bg-amber-50'}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`text-sm font-medium ${getStatusColor(msg.status)}`}>
-                          {msg.status}
-                        </span>
-                        {msg.errorCode && (
-                          <div className="text-xs text-red-600 mt-1">
-                            Error {msg.errorCode}: {msg.errorMessage}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {getDirectionIcon(msg.direction)}
-                        {msg.direction}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm">
-                          <div className="font-medium text-gray-900">
-                            {isOutbound ? 'To:' : 'From:'} {formatPhoneNumber(isOutbound ? msg.to : msg.from)}
-                          </div>
-                          <div className="text-gray-500">
-                            {isOutbound ? 'From:' : 'To:'} {formatPhoneNumber(isOutbound ? msg.from : msg.to)}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm text-gray-900 max-w-md truncate" title={msg.body}>
-                          {msg.body}
-                        </div>
-                        {comparison.dbMessage && comparison.dbMessage.body !== msg.body && (
-                          <div className="text-xs text-amber-600 mt-1">
-                            ⚠️ Body mismatch in database
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {dateSent.toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {msg.numSegments}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {comparison.isLogged ? (
-                          <CheckCircleIcon className="h-5 w-5 text-green-500" title="Logged in database" />
-                        ) : (
-                          <XCircleIcon className="h-5 w-5 text-red-500" title="Not found in database" />
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <Section 
+        title={showUnloggedOnly ? 'Unlogged Messages' : 'All Messages'}
+      >
+        <Card padding="none">
+          {loading ? (
+            <div className="p-8 text-center">
+              <Spinner size="xl" showLabel label="Loading messages from Twilio..." />
+            </div>
+          ) : messages.length === 0 ? (
+            <EmptyState title="No messages found"
+              description="No messages found for the selected date range"
+              icon={
+                <svg className="h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+              }
+            />
+          ) : (
+            <DataTable
+              data={messages}
+              columns={columns}
+              getRowKey={(row) => row.twilioMessage.sid}
+              stickyHeader
+            />
+          )}
+        </Card>
+      </Section>
 
       {/* Legend */}
-      <div className="mt-6 bg-gray-50 rounded-lg p-4">
-        <h3 className="text-sm font-medium text-gray-700 mb-2">Legend:</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
-          <div className="flex items-center space-x-2">
-            <CheckCircleIcon className="h-4 w-4 text-green-500" />
-            <span>Message logged in database</span>
+      <Section className="mt-6">
+        <Alert
+          variant="info"
+          title="Legend"
+          size="sm"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm mt-2">
+            <div className="flex items-center space-x-2">
+              <CheckCircleIcon className="h-4 w-4 text-green-500" />
+              <span>Message logged in database</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <XCircleIcon className="h-4 w-4 text-red-500" />
+              <span>Message not found in database</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="h-4 w-8 bg-amber-50 border border-amber-200 rounded"></div>
+              <span>Unlogged message row</span>
+            </div>
           </div>
-          <div className="flex items-center space-x-2">
-            <XCircleIcon className="h-4 w-4 text-red-500" />
-            <span>Message not found in database</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className="h-4 w-8 bg-amber-50 border border-amber-200 rounded"></div>
-            <span>Unlogged message row</span>
-          </div>
-        </div>
-      </div>
-    </div>
+        </Alert>
+      </Section>
+    </Page>
   )
 }

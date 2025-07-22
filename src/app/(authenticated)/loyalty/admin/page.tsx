@@ -13,6 +13,15 @@ import {
   ArrowDownIcon,
   CalendarDaysIcon 
 } from '@heroicons/react/24/outline';
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page';
+import { Card } from '@/components/ui-v2/layout/Card';
+import { Section } from '@/components/ui-v2/layout/Section';
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
+import { Stat, StatGroup } from '@/components/ui-v2/display/Stat';
+import { Alert } from '@/components/ui-v2/feedback/Alert';
+import { Spinner } from '@/components/ui-v2/feedback/Spinner';
+import { ProgressBar } from '@/components/ui-v2/feedback/ProgressBar';
 
 interface LoyaltyStats {
   totalMembers: number;
@@ -55,28 +64,37 @@ export default function LoyaltyAdminPage() {
 
   if (!hasPermission('loyalty', 'view')) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-500">You don&apos;t have permission to view this page.</p>
-      </div>
+      <Page title="Loyalty Program Dashboard">
+        <Card>
+          <Alert variant="error" 
+            title="Access Denied" 
+            description="You don't have permission to view this page." 
+          />
+        </Card>
+      </Page>
     );
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading loyalty statistics...</p>
+      <Page title="Loyalty Program Dashboard">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <Spinner size="lg" />
+            <p className="mt-4 text-gray-600">Loading loyalty statistics...</p>
+          </div>
         </div>
-      </div>
+      </Page>
     );
   }
 
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-red-600">Error: {error}</p>
-      </div>
+      <Page title="Loyalty Program Dashboard">
+        <Card>
+          <Alert variant="error" title="Error" description={error} />
+        </Card>
+      </Page>
     );
   }
 
@@ -92,150 +110,104 @@ export default function LoyaltyAdminPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header */}
-      <div className="md:flex md:items-center md:justify-between mb-8">
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Loyalty Program Dashboard</h1>
-          <p className="mt-1 text-sm sm:text-base text-gray-500">Monitor and manage The Anchor VIP Club</p>
-        </div>
-        <div className="mt-4 flex flex-wrap md:mt-0 md:ml-4 gap-2 sm:gap-3">
-          <Link
+    <Page
+      title="Loyalty Program Dashboard"
+      description="Monitor and manage The Anchor VIP Club"
+      actions={
+        <div className="flex flex-wrap gap-2">
+          <LinkButton
             href="/loyalty/admin/rewards"
-            className="inline-flex items-center px-3 py-2 sm:px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            variant="secondary"
+            size="sm"
           >
-            <GiftIcon className="h-4 w-4 mr-1 sm:mr-2" />
+            <GiftIcon className="mr-2 h-4 w-4" />
             <span className="hidden sm:inline">Rewards</span>
             <span className="sm:hidden">Rewards</span>
-          </Link>
-          <Link
+          </LinkButton>
+          <LinkButton
             href="/loyalty/admin/achievements"
-            className="inline-flex items-center px-3 py-2 sm:px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            variant="secondary"
+            size="sm"
           >
-            <TrophyIcon className="h-4 w-4 mr-1 sm:mr-2" />
+            <TrophyIcon className="mr-2 h-4 w-4" />
             <span className="hidden sm:inline">Achievements</span>
             <span className="sm:hidden">Achieve</span>
-          </Link>
-          <Link
+          </LinkButton>
+          <LinkButton
             href="/loyalty/admin/challenges"
-            className="inline-flex items-center px-3 py-2 sm:px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            variant="secondary"
+            size="sm"
           >
-            <CalendarDaysIcon className="h-4 w-4 mr-1 sm:mr-2" />
+            <CalendarDaysIcon className="mr-2 h-4 w-4" />
             <span className="hidden sm:inline">Challenges</span>
             <span className="sm:hidden">Challenge</span>
-          </Link>
-          <Link
+          </LinkButton>
+          <LinkButton
             href="/loyalty/analytics"
-            className="inline-flex items-center px-3 py-2 sm:px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            variant="secondary"
+            size="sm"
           >
-            <ChartBarIcon className="h-4 w-4 mr-1 sm:mr-2" />
+            <ChartBarIcon className="mr-2 h-4 w-4" />
             <span className="hidden sm:inline">Analytics</span>
             <span className="sm:hidden">Analytics</span>
-          </Link>
+          </LinkButton>
         </div>
-      </div>
+      }
+    >
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-4 sm:p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <UserGroupIcon className="h-6 w-6 text-gray-400" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Total Members</dt>
-                  <dd className="text-lg font-semibold text-gray-900">{stats?.totalMembers || 0}</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-4 sm:p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <ChartBarIcon className="h-6 w-6 text-gray-400" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Points Issued</dt>
-                  <dd className="text-lg font-semibold text-gray-900">
-                    {stats?.totalPointsIssued.toLocaleString() || 0}
-                  </dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-4 sm:p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <GiftIcon className="h-6 w-6 text-gray-400" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Active Redemptions</dt>
-                  <dd className="text-lg font-semibold text-gray-900">{stats?.activeRedemptions || 0}</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-4 sm:p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <TrophyIcon className="h-6 w-6 text-gray-400" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Redemption Rate</dt>
-                  <dd className="text-lg font-semibold text-gray-900">{redemptionRate}%</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Stat label="Total Members" 
+          value={stats?.totalMembers || 0} 
+          icon={<UserGroupIcon />}
+        />
+        <Stat label="Points Issued" 
+          value={stats?.totalPointsIssued.toLocaleString() || '0'}
+          icon={<ChartBarIcon />}
+        />
+        <Stat label="Active Redemptions" 
+          value={stats?.activeRedemptions || 0}
+          icon={<GiftIcon />}
+        />
+        <Stat label="Redemption Rate" 
+          value={`${redemptionRate}%`}
+          icon={<TrophyIcon />}
+        />
       </div>
 
       {/* Tier Distribution */}
-      <div className="bg-white shadow rounded-lg mb-8">
-        <div className="px-4 py-5 sm:p-6">
-          <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">Member Distribution by Tier</h3>
-          
+      <Section title="Member Distribution by Tier">
+        <Card>
           <div className="space-y-4">
             {stats && Object.entries(stats.membersByTier).map(([tier, count]) => {
               const percentage = stats.totalMembers > 0 ? (count / stats.totalMembers) * 100 : 0;
+              const tierVariants = {
+                member: 'default',
+                bronze: 'warning',
+                silver: 'info',
+                gold: 'warning',
+                platinum: 'primary'
+              };
               return (
                 <div key={tier}>
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-sm font-medium text-gray-700 capitalize">{tier}</span>
                     <span className="text-sm text-gray-600">{count} members ({percentage.toFixed(1)}%)</span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className={`h-2 rounded-full ${tierColors[tier as keyof typeof tierColors]}`}
-                      style={{ width: `${percentage}%` }}
-                    />
-                  </div>
+                  <ProgressBar 
+                    value={percentage} 
+                    variant={tierVariants[tier as keyof typeof tierVariants] as any}
+                  />
                 </div>
               );
             })}
           </div>
-        </div>
-      </div>
+        </Card>
+      </Section>
 
       {/* Quick Actions */}
-      <div className="bg-white shadow rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">Quick Actions</h3>
-          
+      <Section title="Quick Actions">
+        <Card>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Link
               href="/loyalty/admin/enroll"
@@ -309,8 +281,8 @@ export default function LoyaltyAdminPage() {
               </div>
             </Link>
           </div>
-        </div>
-      </div>
-    </div>
+        </Card>
+      </Section>
+    </Page>
   );
 }

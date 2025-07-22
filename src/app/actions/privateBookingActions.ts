@@ -45,7 +45,7 @@ const privateBookingSchema = z.object({
   setup_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').optional().or(z.literal('')),
   setup_time: timeSchema.optional().or(z.literal('')),
   end_time: timeSchema.optional().or(z.literal('')),
-  guest_count: z.number().min(0, 'Guest count cannot be negative').optional(),
+  guest_badge: z.number().min(0, 'Guest count cannot be negative').optional(),
   event_type: z.string().optional(),
   internal_notes: z.string().optional(),
   customer_requests: z.string().optional(),
@@ -189,7 +189,7 @@ export async function createPrivateBooking(formData: FormData) {
     setup_date: formData.get('setup_date') as string || undefined,
     setup_time: formatTimeToHHMM(formData.get('setup_time') as string || undefined),
     end_time: formatTimeToHHMM(formData.get('end_time') as string || undefined),
-    guest_count: formData.get('guest_count') ? parseInt(formData.get('guest_count') as string) : undefined,
+    guest_badge: formData.get('guest_count') ? parseInt(formData.get('guest_count') as string) : undefined,
     event_type: formData.get('event_type') as string || undefined,
     internal_notes: formData.get('internal_notes') as string || undefined,
     customer_requests: formData.get('customer_requests') as string || undefined,
@@ -390,7 +390,7 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
     setup_date: formData.get('setup_date') as string || undefined,
     setup_time: formatTimeToHHMM(formData.get('setup_time') as string || undefined),
     end_time: formatTimeToHHMM(formData.get('end_time') as string || undefined),
-    guest_count: formData.get('guest_count') ? parseInt(formData.get('guest_count') as string) : undefined,
+    guest_badge: formData.get('guest_count') ? parseInt(formData.get('guest_count') as string) : undefined,
     event_type: formData.get('event_type') as string || undefined,
     internal_notes: formData.get('internal_notes') as string || undefined,
     customer_requests: formData.get('customer_requests') as string || undefined,
@@ -961,7 +961,7 @@ export async function applyBookingDiscount(bookingId: string, data: {
     .eq('id', bookingId)
 
   if (error) {
-    console.error('Error applying discount:', error)
+    console.error('Error applying disbadge: ', error)
     return { error: error.message || 'Failed to apply discount' }
   }
 

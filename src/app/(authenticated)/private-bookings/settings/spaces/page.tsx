@@ -1,9 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { 
   PlusIcon, 
-  ArrowLeftIcon,
   MapPinIcon,
   UserGroupIcon,
   CurrencyPoundIcon,
@@ -13,6 +11,17 @@ import {
 import { createVenueSpace, updateVenueSpace, deleteVenueSpace } from '@/app/actions/privateBookingActions'
 import { VenueSpaceDeleteButton } from '@/components/VenueSpaceDeleteButton'
 import { formatDateFull } from '@/lib/dateUtils'
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Select } from '@/components/ui-v2/forms/Select'
+import { Textarea } from '@/components/ui-v2/forms/Textarea'
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 
 async function handleCreateSpace(formData: FormData) {
   'use server'
@@ -87,222 +96,166 @@ export default async function VenueSpacesPage() {
     console.error('Error fetching venue spaces:', error)
   }
 
+  const statusOptions = [
+    { value: 'true', label: 'Active' },
+    { value: 'false', label: 'Inactive' }
+  ]
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link
-                href="/private-bookings"
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <ArrowLeftIcon className="h-5 w-5" />
-              </Link>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">Venue Spaces</h1>
-                <p className="text-gray-600 mt-1">Manage available spaces for private hire</p>
+    <Page
+      title="Venue Spaces"
+      description="Manage available spaces for private hire"
+      actions={
+        <LinkButton href="/private-bookings" variant="secondary">Back</LinkButton>
+      }
+    >
+      {/* Add New Space Form */}
+      <Card>
+        <Section 
+          title="Add New Space"
+          icon={<PlusIcon className="h-5 w-5 text-blue-600" />}
+        >
+          <form action={handleCreateSpace} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+              <FormGroup label="Space Name" required className="lg:col-span-2">
+                <Input
+                  type="text"
+                  id="name"
+                  name="name"
+                  required
+                  placeholder="e.g., Main Dining Room"
+                />
+              </FormGroup>
+              <FormGroup label="Seated Capacity" required>
+                <Input
+                  type="number"
+                  id="capacity_seated"
+                  name="capacity_seated"
+                  required
+                  min="1"
+                  placeholder="50"
+                />
+              </FormGroup>
+              <FormGroup label="Hourly Rate (£)" required>
+                <Input
+                  type="number"
+                  id="rate_per_hour"
+                  name="rate_per_hour"
+                  required
+                  min="0"
+                  step="0.01"
+                  placeholder="50.00"
+                />
+              </FormGroup>
+              <FormGroup label="Status">
+                <Select
+                  id="active"
+                  name="active"
+                  options={statusOptions}
+                />
+              </FormGroup>
+              <div className="flex items-end">
+                <Button type="submit" className="w-full">
+                  Add Space
+                </Button>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="px-4 sm:px-6 lg:px-8 py-8">
-        {/* Add New Space Form */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <PlusIcon className="h-5 w-5 text-blue-600" />
-            Add New Space
-          </h2>
-          <form action={handleCreateSpace} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-            <div className="lg:col-span-2">
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                Space Name
-              </label>
-              <input
-                type="text"
-                id="name"
-                name="name"
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g., Main Dining Room"
-              />
-            </div>
-            <div>
-              <label htmlFor="capacity_seated" className="block text-sm font-medium text-gray-700 mb-1">
-                Seated Capacity
-              </label>
-              <input
-                type="number"
-                id="capacity_seated"
-                name="capacity_seated"
-                required
-                min="1"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="50"
-              />
-            </div>
-            <div>
-              <label htmlFor="rate_per_hour" className="block text-sm font-medium text-gray-700 mb-1">
-                Hourly Rate (£)
-              </label>
-              <input
-                type="number"
-                id="rate_per_hour"
-                name="rate_per_hour"
-                required
-                min="0"
-                step="0.01"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="50.00"
-              />
-            </div>
-            <div>
-              <label htmlFor="active" className="block text-sm font-medium text-gray-700 mb-1">
-                Status
-              </label>
-              <select
-                id="active"
-                name="active"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="true">Active</option>
-                <option value="false">Inactive</option>
-              </select>
-            </div>
-            <div className="flex items-end">
-              <button
-                type="submit"
-                className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Add Space
-              </button>
-            </div>
-            <div className="lg:col-span-6">
-              <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
-                Description (Optional)
-              </label>
-              <textarea
+            <FormGroup label="Description (Optional)">
+              <Textarea
                 id="description"
                 name="description"
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Additional details about this space..."
               />
-            </div>
+            </FormGroup>
           </form>
-        </div>
+        </Section>
+      </Card>
 
-        {/* Existing Spaces */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-              <MapPinIcon className="h-5 w-5 text-gray-600" />
-              Existing Spaces ({spaces?.length || 0})
-            </h2>
-          </div>
-          
+      {/* Existing Spaces */}
+      <Card>
+        <Section 
+          title="Existing Spaces"
+          icon={<MapPinIcon className="h-5 w-5 text-gray-600" />}
+          description={`${spaces?.length || 0} space${spaces?.length !== 1 ? 's' : ''}`}
+        >
           {spaces?.length === 0 ? (
-            <div className="p-12 text-center">
-              <MapPinIcon className="mx-auto h-12 w-12 text-gray-400" />
-              <p className="mt-4 text-gray-500">No venue spaces configured yet.</p>
-              <p className="text-sm text-gray-400 mt-1">Add your first space using the form above.</p>
-            </div>
+            <EmptyState icon={<MapPinIcon className="h-12 w-12" />}
+              title="No venue spaces configured yet"
+              description="Add your first space using the form above."
+            />
           ) : (
             <div className="divide-y divide-gray-200">
               {spaces?.map((space) => (
-                <div key={space.id} className="p-6">
+                <div key={space.id} className="py-6 first:pt-0 last:pb-0">
                   <form action={handleUpdateSpace} className="space-y-4">
                     <input type="hidden" name="spaceId" value={space.id} />
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-                      <div className="lg:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Space Name
-                        </label>
-                        <input
+                      <FormGroup label="Space Name" className="lg:col-span-2">
+                        <Input
                           type="text"
                           name="name"
                           defaultValue={space.name}
                           required
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          <UserGroupIcon className="h-4 w-4 inline mr-1" />
-                          Seated Capacity
-                        </label>
-                        <input
+                      </FormGroup>
+                      <FormGroup 
+                        label="Seated Capacity"
+                      >
+                        <Input
                           type="number"
                           name="capacity_seated"
                           defaultValue={space.capacity_seated}
                           required
                           min="1"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          <CurrencyPoundIcon className="h-4 w-4 inline mr-1" />
-                          Hourly Rate
-                        </label>
-                        <input
+                      </FormGroup>
+                      <FormGroup 
+                        label="Hourly Rate"
+                      >
+                        <Input
                           type="number"
                           name="rate_per_hour"
                           defaultValue={space.rate_per_hour}
                           required
                           min="0"
                           step="0.01"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Status
-                        </label>
-                        <select
+                      </FormGroup>
+                      <FormGroup label="Status">
+                        <Select
                           name="active"
                           defaultValue={space.active ? 'true' : 'false'}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          options={statusOptions}
+                        />
+                      </FormGroup>
+                      <div className="flex items-end">
+                        <Button type="submit"
+                          variant="primary"
+                          size="sm"
+                          leftIcon={<CheckIcon className="h-4 w-4" />}
+                          className="w-full"
                         >
-                          <option value="true">Active</option>
-                          <option value="false">Inactive</option>
-                        </select>
-                      </div>
-                      <div className="flex items-end gap-2">
-                        <button
-                          type="submit"
-                          className="flex-1 px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center justify-center gap-1"
-                        >
-                          <CheckIcon className="h-4 w-4" />
                           Update
-                        </button>
+                        </Button>
                       </div>
                     </div>
                     
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Description
-                      </label>
-                      <textarea
+                    <FormGroup label="Description">
+                      <Textarea
                         name="description"
                         defaultValue={space.description || ''}
                         rows={2}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
-                    </div>
+                    </FormGroup>
                   </form>
                   
                   <div className="mt-4 flex justify-between items-center">
                     <div className="flex items-center gap-2">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        space.active 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
+                      <Badge
+                        variant={space.active ? 'success' : 'secondary'}
+                      >
                         {space.active ? (
                           <>
                             <CheckIcon className="h-3 w-3 mr-1" />
@@ -314,7 +267,7 @@ export default async function VenueSpacesPage() {
                             Inactive
                           </>
                         )}
-                      </span>
+                      </Badge>
                       <span className="text-sm text-gray-500">
                         Created {formatDateFull(space.created_at)}
                       </span>
@@ -330,8 +283,8 @@ export default async function VenueSpacesPage() {
               ))}
             </div>
           )}
-        </div>
-      </div>
-    </div>
+        </Section>
+      </Card>
+    </Page>
   )
 }

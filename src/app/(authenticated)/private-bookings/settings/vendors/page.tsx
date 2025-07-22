@@ -1,9 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { 
   PlusIcon, 
-  ArrowLeftIcon,
   UserGroupIcon,
   PhoneIcon,
   EnvelopeIcon,
@@ -13,6 +11,17 @@ import {
 } from '@heroicons/react/24/outline'
 import { createVendor, updateVendor, deleteVendor } from '@/app/actions/privateBookingActions'
 import { VendorDeleteButton } from '@/components/VendorDeleteButton'
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Select } from '@/components/ui-v2/forms/Select'
+import { Textarea } from '@/components/ui-v2/forms/Textarea'
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 
 async function handleCreateVendor(formData: FormData) {
   'use server'
@@ -119,377 +128,275 @@ export default async function VendorsPage() {
     'other'
   ]
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link
-                href="/private-bookings"
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <ArrowLeftIcon className="h-5 w-5" />
-              </Link>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">Vendor Database</h1>
-                <p className="text-gray-600 mt-1">Manage preferred vendors and service providers</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+  const vendorTypeOptions = [
+    { value: '', label: 'Select type...' },
+    { value: 'dj', label: 'DJ' },
+    { value: 'band', label: 'Band' },
+    { value: 'photographer', label: 'Photographer' },
+    { value: 'florist', label: 'Florist' },
+    { value: 'decorator', label: 'Decorator' },
+    { value: 'entertainment', label: 'Entertainment' },
+    { value: 'transport', label: 'Transport' },
+    { value: 'equipment', label: 'Equipment Rental' },
+    { value: 'other', label: 'Other' }
+  ]
 
-      <div className="px-4 sm:px-6 lg:px-8 py-8">
-        {/* Add New Vendor Form */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <PlusIcon className="h-5 w-5 text-blue-600" />
-            Add New Vendor
-          </h2>
+  const preferredOptions = [
+    { value: 'false', label: 'Regular Vendor' },
+    { value: 'true', label: 'Preferred Vendor' }
+  ]
+
+  const statusOptions = [
+    { value: 'true', label: 'Active' },
+    { value: 'false', label: 'Inactive' }
+  ]
+
+  return (
+    <Page
+      title="Vendor Database"
+      description="Manage preferred vendors and service providers"
+      actions={
+        <LinkButton href="/private-bookings" variant="secondary">Back</LinkButton>
+      }
+    >
+
+      {/* Add New Vendor Form */}
+      <Card>
+        <Section 
+          title="Add New Vendor"
+          icon={<PlusIcon className="h-5 w-5 text-blue-600" />}
+        >
           <form action={handleCreateVendor} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div>
-                <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                  Vendor Name
-                </label>
-                <input
+              <FormGroup label="Vendor Name" required>
+                <Input
                   type="text"
                   id="name"
                   name="name"
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="e.g., DJ Mike's Entertainment"
                 />
-              </div>
-              <div>
-                <label htmlFor="service_type" className="block text-sm font-medium text-gray-700 mb-1">
-                  Type
-                </label>
-                <select
+              </FormGroup>
+              <FormGroup label="Type" required>
+                <Select
                   id="service_type"
                   name="service_type"
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                >
-                  <option value="">Select type...</option>
-                  <option value="dj">DJ</option>
-                  <option value="band">Band</option>
-                  <option value="photographer">Photographer</option>
-                  <option value="florist">Florist</option>
-                  <option value="decorator">Decorator</option>
-                  <option value="entertainment">Entertainment</option>
-                  <option value="transport">Transport</option>
-                  <option value="equipment">Equipment Rental</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-              <div>
-                <label htmlFor="contact_name" className="block text-sm font-medium text-gray-700 mb-1">
-                  Contact Name
-                </label>
-                <input
+                  options={vendorTypeOptions}
+                />
+              </FormGroup>
+              <FormGroup label="Contact Name">
+                <Input
                   type="text"
                   id="contact_name"
                   name="contact_name"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="Mike Johnson"
                 />
-              </div>
+              </FormGroup>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div>
-                <label htmlFor="contact_phone" className="block text-sm font-medium text-gray-700 mb-1">
-                  Phone
-                </label>
-                <input
+              <FormGroup label="Phone">
+                <Input
                   type="tel"
                   id="contact_phone"
                   name="contact_phone"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="07700 900000"
                 />
-              </div>
-              <div>
-                <label htmlFor="contact_email" className="block text-sm font-medium text-gray-700 mb-1">
-                  Email
-                </label>
-                <input
+              </FormGroup>
+              <FormGroup label="Email">
+                <Input
                   type="email"
                   id="contact_email"
                   name="contact_email"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="mike@djmike.com"
                 />
-              </div>
-              <div>
-                <label htmlFor="website" className="block text-sm font-medium text-gray-700 mb-1">
-                  Website
-                </label>
-                <input
+              </FormGroup>
+              <FormGroup label="Website">
+                <Input
                   type="url"
                   id="website"
                   name="website"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="https://www.djmike.com"
                 />
-              </div>
-              <div>
-                <label htmlFor="typical_rate" className="block text-sm font-medium text-gray-700 mb-1">
-                  Typical Rate (£)
-                </label>
-                <input
+              </FormGroup>
+              <FormGroup label="Typical Rate (£)">
+                <Input
                   type="number"
                   id="typical_rate"
                   name="typical_rate"
                   min="0"
                   step="0.01"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="250.00"
                 />
-              </div>
+              </FormGroup>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="preferred" className="block text-sm font-medium text-gray-700 mb-1">
-                  Preferred Status
-                </label>
-                <select
+              <FormGroup label="Preferred Status">
+                <Select
                   id="preferred"
                   name="preferred"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                >
-                  <option value="false">Regular Vendor</option>
-                  <option value="true">Preferred Vendor</option>
-                </select>
-              </div>
-              <div>
-                <label htmlFor="active" className="block text-sm font-medium text-gray-700 mb-1">
-                  Status
-                </label>
-                <select
+                  options={preferredOptions}
+                />
+              </FormGroup>
+              <FormGroup label="Status">
+                <Select
                   id="active"
                   name="active"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                >
-                  <option value="true">Active</option>
-                  <option value="false">Inactive</option>
-                </select>
-              </div>
+                  options={statusOptions}
+                />
+              </FormGroup>
             </div>
             
-            <div>
-              <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-1">
-                Notes
-              </label>
-              <textarea
+            <FormGroup label="Notes">
+              <Textarea
                 id="notes"
                 name="notes"
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 placeholder="Additional notes about this vendor..."
               />
-            </div>
+            </FormGroup>
             
-            <button
-              type="submit"
-              className="w-full md:w-auto px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors min-h-[44px]"
-            >
+            <Button type="submit">
               Add Vendor
-            </button>
+            </Button>
           </form>
-        </div>
+        </Section>
+      </Card>
 
-        {/* Existing Vendors */}
-        {Object.keys(vendorsByType || {}).length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-            <UserGroupIcon className="mx-auto h-12 w-12 text-gray-400" />
-            <p className="mt-4 text-gray-500">No vendors configured yet.</p>
-            <p className="text-sm text-gray-400 mt-1">Add your first vendor using the form above.</p>
-          </div>
-        ) : (
-          <div className="space-y-8">
-            {vendorTypes.filter(type => vendorsByType[type]).map((type) => (
-              <div key={type} className="bg-white rounded-xl shadow-sm border border-gray-200">
-                <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-pink-50">
-                  <h3 className="text-lg font-semibold text-gray-900 capitalize">
-                    {type === 'dj' ? 'DJs' : type.replace('_', ' ')}
-                  </h3>
-                </div>
+      {/* Existing Vendors */}
+      {Object.keys(vendorsByType || {}).length === 0 ? (
+        <Card>
+          <EmptyState icon={<UserGroupIcon className="h-12 w-12" />}
+            title="No vendors configured yet"
+            description="Add your first vendor using the form above."
+          />
+        </Card>
+      ) : (
+        <div className="space-y-6">
+          {vendorTypes.filter(type => vendorsByType[type]).map((type) => (
+            <Card key={type}>
+              <Section 
+                title={type === 'dj' ? 'DJs' : type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}
+              >
                 
                 <div className="divide-y divide-gray-200">
                   {vendorsByType[type]?.map((vendor: any) => (
-                    <div key={vendor.id} className="p-6">
+                    <div key={vendor.id} className="py-6 first:pt-0 last:pb-0">
                       <form action={handleUpdateVendor} className="space-y-4">
                         <input type="hidden" name="vendorId" value={vendor.id} />
                         
                         <div className="flex items-center gap-3 mb-4">
                           <h4 className="text-lg font-medium text-gray-900">{vendor.name}</h4>
                           {vendor.preferred && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                            <Badge variant="warning">
                               <StarIcon className="h-3 w-3 mr-1" />
                               Preferred
-                            </span>
+                            </Badge>
                           )}
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                            vendor.active 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-gray-100 text-gray-800'
-                          }`}>
+                          <Badge variant={vendor.active ? 'success' : 'secondary'}>
                             {vendor.active ? 'Active' : 'Inactive'}
-                          </span>
+                          </Badge>
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Vendor Name
-                            </label>
-                            <input
+                          <FormGroup label="Vendor Name">
+                            <Input
                               type="text"
                               name="name"
                               defaultValue={vendor.name}
                               required
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                             />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Type
-                            </label>
-                            <select
+                          </FormGroup>
+                          <FormGroup label="Type">
+                            <Select
                               name="service_type"
                               defaultValue={vendor.service_type}
                               required
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                            >
-                              <option value="dj">DJ</option>
-                              <option value="band">Band</option>
-                              <option value="photographer">Photographer</option>
-                              <option value="florist">Florist</option>
-                              <option value="decorator">Decorator</option>
-                              <option value="entertainment">Entertainment</option>
-                              <option value="transport">Transport</option>
-                              <option value="equipment">Equipment Rental</option>
-                              <option value="other">Other</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Contact Name
-                            </label>
-                            <input
+                              options={vendorTypeOptions.filter(opt => opt.value !== '')}
+                            />
+                          </FormGroup>
+                          <FormGroup label="Contact Name">
+                            <Input
                               type="text"
                               name="contact_name"
                               defaultValue={vendor.contact_name || ''}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                             />
-                          </div>
+                          </FormGroup>
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              <PhoneIcon className="h-4 w-4 inline mr-1" />
-                              Phone
-                            </label>
-                            <input
+                          <FormGroup 
+                            label="Phone"
+                          >
+                            <Input
                               type="tel"
                               name="contact_phone"
                               defaultValue={vendor.contact_phone || ''}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                             />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              <EnvelopeIcon className="h-4 w-4 inline mr-1" />
-                              Email
-                            </label>
-                            <input
+                          </FormGroup>
+                          <FormGroup 
+                            label="Email"
+                          >
+                            <Input
                               type="email"
                               name="contact_email"
                               defaultValue={vendor.contact_email || ''}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                             />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              <GlobeAltIcon className="h-4 w-4 inline mr-1" />
-                              Website
-                            </label>
-                            <input
+                          </FormGroup>
+                          <FormGroup 
+                            label="Website"
+                          >
+                            <Input
                               type="url"
                               name="website"
                               defaultValue={vendor.website || ''}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                             />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Typical Rate (£)
-                            </label>
-                            <input
+                          </FormGroup>
+                          <FormGroup label="Typical Rate (£)">
+                            <Input
                               type="number"
                               name="typical_rate"
                               defaultValue={vendor.typical_rate || ''}
                               min="0"
                               step="0.01"
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                             />
-                          </div>
+                          </FormGroup>
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Preferred Status
-                            </label>
-                            <select
+                          <FormGroup label="Preferred Status">
+                            <Select
                               name="preferred"
                               defaultValue={vendor.preferred ? 'true' : 'false'}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                            >
-                              <option value="false">Regular Vendor</option>
-                              <option value="true">Preferred Vendor</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Status
-                            </label>
-                            <select
+                              options={preferredOptions}
+                            />
+                          </FormGroup>
+                          <FormGroup label="Status">
+                            <Select
                               name="active"
                               defaultValue={vendor.active ? 'true' : 'false'}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                            >
-                              <option value="true">Active</option>
-                              <option value="false">Inactive</option>
-                            </select>
-                          </div>
+                              options={statusOptions}
+                            />
+                          </FormGroup>
                         </div>
                         
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Notes
-                          </label>
-                          <textarea
+                        <FormGroup label="Notes">
+                          <Textarea
                             name="notes"
                             defaultValue={vendor.notes || ''}
                             rows={2}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                           />
-                        </div>
+                        </FormGroup>
                         
-                        <button
-                          type="submit"
-                          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-1 min-h-[44px]"
+                        <Button type="submit"
+                          variant="primary"
+                          size="sm"
+                          leftIcon={<CheckIcon className="h-4 w-4" />}
                         >
-                          <CheckIcon className="h-4 w-4" />
                           Update Vendor
-                        </button>
+                        </Button>
                       </form>
                       
                       <div className="mt-4 flex justify-end">
@@ -502,11 +409,11 @@ export default async function VendorsPage() {
                     </div>
                   ))}
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+              </Section>
+            </Card>
+          ))}
+        </div>
+      )}
+    </Page>
   )
 }

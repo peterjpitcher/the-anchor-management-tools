@@ -264,7 +264,7 @@ export async function getTierStatistics() {
       .select(`
         *,
         tier:loyalty_tiers(name, min_events),
-        customer:customers(name, email_address)
+        customer:customers(first_name, last_name, mobile_number)
       `)
       .eq('program_id', program.id)
       .eq('status', 'active');

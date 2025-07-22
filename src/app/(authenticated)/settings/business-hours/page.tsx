@@ -1,34 +1,33 @@
 import { Suspense } from 'react'
 import { BusinessHoursManager } from './BusinessHoursManager'
 import { SpecialHoursManager } from './SpecialHoursManager'
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Skeleton } from '@/components/ui-v2/feedback/Skeleton'
 
 export default function BusinessHoursPage() {
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Business Hours</h1>
-        <p className="mt-1 text-xs sm:text-sm text-gray-600">
-          Manage your regular opening hours and special dates
-        </p>
-      </div>
-
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-3 py-4 sm:px-4 sm:py-5 lg:p-6">
-          <h2 className="text-base sm:text-lg font-medium text-gray-900 mb-3 sm:mb-4">Regular Hours</h2>
-          <Suspense fallback={<div>Loading...</div>}>
+    <Page
+      title="Business Hours"
+      description="Manage your regular opening hours and special dates"
+    >
+      <Section title="Regular Hours">
+        <Card>
+          <Suspense fallback={<Skeleton className="h-64" />}>
             <BusinessHoursManager />
           </Suspense>
-        </div>
-      </div>
+        </Card>
+      </Section>
 
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-3 py-4 sm:px-4 sm:py-5 lg:p-6">
-          <h2 className="text-base sm:text-lg font-medium text-gray-900 mb-3 sm:mb-4">Special Hours & Holidays</h2>
-          <Suspense fallback={<div>Loading...</div>}>
+      <Section title="Special Hours & Holidays">
+        <Card>
+          <Suspense fallback={<Skeleton className="h-64" />}>
             <SpecialHoursManager />
           </Suspense>
-        </div>
-      </div>
-    </div>
+        </Card>
+      </Section>
+    </Page>
   )
 }

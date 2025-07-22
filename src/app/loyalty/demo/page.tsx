@@ -5,6 +5,12 @@ import QRCode from 'qrcode';
 import { useState, useEffect } from 'react';
 import { todaysEvent } from '@/lib/mock-data/loyalty-demo';
 import VIPClubLogo from '@/components/loyalty/VIPClubLogo';
+import { Page } from '@/components/ui-v2/layout/Page';
+import { Container } from '@/components/ui-v2/layout/Container';
+import { Section } from '@/components/ui-v2/layout/Section';
+import { Card } from '@/components/ui-v2/layout/Card';
+import { Alert } from '@/components/ui-v2/feedback/Alert';
+import { Badge } from '@/components/ui-v2/display/Badge';
 
 export default function LoyaltyDemoPage() {
   const [eventQrUrl, setEventQrUrl] = useState<string>('');
@@ -23,10 +29,10 @@ export default function LoyaltyDemoPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <Page title="VIP Club Demo">
+      <Container size="2xl">
         {/* Header */}
-        <div className="text-center mb-12">
+        <Section className="text-center">
           <div className="mb-6">
             <VIPClubLogo size="large" />
           </div>
@@ -37,18 +43,16 @@ export default function LoyaltyDemoPage() {
             Experience our complete loyalty system demo. Test customer check-ins, 
             view the loyalty dashboard, and process reward redemptions.
           </p>
-        </div>
+        </Section>
 
         {/* Demo Notice */}
-        <div className="bg-amber-50 border-2 border-amber-200 rounded-lg p-6 mb-8">
-          <p className="text-amber-800 text-center">
-            🎭 <strong>Demo Mode:</strong> This is a fully functional demo with mock data. 
-            No real customer data or database changes are made.
-          </p>
-        </div>
+        <Alert variant="warning" className="mb-8">
+          🎭 <strong>Demo Mode:</strong> This is a fully functional demo with mock data. 
+          No real customer data or database changes are made.
+        </Alert>
 
         {/* Today's Event */}
-        <div className="bg-white rounded-lg shadow-lg p-8 mb-8">
+        <Card className="mb-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Today&apos;s Event</h2>
           <div className="grid md:grid-cols-2 gap-8 items-center">
             <div>
@@ -65,9 +69,9 @@ export default function LoyaltyDemoPage() {
               <div className="mt-6">
                 <h3 className="font-semibold text-gray-900 mb-2">Test Phone Numbers:</h3>
                 <ul className="space-y-1 text-sm text-gray-600">
-                  <li>• Sarah (Silver): <code className="bg-gray-100 px-2 py-1 rounded">07700900001</code></li>
-                  <li>• Mike (Bronze): <code className="bg-gray-100 px-2 py-1 rounded">07700900002</code></li>
-                  <li>• Emma (Gold): <code className="bg-gray-100 px-2 py-1 rounded">07700900003</code></li>
+                  <li>• Sarah (Silver): <Badge variant="secondary">07700900001</Badge></li>
+                  <li>• Mike (Bronze): <Badge variant="secondary">07700900002</Badge></li>
+                  <li>• Emma (Gold): <Badge variant="secondary">07700900003</Badge></li>
                 </ul>
               </div>
             </div>
@@ -80,12 +84,12 @@ export default function LoyaltyDemoPage() {
               <p className="text-xs text-gray-500 mt-2">Scan to check in to tonight&apos;s event</p>
             </div>
           </div>
-        </div>
+        </Card>
 
         {/* Demo Sections */}
         <div className="grid md:grid-cols-3 gap-6 mb-12">
           {/* Customer Check-in */}
-          <div className="bg-white rounded-lg shadow-lg p-6">
+          <Card>
             <div className="text-center mb-4">
               <div className="text-4xl mb-3">📱</div>
               <h3 className="text-xl font-bold text-gray-900">Customer Check-in</h3>
@@ -100,10 +104,10 @@ export default function LoyaltyDemoPage() {
             >
               Test Check-in Flow
             </Link>
-          </div>
+          </Card>
 
           {/* Customer Dashboard */}
-          <div className="bg-white rounded-lg shadow-lg p-6">
+          <Card>
             <div className="text-center mb-4">
               <div className="text-4xl mb-3">🏆</div>
               <h3 className="text-xl font-bold text-gray-900">Loyalty Dashboard</h3>
@@ -118,10 +122,10 @@ export default function LoyaltyDemoPage() {
             >
               View Customer Dashboard
             </Link>
-          </div>
+          </Card>
 
           {/* Staff Terminal */}
-          <div className="bg-white rounded-lg shadow-lg p-6">
+          <Card>
             <div className="text-center mb-4">
               <div className="text-4xl mb-3">🏪</div>
               <h3 className="text-xl font-bold text-gray-900">Staff Terminal</h3>
@@ -136,11 +140,11 @@ export default function LoyaltyDemoPage() {
             >
               Open Redemption Terminal
             </Link>
-          </div>
+          </Card>
         </div>
 
         {/* Additional Features */}
-        <div className="bg-white rounded-lg shadow-lg p-8">
+        <Card>
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Additional Features</h2>
           
           <div className="grid md:grid-cols-2 gap-8">
@@ -190,44 +194,46 @@ export default function LoyaltyDemoPage() {
               </Link>
             </div>
           </div>
-        </div>
+        </Card>
 
         {/* Demo Flow Guide */}
-        <div className="mt-12 bg-blue-50 rounded-lg p-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Demo Flow Guide</h2>
-          
-          <ol className="space-y-4 text-gray-700">
-            <li className="flex items-start">
-              <span className="font-bold text-blue-600 mr-3">1.</span>
-              <div>
-                <strong>Customer Check-in:</strong> Go to <code className="bg-white px-2 py-1 rounded">/loyalty/checkin</code> 
-                and enter one of the test phone numbers. You&apos;ll see the check-in success screen with points earned.
-              </div>
-            </li>
-            <li className="flex items-start">
-              <span className="font-bold text-blue-600 mr-3">2.</span>
-              <div>
-                <strong>View Dashboard:</strong> Visit the loyalty dashboard to see points, achievements, and rewards. 
-                Try generating a redemption code.
-              </div>
-            </li>
-            <li className="flex items-start">
-              <span className="font-bold text-blue-600 mr-3">3.</span>
-              <div>
-                <strong>Redeem Reward:</strong> Copy the code (or scan the QR) and use the staff terminal to 
-                process the redemption. Note the 5-minute timer!
-              </div>
-            </li>
-            <li className="flex items-start">
-              <span className="font-bold text-blue-600 mr-3">4.</span>
-              <div>
-                <strong>Test Edge Cases:</strong> Try expired codes, already-used codes, and invalid codes to 
-                see the error handling.
-              </div>
-            </li>
-          </ol>
-        </div>
-      </div>
-    </div>
+        <Section className="mt-12">
+          <Card variant="bordered">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">Demo Flow Guide</h2>
+            
+            <ol className="space-y-4 text-gray-700">
+              <li className="flex items-start">
+                <span className="font-bold text-blue-600 mr-3">1.</span>
+                <div>
+                  <strong>Customer Check-in:</strong> Go to <Badge variant="secondary">/loyalty/checkin</Badge> 
+                  and enter one of the test phone numbers. You&apos;ll see the check-in success screen with points earned.
+                </div>
+              </li>
+              <li className="flex items-start">
+                <span className="font-bold text-blue-600 mr-3">2.</span>
+                <div>
+                  <strong>View Dashboard:</strong> Visit the loyalty dashboard to see points, achievements, and rewards. 
+                  Try generating a redemption code.
+                </div>
+              </li>
+              <li className="flex items-start">
+                <span className="font-bold text-blue-600 mr-3">3.</span>
+                <div>
+                  <strong>Redeem Reward:</strong> Copy the code (or scan the QR) and use the staff terminal to 
+                  process the redemption. Note the 5-minute timer!
+                </div>
+              </li>
+              <li className="flex items-start">
+                <span className="font-bold text-blue-600 mr-3">4.</span>
+                <div>
+                  <strong>Test Edge Cases:</strong> Try expired codes, already-used codes, and invalid codes to 
+                  see the error handling.
+                </div>
+              </li>
+            </ol>
+          </Card>
+        </Section>
+      </Container>
+    </Page>
   );
 }

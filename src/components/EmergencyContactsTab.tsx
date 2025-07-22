@@ -3,7 +3,7 @@
 import { useState, useEffect, useTransition } from 'react';
 import type { EmployeeEmergencyContact } from '@/types/database';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
-import { Button } from '@/components/ui/Button';
+import { Button } from '@/components/ui-v2/forms/Button';
 import AddEmergencyContactModal from '@/components/modals/AddEmergencyContactModal';
 
 interface EmergencyContactsTabProps {

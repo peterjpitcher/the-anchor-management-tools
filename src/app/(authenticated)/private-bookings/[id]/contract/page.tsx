@@ -2,6 +2,8 @@
 
 import { useEffect } from 'react'
 import { use } from 'react'
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 
 export default function ContractPage({
   params,
@@ -16,11 +18,11 @@ export default function ContractPage({
   }, [id])
 
   return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+    <Page title="Generating Contract">
+      <div className="flex flex-col items-center justify-center min-h-[400px]">
+        <Spinner size="lg" />
         <p className="mt-4 text-gray-600">Generating contract...</p>
       </div>
-    </div>
+    </Page>
   )
 }

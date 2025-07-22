@@ -2,19 +2,34 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
-import toast from 'react-hot-toast'
 import { PencilIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline'
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Section } from '@/components/ui-v2/layout/Section'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Modal } from '@/components/ui-v2/overlay/Modal'
+import { Form } from '@/components/ui-v2/forms/Form'
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Select } from '@/components/ui-v2/forms/Select'
+import { Textarea } from '@/components/ui-v2/forms/Textarea'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 
 interface MessageTemplate {
   id: string
   name: string
-  description: string | null
+  message: string | null
   template_type: 'booking_confirmation' | 'reminder_7_day' | 'reminder_24_hour' | 'booking_reminder_confirmation' | 'booking_reminder_7_day' | 'booking_reminder_24_hour' | 'custom'
   content: string
   variables: string[]
   is_default: boolean
   is_active: boolean
-  character_count: number
+  character_badge: number
   estimated_segments: number
   send_timing?: 'immediate' | '1_hour' | '12_hours' | '24_hours' | '7_days' | 'custom'
   custom_timing_hours?: number | null
@@ -57,6 +72,7 @@ export default function MessageTemplatesPage() {
   const [loading, setLoading] = useState(true)
   const [editingTemplate, setEditingTemplate] = useState<MessageTemplate | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState<MessageTemplate | null>(null)
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -160,17 +176,16 @@ export default function MessageTemplatesPage() {
     }
   }
 
-  async function handleDelete(templateId: string) {
-    if (!confirm('Are you sure you want to delete this template?')) return
-
+  async function handleDelete(template: MessageTemplate) {
     try {
       const { error } = await supabase
         .from('message_templates')
         .delete()
-        .eq('id', templateId)
+        .eq('id', template.id)
 
       if (error) throw error
       toast.success('Template deleted successfully')
+      setDeleteConfirm(null)
       await loadTemplates()
     } catch (error) {
       console.error('Error deleting template:', error)
@@ -215,7 +230,7 @@ export default function MessageTemplatesPage() {
   function editTemplate(template: MessageTemplate) {
     setFormData({
       name: template.name,
-      description: template.description || '',
+      description: template.message || '',
       template_type: template.template_type,
       content: template.content,
       variables: template.variables,
@@ -247,277 +262,276 @@ export default function MessageTemplatesPage() {
   }
 
   if (loading) {
-    return <div className="p-4">Loading templates...</div>
+    return (
+      <Page title="Message Templates">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <Spinner size="lg" />
+            <p className="mt-4 text-gray-600">Loading templates...</p>
+          </div>
+        </div>
+      </Page>
+    )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Message Templates</h1>
-            <p className="mt-1 text-xs sm:text-sm text-gray-500">
-              Manage SMS templates for automated messages
-            </p>
-          </div>
-        <button
+    <Page
+      title="Message Templates"
+      description="Manage SMS templates for automated messages"
+      actions={
+        <Button
           onClick={() => {
             resetForm()
             setEditingTemplate(null)
             setShowForm(true)
           }}
-          className="inline-flex items-center justify-center px-3 py-2 sm:px-4 border border-transparent text-xs sm:text-sm font-medium rounded-lg shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 whitespace-nowrap"
         >
-          <PlusIcon className="-ml-1 mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" />
-          <span className="hidden sm:inline">New Template</span>
-          <span className="sm:hidden">New</span>
-        </button>
-      </div>
+          <PlusIcon className="mr-2 h-4 w-4" />
+          New Template
+        </Button>
+      }
+    >
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
+        title="Delete Template"
+        message={`Are you sure you want to delete the "${deleteConfirm?.name}" template?`}
+        confirmText="Delete"
+        type="danger"
+      />
 
       {/* Template Form Modal */}
-      {showForm && (
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-3 sm:p-4">
-          <div className="bg-white rounded-lg p-4 sm:p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">
-              {editingTemplate ? 'Edit Template' : 'New Template'}
-            </h2>
+      <Modal
+        open={showForm}
+        onClose={() => {
+          setShowForm(false)
+          setEditingTemplate(null)
+          resetForm()
+        }}
+        title={editingTemplate ? 'Edit Template' : 'New Template'}
+        size="lg"
+      >
+        <Form onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
 
-            <div className="space-y-3 sm:space-y-4">
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-gray-700">Name</label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm text-sm min-h-[40px]"
-                  required
-                />
-              </div>
+          <FormGroup label="Name" required>
+            <Input
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              required
+            />
+          </FormGroup>
 
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-gray-700">Description</label>
-                <input
-                  type="text"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm text-sm min-h-[40px]"
-                />
-              </div>
+          <FormGroup label="Description">
+            <Input
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            />
+          </FormGroup>
 
-              {!editingTemplate && (
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700">Type</label>
-                  <select
-                    value={formData.template_type}
-                    onChange={(e) => setFormData({ ...formData, template_type: e.target.value as MessageTemplate['template_type'] })}
-                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm text-sm min-h-[40px]"
-                  >
-                    {Object.entries(TEMPLATE_TYPES).map(([key, label]) => (
-                      <option key={key} value={key}>{label}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
+          {!editingTemplate && (
+            <FormGroup label="Type">
+              <Select
+                value={formData.template_type}
+                onChange={(e) => setFormData({ ...formData, template_type: e.target.value as MessageTemplate['template_type'] })}
+              >
+                {Object.entries(TEMPLATE_TYPES).map(([key, label]) => (
+                  <option key={key} value={key}>{label}</option>
+                ))}
+              </Select>
+            </FormGroup>
+          )}
 
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-gray-700">Send Timing</label>
-                <select
-                  value={formData.send_timing}
-                  onChange={(e) => setFormData({ ...formData, send_timing: e.target.value as 'immediate' | '1_hour' | '12_hours' | '24_hours' | '7_days' | 'custom' })}
-                  className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm text-sm min-h-[40px]"
+          <FormGroup label="Send Timing">
+            <Select
+              value={formData.send_timing}
+              onChange={(e) => setFormData({ ...formData, send_timing: e.target.value as 'immediate' | '1_hour' | '12_hours' | '24_hours' | '7_days' | 'custom' })}
+            >
+              {Object.entries(TIMING_OPTIONS).map(([key, label]) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
+            </Select>
+          </FormGroup>
+
+          {formData.send_timing === 'custom' && (
+            <FormGroup
+              label="Hours before event"
+              help="Maximum 30 days (720 hours)"
+            >
+              <Input
+                type="number"
+                min="1"
+                max="720"
+                value={formData.custom_timing_hours || ''}
+                onChange={(e) => setFormData({ ...formData, custom_timing_hours: e.target.value ? parseInt(e.target.value) : null })}
+                placeholder="Enter hours (1-720)"
+              />
+            </FormGroup>
+          )}
+
+          <FormGroup
+            label="Template Content"
+            help={`${formData.content.length} chars, ~${Math.ceil(formData.content.length / 160)} segments`}
+            required
+          >
+            {/* Variable buttons */}
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {Object.entries(AVAILABLE_VARIABLES).map(([key, desc]) => (
+                <Button
+                  key={key}
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => insertVariable(key)}
+                  title={desc}
                 >
-                  {Object.entries(TIMING_OPTIONS).map(([key, label]) => (
-                    <option key={key} value={key}>{label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {formData.send_timing === 'custom' && (
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700">Hours before event</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="720"
-                    value={formData.custom_timing_hours || ''}
-                    onChange={(e) => setFormData({ ...formData, custom_timing_hours: e.target.value ? parseInt(e.target.value) : null })}
-                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm text-sm min-h-[40px]"
-                    placeholder="Enter hours (1-720)"
-                  />
-                  <p className="mt-1 text-sm text-gray-500">Maximum 30 days (720 hours)</p>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
-                  Template Content
-                  <span className="text-xs text-gray-500 block sm:inline sm:ml-2">
-                    ({formData.content.length} chars, ~{Math.ceil(formData.content.length / 160)} segments)
-                  </span>
-                </label>
-                
-                {/* Variable buttons */}
-                <div className="mb-2 flex flex-wrap gap-1.5 sm:gap-2">
-                  {Object.entries(AVAILABLE_VARIABLES).map(([key, desc]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => insertVariable(key)}
-                      className="inline-flex items-center px-1.5 py-0.5 sm:px-2 sm:py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
-                      title={desc}
-                    >
-                      {`{{${key}}}`}
-                    </button>
-                  ))}
-                </div>
-
-                <textarea
-                  id="template-content"
-                  value={formData.content}
-                  onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                  className="block w-full rounded-lg border-gray-300 shadow-sm"
-                  rows={6}
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Preview</label>
-                <div className="p-3 sm:p-4 bg-gray-100 rounded-md">
-                  <p className="text-xs sm:text-sm whitespace-pre-wrap">{preview}</p>
-                </div>
-              </div>
+                  {`{{${key}}}`}
+                </Button>
+              ))}
             </div>
 
-            <div className="mt-4 sm:mt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:gap-3">
-              <button
-                onClick={() => {
-                  setShowForm(false)
-                  setEditingTemplate(null)
-                  resetForm()
-                }}
-                className="w-full sm:w-auto px-3 py-2 sm:px-4 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                className="w-full sm:w-auto px-3 py-2 sm:px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
-              >
-                {editingTemplate ? 'Update' : 'Create'} Template
-              </button>
+            <Textarea
+              id="template-content"
+              value={formData.content}
+              onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+              rows={6}
+              required
+            />
+          </FormGroup>
+
+          <FormGroup label="Preview">
+            <div className="p-4 bg-gray-100 rounded-md">
+              <p className="text-sm whitespace-pre-wrap">{preview}</p>
             </div>
+          </FormGroup>
+
+          <div className="flex justify-end space-x-3 pt-4">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setShowForm(false)
+                setEditingTemplate(null)
+                resetForm()
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit">
+              {editingTemplate ? 'Update' : 'Create'} Template
+            </Button>
           </div>
-        </div>
-      )}
+        </Form>
+      </Modal>
 
       {/* Templates List */}
-      <div className="space-y-6">
-        {Object.entries(TEMPLATE_TYPES).map(([type, label]) => {
-          const typeTemplates = templates.filter(t => t.template_type === type)
-          if (typeTemplates.length === 0 && type === 'custom') return null
+      {Object.entries(TEMPLATE_TYPES).map(([type, label]) => {
+        const typeTemplates = templates.filter(t => t.template_type === type)
+        if (typeTemplates.length === 0 && type === 'custom') return null
 
-          return (
-            <div key={type} className="bg-white shadow rounded-lg">
-              <div className="px-3 py-4 sm:px-4 sm:py-5 lg:p-6">
-                <h3 className="text-base sm:text-lg font-medium mb-3 sm:mb-4">{label}</h3>
+        return (
+          <Section key={type} title={label}>
+            <Card>
                 
-                {typeTemplates.length === 0 ? (
-                  <p className="text-gray-500 text-xs sm:text-sm">No templates configured</p>
-                ) : (
-                  <div className="space-y-3 sm:space-y-4">
-                    {typeTemplates.map((template) => (
-                      <div
-                        key={template.id}
-                        className={`border rounded-lg p-3 sm:p-4 ${
-                          !template.is_active ? 'bg-gray-50 opacity-60' : ''
-                        }`}
-                      >
-                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
-                          <div className="flex-1">
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <h4 className="font-medium text-sm sm:text-base">
-                                {template.name}
-                                {template.is_default && (
-                                  <span className="text-xs bg-green-100 text-green-800 px-1.5 py-0.5 sm:px-2 sm:py-1 rounded">
-                                    Default
-                                  </span>
-                                )}
-                              </h4>
-                            </div>
-                            {template.description && (
-                              <p className="text-xs sm:text-sm text-gray-500 mt-1">{template.description}</p>
+              {typeTemplates.length === 0 ? (
+                <EmptyState
+                  title="No templates configured"
+                  description="Create a template to get started"
+                />
+              ) : (
+                <div className="space-y-4">
+                  {typeTemplates.map((template) => (
+                    <div
+                      key={template.id}
+                      className={`border rounded-lg p-4 ${
+                        !template.is_active ? 'bg-gray-50 opacity-60' : ''
+                      }`}
+                    >
+                      <div className="flex justify-between items-start gap-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-medium text-base">
+                              {template.name}
+                            </h4>
+                            {template.is_default && (
+                              <Badge variant="success" size="sm">
+                                Default
+                              </Badge>
                             )}
-                            <p className="text-xs sm:text-sm text-gray-700 mt-2 whitespace-pre-wrap bg-gray-50 p-2 rounded overflow-x-auto">
-                              {template.content}
-                            </p>
-                            <div className="mt-2 flex flex-wrap gap-2 sm:gap-4 text-xs text-gray-500">
-                              <span>{template.character_count} chars</span>
-                              <span>{template.estimated_segments} segment{template.estimated_segments !== 1 ? 's' : ''}</span>
-                              <span className="hidden sm:inline">Variables: {template.variables.join(', ')}</span>
-                              {template.send_timing && (
-                                <span>
-                                  Timing: {
-                                    template.send_timing === 'custom' && template.custom_timing_hours 
-                                      ? `${template.custom_timing_hours} hours before`
-                                      : TIMING_OPTIONS[template.send_timing] || 'Not set'
-                                  }
-                                </span>
-                              )}
-                            </div>
                           </div>
-                          
-                          <div className="flex items-center space-x-1.5 sm:space-x-2 self-end sm:self-auto">
-                            <button
-                              onClick={() => toggleActive(template)}
-                              className={`text-xs sm:text-sm px-2 py-1 rounded ${
-                                template.is_active
-                                  ? 'text-yellow-600 hover:text-yellow-700'
-                                  : 'text-green-600 hover:text-green-700'
-                              }`}
-                            >
-                              {template.is_active ? 'Deactivate' : 'Activate'}
-                            </button>
-                            <button
-                              onClick={() => editTemplate(template)}
-                              className="text-blue-600 hover:text-blue-900 p-1 min-h-[32px] min-w-[32px]"
-                            >
-                              <PencilIcon className="h-4 w-4 sm:h-5 sm:w-5" />
-                            </button>
-                            {!template.is_default && (
-                              <button
-                                onClick={() => handleDelete(template.id)}
-                                className="text-red-600 hover:text-red-900 p-1 min-h-[32px] min-w-[32px]"
-                              >
-                                <TrashIcon className="h-4 w-4 sm:h-5 sm:w-5" />
-                              </button>
+                          {template.message && (
+                            <p className="text-sm text-gray-500 mt-1">{template.message}</p>
+                          )}
+                          <p className="text-sm text-gray-700 mt-2 whitespace-pre-wrap bg-gray-50 p-2 rounded overflow-x-auto">
+                            {template.content}
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-4 text-xs text-gray-500">
+                            <span>{template.character_badge} chars</span>
+                            <span>{template.estimated_segments} segment{template.estimated_segments !== 1 ? 's' : ''}</span>
+                            <span>Variables: {template.variables.join(', ')}</span>
+                            {template.send_timing && (
+                              <span>
+                                Timing: {
+                                  template.send_timing === 'custom' && template.custom_timing_hours 
+                                    ? `${template.custom_timing_hours} hours before`
+                                    : TIMING_OPTIONS[template.send_timing] || 'Not set'
+                                }
+                              </span>
                             )}
                           </div>
                         </div>
+                        
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => toggleActive(template)}
+                          >
+                            {template.is_active ? 'Deactivate' : 'Activate'}
+                          </Button>
+                          <button
+                            onClick={() => editTemplate(template)}
+                            className="p-1 text-blue-600 hover:text-blue-700"
+                          >
+                            <PencilIcon className="h-4 w-4" />
+                          </button>
+                          {!template.is_default && (
+                            <button
+                              onClick={() => setDeleteConfirm(template)}
+                              className="p-1 text-red-600 hover:text-red-700"
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )
-        })}
-      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </Section>
+        )
+      })}
 
       {/* Help Section */}
-      <div className="mt-6 sm:mt-8 bg-blue-50 rounded-lg p-4 sm:p-6">
-        <h3 className="text-base sm:text-lg font-medium mb-2">Available Variables</h3>
-        <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
-          Use these variables in your templates. They will be automatically replaced with actual values when messages are sent.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2 text-xs sm:text-sm">
-          {Object.entries(AVAILABLE_VARIABLES).map(([key, desc]) => (
-            <div key={key} className="flex items-start">
-              <code className="text-green-600 text-xs flex-shrink-0">{`{{${key}}}`}</code>
-              <span className="text-gray-600 ml-1.5 sm:ml-2">- {desc}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
+      <Section title="Available Variables">
+        <Card>
+          <p className="text-sm text-gray-600 mb-4">
+            Use these variables in your templates. They will be automatically replaced with actual values when messages are sent.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+            {Object.entries(AVAILABLE_VARIABLES).map(([key, desc]) => (
+              <div key={key} className="flex items-start">
+                <code className="text-green-600 text-xs flex-shrink-0">{`{{${key}}}`}</code>
+                <span className="text-gray-600 ml-2">- {desc}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </Section>
+    </Page>
   )
 }

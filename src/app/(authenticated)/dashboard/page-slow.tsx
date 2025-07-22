@@ -163,7 +163,7 @@ export default function DashboardPage() {
       try {
         const { count } = await supabase
           .from('audit_logs')
-          .select('*', { count: 'exact' })
+          .select('*', { count: 'exact', head: true })
           .eq('resource_type', 'bulk_message')
           .eq('operation_type', 'create')
           .gte('created_at', weekAgo.toISOString())
@@ -175,7 +175,7 @@ export default function DashboardPage() {
       // Get template count
       const { count: templateCount, error: templateError } = await supabase
         .from('message_templates')
-        .select('*', { count: 'exact' })
+        .select('*', { count: 'exact', head: true })
         .eq('is_active', true)
 
       if (templateError) throw templateError

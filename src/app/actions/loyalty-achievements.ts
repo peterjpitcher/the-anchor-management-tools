@@ -108,7 +108,7 @@ export async function getAchievement(id: string) {
     return { 
       data: {
         ...data,
-        unlock_count: unlockCount || 0
+        unlock_badge: unlockCount || 0
       }
     };
   } catch (error) {

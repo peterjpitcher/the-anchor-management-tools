@@ -12,8 +12,16 @@ import {
   CalendarIcon
 } from '@heroicons/react/24/outline';
 import { format, getMonth, addDays } from 'date-fns';
-import toast from 'react-hot-toast';
-import { Badge } from '@/components/ui/Badge';
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page';
+import { Card } from '@/components/ui-v2/layout/Card';
+import { Button } from '@/components/ui-v2/forms/Button';
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
+import { Badge } from '@/components/ui-v2/display/Badge';
+import { Alert } from '@/components/ui-v2/feedback/Alert';
+import { toast } from '@/components/ui-v2/feedback/Toast';
+import { EmptyState } from '@/components/ui-v2/display/EmptyState';
+import { Skeleton } from '@/components/ui-v2/feedback/Skeleton';
 
 interface EmployeeBirthday {
   employee_id: string;
@@ -47,7 +55,7 @@ export default function EmployeeBirthdaysPage() {
         } else if (result.birthdays) {
           setBirthdays(result.birthdays);
         }
-      } catch {
+      } catch (error) {
         toast.error('Failed to load birthdays');
       } finally {
         setLoading(false);
@@ -71,7 +79,7 @@ export default function EmployeeBirthdaysPage() {
       } else {
         toast.success(result.message || 'Birthday reminders sent');
       }
-    } catch {
+    } catch (error) {
       toast.error('Failed to send reminders');
     } finally {
       setSending(false);
@@ -125,85 +133,76 @@ export default function EmployeeBirthdaysPage() {
 
   if (!hasPermission('employees', 'view')) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-500">You don&apos;t have permission to view this page.</p>
-      </div>
+      <Page title="Employee Birthdays">
+        <Card>
+          <div className="text-center py-12">
+            <p className="text-gray-500">You don&apos;t have permission to view this page.</p>
+          </div>
+        </Card>
+      </Page>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-4 sm:p-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex items-center space-x-3 sm:space-x-4">
-              <Link
-                href="/employees"
-                className="text-gray-400 hover:text-gray-500"
-              >
-                <ArrowLeftIcon className="h-4 w-4 sm:h-5 sm:w-5" />
-              </Link>
-              <div>
-                <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 flex items-center">
-                  <CakeIcon className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 mr-1.5 sm:mr-2 text-pink-500" />
-                  Employee Birthdays
-                </h1>
-                <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-gray-500">
-                  All employee birthdays throughout the year
-                </p>
-              </div>
-            </div>
-            {hasPermission('employees', 'manage') && (
-              <button
-                onClick={handleSendReminders}
-                disabled={sending}
-                className="inline-flex items-center px-3 py-2 sm:px-4 border border-transparent text-xs sm:text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 whitespace-nowrap"
-              >
-                <EnvelopeIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
-                <span className="hidden sm:inline">{sending ? 'Sending...' : 'Send Weekly Reminders'}</span>
-                <span className="sm:hidden">{sending ? 'Sending...' : 'Send Reminders'}</span>
-              </button>
-            )}
-          </div>
+    <Page
+      title="Employee Birthdays"
+      description="All employee birthdays throughout the year"
+      actions={
+        <div className="flex items-center gap-2">
+          <LinkButton
+            href="/employees"
+            variant="secondary"
+            size="sm"
+          >
+            <ArrowLeftIcon className="h-4 w-4 -ml-1 mr-1.5" />
+            Back
+          </LinkButton>
+          {hasPermission('employees', 'manage') && (
+            <Button
+              onClick={handleSendReminders}
+              disabled={sending}
+              variant="primary"
+              size="sm"
+            >
+              <EnvelopeIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 -ml-0.5 mr-1.5 sm:mr-2" />
+              <span className="hidden sm:inline">{sending ? 'Sending...' : 'Send Weekly Reminders'}</span>
+              <span className="sm:hidden">{sending ? 'Sending...' : 'Send Reminders'}</span>
+            </Button>
+          )}
         </div>
-      </div>
+      }
+    >
 
-      {/* Info Banner */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
-        <div className="flex">
-          <div className="flex-shrink-0">
-            <ExclamationTriangleIcon className="h-4 w-4 sm:h-5 sm:w-5 text-blue-400" />
-          </div>
-          <div className="ml-2 sm:ml-3">
-            <h3 className="text-xs sm:text-sm font-medium text-blue-800">Automatic Birthday Reminders</h3>
-            <div className="mt-1 sm:mt-2 text-xs sm:text-sm text-blue-700">
-              <p>Birthday reminders are automatically sent to manager@the-anchor.pub every morning at 8 AM for employees with birthdays exactly 1 week away.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="bg-white shadow sm:rounded-lg p-6">
-          <div className="animate-pulse space-y-4">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="h-16 bg-gray-200 rounded"></div>
-            ))}
-          </div>
-        </div>
-      ) : birthdays.length === 0 ? (
-        <div className="bg-white shadow sm:rounded-lg text-center py-12">
-          <CakeIcon className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No birthdays found</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            No active employees have birthdays recorded.
+      <Alert variant="info" icon={<ExclamationTriangleIcon className="h-4 w-4 sm:h-5 sm:w-5" />}>
+        <div>
+          <h3 className="text-xs sm:text-sm font-medium">Automatic Birthday Reminders</h3>
+          <p className="mt-1 sm:mt-2 text-xs sm:text-sm">
+            Birthday reminders are automatically sent to manager@the-anchor.pub every morning at 8 AM for employees with birthdays exactly 1 week away.
           </p>
         </div>
+      </Alert>
+
+      {loading ? (
+        <Card>
+          <div className="space-y-4">
+            {[...Array(3)].map((_, i) => (
+              <Skeleton key={i} className="h-16" />
+            ))}
+          </div>
+        </Card>
+      ) : birthdays.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={<CakeIcon className="h-12 w-12" />}
+            title="No birthdays found"
+            description="No active employees have birthdays recorded."
+          />
+        </Card>
       ) : (
         <div className="space-y-6">
           {sortedMonths.map(([monthName, { birthdays: monthBirthdays }]) => (
-            <div key={monthName} className="bg-white shadow sm:rounded-lg overflow-hidden">
-              <div className="bg-gray-50 px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200">
+            <Card key={monthName}>
+              <div className="bg-gray-50 px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200 -m-6 mb-6">
                 <h2 className="text-base sm:text-lg font-medium text-gray-900 flex flex-wrap items-center">
                   <CalendarIcon className="h-4 w-4 sm:h-5 sm:w-5 mr-1.5 sm:mr-2 text-gray-400" />
                   <span>{monthName}</span>
@@ -212,7 +211,6 @@ export default function EmployeeBirthdaysPage() {
               </div>
               <ul className="divide-y divide-gray-200">
                 {monthBirthdays.map((birthday) => {
-                  const birthdayDate = getUpcomingBirthdayDate(birthday.days_until_birthday);
                   return (
                     <li key={birthday.employee_id} className="px-3 sm:px-4 py-3 sm:py-4 hover:bg-gray-50">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
@@ -236,7 +234,7 @@ export default function EmployeeBirthdaysPage() {
                               {format(new Date(birthday.date_of_birth), 'MMM d')}
                             </span>
                             <Badge 
-                              variant={getCountdownBadgeVariant(birthday.days_until_birthday) as any}
+                              variant={getCountdownBadgeVariant(birthday.days_until_birthday) as 'default' | 'info' | 'warning' | 'error'}
                               className="text-xs px-1.5 py-0.5 sm:px-2 sm:py-1"
                             >
                               {getCountdownText(birthday.days_until_birthday)}
@@ -251,10 +249,10 @@ export default function EmployeeBirthdaysPage() {
                   );
                 })}
               </ul>
-            </div>
+            </Card>
           ))}
         </div>
       )}
-    </div>
+    </Page>
   );
 }

@@ -4,9 +4,16 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
-import toast from 'react-hot-toast'
 import { Loader2 } from 'lucide-react'
 import Image from 'next/image'
+import { Form, FormActions } from '@/components/ui-v2/forms/Form'
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Container } from '@/components/ui-v2/layout/Container'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 
 // LoginForm component - Client Component
 function LoginForm() {
@@ -76,8 +83,8 @@ function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+      <Container size="sm">
         <div className="text-center mb-8">
           {/* Logo */}
           <div className="mx-auto w-64 mb-2">
@@ -92,101 +99,88 @@ function LoginForm() {
           </div>
           
           {/* Title */}
-          <h1 className="text-2xl sm:text-3xl font-bold text-white">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
             Sign in to your account
           </h1>
-          <p className="mt-2 text-xs sm:text-sm text-green-100">
+          <p className="mt-2 text-xs sm:text-sm text-gray-600">
             This is a private system - authorised users only
           </p>
         </div>
 
-        <form 
-          onSubmit={handleSubmit} 
-          method="POST" 
-          action="#" 
-          autoComplete="on"
-          className="space-y-6"
-        >
-          {/* Hidden honeypot field for security */}
-          <input 
-            type="text" 
-            name="username" 
-            style={{ display: 'none' }} 
-            tabIndex={-1} 
-            autoComplete="off"
-            onChange={() => {
-              console.error('SECURITY: Bot detection triggered')
-              toast.error('Security error detected')
-            }}
-          />
-          
-          {/* Email Field */}
-          <div>
-            <label htmlFor="login-email" className="block text-sm font-medium text-white">
-              Email address
-            </label>
-            <input
-              id="login-email"
-              name="login-email"
-              type="email"
-              autoComplete="username"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 block w-full rounded-lg border border-green-800/50 bg-white/10 backdrop-blur px-4 py-3 text-base text-white placeholder-green-200 shadow-sm focus:border-white focus:ring-white min-h-[44px]"
-              placeholder="you@example.com"
+        <Card>
+          <Form onSubmit={handleSubmit} autoComplete="on">
+            {/* Hidden honeypot field for security */}
+            <input 
+              type="text" 
+              name="username" 
+              style={{ display: 'none' }} 
+              tabIndex={-1} 
+              autoComplete="off"
+              onChange={() => {
+                console.error('SECURITY: Bot detection triggered')
+                toast.error('Security error detected')
+              }}
             />
-          </div>
-
-          {/* Password Field */}
-          <div>
-            <label htmlFor="login-password" className="block text-sm font-medium text-white">
-              Password
-            </label>
-            <input
-              id="login-password"
-              name="login-password"
-              type="password"
-              autoComplete="current-password"
+            
+            {/* Email Field */}
+            <FormGroup
+              label="Email address"
               required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 block w-full rounded-lg border border-green-800/50 bg-white/10 backdrop-blur px-4 py-3 text-base text-white placeholder-green-200 shadow-sm focus:border-white focus:ring-white min-h-[44px]"
-              placeholder="Enter your password"
-            />
-          </div>
+            >
+              <Input
+                id="login-email"
+                name="login-email"
+                type="email"
+                autoComplete="username"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+              />
+            </FormGroup>
 
-          {/* Forgot Password Link */}
-          <div className="flex items-center justify-between">
-            <div className="text-sm">
+            {/* Password Field */}
+            <FormGroup
+              label="Password"
+              required
+            >
+              <Input
+                id="login-password"
+                name="login-password"
+                type="password"
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+              />
+            </FormGroup>
+
+            {/* Forgot Password Link */}
+            <div className="flex items-center justify-between mb-6">
               <Link
                 href="/auth/reset-password"
-                className="text-white underline hover:text-green-100 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-sidebar rounded"
+                className="text-sm text-primary hover:text-primary/80 underline focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 rounded"
               >
                 Forgot your password?
               </Link>
             </div>
-          </div>
 
-          {/* Submit Button */}
-          <div>
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="inline-flex w-full items-center justify-center rounded-lg bg-white px-6 py-3 text-base font-medium text-sidebar shadow-sm hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-sidebar disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px] transition-colors duration-150 touch-manipulation"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Signing in...
-                </>
-              ) : (
-                'Sign in'
-              )}
-            </button>
-          </div>
-        </form>
-      </div>
+            {/* Submit Button */}
+            <FormActions>
+              <Button
+                type="submit"
+                disabled={isLoading}
+                loading={isLoading}
+                fullWidth
+                size="lg"
+              >
+                Sign in
+              </Button>
+            </FormActions>
+          </Form>
+        </Card>
+      </Container>
     </div>
   )
 }
@@ -195,10 +189,8 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
-        <div className="flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-white" />
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        <Spinner size="lg" />
       </div>
     }>
       <LoginForm />

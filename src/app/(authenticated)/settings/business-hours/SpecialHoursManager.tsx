@@ -3,7 +3,10 @@
 import { useEffect, useState } from 'react'
 import { getSpecialHours, createSpecialHours, updateSpecialHours, deleteSpecialHours } from '@/app/actions/business-hours'
 import { SpecialHours } from '@/types/business-hours'
-import { Button } from '@/components/ui/Button'
+import { Button, IconButton } from '@/components/ui-v2/forms/Button'
+import { Input } from '@/components/ui-v2/forms/Input'
+import { Checkbox } from '@/components/ui-v2/forms/Checkbox'
+import { Card } from '@/components/ui-v2/layout/Card'
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 
@@ -107,116 +110,113 @@ export function SpecialHoursManager() {
     <div className="space-y-4">
       {!showForm && (
         <div className="flex justify-end">
-          <Button onClick={() => setShowForm(true)}>
-            <PlusIcon className="h-5 w-5 mr-2" />
+          <Button onClick={() => setShowForm(true)} leftIcon={<PlusIcon className="h-5 w-5" />}>
             Add Special Hours
           </Button>
         </div>
       )}
 
       {showForm && (
-        <form onSubmit={handleSubmit} className="bg-gray-50 p-4 rounded-lg space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Date
-              </label>
-              <input
-                type="date"
-                required
-                value={formData.date}
-                onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 text-sm min-h-[40px]"
-              />
-            </div>
-            
-            <div className="flex items-end">
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
+        <Card variant="default" padding="sm">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Date
+                </label>
+                <Input
+                  type="date"
+                  required
+                  value={formData.date}
+                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  fullWidth
+                />
+              </div>
+              
+              <div className="flex items-end">
+                <Checkbox
+                  label="Closed all day"
                   checked={formData.is_closed}
                   onChange={(e) => setFormData({ ...formData, is_closed: e.target.checked })}
-                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
                 />
-                <span className="ml-2 text-sm text-gray-700">Closed all day</span>
-              </label>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Opens
+                </label>
+                <Input
+                  type="time"
+                  value={formData.opens}
+                  onChange={(e) => setFormData({ ...formData, opens: e.target.value })}
+                  disabled={formData.is_closed}
+                  fullWidth
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Closes
+                </label>
+                <Input
+                  type="time"
+                  value={formData.closes}
+                  onChange={(e) => setFormData({ ...formData, closes: e.target.value })}
+                  disabled={formData.is_closed}
+                  fullWidth
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Kitchen Opens
+                </label>
+                <Input
+                  type="time"
+                  value={formData.kitchen_opens}
+                  onChange={(e) => setFormData({ ...formData, kitchen_opens: e.target.value })}
+                  disabled={formData.is_closed}
+                  fullWidth
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Kitchen Closes
+                </label>
+                <Input
+                  type="time"
+                  value={formData.kitchen_closes}
+                  onChange={(e) => setFormData({ ...formData, kitchen_closes: e.target.value })}
+                  disabled={formData.is_closed}
+                  fullWidth
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Note (Optional)
+                </label>
+                <Input
+                  type="text"
+                  value={formData.note}
+                  onChange={(e) => setFormData({ ...formData, note: e.target.value })}
+                  placeholder="e.g., Christmas Day, Bank Holiday"
+                  fullWidth
+                />
+              </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Opens
-              </label>
-              <input
-                type="time"
-                value={formData.opens}
-                onChange={(e) => setFormData({ ...formData, opens: e.target.value })}
-                disabled={formData.is_closed}
-                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm disabled:bg-gray-100"
-              />
+            <div className="flex justify-end space-x-2">
+              <Button type="button" variant="secondary" onClick={resetForm}>
+                Cancel
+              </Button>
+              <Button type="submit">
+                {editingId ? 'Update' : 'Add'} Special Hours
+              </Button>
             </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Closes
-              </label>
-              <input
-                type="time"
-                value={formData.closes}
-                onChange={(e) => setFormData({ ...formData, closes: e.target.value })}
-                disabled={formData.is_closed}
-                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm disabled:bg-gray-100"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Kitchen Opens
-              </label>
-              <input
-                type="time"
-                value={formData.kitchen_opens}
-                onChange={(e) => setFormData({ ...formData, kitchen_opens: e.target.value })}
-                disabled={formData.is_closed}
-                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm disabled:bg-gray-100"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Kitchen Closes
-              </label>
-              <input
-                type="time"
-                value={formData.kitchen_closes}
-                onChange={(e) => setFormData({ ...formData, kitchen_closes: e.target.value })}
-                disabled={formData.is_closed}
-                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm disabled:bg-gray-100"
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Note (Optional)
-              </label>
-              <input
-                type="text"
-                value={formData.note}
-                onChange={(e) => setFormData({ ...formData, note: e.target.value })}
-                placeholder="e.g., Christmas Day, Bank Holiday"
-                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 text-sm min-h-[40px]"
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end space-x-2">
-            <Button type="button" variant="secondary" onClick={resetForm}>
-              Cancel
-            </Button>
-            <Button type="submit">
-              {editingId ? 'Update' : 'Add'} Special Hours
-            </Button>
-          </div>
-        </form>
+          </form>
+        </Card>
       )}
 
       <div className="space-y-2">
@@ -226,57 +226,61 @@ export function SpecialHoursManager() {
           </p>
         ) : (
           specialHours.map((hours) => (
-            <div
+            <Card
               key={hours.id}
-              className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg"
+              variant="bordered"
+              padding="sm"
             >
-              <div className="flex-1">
-                <div className="flex items-center space-x-4">
-                  <p className="font-medium text-gray-900">
-                    {new Date(hours.date + 'T00:00:00').toLocaleDateString('en-GB', {
-                      weekday: 'long',
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    })}
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center space-x-4">
+                    <p className="font-medium text-gray-900">
+                      {new Date(hours.date + 'T00:00:00').toLocaleDateString('en-GB', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </p>
+                    {hours.note && (
+                      <span className="text-sm text-gray-500">({hours.note})</span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-sm text-gray-600">
+                    {hours.is_closed ? (
+                      <span className="text-red-600">Closed all day</span>
+                    ) : (
+                      <>
+                        <span>Open: {hours.opens || 'Not set'} - {hours.closes || 'Not set'}</span>
+                        {hours.kitchen_opens && hours.kitchen_closes && (
+                          <span className="ml-4">
+                            Kitchen: {hours.kitchen_opens} - {hours.kitchen_closes}
+                          </span>
+                        )}
+                      </>
+                    )}
                   </p>
-                  {hours.note && (
-                    <span className="text-sm text-gray-500">({hours.note})</span>
-                  )}
                 </div>
-                <p className="mt-1 text-sm text-gray-600">
-                  {hours.is_closed ? (
-                    <span className="text-red-600">Closed all day</span>
-                  ) : (
-                    <>
-                      <span>Open: {hours.opens || 'Not set'} - {hours.closes || 'Not set'}</span>
-                      {hours.kitchen_opens && hours.kitchen_closes && (
-                        <span className="ml-4">
-                          Kitchen: {hours.kitchen_opens} - {hours.kitchen_closes}
-                        </span>
-                      )}
-                    </>
-                  )}
-                </p>
+                
+                <div className="flex items-center space-x-2">
+                  <IconButton
+                    onClick={() => handleEdit(hours)}
+                    variant="secondary"
+                    title="Edit"
+                  >
+                    <PencilIcon className="h-5 w-5" />
+                  </IconButton>
+                  <IconButton
+                    onClick={() => handleDelete(hours.id)}
+                    variant="secondary"
+                    className="text-red-600 hover:text-red-900"
+                    title="Delete"
+                  >
+                    <TrashIcon className="h-5 w-5" />
+                  </IconButton>
+                </div>
               </div>
-              
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => handleEdit(hours)}
-                  className="p-2 text-gray-600 hover:text-gray-900"
-                  title="Edit"
-                >
-                  <PencilIcon className="h-5 w-5" />
-                </button>
-                <button
-                  onClick={() => handleDelete(hours.id)}
-                  className="p-2 text-red-600 hover:text-red-900"
-                  title="Delete"
-                >
-                  <TrashIcon className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
+            </Card>
           ))
         )}
       </div>

@@ -84,7 +84,7 @@ export async function sendEventRemindersWithTiming() {
     await supabase.rpc('log_reminder_processing', {
       p_processing_type: 'cron_run',
       p_message: `Found ${bookingsNeedingReminders.length} bookings needing reminders`,
-      p_metadata: { booking_count: bookingsNeedingReminders.length }
+      p_metadata: { booking_badge: bookingsNeedingReminders.length }
     })
 
     const twilioClientInstance = twilio(

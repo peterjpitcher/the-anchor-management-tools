@@ -1,4 +1,9 @@
-import { createAdminClient } from '@/lib/supabase/server'
+/**
+ * @deprecated Use @/lib/unified-job-queue instead
+ * This file is kept for backward compatibility but redirects to the unified job queue
+ */
+
+import { jobQueue as unifiedJobQueue } from './unified-job-queue'
 
 export type JobType = 
   | 'export_employees' 
@@ -21,58 +26,38 @@ export interface Job {
 
 export class JobQueue {
   constructor() {
+    console.warn('JobQueue is deprecated. Use unified-job-queue instead.')
   }
 
   async enqueue(type: JobType, payload?: any, userId?: string): Promise<{ success: boolean; jobId?: string; error?: string }> {
     try {
-      const supabase = createAdminClient()
-      const { data, error } = await supabase
-        .from('job_queue')
-        .insert({
-          type,
-          payload,
-          created_by: userId
-        })
-        .select()
-        .single()
-
-      if (error || !data) {
-        console.error('Failed to enqueue job:', error)
-        return { success: false, error: error?.message || 'Failed to create job' }
-      }
-
-      return { success: true, jobId: data.id as string }
+      const result = await unifiedJobQueue.enqueue(type as any, payload || {}, {
+        unique: userId ? `${type}-${userId}` : undefined
+      })
+      return result
     } catch (error) {
-      console.error('Error enqueueing job:', error)
-      return { success: false, error: 'Failed to enqueue job' }
+      console.error('Failed to enqueue job:', error)
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to enqueue job' }
     }
   }
 
   async getJob(jobId: string): Promise<Job | null> {
-    const supabase = createAdminClient()
-    const { data, error } = await supabase
-      .from('job_queue')
-      .select('*')
-      .eq('id', jobId)
-      .single()
-
-    if (error) {
-      console.error('Failed to get job:', error)
-      return null
+    const job = await unifiedJobQueue.getJob(jobId)
+    if (!job) return null
+    
+    // Map to old format
+    return {
+      id: job.id,
+      type: job.type as JobType,
+      status: job.status as any,
+      payload: job.payload,
+      result: job.result,
+      error: job.error_message,
+      created_at: job.created_at,
+      started_at: job.started_at,
+      completed_at: job.completed_at,
+      created_by: job.payload?.created_by as string
     }
-
-    return data ? {
-      id: data.id,
-      type: data.type,
-      status: data.status,
-      payload: data.payload,
-      result: data.result,
-      error: data.error,
-      created_at: data.created_at,
-      started_at: data.started_at,
-      completed_at: data.completed_at,
-      created_by: data.created_by
-    } as Job : null
   }
 
   async updateJobStatus(
@@ -81,41 +66,25 @@ export class JobQueue {
     result?: any,
     error?: string
   ): Promise<boolean> {
-    const update: any = { status }
-    
-    if (status === 'processing') {
-      update.started_at = new Date().toISOString()
-    } else if (status === 'completed' || status === 'failed') {
-      update.completed_at = new Date().toISOString()
-    }
-
-    if (result) update.result = result
-    if (error) update.error = error
-
-    const supabase = createAdminClient()
-    const { error: updateError } = await supabase
-      .from('job_queue')
-      .update(update)
-      .eq('id', jobId)
-
-    if (updateError) {
-      console.error('Failed to update job status:', updateError)
-      return false
-    }
-
-    return true
+    return await unifiedJobQueue.updateJobStatus(jobId, status, result, error)
   }
 
   async getNextPendingJob(): Promise<Job | null> {
-    const supabase = createAdminClient()
-    const { data, error } = await supabase
-      .rpc('process_pending_jobs')
-      .single()
-
-    if (error || !data) {
-      return null
+    const job = await unifiedJobQueue.getNextPendingJob()
+    if (!job) return null
+    
+    // Map to old format
+    return {
+      id: job.id,
+      type: job.type as JobType,
+      status: job.status as any,
+      payload: job.payload,
+      result: job.result,
+      error: job.error_message,
+      created_at: job.created_at,
+      started_at: job.started_at,
+      completed_at: job.completed_at,
+      created_by: job.payload?.created_by as string
     }
-
-    return this.getJob((data as any).job_id)
   }
 }

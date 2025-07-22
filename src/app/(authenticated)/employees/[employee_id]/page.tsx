@@ -10,7 +10,6 @@ import AddEmployeeNoteForm from '@/components/AddEmployeeNoteForm';
 import EmployeeAttachmentsList from '@/components/EmployeeAttachmentsList';
 import AddEmployeeAttachmentForm from '@/components/AddEmployeeAttachmentForm';
 import { Suspense, use, useState, useEffect, useCallback } from 'react';
-import { Tabs } from '@/components/ui/Tabs';
 import EmergencyContactsTab from '@/components/EmergencyContactsTab';
 import FinancialDetailsTab from '@/components/FinancialDetailsTab';
 import HealthRecordsTab from '@/components/HealthRecordsTab';
@@ -20,6 +19,14 @@ import { formatDate } from '@/lib/dateUtils';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { EmployeeAuditTrail } from '@/components/EmployeeAuditTrail';
 import { EmployeeRecentChanges } from '@/components/EmployeeRecentChanges';
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page';
+import { Card } from '@/components/ui-v2/layout/Card';
+import { Section } from '@/components/ui-v2/layout/Section';
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
+import { Badge } from '@/components/ui-v2/display/Badge';
+import { Tabs } from '@/components/ui-v2/navigation/Tabs';
+import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 
 export const dynamic = 'force-dynamic';
 
@@ -135,7 +142,16 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
 
 
   if (isLoading) {
-    return <div className="text-center p-6">Loading employee details...</div>;
+    return (
+      <Page title="Employee Details">
+        <div className="flex items-center justify-center p-8">
+          <div className="text-center">
+            <Spinner size="lg" />
+            <p className="mt-4 text-gray-600">Loading employee details...</p>
+          </div>
+        </div>
+      </Page>
+    );
   }
 
   if (!employee) {
@@ -156,6 +172,7 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
 
   const tabs = [
     {
+      key: 'details',
       label: 'Details',
       content: (
         <dl className="divide-y divide-gray-200">
@@ -167,14 +184,13 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
               <dt className="text-sm font-medium text-gray-500 mb-1 sm:mb-0">{field.label}</dt>
               <dd className={`text-sm text-gray-900 ${field.isFullWidth ? '' : 'sm:col-span-3'}`}>
                 {field.isBadge ? (
-                    <span
-                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium 
-                        ${employee.status === 'Active' ? 'bg-green-100 text-green-800' : 
-                          employee.status === 'Prospective' ? 'bg-blue-100 text-blue-800' : 
-                          'bg-red-100 text-red-800'}`}
-                    >
-                        {field.value}
-                    </span>
+                  <Badge 
+                    variant={employee.status === 'Active' ? 'success' : 
+                             employee.status === 'Prospective' ? 'info' : 
+                             'error'}
+                  >
+                    {field.value}
+                  </Badge>
                 ) : field.isEmail ? (
                     <a href={`mailto:${field.value}`} className="text-blue-600 hover:text-blue-900 break-all">{field.value}</a>
                 ) : field.isPhone ? (
@@ -191,26 +207,32 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
       )
     },
     {
+      key: 'emergency',
       label: 'Emergency Contacts',
       content: <EmergencyContactsTab employeeId={employee.employee_id} />
     },
     {
+      key: 'financial',
       label: 'Financial Details',
       content: <FinancialDetailsTab financialDetails={financialDetails} />
     },
     {
+      key: 'health',
       label: 'Health Records',
       content: <HealthRecordsTab healthRecord={healthRecord} />
     },
     {
+      key: 'right-to-work',
       label: 'Right to Work',
       content: <RightToWorkTab employeeId={employee.employee_id} />
     },
     {
+      key: 'onboarding',
       label: 'Onboarding',
       content: <OnboardingChecklistTab employeeId={employee.employee_id} />
     },
     {
+      key: 'audit',
       label: 'Audit Trail',
       content: <EmployeeAuditTrail 
         employeeId={employee.employee_id} 
@@ -220,96 +242,80 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
   ];
 
   return (
-    <div className="space-y-6">
-        <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <div className="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:justify-between sm:items-center">
-            <div className="min-w-0 flex-1">
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
-                {employee.first_name} {employee.last_name}
-              </h1>
-              <p className="mt-1 text-sm text-gray-500">
-                <span className="truncate">{employee.job_title}</span>
-                <span className="hidden sm:inline"> - </span>
-                <Link href="/employees" className="font-medium text-blue-600 hover:text-blue-900 sm:inline-block block mt-1 sm:mt-0">Back to all employees</Link>
-              </p>
-            </div>
-            <div className="flex items-center gap-2 sm:gap-3">
-              <Link 
-                href={`/employees/${employee.employee_id}/edit`} 
-                className="inline-flex items-center justify-center rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap min-h-[44px] bg-green-600 text-white shadow-sm hover:bg-green-700 focus:ring-green-500 px-4 sm:px-6 py-3 md:py-2 text-sm sm:text-base"
-              >
-                <PencilSquareIcon className="-ml-0.5 mr-1.5 h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
-                <span className="hidden sm:inline">Edit</span>
-                <span className="sm:hidden">Edit</span>
-              </Link>
-              <DeleteEmployeeButton
-                employeeId={employee.employee_id}
-                employeeName={`${employee.first_name} ${employee.last_name}`}
-              />
-            </div>
-          </div>
+    <Page
+      title={`${employee.first_name} ${employee.last_name}`}
+      description={employee.job_title}
+      actions={
+        <div className="flex items-center gap-2 sm:gap-3">
+          <LinkButton
+            href={`/employees/${employee.employee_id}/edit`}
+            variant="primary"
+          >
+            <PencilSquareIcon className="-ml-0.5 mr-1.5 h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
+            Edit
+          </LinkButton>
+          <DeleteEmployeeButton
+            employeeId={employee.employee_id}
+            employeeName={`${employee.first_name} ${employee.last_name}`}
+          />
         </div>
-      </div>
+      }
+    >
 
       <EmployeeRecentChanges employeeId={employee.employee_id} />
 
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-        <Tabs tabs={tabs} className="mobile-tabs" />
-      </div>
+      <Card>
+        <Tabs items={tabs} />
+      </Card>
 
       {/* Employee Notes Section */}
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-        <div className="px-4 py-4 sm:p-6">
-          <h3 className="text-lg sm:text-xl leading-6 font-semibold text-gray-900 mb-1">
-            Employee Notes
-          </h3>
-          <p className="text-xs sm:text-sm text-gray-500 mb-4">Record of time-stamped updates and comments.</p>
-
+      <Section 
+        title="Employee Notes"
+        description="Record of time-stamped updates and comments."
+      >
+        <Card>
           <AddEmployeeNoteForm employeeId={employee.employee_id} />
-
           <div className="mt-6">
-            <Suspense fallback={<div className="text-center text-gray-500 py-4">Loading notes...</div>}>
+            <Suspense fallback={
+              <div className="text-center py-4">
+                <Spinner />
+                <p className="mt-2 text-gray-500">Loading notes...</p>
+              </div>
+            }>
               <EmployeeNotesList employeeId={employee.employee_id} />
             </Suspense>
           </div>
-        </div>
-      </div>
+        </Card>
+      </Section>
 
       {/* Employee Attachments Section */}
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-        <div className="px-4 py-4 sm:p-6">
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-4">
-            <div className="min-w-0 flex-1">
-              <h3 className="text-lg sm:text-xl leading-6 font-semibold text-gray-900 mb-1">
-                Employee Attachments
-              </h3>
-              <p className="text-xs sm:text-sm text-gray-500">Scanned documents and other attached files.</p>
-            </div>
-            <Link
-              href="/settings/categories"
-              className="text-xs sm:text-sm text-blue-600 hover:text-blue-900 whitespace-nowrap"
-            >
-              Manage Categories
-            </Link>
-          </div>
-
+      <Section 
+        title="Employee Attachments"
+        description="Scanned documents and other attached files."
+        actions={
+          <Link
+            href="/settings/categories"
+            className="text-xs sm:text-sm text-blue-600 hover:text-blue-900 whitespace-nowrap"
+          >
+            Manage Categories
+          </Link>
+        }
+      >
+        <Card>
           <AddEmployeeAttachmentForm 
             employeeId={employee.employee_id} 
             onSuccess={loadData}
           />
-
           <div className="mt-6">
-             <EmployeeAttachmentsList
-                employeeId={employee.employee_id}
-                attachments={attachments}
-                categoriesMap={attachmentCategoriesMap}
-                onDelete={loadData}
-              />
+            <EmployeeAttachmentsList
+              employeeId={employee.employee_id}
+              attachments={attachments}
+              categoriesMap={attachmentCategoriesMap}
+              onDelete={loadData}
+            />
           </div>
-        </div>
-      </div>
-
-    </div>
+        </Card>
+      </Section>
+    </Page>
   );
 } 

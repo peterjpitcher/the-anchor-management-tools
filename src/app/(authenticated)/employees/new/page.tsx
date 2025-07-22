@@ -2,11 +2,21 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { Tabs } from '@/components/ui/Tabs';
 import { addEmployee } from '@/app/actions/employeeActions';
-import toast from 'react-hot-toast';
 import { Loader2, Save, X } from 'lucide-react';
+// New UI components
+import { Page } from '@/components/ui-v2/layout/Page';
+import { Card } from '@/components/ui-v2/layout/Card';
+import { Tabs } from '@/components/ui-v2/navigation/Tabs';
+import { Button } from '@/components/ui-v2/forms/Button';
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
+import { Input } from '@/components/ui-v2/forms/Input';
+import { Select } from '@/components/ui-v2/forms/Select';
+import { Textarea } from '@/components/ui-v2/forms/Textarea';
+import { Checkbox } from '@/components/ui-v2/forms/Checkbox';
+import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
+import { toast } from '@/components/ui-v2/feedback/Toast';
+import { Alert } from '@/components/ui-v2/feedback/Alert';
 
 interface EmployeeData {
   // Personal Details
@@ -50,7 +60,6 @@ interface EmployeeData {
 export default function NewEmployeePage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState(0);
   
   // Initialize form data with default values
   const [formData, setFormData] = useState<EmployeeData>({
@@ -63,7 +72,7 @@ export default function NewEmployeePage() {
   });
 
   // Update form field
-  const updateField = (field: string, value: string | boolean | any[]) => {
+  const updateField = (field: string, value: string | boolean) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -76,7 +85,6 @@ export default function NewEmployeePage() {
     if (!formData.first_name || !formData.last_name || !formData.email_address || 
         !formData.job_title || !formData.employment_start_date) {
       toast.error('Please fill in all required personal details');
-      setActiveTab(0);
       return;
     }
 
@@ -143,176 +151,142 @@ export default function NewEmployeePage() {
 
   const tabs = [
     {
+      key: 'personal',
       label: 'Personal Details',
       content: (
         <div className="p-4 sm:p-6 space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                First Name <span className="text-red-500">*</span>
-              </label>
-              <input
+            <FormGroup 
+              label="First Name" 
+              required
+            >
+              <Input
                 type="text"
                 value={formData.first_name}
                 onChange={(e) => updateField('first_name', e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 required
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Last Name <span className="text-red-500">*</span>
-              </label>
-              <input
+            </FormGroup>
+            <FormGroup 
+              label="Last Name" 
+              required
+            >
+              <Input
                 type="text"
                 value={formData.last_name}
                 onChange={(e) => updateField('last_name', e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 required
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Email Address <span className="text-red-500">*</span>
-              </label>
-              <input
+            </FormGroup>
+            <FormGroup 
+              label="Email Address" 
+              required
+            >
+              <Input
                 type="email"
                 value={formData.email_address}
                 onChange={(e) => updateField('email_address', e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 required
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Job Title <span className="text-red-500">*</span>
-              </label>
-              <input
+            </FormGroup>
+            <FormGroup 
+              label="Job Title" 
+              required
+            >
+              <Input
                 type="text"
                 value={formData.job_title}
                 onChange={(e) => updateField('job_title', e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 required
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Employment Start Date <span className="text-red-500">*</span>
-              </label>
-              <input
+            </FormGroup>
+            <FormGroup 
+              label="Employment Start Date" 
+              required
+            >
+              <Input
                 type="date"
                 value={formData.employment_start_date}
                 onChange={(e) => updateField('employment_start_date', e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                 required
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Status <span className="text-red-500">*</span>
-              </label>
-              <select
+            </FormGroup>
+            <FormGroup 
+              label="Status" 
+              required
+            >
+              <Select
                 value={formData.status}
                 onChange={(e) => updateField('status', e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
-              >
-                <option value="Active">Active</option>
-                <option value="Former">Former</option>
-                <option value="Prospective">Prospective</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Date of Birth
-              </label>
-              <input
+                options={[
+                  { value: 'Active', label: 'Active' },
+                  { value: 'Former', label: 'Former' },
+                  { value: 'Prospective', label: 'Prospective' }
+                ]}
+              />
+            </FormGroup>
+            <FormGroup label="Date of Birth">
+              <Input
                 type="date"
                 value={formData.date_of_birth || ''}
                 onChange={(e) => updateField('date_of_birth', e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Phone Number
-              </label>
-              <input
+            </FormGroup>
+            <FormGroup label="Phone Number">
+              <Input
                 type="tel"
                 value={formData.phone_number || ''}
                 onChange={(e) => updateField('phone_number', e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Employment End Date
-              </label>
-              <input
+            </FormGroup>
+            <FormGroup label="Employment End Date">
+              <Input
                 type="date"
                 value={formData.employment_end_date || ''}
                 onChange={(e) => updateField('employment_end_date', e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Address
-              </label>
-              <textarea
+            </FormGroup>
+            <FormGroup label="Address" className="sm:col-span-2">
+              <Textarea
                 value={formData.address || ''}
                 onChange={(e) => updateField('address', e.target.value)}
                 rows={3}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
-            </div>
+            </FormGroup>
           </div>
         </div>
       )
     },
     {
+      key: 'financial',
       label: 'Financial Details',
       content: (
         <div className="p-4 sm:p-6 space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                NI Number
-              </label>
-              <input
+            <FormGroup label="NI Number">
+              <Input
                 type="text"
                 value={formData.ni_number || ''}
                 onChange={(e) => updateField('ni_number', e.target.value)}
                 placeholder="AA123456A"
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Payee Name
-              </label>
-              <input
+            </FormGroup>
+            <FormGroup label="Payee Name">
+              <Input
                 type="text"
                 value={formData.payee_name || ''}
                 onChange={(e) => updateField('payee_name', e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Bank Name
-              </label>
-              <input
+            </FormGroup>
+            <FormGroup label="Bank Name">
+              <Input
                 type="text"
                 value={formData.bank_name || ''}
                 onChange={(e) => updateField('bank_name', e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Sort Code
-              </label>
-              <input
+            </FormGroup>
+            <FormGroup label="Sort Code">
+              <Input
                 type="text"
                 value={formData.bank_sort_code || ''}
                 onChange={(e) => {
@@ -325,14 +299,10 @@ export default function NewEmployeePage() {
                 }}
                 placeholder="00-00-00"
                 maxLength={8}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Account Number
-              </label>
-              <input
+            </FormGroup>
+            <FormGroup label="Account Number">
+              <Input
                 type="text"
                 value={formData.bank_account_number || ''}
                 onChange={(e) => {
@@ -343,190 +313,126 @@ export default function NewEmployeePage() {
                 }}
                 placeholder="8 digits"
                 maxLength={8}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Branch Address
-              </label>
-              <textarea
+            </FormGroup>
+            <FormGroup label="Branch Address" className="sm:col-span-2">
+              <Textarea
                 value={formData.branch_address || ''}
                 onChange={(e) => updateField('branch_address', e.target.value)}
                 rows={2}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
-            </div>
+            </FormGroup>
           </div>
         </div>
       )
     },
     {
+      key: 'health',
       label: 'Health Records',
       content: (
         <div className="p-4 sm:p-6 space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Doctor Name
-              </label>
-              <input
+            <FormGroup label="Doctor Name">
+              <Input
                 type="text"
                 value={formData.doctor_name || ''}
                 onChange={(e) => updateField('doctor_name', e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Doctor Address
-              </label>
-              <textarea
+            </FormGroup>
+            <FormGroup label="Doctor Address" className="sm:col-span-2">
+              <Textarea
                 value={formData.doctor_address || ''}
                 onChange={(e) => updateField('doctor_address', e.target.value)}
                 rows={2}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Allergies
-              </label>
-              <textarea
+            </FormGroup>
+            <FormGroup label="Allergies" className="sm:col-span-2">
+              <Textarea
                 value={formData.allergies || ''}
                 onChange={(e) => updateField('allergies', e.target.value)}
                 rows={2}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">
-                History of Illness
-              </label>
-              <textarea
+            </FormGroup>
+            <FormGroup label="History of Illness" className="sm:col-span-2">
+              <Textarea
                 value={formData.illness_history || ''}
                 onChange={(e) => updateField('illness_history', e.target.value)}
                 rows={3}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Recent Treatment (last 3 months)
-              </label>
-              <textarea
+            </FormGroup>
+            <FormGroup label="Recent Treatment (last 3 months)" className="sm:col-span-2">
+              <Textarea
                 value={formData.recent_treatment || ''}
                 onChange={(e) => updateField('recent_treatment', e.target.value)}
                 rows={2}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
               />
-            </div>
+            </FormGroup>
             <div className="sm:col-span-2">
               <h3 className="text-base font-medium text-gray-900 mb-3">Conditions</h3>
               <div className="space-y-2">
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={formData.has_diabetes || false}
-                    onChange={(e) => updateField('has_diabetes', e.target.checked)}
-                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                  />
-                  <span className="ml-2 text-sm text-gray-700">Suffer with Diabetes?</span>
-                </label>
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={formData.has_epilepsy || false}
-                    onChange={(e) => updateField('has_epilepsy', e.target.checked)}
-                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                  />
-                  <span className="ml-2 text-sm text-gray-700">Suffer with Epilepsy/Fits/Blackouts?</span>
-                </label>
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={formData.has_skin_condition || false}
-                    onChange={(e) => updateField('has_skin_condition', e.target.checked)}
-                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                  />
-                  <span className="ml-2 text-sm text-gray-700">Suffer with Eczema/Dermatitis/Skin Disease?</span>
-                </label>
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={formData.has_depressive_illness || false}
-                    onChange={(e) => updateField('has_depressive_illness', e.target.checked)}
-                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                  />
-                  <span className="ml-2 text-sm text-gray-700">Suffer with Depressive Illness?</span>
-                </label>
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={formData.has_bowel_problems || false}
-                    onChange={(e) => updateField('has_bowel_problems', e.target.checked)}
-                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                  />
-                  <span className="ml-2 text-sm text-gray-700">Suffer with Bowel Problems?</span>
-                </label>
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={formData.has_ear_problems || false}
-                    onChange={(e) => updateField('has_ear_problems', e.target.checked)}
-                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                  />
-                  <span className="ml-2 text-sm text-gray-700">Suffer with Earache or Infection?</span>
-                </label>
+                <Checkbox
+                  label="Suffer with Diabetes?"
+                  checked={formData.has_diabetes || false}
+                  onChange={(e) => updateField('has_diabetes', e.target.checked)}
+                />
+                <Checkbox
+                  label="Suffer with Epilepsy/Fits/Blackouts?"
+                  checked={formData.has_epilepsy || false}
+                  onChange={(e) => updateField('has_epilepsy', e.target.checked)}
+                />
+                <Checkbox
+                  label="Suffer with Eczema/Dermatitis/Skin Disease?"
+                  checked={formData.has_skin_condition || false}
+                  onChange={(e) => updateField('has_skin_condition', e.target.checked)}
+                />
+                <Checkbox
+                  label="Suffer with Depressive Illness?"
+                  checked={formData.has_depressive_illness || false}
+                  onChange={(e) => updateField('has_depressive_illness', e.target.checked)}
+                />
+                <Checkbox
+                  label="Suffer with Bowel Problems?"
+                  checked={formData.has_bowel_problems || false}
+                  onChange={(e) => updateField('has_bowel_problems', e.target.checked)}
+                />
+                <Checkbox
+                  label="Suffer with Earache or Infection?"
+                  checked={formData.has_ear_problems || false}
+                  onChange={(e) => updateField('has_ear_problems', e.target.checked)}
+                />
               </div>
             </div>
             <div className="sm:col-span-2">
               <h3 className="text-sm font-medium text-gray-700 mb-3">Disability Information</h3>
               <div className="space-y-4">
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={formData.is_registered_disabled || false}
-                    onChange={(e) => updateField('is_registered_disabled', e.target.checked)}
-                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                  />
-                  <span className="ml-2 text-sm text-gray-700">Is Registered Disabled?</span>
-                </label>
+                <Checkbox
+                  label="Is Registered Disabled?"
+                  checked={formData.is_registered_disabled || false}
+                  onChange={(e) => updateField('is_registered_disabled', e.target.checked)}
+                />
                 {formData.is_registered_disabled && (
                   <>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        Disability Registration Number
-                      </label>
-                      <input
+                    <FormGroup label="Disability Registration Number">
+                      <Input
                         type="text"
                         value={formData.disability_reg_number || ''}
                         onChange={(e) => updateField('disability_reg_number', e.target.value)}
-                        className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                       />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        Registration Expiry Date
-                      </label>
-                      <input
+                    </FormGroup>
+                    <FormGroup label="Registration Expiry Date">
+                      <Input
                         type="date"
                         value={formData.disability_reg_expiry_date || ''}
                         onChange={(e) => updateField('disability_reg_expiry_date', e.target.value)}
-                        className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                       />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        Disability Details
-                      </label>
-                      <textarea
+                    </FormGroup>
+                    <FormGroup label="Disability Details">
+                      <Textarea
                         value={formData.disability_details || ''}
                         onChange={(e) => updateField('disability_details', e.target.value)}
                         rows={3}
-                        className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
                       />
-                    </div>
+                    </FormGroup>
                   </>
                 )}
               </div>
@@ -538,60 +444,48 @@ export default function NewEmployeePage() {
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <div className="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:justify-between sm:items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Add New Employee</h1>
-              <p className="mt-1 text-sm text-gray-500">
-                Fill in the employee information across all tabs. All data is saved when you click &quot;Save and Close&quot;.
-              </p>
-            </div>
-            <div className="flex-shrink-0 flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-              <button
-                onClick={handleSaveAndClose}
-                disabled={isLoading}
-                className="inline-flex items-center justify-center px-4 py-3 sm:py-2 border border-transparent rounded-lg shadow-sm text-base sm:text-sm font-medium text-white bg-green-600 hover:bg-green-700 active:bg-green-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] transition-colors touch-manipulation"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="-ml-1 mr-2 h-4 w-4" />
-                    Save and Close
-                  </>
-                )}
-              </button>
-              <Link
-                href="/employees"
-                className="inline-flex items-center justify-center px-4 py-3 sm:py-2 border border-gray-300 rounded-lg shadow-sm text-base sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 active:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 min-h-[44px] transition-colors touch-manipulation"
-              >
-                <X className="-ml-1 mr-2 h-4 w-4" />
-                Cancel
-              </Link>
-            </div>
-          </div>
+    <Page
+      title="Add New Employee"
+      description="Fill in the employee information across all tabs. All data is saved when you click 'Save and Close'."
+      actions={
+        <div className="flex-shrink-0 flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <Button
+            onClick={handleSaveAndClose}
+            disabled={isLoading}
+            variant="primary"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="-ml-1 mr-2 h-4 w-4" />
+                Save and Close
+              </>
+            )}
+          </Button>
+          <LinkButton
+            href="/employees"
+            variant="secondary"
+          >
+            <X className="-ml-1 mr-2 h-4 w-4" />
+            Cancel
+          </LinkButton>
         </div>
-      </div>
-      
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+      }
+    >
+      <Card>
         <Tabs 
-          tabs={tabs} 
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
+          items={tabs}
         />
-      </div>
+      </Card>
       
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <p className="text-sm text-blue-800">
-          <strong>Note:</strong> You can switch between tabs without losing your data. 
-          All information will be saved when you click &quot;Save and Close&quot;.
-        </p>
-      </div>
-    </div>
+      <Alert variant="info">
+        <strong>Note:</strong> You can switch between tabs without losing your data. 
+        All information will be saved when you click &quot;Save and Close&quot;.
+      </Alert>
+    </Page>
   );
 }

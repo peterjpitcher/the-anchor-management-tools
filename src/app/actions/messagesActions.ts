@@ -16,7 +16,7 @@ export async function getMessages() {
     .is('read_at', null)
     .order('created_at', { ascending: false })
   
-  console.log('Messages query result:', { count: messages?.length, error: messagesError })
+  console.log('Messages query result:', { badge: messages?.length, error: messagesError })
   
   if (messagesError) {
     console.error('Error fetching messages:', messagesError)
@@ -112,11 +112,11 @@ export async function getUnreadMessageCount() {
   console.log('Unread count result:', { count, error })
   
   if (error) {
-    console.error('Error fetching unread count:', error)
-    return { count: 0 }
+    console.error('Error fetching unread badge: ', error)
+    return { badge: 0 }
   }
   
-  return { count: count || 0 }
+  return { badge: count || 0 }
 }
 
 export async function markMessageAsRead(messageId: string) {
