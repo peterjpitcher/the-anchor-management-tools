@@ -29,6 +29,7 @@ import { Modal } from '@/components/ui-v2/overlay/Modal';
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog';
 import { toast } from '@/components/ui-v2/feedback/Toast';
 
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 interface SundayLunchMenuItem {
   id: string;
   name: string;
@@ -334,7 +335,7 @@ export default function SundayLunchMenuPage() {
         </Button>
       }
     >
-      <LinkButton href="/table-bookings/settings" variant="secondary">Back to Settings</LinkButton>
+      <BackButton label="Back to Settings" onBack={() => router.push('/table-bookings/settings')} />
 
       {error && (
         <Alert variant="error" className="mt-4">

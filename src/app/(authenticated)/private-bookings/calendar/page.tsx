@@ -1,7 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import CalendarView from '@/components/private-bookings/CalendarView'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 
 export default async function PrivateBookingsCalendarPage() {
@@ -43,14 +44,18 @@ export default async function PrivateBookingsCalendarPage() {
   }
 
   return (
-    <Page
-      title="Private Bookings Calendar"
-      description="View all bookings in calendar format"
-      actions={
-        <LinkButton href="/private-bookings" variant="secondary">Back</LinkButton>
-      }
-    >
-      <CalendarView bookings={bookings || []} />
-    </Page>
+    <PageWrapper>
+      <PageHeader
+        title="Private Bookings Calendar"
+        subtitle="View all bookings in calendar format"
+        backButton={{
+          label: "Back to Private Bookings",
+          href: "/private-bookings"
+        }}
+      />
+      <PageContent>
+        <CalendarView bookings={bookings || []} />
+      </PageContent>
+    </PageWrapper>
   )
 }

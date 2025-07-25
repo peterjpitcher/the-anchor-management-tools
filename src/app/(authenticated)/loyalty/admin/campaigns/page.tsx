@@ -1,8 +1,10 @@
-'use client';
+'use client'
 
+import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { usePermissions } from '@/contexts/PermissionContext';
 import Link from 'next/link';
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 import { 
   MegaphoneIcon, 
   PlusIcon, 
@@ -24,6 +26,8 @@ import {
   toggleCampaignStatus
 } from '@/app/actions/loyalty-campaigns';
 import { Loader2 } from 'lucide-react';
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
 
 interface CampaignFormData {
   name: string;
@@ -41,6 +45,7 @@ interface CampaignFormData {
 }
 
 export default function CampaignManagementPage() {
+  const router = useRouter();
   const { hasPermission } = usePermissions();
   const [campaigns, setCampaigns] = useState<LoyaltyCampaign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -200,20 +205,38 @@ export default function CampaignManagementPage() {
 
   if (!hasPermission('loyalty', 'manage')) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-500">You don&apos;t have permission to manage campaigns.</p>
-      </div>
+      <PageWrapper>
+        <PageHeader
+          title="Campaign Management"
+          subtitle="Create and manage bonus point campaigns"
+          backButton={{ label: "Back to Dashboard", href: "/loyalty/admin" }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center min-h-[400px]">
+            <p className="text-gray-500">You don&apos;t have permission to manage campaigns.</p>
+          </div>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading campaigns...</p>
-        </div>
-      </div>
+      <PageWrapper>
+        <PageHeader
+          title="Campaign Management"
+          subtitle="Create and manage bonus point campaigns"
+          backButton={{ label: "Back to Dashboard", href: "/loyalty/admin" }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-600 mx-auto"></div>
+              <p className="mt-4 text-gray-600">Loading campaigns...</p>
+            </div>
+          </div>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
@@ -229,26 +252,15 @@ export default function CampaignManagementPage() {
   });
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Campaign Management</h1>
-            <p className="mt-1 text-gray-500">
-              Create and manage bonus point campaigns
-            </p>
-          </div>
-          <div className="flex items-center space-x-3">
-            <Link
-              href="/loyalty/admin"
-              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-            >
-              Back to Dashboard
-            </Link>
-            <button
-              onClick={() => {
-                resetForm();
+    <PageWrapper>
+      <PageHeader
+        title="Campaign Management"
+        subtitle="Create and manage bonus point campaigns"
+        backButton={{ label: "Back to Dashboard", href: "/loyalty/admin" }}
+        actions={
+          <button
+            onClick={() => {
+              resetForm();
                 setShowForm(true);
               }}
               className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-amber-600 hover:bg-amber-700"
@@ -256,9 +268,9 @@ export default function CampaignManagementPage() {
               <PlusIcon className="h-4 w-4 mr-2" />
               Add Campaign
             </button>
-          </div>
-        </div>
-      </div>
+        }
+      />
+      <PageContent>
 
       {/* Filters */}
       <div className="mb-6">
@@ -587,6 +599,7 @@ export default function CampaignManagementPage() {
           </div>
         </div>
       )}
-    </div>
+      </PageContent>
+    </PageWrapper>
   );
 }

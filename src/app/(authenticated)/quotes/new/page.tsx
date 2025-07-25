@@ -22,6 +22,7 @@ import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { Dropdown } from '@/components/ui-v2/navigation/Dropdown'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 interface LineItem {
   id: string
   catalog_item_id?: string
@@ -197,6 +198,8 @@ export default function NewQuotePage() {
     <Page
       title="New Quote"
       description="Create a new quote"
+    
+      actions={<BackButton label="Back to Quotes" onBack={() => router.push('/quotes')} />}
     >
       {error && (
         <Alert variant="error" title="Error" description={error} />

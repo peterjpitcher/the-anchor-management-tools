@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import { createRecurringInvoice } from '@/app/actions/recurring-invoices'
 import { getVendors } from '@/app/actions/vendors'
 import { getLineItemCatalog } from '@/app/actions/invoices'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
@@ -165,33 +166,41 @@ export default function NewRecurringInvoicePage() {
 
   if (loading) {
     return (
-      <Page title="Loading...">
-        <div className="flex items-center justify-center h-64">
-          <Spinner size="lg" />
-        </div>
-      </Page>
+      <PageWrapper>
+        <PageHeader 
+          title="Loading..."
+          backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center h-64">
+            <Spinner size="lg" />
+          </div>
+        </PageContent>
+      </PageWrapper>
     )
   }
 
   const { subtotal, invoiceDiscountAmount, totalVat, total } = calculateTotals()
 
   return (
-    <Page
-      title="New Recurring Invoice"
-      description="Set up automated invoice generation"
-      breadcrumbs={[
-        { label: 'Invoices', href: '/invoices' },
-        { label: 'Recurring', href: '/invoices/recurring' },
-        { label: 'New' }
-      ]}
-    >
-      {error && (
-        <Alert variant="error" description={error} className="mb-6" />
-      )}
+    <PageWrapper>
+      <PageHeader
+        title="New Recurring Invoice"
+        subtitle="Set up automated invoice generation"
+        breadcrumbs={[
+          { label: 'Invoices', href: '/invoices' },
+          { label: 'Recurring', href: '/invoices/recurring' }
+        ]}
+      />
+      <PageContent>
+        <div className="space-y-6">
+          {error && (
+            <Alert variant="error" description={error} />
+          )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Information */}
-        <Card className="p-6">
+        <Card>
           <h2 className="text-xl font-semibold mb-4">Recurring Details</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -264,7 +273,7 @@ export default function NewRecurringInvoicePage() {
         </Card>
 
         {/* Line Items */}
-        <Card className="p-6">
+        <Card>
           <h2 className="text-xl font-semibold mb-4">Line Items</h2>
           
           <div className="space-y-4">
@@ -400,7 +409,7 @@ export default function NewRecurringInvoicePage() {
         </Card>
 
         {/* Invoice Settings */}
-        <Card className="p-6">
+        <Card>
           <h2 className="text-xl font-semibold mb-4">Invoice Settings</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -436,7 +445,7 @@ export default function NewRecurringInvoicePage() {
         </Card>
 
         {/* Summary */}
-        <Card className="p-6">
+        <Card>
           <h2 className="text-xl font-semibold mb-4">Summary (Per Invoice)</h2>
           
           <div className="max-w-xs ml-auto space-y-2">
@@ -482,6 +491,8 @@ export default function NewRecurringInvoicePage() {
           </Button>
         </div>
       </form>
-    </Page>
+        </div>
+      </PageContent>
+    </PageWrapper>
   )
 }

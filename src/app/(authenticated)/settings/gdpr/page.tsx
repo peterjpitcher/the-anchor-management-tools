@@ -15,8 +15,12 @@ import { Button } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
+import { useRouter } from 'next/navigation';
 export default function GDPRSettingsPage() {
-  const [isExporting, setIsExporting] = useState(false)
+  
+  const router = useRouter();
+const [isExporting, setIsExporting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteEmail, setDeleteEmail] = useState('')
   const [isDeleting, setIsDeleting] = useState(false)
@@ -87,6 +91,8 @@ export default function GDPRSettingsPage() {
         { label: 'Settings', href: '/settings' },
         { label: 'GDPR & Privacy' }
       ]}
+    
+      actions={<BackButton label="Back to Settings" onBack={() => router.push('/settings')} />}
     >
 
       <Section className="space-y-6">
@@ -186,7 +192,7 @@ export default function GDPRSettingsPage() {
               <ul className="list-disc list-inside space-y-1 ml-4">
                 <li>Right to access your personal data</li>
                 <li>Right to rectification of inaccurate data</li>
-                <li>Right to erasure ("right to be forgotten")</li>
+                <li>Right to erasure (&quot;right to be forgotten&quot;)</li>
                 <li>Right to data portability</li>
                 <li>Right to object to processing</li>
                 <li>Right to withdraw consent</li>

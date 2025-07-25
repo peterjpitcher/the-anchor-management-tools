@@ -196,11 +196,17 @@ export function Badge({
       {dot && (
         <span
           className={cn(
-            'rounded-full',
+            'rounded-full flex-shrink-0',
             size === 'sm' && 'h-1.5 w-1.5',
             size === 'md' && 'h-2 w-2',
             size === 'lg' && 'h-2.5 w-2.5',
-            variantClasses[variant].solid.split(' ').find(c => c.startsWith('bg-'))?.replace('bg-', 'bg-')?.replace('100', '400')
+            // Get the background color class and make it darker
+            (() => {
+              const bgClass = variantClasses[variant].solid.split(' ').find(c => c.startsWith('bg-'))
+              if (!bgClass) return ''
+              // Replace the color intensity (e.g., bg-green-100 -> bg-green-400)
+              return bgClass.replace(/bg-(\w+)-\d+/, 'bg-$1-400')
+            })()
           )}
         />
       )}
@@ -295,7 +301,7 @@ export function StatusBadge({
       className={className}
       {...props}
     >
-      {config.label}
+      {props.children || config.label}
     </Badge>
   )
 }

@@ -1,20 +1,21 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import Link from 'next/link'
 import type { Employee } from '@/types/database'
-import { PlusIcon, ArrowDownTrayIcon, ChevronDownIcon, CakeIcon } from '@heroicons/react/24/outline'
+import { ArrowDownTrayIcon } from '@heroicons/react/24/outline'
 import { formatDate } from '@/lib/dateUtils'
 import { exportEmployees } from '@/app/actions/employeeExport'
 import { usePagination } from '@/hooks/usePagination'
 import { calculateLengthOfService } from '@/lib/employeeUtils'
 // New UI components
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
 import { SearchInput } from '@/components/ui-v2/forms/SearchInput'
 import { StatusBadge } from '@/components/ui-v2/display/Badge'
 import { toast } from '@/components/ui-v2/feedback/Toast'
@@ -27,6 +28,32 @@ export default function EmployeesPage() {
   const supabase = useSupabase()
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Former' | 'Prospective'>('Active')
+  const [statusCounts, setStatusCounts] = useState({
+    all: 0,
+    active: 0,
+    former: 0,
+    prospective: 0
+  })
+
+  // Fetch total counts for each status
+  useEffect(() => {
+    async function fetchCounts() {
+      const [allResult, activeResult, formerResult, prospectiveResult] = await Promise.all([
+        supabase.from('employees').select('*', { count: 'exact', head: true }),
+        supabase.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'Active'),
+        supabase.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'Former'),
+        supabase.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'Prospective')
+      ])
+      
+      setStatusCounts({
+        all: allResult.count || 0,
+        active: activeResult.count || 0,
+        former: formerResult.count || 0,
+        prospective: prospectiveResult.count || 0
+      })
+    }
+    fetchCounts()
+  }, [supabase])
 
   // Memoize query configuration to prevent unnecessary re-renders
   const queryConfig = useMemo(() => ({
@@ -58,11 +85,6 @@ export default function EmployeesPage() {
     queryConfig,
     paginationOptions
   )
-
-
-  const activeCount = employees.filter(e => e.status === 'Active').length
-  const formerCount = employees.filter(e => e.status === 'Former').length
-  const prospectiveCount = employees.filter(e => e.status === 'Prospective').length
 
   async function handleExport(format: 'csv' | 'json') {
     try {
@@ -100,62 +122,63 @@ export default function EmployeesPage() {
 
   if (loading) {
     return (
-      <Page title="Employees">
-        <Card>
-          <div className="space-y-3">
-            {[...Array(5)].map((_, i) => (
-              <Skeleton key={i} className="h-16" />
-            ))}
-          </div>
-        </Card>
-      </Page>
+      <PageWrapper>
+        <PageHeader title="Employees" />
+        <PageContent>
+          <Card>
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-16" />
+              ))}
+            </div>
+          </Card>
+        </PageContent>
+      </PageWrapper>
     )
   }
 
   return (
-    <Page
-      title="Employees"
-      description={`${employees.length} total employees (${activeCount} active, ${prospectiveCount} prospective, ${formerCount} former)`}
-      actions={
-        <div className="flex-shrink-0 flex space-x-2">
-          <LinkButton
-            href="/employees/birthdays"
-            variant="secondary"
-          >
-            <CakeIcon className="-ml-1 mr-2 h-5 w-5" />
-            Birthdays
-          </LinkButton>
-          <Dropdown label="Export"
-            icon={<ArrowDownTrayIcon className="h-5 w-5" />}
-            items={[
-              {
-                key: 'csv',
-                label: 'Export as CSV',
-                description: 'Spreadsheet format',
-                onClick: () => handleExport('csv'),
-              },
-              {
-                key: 'json',
-                label: 'Export as JSON',
-                description: 'Data integration format',
-                onClick: () => handleExport('json'),
-              },
-            ]}
-            disabled={employees.length === 0}
-            variant="secondary"
-          />
-          <LinkButton
-            href="/employees/new"
-            variant="primary"
-          >
-            <PlusIcon className="-ml-1 mr-2 h-5 w-5 flex-shrink-0" />
-            Add Employee
-          </LinkButton>
-        </div>
-      }
-    >
-
-      <Card>
+    <PageWrapper>
+      <PageHeader
+        title="Employees"
+        subtitle="Manage your staff and their information"
+        backButton={{ label: "Back to Dashboard", href: "/dashboard" }}
+        actions={
+          <div className="flex flex-wrap gap-2 sm:gap-3">
+            <NavGroup>
+              <NavLink href="/employees/new">
+                Add Employee
+              </NavLink>
+              <NavLink href="/employees/birthdays">
+                Birthdays
+              </NavLink>
+            </NavGroup>
+            <Dropdown label="Export"
+              icon={<ArrowDownTrayIcon className="h-4 w-4" />}
+              items={[
+                {
+                  key: 'csv',
+                  label: 'Export as CSV',
+                  description: 'Spreadsheet format',
+                  onClick: () => handleExport('csv'),
+                },
+                {
+                  key: 'json',
+                  label: 'Export as JSON',
+                  description: 'Data integration format',
+                  onClick: () => handleExport('json'),
+                },
+              ]}
+              disabled={employees.length === 0}
+              variant="secondary"
+              size="sm"
+            />
+          </div>
+        }
+      />
+      
+      <PageContent>
+        <Card>
         <div className="space-y-4">
           <SearchInput
             placeholder="Search by name, email, or job title..."
@@ -165,10 +188,10 @@ export default function EmployeesPage() {
           
           <TabNav
             tabs={[
-              { key: 'all', label: 'All', badge: employees.length },
-              { key: 'Active', label: 'Active', badge: activeCount },
-              { key: 'Prospective', label: 'Prospective', badge: prospectiveCount },
-              { key: 'Former', label: 'Former', badge: formerCount },
+              { key: 'all', label: 'All', badge: statusCounts.all },
+              { key: 'Active', label: 'Active', badge: statusCounts.active },
+              { key: 'Prospective', label: 'Prospective', badge: statusCounts.prospective },
+              { key: 'Former', label: 'Former', badge: statusCounts.former },
             ]}
             activeKey={statusFilter}
             onChange={(tab) => setStatusFilter(tab as 'all' | 'Active' | 'Former' | 'Prospective')}
@@ -265,6 +288,7 @@ export default function EmployeesPage() {
           )}
         </Card>
       )}
-    </Page>
+      </PageContent>
+    </PageWrapper>
   )
 }

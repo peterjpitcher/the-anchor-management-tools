@@ -17,6 +17,8 @@ import toast from 'react-hot-toast';
 import { processRedemption, validateRedemptionCode, getPendingRedemptions } from '@/app/actions/loyalty-redemptions';
 import { BrowserQRCodeReader } from '@zxing/browser';
 import { Loader2 } from 'lucide-react';
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
 
 type RedemptionState = 'input' | 'scanning' | 'checking' | 'success' | 'error' | 'expired' | 'already-used';
 
@@ -156,30 +158,29 @@ export default function RedemptionPage() {
 
   if (!hasPermission('loyalty', 'manage')) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-500">You don&apos;t have permission to process redemptions.</p>
-      </div>
+      <PageWrapper>
+        <PageHeader
+          title="Redemption Terminal"
+          subtitle="Process customer reward redemptions"
+          backButton={{ label: "Back to Loyalty", href: "/loyalty/admin" }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center min-h-[400px]">
+            <p className="text-gray-500">You don&apos;t have permission to process redemptions.</p>
+          </div>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center space-x-4">
-          <Link
-            href="/loyalty/admin"
-            className="inline-flex items-center text-gray-600 hover:text-gray-900"
-          >
-            <ArrowLeftIcon className="h-5 w-5 mr-1" />
-            Back
-          </Link>
-        </div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mt-4">Redemption Terminal</h1>
-        <p className="mt-2 text-sm sm:text-base text-gray-600">
-          Process customer reward redemptions
-        </p>
-      </div>
+    <PageWrapper>
+      <PageHeader
+        title="Redemption Terminal"
+        subtitle="Process customer reward redemptions"
+        backButton={{ label: "Back to Loyalty", href: "/loyalty/admin" }}
+      />
+      <PageContent>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-8">
         {/* Main Redemption Interface */}
@@ -412,6 +413,7 @@ export default function RedemptionPage() {
           </div>
         </div>
       </div>
-    </div>
+      </PageContent>
+    </PageWrapper>
   );
 }

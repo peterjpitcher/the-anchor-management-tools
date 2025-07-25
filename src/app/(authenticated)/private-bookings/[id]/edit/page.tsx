@@ -7,7 +7,8 @@ import { notFound } from 'next/navigation'
 import { getPrivateBooking, updatePrivateBooking } from '@/app/actions/privateBookingActions'
 import type { PrivateBookingWithDetails } from '@/types/private-bookings'
 import CustomerSearchInput from '@/components/CustomerSearchInput'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -19,7 +20,6 @@ import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
-
 type FormState = { error: string } | { success: boolean } | null
 
 interface Customer {
@@ -100,34 +100,48 @@ export default function EditPrivateBookingPage({
 
   if (loading) {
     return (
-      <Page title="Edit Private Booking">
-        <div className="flex items-center justify-center p-8">
-          <Spinner size="lg" />
-        </div>
-      </Page>
+      <PageWrapper>
+        <PageHeader
+          title="Edit Private Booking"
+          backButton={{
+            label: "Back to Booking",
+            onBack: () => router.back()
+          }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center p-8">
+            <Spinner size="lg" />
+          </div>
+        </PageContent>
+      </PageWrapper>
     )
   }
 
   if (error || !booking) {
     return (
-      <Page title="Edit Private Booking">
-        <Alert variant="error">
-          {error || 'Booking not found'}
-        </Alert>
-      </Page>
+      <PageWrapper>
+        <PageHeader title="Edit Private Booking" />
+        <PageContent>
+          <Alert variant="error">
+            {error || 'Booking not found'}
+          </Alert>
+        </PageContent>
+      </PageWrapper>
     )
   }
 
   return (
-    <Page
-      title="Edit Private Booking"
-      actions={
-        <LinkButton href={`/private-bookings/${id}`} variant="secondary">
-          Back
-        </LinkButton>
-      }
-    >
-      <Card>
+    <PageWrapper>
+      <PageHeader
+        title="Edit Private Booking"
+        actions={
+          <LinkButton href={`/private-bookings/${id}`} variant="secondary">
+            Back
+          </LinkButton>
+        }
+      />
+      <PageContent>
+        <Card>
         {state && 'error' in state && (
           <Alert variant="error" className="mb-6">
             {state.error}
@@ -364,6 +378,7 @@ export default function EditPrivateBookingPage({
           </div>
         </form>
       </Card>
-    </Page>
+      </PageContent>
+    </PageWrapper>
   )
 }

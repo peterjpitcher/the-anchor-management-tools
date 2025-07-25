@@ -3,9 +3,11 @@ import RoleList from './components/RoleList';
 import { PlusIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 // New UI components
-import { Page } from '@/components/ui-v2/layout/Page';
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Button } from '@/components/ui-v2/forms/Button';
+import { NavLink } from '@/components/ui-v2/navigation/NavLink';
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
 
 export default async function RolesPage() {
@@ -16,14 +18,22 @@ export default async function RolesPage() {
 
   if (rolesResult.error || permissionsResult.error) {
     return (
-      <Page title="Role Management">
+      <div>
+        <PageHeader
+          title="Role Management"
+          subtitle="Manage roles and permissions for your organization"
+          backButton={{
+            label: "Back to Settings",
+            href: "/settings"
+          }}
+        />
         <Card>
           <Alert variant="error"
             title="Error loading data"
             description={rolesResult.error || permissionsResult.error || 'Failed to load roles and permissions'}
           />
         </Card>
-      </Page>
+      </div>
     );
   }
 
@@ -31,20 +41,23 @@ export default async function RolesPage() {
   const permissions = permissionsResult.data || [];
 
   return (
-    <Page
-      title="Role Management"
-      description="Manage roles and permissions for your organization"
-      actions={
-        <Link href="/roles/new">
-          <Button variant="primary"
-            leftIcon={<PlusIcon className="h-5 w-5" />}
-          >
-            New Role
-          </Button>
-        </Link>
-      }
-    >
+    <div>
+      <PageHeader
+        title="Role Management"
+        subtitle="Manage roles and permissions for your organization"
+        backButton={{
+          label: "Back to Settings",
+          href: "/settings"
+        }}
+        actions={
+          <NavGroup>
+            <NavLink href="/roles/new">
+              New Role
+            </NavLink>
+          </NavGroup>
+        }
+      />
       <RoleList roles={roles} permissions={permissions} />
-    </Page>
+    </div>
   );
 }

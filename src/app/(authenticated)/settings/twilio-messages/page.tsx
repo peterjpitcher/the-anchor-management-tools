@@ -17,8 +17,12 @@ import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { Stat } from '@/components/ui-v2/display/Stat'
 
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
+import { useRouter } from 'next/navigation';
 export default function TwilioMessagesPage() {
-  const [loading, setLoading] = useState(false)
+  
+  const router = useRouter();
+const [loading, setLoading] = useState(false)
   const [messages, setMessages] = useState<MessageComparison[]>([])
   const [unloggedCount, setUnloggedCount] = useState<number | null>(null)
   const [showUnloggedOnly, setShowUnloggedOnly] = useState(false)
@@ -201,11 +205,14 @@ export default function TwilioMessagesPage() {
         { label: 'Twilio Messages Monitor' }
       ]}
       actions={
-        unloggedCount !== null && unloggedCount > 0 && (
-          <Badge variant="warning" size="lg" icon={<ExclamationTriangleIcon className="h-4 w-4" />}>
-            {unloggedCount} unlogged messages
-          </Badge>
-        )
+        <div className="flex items-center space-x-3">
+          <BackButton label="Back to Settings" onBack={() => router.push('/settings')} />
+          {unloggedCount !== null && unloggedCount > 0 && (
+            <Badge variant="warning" size="lg" icon={<ExclamationTriangleIcon className="h-4 w-4" />}>
+              {unloggedCount} unlogged messages
+            </Badge>
+          )}
+        </div>
       }
     >
       {/* Filters */}

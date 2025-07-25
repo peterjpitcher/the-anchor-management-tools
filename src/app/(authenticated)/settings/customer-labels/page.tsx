@@ -34,6 +34,8 @@ import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
+import { useRouter } from 'next/navigation';
 const PRESET_COLORS = [
   { name: 'Green', value: '#10B981' },
   { name: 'Blue', value: '#3B82F6' },
@@ -47,7 +49,9 @@ const PRESET_COLORS = [
 
 
 export default function CustomerLabelsPage() {
-  const { hasPermission } = usePermissions()
+  
+  const router = useRouter();
+const { hasPermission } = usePermissions()
   const [labels, setLabels] = useState<CustomerLabel[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -174,7 +178,9 @@ export default function CustomerLabelsPage() {
 
   if (!canView) {
     return (
-      <Page title="Customer Labels">
+      <Page title="Customer Labels"
+      actions={<BackButton label="Back to Settings" onBack={() => router.push('/settings')} />}
+    >
         <Card>
           <Alert variant="error"
             title="Access Denied"

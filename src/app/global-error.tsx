@@ -14,7 +14,7 @@ export default function GlobalError({
   return (
     <html>
       <body>
-        <div className="flex min-h-screen items-center justify-center bg-gray-100">
+        <div className="flex min-h-screen items-center justify-center bg-sidebar">
           <Card variant="elevated" className="max-w-md w-full">
             <div>
               <CardTitle className="text-2xl font-bold text-red-600 mb-4">

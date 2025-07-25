@@ -15,7 +15,8 @@ import {
 } from '@heroicons/react/24/outline'
 import { createPrivateBooking } from '@/app/actions/privateBookingActions'
 import CustomerSearchInput from '@/components/CustomerSearchInput'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -26,7 +27,6 @@ import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { toast } from '@/components/ui-v2/feedback/Toast'
-
 interface Customer {
   id: string
   first_name: string
@@ -95,14 +95,17 @@ export default function NewPrivateBookingPage() {
   const maxDate = oneYearFromNow.toISOString().split('T')[0]
 
   return (
-    <Page
-      title="New Private Booking"
-      description="Create a new venue hire booking"
-      actions={
-        <LinkButton href="/private-bookings" variant="secondary">Back</LinkButton>
-      }
-    >
-      <Card>
+    <PageWrapper>
+      <PageHeader
+        title="New Private Booking"
+        subtitle="Create a new venue hire booking"
+        backButton={{
+          label: "Back to Private Bookings",
+          onBack: () => router.push('/private-bookings')
+        }}
+      />
+      <PageContent>
+        <Card>
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Customer Information */}
           <Section 
@@ -410,6 +413,7 @@ export default function NewPrivateBookingPage() {
           </div>
         </form>
       </Card>
-    </Page>
+      </PageContent>
+    </PageWrapper>
   )
 }

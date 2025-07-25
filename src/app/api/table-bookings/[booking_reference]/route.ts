@@ -1,7 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { verifyApiKey } from '@/lib/api-auth';
+import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { z } from 'zod';
+
+// Handle CORS preflight
+export async function OPTIONS(request: NextRequest) {
+  return new Response(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, PUT, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key, X-Customer-Email',
+      'Access-Control-Max-Age': '86400',
+    },
+  });
+}
 
 // Update schema
 const UpdateBookingSchema = z.object({
@@ -20,116 +33,105 @@ export async function GET(
 ) {
   const params = await props.params;
   
-  try {
-    // Verify API key
-    const apiKey = request.headers.get('x-api-key');
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: 'API key required' },
-        { status: 401 }
-      );
-    }
+  return withApiAuth(async (req, apiKey) => {
+    try {
+      // Verify customer email
+      const customerEmail = request.headers.get('x-customer-email');
+      if (!customerEmail) {
+        return createErrorResponse(
+          'Customer email required for verification',
+          'UNAUTHORIZED',
+          401
+        );
+      }
 
-    const { valid, error } = await verifyApiKey(apiKey, 'read:table_bookings');
-    if (!valid) {
-      return NextResponse.json(
-        { error: error || 'Invalid API key' },
-        { status: 401 }
-      );
-    }
-
-    // Verify customer email
-    const customerEmail = request.headers.get('x-customer-email');
-    if (!customerEmail) {
-      return NextResponse.json(
-        { error: 'Customer email required for verification' },
-        { status: 401 }
-      );
-    }
-
-    const supabase = await createClient();
-    
-    // Get booking with customer
-    const { data: booking, error: bookingError } = await supabase
-      .from('table_bookings')
-      .select(`
-        *,
-        customer:customers(*),
-        table_booking_items(*),
-        table_booking_payments(*)
-      `)
-      .eq('booking_reference', params.booking_reference)
-      .single();
+      const supabase = await createClient();
       
-    if (bookingError || !booking) {
-      return NextResponse.json(
-        { error: 'Booking not found' },
-        { status: 404 }
-      );
-    }
+      // Get booking with customer
+      const { data: booking, error: bookingError } = await supabase
+        .from('table_bookings')
+        .select(`
+          *,
+          customer:customers(*),
+          table_booking_items(*),
+          table_booking_payments(*)
+        `)
+        .eq('booking_reference', params.booking_reference)
+        .single();
+        
+      if (bookingError || !booking) {
+        return createErrorResponse(
+          'Booking not found',
+          'NOT_FOUND',
+          404
+        );
+      }
 
-    // Verify customer email matches
-    if (booking.customer?.email !== customerEmail) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 403 }
-      );
-    }
+      // Verify customer email matches
+      if (booking.customer?.email !== customerEmail) {
+        return createErrorResponse(
+          'Unauthorized',
+          'FORBIDDEN',
+          403
+        );
+      }
 
-    // Calculate cancellation policy
-    const bookingDateTime = new Date(`${booking.booking_date}T${booking.booking_time}`);
-    const hoursUntilBooking = (bookingDateTime.getTime() - Date.now()) / (1000 * 60 * 60);
-    
-    // Get policy
-    const { data: policy } = await supabase
-      .from('booking_policies')
-      .select('*')
-      .eq('booking_type', booking.booking_type)
-      .single();
+      // Calculate cancellation policy
+      const bookingDateTime = new Date(`${booking.booking_date}T${booking.booking_time}`);
+      const hoursUntilBooking = (bookingDateTime.getTime() - Date.now()) / (1000 * 60 * 60);
       
-    let cancellationPolicy;
-    if (policy) {
-      const fullRefundUntil = new Date(bookingDateTime);
-      fullRefundUntil.setHours(fullRefundUntil.getHours() - policy.full_refund_hours);
-      
-      const partialRefundUntil = new Date(bookingDateTime);
-      partialRefundUntil.setHours(partialRefundUntil.getHours() - policy.partial_refund_hours);
-      
-      cancellationPolicy = {
-        full_refund_until: fullRefundUntil.toISOString(),
-        partial_refund_until: partialRefundUntil.toISOString(),
-        refund_percentage: policy.partial_refund_percentage,
+      // Get policy
+      const { data: policy } = await supabase
+        .from('booking_policies')
+        .select('*')
+        .eq('booking_type', booking.booking_type)
+        .single();
+        
+      let cancellationPolicy;
+      if (policy) {
+        const fullRefundUntil = new Date(bookingDateTime);
+        fullRefundUntil.setHours(fullRefundUntil.getHours() - policy.full_refund_hours);
+        
+        const partialRefundUntil = new Date(bookingDateTime);
+        partialRefundUntil.setHours(partialRefundUntil.getHours() - policy.partial_refund_hours);
+        
+        cancellationPolicy = {
+          full_refund_until: fullRefundUntil.toISOString(),
+          partial_refund_until: partialRefundUntil.toISOString(),
+          refund_percentage: policy.partial_refund_percentage,
+        };
+      }
+
+      // Prepare response
+      const response = {
+        booking: {
+          id: booking.id,
+          reference: booking.booking_reference,
+          status: booking.status,
+          date: booking.booking_date,
+          time: booking.booking_time,
+          party_size: booking.party_size,
+          customer_name: `${booking.customer.first_name} ${booking.customer.last_name}`,
+          special_requirements: booking.special_requirements,
+          dietary_requirements: booking.dietary_requirements,
+          allergies: booking.allergies,
+          menu_selections: booking.table_booking_items,
+          payment_status: booking.table_booking_payments?.[0]?.status || 'none',
+          can_cancel: booking.status === 'confirmed' && hoursUntilBooking > 0,
+          cancellation_policy: cancellationPolicy,
+        },
       };
+
+      return createApiResponse(response);
+    } catch (error) {
+      console.error('Get booking API error:', error);
+      return createErrorResponse(
+        'Internal server error',
+        'INTERNAL_ERROR',
+        500
+      );
     }
-
-    // Prepare response
-    const response = {
-      booking: {
-        id: booking.id,
-        reference: booking.booking_reference,
-        status: booking.status,
-        date: booking.booking_date,
-        time: booking.booking_time,
-        party_size: booking.party_size,
-        customer_name: `${booking.customer.first_name} ${booking.customer.last_name}`,
-        special_requirements: booking.special_requirements,
-        dietary_requirements: booking.dietary_requirements,
-        allergies: booking.allergies,
-        menu_selections: booking.table_booking_items,
-        payment_status: booking.table_booking_payments?.[0]?.status || 'none',
-        can_cancel: booking.status === 'confirmed' && hoursUntilBooking > 0,
-        cancellation_policy: cancellationPolicy,
-      },
-    };
-
-    return NextResponse.json(response);
-  } catch (error) {
-    console.error('Get booking API error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
+  }, ['read:table_bookings'], request);
 }
 
 // UPDATE booking
@@ -139,62 +141,49 @@ export async function PUT(
 ) {
   const params = await props.params;
   
-  try {
-    // Verify API key
-    const apiKey = request.headers.get('x-api-key');
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: 'API key required' },
-        { status: 401 }
-      );
-    }
+  return withApiAuth(async (req, apiKey) => {
+    try {
+      // Parse and validate body
+      const body = await req.json();
+      const validatedData = UpdateBookingSchema.parse(body);
 
-    const { valid, error } = await verifyApiKey(apiKey, 'write:table_bookings');
-    if (!valid) {
-      return NextResponse.json(
-        { error: error || 'Invalid API key' },
-        { status: 401 }
-      );
-    }
-
-    // Parse and validate body
-    const body = await request.json();
-    const validatedData = UpdateBookingSchema.parse(body);
-
-    const supabase = await createClient();
-    
-    // Get booking with customer
-    const { data: booking, error: bookingError } = await supabase
-      .from('table_bookings')
-      .select(`
-        *,
-        customer:customers(*)
-      `)
-      .eq('booking_reference', params.booking_reference)
-      .single();
+      const supabase = await createClient();
       
-    if (bookingError || !booking) {
-      return NextResponse.json(
-        { error: 'Booking not found' },
-        { status: 404 }
-      );
-    }
+      // Get booking with customer
+      const { data: booking, error: bookingError } = await supabase
+        .from('table_bookings')
+        .select(`
+          *,
+          customer:customers(*)
+        `)
+        .eq('booking_reference', params.booking_reference)
+        .single();
+        
+      if (bookingError || !booking) {
+        return createErrorResponse(
+          'Booking not found',
+          'NOT_FOUND',
+          404
+        );
+      }
 
-    // Verify customer email
-    if (booking.customer?.email !== validatedData.customer_email) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 403 }
-      );
-    }
+      // Verify customer email
+      if (booking.customer?.email !== validatedData.customer_email) {
+        return createErrorResponse(
+          'Unauthorized',
+          'FORBIDDEN',
+          403
+        );
+      }
 
-    // Check if booking can be modified
-    if (booking.status !== 'confirmed' && booking.status !== 'pending_payment') {
-      return NextResponse.json(
-        { error: 'Booking cannot be modified' },
-        { status: 400 }
-      );
-    }
+      // Check if booking can be modified
+      if (booking.status !== 'confirmed' && booking.status !== 'pending_payment') {
+        return createErrorResponse(
+          'Booking cannot be modified',
+          'INVALID_STATUS',
+          400
+        );
+      }
 
     // Check policy
     const { data: policy } = await supabase
@@ -204,9 +193,10 @@ export async function PUT(
       .single();
       
     if (!policy?.modification_allowed) {
-      return NextResponse.json(
-        { error: 'Modifications not allowed for this booking type' },
-        { status: 400 }
+      return createErrorResponse(
+        'Modifications not allowed for this booking type',
+        'MODIFICATION_NOT_ALLOWED',
+        400
       );
     }
 
@@ -220,9 +210,10 @@ export async function PUT(
       });
       
       if (!availabilityCheck?.[0]?.is_available) {
-        return NextResponse.json(
-          { error: 'No availability for the requested changes' },
-          { status: 400 }
+        return createErrorResponse(
+          'No availability for the requested changes',
+          'NO_AVAILABILITY',
+          400
         );
       }
     }
@@ -239,9 +230,10 @@ export async function PUT(
       .single();
       
     if (updateError) {
-      return NextResponse.json(
-        { error: 'Failed to update booking' },
-        { status: 500 }
+      return createErrorResponse(
+        'Failed to update booking',
+        'DATABASE_ERROR',
+        500
       );
     }
 
@@ -270,7 +262,7 @@ export async function PUT(
       };
     }
 
-    return NextResponse.json({
+    return createApiResponse({
       booking: {
         reference: updatedBooking.booking_reference,
         status: updatedBooking.status,
@@ -280,16 +272,20 @@ export async function PUT(
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: 'Validation error', details: error.errors },
-        { status: 400 }
+      return createErrorResponse(
+        'Validation error',
+        'VALIDATION_ERROR',
+        400,
+        error.errors
       );
     }
     
     console.error('Update booking API error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+    return createErrorResponse(
+      'Internal server error',
+      'INTERNAL_ERROR',
+      500
     );
   }
+  }, ['write:table_bookings'], request);
 }

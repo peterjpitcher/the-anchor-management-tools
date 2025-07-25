@@ -17,7 +17,8 @@ import {
 import { TableBooking } from '@/types/table-bookings';
 import { format } from 'date-fns';
 // New UI components
-import { Page } from '@/components/ui-v2/layout/Page';
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { Button } from '@/components/ui-v2/forms/Button';
@@ -112,23 +113,36 @@ export default function TableBookingSearchPage() {
 
   if (!canView) {
     return (
-      <Page title="Search Table Bookings">
-        <Card>
-          <Alert variant="error" title="Access Denied" description="You do not have permission to search bookings." />
-        </Card>
-      </Page>
+      <PageWrapper>
+        <PageHeader 
+          title="Search Table Bookings"
+          subtitle="Find bookings by name, phone, or reference"
+          backButton={{
+            label: "Back to Table Bookings",
+            href: "/table-bookings"
+          }}
+        />
+        <PageContent>
+          <Card>
+            <Alert variant="error" title="Access Denied" description="You do not have permission to search bookings." />
+          </Card>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
   return (
-    <Page
-      title="Search Table Bookings"
-      breadcrumbs={[
-        { label: 'Table Bookings', href: '/table-bookings' },
-        { label: 'Search' }
-      ]}
-    >
-      <Card>
+    <PageWrapper>
+      <PageHeader
+        title="Search Table Bookings"
+        subtitle="Find bookings by name, phone, or reference"
+        backButton={{
+          label: "Back to Table Bookings",
+          href: "/table-bookings"
+        }}
+      />
+      <PageContent>
+        <Card>
         <Form onSubmit={handleSearch}>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <FormGroup label="Search by">
@@ -255,6 +269,7 @@ export default function TableBookingSearchPage() {
           </Card>
         </Section>
       )}
-    </Page>
+      </PageContent>
+    </PageWrapper>
   );
 }

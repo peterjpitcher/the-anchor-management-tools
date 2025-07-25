@@ -8,10 +8,14 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
+import { useRouter } from 'next/navigation';
 // Code component not implemented yet - using pre tag instead
 
 export default function CalendarTestPage() {
-  const [loading, setLoading] = useState(false)
+  
+  const router = useRouter();
+const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<any>(null)
 
   const testConnection = async () => {
@@ -40,6 +44,8 @@ export default function CalendarTestPage() {
         { label: 'Settings', href: '/settings' },
         { label: 'Calendar Test' }
       ]}
+    
+      actions={<BackButton label="Back to Settings" onBack={() => router.push('/settings')} />}
     >
       
       <Section 
@@ -110,15 +116,15 @@ export default function CalendarTestPage() {
                     {result.details?.errorCode === 404 && (
                       <ol className="list-decimal list-inside space-y-1">
                         <li>Check that GOOGLE_CALENDAR_ID is correct in your .env.local</li>
-                        <li>Use either "primary" or the full calendar ID (e.g., "calendar-id@group.calendar.google.com")</li>
+                        <li>Use either &quot;primary&quot; or the full calendar ID (e.g., &quot;calendar-id@group.calendar.google.com&quot;)</li>
                       </ol>
                     )}
                     {result.details?.errorCode === 403 && (
                       <ol className="list-decimal list-inside space-y-1">
                         <li>Go to Google Calendar settings</li>
-                        <li>Find your calendar and click "Settings and sharing"</li>
-                        <li>Under "Share with specific people", add the service account email</li>
-                        <li>Grant "Make changes to events" permission</li>
+                        <li>Find your calendar and click &quot;Settings and sharing&quot;</li>
+                        <li>Under &quot;Share with specific people&quot;, add the service account email</li>
+                        <li>Grant &quot;Make changes to events&quot; permission</li>
                         <li>The service account email is shown in the Google Cloud Console</li>
                       </ol>
                     )}

@@ -83,7 +83,7 @@ export function Page({
   loading = false,
   error = null,
   onRetry,
-  containerSize = '2xl',
+  containerSize = 'full',
   spacing = true,
   header,
   className,

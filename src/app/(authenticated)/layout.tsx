@@ -179,24 +179,10 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
             </div>
           </header>
           
-          <main className="flex-1 overflow-y-auto bg-gray-50 p-4 sm:p-6 pb-20 md:pb-6">
+          <main className="flex-1 overflow-y-auto bg-gray-50 pb-20 md:pb-6 px-6">
             {children}
           </main>
           
-          {/* Footer - Desktop only */}
-          <footer className="hidden md:block bg-gray-100 border-t border-gray-200 py-4 px-6">
-            <div className="flex justify-between items-center text-sm text-gray-600">
-              <p>&copy; 2024 The Anchor. All rights reserved.</p>
-              <div className="flex space-x-4">
-                <a href="/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-gray-900">
-                  Privacy Policy
-                </a>
-                <a href="/terms" className="hover:text-gray-900">
-                  Terms of Service
-                </a>
-              </div>
-            </div>
-          </footer>
           
           <BottomNavigation onQuickAddNoteClick={openAddNoteModal} />
         </div>

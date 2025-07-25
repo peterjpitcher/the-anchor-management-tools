@@ -11,7 +11,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { createVendor, updateVendor, deleteVendor } from '@/app/actions/privateBookingActions'
 import { VendorDeleteButton } from '@/components/VendorDeleteButton'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -152,13 +152,15 @@ export default async function VendorsPage() {
   ]
 
   return (
-    <Page
-      title="Vendor Database"
-      description="Manage preferred vendors and service providers"
-      actions={
-        <LinkButton href="/private-bookings" variant="secondary">Back</LinkButton>
-      }
-    >
+    <div>
+      <PageHeader
+        title="Vendor Database"
+        subtitle="Manage preferred vendors and service providers"
+        backButton={{
+          label: "Back to Private Bookings",
+          href: "/private-bookings"
+        }}
+      />
 
       {/* Add New Vendor Form */}
       <Card>
@@ -290,8 +292,7 @@ export default async function VendorsPage() {
                         <div className="flex items-center gap-3 mb-4">
                           <h4 className="text-lg font-medium text-gray-900">{vendor.name}</h4>
                           {vendor.preferred && (
-                            <Badge variant="warning">
-                              <StarIcon className="h-3 w-3 mr-1" />
+                            <Badge variant="warning" icon={<StarIcon className="h-3 w-3" />}>
                               Preferred
                             </Badge>
                           )}
@@ -414,6 +415,6 @@ export default async function VendorsPage() {
           ))}
         </div>
       )}
-    </Page>
+    </div>
   )
 }

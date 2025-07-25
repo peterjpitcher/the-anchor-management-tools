@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getInvoice, updateInvoice, getLineItemCatalog } from '@/app/actions/invoices'
 import { getVendors } from '@/app/actions/vendors'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -181,42 +182,47 @@ export default function EditInvoicePage() {
 
   if (loading) {
     return (
-      <Page title="Loading...">
-        <div className="flex items-center justify-center h-64">
-          <Spinner size="lg" />
-        </div>
-      </Page>
+      <PageWrapper>
+        <PageHeader 
+          title="Loading..."
+          backButton={{ label: 'Back to Invoice', href: `/invoices/${invoiceId}` }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center h-64">
+            <Spinner size="lg" />
+          </div>
+        </PageContent>
+      </PageWrapper>
     )
   }
 
   if (error && !invoice) {
     return (
-      <Page title="Error">
-        <Button
-          onClick={() => router.push('/invoices')}
-          variant="secondary"
-          leftIcon={<ChevronLeft className="h-4 w-4" />}
-          className="mb-4"
-        >
-          Back to Invoices
-        </Button>
-        <Alert variant="error" description={error} />
-      </Page>
+      <PageWrapper>
+        <PageHeader 
+          title="Error"
+          backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+        />
+        <PageContent>
+          <Alert variant="error" description={error} />
+        </PageContent>
+      </PageWrapper>
     )
   }
 
   const totals = calculateInvoiceTotal()
 
   return (
-    <Page
-      title={`Edit Invoice ${invoice?.invoice_number}`}
-      description="Update invoice details"
-      breadcrumbs={[
-        { label: 'Invoices', href: '/invoices' },
-        { label: invoice?.invoice_number || '', href: `/invoices/${invoiceId}` },
-        { label: 'Edit' }
-      ]}
-    >
+    <PageWrapper>
+      <PageHeader
+        title={`Edit Invoice ${invoice?.invoice_number}`}
+        subtitle="Update invoice details"
+        backButton={{
+          label: "Back to Invoice",
+          href: `/invoices/${invoiceId}`
+        }}
+      />
+      <PageContent>
       {error && (
         <Alert variant="error" description={error} className="mb-6" />
       )}
@@ -465,6 +471,7 @@ export default function EditInvoicePage() {
           </Button>
         </div>
       </form>
-    </Page>
+      </PageContent>
+    </PageWrapper>
   )
 }

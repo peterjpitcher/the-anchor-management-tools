@@ -18,15 +18,17 @@ import { EventTemplateManager } from '@/components/EventTemplateManager'
 import { generateEventReservationPosters } from '@/app/actions/event-reservation-posters'
 
 // ui-v2 imports
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { DataTable, Column } from '@/components/ui-v2/display/DataTable'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Section } from '@/components/ui-v2/layout/Section'
-
 type BookingWithCustomer = Omit<Booking, 'customer'> & {
   customer: Pick<Customer, 'first_name' | 'last_name' | 'id'>
 }
@@ -252,10 +254,16 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
   }
 
   if (!event && !isLoading) return (
-    <Page 
-      title="Event Not Found" 
-      error="The requested event could not be found."
-    />
+    <PageWrapper>
+      <PageHeader 
+        title="Event Not Found" 
+        subtitle="The requested event could not be found."
+        backButton={{
+          label: "Back to Events",
+          href: "/events"
+        }}
+      />
+    </PageWrapper>
   )
 
   const activeBookings = bookings.filter(booking => booking.seats && booking.seats > 0)
@@ -274,7 +282,7 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
         >
           {booking.customer.first_name} {booking.customer.last_name}
           {booking.notes && (
-            <p className="text-xs text-gray-500 mt-1 italic whitespace-pre-wrap">
+            <p className="text-sm text-gray-500 mt-1 italic whitespace-pre-wrap">
               {booking.notes}
             </p>
           )}
@@ -291,7 +299,7 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
       key: 'seats',
       header: 'Seats',
       cell: (booking) => (
-        <Badge variant="success" size="sm">
+        <Badge variant="success" size="sm" className="whitespace-nowrap">
           {booking.seats} {booking.seats === 1 ? 'Seat' : 'Seats'}
         </Badge>
       ),
@@ -326,7 +334,6 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
       columns={type === 'booking' ? bookingColumns : reminderColumns}
       getRowKey={(booking) => booking.id}
       emptyMessage={`No ${type === 'booking' ? 'bookings' : 'reminders'} found`}
-      size="sm"
       bordered
       renderMobileCard={(booking) => (
         <Card variant="bordered" padding="sm">
@@ -334,13 +341,13 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
             <div className="flex justify-between items-start">
               <Link
                 href={`/customers/${booking.customer.id}?booking_id=${booking.id}&return_to=/events/${params.id}`}
-                className="text-sm font-medium text-blue-600 hover:text-blue-800"
+                className="font-medium text-blue-600 hover:text-blue-800"
               >
                 {booking.customer.first_name} {booking.customer.last_name}
               </Link>
               <div className="flex items-center gap-2">
                 {type === 'booking' && (
-                  <Badge variant="success" size="sm">
+                  <Badge variant="success" size="sm" className="whitespace-nowrap">
                     {booking.seats} {booking.seats === 1 ? 'Seat' : 'Seats'}
                   </Badge>
                 )}
@@ -353,9 +360,9 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
                 </button>
               </div>
             </div>
-            <p className="text-xs text-gray-500">Booked on: {formatDate(booking.created_at)}</p>
+            <p className="text-sm text-gray-500">Booked on: {formatDate(booking.created_at)}</p>
             {booking.notes && (
-              <p className="text-xs text-gray-500 italic whitespace-pre-wrap">
+              <p className="text-sm text-gray-500 italic whitespace-pre-wrap">
                 {booking.notes}
               </p>
             )}
@@ -366,75 +373,59 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
   )
 
   return (
-    <Page
-      title={event?.name || 'Loading...'}
-      description={event ? `${formatDate(event.date)} at ${event.time}` : ''}
-      loading={isLoading}
-      actions={
-        event && (
-          <div className="flex flex-wrap gap-2">
-            <LinkButton href={`/events/${event.id}/edit`}
-              variant="secondary"
-              leftIcon={<PencilSquareIcon className="h-5 w-5" />}
-            >
-              Edit Event
-            </LinkButton>
-            <Button onClick={handleCopyAttendeeList}
-              variant="secondary"
-              leftIcon={<ClipboardDocumentIcon className="h-5 w-5" />}
-            >
-              Copy List
-            </Button>
-            <Button onClick={handleDownloadReservationPosters} 
-              variant="secondary"
-              disabled={activeBookings.length === 0}
-              leftIcon={<DocumentArrowDownIcon className="h-5 w-5" />}
-            >
-              Download Posters
-            </Button>
-            <Button
-              onClick={() => setShowAddAttendeesModal(true)}
-              leftIcon={<UserGroupIcon className="h-5 w-5" />}
-            >
-              Add Attendees
-            </Button>
-            <Button
-              onClick={() => setShowBookingForm(true)}
-              leftIcon={<PlusIcon className="h-5 w-5" />}
-            >
-              New Booking
-            </Button>
-            <LinkButton href={`/loyalty/check-in?event=${event.id}`}
-              variant="secondary"
-              leftIcon={
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              }
-            >
-              Check-In
-            </LinkButton>
-          </div>
-        )
-      }
-    >
-      <div className="space-y-6">
+    <PageWrapper>
+      <PageHeader
+        title={event?.name || 'Loading...'}
+        subtitle={event ? `${formatDate(event.date)} at ${event.time}` : ''}
+        backButton={{
+          label: "Back to Events",
+          href: "/events"
+        }}
+        actions={
+          event && !isLoading && (
+            <NavGroup>
+              <NavLink href={`/events/${event.id}/edit`}>
+                Edit Event
+              </NavLink>
+              <NavLink onClick={handleCopyAttendeeList}>
+                Copy List
+              </NavLink>
+              <NavLink 
+                onClick={handleDownloadReservationPosters}
+                className={activeBookings.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}
+              >
+                Download Posters
+              </NavLink>
+              <NavLink onClick={() => setShowAddAttendeesModal(true)}>
+                Add Attendees
+              </NavLink>
+              <NavLink onClick={() => setShowBookingForm(true)}>
+                New Booking
+              </NavLink>
+              <NavLink href={`/loyalty/check-in?event=${event.id}`}>
+                Check-In
+              </NavLink>
+            </NavGroup>
+          )
+        }
+      />
+      <PageContent>
         {showBookingForm && event && (
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
-            <BookingForm event={event} onSubmit={handleCreateBooking} onCancel={() => setShowBookingForm(false)} />
+          <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
+              <BookingForm event={event} onSubmit={handleCreateBooking} onCancel={() => setShowBookingForm(false)} />
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {showAddAttendeesModal && event && (
-        <AddAttendeesModalWithCategories
-          event={event}
-          currentBookings={bookings}
-          onClose={() => setShowAddAttendeesModal(false)}
-          onAddAttendees={handleAddMultipleAttendees}
-        />
-      )}
+        {showAddAttendeesModal && event && (
+          <AddAttendeesModalWithCategories
+            event={event}
+            currentBookings={bookings}
+            onClose={() => setShowAddAttendeesModal(false)}
+            onAddAttendees={handleAddMultipleAttendees}
+          />
+        )}
 
         {event && (
           <Card padding="lg">
@@ -461,9 +452,9 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
                   </Badge>
                 )}
                 {event.short_description && (
-                  <p className="mt-2 text-sm text-gray-600">{event.short_description}</p>
+                  <p className="mt-2 text-base text-gray-600">{event.short_description}</p>
                 )}
-                <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                <div className="mt-4 grid grid-cols-2 gap-4">
                   <div>
                     <span className="text-gray-500">Capacity:</span>
                     <span className="ml-2 font-medium">{event.capacity || 'Unlimited'}</span>
@@ -502,7 +493,7 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
             <EventTemplateManager eventId={event.id} eventName={event.name} />
           </Card>
         )}
-      </div>
-    </Page>
+      </PageContent>
+    </PageWrapper>
   )
 } 

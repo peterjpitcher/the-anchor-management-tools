@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { 
-  Page, 
   Section, 
   Card, 
   Alert, 
@@ -12,10 +11,13 @@ import {
   Input,
   Spinner
 } from '@/components/ui-v2'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
-
+import { useRouter } from 'next/navigation';
 export default function WebhookTestPage() {
-  const [testResult, setTestResult] = useState<string>('')
+  const router = useRouter();
+const [testResult, setTestResult] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const supabase = useSupabase()
   const [isAuthorized, setIsAuthorized] = useState(false)
@@ -52,46 +54,52 @@ export default function WebhookTestPage() {
 
   if (checkingAuth) {
     return (
-      <Page
-        title="Webhook Test Tool"
-        breadcrumbs={[
-          { label: 'Dashboard', href: '/dashboard' },
-          { label: 'Settings', href: '/settings' },
-          { label: 'Webhook Test' }
-        ]}
-      >
-        <div className="flex items-center justify-center py-12">
-          <Spinner size="lg" />
-        </div>
-      </Page>
+      <PageWrapper>
+        <PageHeader
+          title="Webhook Test Tool"
+          subtitle="Test Twilio webhook integration"
+          backButton={{
+            label: "Back to Settings",
+            href: "/settings"
+          }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center py-12">
+            <Spinner size="lg" />
+          </div>
+        </PageContent>
+      </PageWrapper>
     )
   }
 
   if (!isAuthorized) {
     return (
-      <Page
-        title="Webhook Test Tool"
-        breadcrumbs={[
-          { label: 'Dashboard', href: '/dashboard' },
-          { label: 'Settings', href: '/settings' },
-          { label: 'Webhook Test' }
-        ]}
-      >
-        <Alert
-          variant="error"
-          title="Access Denied"
-          
-          actions={
-            <LinkButton
-              href="/dashboard"
-              variant="secondary"
-              size="sm"
-            >
-              Return to Dashboard
-            </LinkButton>
-          }
+      <PageWrapper>
+        <PageHeader
+          title="Webhook Test Tool"
+          subtitle="Test Twilio webhook integration"
+          backButton={{
+            label: "Back to Settings",
+            href: "/settings"
+          }}
         />
-      </Page>
+        <PageContent>
+          <Alert
+            variant="error"
+            title="Access Denied"
+            description="This page is restricted to super administrators only."
+            actions={
+              <LinkButton
+                href="/dashboard"
+                variant="secondary"
+                size="sm"
+              >
+                Return to Dashboard
+              </LinkButton>
+            }
+          />
+        </PageContent>
+      </PageWrapper>
     )
   }
   
@@ -134,15 +142,17 @@ export default function WebhookTestPage() {
   }
   
   return (
-    <Page
-      title="Webhook Test Tool"
-      breadcrumbs={[
-        { label: 'Dashboard', href: '/dashboard' },
-        { label: 'Settings', href: '/settings' },
-        { label: 'Webhook Test' }
-      ]}
-    >
-      <div className="space-y-6">
+    <PageWrapper>
+      <PageHeader
+        title="Webhook Test Tool"
+        subtitle="Test Twilio webhook integration"
+        backButton={{
+          label: "Back to Settings",
+          href: "/settings"
+        }}
+      />
+      <PageContent>
+        <div className="space-y-6">
         <Alert variant="warning"
           title="Production Security Notice"
           description="This test will fail in production due to Twilio signature validation. To properly test webhooks in production, use Twilio's webhook debugger or configure a proper test number."
@@ -197,6 +207,7 @@ export default function WebhookTestPage() {
             This page is restricted to super administrators only.</Alert>
         </Section>
       </div>
-    </Page>
+      </PageContent>
+    </PageWrapper>
   )
 }

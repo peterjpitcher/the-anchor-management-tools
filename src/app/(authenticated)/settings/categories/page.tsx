@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { PlusIcon, TrashIcon, PencilIcon } from '@heroicons/react/24/outline';
 // New UI components
@@ -15,6 +16,7 @@ import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 import { EmptyState } from '@/components/ui-v2/display/EmptyState';
 
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 interface AttachmentCategory {
   category_id: string;
   category_name: string;
@@ -24,6 +26,7 @@ interface AttachmentCategory {
 
 export default function CategoriesPage() {
   const supabase = useSupabase();
+  const router = useRouter();
   const [categories, setCategories] = useState<AttachmentCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -128,12 +131,10 @@ export default function CategoriesPage() {
         { label: 'Categories' }
       ]}
       actions={
-        <LinkButton
-          href="/employees"
-          variant="secondary"
-        >
-          Back to Employees
-        </LinkButton>
+        <BackButton 
+          label="Back to Settings" 
+          onBack={() => router.push('/settings')}
+        />
       }
     >
       <p className="text-sm text-gray-700 mb-6">

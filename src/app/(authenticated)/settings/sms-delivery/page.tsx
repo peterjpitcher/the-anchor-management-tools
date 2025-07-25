@@ -1,5 +1,7 @@
 'use client'
 
+import { useRouter } from 'next/navigation';
+
 import { useEffect, useState } from 'react';
 import { getSmsDeliveryStats, getDeliveryFailureReport } from '@/app/actions/customerSmsActions';
 import Link from 'next/link';
@@ -16,6 +18,7 @@ import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { EmptyState } from '@/components/ui-v2/display/EmptyState';
 
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 interface SmsStats {
   messages: {
     total: number;
@@ -42,6 +45,7 @@ interface FailedCustomer {
 }
 
 export default function SmsDeliveryStatsPage() {
+  const router = useRouter();
   const [stats, setStats] = useState<SmsStats | null>(null);
   const [failedCustomers, setFailedCustomers] = useState<FailedCustomer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -126,7 +130,7 @@ export default function SmsDeliveryStatsPage() {
           size="sm"
         >
           <ArrowLeftIcon className="mr-2 h-4 w-4" />
-          Back to Settings
+          <BackButton label="Back to Settings" onBack={() => router.push('/settings')} />
         </LinkButton>
       }
     >

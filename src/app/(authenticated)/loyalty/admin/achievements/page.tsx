@@ -1,8 +1,12 @@
-'use client';
+'use client'
 
+import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { usePermissions } from '@/contexts/PermissionContext';
 import Link from 'next/link';
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
 import { 
   TrophyIcon, 
   PlusIcon, 
@@ -25,6 +29,7 @@ import {
 } from '@/app/actions/loyalty-achievements';
 
 export default function AchievementManagementPage() {
+  const router = useRouter();
   const { hasPermission } = usePermissions();
   const [achievements, setAchievements] = useState<LoyaltyAchievement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -178,20 +183,38 @@ export default function AchievementManagementPage() {
 
   if (!hasPermission('loyalty', 'manage')) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-500">You don&apos;t have permission to manage achievements.</p>
-      </div>
+      <PageWrapper>
+        <PageHeader
+          title="Achievement Management"
+          subtitle="Create and manage loyalty program achievements"
+          backButton={{ label: "Back to Dashboard", href: "/loyalty/admin" }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center min-h-screen">
+            <p className="text-gray-500">You don&apos;t have permission to manage achievements.</p>
+          </div>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading achievements...</p>
-        </div>
-      </div>
+      <PageWrapper>
+        <PageHeader
+          title="Achievement Management"
+          subtitle="Create and manage loyalty program achievements"
+          backButton={{ label: "Back to Dashboard", href: "/loyalty/admin" }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center min-h-screen">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-600 mx-auto"></div>
+              <p className="mt-4 text-gray-600">Loading achievements...</p>
+            </div>
+          </div>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
@@ -212,33 +235,22 @@ export default function AchievementManagementPage() {
   }, {} as Record<string, LoyaltyAchievement[]>);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Achievement Management</h1>
-            <p className="mt-1 text-gray-500">
-              Create and manage loyalty program achievements
-            </p>
-          </div>
-          <div className="flex items-center space-x-3">
-            <Link
-              href="/loyalty/admin"
-              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-            >
-              Back to Dashboard
-            </Link>
-            <button
-              onClick={() => setShowForm(true)}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-amber-600 hover:bg-amber-700"
-            >
-              <PlusIcon className="h-4 w-4 mr-2" />
-              Add Achievement
-            </button>
-          </div>
-        </div>
-      </div>
+    <PageWrapper>
+      <PageHeader
+        title="Achievement Management"
+        subtitle="Create and manage loyalty program achievements"
+        backButton={{ label: "Back to Dashboard", href: "/loyalty/admin" }}
+        actions={
+          <button
+            onClick={() => setShowForm(true)}
+            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-amber-600 hover:bg-amber-700"
+          >
+            <PlusIcon className="h-4 w-4 mr-2" />
+            Add Achievement
+          </button>
+        }
+      />
+      <PageContent>
 
       {/* Filters */}
       <div className="mb-6 flex flex-wrap gap-3">
@@ -646,6 +658,7 @@ export default function AchievementManagementPage() {
           </div>
         </div>
       )}
-    </div>
+      </PageContent>
+    </PageWrapper>
   );
 }

@@ -1,0 +1,12 @@
+
+> the-anchor-management-tools@0.1.0 build
+> next build
+
+   ▲ Next.js 15.3.3
+   - Environments: .env.local
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 38.0s
+   Skipping linting
+   Checking validity of types ...
+   Collecting page data ...

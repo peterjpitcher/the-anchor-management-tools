@@ -9,6 +9,8 @@ import { ArrowLeftIcon, UserPlusIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import { enrollLoyaltyMember, getLoyaltyMemberByCustomer } from '@/app/actions/loyalty-members';
 import { Loader2 } from 'lucide-react';
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
 
 interface Customer {
   id: string;
@@ -99,30 +101,29 @@ export default function EnrollCustomerPage() {
 
   if (!hasPermission('loyalty', 'manage')) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-500">You don&apos;t have permission to enroll customers.</p>
-      </div>
+      <PageWrapper>
+        <PageHeader
+          title="Enroll Customer"
+          subtitle="Add an existing customer to The Anchor VIP Club"
+          backButton={{ label: "Back to Loyalty", href: "/loyalty/admin" }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center min-h-[400px]">
+            <p className="text-gray-500">You don&apos;t have permission to enroll customers.</p>
+          </div>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center space-x-4">
-          <Link
-            href="/loyalty/admin"
-            className="inline-flex items-center text-gray-600 hover:text-gray-900"
-          >
-            <ArrowLeftIcon className="h-5 w-5 mr-1" />
-            Back
-          </Link>
-        </div>
-        <h1 className="text-3xl font-bold text-gray-900 mt-4">Enroll Customer</h1>
-        <p className="mt-2 text-gray-600">
-          Add an existing customer to The Anchor VIP Club
-        </p>
-      </div>
+    <PageWrapper>
+      <PageHeader
+        title="Enroll Customer"
+        subtitle="Add an existing customer to The Anchor VIP Club"
+        backButton={{ label: "Back to Loyalty", href: "/loyalty/admin" }}
+      />
+      <PageContent>
 
       {/* Search Form */}
       <div className="bg-white shadow rounded-lg p-6 mb-6">
@@ -272,6 +273,7 @@ export default function EnrollCustomerPage() {
           </p>
         </div>
       )}
-    </div>
+      </PageContent>
+    </PageWrapper>
   );
 }

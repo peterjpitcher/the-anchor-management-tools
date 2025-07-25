@@ -14,7 +14,10 @@ import { toggleCustomerSmsOptIn, getCustomerSmsStats, getCustomerMessages } from
 import { markMessagesAsRead } from '@/app/actions/messageActions'
 import { MessageThread } from '@/components/MessageThread'
 import { CustomerCategoryPreferences } from '@/components/CustomerCategoryPreferences'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
 import { Card, CardTitle, CardDescription } from '@/components/ui-v2/layout/Card'
 import { DataTable, Column } from '@/components/ui-v2/display/DataTable'
 import { Modal } from '@/components/ui-v2/overlay/Modal'
@@ -40,7 +43,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [bookings, setBookings] = useState<BookingWithEvent[]>([])
   const [allEvents, setAllEvents] = useState<Event[]>([])
-  const [loading, setLoading] = useState(true)
+  const [, setLoading] = useState(true)
   const [smsStats, setSmsStats] = useState<{
     customer: {
       sms_opt_in: boolean;
@@ -243,10 +246,6 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
     }
   }
 
-  const breadcrumbs = [
-    { label: 'Customers', href: '/customers' },
-    { label: `${customer?.first_name || ''} ${customer?.last_name || ''}` }
-  ]
 
   const showModal = !!editingBooking || isAddingBooking
   const activeBookings = bookings.filter(booking => booking.seats && booking.seats > 0)
@@ -312,28 +311,36 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
 
   if (!customer) {
     return (
-      <Page
-        title="Customer Details"
-        breadcrumbs={breadcrumbs}
-        error="Customer not found"
-      />
+      <PageWrapper>
+        <PageHeader
+          title="Customer Details"
+          subtitle="Customer not found"
+          backButton={{ label: "Back to Customers", href: "/customers" }}
+        />
+        <PageContent>
+          <Alert variant="error" title="Customer not found" description="The requested customer could not be found." />
+        </PageContent>
+      </PageWrapper>
     )
   }
 
   return (
-    <Page
-      title={`${customer.first_name} ${customer.last_name}`}
-      breadcrumbs={breadcrumbs}
-      loading={loading}
-      actions={
-        <div className="flex items-center space-x-3">
-          <Button onClick={() => setIsAddingBooking(true)}>
-            Add Booking
-          </Button>
-        </div>
-      }
-    >
-      {/* Booking Modal */}
+    <PageWrapper>
+      <PageHeader
+        title={`${customer.first_name} ${customer.last_name}`}
+        subtitle={customer.mobile_number || 'No mobile number'}
+        backButton={{ label: "Back to Customers", href: "/customers" }}
+        actions={
+          <NavGroup>
+            <NavLink onClick={() => setIsAddingBooking(true)}>
+              Add Booking
+            </NavLink>
+          </NavGroup>
+        }
+      />
+      <PageContent>
+        <div className="space-y-6">
+          {/* Booking Modal */}
       <Modal
         open={showModal}
         onClose={closeModal}
@@ -374,27 +381,18 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
 
       {/* Customer Info Card */}
       <Card>
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start">
-          <div>
-            <p className="mt-1 text-sm text-gray-500">
-              <a href={`tel:${customer.mobile_number}`} className="text-blue-600 hover:text-blue-700">
-                {customer.mobile_number}
-              </a>
-            </p>
-            <div className="mt-2 flex items-center space-x-4">
-              <div className="flex items-center">
-                <ChatBubbleLeftRightIcon className="h-4 w-4 text-gray-400 mr-1" />
-                <span className={`text-sm font-medium ${customer.sms_opt_in !== false ? 'text-green-600' : 'text-red-600'}`}>
-                  SMS {customer.sms_opt_in !== false ? 'Active' : 'Inactive'}
-                </span>
-              </div>
-              {customer.sms_delivery_failures && customer.sms_delivery_failures > 0 && (
-                <span className="text-sm text-orange-600">
-                  {customer.sms_delivery_failures} failed deliveries
-                </span>
-              )}
-            </div>
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center">
+            <ChatBubbleLeftRightIcon className="h-4 w-4 text-gray-400 mr-1" />
+            <span className={`text-sm font-medium ${customer.sms_opt_in !== false ? 'text-green-600' : 'text-red-600'}`}>
+              SMS {customer.sms_opt_in !== false ? 'Active' : 'Inactive'}
+            </span>
           </div>
+          {customer.sms_delivery_failures && customer.sms_delivery_failures > 0 && (
+            <span className="text-sm text-orange-600">
+              {customer.sms_delivery_failures} failed deliveries
+            </span>
+          )}
         </div>
       </Card>
 
@@ -406,6 +404,66 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
           }
         >
           <CustomerLabelSelector customerId={customer.id} canEdit={true} />
+        </Card>
+      )}
+
+      {/* Category Preferences */}
+      <CustomerCategoryPreferences customerId={customer.id} />
+
+      {/* Message Thread */}
+      <Card
+        header={
+          <CardTitle>Messages</CardTitle>
+        }
+      >
+        <MessageThread
+          messages={messages}
+          customerId={customer.id}
+          customerName={`${customer.first_name} ${customer.last_name}`}
+          canReply={customer.sms_opt_in !== false}
+          onMessageSent={async () => {
+            await loadMessages() // Only refresh messages
+          }}
+        />
+      </Card>
+
+      {/* Active Bookings */}
+      <Card
+        header={
+          <div>
+            <CardTitle>Active Bookings ({activeBookings.length})</CardTitle>
+            <CardDescription>
+              Total of {totalSeats} seats booked across all events.
+            </CardDescription>
+          </div>
+        }
+      >
+        <DataTable
+          data={activeBookings}
+          columns={bookingColumns}
+          getRowKey={(booking) => booking.id}
+          emptyMessage="No bookings found"
+        />
+      </Card>
+      
+      {/* Reminders */}
+      {reminders.length > 0 && (
+        <Card
+          header={
+            <div>
+              <CardTitle>Reminders ({reminders.length})</CardTitle>
+              <CardDescription>
+                These are events the customer has been sent a reminder for, but has not booked seats.
+              </CardDescription>
+            </div>
+          }
+        >
+          <DataTable
+            data={reminders}
+            columns={reminderColumns}
+            getRowKey={(booking) => booking.id}
+            emptyMessage="No reminders found"
+          />
         </Card>
       )}
 
@@ -464,74 +522,14 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
         )}
       </Card>
 
-      {/* Category Preferences */}
-      <CustomerCategoryPreferences customerId={customer.id} />
-
       {/* Loyalty Status */}
       <CustomerLoyaltyCard 
         customerId={customer.id} 
         customerPhone={customer.mobile_number}
         customerName={`${customer.first_name} ${customer.last_name}`}
       />
-
-      {/* Message Thread */}
-      <Card
-        header={
-          <CardTitle>Messages</CardTitle>
-        }
-      >
-        <MessageThread
-          messages={messages}
-          customerId={customer.id}
-          customerName={`${customer.first_name} ${customer.last_name}`}
-          canReply={customer.sms_opt_in !== false}
-          onMessageSent={async () => {
-            await loadMessages() // Only refresh messages
-          }}
-        />
-      </Card>
-
-      {/* Active Bookings */}
-      <Card
-        header={
-          <div>
-            <CardTitle>Active Bookings ({activeBookings.length})</CardTitle>
-            <CardDescription>
-              Total of {totalSeats} seats booked across all events.
-            </CardDescription>
-          </div>
-        }
-        padding="none"
-      >
-        <DataTable
-          data={activeBookings}
-          columns={bookingColumns}
-          getRowKey={(booking) => booking.id}
-          emptyMessage="No bookings found"
-        />
-      </Card>
-      
-      {/* Reminders */}
-      {reminders.length > 0 && (
-        <Card
-          header={
-            <div>
-              <CardTitle>Reminders ({reminders.length})</CardTitle>
-              <CardDescription>
-                These are events the customer has been sent a reminder for, but has not booked seats.
-              </CardDescription>
-            </div>
-          }
-          padding="none"
-        >
-          <DataTable
-            data={reminders}
-            columns={reminderColumns}
-            getRowKey={(booking) => booking.id}
-            emptyMessage="No reminders found"
-          />
-        </Card>
-      )}
-    </Page>
+        </div>
+      </PageContent>
+    </PageWrapper>
   )
 } 

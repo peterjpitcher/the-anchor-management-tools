@@ -18,8 +18,12 @@ import { Modal } from '@/components/ui-v2/overlay/Modal'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { RefreshCwIcon, TestTubeIcon } from 'lucide-react'
 
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
+import { useRouter } from 'next/navigation';
 export default function WebhookMonitorPage() {
-  const supabase = useSupabase()
+  
+  const router = useRouter();
+const supabase = useSupabase()
   
   const [logs, setLogs] = useState<WebhookLog[]>([])
   const [loading, setLoading] = useState(true)
@@ -181,7 +185,12 @@ export default function WebhookMonitorPage() {
       title="Webhook Monitor"
       description="Monitor incoming webhook requests and responses"
       breadcrumbs={breadcrumbs}
-      actions={actions}
+      actions={
+        <div className="flex items-center space-x-3">
+          <BackButton label="Back to Settings" onBack={() => router.push('/settings')} />
+          {actions}
+        </div>
+      }
     >
       <Section>
         <Card>

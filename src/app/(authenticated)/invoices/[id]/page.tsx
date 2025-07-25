@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getInvoice, updateInvoiceStatus, deleteInvoice } from '@/app/actions/invoices'
 import { getEmailConfigStatus } from '@/app/actions/email'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -145,25 +146,31 @@ export default function InvoiceDetailPage() {
 
   if (loading) {
     return (
-      <Page title="Loading...">
-        <div className="flex items-center justify-center h-64">
-          <Spinner size="lg" />
-        </div>
-      </Page>
+      <PageWrapper>
+        <PageHeader 
+          title="Loading..."
+          backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center h-64">
+            <Spinner size="lg" />
+          </div>
+        </PageContent>
+      </PageWrapper>
     )
   }
 
   if (error || !invoice) {
     return (
-      <Page title="Invoice Not Found">
-        <Alert variant="error" description={error || 'Invoice not found'} className="mb-6" />
-        <Button
-          onClick={() => router.push('/invoices')}
-          leftIcon={<ChevronLeft className="h-4 w-4" />}
-        >
-          Back to Invoices
-        </Button>
-      </Page>
+      <PageWrapper>
+        <PageHeader 
+          title="Invoice Not Found"
+          backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+        />
+        <PageContent>
+          <Alert variant="error" description={error || 'Invoice not found'} className="mb-6" />
+        </PageContent>
+      </PageWrapper>
     )
   }
 
@@ -185,27 +192,15 @@ export default function InvoiceDetailPage() {
   }, 0) || 0
 
   return (
-    <Page
-      title={`Invoice ${invoice.invoice_number}`}
-      breadcrumbs={[
-        { label: 'Invoices', href: '/invoices' },
-        { label: invoice.invoice_number }
-      ]}
-    >
-      <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-4 mb-6">
-        <div>
-            <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-              <Badge variant={getStatusBadgeVariant(invoice.status)} icon={getStatusIcon(invoice.status)}>
-                {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1).replace('_', ' ')}
-              </Badge>
-              {invoice.reference && (
-                <span className="text-sm sm:text-base text-gray-600">
-                  Reference: {invoice.reference}
-                </span>
-              )}
-            </div>
-          </div>
-
+    <PageWrapper>
+      <PageHeader
+        title={`Invoice ${invoice.invoice_number}`}
+        subtitle={invoice.vendor?.name}
+        backButton={{
+          label: "Back to Invoices",
+          href: "/invoices"
+        }}
+        actions={
           <div className="flex flex-wrap gap-2">
             {invoice.status === 'draft' && (
               <>
@@ -213,17 +208,20 @@ export default function InvoiceDetailPage() {
                   onClick={() => handleStatusChange('sent')}
                   disabled={actionLoading}
                   loading={actionLoading}
+                  variant="ghost"
                   size="sm"
+                  className="text-white hover:text-white/80 hover:bg-white/10"
                   leftIcon={<Mail className="h-4 w-4" />}
                 >
                   <span className="hidden sm:inline">Mark as Sent</span>
                   <span className="sm:hidden">Send</span>
                 </Button>
                 <Button
-                  variant="secondary"
+                  variant="ghost"
                   onClick={() => router.push(`/invoices/${invoice.id}/edit`)}
                   disabled={actionLoading}
                   size="sm"
+                  className="text-white hover:text-white/80 hover:bg-white/10"
                   leftIcon={<Edit className="h-4 w-4" />}
                 >
                   Edit
@@ -236,8 +234,9 @@ export default function InvoiceDetailPage() {
                 onClick={() => handleStatusChange('paid')}
                 disabled={actionLoading}
                 loading={actionLoading}
-                variant="success"
+                variant="ghost"
                 size="sm"
+                className="text-white hover:text-white/80 hover:bg-white/10"
                 leftIcon={<CheckCircle className="h-4 w-4" />}
               >
                 <span className="hidden sm:inline">Mark as Paid</span>
@@ -248,10 +247,11 @@ export default function InvoiceDetailPage() {
             {emailConfigured && (
               <>
                 <Button
-                  variant="secondary"
+                  variant="ghost"
                   onClick={() => setShowEmailModal(true)}
                   disabled={actionLoading}
                   size="sm"
+                  className="text-white hover:text-white/80 hover:bg-white/10"
                   leftIcon={<Mail className="h-4 w-4" />}
                 >
                   <span className="hidden sm:inline">Send Email</span>
@@ -260,12 +260,12 @@ export default function InvoiceDetailPage() {
                 {(invoice.status === 'overdue' || 
                   (invoice.status === 'sent' && new Date(invoice.due_date) < new Date())) && (
                   <Button
-                    variant="secondary"
+                    variant="ghost"
                     onClick={() => setShowChaseModal(true)}
                     disabled={actionLoading}
                     size="sm"
                     leftIcon={<Clock className="h-4 w-4" />}
-                    className="border-orange-500 text-orange-600 hover:bg-orange-50"
+                    className="text-white hover:text-white/80 hover:bg-white/10"
                   >
                     <span className="hidden sm:inline">Chase Payment</span>
                     <span className="sm:hidden">Chase</span>
@@ -275,10 +275,11 @@ export default function InvoiceDetailPage() {
             )}
 
             <Button
-              variant="secondary"
+              variant="ghost"
               onClick={() => window.open(`/api/invoices/${invoice.id}/pdf`, '_blank')}
               disabled={actionLoading}
               size="sm"
+              className="text-white hover:text-white/80 hover:bg-white/10"
               leftIcon={<Download className="h-4 w-4" />}
             >
               <span className="hidden sm:inline">Download PDF</span>
@@ -287,18 +288,33 @@ export default function InvoiceDetailPage() {
 
             {invoice.status === 'draft' && (
               <Button
-                variant="danger"
+                variant="ghost"
                 onClick={() => setShowDeleteConfirm(true)}
                 disabled={actionLoading}
                 loading={actionLoading}
                 size="sm"
+                className="text-white hover:text-white/80 hover:bg-white/10"
                 leftIcon={<Trash2 className="h-4 w-4" />}
               >
                 Delete
               </Button>
             )}
           </div>
+        }
+      />
+      <PageContent>
+        <div className="mb-6">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+          <Badge variant={getStatusBadgeVariant(invoice.status)} icon={getStatusIcon(invoice.status)}>
+            {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1).replace('_', ' ')}
+          </Badge>
+          {invoice.reference && (
+            <span className="text-sm sm:text-base text-gray-600">
+              Reference: {invoice.reference}
+            </span>
+          )}
         </div>
+      </div>
 
       {error && (
         <Alert variant="error" description={error} className="mb-6" />
@@ -619,6 +635,7 @@ export default function InvoiceDetailPage() {
         confirmText="Delete"
         confirmVariant="danger"
       />
-    </Page>
+      </PageContent>
+    </PageWrapper>
   )
 }

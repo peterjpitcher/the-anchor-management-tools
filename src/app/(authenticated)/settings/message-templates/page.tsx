@@ -20,6 +20,8 @@ import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
+import { useRouter } from 'next/navigation';
 interface MessageTemplate {
   id: string
   name: string
@@ -67,7 +69,9 @@ const TIMING_OPTIONS = {
 }
 
 export default function MessageTemplatesPage() {
-  const supabase = useSupabase()
+  
+  const router = useRouter();
+const supabase = useSupabase()
   const [templates, setTemplates] = useState<MessageTemplate[]>([])
   const [loading, setLoading] = useState(true)
   const [editingTemplate, setEditingTemplate] = useState<MessageTemplate | null>(null)
@@ -263,7 +267,9 @@ export default function MessageTemplatesPage() {
 
   if (loading) {
     return (
-      <Page title="Message Templates">
+      <Page title="Message Templates"
+      actions={<BackButton label="Back to Settings" onBack={() => router.push('/settings')} />}
+    >
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <Spinner size="lg" />

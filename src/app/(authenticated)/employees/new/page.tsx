@@ -3,13 +3,13 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { addEmployee } from '@/app/actions/employeeActions';
-import { Loader2, Save, X } from 'lucide-react';
+import { Loader2, Save } from 'lucide-react';
 // New UI components
-import { Page } from '@/components/ui-v2/layout/Page';
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Tabs } from '@/components/ui-v2/navigation/Tabs';
 import { Button } from '@/components/ui-v2/forms/Button';
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
 import { Input } from '@/components/ui-v2/forms/Input';
 import { Select } from '@/components/ui-v2/forms/Select';
 import { Textarea } from '@/components/ui-v2/forms/Textarea';
@@ -17,7 +17,6 @@ import { Checkbox } from '@/components/ui-v2/forms/Checkbox';
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
 import { toast } from '@/components/ui-v2/feedback/Toast';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
-
 interface EmployeeData {
   // Personal Details
   first_name: string;
@@ -444,11 +443,15 @@ export default function NewEmployeePage() {
   ];
 
   return (
-    <Page
-      title="Add New Employee"
-      description="Fill in the employee information across all tabs. All data is saved when you click 'Save and Close'."
-      actions={
-        <div className="flex-shrink-0 flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+    <PageWrapper>
+      <PageHeader
+        title="Add New Employee"
+        subtitle="Fill in the employee information across all tabs. All data is saved when you click 'Save and Close'."
+        backButton={{
+          label: 'Back to Employees',
+          href: '/employees'
+        }}
+        actions={
           <Button
             onClick={handleSaveAndClose}
             disabled={isLoading}
@@ -466,26 +469,20 @@ export default function NewEmployeePage() {
               </>
             )}
           </Button>
-          <LinkButton
-            href="/employees"
-            variant="secondary"
-          >
-            <X className="-ml-1 mr-2 h-4 w-4" />
-            Cancel
-          </LinkButton>
-        </div>
-      }
-    >
-      <Card>
-        <Tabs 
-          items={tabs}
-        />
-      </Card>
-      
-      <Alert variant="info">
-        <strong>Note:</strong> You can switch between tabs without losing your data. 
-        All information will be saved when you click &quot;Save and Close&quot;.
-      </Alert>
-    </Page>
+        }
+      />
+      <PageContent>
+        <Card>
+          <Tabs 
+            items={tabs}
+          />
+        </Card>
+        
+        <Alert variant="info">
+          <strong>Note:</strong> You can switch between tabs without losing your data. 
+          All information will be saved when you click &quot;Save and Close&quot;.
+        </Alert>
+      </PageContent>
+    </PageWrapper>
   );
 }

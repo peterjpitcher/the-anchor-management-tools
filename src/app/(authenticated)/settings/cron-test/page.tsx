@@ -8,8 +8,12 @@ import { Button } from '@/components/ui-v2/forms/Button'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Calendar, Bell, Play } from 'lucide-react'
 
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
+import { useRouter } from 'next/navigation';
 export default function CronTestPage() {
-  const [loading, setLoading] = useState<string | null>(null)
+  
+  const router = useRouter();
+const [loading, setLoading] = useState<string | null>(null)
   const [results, setResults] = useState<{ [key: string]: unknown }>({})
 
   async function runCronJob(jobName: string, endpoint: string) {
@@ -64,6 +68,8 @@ export default function CronTestPage() {
     <Page
       title="Cron Job Testing"
       breadcrumbs={breadcrumbs}
+    
+      actions={<BackButton label="Back to Settings" onBack={() => router.push('/settings')} />}
     >
       <Alert
         variant="warning"

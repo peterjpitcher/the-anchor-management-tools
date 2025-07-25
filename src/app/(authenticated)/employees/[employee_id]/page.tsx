@@ -20,10 +20,13 @@ import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { EmployeeAuditTrail } from '@/components/EmployeeAuditTrail';
 import { EmployeeRecentChanges } from '@/components/EmployeeRecentChanges';
 // New UI components
-import { Page } from '@/components/ui-v2/layout/Page';
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
+import { NavLink } from '@/components/ui-v2/navigation/NavLink';
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { Tabs } from '@/components/ui-v2/navigation/Tabs';
 import { Spinner } from '@/components/ui-v2/feedback/Spinner';
@@ -143,14 +146,17 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
 
   if (isLoading) {
     return (
-      <Page title="Employee Details">
-        <div className="flex items-center justify-center p-8">
-          <div className="text-center">
-            <Spinner size="lg" />
-            <p className="mt-4 text-gray-600">Loading employee details...</p>
+      <PageWrapper>
+        <PageHeader title="Employee Details" />
+        <PageContent>
+          <div className="flex items-center justify-center p-8">
+            <div className="text-center">
+              <Spinner size="lg" />
+              <p className="mt-4 text-gray-600">Loading employee details...</p>
+            </div>
           </div>
-        </div>
-      </Page>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
@@ -242,80 +248,84 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
   ];
 
   return (
-    <Page
-      title={`${employee.first_name} ${employee.last_name}`}
-      description={employee.job_title}
-      actions={
-        <div className="flex items-center gap-2 sm:gap-3">
-          <LinkButton
-            href={`/employees/${employee.employee_id}/edit`}
-            variant="primary"
-          >
-            <PencilSquareIcon className="-ml-0.5 mr-1.5 h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
-            Edit
-          </LinkButton>
-          <DeleteEmployeeButton
-            employeeId={employee.employee_id}
-            employeeName={`${employee.first_name} ${employee.last_name}`}
-          />
-        </div>
-      }
-    >
-
-      <EmployeeRecentChanges employeeId={employee.employee_id} />
-
-      <Card>
-        <Tabs items={tabs} />
-      </Card>
-
-      {/* Employee Notes Section */}
-      <Section 
-        title="Employee Notes"
-        description="Record of time-stamped updates and comments."
-      >
-        <Card>
-          <AddEmployeeNoteForm employeeId={employee.employee_id} />
-          <div className="mt-6">
-            <Suspense fallback={
-              <div className="text-center py-4">
-                <Spinner />
-                <p className="mt-2 text-gray-500">Loading notes...</p>
-              </div>
-            }>
-              <EmployeeNotesList employeeId={employee.employee_id} />
-            </Suspense>
-          </div>
-        </Card>
-      </Section>
-
-      {/* Employee Attachments Section */}
-      <Section 
-        title="Employee Attachments"
-        description="Scanned documents and other attached files."
+    <PageWrapper>
+      <PageHeader
+        title={`${employee.first_name} ${employee.last_name}`}
+        subtitle={employee.job_title}
+        backButton={{
+          label: 'Back to Employees',
+          href: '/employees'
+        }}
         actions={
-          <Link
-            href="/settings/categories"
-            className="text-xs sm:text-sm text-blue-600 hover:text-blue-900 whitespace-nowrap"
-          >
-            Manage Categories
-          </Link>
-        }
-      >
-        <Card>
-          <AddEmployeeAttachmentForm 
-            employeeId={employee.employee_id} 
-            onSuccess={loadData}
-          />
-          <div className="mt-6">
-            <EmployeeAttachmentsList
+          <div className="flex items-center gap-x-3">
+            <NavGroup>
+              <NavLink href={`/employees/${employee.employee_id}/edit`}>
+                Edit
+              </NavLink>
+            </NavGroup>
+            <DeleteEmployeeButton
               employeeId={employee.employee_id}
-              attachments={attachments}
-              categoriesMap={attachmentCategoriesMap}
-              onDelete={loadData}
+              employeeName={`${employee.first_name} ${employee.last_name}`}
             />
           </div>
+        }
+      />
+      <PageContent>
+        <EmployeeRecentChanges employeeId={employee.employee_id} />
+
+        <Card>
+          <Tabs items={tabs} />
         </Card>
-      </Section>
-    </Page>
+
+        {/* Employee Notes Section */}
+        <Section 
+          title="Employee Notes"
+          description="Record of time-stamped updates and comments."
+        >
+          <Card>
+            <AddEmployeeNoteForm employeeId={employee.employee_id} />
+            <div className="mt-6">
+              <Suspense fallback={
+                <div className="text-center py-4">
+                  <Spinner />
+                  <p className="mt-2 text-gray-500">Loading notes...</p>
+                </div>
+              }>
+                <EmployeeNotesList employeeId={employee.employee_id} />
+              </Suspense>
+            </div>
+          </Card>
+        </Section>
+
+        {/* Employee Attachments Section */}
+        <Section 
+          title="Employee Attachments"
+          description="Scanned documents and other attached files."
+          actions={
+            <Link
+              href="/settings/categories"
+              className="text-xs sm:text-sm text-blue-600 hover:text-blue-900 whitespace-nowrap"
+            >
+              Manage Categories
+            </Link>
+          }
+        >
+          <Card>
+            <AddEmployeeAttachmentForm 
+              employeeId={employee.employee_id} 
+              onSuccess={loadData}
+            />
+            <div className="mt-6">
+              <EmployeeAttachmentsList
+                employeeId={employee.employee_id}
+                attachments={attachments}
+                categoriesMap={attachmentCategoriesMap}
+                onDelete={loadData}
+              />
+            </div>
+          </Card>
+        </Section>
+      </PageContent>
+    </PageWrapper>
   );
 } 

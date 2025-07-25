@@ -1,4 +1,6 @@
-'use client';
+'use client'
+
+import { useRouter } from 'next/navigation';
 
 import { useState, useEffect } from 'react';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
@@ -21,7 +23,9 @@ import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 import { Modal } from '@/components/ui-v2/overlay/Modal';
 import { toast } from '@/components/ui-v2/feedback/Toast';
 
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 export default function BookingPoliciesPage() {
+  const router = useRouter();
   const supabase = useSupabase();
   const { hasPermission } = usePermissions();
   const [policies, setPolicies] = useState<BookingPolicy[]>([]);
@@ -157,6 +161,7 @@ export default function BookingPoliciesPage() {
 
   const PolicyCard = ({ type, title }: { type: 'regular' | 'sunday_lunch', title: string }) => {
     const policy = getPolicyForType(type);
+  const router = useRouter();
     if (!policy) return null;
 
     return (
@@ -219,7 +224,7 @@ export default function BookingPoliciesPage() {
       title="Booking Policies"
       description="Configure refund policies and booking rules"
     >
-      <LinkButton href="/table-bookings/settings" variant="secondary">Back to Settings</LinkButton>
+      <BackButton label="Back to Settings" onBack={() => router.push('/table-bookings/settings')} />
 
       {error && (
         <Alert variant="error" className="mt-4">

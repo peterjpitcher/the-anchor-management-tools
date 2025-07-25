@@ -1,3 +1,5 @@
+'use client'
+
 /**
  * LinkButton Component
  * 
@@ -54,15 +56,13 @@ export const LinkButton = forwardRef<HTMLAnchorElement, LinkButtonProps>(({
   // For internal links, use Next.js Link
   return (
     <Link 
-      href={href} 
-      passHref 
-      legacyBehavior
+      href={href}
+      ref={ref}
+      style={{ textDecoration: 'none' }}
     >
-      <a ref={ref} style={{ textDecoration: 'none' }}>
-        <Button {...buttonProps}>
-          {children}
-        </Button>
-      </a>
+      <Button {...buttonProps}>
+        {children}
+      </Button>
     </Link>
   )
 })

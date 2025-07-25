@@ -13,7 +13,8 @@ import {
 } from '@heroicons/react/24/outline'
 import { approveSms, rejectSms, sendApprovedSms } from '@/app/actions/privateBookingActions'
 import { formatDateFull, formatDateTime12Hour } from '@/lib/dateUtils'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -115,14 +116,17 @@ export default async function SmsQueuePage() {
   }
 
   return (
-    <Page
-      title="SMS Queue"
-      description="Review and approve SMS messages for private bookings"
-      actions={
-        <LinkButton href="/private-bookings" variant="secondary">Back</LinkButton>
-      }
-    >
-      {/* Pending Messages */}
+    <PageWrapper>
+      <PageHeader
+        title="SMS Queue"
+        subtitle="Review and approve SMS messages for private bookings"
+        backButton={{
+          label: "Back to Private Bookings",
+          href: "/private-bookings"
+        }}
+      />
+      <PageContent>
+        {/* Pending Messages */}
       <Section 
         title="Pending Approval"
         icon={<ClockIcon className="h-6 w-6 text-amber-600" />}
@@ -322,12 +326,13 @@ export default async function SmsQueuePage() {
           <ul className="text-sm space-y-1 list-disc list-inside">
             <li>All SMS messages for private bookings require approval before sending</li>
             <li>Messages are automatically queued when booking status changes or payments are received</li>
-            <li>Approved messages must be manually sent using the "Send Now" button</li>
-            <li>Rejected messages are moved to the cancelled status and won't be sent</li>
+            <li>Approved messages must be manually sent using the &quot;Send Now&quot; button</li>
+            <li>Rejected messages are moved to the cancelled status and won&apos;t be sent</li>
             <li>When booking dates change, pending messages are automatically cancelled and new ones created</li>
           </ul>
         </div>
       </Alert>
-    </Page>
+      </PageContent>
+    </PageWrapper>
   )
 }
