@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { getVendors, createVendor, updateVendor, deleteVendor } from '@/app/actions/vendors'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
 import { Input } from '@/components/ui-v2/forms/Input'
@@ -29,6 +31,7 @@ interface VendorFormData {
 }
 
 export default function VendorsPage() {
+  const router = useRouter()
   const [vendors, setVendors] = useState<InvoiceVendor[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -160,29 +163,37 @@ export default function VendorsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <Spinner size="lg" />
-          <p className="mt-4 text-gray-600">Loading vendors...</p>
-        </div>
-      </div>
+      <PageWrapper>
+        <PageHeader 
+          title="Vendors"
+          subtitle="Manage your invoice vendors"
+          backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <Spinner size="lg" />
+              <p className="mt-4 text-gray-600">Loading vendors...</p>
+            </div>
+          </div>
+        </PageContent>
+      </PageWrapper>
     )
   }
 
   return (
-    <Page
-      title="Vendors"
-      description="Manage your invoice vendors"
-      breadcrumbs={[
-        { label: 'Invoices', href: '/invoices' },
-        { label: 'Vendors' }
-      ]}
-      actions={
-        <Button onClick={() => openForm()} leftIcon={<Plus className="h-4 w-4" />}>
-          Add Vendor
-        </Button>
-      }
-    >
+    <PageWrapper>
+      <PageHeader
+        title="Vendors"
+        subtitle="Manage your invoice vendors"
+        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+        actions={
+          <Button onClick={() => openForm()} leftIcon={<Plus className="h-4 w-4" />}>
+            Add Vendor
+          </Button>
+        }
+      />
+      <PageContent>
       {error && (
         <Alert variant="error" description={error} className="mb-6" />
       )}
@@ -380,6 +391,7 @@ export default function VendorsPage() {
               </div>
         </form>
       </Modal>
-    </Page>
+      </PageContent>
+    </PageWrapper>
   )
 }

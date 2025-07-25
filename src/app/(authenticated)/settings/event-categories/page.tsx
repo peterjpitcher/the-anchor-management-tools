@@ -13,10 +13,13 @@ import { EventCategory } from '@/types/event-categories'
 import { PlusIcon, PencilIcon, TrashIcon, SparklesIcon } from '@heroicons/react/24/outline'
 import { EventCategoryFormGrouped } from '@/components/EventCategoryFormGrouped'
 // New UI components
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
@@ -24,9 +27,11 @@ import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
-
+import { useRouter } from 'next/navigation';
 export default function EventCategoriesPage() {
-  const [categories, setCategories] = useState<EventCategory[]>([])
+  
+  const router = useRouter();
+const [categories, setCategories] = useState<EventCategory[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingCategory, setEditingCategory] = useState<EventCategory | null>(null)
@@ -162,54 +167,72 @@ export default function EventCategoriesPage() {
 
   if (showForm) {
     return (
-      <Page title={editingCategory ? 'Edit Event Category' : 'Create Event Category'}>
-        <Card>
-          <EventCategoryFormGrouped
-            category={editingCategory}
-            onSubmit={async (data) => {
-              try {
-                const formData = new FormData()
-                Object.entries(data).forEach(([key, value]) => {
-                  if (value !== null && value !== undefined) {
-                    if (typeof value === 'object') {
-                      formData.append(key, JSON.stringify(value))
-                    } else {
-                      formData.append(key, value.toString())
+      <PageWrapper>
+        <PageHeader 
+          title={editingCategory ? 'Edit Event Category' : 'Create Event Category'}
+          backButton={{
+            label: "Back to Categories",
+            onBack: handleCloseForm
+          }}
+        />
+        <PageContent>
+          <Card>
+            <EventCategoryFormGrouped
+              category={editingCategory}
+              onSubmit={async (data) => {
+                try {
+                  const formData = new FormData()
+                  Object.entries(data).forEach(([key, value]) => {
+                    if (value !== null && value !== undefined) {
+                      if (typeof value === 'object') {
+                        formData.append(key, JSON.stringify(value))
+                      } else {
+                        formData.append(key, value.toString())
+                      }
                     }
+                  })
+                  
+                  if (editingCategory) {
+                    await updateEventCategoryFromFormData(editingCategory.id, formData)
+                    toast.success('Category updated successfully')
+                  } else {
+                    await createEventCategoryFromFormData(formData)
+                    toast.success('Category created successfully')
                   }
-                })
-                
-                if (editingCategory) {
-                  await updateEventCategoryFromFormData(editingCategory.id, formData)
-                  toast.success('Category updated successfully')
-                } else {
-                  await createEventCategoryFromFormData(formData)
-                  toast.success('Category created successfully')
+                  handleCloseForm()
+                } catch (error) {
+                  toast.error('Failed to save category')
                 }
-                handleCloseForm()
-              } catch (error) {
-                toast.error('Failed to save category')
-              }
-            }}
-            onCancel={handleCloseForm}
-          />
-        </Card>
-      </Page>
+              }}
+              onCancel={handleCloseForm}
+            />
+          </Card>
+        </PageContent>
+      </PageWrapper>
     )
   }
 
   if (isLoading) {
     return (
-      <Page title="Event Categories">
-        <Card>
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <Spinner size="lg" />
-              <p className="mt-4 text-gray-500">Loading categories...</p>
+      <PageWrapper>
+        <PageHeader 
+          title="Event Categories"
+          backButton={{
+            label: "Back to Settings",
+            href: "/settings"
+          }}
+        />
+        <PageContent>
+          <Card>
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center">
+                <Spinner size="lg" />
+                <p className="mt-4 text-gray-500">Loading categories...</p>
+              </div>
             </div>
-          </div>
-        </Card>
-      </Page>
+          </Card>
+        </PageContent>
+      </PageWrapper>
     )
   }
 
@@ -297,74 +320,78 @@ export default function EventCategoriesPage() {
   ]
 
   return (
-    <Page
-      title="Event Categories"
-      description="Manage event categories to organize your events and track customer preferences"
-      actions={
-        <div className="flex space-x-3">
-          <Button
-            onClick={() => setAnalyzeConfirm(true)}
-            disabled={isAnalyzing}
-            variant="secondary"
-            loading={isAnalyzing}
-          >
-            <SparklesIcon className="-ml-1 mr-2 h-5 w-5" />
-            Analyze History
-          </Button>
-          <Button onClick={() => handleOpenForm()}>
-            <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
-            Add Category
-          </Button>
-        </div>
-      }
-    >
-      {/* Delete confirmation */}
-      <ConfirmDialog
-        open={!!deleteConfirm}
-        onClose={() => setDeleteConfirm(null)}
-        onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
-        title="Delete Category"
-        message={`Are you sure you want to delete "${deleteConfirm?.name}"? This action cannot be undone.`}
-        confirmText="Delete"
-        type="danger"
+    <PageWrapper>
+      <PageHeader
+        title="Event Categories"
+        subtitle="Manage event categories to organize your events and track customer preferences"
+        backButton={{
+          label: "Back to Settings",
+          href: "/settings"
+        }}
+        actions={
+          <NavGroup>
+            <NavLink 
+              onClick={() => setAnalyzeConfirm(true)}
+              className={isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''}
+            >
+              {isAnalyzing ? 'Analyzing...' : 'Analyze History'}
+            </NavLink>
+            <NavLink onClick={() => handleOpenForm()}>
+              Add Category
+            </NavLink>
+          </NavGroup>
+        }
       />
+      
+      <PageContent>
+        {/* Delete confirmation */}
+        <ConfirmDialog
+          open={!!deleteConfirm}
+          onClose={() => setDeleteConfirm(null)}
+          onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
+          title="Delete Category"
+          message={`Are you sure you want to delete "${deleteConfirm?.name}"? This action cannot be undone.`}
+          confirmText="Delete"
+          type="danger"
+        />
 
-      {/* Analyze confirmation */}
-      <ConfirmDialog
-        open={analyzeConfirm}
-        onClose={() => setAnalyzeConfirm(false)}
-        onConfirm={handleAnalyzeHistory}
-        title="Analyze Historical Data"
-        message="This will analyze all historical events and categorize them based on their names. Continue?"
-        confirmText="Analyze"
-        type="info"
-      />
+        {/* Analyze confirmation */}
+        <ConfirmDialog
+          open={analyzeConfirm}
+          onClose={() => setAnalyzeConfirm(false)}
+          onConfirm={handleAnalyzeHistory}
+          title="Analyze Historical Data"
+          message="This will analyze all historical events and categorize them based on their names. Continue?"
+          confirmText="Analyze"
+          type="info"
+        />
 
-      <Card>
-        {categories.length === 0 ? (
-          <EmptyState
-            title="No categories found"
-            description="Click 'Add Category' to create your first one."
-            action={
-              <Button onClick={() => handleOpenForm()}>
-                <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
-                Add Category
-              </Button>
-            }
-          />
-        ) : (
-          <DataTable
-            data={categories}
-            getRowKey={(category) => category.id}
-            columns={columns}
-          />
-        )}
-      </Card>
+        <Card>
+          {categories.length === 0 ? (
+            <EmptyState
+              title="No categories found"
+              description="Click 'Add Category' to create your first one."
+              action={
+                <Button onClick={() => handleOpenForm()}>
+                  <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
+                  Add Category
+                </Button>
+              }
+            />
+          ) : (
+            <DataTable
+              data={categories}
+              getRowKey={(category) => category.id}
+              columns={columns}
+            />
+          )}
+        </Card>
 
-      <Alert variant="info"
-        title="About Historical Analysis"
-        description="The 'Analyze History' button will scan all your past events and automatically categorize them based on their names. It will also build customer preference profiles showing who regularly attends each type of event. This is a one-time process that helps populate your initial data."
-      />
-    </Page>
+        <Alert variant="info"
+          title="About Historical Analysis"
+          description="The 'Analyze History' button will scan all your past events and automatically categorize them based on their names. It will also build customer preference profiles showing who regularly attends each type of event. This is a one-time process that helps populate your initial data."
+        />
+      </PageContent>
+    </PageWrapper>
   )
 }

@@ -5,7 +5,8 @@ import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { formatDate } from '@/lib/dateUtils'
 import { ExclamationTriangleIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline'
 // New UI components
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -16,7 +17,7 @@ import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { Tabs } from '@/components/ui-v2/navigation/Tabs'
-
+import { useRouter } from 'next/navigation';
 interface CustomerHealth {
   id: string
   first_name: string
@@ -37,6 +38,7 @@ interface CustomerHealth {
 }
 
 export default function SMSHealthDashboard() {
+  const router = useRouter();
   const supabase = useSupabase()
   const [loading, setLoading] = useState(true)
   const [customers, setCustomers] = useState<CustomerHealth[]>([])
@@ -176,24 +178,40 @@ export default function SMSHealthDashboard() {
 
   if (loading) {
     return (
-      <Page title="SMS Health Dashboard">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <Spinner size="lg" />
-            <p className="mt-4 text-gray-600">Loading SMS health data...</p>
+      <PageWrapper>
+        <PageHeader
+          title="SMS Health Dashboard"
+          subtitle="Monitor SMS delivery health and customer messaging status"
+          backButton={{
+            label: "Back to Settings",
+            href: "/settings"
+          }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <Spinner size="lg" />
+              <p className="mt-4 text-gray-600">Loading SMS health data...</p>
+            </div>
           </div>
-        </div>
-      </Page>
+        </PageContent>
+      </PageWrapper>
     )
   }
 
   return (
-    <Page
-      title="SMS Health Dashboard"
-      description="Monitor SMS delivery health and customer messaging status"
-    >
-      {/* Stats Overview */}
-      <Card>
+    <PageWrapper>
+      <PageHeader
+        title="SMS Health Dashboard"
+        subtitle="Monitor SMS delivery health and customer messaging status"
+        backButton={{
+          label: "Back to Settings",
+          href: "/settings"
+        }}
+      />
+      <PageContent>
+        {/* Stats Overview */}
+        <Card>
         <StatGroup>
           <Stat label="Total Customers" value={stats.totalCustomers} />
           <Stat label="Active" value={stats.activeCustomers} color="success" />
@@ -449,6 +467,7 @@ export default function SMSHealthDashboard() {
           </ul>
         </Card>
       </Section>
-    </Page>
+      </PageContent>
+    </PageWrapper>
   )
 }

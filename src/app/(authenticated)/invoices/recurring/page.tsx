@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getRecurringInvoices, deleteRecurringInvoice, generateInvoiceFromRecurring, toggleRecurringInvoiceStatus } from '@/app/actions/recurring-invoices'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Badge } from '@/components/ui-v2/display/Badge'
@@ -136,33 +137,39 @@ export default function RecurringInvoicesPage() {
 
   if (loading) {
     return (
-      <Page title="Loading...">
-        <div className="flex items-center justify-center h-64">
-          <Spinner size="lg" />
-        </div>
-      </Page>
+      <PageWrapper>
+        <PageHeader 
+          title="Recurring Invoices"
+          backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center h-64">
+            <Spinner size="lg" />
+          </div>
+        </PageContent>
+      </PageWrapper>
     )
   }
 
   return (
-    <Page
-      title="Recurring Invoices"
-      description="Manage automated invoice generation"
-      breadcrumbs={[
-        { label: 'Invoices', href: '/invoices' },
-        { label: 'Recurring' }
-      ]}
-      actions={
-        <Button
-          onClick={() => router.push('/invoices/recurring/new')}
-          leftIcon={<Plus className="h-4 w-4" />}
-        >
-          New Recurring Invoice
-        </Button>
-      }
-    >
-
-      {recurringInvoices.length === 0 ? (
+    <PageWrapper>
+      <PageHeader
+        title="Recurring Invoices"
+        subtitle="Manage automated invoice generation"
+        breadcrumbs={[
+          { label: 'Invoices', href: '/invoices' }
+        ]}
+        actions={
+          <Button
+            onClick={() => router.push('/invoices/recurring/new')}
+            leftIcon={<Plus className="h-4 w-4" />}
+          >
+            New Recurring Invoice
+          </Button>
+        }
+      />
+      <PageContent>
+        {recurringInvoices.length === 0 ? (
         <EmptyState icon="calendar"
           title="No recurring invoices"
           description="Create recurring invoices to automate your billing"
@@ -304,6 +311,7 @@ export default function RecurringInvoicesPage() {
         confirmText="Delete"
         confirmVariant="danger"
       />
-    </Page>
+      </PageContent>
+    </PageWrapper>
   )
 }

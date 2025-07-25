@@ -3,12 +3,15 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getInvoices, getInvoiceSummary } from '@/app/actions/invoices'
-import { Plus, Download, FileText, Calendar, Package, Users } from 'lucide-react'
+import { Plus, Download, FileText, Calendar } from 'lucide-react'
 import type { InvoiceWithDetails, InvoiceStatus } from '@/types/invoices'
 // New UI components
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Button } from '@/components/ui-v2/forms/Button'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { Stat } from '@/components/ui-v2/display/Stat'
 import { Select } from '@/components/ui-v2/forms/Select'
@@ -30,14 +33,14 @@ export default function InvoicesPage() {
   })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'all'>('all')
+  const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'all' | 'unpaid'>('unpaid')
   const [searchTerm, setSearchTerm] = useState('')
 
   useEffect(() => {
     async function loadData() {
       try {
         const [invoicesResult, summaryResult] = await Promise.all([
-          getInvoices(statusFilter === 'all' ? undefined : statusFilter),
+          getInvoices(statusFilter === 'all' ? undefined : statusFilter === 'unpaid' ? 'unpaid' : statusFilter),
           getInvoiceSummary()
         ])
 
@@ -155,46 +158,45 @@ export default function InvoicesPage() {
 
   if (loading) {
     return (
-      <Page title="Invoices">
-        <div className="flex items-center justify-center h-64">
-          <Spinner size="lg" />
-        </div>
-      </Page>
+      <PageWrapper>
+        <PageHeader 
+          title="Invoices"
+          subtitle="Manage invoices and payments"
+          backButton={{ label: 'Back to Dashboard', href: '/' }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center h-64">
+            <Spinner size="lg" />
+          </div>
+        </PageContent>
+      </PageWrapper>
     )
   }
 
   return (
-    <Page 
-      title="Invoices"
-      description="Manage your invoices and payments"
-      actions={
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="secondary"
-            onClick={() => router.push('/quotes')}
-            className="flex-1 sm:flex-initial"
-          >
-            <FileText className="h-4 w-4 mr-1 sm:mr-2" />
-            <span className="hidden sm:inline">Quotes</span>
-            <span className="sm:hidden">Quotes</span>
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => router.push('/invoices/recurring')}
-            className="flex-1 sm:flex-initial"
-          >
-            <Calendar className="h-4 w-4 mr-1 sm:mr-2" />
-            <span className="hidden sm:inline">Recurring</span>
-            <span className="sm:hidden">Recurring</span>
-          </Button>
-          <Button onClick={() => router.push('/invoices/new')} className="flex-1 sm:flex-initial">
-            <Plus className="h-4 w-4 mr-1 sm:mr-2" />
-            <span className="hidden sm:inline">New Invoice</span>
-            <span className="sm:hidden">New</span>
-          </Button>
-        </div>
-      }
-    >
+    <PageWrapper>
+      <PageHeader 
+        title="Invoices"
+        subtitle="Manage invoices and payments"
+        backButton={{ label: 'Back to Dashboard', href: '/' }}
+        actions={
+          <NavGroup>
+            <NavLink href="/invoices/catalog">
+              Catalog
+            </NavLink>
+            <NavLink href="/invoices/vendors">
+              Vendors
+            </NavLink>
+            <NavLink href="/invoices/export">
+              Export
+            </NavLink>
+            <NavLink href="/invoices/new">
+              New Invoice
+            </NavLink>
+          </NavGroup>
+        }
+      />
+      <PageContent>
 
       {error && (
         <Alert variant="error" description={error} className="mb-6" />
@@ -229,10 +231,11 @@ export default function InvoicesPage() {
             <div className="flex flex-col sm:flex-row gap-2">
               <Select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as InvoiceStatus | 'all')}
+                onChange={(e) => setStatusFilter(e.target.value as InvoiceStatus | 'all' | 'unpaid')}
                 className="w-full sm:w-auto"
                 fullWidth={false}
               >
+                <option value="unpaid">Unpaid</option>
                 <option value="all">All Invoices</option>
                 <option value="draft">Draft</option>
                 <option value="sent">Sent</option>
@@ -345,35 +348,7 @@ export default function InvoicesPage() {
           }}
         />
       </Card>
-
-      <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <Button
-          variant="secondary"
-          onClick={() => router.push('/invoices/vendors')}
-          className="flex items-center justify-center gap-2 py-6"
-        >
-          <Users className="h-5 w-5" />
-          <span>Vendors</span>
-        </Button>
-        
-        <Button
-          variant="secondary"
-          onClick={() => router.push('/invoices/catalog')}
-          className="flex items-center justify-center gap-2 py-6"
-        >
-          <Package className="h-5 w-5" />
-          <span>Line Items</span>
-        </Button>
-        
-        <Button
-          variant="secondary"
-          onClick={() => router.push('/invoices/export')}
-          className="flex items-center justify-center gap-2 py-6"
-        >
-          <Download className="h-5 w-5" />
-          <span>Export</span>
-        </Button>
-      </div>
-    </Page>
+      </PageContent>
+    </PageWrapper>
   )
 }

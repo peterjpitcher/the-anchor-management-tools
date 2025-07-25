@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Select } from '@/components/ui-v2/forms/Select'
@@ -99,20 +100,19 @@ export default function InvoiceExportPage() {
   }
 
   return (
-    <Page
-      title="Export Invoices"
-      description="Export invoices as a ZIP file containing individual PDFs"
-      breadcrumbs={[
-        { label: 'Invoices', href: '/invoices' },
-        { label: 'Export' }
-      ]}
-    >
+    <PageWrapper>
+      <PageHeader
+        title="Export Invoices"
+        subtitle="Export invoices as a ZIP file containing individual PDFs"
+        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+      />
+      <PageContent>
+        <div className="space-y-6">
+          {error && (
+            <Alert variant="error" description={error} />
+          )}
 
-      {error && (
-        <Alert variant="error" description={error} className="mb-6" />
-      )}
-
-      <Card className="p-6">
+          <Card>
         <h2 className="text-lg font-semibold mb-4">Export Options</h2>
         
         <div className="space-y-4">
@@ -221,6 +221,8 @@ export default function InvoiceExportPage() {
           </Button>
         </div>
       </Card>
-    </Page>
+        </div>
+      </PageContent>
+    </PageWrapper>
   )
 }

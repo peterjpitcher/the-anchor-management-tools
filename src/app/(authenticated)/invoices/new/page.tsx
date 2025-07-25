@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createInvoice, getLineItemCatalog } from '@/app/actions/invoices'
 import { getVendors } from '@/app/actions/vendors'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Input } from '@/components/ui-v2/forms/Input'
@@ -196,19 +197,18 @@ export default function NewInvoicePage() {
   const totals = calculateInvoiceTotal()
 
   return (
-    <Page
-      title="New Invoice"
-      description="Create a new invoice"
-      breadcrumbs={[
-        { label: 'Invoices', href: '/invoices' },
-        { label: 'New Invoice' }
-      ]}
-    >
-      {error && (
-        <Alert variant="error" description={error} className="mb-6" />
-      )}
+    <PageWrapper>
+      <PageHeader
+        title="New Invoice"
+        subtitle="Create a new invoice"
+        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+      />
+      <PageContent>
+        {error && (
+          <Alert variant="error" description={error} className="mb-6" />
+        )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
         <Card className="p-6">
           <h2 className="text-lg font-semibold mb-4">Invoice Details</h2>
           
@@ -475,6 +475,7 @@ export default function NewInvoicePage() {
           </div>
         </div>
       </form>
-    </Page>
+      </PageContent>
+    </PageWrapper>
   )
 }

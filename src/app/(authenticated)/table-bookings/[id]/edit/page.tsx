@@ -11,7 +11,13 @@ import { checkAvailability } from '@/app/actions/table-booking-availability';
 import Link from 'next/link';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { TableBooking } from '@/types/table-bookings';
-
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
+import { Card } from '@/components/ui-v2/layout/Card';
+import { Alert } from '@/components/ui-v2/feedback/Alert';
+import { Button } from '@/components/ui-v2/forms/Button';
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
+import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 interface TimeSlot {
   time: string;
   available_capacity: number;
@@ -194,33 +200,87 @@ export default function EditTableBookingPage(props: { params: Promise<{ id: stri
 
   if (!canEdit) {
     return (
-      <div className="p-8">
-        <p className="text-red-600">You do not have permission to edit bookings.</p>
-      </div>
+      <PageWrapper>
+        <PageHeader 
+          title="Edit Booking"
+          subtitle="Update booking details"
+          backButton={{
+            label: "Back to Bookings",
+            href: "/table-bookings"
+          }}
+        />
+        <PageContent>
+          <Card>
+            <Alert variant="error" 
+              title="Access Denied" 
+              description="You do not have permission to edit bookings." 
+            />
+          </Card>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
+      <PageWrapper>
+        <PageHeader 
+          title="Edit Booking"
+          subtitle="Update booking details"
+          backButton={{
+            label: "Back to Bookings",
+            href: "/table-bookings"
+          }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center h-64">
+            <Spinner size="lg" />
+          </div>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
   if (error && !booking) {
     return (
-      <div className="p-8">
-        <p className="text-red-600">Error: {error}</p>
-      </div>
+      <PageWrapper>
+        <PageHeader 
+          title="Edit Booking"
+          subtitle="Update booking details"
+          backButton={{
+            label: "Back to Bookings",
+            href: "/table-bookings"
+          }}
+        />
+        <PageContent>
+          <Card>
+            <Alert variant="error" title="Error" description={error} />
+          </Card>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
   if (!booking) {
     return (
-      <div className="p-8">
-        <p className="text-red-600">Booking not found</p>
-      </div>
+      <PageWrapper>
+        <PageHeader 
+          title="Edit Booking"
+          subtitle="Update booking details"
+          backButton={{
+            label: "Back to Bookings",
+            href: "/table-bookings"
+          }}
+        />
+        <PageContent>
+          <Card>
+            <Alert variant="error" 
+              title="Booking not found" 
+              description="The requested booking could not be found." 
+            />
+          </Card>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
@@ -228,41 +288,39 @@ export default function EditTableBookingPage(props: { params: Promise<{ id: stri
   const canEditDateTime = !isPast && booking.status === 'confirmed';
 
   return (
-    <div className="max-w-3xl mx-auto p-8">
-      <div className="mb-6">
-        <Link
-          href={`/table-bookings/${booking.id}`}
-          className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
-        >
-          <ArrowLeftIcon className="h-4 w-4" />
-          Back to Booking Details
-        </Link>
-      </div>
+    <PageWrapper>
+      <PageHeader 
+        title={`Edit Booking ${booking.booking_reference}`}
+        subtitle={`${booking.customer?.first_name} ${booking.customer?.last_name} • ${booking.customer?.mobile_number}`}
+        backButton={{
+          label: "Back to Booking Details",
+          href: `/table-bookings/${booking.id}`
+        }}
+      />
+      <PageContent>
+        <div className="max-w-3xl mx-auto">
+          {error && (
+            <Alert variant="error" description={error} className="mb-4" />
+          )}
 
-      <h1 className="text-2xl font-bold mb-2">Edit Booking {booking.booking_reference}</h1>
-      <p className="text-gray-600 mb-6">
-        {booking.customer?.first_name} {booking.customer?.last_name} • {booking.customer?.mobile_number}
-      </p>
+          {booking.status !== 'confirmed' && (
+            <Alert 
+              variant="warning" 
+              description={`Only confirmed bookings can be edited. This booking is currently ${booking.status}.`}
+              className="mb-4"
+            />
+          )}
 
-      {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md text-red-700">
-          {error}
-        </div>
-      )}
+          {isPast && (
+            <Alert 
+              variant="info" 
+              description="Past bookings cannot be edited."
+              className="mb-4"
+            />
+          )}
 
-      {booking.status !== 'confirmed' && (
-        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md text-yellow-700">
-          Only confirmed bookings can be edited. This booking is currently {booking.status}.
-        </div>
-      )}
-
-      {isPast && (
-        <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-md text-gray-700">
-          Past bookings cannot be edited.
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-6">
+          <Card>
+            <form onSubmit={handleSubmit} className="space-y-6">
         {/* Date and Party Size */}
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -406,25 +464,28 @@ export default function EditTableBookingPage(props: { params: Promise<{ id: stri
           </div>
         </div>
 
-        {/* Submit Buttons */}
-        <div className="border-t pt-6 flex gap-4">
-          <button
-            type="submit"
-            disabled={submitting || !selectedTime || checkingAvailability || booking.status !== 'confirmed'}
-            className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            Update Booking
-          </button>
-          
-          <Link
-            href={`/table-bookings/${booking.id}`}
-            className="bg-gray-200 text-gray-700 px-6 py-2 rounded-md hover:bg-gray-300"
-          >
-            Cancel
-          </Link>
+              {/* Submit Buttons */}
+              <div className="border-t pt-6 flex gap-4">
+                <Button
+                  type="submit"
+                  disabled={submitting || !selectedTime || checkingAvailability || booking.status !== 'confirmed'}
+                  variant="primary"
+                >
+                  {submitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  Update Booking
+                </Button>
+                
+                <LinkButton
+                  href={`/table-bookings/${booking.id}`}
+                  variant="secondary"
+                >
+                  Cancel
+                </LinkButton>
+              </div>
+            </form>
+          </Card>
         </div>
-      </form>
-    </div>
+      </PageContent>
+    </PageWrapper>
   );
 }

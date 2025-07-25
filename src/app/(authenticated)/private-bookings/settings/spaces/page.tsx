@@ -106,7 +106,10 @@ export default async function VenueSpacesPage() {
       title="Venue Spaces"
       description="Manage available spaces for private hire"
       actions={
-        <LinkButton href="/private-bookings" variant="secondary">Back</LinkButton>
+        <div className="flex items-center space-x-3">
+          <LinkButton href="/private-bookings/settings" variant="secondary">Back to Settings</LinkButton>
+          <LinkButton href="/private-bookings" variant="secondary">Back</LinkButton>
+        </div>
       }
     >
       {/* Add New Space Form */}

@@ -1,3 +1,5 @@
+'use client'
+
 /**
  * Button Component
  * 
@@ -215,7 +217,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(({
       ) : null}
       
       {/* Children */}
-      {!iconOnly && children}
+      {children}
       
       {/* Right icon */}
       {rightIcon && !loading && (

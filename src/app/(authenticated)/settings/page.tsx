@@ -20,7 +20,8 @@ import {
 import { checkUserPermission } from '@/app/actions/rbac';
 import type { ModuleName, ActionType } from '@/types/rbac';
 // New UI components
-import { Page } from '@/components/ui-v2/layout/Page';
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { List, SimpleList } from '@/components/ui-v2/display/List';
@@ -158,7 +159,7 @@ const settingsSections = [
   {
     name: 'Short Links',
     description: 'Create and manage vip-club.uk short links',
-    href: '/settings/short-links',
+    href: '/short-links',
     icon: LinkIcon,
     permission: null, // Allow all authenticated users
   },
@@ -210,55 +211,58 @@ export default async function SettingsPage() {
   );
 
   return (
-    <Page
-      title="Settings"
-      description="Manage application settings and configurations"
-    >
+    <PageWrapper>
+      <PageHeader
+        title="Settings"
+        subtitle="Manage application settings and configurations"
+        backButton={{ label: "Back to Dashboard", href: "/dashboard" }}
+      />
+      <PageContent>
+        {userManagementSections.length > 0 && (
+          <Section title="User Management">
+            <SimpleList
+              items={userManagementSections.map((section) => ({
+                id: section.href,
+                href: section.href,
+                title: section.name,
+                subtitle: section.description,
+                icon: <section.icon className="h-5 w-5 text-gray-400" />,
+                // SimpleList automatically adds chevron for items with href
+              }))}
+            />
+          </Section>
+        )}
 
-      {userManagementSections.length > 0 && (
-        <Section title="User Management">
-          <SimpleList
-            items={userManagementSections.map((section) => ({
-              id: section.href,
-              href: section.href,
-              title: section.name,
-              subtitle: section.description,
-              icon: <section.icon className="h-5 w-5 text-gray-400" />,
-              meta: <ChevronRightIcon className="h-5 w-5 text-gray-400" />,
-            }))}
-          />
-        </Section>
-      )}
+        {systemSettingsSections.length > 0 && (
+          <Section title="System Settings">
+            <SimpleList
+              items={systemSettingsSections.map((section) => ({
+                id: section.href,
+                href: section.href,
+                title: section.name,
+                subtitle: section.description,
+                icon: <section.icon className="h-5 w-5 text-gray-400" />,
+                // SimpleList automatically adds chevron for items with href
+              }))}
+            />
+          </Section>
+        )}
 
-      {systemSettingsSections.length > 0 && (
-        <Section title="System Settings">
-          <SimpleList
-            items={systemSettingsSections.map((section) => ({
-              id: section.href,
-              href: section.href,
-              title: section.name,
-              subtitle: section.description,
-              icon: <section.icon className="h-5 w-5 text-gray-400" />,
-              meta: <ChevronRightIcon className="h-5 w-5 text-gray-400" />,
-            }))}
-          />
-        </Section>
-      )}
-
-      {monitoringSections.length > 0 && (
-        <Section title="Monitoring & Logs">
-          <SimpleList
-            items={monitoringSections.map((section) => ({
-              id: section.href,
-              href: section.href,
-              title: section.name,
-              subtitle: section.description,
-              icon: <section.icon className="h-5 w-5 text-gray-400" />,
-              meta: <ChevronRightIcon className="h-5 w-5 text-gray-400" />,
-            }))}
-          />
-        </Section>
-      )}
-    </Page>
+        {monitoringSections.length > 0 && (
+          <Section title="Monitoring & Logs">
+            <SimpleList
+              items={monitoringSections.map((section) => ({
+                id: section.href,
+                href: section.href,
+                title: section.name,
+                subtitle: section.description,
+                icon: <section.icon className="h-5 w-5 text-gray-400" />,
+                // SimpleList automatically adds chevron for items with href
+              }))}
+            />
+          </Section>
+        )}
+      </PageContent>
+    </PageWrapper>
   );
 }

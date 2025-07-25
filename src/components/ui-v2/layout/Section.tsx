@@ -161,7 +161,7 @@ export const Section = forwardRef<HTMLElement, SectionProps>(({
         <div className={cn(
           'section-body',
           padding !== 'none' && paddingClasses[padding],
-          hasHeader && variant === 'default' && 'mt-5'
+          hasHeader && variant === 'default' && 'mt-2'
         )}>
           {children}
         </div>

@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getInvoice, recordPayment } from '@/app/actions/invoices'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Select } from '@/components/ui-v2/forms/Select'
@@ -106,50 +107,57 @@ export default function RecordPaymentPage() {
 
   if (loading) {
     return (
-      <Page title="Loading...">
-        <div className="flex items-center justify-center h-64">
-          <Spinner size="lg" />
-        </div>
-      </Page>
+      <PageWrapper>
+        <PageHeader 
+          title="Loading..."
+          backButton={{ label: 'Back to Invoice', href: `/invoices/${invoiceId}` }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center h-64">
+            <Spinner size="lg" />
+          </div>
+        </PageContent>
+      </PageWrapper>
     )
   }
 
   if (!invoice) {
     return (
-      <Page title="Error">
-        <Alert variant="error" description={error || 'Invoice not found'} className="mb-6" />
-        <Button
-          onClick={() => router.push('/invoices')}
-          leftIcon={<ChevronLeft className="h-4 w-4" />}
-        >
-          Back to Invoices
-        </Button>
-      </Page>
+      <PageWrapper>
+        <PageHeader 
+          title="Error"
+          backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+        />
+        <PageContent>
+          <Alert variant="error" description={error || 'Invoice not found'} />
+        </PageContent>
+      </PageWrapper>
     )
   }
 
   const outstanding = invoice.total_amount - invoice.paid_amount
 
   return (
-    <Page
-      title="Record Payment"
-      description={`Invoice ${invoice.invoice_number} - ${invoice.vendor?.name}`}
-      breadcrumbs={[
-        { label: 'Invoices', href: '/invoices' },
-        { label: invoice.invoice_number, href: `/invoices/${invoice.id}` },
-        { label: 'Payment' }
-      ]}
-    >
+    <PageWrapper>
+      <PageHeader
+        title="Record Payment"
+        subtitle={`Invoice ${invoice.invoice_number} - ${invoice.vendor?.name}`}
+        backButton={{
+          label: "Back to Invoice",
+          href: `/invoices/${invoice.id}`
+        }}
+      />
+      <PageContent>
+        <div className="space-y-6">
+          {error && (
+            <Alert variant="error" description={error} />
+          )}
 
-      {error && (
-        <Alert variant="error" description={error} className="mb-6" />
-      )}
+          {success && (
+            <Alert variant="success" description="Payment recorded successfully! Redirecting..." />
+          )}
 
-      {success && (
-        <Alert variant="success" description="Payment recorded successfully! Redirecting..." className="mb-6" />
-      )}
-
-      <Card className="p-6 mb-6">
+          <Card>
         <h2 className="text-lg font-semibold mb-4">Payment Summary</h2>
         <div className="grid grid-cols-3 gap-4 text-center">
           <div>
@@ -168,7 +176,7 @@ export default function RecordPaymentPage() {
       </Card>
 
       <form onSubmit={handleSubmit}>
-        <Card className="p-6">
+        <Card>
         <h2 className="text-lg font-semibold mb-4">Payment Details</h2>
         
         <div className="space-y-4">
@@ -247,6 +255,8 @@ export default function RecordPaymentPage() {
         </div>
         </Card>
       </form>
-    </Page>
+        </div>
+      </PageContent>
+    </PageWrapper>
   )
 }

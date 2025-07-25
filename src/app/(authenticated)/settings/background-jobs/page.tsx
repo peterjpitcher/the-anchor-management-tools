@@ -27,6 +27,8 @@ import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Pagination } from '@/components/ui-v2/navigation/Pagination'
 import { Stat } from '@/components/ui-v2/display/Stat'
 
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
+import { useRouter } from 'next/navigation';
 interface BackgroundJob {
   id: string
   type: string
@@ -63,6 +65,7 @@ const jobTypeLabels: Record<string, string> = {
 }
 
 export default function BackgroundJobsPage() {
+  const router = useRouter();
   const supabase = useSupabase()
   const [selectedJob, setSelectedJob] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>('')
@@ -285,13 +288,17 @@ export default function BackgroundJobsPage() {
       breadcrumbs={breadcrumbs}
       loading={isLoading}
       actions={
-        <Button onClick={processJobs}
-          disabled={isProcessing}
-          loading={isProcessing}
-          leftIcon={!isProcessing && <PlayIcon />}
-        >
-          {isProcessing ? 'Processing...' : 'Process Jobs'}
-        </Button>
+        <div className="flex items-center space-x-3">
+          <BackButton label="Back to Settings" onBack={() => router.push('/settings')} />
+          <Button 
+            onClick={processJobs}
+            disabled={isProcessing}
+            loading={isProcessing}
+            leftIcon={!isProcessing && <PlayIcon />}
+          >
+            {isProcessing ? 'Processing...' : 'Process Jobs'}
+          </Button>
+        </div>
       }
     >
 

@@ -1,4 +1,6 @@
-'use client';
+'use client'
+
+import { useRouter } from 'next/navigation';
 
 import { useState, useEffect } from 'react';
 import { usePermissions } from '@/contexts/PermissionContext';
@@ -30,6 +32,7 @@ import { Section } from '@/components/ui-v2/layout/Section';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { Button } from '@/components/ui-v2/forms/Button';
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 import { Select } from '@/components/ui-v2/forms/Select';
 import { Input } from '@/components/ui-v2/forms/Input';
 import { Textarea } from '@/components/ui-v2/forms/Textarea';
@@ -44,6 +47,7 @@ import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog';
 import { toast } from '@/components/ui-v2/feedback/Toast';
 
 export default function RewardManagementPage() {
+  const router = useRouter();
   const { hasPermission } = usePermissions();
   const [rewards, setRewards] = useState<LoyaltyReward[]>([]);
   const [loading, setLoading] = useState(true);
@@ -248,9 +252,7 @@ export default function RewardManagementPage() {
       loading={loading}
       actions={
         <div className="flex gap-3">
-          <LinkButton href="/loyalty/admin" variant="secondary">
-            Back to Dashboard
-          </LinkButton>
+          <BackButton label="Back to Dashboard" onBack={() => router.push('/loyalty/admin')} />
           <Button onClick={() => setShowForm(true)} leftIcon={<PlusIcon className="h-4 w-4" />}>
             Add Reward
           </Button>
@@ -264,7 +266,7 @@ export default function RewardManagementPage() {
           title="Configuration Mode"
           className="mb-6"
         >
-          The loyalty program is not operational. You can configure rewards, but customers won't earn points until you
+          The loyalty program is not operational. You can configure rewards, but customers won&apos;t earn points until you
           <Link href="/settings/loyalty" className="ml-1 text-yellow-900 underline">enable operations</Link>.
         </Alert>
       )}

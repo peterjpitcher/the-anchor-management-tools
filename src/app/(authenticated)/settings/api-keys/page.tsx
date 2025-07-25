@@ -3,9 +3,9 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import ApiKeysManager from './ApiKeysManager';
 // New UI components
-import { Page } from '@/components/ui-v2/layout/Page';
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
-
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
 export const metadata: Metadata = {
   title: 'API Keys',
   description: 'Manage API keys for external integrations',
@@ -30,12 +30,20 @@ export default async function ApiKeysPage() {
 
   if (roleName !== 'super_admin') {
     return (
-      <Page title="API Key Management">
+      <div>
+        <PageHeader
+          title="API Key Management"
+          subtitle="Manage API keys for external integrations"
+          backButton={{
+            label: "Back to Settings",
+            href: "/settings"
+          }}
+        />
         <Alert variant="error"
           title="Access Denied"
           description="Only super administrators can access this page."
         />
-      </Page>
+      </div>
     );
   }
 
@@ -46,11 +54,16 @@ export default async function ApiKeysPage() {
     .order('created_at', { ascending: false });
 
   return (
-    <Page
-      title="API Key Management"
-      description="Manage API keys for external integrations"
-    >
+    <div>
+      <PageHeader
+        title="API Key Management"
+        subtitle="Manage API keys for external integrations"
+        backButton={{
+          label: "Back to Settings",
+          href: "/settings"
+        }}
+      />
       <ApiKeysManager initialKeys={apiKeys || []} />
-    </Page>
+    </div>
   );
 }

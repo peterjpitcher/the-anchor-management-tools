@@ -24,7 +24,8 @@ import { TableBooking, TableBookingItem, TableBookingPayment } from '@/types/tab
 import { cancelTableBooking, markBookingNoShow, markBookingCompleted } from '@/app/actions/table-bookings';
 import { processBookingRefund, getRefundEligibility } from '@/app/actions/table-booking-refunds';
 import { queueBookingReminderSMS } from '@/app/actions/table-booking-sms';
-import { Page } from '@/components/ui-v2/layout/Page';
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { Button } from '@/components/ui-v2/forms/Button';
@@ -37,7 +38,6 @@ import { Badge } from '@/components/ui-v2/display/Badge';
 import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 import { Modal } from '@/components/ui-v2/overlay/Modal';
 import { toast } from '@/components/ui-v2/feedback/Toast';
-
 export default function BookingDetailsPage(props: { params: Promise<{ id: string }> }) {
   const params = use(props.params);
   const router = useRouter();
@@ -199,25 +199,42 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
 
   if (!canView) {
     return (
-      <Page title="Access Denied">
-        <Alert variant="error" description="You do not have permission to view booking details." />
-      </Page>
+      <PageWrapper>
+        <PageHeader 
+          title="Access Denied"
+          backButton={{
+            label: "Back to Table Bookings",
+            onBack: () => router.push('/table-bookings')
+          }}
+        />
+        <PageContent>
+          <Alert variant="error" description="You do not have permission to view booking details." />
+        </PageContent>
+      </PageWrapper>
     );
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Spinner size="lg" />
-      </div>
+      <PageWrapper>
+        <PageHeader title="Loading..." />
+        <PageContent>
+          <div className="flex items-center justify-center h-64">
+            <Spinner size="lg" />
+          </div>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
   if (error || !booking) {
     return (
-      <Page title="Error">
-        <Alert variant="error" description={error || 'Booking not found'} />
-      </Page>
+      <PageWrapper>
+        <PageHeader title="Error" />
+        <PageContent>
+          <Alert variant="error" description={error || 'Booking not found'} />
+        </PageContent>
+      </PageWrapper>
     );
   }
 
@@ -226,15 +243,17 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
   const isPast = bookingDateTime < new Date();
 
   return (
-    <Page
-      title={`Booking ${booking.booking_reference}`}
-      description={`Created ${format(new Date(booking.created_at), 'dd/MM/yyyy HH:mm')} • Source: ${booking.source}`}
-      breadcrumbs={[
-        { label: 'Table Bookings', href: '/table-bookings' },
-        { label: booking.booking_reference }
-      ]}
-    >
-      <Card>
+    <PageWrapper>
+      <PageHeader
+        title={`Booking ${booking.booking_reference}`}
+        subtitle={`Created ${format(new Date(booking.created_at), 'dd/MM/yyyy HH:mm')} • Source: ${booking.source}`}
+        breadcrumbs={[
+          { label: 'Table Bookings', href: '/table-bookings' },
+          { label: booking.booking_reference, href: '' }
+        ]}
+      />
+      <PageContent>
+        <Card>
         {/* Header */}
         <div className="p-6 border-b">
           <div className="flex justify-between items-start">
@@ -604,6 +623,7 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
           )}
         </Form>
       </Modal>
-    </Page>
+      </PageContent>
+    </PageWrapper>
   );
 }

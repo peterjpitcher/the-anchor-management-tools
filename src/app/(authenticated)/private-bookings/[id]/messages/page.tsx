@@ -26,6 +26,8 @@ import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
+import { useRouter } from 'next/navigation';
 interface SmsTemplate {
   id: string
   name: string
@@ -77,6 +79,7 @@ export default function MessagesPage({
 }: {
   params: Promise<{ id: string }>
 }) {
+  const router = useRouter();
   const [bookingId, setBookingId] = useState<string>('')
   const [booking, setBooking] = useState<PrivateBookingWithDetails | null>(null)
   const [loading, setLoading] = useState(true)
@@ -194,7 +197,9 @@ export default function MessagesPage({
 
   if (loading) {
     return (
-      <Page title="Send SMS Message">
+      <Page title="Send SMS Message"
+      actions={<BackButton label="Back to Booking" onBack={() => router.back()} />}
+    >
         <div className="flex items-center justify-center p-8">
           <Spinner size="lg" />
         </div>

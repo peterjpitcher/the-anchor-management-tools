@@ -1,6 +1,7 @@
 export function formatDate(date: string | Date): string {
   const d = new Date(date)
-  return d.toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })
+  // Format as "January 15, 2024"
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
 export function formatDateFull(date: string | Date | null): string {

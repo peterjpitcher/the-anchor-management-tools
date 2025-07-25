@@ -14,6 +14,8 @@ import toast from 'react-hot-toast';
 import { exportLoyaltyMembers, getLoyaltyTiers } from '@/app/actions/loyalty-members';
 import { Loader2 } from 'lucide-react';
 import Papa from 'papaparse';
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
 
 interface ExportOptions {
   status: '' | 'active' | 'inactive' | 'suspended';
@@ -122,30 +124,29 @@ export default function ExportDataPage() {
 
   if (!hasPermission('loyalty', 'view')) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-500">You don&apos;t have permission to export data.</p>
-      </div>
+      <PageWrapper>
+        <PageHeader
+          title="Export Member Data"
+          subtitle="Download loyalty member data in CSV or JSON format"
+          backButton={{ label: "Back to Loyalty", href: "/loyalty/admin" }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center min-h-[400px]">
+            <p className="text-gray-500">You don&apos;t have permission to export data.</p>
+          </div>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center space-x-4">
-          <Link
-            href="/loyalty/admin"
-            className="inline-flex items-center text-gray-600 hover:text-gray-900"
-          >
-            <ArrowLeftIcon className="h-5 w-5 mr-1" />
-            Back
-          </Link>
-        </div>
-        <h1 className="text-3xl font-bold text-gray-900 mt-4">Export Member Data</h1>
-        <p className="mt-2 text-gray-600">
-          Download loyalty member data in CSV or JSON format
-        </p>
-      </div>
+    <PageWrapper>
+      <PageHeader
+        title="Export Member Data"
+        subtitle="Download loyalty member data in CSV or JSON format"
+        backButton={{ label: "Back to Loyalty", href: "/loyalty/admin" }}
+      />
+      <PageContent>
 
       {/* Export Options */}
       <div className="bg-white shadow rounded-lg p-6 mb-6">
@@ -360,6 +361,7 @@ export default function ExportDataPage() {
           )}
         </button>
       </div>
-    </div>
+      </PageContent>
+    </PageWrapper>
   );
 }

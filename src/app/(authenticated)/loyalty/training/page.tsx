@@ -1,4 +1,6 @@
-'use client';
+'use client'
+
+import { useRouter } from 'next/navigation';
 
 import { useState } from 'react';
 import { usePermissions } from '@/contexts/PermissionContext';
@@ -15,6 +17,8 @@ import {
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import Image from 'next/image';
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
 
 interface TrainingModule {
   id: string;
@@ -118,29 +122,16 @@ export default function StaffTrainingPage() {
 
   const selectedModule = trainingModules.find(m => m.id === activeModule);
   const completionRate = Math.round((completedModules.length / trainingModules.length) * 100);
+  const router = useRouter();
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-              <AcademicCapIcon className="h-8 w-8 mr-3 text-amber-600" />
-              Staff Training: VIP Club
-            </h1>
-            <p className="mt-2 text-gray-600">
-              Learn how to help customers with The Anchor VIP Club loyalty program
-            </p>
-          </div>
-          <Link
-            href="/loyalty/admin"
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-          >
-            Back to Loyalty
-          </Link>
-        </div>
-      </div>
+    <PageWrapper>
+      <PageHeader
+        title="Staff Training: VIP Club"
+        subtitle="Learn how to help customers with The Anchor VIP Club loyalty program"
+        backButton={{ label: "Back to Loyalty", href: "/loyalty/admin" }}
+      />
+      <PageContent>
 
       {/* Progress Bar */}
       <div className="mb-8 bg-white rounded-lg shadow p-6">
@@ -326,6 +317,7 @@ export default function StaffTrainingPage() {
           </div>
         </div>
       </div>
-    </div>
+      </PageContent>
+    </PageWrapper>
   );
 }

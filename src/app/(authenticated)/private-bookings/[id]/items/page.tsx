@@ -38,6 +38,8 @@ import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
+import { useRouter } from 'next/navigation';
 interface BookingItem {
   id: string
   booking_id: string
@@ -567,6 +569,7 @@ export default function ItemsPage({
 }: {
   params: Promise<{ id: string }>
 }) {
+  const router = useRouter();
   const [bookingId, setBookingId] = useState<string>('')
   const [booking, setBooking] = useState<PrivateBooking | null>(null)
   const [items, setItems] = useState<BookingItem[]>([])
@@ -626,7 +629,9 @@ export default function ItemsPage({
 
   if (loading) {
     return (
-      <Page title="Booking Items">
+      <Page title="Booking Items"
+      actions={<BackButton label="Back to Booking" onBack={() => router.back()} />}
+    >
         <div className="flex items-center justify-center p-8">
           <Spinner size="lg" />
         </div>

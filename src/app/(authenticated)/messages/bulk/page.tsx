@@ -8,7 +8,8 @@ import { getActiveEventCategories } from '@/app/actions/event-categories'
 import Link from 'next/link'
 import { formatDate } from '@/lib/dateUtils'
 // New UI components
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -376,29 +377,38 @@ export default function BulkMessagePage() {
 
   if (loading) {
     return (
-      <Page title="Bulk Message">
-        <div className="flex items-center justify-center h-64">
-          <Spinner size="lg" />
-        </div>
-      </Page>
+      <PageWrapper>
+        <PageHeader
+          title="Bulk Message"
+          backButton={{ label: "Back to Messages", href: "/messages" }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center h-64">
+            <Spinner size="lg" />
+          </div>
+        </PageContent>
+      </PageWrapper>
     )
   }
 
   return (
-    <Page
-      title="Bulk Message"
-      breadcrumbs={[
-        { label: 'Messages', href: '/messages' },
-        { label: 'Bulk Message' }
-      ]}
-      actions={
-        <div className="text-sm text-gray-600">
-          {selectedCustomers.size} of {filteredCustomers.length} customers selected
-        </div>
-      }
-    >
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <PageWrapper>
+      <PageHeader
+        title="Bulk Message"
+        subtitle={`Send a message to multiple customers at once`}
+        backButton={{ label: "Back to Messages", href: "/messages" }}
+        breadcrumbs={[
+          { label: 'Messages', href: '/messages' },
+          { label: 'Bulk Message', href: '/messages/bulk' }
+        ]}
+        actions={
+          <div className="text-sm text-gray-600">
+            {selectedCustomers.size} of {filteredCustomers.length} customers selected
+          </div>
+        }
+      />
+      <PageContent>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Filters and Customer List */}
         <div className="lg:col-span-2 space-y-6">
           {/* Filters */}
@@ -712,6 +722,7 @@ export default function BulkMessagePage() {
           </Section>
         </div>
       </div>
-    </Page>
+      </PageContent>
+    </PageWrapper>
   )
 }

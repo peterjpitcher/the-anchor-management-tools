@@ -1,7 +1,10 @@
-'use client';
+'use client'
+
+import { useRouter } from 'next/navigation';
 
 import { useState, useEffect } from 'react';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 import { generateEventQRCodes, generateUnbookedQRCodes } from '@/app/actions/loyalty-batch-qr';
 import { usePermissions } from '@/contexts/PermissionContext';
 import Link from 'next/link';
@@ -15,6 +18,8 @@ import {
   UserPlusIcon
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
 
 interface Event {
   id: string;
@@ -33,6 +38,7 @@ interface Event {
 }
 
 export default function BatchQRPage() {
+  const router = useRouter();
   const supabase = useSupabase();
   const { hasPermission } = usePermissions();
   const [events, setEvents] = useState<Event[]>([]);
@@ -155,30 +161,29 @@ export default function BatchQRPage() {
 
   if (!canManageEvents) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-500">You don&apos;t have permission to manage event QR codes.</p>
-      </div>
+      <PageWrapper>
+        <PageHeader
+          title="Batch QR Code Generation"
+          subtitle="Generate and download QR codes for all bookings or create walk-in codes"
+          backButton={{ label: "Back to Event QR", href: "/loyalty/event-qr" }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center min-h-[400px]">
+            <p className="text-gray-500">You don&apos;t have permission to manage event QR codes.</p>
+          </div>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-      <div className="mb-8">
-        <Link
-          href="/loyalty/event-qr"
-          className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700"
-        >
-          <ArrowLeftIcon className="h-4 w-4 mr-1" />
-          Back to Event QR
-        </Link>
-      </div>
-
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Batch QR Code Generation</h1>
-        <p className="mt-2 text-lg text-gray-600">
-          Generate and download QR codes for all bookings or create walk-in codes
-        </p>
-      </div>
+    <PageWrapper>
+      <PageHeader
+        title="Batch QR Code Generation"
+        subtitle="Generate and download QR codes for all bookings or create walk-in codes"
+        backButton={{ label: "Back to Event QR", href: "/loyalty/event-qr" }}
+      />
+      <PageContent>
 
       {loading ? (
         <div className="flex justify-center items-center h-64">
@@ -357,6 +362,7 @@ export default function BatchQRPage() {
           </div>
         </div>
       )}
-    </div>
+      </PageContent>
+    </PageWrapper>
   );
 }

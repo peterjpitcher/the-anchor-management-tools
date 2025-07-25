@@ -1,8 +1,9 @@
 import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
 import { formatDate } from '@/lib/dateUtils'
 import Link from 'next/link'
-import { CalendarIcon, UsersIcon, PlusIcon, ChatBubbleLeftIcon } from '@heroicons/react/24/outline'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { CalendarIcon, UsersIcon, PlusIcon, ChatBubbleLeftIcon, DocumentTextIcon, CurrencyPoundIcon, ClockIcon } from '@heroicons/react/24/outline'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { Card, CardTitle } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Stat, StatGroup } from '@/components/ui-v2/display/Stat'
@@ -55,21 +56,113 @@ async function getStats() {
   }
 }
 
+async function getUpcomingPrivateBookings() {
+  const supabase = getSupabaseAdminClient()
+  const today = new Date().toISOString().split('T')[0]
+  
+  const { data: bookings, error } = await supabase
+    .from('private_bookings')
+    .select(`
+      id,
+      customer_name,
+      event_date,
+      start_time,
+      status,
+      customer_id
+    `)
+    .gte('event_date', today)
+    .order('event_date', { ascending: true })
+    .order('start_time', { ascending: true })
+    .limit(5)
+  
+  if (error) {
+    console.error('Error fetching private bookings:', error)
+    return []
+  }
+  
+  return bookings || []
+}
+
+async function getUpcomingTableBookings() {
+  const supabase = getSupabaseAdminClient()
+  const today = new Date().toISOString().split('T')[0]
+  
+  const { data: bookings, error } = await supabase
+    .from('table_bookings')
+    .select(`
+      id,
+      customer_id,
+      booking_date,
+      booking_time,
+      party_size,
+      status,
+      customers (
+        first_name,
+        last_name
+      )
+    `)
+    .gte('booking_date', today)
+    .neq('status', 'cancelled')
+    .order('booking_date', { ascending: true })
+    .order('booking_time', { ascending: true })
+    .limit(5)
+  
+  if (error) {
+    console.error('Error fetching table bookings:', error)
+    return []
+  }
+  
+  return bookings || []
+}
+
+async function getUnpaidInvoices() {
+  const supabase = getSupabaseAdminClient()
+  
+  const { data: invoices, error } = await supabase
+    .from('invoices')
+    .select(`
+      id,
+      invoice_number,
+      total_amount,
+      status,
+      due_date,
+      vendor:invoice_vendors(
+        name
+      )
+    `)
+    .neq('status', 'paid')
+    .order('due_date', { ascending: true })
+    .limit(5)
+  
+  if (error) {
+    console.error('Error fetching unpaid invoices:', error)
+    return []
+  }
+  
+  return invoices || []
+}
+
 export default async function SimpleDashboardPage() {
-  const [events, stats] = await Promise.all([
+  const [events, stats, privateBookings, tableBookings, unpaidInvoices] = await Promise.all([
     getUpcomingEvents(),
-    getStats()
+    getStats(),
+    getUpcomingPrivateBookings(),
+    getUpcomingTableBookings(),
+    getUnpaidInvoices()
   ])
 
   const todayEvents = events.filter(e => e.date === new Date().toISOString().split('T')[0])
   const upcomingEvents = events.filter(e => e.date !== new Date().toISOString().split('T')[0])
 
   return (
-    <Page
-      title="Dashboard"
-      description="Welcome back! Here's what's happening today."
-    >
-
+    <PageWrapper>
+      <PageHeader 
+        title="Dashboard" 
+        subtitle="Welcome back! Here's what's happening today."
+      />
+      <PageContent>
+      <div className="space-y-6">
+      
       {/* Quick Stats */}
       <StatGroup>
         <Stat
@@ -167,6 +260,146 @@ export default async function SimpleDashboardPage() {
         )}
       </Card>
 
+      {/* Private Bookings */}
+      <Card 
+        header={
+          <div className="flex items-center justify-between">
+            <CardTitle>Upcoming Private Bookings</CardTitle>
+            <LinkButton href="/private-bookings" variant="secondary" size="sm">
+              View all
+            </LinkButton>
+          </div>
+        }
+      >
+        {privateBookings.length === 0 ? (
+          <EmptyState
+            title="No upcoming private bookings"
+            description="No private bookings are scheduled yet."
+            action={
+              <LinkButton href="/private-bookings/new" variant="primary">
+                Create Booking
+              </LinkButton>
+            }
+          />
+        ) : (
+          <SimpleList
+            items={privateBookings.map((booking) => ({
+              id: booking.id,
+              title: booking.customer_name,
+              subtitle: `${formatDate(new Date(booking.event_date))} at ${booking.start_time}`,
+              href: `/private-bookings/${booking.id}`,
+              meta: (
+                <Badge variant={booking.status === 'confirmed' ? 'success' : 'warning'} size="sm">
+                  {booking.status}
+                </Badge>
+              )
+            }))}
+          />
+        )}
+      </Card>
+
+      {/* Table Bookings */}
+      <Card 
+        header={
+          <div className="flex items-center justify-between">
+            <CardTitle>Upcoming Table Bookings</CardTitle>
+            <LinkButton href="/table-bookings" variant="secondary" size="sm">
+              View all
+            </LinkButton>
+          </div>
+        }
+      >
+        {tableBookings.length === 0 ? (
+          <EmptyState
+            title="No upcoming table bookings"
+            description="No table bookings are scheduled yet."
+            action={
+              <LinkButton href="/table-bookings/new" variant="primary">
+                Create Booking
+              </LinkButton>
+            }
+          />
+        ) : (
+          <SimpleList
+            items={tableBookings.map((booking) => {
+              const customer = Array.isArray(booking.customers) ? booking.customers[0] : booking.customers
+              const customerName = customer 
+                ? `${customer.first_name} ${customer.last_name}`
+                : 'Unknown Customer'
+              return {
+                id: booking.id,
+                title: customerName,
+                subtitle: `${formatDate(new Date(booking.booking_date))} at ${booking.booking_time}`,
+                href: `/table-bookings/${booking.id}`,
+                meta: (
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center text-sm text-gray-500">
+                      <UsersIcon className="h-5 w-5 mr-1 flex-shrink-0" />
+                      <span className="whitespace-nowrap">{booking.party_size} guests</span>
+                    </div>
+                    {booking.status && (
+                      <Badge variant={booking.status === 'confirmed' ? 'success' : 'warning'} size="sm">
+                        {booking.status}
+                      </Badge>
+                    )}
+                  </div>
+                )
+              }
+            })}
+          />
+        )}
+      </Card>
+
+      {/* Unpaid Invoices */}
+      <Card 
+        header={
+          <div className="flex items-center justify-between">
+            <CardTitle>Recent Unpaid Invoices</CardTitle>
+            <LinkButton href="/invoices?status=unpaid" variant="secondary" size="sm">
+              View all
+            </LinkButton>
+          </div>
+        }
+      >
+        {unpaidInvoices.length === 0 ? (
+          <EmptyState
+            title="No unpaid invoices"
+            description="All invoices are up to date."
+          />
+        ) : (
+          <SimpleList
+            items={unpaidInvoices.map((invoice) => {
+              const isOverdue = invoice.due_date && new Date(invoice.due_date) < new Date()
+              const vendor = Array.isArray(invoice.vendor) ? invoice.vendor[0] : invoice.vendor
+              const vendorName = vendor?.name || 'Unknown Vendor'
+              
+              return {
+                id: invoice.id,
+                title: `Invoice #${invoice.invoice_number}`,
+                subtitle: vendorName,
+                href: `/invoices/${invoice.id}`,
+                meta: (
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center text-sm font-medium text-gray-900">
+                      <CurrencyPoundIcon className="h-5 w-5 mr-1 flex-shrink-0" />
+                      <span>£{invoice.total_amount?.toFixed(2)}</span>
+                    </div>
+                    {invoice.due_date && (
+                      <Badge 
+                        variant={isOverdue ? 'error' : 'warning'} 
+                        size="sm"
+                      >
+                        {isOverdue ? 'Overdue' : `Due ${formatDate(new Date(invoice.due_date))}`}
+                      </Badge>
+                    )}
+                  </div>
+                )
+              }
+            })}
+          />
+        )}
+      </Card>
+
       {/* Quick Actions */}
       <Section title="Quick Actions">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -206,6 +439,9 @@ export default async function SimpleDashboardPage() {
           </Link>
         </div>
       </Section>
-    </Page>
+      
+      </div>
+      </PageContent>
+    </PageWrapper>
   )
 }

@@ -45,7 +45,7 @@ async function getNextInvoiceNumber(seriesCode: string): Promise<string> {
   return `${seriesCode}-${encoded}`
 }
 
-export async function getInvoices(status?: InvoiceStatus) {
+export async function getInvoices(status?: InvoiceStatus | 'unpaid') {
   try {
     const supabase = await createClient()
     
@@ -63,7 +63,10 @@ export async function getInvoices(status?: InvoiceStatus) {
       .is('deleted_at', null)
       .order('invoice_date', { ascending: false })
 
-    if (status) {
+    if (status === 'unpaid') {
+      // Filter for all unpaid invoices (not paid, not void, not written off)
+      query = query.in('status', ['draft', 'sent', 'partially_paid', 'overdue'])
+    } else if (status) {
       query = query.eq('status', status)
     }
 

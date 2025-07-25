@@ -23,8 +23,12 @@ import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { Toggle } from '@/components/ui-v2/forms/Toggle';
 import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
+import { useRouter } from 'next/navigation';
 export default function LoyaltySettingsPage() {
-  const { hasPermission } = usePermissions();
+  
+  const router = useRouter();
+const { hasPermission } = usePermissions();
   const [settings, setSettings] = useState<LoyaltySettings>({ 
     configurationEnabled: true,
     operationalEnabled: false 
@@ -82,6 +86,8 @@ export default function LoyaltySettingsPage() {
         { label: 'Loyalty' }
       ]}
       loading={saving}
+    
+      actions={<BackButton label="Back to Settings" onBack={() => router.push('/settings')} />}
     >
 
       {/* Configuration Status - Always Available */}

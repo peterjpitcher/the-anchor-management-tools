@@ -11,8 +11,12 @@ import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { DataTable, Column } from '@/components/ui-v2/display/DataTable'
 import { ExclamationTriangleIcon, CheckCircleIcon, InformationCircleIcon } from '@heroicons/react/24/outline'
 
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
+import { useRouter } from 'next/navigation';
 export default function FixPhoneNumbersPage() {
-  const [loading, setLoading] = useState(false)
+  
+  const router = useRouter();
+const [loading, setLoading] = useState(false)
   const [analysis, setAnalysis] = useState<any>(null)
   const [fixResult, setFixResult] = useState<any>(null)
 
@@ -53,6 +57,8 @@ export default function FixPhoneNumbersPage() {
       title="Phone Number Standardization"
       breadcrumbs={breadcrumbs}
       loading={loading && !analysis && !fixResult}
+    
+      actions={<BackButton label="Back to Settings" onBack={() => router.push('/settings')} />}
     >
       <div className="space-y-6">
         <Section>

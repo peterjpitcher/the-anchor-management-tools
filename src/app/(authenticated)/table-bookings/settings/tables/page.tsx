@@ -1,4 +1,6 @@
-'use client';
+'use client'
+
+import { useRouter } from 'next/navigation';
 
 import { useState, useEffect } from 'react';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
@@ -33,7 +35,9 @@ import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { toast } from '@/components/ui-v2/feedback/Toast';
 
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 export default function TableConfigurationPage() {
+  const router = useRouter();
   const supabase = useSupabase();
   const { hasPermission } = usePermissions();
   const [tables, setTables] = useState<TableConfiguration[]>([]);
@@ -260,7 +264,7 @@ export default function TableConfigurationPage() {
         </Button>
       }
     >
-      <LinkButton href="/table-bookings/settings" variant="secondary">Back to Settings</LinkButton>
+      <BackButton label="Back to Settings" onBack={() => router.push('/table-bookings/settings')} />
 
       {error && (
         <Alert variant="error" className="mt-4">

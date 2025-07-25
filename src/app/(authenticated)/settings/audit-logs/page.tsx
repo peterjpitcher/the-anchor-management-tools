@@ -6,7 +6,7 @@ import { formatDate } from '@/lib/dateUtils'
 import { usePagination } from '@/hooks/usePagination'
 import { Pagination } from '@/components/Pagination'
 // New UI components
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Form } from '@/components/ui-v2/forms/Form'
@@ -18,7 +18,7 @@ import { Badge } from '@/components/ui-v2/display/Badge'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
-
+import { useRouter } from 'next/navigation';
 interface AuditLog {
   id: string
   created_at: string
@@ -35,7 +35,8 @@ interface AuditLog {
 }
 
 export default function AuditLogsPage() {
-  const supabase = useSupabase()
+  const router = useRouter();
+const supabase = useSupabase()
   const [filterState, setFilterState] = useState({
     operationType: '',
     resourceType: '',
@@ -110,25 +111,34 @@ export default function AuditLogsPage() {
 
   if (loading) {
     return (
-      <Page title="Audit Logs">
+      <div>
+        <PageHeader
+          title="Audit Logs"
+          subtitle="View system activity and security events"
+          backButton={{
+            label: "Back to Settings",
+            href: "/settings"
+          }}
+        />
         <Card>
           <div className="flex justify-center p-8">
             <Spinner size="lg" />
           </div>
         </Card>
-      </Page>
+      </div>
     )
   }
 
   return (
-    <Page 
-      title="Audit Logs"
-      description="View system activity and security events"
-      breadcrumbs={[
-        { label: 'Settings', href: '/settings' },
-        { label: 'Audit Logs' }
-      ]}
-    >
+    <div>
+      <PageHeader
+        title="Audit Logs"
+        subtitle="View system activity and security events"
+        backButton={{
+          label: "Back to Settings",
+          href: "/settings"
+        }}
+      />
       
       {/* Filters */}
       <Section title="Filters">
@@ -362,6 +372,6 @@ export default function AuditLogsPage() {
           />
         </div>
       )}
-    </Page>
+    </div>
   )
 }

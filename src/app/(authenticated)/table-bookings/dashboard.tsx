@@ -10,7 +10,6 @@ import {
   ClockIcon, 
   UserGroupIcon,
   CurrencyPoundIcon,
-  PlusIcon,
   ExclamationCircleIcon,
   CheckCircleIcon,
   XCircleIcon,
@@ -20,11 +19,14 @@ import {
 } from '@heroicons/react/24/outline';
 import { TableBooking } from '@/types/table-bookings';
 // New UI components
-import { Page } from '@/components/ui-v2/layout/Page';
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { Button } from '@/components/ui-v2/forms/Button';
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
+import { NavLink } from '@/components/ui-v2/navigation/NavLink';
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup';
 import { Stat, StatGroup } from '@/components/ui-v2/display/Stat';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
@@ -155,89 +157,123 @@ export default function TableBookingsDashboard() {
 
   if (!canView) {
     return (
-      <Page title="Table Bookings">
-        <Card>
-          <Alert variant="error" 
-            title="Access Denied" 
-            description="You do not have permission to view table bookings." 
-          />
-        </Card>
-      </Page>
+      <PageWrapper>
+        <PageHeader 
+          title="Table Bookings"
+          subtitle="Manage restaurant table reservations"
+          backButton={{
+            label: "Back to Dashboard",
+            href: "/"
+          }}
+        />
+        <PageContent>
+          <Card>
+            <Alert variant="error" 
+              title="Access Denied" 
+              description="You do not have permission to view table bookings." 
+            />
+          </Card>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
   if (loading) {
     return (
-      <Page title="Table Bookings">
-        <div className="flex items-center justify-center h-64">
-          <Spinner size="lg" />
-        </div>
-      </Page>
+      <PageWrapper>
+        <PageHeader 
+          title="Table Bookings"
+          subtitle="Manage restaurant table reservations"
+          backButton={{
+            label: "Back to Dashboard",
+            href: "/"
+          }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center h-64">
+            <Spinner size="lg" />
+          </div>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
   if (error) {
     return (
-      <Page title="Table Bookings">
-        <Card>
-          <Alert variant="error" title="Error" description={`Error loading dashboard: ${error}`} />
-        </Card>
-      </Page>
+      <PageWrapper>
+        <PageHeader 
+          title="Table Bookings"
+          subtitle="Manage restaurant table reservations"
+          backButton={{
+            label: "Back to Dashboard",
+            href: "/"
+          }}
+        />
+        <PageContent>
+          <Card>
+            <Alert variant="error" title="Error" description={`Error loading dashboard: ${error}`} />
+          </Card>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
   return (
-    <Page
-      title="Table Bookings"
-      actions={
-        <div className="flex gap-2">
-          {canCreate && (
-            <LinkButton
-              href="/table-bookings/new"
-              variant="primary"
-            >
-              <PlusIcon className="h-5 w-5 mr-2" />
-              New Booking
-            </LinkButton>
-          )}
-          <LinkButton
-            href="/table-bookings/calendar"
-            variant="secondary"
-          >
-            <CalendarIcon className="h-5 w-5 mr-2" />
-            Calendar View
-          </LinkButton>
+    <PageWrapper>
+      <PageHeader
+        title="Table Bookings"
+        subtitle="Manage restaurant table reservations"
+        backButton={{
+          label: "Back to Dashboard",
+          href: "/"
+        }}
+        actions={
+          <NavGroup>
+            {canCreate && (
+              <NavLink href="/table-bookings/new">
+                Add Booking
+              </NavLink>
+            )}
+            <NavLink href="/table-bookings/calendar">
+              Calendar View
+            </NavLink>
+            {canManage && (
+              <NavLink href="/table-bookings/settings">
+                Settings
+              </NavLink>
+            )}
+          </NavGroup>
+        }
+      />
+      
+      <PageContent>
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <Stat label="Today's Bookings"
+            value={stats.todayBookings}
+            icon={<CalendarIcon />}
+          />
+          <Stat label="Today's Covers"
+            value={stats.todayCovers}
+            icon={<UserGroupIcon />}
+          />
+          <Stat label="Next 2 Hours"
+            value={stats.upcomingArrivals}
+            icon={<ClockIcon />}
+          />
+          <Stat label="Pending Payment"
+            value={stats.pendingPayments}
+            icon={<ExclamationCircleIcon />}
+          />
+          <Stat label="Today's Revenue"
+            value={`£${stats.todayRevenue.toFixed(2)}`}
+            icon={<CurrencyPoundIcon />}
+          />
+          <Stat label="Tomorrow"
+            value={stats.tomorrowBookings}
+            icon={<CalendarIcon />}
+          />
         </div>
-      }
-    >
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <Stat label="Today's Bookings"
-          value={stats.todayBookings}
-          icon={<CalendarIcon />}
-        />
-        <Stat label="Today's Covers"
-          value={stats.todayCovers}
-          icon={<UserGroupIcon />}
-        />
-        <Stat label="Next 2 Hours"
-          value={stats.upcomingArrivals}
-          icon={<ClockIcon />}
-        />
-        <Stat label="Pending Payment"
-          value={stats.pendingPayments}
-          icon={<ExclamationCircleIcon />}
-        />
-        <Stat label="Today's Revenue"
-          value={`£${stats.todayRevenue.toFixed(2)}`}
-          icon={<CurrencyPoundIcon />}
-        />
-        <Stat label="Tomorrow"
-          value={stats.tomorrowBookings}
-          icon={<CalendarIcon />}
-        />
-      </div>
 
       {/* Date Selector */}
       <Card>
@@ -515,6 +551,7 @@ export default function TableBookingsDashboard() {
           )}
         </div>
       </Section>
-    </Page>
+      </PageContent>
+    </PageWrapper>
   );
 }

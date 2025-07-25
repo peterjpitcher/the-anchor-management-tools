@@ -1,5 +1,6 @@
-'use client';
+'use client'
 
+import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { usePermissions } from '@/contexts/PermissionContext';
@@ -19,6 +20,7 @@ import { Stat } from '@/components/ui-v2/display/Stat';
 import { DataTable } from '@/components/ui-v2/display/DataTable';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { TabNav } from '@/components/ui-v2/navigation/TabNav';
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 
 interface ReportData {
   totalBookings: number;
@@ -44,6 +46,7 @@ interface ReportData {
 }
 
 export default function TableBookingReportsPage() {
+  const router = useRouter();
   const supabase = useSupabase();
   const { hasPermission } = usePermissions();
   const [reportData, setReportData] = useState<ReportData | null>(null);
@@ -303,7 +306,7 @@ export default function TableBookingReportsPage() {
         </Button>
       }
     >
-      <LinkButton href="/table-bookings" variant="secondary">Back to Table Bookings</LinkButton>
+      <BackButton label="Back to Table Bookings" onBack={() => router.push('/table-bookings')} />
 
       {/* Date Range Selector */}
       <Card className="mt-6">

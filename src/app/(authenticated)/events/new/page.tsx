@@ -7,11 +7,11 @@ import { Event } from '@/types/database'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 // New UI components
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
-
 export default function NewEventPage() {
   const router = useRouter()
   const [categories, setCategories] = useState<any[]>([])
@@ -70,29 +70,45 @@ export default function NewEventPage() {
 
   if (loading) {
     return (
-      <Page title="Create New Event">
-        <div className="flex items-center justify-center min-h-[400px]">
-          <div className="text-center">
-            <Spinner size="lg" />
-            <p className="mt-4 text-gray-600">Loading...</p>
+      <PageWrapper>
+        <PageHeader 
+          title="Create New Event"
+          backButton={{
+            label: "Back to Events",
+            href: "/events"
+          }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="text-center">
+              <Spinner size="lg" />
+              <p className="mt-4 text-gray-600">Loading...</p>
+            </div>
           </div>
-        </div>
-      </Page>
+        </PageContent>
+      </PageWrapper>
     )
   }
 
   return (
-    <Page
-      title="Create New Event"
-      description="Add a new event to your calendar"
-    >
-      <Card>
-        <EventFormGrouped 
-          categories={categories}
-          onSubmit={handleSubmit} 
-          onCancel={handleCancel} 
-        />
-      </Card>
-    </Page>
+    <PageWrapper>
+      <PageHeader
+        title="Create New Event"
+        subtitle="Add a new event to your calendar"
+        backButton={{
+          label: "Back to Events",
+          href: "/events"
+        }}
+      />
+      <PageContent>
+        <Card>
+          <EventFormGrouped 
+            categories={categories}
+            onSubmit={handleSubmit} 
+            onCancel={handleCancel} 
+          />
+        </Card>
+      </PageContent>
+    </PageWrapper>
   )
 }

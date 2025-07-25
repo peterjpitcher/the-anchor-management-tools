@@ -54,11 +54,14 @@ import type {
   PrivateBookingItem,
 } from "@/types/private-bookings";
 // New UI components
-import { Page } from "@/components/ui-v2/layout/Page";
+import { PageHeader } from "@/components/ui-v2/layout/PageHeader";
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
 import { Card } from "@/components/ui-v2/layout/Card";
 import { Section } from "@/components/ui-v2/layout/Section";
 import { Button } from "@/components/ui-v2/forms/Button";
 import { LinkButton } from "@/components/ui-v2/navigation/LinkButton";
+import { NavLink } from "@/components/ui-v2/navigation/NavLink";
+import { NavGroup } from "@/components/ui-v2/navigation/NavGroup";
 import { Input } from "@/components/ui-v2/forms/Input";
 import { Select } from "@/components/ui-v2/forms/Select";
 import { Textarea } from "@/components/ui-v2/forms/Textarea";
@@ -72,7 +75,6 @@ import { Skeleton } from "@/components/ui-v2/feedback/Skeleton";
 import { EmptyState } from "@/components/ui-v2/display/EmptyState";
 import { Alert } from "@/components/ui-v2/feedback/Alert";
 import { toast } from "@/components/ui-v2/feedback/Toast";
-
 // Using types from private-bookings.ts
 
 // Status configuration
@@ -1189,50 +1191,51 @@ export default function PrivateBookingDetailPage({
 
   if (loading || !booking) {
     return (
-      <Page title="Loading...">
-        <div className="space-y-6">
-          <Card>
-            <Skeleton className="h-32" />
-          </Card>
-          <Card>
-            <Skeleton className="h-64" />
-          </Card>
-        </div>
-      </Page>
+      <PageWrapper>
+        <PageHeader
+          title="Loading..."
+          backButton={{
+            label: "Back to Private Bookings",
+            onBack: () => router.push('/private-bookings')
+          }}
+        />
+        <PageContent>
+          <div className="space-y-6">
+            <Card>
+              <Skeleton className="h-32" />
+            </Card>
+            <Card>
+              <Skeleton className="h-64" />
+            </Card>
+          </div>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
   const StatusIcon = statusConfig[booking.status].icon;
 
   return (
-    <Page
-      title={booking.customer_full_name || booking.customer_name}
-      breadcrumbs={[
-        { label: "Private Bookings", href: "/private-bookings" },
-        { label: booking.customer_full_name || booking.customer_name },
-      ]}
-      actions={
-        <div className="flex items-center space-x-3">
-          <Button
-            onClick={() => setShowStatusModal(true)}
-            variant="secondary"
-            className="inline-flex items-center"
-          >
-            <StatusIcon className="h-5 w-5 mr-2" />
-            {statusConfig[booking.status].label}
-            <ChevronRightIcon className="h-4 w-4 ml-1" />
-          </Button>
-          <LinkButton
-            href={`/private-bookings/${bookingId}/edit`}
-            variant="primary"
-          >
-            <PencilIcon className="-ml-0.5 mr-1.5 h-4 w-4" />
-            Edit Details
-          </LinkButton>
-        </div>
-      }
-    >
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <PageWrapper>
+      <PageHeader
+        title={booking.customer_full_name || booking.customer_name}
+        breadcrumbs={[
+          { label: "Private Bookings", href: "/private-bookings" },
+          { label: booking.customer_full_name || booking.customer_name, href: "" },
+        ]}
+        actions={
+          <NavGroup>
+            <NavLink onClick={() => setShowStatusModal(true)}>
+              Change Status
+            </NavLink>
+            <NavLink href={`/private-bookings/${bookingId}/edit`}>
+              Edit Details
+            </NavLink>
+          </NavGroup>
+        }
+      />
+      <PageContent>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Main Content - Left 2/3 */}
         <div className="lg:col-span-2 space-y-6">
           {/* Event Details Card */}
@@ -1825,6 +1828,7 @@ export default function PrivateBookingDetailPage({
           onSuccess={() => loadBooking(bookingId)}
         />
       )}
-    </Page>
+      </PageContent>
+    </PageWrapper>
   );
 }

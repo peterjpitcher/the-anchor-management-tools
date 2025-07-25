@@ -135,7 +135,10 @@ export default async function CateringPackagesPage() {
       title="Catering Packages"
       description="Manage food and drink options for private events"
       actions={
-        <LinkButton href="/private-bookings" variant="secondary">Back</LinkButton>
+        <div className="flex items-center space-x-3">
+          <LinkButton href="/private-bookings/settings" variant="secondary">Back to Settings</LinkButton>
+          <LinkButton href="/private-bookings" variant="secondary">Back</LinkButton>
+        </div>
       }
     >
       {/* Add New Package Form */}

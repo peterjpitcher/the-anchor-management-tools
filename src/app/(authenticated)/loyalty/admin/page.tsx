@@ -14,10 +14,12 @@ import {
   CalendarDaysIcon 
 } from '@heroicons/react/24/outline';
 // New UI components
-import { Page } from '@/components/ui-v2/layout/Page';
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
+import { NavLink } from '@/components/ui-v2/navigation/NavLink';
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup';
 import { Stat, StatGroup } from '@/components/ui-v2/display/Stat';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { Spinner } from '@/components/ui-v2/feedback/Spinner';
@@ -64,37 +66,55 @@ export default function LoyaltyAdminPage() {
 
   if (!hasPermission('loyalty', 'view')) {
     return (
-      <Page title="Loyalty Program Dashboard">
-        <Card>
-          <Alert variant="error" 
-            title="Access Denied" 
-            description="You don't have permission to view this page." 
-          />
-        </Card>
-      </Page>
+      <PageWrapper>
+        <PageHeader
+          title="Loyalty Program Dashboard"
+          backButton={{ label: "Back to Dashboard", href: "/dashboard" }}
+        />
+        <PageContent>
+          <Card>
+            <Alert variant="error" 
+              title="Access Denied" 
+              description="You don't have permission to view this page." 
+            />
+          </Card>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
   if (loading) {
     return (
-      <Page title="Loyalty Program Dashboard">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <Spinner size="lg" />
-            <p className="mt-4 text-gray-600">Loading loyalty statistics...</p>
+      <PageWrapper>
+        <PageHeader
+          title="Loyalty Program Dashboard"
+          backButton={{ label: "Back to Dashboard", href: "/dashboard" }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <Spinner size="lg" />
+              <p className="mt-4 text-gray-600">Loading loyalty statistics...</p>
+            </div>
           </div>
-        </div>
-      </Page>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
   if (error) {
     return (
-      <Page title="Loyalty Program Dashboard">
-        <Card>
-          <Alert variant="error" title="Error" description={error} />
-        </Card>
-      </Page>
+      <PageWrapper>
+        <PageHeader
+          title="Loyalty Program Dashboard"
+          backButton={{ label: "Back to Dashboard", href: "/dashboard" }}
+        />
+        <PageContent>
+          <Card>
+            <Alert variant="error" title="Error" description={error} />
+          </Card>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
@@ -110,53 +130,31 @@ export default function LoyaltyAdminPage() {
   };
 
   return (
-    <Page
-      title="Loyalty Program Dashboard"
-      description="Monitor and manage The Anchor VIP Club"
-      actions={
-        <div className="flex flex-wrap gap-2">
-          <LinkButton
-            href="/loyalty/admin/rewards"
-            variant="secondary"
-            size="sm"
-          >
-            <GiftIcon className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">Rewards</span>
-            <span className="sm:hidden">Rewards</span>
-          </LinkButton>
-          <LinkButton
-            href="/loyalty/admin/achievements"
-            variant="secondary"
-            size="sm"
-          >
-            <TrophyIcon className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">Achievements</span>
-            <span className="sm:hidden">Achieve</span>
-          </LinkButton>
-          <LinkButton
-            href="/loyalty/admin/challenges"
-            variant="secondary"
-            size="sm"
-          >
-            <CalendarDaysIcon className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">Challenges</span>
-            <span className="sm:hidden">Challenge</span>
-          </LinkButton>
-          <LinkButton
-            href="/loyalty/analytics"
-            variant="secondary"
-            size="sm"
-          >
-            <ChartBarIcon className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">Analytics</span>
-            <span className="sm:hidden">Analytics</span>
-          </LinkButton>
-        </div>
-      }
-    >
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <PageWrapper>
+      <PageHeader
+        title="Loyalty Program Dashboard"
+        subtitle="Monitor and manage The Anchor VIP Club"
+        backButton={{ label: "Back to Dashboard", href: "/dashboard" }}
+        actions={
+          <NavGroup>
+            <NavLink href="/loyalty/admin/rewards">
+              Rewards
+            </NavLink>
+            <NavLink href="/loyalty/admin/achievements">
+              Achievements
+            </NavLink>
+            <NavLink href="/loyalty/admin/challenges">
+              Challenges
+            </NavLink>
+            <NavLink href="/loyalty/analytics">
+              Analytics
+            </NavLink>
+          </NavGroup>
+        }
+      />
+      <PageContent>
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Stat label="Total Members" 
           value={stats?.totalMembers || 0} 
           icon={<UserGroupIcon />}
@@ -283,6 +281,7 @@ export default function LoyaltyAdminPage() {
           </div>
         </Card>
       </Section>
-    </Page>
+      </PageContent>
+    </PageWrapper>
   );
 }

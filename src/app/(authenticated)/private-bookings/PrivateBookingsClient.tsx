@@ -4,20 +4,11 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { 
-  PlusIcon, 
-  CalendarIcon, 
-  CurrencyPoundIcon,
   UserGroupIcon,
   PhoneIcon,
-  EnvelopeIcon,
-  CheckCircleIcon,
   MapPinIcon,
   SparklesIcon,
-  ChatBubbleLeftRightIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
   MagnifyingGlassIcon,
-  FunnelIcon
 } from '@heroicons/react/24/outline'
 import { deletePrivateBooking } from '@/app/actions/privateBookingActions'
 import DeleteBookingButton from '@/components/private-bookings/DeleteBookingButton'
@@ -25,11 +16,14 @@ import type { PrivateBookingWithDetails, BookingStatus } from '@/types/private-b
 import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 // New UI components
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Select } from '@/components/ui-v2/forms/Select'
 import { Badge } from '@/components/ui-v2/display/Badge'
@@ -81,7 +75,7 @@ export default function PrivateBookingsClient({ permissions }: Props) {
   const [currentPage, setCurrentPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<BookingStatus | 'all'>('all')
-  const [dateFilter, setDateFilter] = useState<'all' | 'upcoming' | 'past'>('all')
+  const [dateFilter, setDateFilter] = useState<'all' | 'upcoming' | 'past'>('upcoming')
 
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE)
 
@@ -190,46 +184,34 @@ export default function PrivateBookingsClient({ permissions }: Props) {
   const formatTime = (time: string) => formatTime12Hour(time)
 
   return (
-    <Page
-      title="Private Bookings"
-      description="Manage venue hire and private events"
-      actions={
-        <div className="flex flex-wrap gap-2 sm:gap-3">
-          <LinkButton
-            href="/private-bookings/sms-queue"
-            variant="secondary"
-            size="sm"
-          >
-            <ChatBubbleLeftRightIcon className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">SMS Queue</span>
-            <span className="sm:hidden">SMS</span>
-          </LinkButton>
-          <LinkButton
-            href="/private-bookings/calendar"
-            variant="secondary"
-            size="sm"
-          >
-            <CalendarIcon className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">Calendar View</span>
-            <span className="sm:hidden">Calendar</span>
-          </LinkButton>
-          {permissions.hasCreatePermission && (
-            <LinkButton
-              href="/private-bookings/new"
-              variant="primary"
-              size="sm"
-            >
-              <PlusIcon className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">New Booking</span>
-              <span className="sm:hidden">New</span>
-            </LinkButton>
-          )}
-        </div>
-      }
-    >
-
-      {/* Filters */}
-      <Card>
+    <PageWrapper>
+      <PageHeader
+        title="Private Bookings"
+        subtitle="Manage private venue bookings and events"
+        backButton={{
+          label: "Back to Dashboard",
+          href: "/"
+        }}
+        actions={
+          <NavGroup>
+            <NavLink href="/private-bookings/sms-queue">
+              SMS Queue
+            </NavLink>
+            <NavLink href="/private-bookings/calendar">
+              Calendar View
+            </NavLink>
+            {permissions.hasCreatePermission && (
+              <NavLink href="/private-bookings/new">
+                Add Booking
+              </NavLink>
+            )}
+          </NavGroup>
+        }
+      />
+      
+      <PageContent>
+        {/* Filters */}
+        <Card>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <FormGroup label="Search">
             <div className="relative">
@@ -525,6 +507,7 @@ export default function PrivateBookingsClient({ permissions }: Props) {
           <span>Preferred Vendors</span>
         </Button>
       </div>
-    </Page>
+      </PageContent>
+    </PageWrapper>
   )
 }

@@ -21,7 +21,10 @@ import type { CustomerLabel, CustomerLabelAssignment } from '@/app/actions/custo
 import { LoyaltyService } from '@/lib/services/loyalty'
 import { LOYALTY_CONFIG } from '@/lib/config/loyalty'
 // New UI components
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { Button, IconButton } from '@/components/ui-v2/forms/Button'
@@ -232,7 +235,7 @@ export default function CustomersPage() {
   }, [])
 
   // Process customers with loyalty status and apply filter
-  const customersWithLoyalty = useMemo(() => {
+  const { customersWithLoyalty, filteredCount } = useMemo(() => {
     const processedCustomers = customers.map(customer => ({
       ...customer,
       isLoyal: loyalCustomerIds.includes(customer.id)
@@ -250,13 +253,17 @@ export default function CustomersPage() {
       return acc
     }, new Set<string>())
     
+    let filtered = processedCustomers
     if (filter === 'regular') {
-      return processedCustomers.filter(customer => regularLabelAssignments.has(customer.id))
+      filtered = processedCustomers.filter(customer => regularLabelAssignments.has(customer.id))
     } else if (filter === 'non-regular') {
-      return processedCustomers.filter(customer => !regularLabelAssignments.has(customer.id))
+      filtered = processedCustomers.filter(customer => !regularLabelAssignments.has(customer.id))
     }
     
-    return processedCustomers
+    return { 
+      customersWithLoyalty: filtered,
+      filteredCount: filtered.length
+    }
   }, [customers, loyalCustomerIds, filter, customerLabels])
 
   async function handleCreateCustomer(
@@ -342,66 +349,70 @@ export default function CustomersPage() {
 
   if (showForm || editingCustomer) {
     return (
-      <Page title={editingCustomer ? 'Edit Customer' : 'Create New Customer'}>
-        <Card>
-          <CustomerForm
-            customer={editingCustomer ?? undefined}
-            onSubmit={editingCustomer ? handleUpdateCustomer : handleCreateCustomer}
-            onCancel={() => {
-              setShowForm(false)
-              setEditingCustomer(null)
-            }}
-          />
-        </Card>
-      </Page>
+      <PageWrapper>
+        <PageHeader
+          title={editingCustomer ? 'Edit Customer' : 'Create New Customer'}
+          backButton={{ label: "Back to Customers", onBack: () => { setShowForm(false); setEditingCustomer(null); } }}
+        />
+        <PageContent>
+          <Card>
+            <CustomerForm
+              customer={editingCustomer ?? undefined}
+              onSubmit={editingCustomer ? handleUpdateCustomer : handleCreateCustomer}
+              onCancel={() => {
+                setShowForm(false)
+                setEditingCustomer(null)
+              }}
+            />
+          </Card>
+        </PageContent>
+      </PageWrapper>
     )
   }
 
   if (showImport) {
     return (
-      <Page title="Import Customers">
-        <CustomerImport
-          onImportComplete={handleImportCustomers}
-          onCancel={() => setShowImport(false)}
-          existingCustomers={customers}
+      <PageWrapper>
+        <PageHeader
+          title="Import Customers"
+          subtitle="Import multiple customers from a CSV file"
+          backButton={{ label: "Back to Customers", onBack: () => setShowImport(false) }}
         />
-      </Page>
+        <PageContent>
+          <CustomerImport
+            onImportComplete={handleImportCustomers}
+            onCancel={() => setShowImport(false)}
+            existingCustomers={customers}
+          />
+        </PageContent>
+      </PageWrapper>
     )
   }
 
   return (
-    <Page
-      title="Customers"
-      description="A list of all customers including their name and mobile number."
-      actions={
-        <div className="flex flex-wrap gap-2 sm:gap-3">
-          {hasPermission('customers', 'manage') && (
-            <LinkButton
-              href="/settings/customer-labels"
-              variant="secondary"
-            >
-              <TagIcon className="-ml-1 mr-2 h-5 w-5" />
-              Manage Labels
-            </LinkButton>
-          )}
-          <Button
-            variant="secondary"
-            onClick={() => setShowImport(true)}
-          >
-            <ArrowUpOnSquareIcon className="-ml-1 mr-2 h-5 w-5" />
-            Import
-          </Button>
-          <Button
-            variant="primary"
-            onClick={() => setShowForm(true)}
-          >
-            <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
-            Add Customer
-          </Button>
-        </div>
-      }
-    >
-      <Card>
+    <PageWrapper>
+      <PageHeader
+        title="Customers"
+        subtitle="View and manage your customer database"
+        backButton={{ label: "Back to Dashboard", href: "/dashboard" }}
+        actions={
+          <NavGroup>
+            {hasPermission('customers', 'manage') && (
+              <NavLink href="/settings/customer-labels">
+                Manage Labels
+              </NavLink>
+            )}
+            <NavLink onClick={() => setShowImport(true)}>
+              Import
+            </NavLink>
+            <NavLink onClick={() => setShowForm(true)}>
+              Add Customer
+            </NavLink>
+          </NavGroup>
+        }
+      />
+      <PageContent>
+        <Card>
         <div className="space-y-4">
           <SearchBar
             placeholder="Search customers..."
@@ -485,8 +496,11 @@ export default function CustomersPage() {
                           '-'
                         )}
                         {customer.mobile_number && customer.sms_opt_in === false && (
-                          <Badge variant="error" size="sm">
-                            <XCircleIcon className="h-3 w-3 mr-1" />
+                          <Badge 
+                            variant="error" 
+                            size="sm"
+                            icon={<XCircleIcon className="h-3 w-3" />}
+                          >
                             SMS Deactivated
                           </Badge>
                         )}
@@ -667,8 +681,12 @@ export default function CustomersPage() {
                           )}
                         </p>
                         {customer.mobile_number && customer.sms_opt_in === false && (
-                          <Badge variant="error" size="sm" className="mt-1">
-                            <XCircleIcon className="h-3 w-3 mr-1" />
+                          <Badge 
+                            variant="error" 
+                            size="sm" 
+                            className="mt-1"
+                            icon={<XCircleIcon className="h-3 w-3" />}
+                          >
                             SMS Deactivated
                           </Badge>
                         )}
@@ -763,14 +781,15 @@ export default function CustomersPage() {
           {totalPages > 1 && (
             <PaginationV2
               currentPage={currentPage}
-              totalPages={totalPages}
-              totalItems={totalCount}
+              totalPages={Math.ceil(filteredCount / pageSize)}
+              totalItems={filteredCount}
               itemsPerPage={pageSize}
               onPageChange={setPage}
             />
           )}
         </>
       )}
-    </Page>
+      </PageContent>
+    </PageWrapper>
   )
 }

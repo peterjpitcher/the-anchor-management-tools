@@ -1,4 +1,6 @@
-'use client';
+'use client'
+
+import { useRouter } from 'next/navigation';
 
 import { useState, useEffect } from 'react';
 import { getLoyaltyAnalytics, getMemberEngagementMetrics } from '@/app/actions/loyalty-analytics';
@@ -23,6 +25,7 @@ import { Section } from '@/components/ui-v2/layout/Section';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { Button } from '@/components/ui-v2/forms/Button';
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 import { Select } from '@/components/ui-v2/forms/Select';
 import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 import { DataTable } from '@/components/ui-v2/display/DataTable';
@@ -87,6 +90,7 @@ interface EngagementData {
 }
 
 export default function LoyaltyAnalyticsPage() {
+  const router = useRouter();
   const { hasPermission } = usePermissions();
   const [loading, setLoading] = useState(true);
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
@@ -233,9 +237,7 @@ export default function LoyaltyAnalyticsPage() {
               { value: 'year', label: 'Last 12 months' }
             ]}
           />
-          <LinkButton href="/loyalty/admin" variant="secondary">
-            Back to Dashboard
-          </LinkButton>
+          <BackButton label="Back to Dashboard" onBack={() => router.push('/loyalty/admin')} />
         </div>
       }
     >
@@ -246,7 +248,7 @@ export default function LoyaltyAnalyticsPage() {
           title="Viewing Historical Data"
           className="mb-6"
         >
-          The loyalty program is not operational. Analytics show historical data. New points won't be earned until you
+          The loyalty program is not operational. Analytics show historical data. New points won&apos;t be earned until you
           <Link href="/settings/loyalty" className="ml-1 text-yellow-900 underline">enable operations</Link>.
         </Alert>
       )}

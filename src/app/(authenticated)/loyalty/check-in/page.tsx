@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { usePermissions } from '@/contexts/PermissionContext';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 import Link from 'next/link';
 import { 
   ArrowLeftIcon,
@@ -20,6 +21,8 @@ import toast from 'react-hot-toast';
 import { processEventCheckIn, validateQRCode, getEventCheckIns } from '@/app/actions/loyalty-checkins';
 import { BrowserQRCodeReader } from '@zxing/browser';
 import { Loader2 } from 'lucide-react';
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
 
 type CheckInMethod = 'qr' | 'phone' | 'manual';
 type CheckInState = 'idle' | 'scanning' | 'searching' | 'processing' | 'success' | 'error';
@@ -42,6 +45,7 @@ interface CheckInResult {
 }
 
 function CheckInPageContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { hasPermission } = usePermissions();
   const supabase = useSupabase();
@@ -214,49 +218,53 @@ function CheckInPageContent() {
 
   if (!hasPermission('loyalty', 'manage')) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-500">You don&apos;t have permission to check in customers.</p>
-      </div>
+      <PageWrapper>
+        <PageHeader
+          title="Event Check-In"
+          subtitle="Check in VIP Club members at events"
+          backButton={{ label: "Back to Events", href: "/events" }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center min-h-[400px]">
+            <p className="text-gray-500">You don&apos;t have permission to check in customers.</p>
+          </div>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
   if (!eventId) {
     return (
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Select an Event</h1>
-          <p className="text-gray-600 mb-8">Please select an event from the events page to start checking in customers.</p>
-          <Link
-            href="/events"
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-amber-600 hover:bg-amber-700"
-          >
-            Go to Events
-          </Link>
-        </div>
-      </div>
+      <PageWrapper>
+        <PageHeader
+          title="Event Check-In"
+          subtitle="Check in VIP Club members at events"
+          backButton={{ label: "Back to Events", href: "/events" }}
+        />
+        <PageContent>
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-gray-900 mb-4">Select an Event</h1>
+            <p className="text-gray-600 mb-8">Please select an event from the events page to start checking in customers.</p>
+            <Link
+              href="/events"
+              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-amber-600 hover:bg-amber-700"
+            >
+              Go to Events
+            </Link>
+          </div>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center space-x-4">
-          <Link
-            href={`/events/${eventId}`}
-            className="inline-flex items-center text-gray-600 hover:text-gray-900"
-          >
-            <ArrowLeftIcon className="h-5 w-5 mr-1" />
-            Back to Event
-          </Link>
-        </div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mt-4">Event Check-In</h1>
-        {currentEvent && (
-          <p className="mt-2 text-sm sm:text-base text-gray-600">
-            {currentEvent.title} - {new Date(currentEvent.start_date).toLocaleDateString()}
-          </p>
-        )}
-      </div>
+    <PageWrapper>
+      <PageHeader
+        title="Event Check-In"
+        subtitle={currentEvent ? `${currentEvent.title} - ${new Date(currentEvent.start_date).toLocaleDateString()}` : 'Check in VIP Club members at events'}
+        backButton={{ label: "Back to Event", href: `/events/${eventId}` }}
+      />
+      <PageContent>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-8">
         {/* Check-in Methods */}
@@ -571,12 +579,15 @@ function CheckInPageContent() {
           </div>
         </div>
       </div>
-    </div>
+      </PageContent>
+    </PageWrapper>
   );
 }
 
 export default function CheckInPage() {
-  return (
+  
+  const router = useRouter();
+return (
     <Suspense fallback={
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-amber-600" />

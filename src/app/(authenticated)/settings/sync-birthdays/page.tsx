@@ -15,8 +15,12 @@ import { Button } from '@/components/ui-v2/forms/Button';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { Section } from '@/components/ui-v2/layout/Section';
 
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
+import { useRouter } from 'next/navigation';
 export default function SyncBirthdaysPage() {
-  const { hasPermission } = usePermissions();
+  
+  const router = useRouter();
+const { hasPermission } = usePermissions();
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{
     success: boolean;
@@ -86,6 +90,8 @@ export default function SyncBirthdaysPage() {
         { label: 'Settings', href: '/settings' },
         { label: 'Sync Birthdays' }
       ]}
+    
+      actions={<BackButton label="Back to Settings" onBack={() => router.push('/settings')} />}
     >
       {/* Info Banner */}
       <Alert

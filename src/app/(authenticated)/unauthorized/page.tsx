@@ -8,7 +8,7 @@ import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
 
 export default function UnauthorizedPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-sidebar">
       <div className="max-w-md w-full px-6">
         <Card className="text-center">
           <Alert variant="error"

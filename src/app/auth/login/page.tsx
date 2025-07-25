@@ -83,7 +83,7 @@ function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
       <Container size="sm">
         <div className="text-center mb-8">
           {/* Logo */}
@@ -99,10 +99,10 @@ function LoginForm() {
           </div>
           
           {/* Title */}
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">
             Sign in to your account
           </h1>
-          <p className="mt-2 text-xs sm:text-sm text-gray-600">
+          <p className="mt-2 text-xs sm:text-sm text-white/80">
             This is a private system - authorised users only
           </p>
         </div>
@@ -189,7 +189,7 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+      <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
         <Spinner size="lg" />
       </div>
     }>

@@ -1,5 +1,6 @@
-'use client';
+'use client'
 
+import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { usePermissions } from '@/contexts/PermissionContext';
@@ -17,6 +18,7 @@ import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { Stat } from '@/components/ui-v2/display/Stat';
 import { EmptyState } from '@/components/ui-v2/display/EmptyState';
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 
 interface HealthCheck {
   status: 'healthy' | 'unhealthy' | 'error';
@@ -44,6 +46,7 @@ interface HealthCheck {
 
 export default function TableBookingMonitoringPage() {
   const supabase = useSupabase();
+  const router = useRouter();
   const { hasPermission } = usePermissions();
   const [healthCheck, setHealthCheck] = useState<HealthCheck | null>(null);
   const [loading, setLoading] = useState(true);
@@ -143,7 +146,7 @@ export default function TableBookingMonitoringPage() {
         </Button>
       }
     >
-      <LinkButton href="/table-bookings" variant="secondary">Back to Table Bookings</LinkButton>
+      <BackButton label="Back to Table Bookings" onBack={() => router.push('/table-bookings')} />
 
       {error && (
         <Alert variant="error" className="mt-4">

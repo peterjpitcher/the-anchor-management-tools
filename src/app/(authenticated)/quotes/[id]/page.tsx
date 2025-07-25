@@ -18,6 +18,7 @@ import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 export default function QuoteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
   const [quote, setQuote] = useState<QuoteWithDetails | null>(null)
@@ -218,7 +219,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               variant="secondary"
               onClick={() => router.push('/quotes')}
             >
-              Back to Quotes
+              <BackButton label="Back to Quotes" onBack={() => router.push('/quotes')} />
             </Button>
           </div>
         </Card>

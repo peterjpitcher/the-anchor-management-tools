@@ -1,18 +1,27 @@
+'use client'
+
 import { Suspense } from 'react'
 import { BusinessHoursManager } from './BusinessHoursManager'
 import { SpecialHoursManager } from './SpecialHoursManager'
 // New UI components
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Skeleton } from '@/components/ui-v2/feedback/Skeleton'
-
+import { useRouter } from 'next/navigation';
 export default function BusinessHoursPage() {
+  const router = useRouter();
+  
   return (
-    <Page
-      title="Business Hours"
-      description="Manage your regular opening hours and special dates"
-    >
+    <div>
+      <PageHeader
+        title="Business Hours"
+        subtitle="Manage your regular opening hours and special dates"
+        backButton={{
+          label: "Back to Settings",
+          href: "/settings"
+        }}
+      />
       <Section title="Regular Hours">
         <Card>
           <Suspense fallback={<Skeleton className="h-64" />}>
@@ -28,6 +37,6 @@ export default function BusinessHoursPage() {
           </Suspense>
         </Card>
       </Section>
-    </Page>
+    </div>
   )
 }

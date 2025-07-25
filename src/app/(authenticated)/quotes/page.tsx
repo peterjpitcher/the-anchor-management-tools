@@ -343,36 +343,25 @@ export default function QuotesPage() {
       {/* Quick Actions */}
       <Section title="Quick Actions">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-          <Card className="p-4">
-            <Button
-              variant="secondary"
-              className="w-full h-20 sm:h-24 flex flex-col items-center justify-center gap-1 sm:gap-2"
-              onClick={() => router.push('/invoices/vendors')}
-            >
-              <FileText className="h-6 w-6 sm:h-8 sm:w-8" />
+          <Card padding="sm" interactive onClick={() => router.push('/invoices/vendors')}>
+            <div className="flex flex-col items-center justify-center h-20 sm:h-24 gap-1 sm:gap-2">
+              <FileText className="h-6 w-6 sm:h-8 sm:w-8 text-gray-600" />
               <span className="text-xs sm:text-sm">Vendors</span>
-            </Button>
+            </div>
           </Card>
           
-          <Card className="p-4">
-            <Button
-              variant="secondary"
-              className="w-full h-20 sm:h-24 flex flex-col items-center justify-center gap-1 sm:gap-2"
-              onClick={() => router.push('/invoices/catalog')}
-            >
-              <Package className="h-6 w-6 sm:h-8 sm:w-8" />
+          <Card padding="sm" interactive onClick={() => router.push('/invoices/catalog')}>
+            <div className="flex flex-col items-center justify-center h-20 sm:h-24 gap-1 sm:gap-2">
+              <Package className="h-6 w-6 sm:h-8 sm:w-8 text-gray-600" />
               <span className="text-xs sm:text-sm text-center">Line Item Catalog</span>
-            </Button>
+            </div>
           </Card>
           
-          <Card className="p-4 sm:col-span-2 lg:col-span-1">
-            <Button
-              variant="secondary"
-              className="w-full h-20 sm:h-24 flex flex-col items-center justify-center gap-1 sm:gap-2"
-            >
-              <Download className="h-6 w-6 sm:h-8 sm:w-8" />
+          <Card padding="sm" className="sm:col-span-2 lg:col-span-1" interactive>
+            <div className="flex flex-col items-center justify-center h-20 sm:h-24 gap-1 sm:gap-2">
+              <Download className="h-6 w-6 sm:h-8 sm:w-8 text-gray-600" />
               <span className="text-xs sm:text-sm">Export Quotes</span>
-            </Button>
+            </div>
           </Card>
         </div>
       </Section>

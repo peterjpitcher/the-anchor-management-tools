@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
 import { Input } from '@/components/ui-v2/forms/Input'
@@ -25,6 +27,7 @@ interface CatalogFormData {
 }
 
 export default function LineItemCatalogPage() {
+  const router = useRouter()
   const [items, setItems] = useState<LineItemCatalogItem[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -142,28 +145,34 @@ export default function LineItemCatalogPage() {
 
   if (loading) {
     return (
-      <Page title="Loading...">
-        <div className="flex items-center justify-center h-64">
-          <Spinner size="lg" />
-        </div>
-      </Page>
+      <PageWrapper>
+        <PageHeader 
+          title="Line Item Catalog"
+          subtitle="Manage reusable line items for invoices and quotes"
+          backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center h-64">
+            <Spinner size="lg" />
+          </div>
+        </PageContent>
+      </PageWrapper>
     )
   }
 
   return (
-    <Page
-      title="Line Item Catalog"
-      description="Manage reusable line items for invoices and quotes"
-      breadcrumbs={[
-        { label: 'Invoices', href: '/invoices' },
-        { label: 'Line Items' }
-      ]}
-      actions={
-        <Button onClick={() => openForm()} leftIcon={<Plus className="h-4 w-4" />}>
-          Add Item
-        </Button>
-      }
-    >
+    <PageWrapper>
+      <PageHeader
+        title="Line Item Catalog"
+        subtitle="Manage reusable line items for invoices and quotes"
+        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+        actions={
+          <Button onClick={() => openForm()} leftIcon={<Plus className="h-4 w-4" />}>
+            Add Item
+          </Button>
+        }
+      />
+      <PageContent>
       {error && (
         <Alert variant="error" description={error} className="mb-6" />
       )}
@@ -376,6 +385,7 @@ export default function LineItemCatalogPage() {
 
         </form>
       </Modal>
-    </Page>
+      </PageContent>
+    </PageWrapper>
   )
 }

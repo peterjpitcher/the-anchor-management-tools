@@ -1,4 +1,6 @@
-'use client';
+'use client'
+
+import { useRouter } from 'next/navigation';
 
 import { useState, useEffect } from 'react';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
@@ -22,7 +24,9 @@ import { Badge } from '@/components/ui-v2/display/Badge';
 import { Modal } from '@/components/ui-v2/overlay/Modal';
 import { toast } from '@/components/ui-v2/feedback/Toast';
 
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 export default function SMSTemplatesPage() {
+  const router = useRouter();
   const supabase = useSupabase();
   const { hasPermission } = usePermissions();
   const [templates, setTemplates] = useState<TableBookingSMSTemplate[]>([]);
@@ -222,7 +226,7 @@ export default function SMSTemplatesPage() {
       title="SMS Templates"
       description="Customize SMS messages for table bookings and reminders"
     >
-      <LinkButton href="/table-bookings/settings" variant="secondary">Back to Settings</LinkButton>
+      <BackButton label="Back to Settings" onBack={() => router.push('/table-bookings/settings')} />
 
       {error && (
         <Alert variant="error" className="mt-4">

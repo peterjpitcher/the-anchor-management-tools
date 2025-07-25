@@ -9,8 +9,12 @@ import { Button } from '@/components/ui-v2/forms/Button'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 
+import { BackButton } from '@/components/ui-v2/navigation/BackButton';
+import { useRouter } from 'next/navigation';
 export default function WebhookDiagnosticsPage() {
-  const [loading, setLoading] = useState(false)
+  
+  const router = useRouter();
+const [loading, setLoading] = useState(false)
   const [report, setReport] = useState<any>(null)
 
   const runDiagnostics = async () => {
@@ -36,6 +40,8 @@ export default function WebhookDiagnosticsPage() {
       title="Webhook Diagnostics"
       description="Check for common issues with Twilio webhook processing and message delivery"
       breadcrumbs={breadcrumbs}
+    
+      actions={<BackButton label="Back to Settings" onBack={() => router.push('/settings')} />}
     >
       <Section>
         <Card>

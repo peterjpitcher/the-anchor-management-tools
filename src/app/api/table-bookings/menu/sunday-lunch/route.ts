@@ -1,46 +1,46 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { getSundayLunchMenu } from '@/app/actions/table-booking-menu';
-import { verifyApiKey } from '@/lib/api-auth';
+import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
+
+// Handle CORS preflight
+export async function OPTIONS(request: NextRequest) {
+  return new Response(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
+      'Access-Control-Max-Age': '86400',
+    },
+  });
+}
 
 export async function GET(request: NextRequest) {
-  try {
-    // Verify API key
-    const apiKey = request.headers.get('x-api-key');
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: 'API key required' },
-        { status: 401 }
+  return withApiAuth(async (req, apiKey) => {
+    try {
+      // Get query parameters
+      const searchParams = request.nextUrl.searchParams;
+      const date = searchParams.get('date');
+
+      // Get menu
+      const result = await getSundayLunchMenu(date || undefined);
+
+      if (result.error) {
+        return createErrorResponse(
+          result.error,
+          'NOT_FOUND',
+          404
+        );
+      }
+
+      return createApiResponse(result.data);
+    } catch (error) {
+      console.error('Menu API error:', error);
+      return createErrorResponse(
+        'Internal server error',
+        'INTERNAL_ERROR',
+        500
       );
     }
-
-    const { valid, error } = await verifyApiKey(apiKey, 'read:table_bookings');
-    if (!valid) {
-      return NextResponse.json(
-        { error: error || 'Invalid API key' },
-        { status: 401 }
-      );
-    }
-
-    // Get query parameters
-    const searchParams = request.nextUrl.searchParams;
-    const date = searchParams.get('date');
-
-    // Get menu
-    const result = await getSundayLunchMenu(date || undefined);
-
-    if (result.error) {
-      return NextResponse.json(
-        { error: result.error },
-        { status: 400 }
-      );
-    }
-
-    return NextResponse.json(result.data);
-  } catch (error) {
-    console.error('Menu API error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
+  }, ['read:table_bookings'], request);
 }

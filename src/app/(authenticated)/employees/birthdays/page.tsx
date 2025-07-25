@@ -7,16 +7,17 @@ import Link from 'next/link';
 import { 
   CakeIcon,
   EnvelopeIcon,
-  ArrowLeftIcon,
   ExclamationTriangleIcon,
   CalendarIcon
 } from '@heroicons/react/24/outline';
 import { format, getMonth, addDays } from 'date-fns';
 // New UI components
-import { Page } from '@/components/ui-v2/layout/Page';
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Button } from '@/components/ui-v2/forms/Button';
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
+import { NavLink } from '@/components/ui-v2/navigation/NavLink';
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { toast } from '@/components/ui-v2/feedback/Toast';
@@ -55,7 +56,7 @@ export default function EmployeeBirthdaysPage() {
         } else if (result.birthdays) {
           setBirthdays(result.birthdays);
         }
-      } catch (error) {
+      } catch {
         toast.error('Failed to load birthdays');
       } finally {
         setLoading(false);
@@ -79,7 +80,7 @@ export default function EmployeeBirthdaysPage() {
       } else {
         toast.success(result.message || 'Birthday reminders sent');
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to send reminders');
     } finally {
       setSending(false);
@@ -133,126 +134,120 @@ export default function EmployeeBirthdaysPage() {
 
   if (!hasPermission('employees', 'view')) {
     return (
-      <Page title="Employee Birthdays">
-        <Card>
-          <div className="text-center py-12">
-            <p className="text-gray-500">You don&apos;t have permission to view this page.</p>
-          </div>
-        </Card>
-      </Page>
+      <PageWrapper>
+        <PageHeader title="Employee Birthdays" />
+        <PageContent>
+          <Card>
+            <div className="text-center py-12">
+              <p className="text-gray-500">You don&apos;t have permission to view this page.</p>
+            </div>
+          </Card>
+        </PageContent>
+      </PageWrapper>
     );
   }
 
   return (
-    <Page
-      title="Employee Birthdays"
-      description="All employee birthdays throughout the year"
-      actions={
-        <div className="flex items-center gap-2">
-          <LinkButton
-            href="/employees"
-            variant="secondary"
-            size="sm"
-          >
-            <ArrowLeftIcon className="h-4 w-4 -ml-1 mr-1.5" />
-            Back
-          </LinkButton>
-          {hasPermission('employees', 'manage') && (
-            <Button
-              onClick={handleSendReminders}
-              disabled={sending}
-              variant="primary"
-              size="sm"
-            >
-              <EnvelopeIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 -ml-0.5 mr-1.5 sm:mr-2" />
-              <span className="hidden sm:inline">{sending ? 'Sending...' : 'Send Weekly Reminders'}</span>
-              <span className="sm:hidden">{sending ? 'Sending...' : 'Send Reminders'}</span>
-            </Button>
-          )}
-        </div>
-      }
-    >
+    <PageWrapper>
+      <PageHeader
+        title="Employee Birthdays"
+        subtitle="All employee birthdays throughout the year"
+        backButton={{
+          label: 'Back to Employees',
+          href: '/employees'
+        }}
+        actions={
+          hasPermission('employees', 'manage') && (
+            <NavGroup>
+              <NavLink onClick={handleSendReminders}>
+                {sending ? 'Sending...' : 'Send Weekly Reminders'}
+              </NavLink>
+            </NavGroup>
+          )
+        }
+      />
+      <PageContent>
+        <Alert variant="info" icon={<ExclamationTriangleIcon className="h-4 w-4 sm:h-5 sm:w-5" />}>
+          <div>
+            <h3 className="text-xs sm:text-sm font-medium">Automatic Birthday Reminders</h3>
+            <p className="mt-1 sm:mt-2 text-xs sm:text-sm">
+              Birthday reminders are automatically sent to manager@the-anchor.pub every morning at 8 AM for employees with birthdays exactly 1 week away.
+            </p>
+          </div>
+        </Alert>
 
-      <Alert variant="info" icon={<ExclamationTriangleIcon className="h-4 w-4 sm:h-5 sm:w-5" />}>
-        <div>
-          <h3 className="text-xs sm:text-sm font-medium">Automatic Birthday Reminders</h3>
-          <p className="mt-1 sm:mt-2 text-xs sm:text-sm">
-            Birthday reminders are automatically sent to manager@the-anchor.pub every morning at 8 AM for employees with birthdays exactly 1 week away.
-          </p>
-        </div>
-      </Alert>
-
-      {loading ? (
-        <Card>
-          <div className="space-y-4">
-            {[...Array(3)].map((_, i) => (
-              <Skeleton key={i} className="h-16" />
+        {loading ? (
+          <Card>
+            <div className="space-y-4">
+              {[...Array(3)].map((_, i) => (
+                <Skeleton key={i} className="h-16" />
+              ))}
+            </div>
+          </Card>
+        ) : birthdays.length === 0 ? (
+          <Card>
+            <EmptyState
+              icon={<CakeIcon className="h-12 w-12" />}
+              title="No birthdays found"
+              description="No active employees have birthdays recorded."
+            />
+          </Card>
+        ) : (
+          <div className="space-y-6">
+            {sortedMonths.map(([monthName, { birthdays: monthBirthdays }]) => (
+              <Card key={monthName}>
+                <div className="bg-gray-50 px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200 -m-6 mb-6">
+                  <h2 className="text-base sm:text-lg font-medium text-gray-900 flex flex-wrap items-center">
+                    <CalendarIcon className="h-4 w-4 sm:h-5 sm:w-5 mr-1.5 sm:mr-2 text-gray-400" />
+                    <span>{monthName}</span>
+                    <span className="ml-2 text-xs sm:text-sm text-gray-500">({monthBirthdays.length} birthday{monthBirthdays.length !== 1 ? 's' : ''})</span>
+                  </h2>
+                </div>
+                <ul className="divide-y divide-gray-200">
+                  {monthBirthdays.map((birthday) => {
+                    return (
+                      <li key={birthday.employee_id} className="px-3 sm:px-4 py-3 sm:py-4 hover:bg-gray-50">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
+                          <div className="flex-1">
+                            <div className="flex items-center">
+                              <Link
+                                href={`/employees/${birthday.employee_id}`}
+                                className="text-sm font-medium text-blue-600 hover:text-blue-700 truncate"
+                              >
+                                {birthday.first_name} {birthday.last_name}
+                              </Link>
+                              {birthday.days_until_birthday === 0 && (
+                                <span className="ml-1.5 sm:ml-2 text-base sm:text-xl">🎉</span>
+                              )}
+                            </div>
+                            <p className="text-xs sm:text-sm text-gray-500 truncate">{birthday.job_title || 'No title'}</p>
+                          </div>
+                          <div className="flex sm:block items-center justify-between sm:text-right sm:ml-4">
+                            <div className="flex items-center sm:justify-end space-x-1.5 sm:space-x-2">
+                              <span className="text-xs sm:text-sm font-medium text-gray-900">
+                                {format(new Date(birthday.date_of_birth), 'MMM d')}
+                              </span>
+                              <Badge 
+                                variant={getCountdownBadgeVariant(birthday.days_until_birthday) as 'default' | 'info' | 'warning' | 'error'}
+                                className="text-xs px-1.5 py-0.5 sm:px-2 sm:py-1"
+                              >
+                                {getCountdownText(birthday.days_until_birthday)}
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-gray-500 sm:mt-1">
+                              Turning {birthday.turning_age}
+                            </p>
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Card>
             ))}
           </div>
-        </Card>
-      ) : birthdays.length === 0 ? (
-        <Card>
-          <EmptyState
-            icon={<CakeIcon className="h-12 w-12" />}
-            title="No birthdays found"
-            description="No active employees have birthdays recorded."
-          />
-        </Card>
-      ) : (
-        <div className="space-y-6">
-          {sortedMonths.map(([monthName, { birthdays: monthBirthdays }]) => (
-            <Card key={monthName}>
-              <div className="bg-gray-50 px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200 -m-6 mb-6">
-                <h2 className="text-base sm:text-lg font-medium text-gray-900 flex flex-wrap items-center">
-                  <CalendarIcon className="h-4 w-4 sm:h-5 sm:w-5 mr-1.5 sm:mr-2 text-gray-400" />
-                  <span>{monthName}</span>
-                  <span className="ml-2 text-xs sm:text-sm text-gray-500">({monthBirthdays.length} birthday{monthBirthdays.length !== 1 ? 's' : ''})</span>
-                </h2>
-              </div>
-              <ul className="divide-y divide-gray-200">
-                {monthBirthdays.map((birthday) => {
-                  return (
-                    <li key={birthday.employee_id} className="px-3 sm:px-4 py-3 sm:py-4 hover:bg-gray-50">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
-                        <div className="flex-1">
-                          <div className="flex items-center">
-                            <Link
-                              href={`/employees/${birthday.employee_id}`}
-                              className="text-sm font-medium text-blue-600 hover:text-blue-700 truncate"
-                            >
-                              {birthday.first_name} {birthday.last_name}
-                            </Link>
-                            {birthday.days_until_birthday === 0 && (
-                              <span className="ml-1.5 sm:ml-2 text-base sm:text-xl">🎉</span>
-                            )}
-                          </div>
-                          <p className="text-xs sm:text-sm text-gray-500 truncate">{birthday.job_title || 'No title'}</p>
-                        </div>
-                        <div className="flex sm:block items-center justify-between sm:text-right sm:ml-4">
-                          <div className="flex items-center sm:justify-end space-x-1.5 sm:space-x-2">
-                            <span className="text-xs sm:text-sm font-medium text-gray-900">
-                              {format(new Date(birthday.date_of_birth), 'MMM d')}
-                            </span>
-                            <Badge 
-                              variant={getCountdownBadgeVariant(birthday.days_until_birthday) as 'default' | 'info' | 'warning' | 'error'}
-                              className="text-xs px-1.5 py-0.5 sm:px-2 sm:py-1"
-                            >
-                              {getCountdownText(birthday.days_until_birthday)}
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-gray-500 sm:mt-1">
-                            Turning {birthday.turning_age}
-                          </p>
-                        </div>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </Card>
-          ))}
-        </div>
-      )}
-    </Page>
+        )}
+      </PageContent>
+    </PageWrapper>
   );
 }

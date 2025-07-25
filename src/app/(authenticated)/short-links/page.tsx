@@ -3,11 +3,14 @@
 import { useState, useEffect } from 'react';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { LinkIcon, ChartBarIcon, TrashIcon, ClipboardDocumentIcon, PencilIcon, CalendarDaysIcon, DevicePhoneMobileIcon, ComputerDesktopIcon, GlobeAltIcon } from '@heroicons/react/24/outline';
-import { Page } from '@/components/ui-v2/layout/Page';
+import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
+import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Button, IconButton } from '@/components/ui-v2/forms/Button';
 import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal';
+import { NavLink } from '@/components/ui-v2/navigation/NavLink';
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup';
 import { Input } from '@/components/ui-v2/forms/Input';
 import { Select } from '@/components/ui-v2/forms/Select';
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
@@ -18,7 +21,8 @@ import { EmptyState } from '@/components/ui-v2/display/EmptyState';
 import toast from 'react-hot-toast';
 import { createShortLink, getShortLinkAnalytics } from '@/app/actions/short-links';
 import { LineChart } from '@/components/charts/LineChart';
-
+import { BarChart } from '@/components/charts/BarChart';
+import { useRouter } from 'next/navigation';
 interface ShortLink {
   id: string;
   short_code: string;
@@ -31,7 +35,8 @@ interface ShortLink {
 }
 
 export default function ShortLinksPage() {
-  const supabase = useSupabase();
+  const router = useRouter();
+const supabase = useSupabase();
   const [links, setLinks] = useState<ShortLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -43,6 +48,7 @@ export default function ShortLinksPage() {
   const [volumeData, setVolumeData] = useState<any>(null);
   const [volumePeriod, setVolumePeriod] = useState('30');
   const [loadingVolume, setLoadingVolume] = useState(false);
+  const [volumeChartType, setVolumeChartType] = useState<'clicks' | 'unique'>('clicks');
   
   // Form states
   const [destinationUrl, setDestinationUrl] = useState('');
@@ -321,38 +327,36 @@ export default function ShortLinksPage() {
   };
 
   return (
-    <Page
-      title="Short Links"
-      description="Create and manage vip-club.uk short links"
-      breadcrumbs={[
-        { label: 'Settings', href: '/settings' },
-        { label: 'Short Links' }
-      ]}
-      loading={loading}
-      actions={
-        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-          <Button 
-            variant="secondary"
-            onClick={() => {
-              setShowVolumeChart(true);
-              loadVolumeData(volumePeriod);
-            }}
-            leftIcon={<ChartBarIcon className="h-5 w-5" />}
-          >
-            <span className="hidden sm:inline">View Volume Chart</span>
-            <span className="sm:hidden">Volume</span>
-          </Button>
-          <Button 
-            onClick={() => setShowCreateModal(true)}
-            leftIcon={<LinkIcon className="h-5 w-5" />}
-          >
-            <span className="hidden sm:inline">Create Short Link</span>
-            <span className="sm:hidden">Create</span>
-          </Button>
-        </div>
-      }
-    >
-      <Section>
+    <PageWrapper>
+      <PageHeader
+        title="Short Links"
+        subtitle="Create and manage vip-club.uk short links"
+        backButton={{
+          label: "Back to Settings",
+          href: "/settings"
+        }}
+        actions={
+          <NavGroup>
+            <NavLink 
+              onClick={() => {
+                setShowVolumeChart(true);
+                loadVolumeData(volumePeriod);
+              }}
+            >
+              View Volume Chart
+            </NavLink>
+            <NavLink 
+              onClick={() => {
+                setShowCreateModal(true);
+              }}
+            >
+              Create Short Link
+            </NavLink>
+          </NavGroup>
+        }
+      />
+      <PageContent>
+        <Section>
         <DataTable
           data={links}
           getRowKey={(link) => link.id}
@@ -410,7 +414,7 @@ export default function ShortLinksPage() {
                     onClick={() => handleCopyLink(link)}
                     title="Copy link"
                   >
-                    <ClipboardDocumentIcon className="h-4 w-4" />
+                    <ClipboardDocumentIcon className="h-4 w-4 text-gray-600" />
                   </IconButton>
                   <IconButton
                     size="sm"
@@ -418,7 +422,7 @@ export default function ShortLinksPage() {
                     onClick={() => handleViewAnalytics(link)}
                     title="View analytics"
                   >
-                    <ChartBarIcon className="h-4 w-4" />
+                    <ChartBarIcon className="h-4 w-4 text-gray-600" />
                   </IconButton>
                   <IconButton
                     size="sm"
@@ -426,7 +430,7 @@ export default function ShortLinksPage() {
                     onClick={() => handleEdit(link)}
                     title="Edit"
                   >
-                    <PencilIcon className="h-4 w-4" />
+                    <PencilIcon className="h-4 w-4 text-gray-600" />
                   </IconButton>
                   <IconButton
                     size="sm"
@@ -434,7 +438,7 @@ export default function ShortLinksPage() {
                     onClick={() => handleDelete(link.id)}
                     title="Delete"
                   >
-                    <TrashIcon className="h-4 w-4" />
+                    <TrashIcon className="h-4 w-4 text-red-600" />
                   </IconButton>
                 </div>
               ),
@@ -466,7 +470,7 @@ export default function ShortLinksPage() {
                   onClick={() => handleCopyLink(link)}
                   title="Copy link"
                 >
-                  <ClipboardDocumentIcon className="h-4 w-4" />
+                  <ClipboardDocumentIcon className="h-4 w-4 text-gray-600" />
                 </IconButton>
                 <IconButton
                   size="sm"
@@ -474,7 +478,7 @@ export default function ShortLinksPage() {
                   onClick={() => handleViewAnalytics(link)}
                   title="View analytics"
                 >
-                  <ChartBarIcon className="h-4 w-4" />
+                  <ChartBarIcon className="h-4 w-4 text-gray-600" />
                 </IconButton>
                 <IconButton
                   size="sm"
@@ -482,7 +486,7 @@ export default function ShortLinksPage() {
                   onClick={() => handleEdit(link)}
                   title="Edit"
                 >
-                  <PencilIcon className="h-4 w-4" />
+                  <PencilIcon className="h-4 w-4 text-gray-600" />
                 </IconButton>
                 <IconButton
                   size="sm"
@@ -490,13 +494,14 @@ export default function ShortLinksPage() {
                   onClick={() => handleDelete(link.id)}
                   title="Delete"
                 >
-                  <TrashIcon className="h-4 w-4" />
+                  <TrashIcon className="h-4 w-4 text-red-600" />
                 </IconButton>
               </div>
             </Card>
           )}
         />
       </Section>
+      </PageContent>
 
       {/* Create Modal */}
       <Modal
@@ -834,10 +839,28 @@ export default function ShortLinksPage() {
         size="full"
       >
         <div className="space-y-4">
-          {/* Period Selector */}
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium text-gray-700">Time Period</h3>
-            <div className="flex gap-2">
+          {/* Controls */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant={volumeChartType === 'clicks' ? 'primary' : 'secondary'}
+                  onClick={() => setVolumeChartType('clicks')}
+                >
+                  Total Clicks
+                </Button>
+                <Button
+                  size="sm"
+                  variant={volumeChartType === 'unique' ? 'primary' : 'secondary'}
+                  onClick={() => setVolumeChartType('unique')}
+                >
+                  Unique Visitors
+                </Button>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600">Period:</span>
               {['30', '60', '90'].map((days) => (
                 <Button
                   key={days}
@@ -880,29 +903,56 @@ export default function ShortLinksPage() {
                 </Card>
               </div>
 
+              {/* Overall Volume Bar Chart */}
+              <Section 
+                title={`${volumeChartType === 'clicks' ? 'Total Clicks' : 'Unique Visitors'} by Link`} 
+                variant="gray" 
+                padding="sm"
+              >
+                <BarChart
+                  data={volumeData
+                    .sort((a: any, b: any) => 
+                      volumeChartType === 'clicks' 
+                        ? b.totalClicks - a.totalClicks 
+                        : b.uniqueVisitors - a.uniqueVisitors
+                    )
+                    .slice(0, 10)
+                    .map((link: any) => ({
+                      label: link.shortCode,
+                      value: volumeChartType === 'clicks' ? link.totalClicks : link.uniqueVisitors,
+                      color: volumeChartType === 'clicks' ? '#3B82F6' : '#10B981'
+                    }))}
+                  height={300}
+                  showValues={true}
+                />
+              </Section>
+
               {/* Individual Link Charts */}
-              <Section title="Link Performance" variant="gray" padding="sm">
+              <Section title="Top Links Performance Over Time" variant="gray" padding="sm">
                 <div className="space-y-4 max-h-96 overflow-y-auto">
-                  {volumeData.map((link: any) => (
-                    <Card key={link.shortCode} variant="bordered" padding="sm">
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <p className="font-mono text-sm text-blue-600">vip-club.uk/{link.shortCode}</p>
-                          <p className="text-xs text-gray-500 truncate max-w-md">{link.destinationUrl}</p>
+                  {volumeData
+                    .sort((a: any, b: any) => b.totalClicks - a.totalClicks)
+                    .slice(0, 5)
+                    .map((link: any) => (
+                      <Card key={link.shortCode} variant="bordered" padding="sm">
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <p className="font-mono text-sm text-blue-600">vip-club.uk/{link.shortCode}</p>
+                            <p className="text-xs text-gray-500 truncate max-w-md">{link.destinationUrl}</p>
+                          </div>
+                          <div className="text-right">
+                            <Badge variant="info" size="sm">{link.totalClicks} clicks</Badge>
+                            <p className="text-xs text-gray-500 mt-1">{link.uniqueVisitors} unique</p>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <Badge variant="info" size="sm">{link.totalClicks} clicks</Badge>
-                          <p className="text-xs text-gray-500 mt-1">{link.uniqueVisitors} unique</p>
-                        </div>
-                      </div>
-                      <LineChart
-                        data={link.data}
-                        height={150}
-                        color="#3B82F6"
-                        showGrid={false}
-                      />
-                    </Card>
-                  ))}
+                        <LineChart
+                          data={link.data}
+                          height={150}
+                          color="#3B82F6"
+                          showGrid={false}
+                        />
+                      </Card>
+                    ))}
                 </div>
               </Section>
 
@@ -945,6 +995,6 @@ export default function ShortLinksPage() {
           )}
         </div>
       </Modal>
-    </Page>
+    </PageWrapper>
   );
 }
