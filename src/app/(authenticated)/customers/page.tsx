@@ -29,7 +29,7 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { Button, IconButton } from '@/components/ui-v2/forms/Button'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
-import { SearchBar } from '@/components/ui-v2/forms/SearchInput'
+import { SearchInput } from '@/components/ui-v2/forms/SearchInput'
 import { Badge, BadgeGroup } from '@/components/ui-v2/display/Badge'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Pagination as PaginationV2 } from '@/components/ui-v2/navigation/Pagination'
@@ -79,11 +79,13 @@ export default function CustomersPage() {
     orderBy: { column: 'first_name', ascending: true }
   }), [])
 
+  const [customPageSize, setCustomPageSize] = useState(50)
+  
   const paginationOptions = useMemo(() => ({
-    pageSize: 50,
+    pageSize: customPageSize,
     searchTerm: searchTerm,
     searchColumns: ['first_name', 'last_name', 'mobile_number']
-  }), [searchTerm])
+  }), [customPageSize, searchTerm])
 
   // Use pagination hook with search
   const {
@@ -414,11 +416,25 @@ export default function CustomersPage() {
       <PageContent>
         <Card>
         <div className="space-y-4">
-          <SearchBar
-            placeholder="Search customers..."
-            value={searchInput}
-            onSearch={setSearchInput}
-          />
+          <div className="flex flex-col sm:flex-row gap-4">
+            <SearchInput
+              placeholder="Search customers..."
+              value={searchInput}
+              onSearch={setSearchInput}
+              className="flex-1"
+            />
+            <select
+              value={customPageSize}
+              onChange={(e) => setCustomPageSize(Number(e.target.value))}
+              className="rounded-md border-gray-300 text-sm focus:border-green-500 focus:ring-green-500"
+            >
+              <option value={50}>50 per page</option>
+              <option value={100}>100 per page</option>
+              <option value={200}>200 per page</option>
+              <option value={500}>500 per page</option>
+              <option value={1000}>All customers</option>
+            </select>
+          </div>
           <TabNav
             tabs={[
               { key: 'all', label: 'All Customers', badge: totalCount },

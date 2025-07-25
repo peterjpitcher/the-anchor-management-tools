@@ -8,6 +8,8 @@
  */
 
 import { useState, ReactNode, KeyboardEvent } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { ChevronRightIcon, CheckIcon } from '@heroicons/react/20/solid'
 import { Avatar } from './Avatar'
@@ -374,12 +376,14 @@ export function SimpleList({
   items: SimpleListItem[]
   onItemClick?: (item: SimpleListItem) => void
 } & Omit<ListProps<SimpleListItem>, 'items' | 'renderItem'>) {
+  const router = useRouter()
+  
   return (
     <List
       items={items.map(item => ({ id: item.id, data: item }))}
       renderItem={(listItem) => {
         const item = listItem.data
-        return (
+        const content = (
           <div className="flex items-center gap-3">
             {item.icon && (
               <div className="flex-shrink-0 text-gray-400">
@@ -406,8 +410,25 @@ export function SimpleList({
             )}
           </div>
         )
+        
+        // If there's an href, wrap in a Link
+        if (item.href) {
+          return (
+            <Link href={item.href} className="block">
+              {content}
+            </Link>
+          )
+        }
+        
+        return content
       }}
-      onItemClick={(listItem) => onItemClick?.(listItem.data)}
+      onItemClick={(listItem) => {
+        const item = listItem.data
+        if (item.href) {
+          router.push(item.href)
+        }
+        onItemClick?.(item)
+      }}
       {...props}
     />
   )
