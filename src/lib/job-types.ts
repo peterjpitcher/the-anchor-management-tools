@@ -13,9 +13,13 @@ export type JobType =
 export interface JobPayload {
   send_sms: {
     to: string
-    message: string
+    message?: string
+    template?: string
+    variables?: Record<string, string>
     customerId?: string
-    type: 'booking_confirmation' | 'reminder' | 'custom'
+    customer_id?: string
+    booking_id?: string
+    type?: 'booking_confirmation' | 'reminder' | 'custom'
   }
   send_bulk_sms: {
     customerIds: string[]

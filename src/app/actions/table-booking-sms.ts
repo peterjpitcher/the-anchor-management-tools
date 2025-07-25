@@ -243,6 +243,7 @@ export async function queueBookingConfirmationSMS(bookingId: string) {
           template: templateKey,
           variables,
           booking_id: bookingId,
+          customer_id: booking.customer.id,
         },
         scheduled_for: new Date().toISOString(),
       });
@@ -328,6 +329,7 @@ export async function queueBookingReminderSMS(bookingId: string) {
           template: templateKey,
           variables,
           booking_id: bookingId,
+          customer_id: booking.customer.id,
         },
         scheduled_for: new Date().toISOString(),
       });

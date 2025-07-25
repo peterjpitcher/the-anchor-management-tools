@@ -188,28 +188,59 @@ export class JobQueue {
   
   private async processSendSms(payload: JobPayload['send_sms']) {
     const { sendSMS } = await import('./twilio')
-    const result = await sendSMS(payload.to, payload.message)
+    let messageText = payload.message || ''
+    
+    // Check if this is a template-based SMS (e.g., from table bookings)
+    if (payload.template && payload.variables) {
+      const supabase = await createAdminClient()
+      
+      // Get the template
+      const { data: template } = await supabase
+        .from('table_booking_sms_templates')
+        .select('*')
+        .eq('template_key', payload.template)
+        .eq('is_active', true)
+        .single()
+        
+      if (!template) {
+        throw new Error(`SMS template not found: ${payload.template}`)
+      }
+      
+      // Replace variables in template
+      messageText = template.template_text
+      Object.entries(payload.variables).forEach(([key, value]) => {
+        messageText = messageText.replace(new RegExp(`{{${key}}}`, 'g'), String(value))
+      })
+      
+      // Add contact phone if not in variables
+      if (messageText.includes('{{contact_phone}}') && !payload.variables.contact_phone) {
+        messageText = messageText.replace(/{{contact_phone}}/g, process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '')
+      }
+    }
+    
+    const result = await sendSMS(payload.to, messageText)
     
     if (!result.success) {
       throw new Error(result.error as string)
     }
     
     // Log message to database
-    if (payload.customerId) {
+    if (payload.customerId || payload.customer_id) {
       const supabase = await createAdminClient()
       await supabase
         .from('messages')
         .insert({
-          customer_id: payload.customerId,
+          customer_id: payload.customerId || payload.customer_id,
           direction: 'outbound',
           message_sid: result.sid,
           twilio_message_sid: result.sid,
-          body: payload.message,
+          body: messageText,
           status: 'sent',
           twilio_status: 'queued',
           from_number: process.env.TWILIO_PHONE_NUMBER,
           to_number: payload.to,
-          message_type: 'sms'
+          message_type: 'sms',
+          metadata: payload.booking_id ? { booking_id: payload.booking_id } : null
         })
     }
     
@@ -241,8 +272,7 @@ export class JobQueue {
         await this.enqueue('send_sms', {
           to: customer.mobile_number!,
           message,
-          customerId: customer.id,
-          type: 'custom'
+          customerId: customer.id
         })
       }
       
