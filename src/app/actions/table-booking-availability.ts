@@ -4,6 +4,9 @@ import { createClient } from '@/lib/supabase/server';
 import { format, parse, addMinutes, isWithinInterval, setHours, setMinutes } from 'date-fns';
 import { BookingAvailability } from '@/types/table-bookings';
 
+// Restaurant capacity configuration
+const RESTAURANT_CAPACITY = 50; // Maximum 50 people at any time
+
 // Generate time slots based on kitchen hours
 function generateTimeSlots(
   openTime: string,
@@ -110,13 +113,8 @@ export async function checkAvailability(
       .eq('booking_date', date)
       .in('status', ['confirmed', 'pending_payment']);
       
-    // Get total table capacity
-    const { data: tables } = await supabase
-      .from('table_configuration')
-      .select('capacity')
-      .eq('is_active', true);
-      
-    const totalCapacity = tables?.reduce((sum, table) => sum + table.capacity, 0) || 0;
+    // Use a fixed restaurant capacity instead of table configuration
+    const totalCapacity = RESTAURANT_CAPACITY;
     
     // Calculate availability for each slot
     const availableSlots = allSlots.map(slotTime => {
@@ -126,7 +124,8 @@ export async function checkAvailability(
         (!config.booking_type || config.booking_type === bookingType)
       );
       
-      const maxCovers = slotConfig?.max_covers || totalCapacity;
+      // Use slot-specific capacity if configured, otherwise use restaurant capacity
+      const maxCovers = slotConfig?.max_covers || RESTAURANT_CAPACITY;
       
       // Calculate booked capacity for this slot
       const bookedCapacity = existingBookings?.reduce((sum, booking) => {
@@ -372,23 +371,41 @@ async function checkTableAvailability(
 ) {
   const supabase = await createClient();
   
-  const { data, error } = await supabase.rpc('check_table_availability', {
-    p_date: date,
-    p_time: time,
-    p_party_size: partySize,
-    p_duration_minutes: 120,
-    p_exclude_booking_id: excludeBookingId || null,
-  });
-  
+  // Get existing bookings for the date and time
+  const { data: existingBookings, error } = await supabase
+    .from('table_bookings')
+    .select('booking_time, party_size, duration_minutes')
+    .eq('booking_date', date)
+    .in('status', ['confirmed', 'pending_payment'])
+    .neq('id', excludeBookingId || '');
+    
   if (error) {
     console.error('Availability check error:', error);
     return { error: 'Failed to check availability' };
   }
   
+  // Calculate booked capacity for the requested time slot
+  const requestedStart = parse(time, 'HH:mm', new Date());
+  const requestedEnd = addMinutes(requestedStart, 120); // Assume 2-hour duration
+  
+  const bookedCapacity = existingBookings?.reduce((sum, booking) => {
+    const bookingStart = parse(booking.booking_time, 'HH:mm', new Date());
+    const bookingEnd = addMinutes(bookingStart, booking.duration_minutes || 120);
+    
+    // Check if booking overlaps with requested time
+    const overlaps = 
+      (bookingStart < requestedEnd && bookingEnd > requestedStart) ||
+      (requestedStart < bookingEnd && requestedEnd > bookingStart);
+      
+    return overlaps ? sum + booking.party_size : sum;
+  }, 0) || 0;
+  
+  const availableCapacity = RESTAURANT_CAPACITY - bookedCapacity;
+  
   return { 
     data: {
-      available_capacity: data[0]?.available_capacity || 0,
-      is_available: data[0]?.is_available || false,
+      available_capacity: Math.max(0, availableCapacity),
+      is_available: availableCapacity >= partySize,
     }
   };
 }

@@ -87,7 +87,7 @@ async function findOrCreateCustomer(
   return newCustomer;
 }
 
-// Check table availability
+// Check table availability - now uses fixed capacity system
 export async function checkTableAvailability(
   date: string,
   time: string,
@@ -97,7 +97,7 @@ export async function checkTableAvailability(
   try {
     const supabase = await createClient();
     
-    // Call the database function
+    // Call the updated database function that uses fixed capacity
     const { data, error } = await supabase.rpc('check_table_availability', {
       p_date: date,
       p_time: time,
