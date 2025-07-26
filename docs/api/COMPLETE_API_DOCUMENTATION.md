@@ -2,35 +2,80 @@
 
 ## Overview
 
-The Anchor Management API provides programmatic access to events, table bookings, and customer data. All APIs use the same authentication system and follow consistent patterns.
+The Anchor Management API provides programmatic access to events, table bookings, business information, and customer data. All APIs use the same authentication system and follow consistent patterns.
 
 **Base URL**: `https://management.orangejelly.co.uk/api`
 
+## Quick Start Guide
+
+### 1. Obtain API Key
+Contact The Anchor management team to request an API key. You'll receive a key in the format: `anch_XXXX...`
+
+### 2. Test Your API Key
+```bash
+# Test with business hours endpoint (public data)
+curl -H "X-API-Key: your-api-key" https://management.orangejelly.co.uk/api/business/hours
+```
+
+### 3. Check Available Permissions
+Your API key will have specific permissions granted. Common permission sets:
+- **Basic Integration**: `read:events`, `read:business`, `read:table_bookings`
+- **Booking Integration**: Above + `write:table_bookings`, `create:bookings`
+- **Full Access**: `*` (all permissions)
+
 ## Authentication
 
-All API requests require authentication using an API key. The same API key can be used across all endpoints if it has the appropriate permissions.
+All API requests require authentication using an API key.
 
 ### Authentication Methods
 
-You can authenticate using either method:
-
 #### Method 1: X-API-Key Header (Recommended)
 ```http
-X-API-Key: your-api-key-here
+X-API-Key: anch_your-api-key-here
 ```
 
 #### Method 2: Authorization Bearer
 ```http
-Authorization: Bearer your-api-key-here
+Authorization: Bearer anch_your-api-key-here
 ```
 
-### Example
-```bash
-# Using X-API-Key
-curl -H "X-API-Key: anch_abc123..." https://management.orangejelly.co.uk/api/events
+### Example Implementation
+```javascript
+// JavaScript/Node.js
+const headers = {
+  'X-API-Key': 'anch_your-api-key-here',
+  'Content-Type': 'application/json'
+};
 
-# Using Bearer token
-curl -H "Authorization: Bearer anch_abc123..." https://management.orangejelly.co.uk/api/events
+// Using fetch
+const response = await fetch('https://management.orangejelly.co.uk/api/events', {
+  headers: headers
+});
+```
+
+```python
+# Python
+import requests
+
+headers = {
+    'X-API-Key': 'anch_your-api-key-here',
+    'Content-Type': 'application/json'
+}
+
+response = requests.get('https://management.orangejelly.co.uk/api/events', headers=headers)
+```
+
+```php
+// PHP
+$headers = [
+    'X-API-Key: anch_your-api-key-here',
+    'Content-Type: application/json'
+];
+
+$ch = curl_init('https://management.orangejelly.co.uk/api/events');
+curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+$response = curl_exec($ch);
 ```
 
 ## Error Handling
@@ -50,14 +95,66 @@ All APIs return consistent error responses:
 
 ### Common Error Codes
 
-| Code | HTTP Status | Description |
-|------|-------------|-------------|
-| `UNAUTHORIZED` | 401 | Invalid or missing API key |
-| `FORBIDDEN` | 403 | Insufficient permissions |
-| `NOT_FOUND` | 404 | Resource not found |
-| `VALIDATION_ERROR` | 400 | Invalid request parameters |
-| `RATE_LIMIT_EXCEEDED` | 429 | Too many requests |
-| `INTERNAL_ERROR` | 500 | Server error |
+| Code | HTTP Status | Description | Action Required |
+|------|-------------|-------------|-----------------|
+| `UNAUTHORIZED` | 401 | Invalid or missing API key | Check API key is correct and included in headers |
+| `FORBIDDEN` | 403 | Insufficient permissions | Request additional permissions for your API key |
+| `NOT_FOUND` | 404 | Resource not found | Verify endpoint URL and resource ID |
+| `VALIDATION_ERROR` | 400 | Invalid request parameters | Check request body matches documentation |
+| `RATE_LIMIT_EXCEEDED` | 429 | Too many requests | Wait and retry with exponential backoff |
+| `DATABASE_ERROR` | 500 | Database operation failed | Contact support if persists |
+| `INTERNAL_ERROR` | 500 | Server error | Retry request; contact support if persists |
+
+### Error Response Examples
+
+#### Missing API Key
+```json
+{
+  "success": false,
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Invalid or missing API key"
+  }
+}
+```
+
+#### Insufficient Permissions
+```json
+{
+  "success": false,
+  "error": {
+    "code": "FORBIDDEN",
+    "message": "Insufficient permissions",
+    "details": {
+      "required_permission": "write:table_bookings",
+      "your_permissions": ["read:events", "read:table_bookings"]
+    }
+  }
+}
+```
+
+#### Validation Error
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid request parameters",
+    "details": {
+      "errors": [
+        {
+          "field": "party_size",
+          "message": "Must be between 1 and 20"
+        },
+        {
+          "field": "date",
+          "message": "Must be a future date"
+        }
+      ]
+    }
+  }
+}
+```
 
 ## Rate Limiting
 
@@ -68,6 +165,97 @@ All APIs return consistent error responses:
   X-RateLimit-Remaining: 950
   X-RateLimit-Reset: 1709125680
   ```
+
+---
+
+# Business Information API
+
+## Get Business Hours
+
+Retrieve the restaurant's opening hours, including kitchen hours for table bookings.
+
+**Endpoint:** `GET /business/hours`
+
+**Permissions Required:** None (Public endpoint)
+
+### Response Format
+```json
+{
+  "regularHours": {
+    "sunday": {
+      "opens": "09:00:00",
+      "closes": "22:00:00",
+      "kitchen": {
+        "opens": "12:00:00",
+        "closes": "17:00:00"
+      },
+      "is_closed": false
+    },
+    "monday": {
+      "opens": "09:00:00",
+      "closes": "22:00:00",
+      "kitchen": null,  // Kitchen closed on Mondays
+      "is_closed": false
+    },
+    "tuesday": {
+      "opens": "09:00:00",
+      "closes": "22:00:00",
+      "kitchen": {
+        "opens": "18:00:00",
+        "closes": "21:00:00"
+      },
+      "is_closed": false
+    }
+    // ... other days
+  },
+  "specialHours": [
+    {
+      "date": "2024-12-25",
+      "opens": "10:00:00",
+      "closes": "16:00:00",
+      "kitchen": {
+        "opens": "12:00:00",
+        "closes": "15:00:00"
+      },
+      "status": "modified",
+      "note": "Christmas Day - Limited Hours"
+    }
+  ],
+  "currentStatus": {
+    "isOpen": true,
+    "kitchenOpen": true,
+    "closesIn": "6 hours 30 minutes",
+    "opensIn": null
+  },
+  "timezone": "Europe/London",
+  "lastUpdated": "2024-03-15T10:00:00.000Z"
+}
+```
+
+### Important Notes
+- **Day keys are lowercase**: `sunday`, `monday`, etc.
+- **Kitchen object**: Can be `null` when kitchen is closed but venue is open
+- **Time format**: Always `HH:mm:ss` (24-hour with seconds)
+- **Special hours**: Override regular hours for specific dates
+- **All times are in Europe/London timezone**
+
+### Example Usage
+```javascript
+// Check if kitchen is open for table bookings
+const response = await fetch('https://management.orangejelly.co.uk/api/business/hours', {
+  headers: { 'X-API-Key': 'your-api-key' }
+});
+
+const data = await response.json();
+const today = new Date().toLocaleDateString('en-GB', { weekday: 'long' }).toLowerCase();
+const todayHours = data.regularHours[today];
+
+if (!todayHours.kitchen) {
+  console.log('Kitchen closed today - no table bookings available');
+} else {
+  console.log(`Kitchen open from ${todayHours.kitchen.opens} to ${todayHours.kitchen.closes}`);
+}
+```
 
 ---
 
@@ -209,8 +397,9 @@ Check table availability for a specific date and party size.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `date` | string | Yes | Date (YYYY-MM-DD) |
-| `party_size` | integer | Yes | Number of guests (1-20) |
-| `booking_type` | string | No | `regular` or `sunday_lunch` |
+| `party_size` | integer | Yes | Number of guests (1-50) |
+| `time` | string | No | Specific time to check (HH:mm) |
+| `duration` | integer | No | Booking duration in minutes (default: 120) |
 
 ### Example Request
 ```bash
@@ -218,24 +407,97 @@ curl -H "X-API-Key: your-key" \
   "https://management.orangejelly.co.uk/api/table-bookings/availability?date=2024-03-15&party_size=4"
 ```
 
-### Response
+### Response Format
+
+#### When Kitchen is Open
 ```json
 {
-  "available": true,
-  "available_slots": [
-    {
-      "time": "12:00",
-      "duration_minutes": 120,
-      "tables_available": 5
-    },
-    {
-      "time": "18:00",
-      "duration_minutes": 120,
-      "tables_available": 3
+  "success": true,
+  "data": {
+    "date": "2024-03-15",
+    "day": "friday",
+    "available": true,
+    "time_slots": [
+      {
+        "time": "18:00",
+        "available": true,
+        "remaining_capacity": 50
+      },
+      {
+        "time": "18:30",
+        "available": true,
+        "remaining_capacity": 50
+      },
+      {
+        "time": "19:00",
+        "available": true,
+        "remaining_capacity": 46  // 4 people already booked
+      },
+      {
+        "time": "19:30",
+        "available": true,
+        "remaining_capacity": 42
+      },
+      {
+        "time": "20:00",
+        "available": true,
+        "remaining_capacity": 48
+      },
+      {
+        "time": "20:30",
+        "available": true,
+        "remaining_capacity": 50
+      }
+    ],
+    "kitchen_hours": {
+      "opens": "18:00",
+      "closes": "21:00"
     }
-  ]
+  }
 }
 ```
+
+#### When Kitchen is Closed
+```json
+{
+  "success": true,
+  "data": {
+    "date": "2024-03-18",
+    "day": "monday",
+    "available": false,
+    "time_slots": [],
+    "kitchen_hours": null,
+    "message": "Kitchen closed on this date"
+  }
+}
+```
+
+#### Specific Time Check
+```bash
+curl -H "X-API-Key: your-key" \
+  "https://management.orangejelly.co.uk/api/table-bookings/availability?date=2024-03-15&party_size=4&time=19:00"
+```
+
+Response:
+```json
+{
+  "success": true,
+  "data": {
+    "date": "2024-03-15",
+    "time": "19:00",
+    "party_size": 4,
+    "available": true,
+    "remaining_capacity": 46,
+    "message": "Table available for this time"
+  }
+}
+```
+
+### Important Notes
+- **Capacity System**: The restaurant uses a fixed capacity of 50 people total
+- **Time Slots**: Generated every 30 minutes during kitchen hours
+- **Kitchen Hours**: Bookings only available when kitchen is open
+- **Special Hours**: Check business hours API for holiday schedules
 
 ## Create Table Booking
 
@@ -245,9 +507,36 @@ Create a new table reservation.
 
 **Permissions Required:** `write:table_bookings`
 
-### Request Body
+### Request Body Schema
 
-#### Regular Booking
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `booking_type` | string | Yes | `regular` for standard bookings |
+| `date` | string | Yes | Booking date (YYYY-MM-DD) |
+| `time` | string | Yes | Booking time (HH:mm) |
+| `party_size` | integer | Yes | Number of guests (1-50) |
+| `customer` | object | Yes | Customer details (see below) |
+| `special_requirements` | string | No | Special requests or notes |
+| `occasion` | string | No | Special occasion (birthday, anniversary, etc.) |
+
+#### Customer Object
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `first_name` | string | Yes | Customer's first name |
+| `last_name` | string | Yes | Customer's last name |
+| `email` | string | No | Email address (currently not stored) |
+| `mobile_number` | string | Yes | UK mobile number |
+| `sms_opt_in` | boolean | No | SMS marketing consent (default: false) |
+
+### Important Customer Notes
+- **Names must be separate**: API requires `first_name` and `last_name` as separate fields
+- **Phone number matching**: System automatically finds existing customers by phone number
+- **No customer updates**: If customer exists, their details are NOT updated
+- **Phone formats accepted**: `07700900000`, `+447700900000`, `447700900000`
+- **Email limitation**: Email field is accepted but currently not stored in database
+
+### Example Request
 ```json
 {
   "booking_type": "regular",
@@ -262,9 +551,7 @@ Create a new table reservation.
     "sms_opt_in": true
   },
   "special_requirements": "Window table please",
-  "dietary_requirements": ["vegetarian", "gluten_free"],
-  "allergies": ["nuts"],
-  "celebration_type": "birthday"
+  "occasion": "birthday"
 }
 ```
 
@@ -296,17 +583,66 @@ Create a new table reservation.
 
 ### Response
 
-#### Regular Booking Response
+#### Successful Booking Response
 ```json
 {
-  "booking_id": "550e8400-e29b-41d4-a716-446655440000",
-  "booking_reference": "TB-2024-1234",
-  "status": "confirmed",
-  "confirmation_details": {
-    "date": "2024-03-15",
-    "time": "19:00",
-    "party_size": 4,
-    "duration_minutes": 120
+  "success": true,
+  "data": {
+    "booking_id": "550e8400-e29b-41d4-a716-446655440000",
+    "booking_reference": "TB-2024-1234",
+    "status": "confirmed",
+    "customer_id": "customer-uuid",
+    "booking_details": {
+      "date": "2024-03-15",
+      "time": "19:00",
+      "party_size": 4,
+      "duration_minutes": 120,
+      "special_requirements": "Window table please",
+      "occasion": "birthday"
+    },
+    "confirmation_sent": true,
+    "sms_status": "sent"
+  }
+}
+```
+
+#### Error Response Examples
+
+**Validation Error:**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid booking details",
+    "details": {
+      "errors": [
+        {
+          "field": "customer.first_name",
+          "message": "First name is required"
+        },
+        {
+          "field": "party_size",
+          "message": "Party size must be between 1 and 50"
+        }
+      ]
+    }
+  }
+}
+```
+
+**Capacity Error:**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "NO_AVAILABILITY",
+    "message": "No tables available for the requested time",
+    "details": {
+      "requested_capacity": 6,
+      "available_capacity": 4,
+      "suggestion": "Try 18:30 or 20:00 for availability"
+    }
   }
 }
 ```
@@ -689,11 +1025,213 @@ const booking = await api.createTableBooking({
 
 ---
 
+# Troubleshooting Guide
+
+## Common Integration Issues
+
+### 1. Authentication Errors
+
+**Problem:** Getting 401 Unauthorized errors
+```json
+{
+  "success": false,
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Invalid or missing API key"
+  }
+}
+```
+
+**Solutions:**
+- Verify API key is correct and starts with `anch_`
+- Check header format: `X-API-Key: anch_your-key` (no quotes around key)
+- Ensure no extra spaces or line breaks in the API key
+- Try the alternate header: `Authorization: Bearer anch_your-key`
+
+### 2. Permission Errors
+
+**Problem:** Getting 403 Forbidden errors
+```json
+{
+  "success": false,
+  "error": {
+    "code": "FORBIDDEN",
+    "message": "Insufficient permissions",
+    "details": {
+      "required_permission": "write:table_bookings"
+    }
+  }
+}
+```
+
+**Solutions:**
+- Check your API key permissions with a test call to `/api/business/hours`
+- Request additional permissions from The Anchor management team
+- Common permission needed for bookings: `read:table_bookings`, `write:table_bookings`
+
+### 3. No Available Time Slots
+
+**Problem:** Availability API returns empty time_slots array
+```json
+{
+  "available": false,
+  "time_slots": [],
+  "kitchen_hours": null
+}
+```
+
+**Solutions:**
+- Check if kitchen is open on that day (especially Mondays)
+- Verify the date is not in the past
+- Check business hours API for kitchen hours
+- Look for special hours/holidays that might affect availability
+
+### 4. Database Errors
+
+**Problem:** Getting 500 errors when creating bookings
+```json
+{
+  "success": false,
+  "error": {
+    "code": "DATABASE_ERROR",
+    "message": "Failed to create booking"
+  }
+}
+```
+
+**Common Causes and Solutions:**
+1. **Missing customer fields**: Ensure `first_name` and `last_name` are provided separately
+2. **Invalid phone format**: Use UK format without spaces (07700900000)
+3. **Email field issue**: The email field is optional; if database errors persist, try omitting it
+4. **Capacity exceeded**: Check availability first before attempting to book
+
+### 5. Customer Name Handling
+
+**Problem:** Single name field in your UI but API needs first/last names
+
+**Solution:**
+```javascript
+// Split single name field
+function splitName(fullName) {
+  const parts = fullName.trim().split(' ');
+  const firstName = parts[0];
+  const lastName = parts.slice(1).join(' ') || parts[0]; // Use first name if no last name
+  
+  return { first_name: firstName, last_name: lastName };
+}
+
+// Usage
+const { first_name, last_name } = splitName("John Smith");
+```
+
+### 6. Phone Number Issues
+
+**Problem:** Phone number validation errors
+
+**Solution:**
+```javascript
+// Standardize UK phone numbers
+function formatUKPhone(phone) {
+  // Remove all non-digits
+  let cleaned = phone.replace(/\D/g, '');
+  
+  // Handle UK numbers
+  if (cleaned.startsWith('44')) {
+    return '+' + cleaned; // +447700900000
+  } else if (cleaned.startsWith('0')) {
+    return '+44' + cleaned.substring(1); // 07700900000 -> +447700900000
+  } else if (cleaned.length === 10) {
+    return '+44' + cleaned; // 7700900000 -> +447700900000
+  }
+  
+  return cleaned; // Return as-is if not UK format
+}
+```
+
+### 7. Date/Time Format Issues
+
+**Problem:** Invalid date or time format errors
+
+**Solutions:**
+- Dates must be `YYYY-MM-DD` format (e.g., `2024-03-15`)
+- Times must be `HH:mm` format in 24-hour (e.g., `19:00` not `7:00 PM`)
+- All times are UK timezone (Europe/London)
+- Don't include seconds in time (use `19:00` not `19:00:00`)
+
+### 8. Testing Your Integration
+
+**Step-by-step testing approach:**
+
+```bash
+# 1. Test authentication
+curl -H "X-API-Key: your-key" https://management.orangejelly.co.uk/api/business/hours
+
+# 2. Check availability
+curl -H "X-API-Key: your-key" \
+  "https://management.orangejelly.co.uk/api/table-bookings/availability?date=2024-03-15&party_size=2"
+
+# 3. Create test booking
+curl -X POST https://management.orangejelly.co.uk/api/table-bookings \
+  -H "X-API-Key: your-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "booking_type": "regular",
+    "date": "2024-03-15",
+    "time": "19:00",
+    "party_size": 2,
+    "customer": {
+      "first_name": "Test",
+      "last_name": "User",
+      "mobile_number": "07700900123",
+      "sms_opt_in": false
+    }
+  }'
+```
+
+## Debug Checklist
+
+When encountering issues, check:
+
+- [ ] API key is valid and has correct format
+- [ ] Required permissions are granted
+- [ ] Date is in the future
+- [ ] Kitchen is open on selected date/time
+- [ ] Customer has separate first/last names
+- [ ] Phone number is in correct format
+- [ ] Request Content-Type is `application/json`
+- [ ] Response is being parsed as JSON
+- [ ] No typos in endpoint URLs
+
+## Rate Limiting Best Practices
+
+```javascript
+// Implement retry with exponential backoff
+async function apiRequestWithRetry(url, options, maxRetries = 3) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const response = await fetch(url, options);
+    
+    if (response.status !== 429) {
+      return response;
+    }
+    
+    // Exponential backoff: 1s, 2s, 4s
+    const delay = Math.pow(2, attempt) * 1000;
+    console.log(`Rate limited, retrying in ${delay}ms...`);
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+  
+  throw new Error('Max retries exceeded');
+}
+```
+
+---
+
 # Support
 
 For API support or to request additional features:
 - Email: support@orangejelly.co.uk
 - Include your API key name (not the actual key) in support requests
+- Provide request/response examples when reporting issues
 
 ## API Status
 
@@ -710,5 +1248,66 @@ Check API status and announcements at the management portal.
 | `write:bookings` | Create event bookings |
 | `read:table_bookings` | View table bookings and availability |
 | `write:table_bookings` | Create and modify table bookings |
-| `manage:table_bookings` | Full table booking management |
+| `create:bookings` | Alternative permission for creating bookings |
+| `read:customers` | View customer information |
+| `write:customers` | Create and modify customers |
+| `read:business` | View business information (hours, settings) |
 | `*` | Full access to all endpoints |
+
+## Typical Permission Sets
+
+### Website Integration
+Minimum permissions needed for public website booking integration:
+- `read:events`
+- `read:business` 
+- `read:table_bookings`
+- `write:table_bookings`
+- `create:bookings`
+
+### Management Integration
+For internal management systems:
+- `*` (full access)
+
+---
+
+# Quick Reference
+
+## Essential Endpoints
+
+| Purpose | Method | Endpoint |
+|---------|--------|----------|
+| Get business hours | GET | `/api/business/hours` |
+| Check table availability | GET | `/api/table-bookings/availability?date=YYYY-MM-DD&party_size=N` |
+| Create table booking | POST | `/api/table-bookings` |
+| List events | GET | `/api/events` |
+| Get booking details | GET | `/api/table-bookings/{reference}` |
+
+## Required Headers
+
+```http
+X-API-Key: anch_your-api-key-here
+Content-Type: application/json
+```
+
+## Response Format
+
+All responses follow this structure:
+
+**Success:**
+```json
+{
+  "success": true,
+  "data": { ... }
+}
+```
+
+**Error:**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Description"
+  }
+}
+```
