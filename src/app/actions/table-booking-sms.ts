@@ -6,6 +6,23 @@ import { logAuditEvent } from './audit';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 
+// Helper function to format time from 24hr to 12hr format
+function formatTime12Hour(time24: string): string {
+  // Remove seconds if present
+  const timeWithoutSeconds = time24.split(':').slice(0, 2).join(':');
+  const [hours, minutes] = timeWithoutSeconds.split(':').map(Number);
+  
+  const period = hours >= 12 ? 'pm' : 'am';
+  const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+  
+  // Format with or without minutes
+  if (minutes === 0) {
+    return `${hours12}${period}`;
+  } else {
+    return `${hours12}:${minutes.toString().padStart(2, '0')}${period}`;
+  }
+}
+
 // Validation schema
 const SMSTemplateSchema = z.object({
   template_key: z.string().min(1, 'Template key is required'),
@@ -129,7 +146,7 @@ export async function testSMSTemplate(
       customer_name: 'John Smith',
       party_size: '4',
       date: 'Sunday, March 10',
-      time: '13:00',
+      time: '1pm',
       reference: 'TB-2024-TEST',
       roast_summary: '2x Roast Beef, 1x Chicken, 1x Vegetarian',
       allergies: 'Nuts, Gluten',
@@ -240,7 +257,7 @@ export async function queueBookingConfirmationSMS(bookingId: string) {
         month: 'long',
         day: 'numeric'
       }),
-      time: booking.booking_time,
+      time: formatTime12Hour(booking.booking_time),
       reference: booking.booking_reference,
       contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707',
     };
@@ -328,7 +345,7 @@ export async function queueBookingReminderSMS(bookingId: string) {
     const variables: Record<string, string> = {
       customer_name: booking.customer.first_name,
       party_size: booking.party_size.toString(),
-      time: booking.booking_time,
+      time: formatTime12Hour(booking.booking_time),
       reference: booking.booking_reference,
     };
     

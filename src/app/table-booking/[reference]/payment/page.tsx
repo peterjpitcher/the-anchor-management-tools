@@ -2,7 +2,6 @@
 
 import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
 import { CurrencyPoundIcon, CalendarIcon, ClockIcon, UserGroupIcon } from '@heroicons/react/24/outline';
 import { Button } from '@/components/ui-v2/forms/Button';
 import { Card } from '@/components/ui-v2/layout/Card';
@@ -43,27 +42,18 @@ export default function TableBookingPaymentPage(props: { params: Promise<{ refer
 
   async function loadBooking() {
     try {
-      const supabase = createClient();
-      
-      // Find booking by reference
-      const { data, error } = await supabase
-        .from('table_bookings')
-        .select(`
-          *,
-          customer:customers(*),
-          table_booking_items(*)
-        `)
-        .eq('booking_reference', params.reference)
-        .single();
+      // Use public API endpoint to fetch booking
+      const response = await fetch(`/api/table-bookings/${params.reference}/public`);
+      const data = await response.json();
 
-      if (error || !data) {
+      if (!response.ok || data.error) {
         setError('Booking not found. Please check your booking reference.');
         setLoading(false);
         return;
       }
 
       // Check if payment is required
-      if (data.status !== 'pending_payment') {
+      if (!data.requires_payment) {
         if (data.status === 'confirmed') {
           setError('This booking has already been paid and confirmed.');
         } else {
@@ -73,7 +63,23 @@ export default function TableBookingPaymentPage(props: { params: Promise<{ refer
         return;
       }
 
-      setBooking(data);
+      // Transform the data to match our interface
+      const booking: TableBooking = {
+        id: data.id,
+        booking_reference: data.booking_reference,
+        booking_date: data.booking_date,
+        booking_time: data.booking_time,
+        party_size: data.party_size,
+        status: data.status,
+        booking_type: data.booking_type,
+        customer: {
+          first_name: data.customer_name.split(' ')[0],
+          last_name: data.customer_name.split(' ').slice(1).join(' ')
+        },
+        table_booking_items: data.items || []
+      };
+
+      setBooking(booking);
       setLoading(false);
     } catch (err) {
       console.error('Error loading booking:', err);
