@@ -3,7 +3,7 @@
 // Test script to verify the table booking API fix
 
 const API_KEY = 'anch_iPRE-XAgeN-D5QcfNTy_DxDbi1kZcrWg110ZroLotY4';
-const API_URL = 'http://localhost:3000/api/table-bookings';
+const API_URL = 'https://management.orangejelly.co.uk/api/table-bookings';
 
 async function testBookingCreation() {
   console.log('Testing Table Booking API Fix...\n');
