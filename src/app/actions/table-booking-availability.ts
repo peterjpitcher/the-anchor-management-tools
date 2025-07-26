@@ -120,7 +120,7 @@ export async function checkAvailability(
     // Calculate availability for each slot
     const availableSlots = allSlots.map(slotTime => {
       // Find slot configuration
-      const slotConfig = slotConfigs?.find(config => 
+      const slotConfig = slotConfigs?.find((config: any) => 
         config.slot_time === slotTime + ':00' &&
         (!config.booking_type || config.booking_type === bookingType)
       );
@@ -129,7 +129,7 @@ export async function checkAvailability(
       const maxCovers = slotConfig?.max_covers || RESTAURANT_CAPACITY;
       
       // Calculate booked capacity for this slot
-      const bookedCapacity = existingBookings?.reduce((sum, booking) => {
+      const bookedCapacity = existingBookings?.reduce((sum: number, booking: any) => {
         const bookingStart = parse(booking.booking_time, 'HH:mm', new Date());
         const bookingEnd = addMinutes(bookingStart, booking.duration_minutes || 120);
         const slotStart = parse(slotTime, 'HH:mm', new Date());
