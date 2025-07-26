@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, use } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { usePermissions } from '@/contexts/PermissionContext';
 import { format } from 'date-fns';
@@ -41,6 +41,7 @@ import { toast } from '@/components/ui-v2/feedback/Toast';
 export default function BookingDetailsPage(props: { params: Promise<{ id: string }> }) {
   const params = use(props.params);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = useSupabase();
   const { hasPermission } = usePermissions();
   const [booking, setBooking] = useState<TableBooking | null>(null);
@@ -60,6 +61,22 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
       loadBooking();
     }
   }, [params.id, canView]);
+
+  // Handle error from payment redirect
+  useEffect(() => {
+    const errorParam = searchParams.get('error');
+    const errorMessage = searchParams.get('message');
+    
+    if (errorParam === 'payment_failed' && errorMessage) {
+      toast.error(decodeURIComponent(errorMessage));
+      
+      // Clean up URL
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('error');
+      newUrl.searchParams.delete('message');
+      window.history.replaceState({}, '', newUrl.toString());
+    }
+  }, [searchParams]);
 
   async function loadBooking() {
     try {
@@ -534,12 +551,17 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
                 {booking.status === 'pending_payment' && (
                   <div className="text-center">
                     <p className="text-sm text-gray-600 mb-2">Payment required to confirm</p>
-                    <a
-                      href={`${process.env.NEXT_PUBLIC_APP_URL}/api/table-bookings/payment/create?booking_id=${booking.id}`}
-                      className="text-blue-600 hover:underline"
+                    <Button
+                      variant="primary"
+                      onClick={() => {
+                        setProcessing(true);
+                        window.location.href = `/api/table-bookings/payment/create?booking_id=${booking.id}`;
+                      }}
+                      loading={processing}
+                      disabled={processing}
                     >
-                      Send payment link
-                    </a>
+                      Process Payment
+                    </Button>
                   </div>
                 )}
               </div>
