@@ -7,7 +7,7 @@
  * Provides consistent metric display across dashboards and reports.
  */
 
-import { ReactNode } from 'react'
+import React, { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { ArrowUpIcon, ArrowDownIcon } from '@heroicons/react/20/solid'
 import { Skeleton } from '../feedback/Skeleton'
@@ -104,10 +104,10 @@ export function Stat({
   className,
   href,
 }: StatProps) {
-  // Size classes
+  // Size classes with responsive padding
   const sizeClasses = {
     sm: {
-      container: 'p-4',
+      container: 'p-3 sm:p-4',
       icon: 'h-8 w-8',
       label: 'text-xs',
       value: 'text-xl',
@@ -116,22 +116,22 @@ export function Stat({
       gap: 'gap-2',
     },
     md: {
-      container: 'p-6',
-      icon: 'h-10 w-10',
+      container: 'p-4 sm:p-6',
+      icon: 'h-8 sm:h-10 w-8 sm:w-10',
       label: 'text-sm',
-      value: 'text-3xl',
+      value: 'text-2xl sm:text-3xl',
       change: 'text-sm',
       description: 'text-sm',
-      gap: 'gap-3',
+      gap: 'gap-2 sm:gap-3',
     },
     lg: {
-      container: 'p-8',
-      icon: 'h-12 w-12',
+      container: 'p-6 sm:p-8',
+      icon: 'h-10 sm:h-12 w-10 sm:w-12',
       label: 'text-base',
-      value: 'text-4xl',
+      value: 'text-3xl sm:text-4xl',
       change: 'text-base',
       description: 'text-base',
-      gap: 'gap-4',
+      gap: 'gap-3 sm:gap-4',
     },
   }
   
@@ -301,10 +301,12 @@ export function StatGroup({
   children,
   columns = 3,
   className,
+  mobileScroll = false,
 }: {
   children: ReactNode
   columns?: 1 | 2 | 3 | 4
   className?: string
+  mobileScroll?: boolean
 }) {
   const columnClasses = {
     1: 'grid-cols-1',
@@ -313,9 +315,24 @@ export function StatGroup({
     4: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4',
   }
   
+  // Mobile horizontal scroll layout
+  if (mobileScroll) {
+    return (
+      <div className="sm:hidden -mx-4">
+        <div className="flex gap-3 px-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory">
+          {React.Children.map(children, (child, index) => (
+            <div key={index} className="flex-none w-[280px] snap-start">
+              {child}
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+  
   return (
     <div className={cn(
-      'grid gap-4',
+      'grid gap-3 sm:gap-4',
       columnClasses[columns],
       className
     )}>

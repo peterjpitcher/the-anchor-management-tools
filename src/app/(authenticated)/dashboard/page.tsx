@@ -161,26 +161,64 @@ export default async function SimpleDashboardPage() {
         subtitle="Welcome back! Here's what's happening today."
       />
       <PageContent>
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6">
       
-      {/* Quick Stats */}
-      <StatGroup>
-        <Stat
-          label="Today's Events"
-          value={todayEvents.length}
-        />
-        <Stat
-          label="Total Customers"
-          value={stats.totalCustomers.toLocaleString()}
-        />
-        <Stat
-          label="Unread Messages"
-          value={stats.unreadMessages}
-          href="/messages"
-          change={stats.unreadMessages > 0 ? `${stats.unreadMessages} new` : undefined}
-          changeType={stats.unreadMessages > 0 ? 'increase' : undefined}
-        />
-      </StatGroup>
+      {/* Quick Stats - Mobile optimized with horizontal scroll */}
+      <div>
+        {/* Mobile horizontal scroll */}
+        <div className="sm:hidden -mx-4">
+          <div className="flex gap-3 px-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory">
+            <div className="flex-none w-[280px] snap-start">
+              <Stat
+                label="Today's Events"
+                value={todayEvents.length}
+                variant="filled"
+              />
+            </div>
+            <div className="flex-none w-[280px] snap-start">
+              <Stat
+                label="Total Customers"
+                value={stats.totalCustomers.toLocaleString()}
+                variant="filled"
+              />
+            </div>
+            <div className="flex-none w-[280px] snap-start">
+              <Stat
+                label="Unread Messages"
+                value={stats.unreadMessages}
+                href="/messages"
+                change={stats.unreadMessages > 0 ? `${stats.unreadMessages} new` : undefined}
+                changeType={stats.unreadMessages > 0 ? 'increase' : undefined}
+                variant="filled"
+              />
+            </div>
+          </div>
+        </div>
+        
+        {/* Desktop grid */}
+        <div className="hidden sm:block">
+          <StatGroup>
+            <Stat
+              label="Today's Events"
+              value={todayEvents.length}
+              variant="filled"
+            />
+            <Stat
+              label="Total Customers"
+              value={stats.totalCustomers.toLocaleString()}
+              variant="filled"
+            />
+            <Stat
+              label="Unread Messages"
+              value={stats.unreadMessages}
+              href="/messages"
+              change={stats.unreadMessages > 0 ? `${stats.unreadMessages} new` : undefined}
+              changeType={stats.unreadMessages > 0 ? 'increase' : undefined}
+              variant="filled"
+            />
+          </StatGroup>
+        </div>
+      </div>
 
       {/* Today's Events */}
       {todayEvents.length > 0 && (
@@ -402,23 +440,23 @@ export default async function SimpleDashboardPage() {
 
       {/* Quick Actions */}
       <Section title="Quick Actions">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           <Link href="/events/new">
-            <Card interactive className="text-center">
-              <CalendarIcon className="h-10 w-10 sm:h-8 sm:w-8 mx-auto text-gray-400 mb-2" />
-              <p className="text-sm font-medium text-gray-900">New Event</p>
+            <Card interactive className="text-center" padding="sm">
+              <CalendarIcon className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-gray-400 mb-1 sm:mb-2" />
+              <p className="text-xs sm:text-sm font-medium text-gray-900">New Event</p>
             </Card>
           </Link>
           <Link href="/customers">
-            <Card interactive className="text-center">
-              <UsersIcon className="h-10 w-10 sm:h-8 sm:w-8 mx-auto text-gray-400 mb-2" />
-              <p className="text-sm font-medium text-gray-900">Customers</p>
+            <Card interactive className="text-center" padding="sm">
+              <UsersIcon className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-gray-400 mb-1 sm:mb-2" />
+              <p className="text-xs sm:text-sm font-medium text-gray-900">Customers</p>
             </Card>
           </Link>
           <Link href="/messages">
-            <Card interactive className="text-center relative">
+            <Card interactive className="text-center relative" padding="sm">
               <div className="relative inline-block">
-                <ChatBubbleLeftIcon className="h-10 w-10 sm:h-8 sm:w-8 mx-auto text-gray-400 mb-2" />
+                <ChatBubbleLeftIcon className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-gray-400 mb-1 sm:mb-2" />
                 {stats.unreadMessages > 0 && (
                   <Badge 
                     variant="error" 
@@ -428,13 +466,13 @@ export default async function SimpleDashboardPage() {
                   />
                 )}
               </div>
-              <p className="text-sm font-medium text-gray-900">Messages</p>
+              <p className="text-xs sm:text-sm font-medium text-gray-900">Messages</p>
             </Card>
           </Link>
           <Link href="/private-bookings/new">
-            <Card interactive className="text-center">
-              <PlusIcon className="h-10 w-10 sm:h-8 sm:w-8 mx-auto text-gray-400 mb-2" />
-              <p className="text-sm font-medium text-gray-900">Private Booking</p>
+            <Card interactive className="text-center" padding="sm">
+              <PlusIcon className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-gray-400 mb-1 sm:mb-2" />
+              <p className="text-xs sm:text-sm font-medium text-gray-900">Private Booking</p>
             </Card>
           </Link>
         </div>

@@ -11,7 +11,7 @@ const MenuItemSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   description: z.string().optional(),
   price: z.number().min(0, 'Price must be positive'),
-  category: z.enum(['main', 'side', 'extra']),
+  category: z.enum(['main', 'side']),
   is_active: z.boolean().default(true),
   display_order: z.number().int().default(0),
   allergens: z.array(z.string()).default([]),

@@ -894,7 +894,7 @@ Search and list table bookings.
 
 ## Get Sunday Lunch Menu
 
-Retrieve the Sunday lunch menu options.
+Retrieve the Sunday lunch menu options. The menu consists of main courses and sides only.
 
 **Endpoint:** `GET /table-bookings/menu/sunday-lunch`
 
@@ -903,38 +903,93 @@ Retrieve the Sunday lunch menu options.
 ### Query Parameters
 - `date` (optional) - Specific date for menu
 
+### Menu Structure
+- **Main Courses**: Individual roast dinners with varying prices
+- **Sides**: 
+  - Included sides (price: £0) - Come with every main course
+  - Optional extras (price > £0) - Can be added for additional charge
+
 ### Response
 ```json
 {
   "menu_date": "2024-03-17",
-  "starters": [
-    {
-      "id": "starter-uuid",
-      "name": "Soup of the Day",
-      "description": "Fresh seasonal soup",
-      "price": 5.95,
-      "dietary_info": ["vegetarian", "gluten_free_available"]
-    }
-  ],
   "mains": [
     {
-      "id": "main-uuid",
+      "id": "main-uuid-1",
       "name": "Roast Beef",
       "description": "Traditional roast with Yorkshire pudding",
-      "price": 18.95,
-      "dietary_info": []
-    }
-  ],
-  "desserts": [
+      "price": 13.99,
+      "dietary_info": [],
+      "allergens": [],
+      "is_available": true
+    },
     {
-      "id": "dessert-uuid",
-      "name": "Sticky Toffee Pudding",
-      "description": "With vanilla ice cream",
-      "price": 6.95,
-      "dietary_info": ["vegetarian"]
+      "id": "main-uuid-2",
+      "name": "Roast Chicken",
+      "description": "Free-range chicken with stuffing",
+      "price": 12.99,
+      "dietary_info": [],
+      "allergens": [],
+      "is_available": true
+    },
+    {
+      "id": "main-uuid-3",
+      "name": "Vegetarian Wellington",
+      "description": "Seasonal vegetables in puff pastry",
+      "price": 11.99,
+      "dietary_info": ["vegetarian"],
+      "allergens": ["gluten"],
+      "is_available": true
     }
   ],
-  "price_per_person": 24.95
+  "sides": [
+    {
+      "id": "side-uuid-1",
+      "name": "Herb & Garlic Roast Potatoes",
+      "description": "Crispy roasted potatoes with herbs",
+      "price": 0,
+      "dietary_info": ["vegan", "gluten_free"],
+      "allergens": [],
+      "included": true
+    },
+    {
+      "id": "side-uuid-2",
+      "name": "Seasonal Vegetables",
+      "description": "Fresh seasonal vegetables",
+      "price": 0,
+      "dietary_info": ["vegan", "gluten_free"],
+      "allergens": [],
+      "included": true
+    },
+    {
+      "id": "side-uuid-3",
+      "name": "Yorkshire Pudding",
+      "description": "Traditional Yorkshire pudding",
+      "price": 0,
+      "dietary_info": ["vegetarian"],
+      "allergens": ["gluten", "eggs", "milk"],
+      "included": true
+    },
+    {
+      "id": "side-uuid-4",
+      "name": "Gravy",
+      "description": "Rich meat gravy (vegetarian available)",
+      "price": 0,
+      "dietary_info": [],
+      "allergens": [],
+      "included": true
+    },
+    {
+      "id": "side-uuid-5",
+      "name": "Cauliflower Cheese",
+      "description": "Creamy mature cheddar sauce, baked until golden and bubbling",
+      "price": 3.99,
+      "dietary_info": ["vegetarian"],
+      "allergens": ["milk"],
+      "included": false
+    }
+  ],
+  "cutoff_time": "2024-03-16T13:00:00Z"
 }
 ```
 
@@ -1325,6 +1380,364 @@ async function apiRequestWithRetry(url, options, maxRetries = 3) {
 
 ---
 
+# Sunday Lunch Ordering Flow (Complete Guide)
+
+This section provides a comprehensive guide for implementing Sunday lunch bookings with the deposit system.
+
+## Overview
+
+Sunday lunch bookings require:
+1. Pre-selection of meals for each guest
+2. £5 deposit per person (not full payment)
+3. Payment processing via PayPal
+4. Outstanding balance collected on arrival
+
+## Step-by-Step Implementation
+
+### Step 1: Get Available Sunday Lunch Menu
+
+First, retrieve the current Sunday lunch menu options:
+
+```bash
+GET /api/table-bookings/menu/sunday-lunch?date=2024-03-17
+```
+
+**Response:**
+```json
+{
+  "menu_date": "2024-03-17",
+  "mains": [
+    {
+      "id": "main-uuid-1",
+      "name": "Roast Beef",
+      "description": "Traditional roast beef served with all the trimmings",
+      "price": 13.99,
+      "dietary_info": [],
+      "allergens": [],
+      "is_available": true
+    },
+    {
+      "id": "main-uuid-2",
+      "name": "Roast Chicken",
+      "description": "Free-range chicken with sage and onion stuffing",
+      "price": 12.99,
+      "dietary_info": [],
+      "allergens": ["gluten"],
+      "is_available": true
+    },
+    {
+      "id": "main-uuid-3",
+      "name": "Roast Pork",
+      "description": "Slow roasted pork with crackling and apple sauce",
+      "price": 13.99,
+      "dietary_info": [],
+      "allergens": [],
+      "is_available": true
+    },
+    {
+      "id": "main-uuid-4",
+      "name": "Vegetarian Wellington",
+      "description": "Seasonal vegetables wrapped in golden puff pastry",
+      "price": 11.99,
+      "dietary_info": ["vegetarian"],
+      "allergens": ["gluten"],
+      "is_available": true
+    }
+  ],
+  "sides": [
+    {
+      "id": "side-uuid-1",
+      "name": "Herb & Garlic Roast Potatoes",
+      "description": "Crispy roasted potatoes with herbs",
+      "price": 0,
+      "dietary_info": ["vegan", "gluten_free"],
+      "allergens": [],
+      "included": true
+    },
+    {
+      "id": "side-uuid-2",
+      "name": "Seasonal Vegetables",
+      "description": "Fresh seasonal vegetables",
+      "price": 0,
+      "dietary_info": ["vegan", "gluten_free"],
+      "allergens": [],
+      "included": true
+    },
+    {
+      "id": "side-uuid-3",
+      "name": "Yorkshire Pudding",
+      "description": "Traditional Yorkshire pudding",
+      "price": 0,
+      "dietary_info": ["vegetarian"],
+      "allergens": ["gluten", "eggs", "milk"],
+      "included": true
+    },
+    {
+      "id": "side-uuid-4",
+      "name": "Gravy",
+      "description": "Rich meat gravy (vegetarian available)",
+      "price": 0,
+      "dietary_info": [],
+      "allergens": [],
+      "included": true
+    },
+    {
+      "id": "side-uuid-5",
+      "name": "Cauliflower Cheese",
+      "description": "Creamy mature cheddar sauce, baked until golden",
+      "price": 3.99,
+      "dietary_info": ["vegetarian"],
+      "allergens": ["milk"],
+      "included": false
+    }
+  ],
+  "cutoff_time": "2024-03-16T13:00:00Z"
+}
+```
+
+### Step 2: Check Availability
+
+Check if tables are available for Sunday lunch:
+
+```bash
+GET /api/table-bookings/availability?date=2024-03-17&party_size=4&booking_type=sunday_lunch
+```
+
+**Response:**
+```json
+{
+  "available": true,
+  "date": "2024-03-17",
+  "time_slots": [
+    {
+      "time": "12:00",
+      "available_capacity": 40,
+      "table_configurations": ["4-seater tables available"]
+    },
+    {
+      "time": "13:00",
+      "available_capacity": 35,
+      "table_configurations": ["4-seater tables available"]
+    },
+    {
+      "time": "14:00",
+      "available_capacity": 20,
+      "table_configurations": ["4-seater tables available"]
+    }
+  ],
+  "kitchen_hours": {
+    "opens": "12:00:00",
+    "closes": "17:00:00"
+  }
+}
+```
+
+### Step 3: Create Sunday Lunch Booking
+
+Create the booking with meal selections for each guest:
+
+```bash
+POST /api/table-bookings
+```
+
+**Request Body:**
+```json
+{
+  "booking_type": "sunday_lunch",
+  "date": "2024-03-17",
+  "time": "13:00",
+  "party_size": 4,
+  "customer": {
+    "first_name": "John",
+    "last_name": "Smith",
+    "mobile_number": "07700900000",
+    "sms_opt_in": true
+  },
+  "special_requirements": "One guest has nut allergy",
+  "dietary_requirements": ["nut_free"],
+  "menu_selections": [
+    {
+      "guest_name": "John",
+      "menu_item_id": "main-uuid-1",
+      "item_type": "main",
+      "quantity": 1,
+      "price_at_booking": 13.99,
+      "special_requests": "Well done beef please"
+    },
+    {
+      "guest_name": "Jane",
+      "menu_item_id": "main-uuid-3",
+      "item_type": "main",
+      "quantity": 1,
+      "price_at_booking": 11.99
+    },
+    {
+      "guest_name": "Child 1",
+      "menu_item_id": "main-uuid-2",
+      "item_type": "main",
+      "quantity": 1,
+      "price_at_booking": 12.99,
+      "special_requests": "Smaller portion"
+    },
+    {
+      "guest_name": "Child 2",
+      "menu_item_id": "main-uuid-2",
+      "item_type": "main",
+      "quantity": 1,
+      "price_at_booking": 12.99
+    },
+    {
+      "guest_name": "Table",
+      "menu_item_id": "side-uuid-5",
+      "item_type": "side",
+      "quantity": 1,
+      "price_at_booking": 3.99,
+      "special_requests": "Extra crispy on top please"
+    }
+  ]
+}
+```
+
+### Step 4: Handle Payment Response
+
+The API will respond with deposit payment details:
+
+```json
+{
+  "booking_id": "550e8400-e29b-41d4-a716-446655440000",
+  "booking_reference": "TB-2024-1235",
+  "status": "pending_payment",
+  "payment_required": true,
+  "payment_details": {
+    "deposit_amount": 20.00,      // £5 × 4 people
+    "total_amount": 55.95,        // Total of all menu selections (4 mains + 1 side)
+    "outstanding_amount": 35.95,   // Balance due on arrival
+    "currency": "GBP",
+    "payment_url": "https://management.orangejelly.co.uk/api/table-bookings/payment/create?booking_id=550e8400-e29b-41d4-a716-446655440000",
+    "expires_at": "2024-03-01T10:30:00Z"  // 30 minutes to complete payment
+  }
+}
+```
+
+### Step 5: Process Payment
+
+Redirect the customer to the payment URL to complete their deposit payment via PayPal. The system will:
+
+1. Charge only the deposit amount (£5 per person)
+2. Store the full booking details including meal selections
+3. Send confirmation SMS with deposit and outstanding balance information
+4. Update booking status to "confirmed" after successful payment
+
+### Step 6: Payment Confirmation
+
+After successful payment, customer receives:
+
+**SMS Confirmation:**
+```
+Hi John, your Sunday Lunch booking for 4 on 17/03/2024 at 13:00 is confirmed. 
+£20.00 deposit paid. £35.95 due on arrival. Reference: TB-2024-1235. 
+Call 01753682707 for any changes. The Anchor
+```
+
+### Step 7: Day-Before Reminder
+
+Automated SMS reminder sent the day before:
+
+```
+Hi John, reminder of your Sunday Lunch tomorrow at 13:00 for 4. 
+Roasts: 1x Roast Beef, 1x Vegetarian Wellington, 2x Roast Chicken. 
+Balance due: £35.95. Reference: TB-2024-1235. The Anchor
+```
+
+## Important Notes
+
+### Menu Selection Requirements
+- Each guest should have a main course selected
+- All main courses include herb & garlic roast potatoes, seasonal vegetables, Yorkshire pudding and gravy
+- Optional sides (like Cauliflower Cheese) can be added for an extra charge
+- Sides can be shared (use "Table" as guest_name)
+- Always include `price_at_booking` to lock in current prices
+
+### Deposit Calculation
+- Fixed at £5 per person
+- Based on `party_size`, not number of menu items
+- Non-refundable after 24 hours before booking
+
+### Payment Processing
+- PayPal integration handles deposit collection
+- Payment URL expires after 30 minutes
+- Customer can retry payment with a new booking if expired
+
+### Error Handling
+
+**No Menu Items:**
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Sunday lunch bookings require menu selections"
+  }
+}
+```
+
+**Insufficient Menu Selections:**
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Please select meals for all guests"
+  }
+}
+```
+
+## Complete Example Implementation
+
+```javascript
+async function createSundayLunchBooking() {
+  const api = new AnchorAPI('your-api-key');
+  
+  // 1. Get menu
+  const menu = await api.request('/table-bookings/menu/sunday-lunch?date=2024-03-17');
+  
+  // 2. Check availability
+  const availability = await api.request(
+    '/table-bookings/availability?date=2024-03-17&party_size=4&booking_type=sunday_lunch'
+  );
+  
+  if (!availability.available) {
+    throw new Error('No tables available');
+  }
+  
+  // 3. Create booking with meal selections
+  const booking = await api.request('/table-bookings', {
+    method: 'POST',
+    body: JSON.stringify({
+      booking_type: 'sunday_lunch',
+      date: '2024-03-17',
+      time: '13:00',
+      party_size: 4,
+      customer: {
+        first_name: 'John',
+        last_name: 'Smith',
+        mobile_number: '07700900000',
+        sms_opt_in: true
+      },
+      menu_selections: [
+        // ... meal selections for each guest
+      ]
+    })
+  });
+  
+  // 4. Handle payment required response
+  if (booking.payment_required) {
+    // Redirect to payment URL
+    window.location.href = booking.payment_details.payment_url;
+  }
+}
+```
+
+---
+
 # Support
 
 For API support or to request additional features:
@@ -1377,7 +1790,9 @@ For internal management systems:
 |---------|--------|----------|
 | Get business hours | GET | `/api/business/hours` |
 | Check table availability | GET | `/api/table-bookings/availability?date=YYYY-MM-DD&party_size=N` |
+| Get Sunday lunch menu | GET | `/api/table-bookings/menu/sunday-lunch?date=YYYY-MM-DD` |
 | Create table booking | POST | `/api/table-bookings` |
+| Process payment | GET | `/api/table-bookings/payment/create?booking_id=XXX` |
 | List events | GET | `/api/events` |
 | Get booking details | GET | `/api/table-bookings/{reference}` |
 

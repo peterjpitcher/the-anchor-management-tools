@@ -41,7 +41,7 @@ const CreateBookingSchema = z.object({
   menu_selections: z.array(z.object({
     menu_item_id: z.string().optional(),
     custom_item_name: z.string().optional(),
-    item_type: z.enum(['main', 'side', 'extra']),
+    item_type: z.enum(['main', 'side']),
     quantity: z.number().min(1),
     special_requests: z.string().optional(),
     guest_name: z.string().optional(),
@@ -251,7 +251,11 @@ export async function POST(request: NextRequest) {
             variables: {
               customer_name: customer.first_name,
               party_size: booking.party_size,
-              date: new Date(booking.booking_date).toLocaleDateString('en-GB'),
+              date: new Date(booking.booking_date).toLocaleDateString('en-GB', {
+                weekday: 'long',
+                month: 'long',
+                day: 'numeric'
+              }),
               time: booking.booking_time,
               reference: booking.booking_reference,
               contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707',
