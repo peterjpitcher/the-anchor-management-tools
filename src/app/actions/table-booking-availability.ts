@@ -36,10 +36,11 @@ function generateTimeSlots(
 export async function checkAvailability(
   date: string,
   partySize: number,
-  bookingType?: 'regular' | 'sunday_lunch'
+  bookingType?: 'regular' | 'sunday_lunch',
+  supabaseClient?: any // Optional client for API usage
 ): Promise<{ data?: BookingAvailability; error?: string }> {
   try {
-    const supabase = await createClient();
+    const supabase = supabaseClient || await createClient();
     const bookingDate = new Date(date);
     const dayOfWeek = bookingDate.getDay();
     

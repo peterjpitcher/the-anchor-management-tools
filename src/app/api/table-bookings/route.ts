@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { z } from 'zod';
 import { generatePhoneVariants, formatPhoneForStorage } from '@/lib/utils';
@@ -56,13 +56,14 @@ export async function POST(request: NextRequest) {
       const body = await req.json();
       const validatedData = CreateBookingSchema.parse(body);
 
-      const supabase = await createClient();
+      const supabase = createAdminClient();
 
       // Check availability
       const availability = await checkAvailability(
         validatedData.date,
         validatedData.party_size,
-        validatedData.booking_type
+        validatedData.booking_type,
+        supabase // Pass admin client
       );
 
       if (!availability.data?.available) {
@@ -270,7 +271,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   return withApiAuth(async (req, apiKey) => {
     try {
-      const supabase = await createClient();
+      const supabase = createAdminClient();
       const searchParams = request.nextUrl.searchParams;
       
       // Build query
