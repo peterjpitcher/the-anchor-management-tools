@@ -248,7 +248,7 @@ export default function TableBookingsDashboard() {
       
       <PageContent>
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
           <Stat label="Today's Bookings"
             value={stats.todayBookings}
             icon={<CalendarIcon />}
@@ -507,7 +507,7 @@ export default function TableBookingsDashboard() {
 
       {/* Quick Actions */}
       <Section title="Quick Actions">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           <Link
             href="/table-bookings/search"
             className="bg-white p-4 rounded-lg shadow hover:shadow-md transition-shadow text-center"

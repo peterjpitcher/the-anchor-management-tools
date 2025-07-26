@@ -155,7 +155,7 @@ export const FormGroup = forwardRef<HTMLDivElement, FormGroupProps>(({
       
       <div className={cn(
         contentWrapperClasses[layout],
-        label && layout === 'vertical' && 'mt-1'
+        label && layout === 'vertical' && 'mt-2 sm:mt-1'
       )}>
         {children}
         
@@ -205,7 +205,7 @@ export function FormGroupSet({
   className?: string
 }) {
   return (
-    <fieldset className={cn('space-y-4', className)}>
+    <fieldset className={cn('space-y-6 sm:space-y-4', className)}>
       {legend && (
         <legend className="text-base font-medium text-gray-900">
           {legend}
@@ -216,7 +216,7 @@ export function FormGroupSet({
           {description}
         </p>
       )}
-      <div className="space-y-4 mt-4">
+      <div className="space-y-6 sm:space-y-4 mt-4">
         {children}
       </div>
     </fieldset>

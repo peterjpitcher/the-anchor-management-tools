@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
-import { sendBulkSMS } from '@/app/actions/sms'
+import { sendBulkSMSDirect } from '@/app/actions/sms-bulk-direct'
 import { enqueueBulkSMSJob } from '@/app/actions/job-queue'
 import { getActiveEventCategories } from '@/app/actions/event-categories'
 import Link from 'next/link'
@@ -338,7 +338,7 @@ export default function BulkMessagePage() {
               personalizedContent = personalizedContent.replace(/{{category_name}}/g, selectedCategory.name)
             }
 
-            const result = await sendBulkSMS([customer.id], personalizedContent)
+            const result = await sendBulkSMSDirect([customer.id], personalizedContent)
             
             if (result && 'error' in result) {
               console.error(`Failed to send to ${customer.first_name} ${customer.last_name}:`, result.error)

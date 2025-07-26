@@ -248,7 +248,7 @@ function StatusModal({
   const availableStatuses = statusFlow[currentStatus] || [];
 
   return (
-    <Modal open={isOpen} onClose={onClose} title="Change Booking Status">
+    <Modal open={isOpen} onClose={onClose} title="Change Booking Status" mobileFullscreen>
       <div className="space-y-4">
         <div>
           <p className="text-sm text-gray-600">Current status:</p>
@@ -776,7 +776,7 @@ function DiscountModal({
   };
 
   return (
-    <Modal open={isOpen} onClose={onClose} title="Apply Booking Discount">
+    <Modal open={isOpen} onClose={onClose} title="Apply Booking Discount" mobileFullscreen>
       <Form onSubmit={handleSubmit} className="space-y-4">
         <FormGroup label="Discount Type">
           <div className="grid grid-cols-2 gap-2">
@@ -945,7 +945,7 @@ function EditItemModal({
   };
 
   return (
-    <Modal open={isOpen} onClose={onClose} title="Edit Item">
+    <Modal open={isOpen} onClose={onClose} title="Edit Item" mobileFullscreen>
       <Form onSubmit={handleSubmit} className="space-y-4">
         <FormGroup label="Description">
           <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded">

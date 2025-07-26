@@ -127,7 +127,7 @@ export default function NewPrivateBookingPage() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-4">
                 <FormGroup
                   label="First Name"
                   required
@@ -156,7 +156,7 @@ export default function NewPrivateBookingPage() {
                 </FormGroup>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-4">
                 <FormGroup
                   label="Phone Number"
                 >
@@ -194,7 +194,7 @@ export default function NewPrivateBookingPage() {
             title="Event Details"
             icon={<CalendarIcon className="h-5 w-5" />}
           >
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-4">
               <FormGroup
                 label="Event Date"
                 required
@@ -238,7 +238,7 @@ export default function NewPrivateBookingPage() {
               </FormGroup>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-4 mt-6 sm:mt-4">
               <FormGroup
                 label="Start Time"
                 required
@@ -280,7 +280,7 @@ export default function NewPrivateBookingPage() {
             title="Setup Details"
             icon={<BuildingOfficeIcon className="h-5 w-5" />}
           >
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-4">
               <FormGroup
                 label="Setup Date"
                 help="Leave blank if same as event date"
@@ -309,7 +309,7 @@ export default function NewPrivateBookingPage() {
             title="Financial Details (Optional)"
             icon={<CurrencyPoundIcon className="h-5 w-5" />}
           >
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-4">
               <FormGroup
                 label="Deposit Amount (£)"
                 help="Default is £250"
@@ -396,10 +396,11 @@ export default function NewPrivateBookingPage() {
           )}
 
           {/* Form Actions */}
-          <div className="flex flex-col sm:flex-row sm:justify-end gap-3 pt-4 border-t">
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-6 sm:pt-4 border-t">
             <LinkButton
               variant="secondary"
               href="/private-bookings"
+              className="w-full sm:w-auto"
             >
               Cancel
             </LinkButton>
@@ -407,6 +408,8 @@ export default function NewPrivateBookingPage() {
               type="submit"
               disabled={isSubmitting}
               loading={isSubmitting}
+              fullWidth
+              className="sm:w-auto"
             >
               Create Booking
             </Button>

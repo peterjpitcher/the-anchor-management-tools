@@ -131,14 +131,14 @@ export default function MessagesPage() {
                 title: `${conversation.customer.first_name} ${conversation.customer.last_name}`,
                 subtitle: conversation.customer.mobile_number,
                 meta: (
-                  <div className="flex items-center gap-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                     {conversation.messages.filter(m => m.direction === 'inbound' && !m.read_at).length > 0 && (
-                      <Badge variant="info" size="sm">
+                      <Badge variant="info" size="sm" className="self-start">
                         {conversation.messages.filter(m => m.direction === 'inbound' && !m.read_at).length} unread
                       </Badge>
                     )}
-                    <div className="text-right">
-                      <p className="text-sm text-gray-500">
+                    <div className="text-left sm:text-right">
+                      <p className="text-sm text-gray-500 whitespace-nowrap">
                         {formatDistanceToNow(new Date(conversation.lastMessageAt), { addSuffix: true })}
                       </p>
                       <p className="text-xs text-gray-400 mt-1">

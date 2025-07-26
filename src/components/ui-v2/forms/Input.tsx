@@ -87,7 +87,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(({
   // Size classes
   const sizeClasses = {
     sm: {
-      input: 'px-3 py-1.5 text-sm',
+      input: 'px-3 py-2.5 sm:py-1.5 text-sm',
       icon: 'h-4 w-4',
       iconPadding: {
         left: 'pl-8',
@@ -95,7 +95,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(({
       },
     },
     md: {
-      input: 'px-3 py-2 text-sm',
+      input: 'px-3 py-2.5 sm:py-2 text-sm',
       icon: 'h-5 w-5',
       iconPadding: {
         left: 'pl-10',
@@ -140,10 +140,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(({
     'disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500',
     'transition-colors duration-200',
     
-    // Touch target optimization (min 44px height)
-    inputSize === 'sm' && 'min-h-[36px]',
-    inputSize === 'md' && 'min-h-[40px]',
-    inputSize === 'lg' && 'min-h-[44px]',
+    // Touch target optimization (min 44px height on mobile)
+    inputSize === 'sm' && 'min-h-[44px] sm:min-h-[36px]',
+    inputSize === 'md' && 'min-h-[44px] sm:min-h-[40px]',
+    inputSize === 'lg' && 'min-h-[48px] sm:min-h-[44px]',
     
     // Size classes
     sizeClasses[inputSize].input,

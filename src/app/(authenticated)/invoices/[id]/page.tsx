@@ -321,7 +321,7 @@ export default function InvoiceDetailPage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-4 lg:space-y-6">
           <Card className="p-6">
             <h2 className="text-lg font-semibold mb-4">Invoice Details</h2>
             
@@ -359,7 +359,7 @@ export default function InvoiceDetailPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 sm:gap-6 mt-6 pt-6 border-t">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6 pt-6 border-t">
               <div>
                 <p className="text-sm text-gray-600">Invoice Date</p>
                 <p className="font-medium">
@@ -433,8 +433,8 @@ export default function InvoiceDetailPage() {
 
                 return (
                   <div key={item.id} className="border rounded-lg p-4 bg-gray-50">
-                    <div className="font-medium text-sm mb-2">{item.description}</div>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="font-medium text-sm mb-3">{item.description}</div>
+                    <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-gray-600">Quantity:</span>
                         <span>{item.quantity}</span>
@@ -445,7 +445,7 @@ export default function InvoiceDetailPage() {
                       </div>
                       {item.discount_percentage > 0 && (
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Disbadge: </span>
+                          <span className="text-gray-600">Discount:</span>
                           <span className="text-green-600">-{item.discount_percentage}%</span>
                         </div>
                       )}
@@ -454,7 +454,7 @@ export default function InvoiceDetailPage() {
                         <span>{item.vat_rate}%</span>
                       </div>
                     </div>
-                    <div className="mt-2 pt-2 border-t flex justify-between font-medium">
+                    <div className="mt-3 pt-3 border-t flex justify-between font-medium">
                       <span>Total:</span>
                       <span>£{lineTotal.toFixed(2)}</span>
                     </div>
@@ -508,24 +508,24 @@ export default function InvoiceDetailPage() {
           )}
         </div>
 
-        <div className="space-y-6">
-          <Card className="p-6">
-            <h2 className="text-lg font-semibold mb-4">Payment Status</h2>
+        <div className="space-y-4 lg:space-y-6">
+          <Card className="p-4 sm:p-6">
+            <h2 className="text-base sm:text-lg font-semibold mb-4">Payment Status</h2>
             
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               <div>
                 <p className="text-sm text-gray-600">Total Amount</p>
-                <p className="text-2xl font-bold">£{invoice.total_amount.toFixed(2)}</p>
+                <p className="text-xl sm:text-2xl font-bold">£{invoice.total_amount.toFixed(2)}</p>
               </div>
               
               <div>
                 <p className="text-sm text-gray-600">Paid Amount</p>
-                <p className="text-xl font-semibold text-green-600">£{invoice.paid_amount.toFixed(2)}</p>
+                <p className="text-lg sm:text-xl font-semibold text-green-600">£{invoice.paid_amount.toFixed(2)}</p>
               </div>
               
               <div>
                 <p className="text-sm text-gray-600">Outstanding</p>
-                <p className="text-xl font-semibold text-red-600">
+                <p className="text-lg sm:text-xl font-semibold text-red-600">
                   £{(invoice.total_amount - invoice.paid_amount).toFixed(2)}
                 </p>
               </div>
@@ -542,23 +542,23 @@ export default function InvoiceDetailPage() {
           </Card>
 
           {invoice.payments && invoice.payments.length > 0 && (
-            <Card className="p-6">
-              <h2 className="text-lg font-semibold mb-4">Payment History</h2>
+            <Card className="p-4 sm:p-6">
+              <h2 className="text-base sm:text-lg font-semibold mb-4">Payment History</h2>
               
               <div className="space-y-3">
                 {invoice.payments.map((payment) => (
                   <div key={payment.id} className="border-b pb-3 last:border-b-0">
-                    <div className="flex justify-between items-start">
-                      <div>
+                    <div className="flex flex-col sm:flex-row sm:justify-between gap-1">
+                      <div className="flex-1">
                         <p className="font-medium">£{payment.amount.toFixed(2)}</p>
                         <p className="text-sm text-gray-600">
                           {new Date(payment.payment_date).toLocaleDateString('en-GB')}
                         </p>
                         {payment.reference && (
-                          <p className="text-sm text-gray-500">{payment.reference}</p>
+                          <p className="text-sm text-gray-500 truncate">{payment.reference}</p>
                         )}
                       </div>
-                      <span className="text-sm text-gray-500">{payment.payment_method}</span>
+                      <span className="text-sm text-gray-500 self-start sm:self-auto">{payment.payment_method}</span>
                     </div>
                   </div>
                 ))}
@@ -566,8 +566,8 @@ export default function InvoiceDetailPage() {
             </Card>
           )}
 
-          <Card className="p-6">
-            <h2 className="text-lg font-semibold mb-4">Actions</h2>
+          <Card className="p-4 sm:p-6">
+            <h2 className="text-base sm:text-lg font-semibold mb-4">Actions</h2>
             
             <div className="space-y-2">
               <Button

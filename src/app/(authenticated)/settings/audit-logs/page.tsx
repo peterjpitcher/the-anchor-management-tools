@@ -143,7 +143,7 @@ const supabase = useSupabase()
       {/* Filters */}
       <Section title="Filters">
         <Card>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
             <FormGroup>
               <Select
                 value={filterState.operationType}
@@ -328,7 +328,7 @@ const supabase = useSupabase()
                   <div className="sm:col-span-2">
                     <dt className="text-sm font-medium text-gray-500">Old Values</dt>
                     <dd className="mt-1 text-sm text-gray-900">
-                      <pre className="bg-gray-100 p-2 rounded overflow-x-auto">
+                      <pre className="bg-gray-100 p-2 rounded overflow-x-auto text-xs sm:text-sm max-w-full">
                         {JSON.stringify(log.old_values, null, 2)}
                       </pre>
                     </dd>
@@ -338,7 +338,7 @@ const supabase = useSupabase()
                   <div className="sm:col-span-2">
                     <dt className="text-sm font-medium text-gray-500">New Values</dt>
                     <dd className="mt-1 text-sm text-gray-900">
-                      <pre className="bg-gray-100 p-2 rounded overflow-x-auto">
+                      <pre className="bg-gray-100 p-2 rounded overflow-x-auto text-xs sm:text-sm max-w-full">
                         {JSON.stringify(log.new_values, null, 2)}
                       </pre>
                     </dd>
@@ -348,7 +348,7 @@ const supabase = useSupabase()
                   <div className="sm:col-span-2">
                     <dt className="text-sm font-medium text-gray-500">Additional Info</dt>
                     <dd className="mt-1 text-sm text-gray-900">
-                      <pre className="bg-gray-100 p-2 rounded overflow-x-auto">
+                      <pre className="bg-gray-100 p-2 rounded overflow-x-auto text-xs sm:text-sm max-w-full">
                         {JSON.stringify(log.additional_info, null, 2)}
                       </pre>
                     </dd>

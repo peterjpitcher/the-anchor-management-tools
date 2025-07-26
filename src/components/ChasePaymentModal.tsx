@@ -87,6 +87,7 @@ P.S. I've attached a copy of the invoice for your reference.`
       onClose={onClose}
       title="Chase Payment"
       size="lg"
+      mobileFullscreen
       footer={
         <ModalActions>
           <Button

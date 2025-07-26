@@ -79,6 +79,7 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`
       onClose={onClose}
       title="Email Invoice"
       size="lg"
+      mobileFullscreen
       footer={
         <ModalActions>
           <Button

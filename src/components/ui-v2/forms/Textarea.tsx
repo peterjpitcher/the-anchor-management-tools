@@ -88,10 +88,10 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(({
   const [charCount, setCharCount] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   
-  // Size classes
+  // Size classes with mobile-optimized padding
   const sizeClasses = {
-    sm: 'px-3 py-1.5 text-sm',
-    md: 'px-3 py-2 text-sm',
+    sm: 'px-3 py-2.5 sm:py-1.5 text-sm',
+    md: 'px-3 py-2.5 sm:py-2 text-sm',
     lg: 'px-4 py-3 text-base',
   }
   
