@@ -35,7 +35,7 @@ interface SundayLunchMenuItem {
   name: string;
   description?: string;
   price: number;
-  category: 'main' | 'side' | 'dessert' | 'extra';
+  category: 'main' | 'side';
   is_active: boolean;
   display_order: number;
   allergens?: string[];
@@ -59,7 +59,7 @@ export default function SundayLunchMenuPage() {
     name: '',
     description: '',
     price: 25.95,
-    category: 'main' as 'main' | 'side' | 'dessert' | 'extra',
+    category: 'main' as 'main' | 'side',
     is_active: true,
     allergens: '',
     dietary_info: ''
@@ -206,7 +206,6 @@ export default function SundayLunchMenuPage() {
 
   const mainCourses = menuItems.filter(item => item.category === 'main');
   const sides = menuItems.filter(item => item.category === 'side');
-  const extras = menuItems.filter(item => item.category === 'extra');
 
   // Define columns for DataTable
   const mainCourseColumns = [
@@ -356,7 +355,7 @@ export default function SundayLunchMenuPage() {
       </Section>
 
       {/* Sides */}
-      <Section title="Sides (Included with Main Course)" className="mt-8">
+      <Section title="Sides" className="mt-8">
         <Card>
           <DataTable
             data={sides}
@@ -367,30 +366,18 @@ export default function SundayLunchMenuPage() {
         </Card>
       </Section>
 
-      {/* Extras */}
-      {extras.length > 0 && (
-        <Section title="Optional Extras" className="mt-8">
-          <Card>
-            <DataTable
-              data={extras}
-              columns={mainCourseColumns}
-              getRowKey={(item) => item.id}
-              emptyMessage="No extras configured"
-            />
-          </Card>
-        </Section>
-      )}
 
       {/* Notes */}
       <Alert variant="info" className="mt-8">
         <h3 className="font-medium mb-2">Sunday Lunch Configuration Notes:</h3>
         <ul className="text-sm space-y-1">
-          <li>• Main courses are individually priced (£9.99 - £15.99)</li>
+          <li>• Main courses are individually priced (typically £9.99 - £15.99)</li>
           <li>• Each main course includes herb & garlic roast potatoes, seasonal vegetables, Yorkshire pudding and gravy</li>
+          <li>• Sides with price £0 are included with main courses</li>
+          <li>• Sides with a price (e.g., Cauliflower cheese £3.99) are optional extras</li>
           <li>• Vegetarian gravy available on request</li>
-          <li>• Cauliflower cheese is available as an optional extra for £3.99</li>
           <li>• Pre-orders must be placed at the bar by 1pm on Saturday</li>
-          <li>• Sunday dinners are made from scratch and to order - no pre-orders taken until 1pm Saturday deadline</li>
+          <li>• Sunday dinners are made from scratch and to order</li>
           <li>• Allergen and dietary information is displayed to customers during booking</li>
         </ul>
       </Alert>
@@ -424,27 +411,23 @@ export default function SundayLunchMenuPage() {
           <FormGroup label="Category" required>
             <Select
               value={formData.category}
-              onChange={(e) => setFormData({ ...formData, category: e.target.value as 'main' | 'side' | 'dessert' | 'extra' })}
+              onChange={(e) => setFormData({ ...formData, category: e.target.value as 'main' | 'side' })}
             >
               <option value="main">Main Course</option>
               <option value="side">Side</option>
-              <option value="dessert">Dessert</option>
-              <option value="extra">Extra</option>
             </Select>
           </FormGroup>
           
-          {(formData.category === 'main' || formData.category === 'extra') && (
-            <FormGroup label="Price" required>
-              <Input
-                type="number"
-                value={formData.price}
-                onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) })}
-                step="0.01"
-                min="0"
-                required
-              />
-            </FormGroup>
-          )}
+          <FormGroup label="Price" required help="Set to 0 for sides included with main courses">
+            <Input
+              type="number"
+              value={formData.price}
+              onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) })}
+              step="0.01"
+              min="0"
+              required
+            />
+          </FormGroup>
           
           <FormGroup label="Allergens" help="Comma separated list">
             <Input

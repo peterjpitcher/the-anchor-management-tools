@@ -9,7 +9,7 @@ import { revalidatePath } from 'next/cache';
 // Validation schemas
 const MenuItemSchema = z.object({
   custom_item_name: z.string().min(1, 'Item name is required'),
-  item_type: z.enum(['main', 'side', 'extra']),
+  item_type: z.enum(['main', 'side']),
   price: z.number().min(0),
   description: z.string().optional(),
   dietary_info: z.array(z.string()).optional(),
@@ -24,7 +24,7 @@ export async function addBookingMenuSelections(
   selections: Array<{
     menu_item_id?: string;
     custom_item_name?: string;
-    item_type: 'main' | 'side' | 'extra';
+    item_type: 'main' | 'side';
     quantity: number;
     special_requests?: string;
     price_at_booking: number;
@@ -117,113 +117,6 @@ export async function getSundayLunchMenu(date?: string) {
   try {
     const supabase = await createClient();
     
-    // For now, return static menu items
-    // In future, this could check menu_items table if available
-    const menuItems = {
-      main_courses: [
-        {
-          key: 'roast-chicken',
-          custom_item_name: 'Roasted Chicken',
-          item_type: 'main',
-          price: 14.99,
-          description: 'Succulent roasted chicken with all the trimmings',
-          dietary_info: [],
-          allergens: [],
-          is_available: true,
-        },
-        {
-          key: 'lamb-shank',
-          custom_item_name: 'Slow-Cooked Lamb Shank',
-          item_type: 'main',
-          price: 15.49,
-          description: 'Tender lamb shank slow-cooked to perfection',
-          dietary_info: [],
-          allergens: [],
-          is_available: true,
-        },
-        {
-          key: 'pork-belly',
-          custom_item_name: 'Crispy Pork Belly',
-          item_type: 'main',
-          price: 15.99,
-          description: 'Crispy pork belly with perfect crackling',
-          dietary_info: [],
-          allergens: [],
-          is_available: true,
-        },
-        {
-          key: 'wellington',
-          custom_item_name: 'Beetroot & Butternut Squash Wellington',
-          item_type: 'main',
-          price: 15.49,
-          description: 'Vegetarian wellington with seasonal vegetables',
-          dietary_info: ['vegetarian'],
-          allergens: ['gluten', 'nuts'],
-          is_available: true,
-        },
-        {
-          key: 'kids-chicken',
-          custom_item_name: 'Kids Roasted Chicken',
-          item_type: 'main',
-          price: 9.99,
-          description: 'Smaller portion of our delicious roasted chicken',
-          dietary_info: [],
-          allergens: [],
-          is_available: true,
-        },
-      ],
-      included_sides: [
-        {
-          key: 'yorkshire',
-          custom_item_name: 'Yorkshire Pudding',
-          item_type: 'side',
-          price: 0,
-          included_with_mains: true,
-          dietary_info: ['vegetarian'],
-          allergens: ['gluten', 'eggs', 'milk'],
-        },
-        {
-          key: 'roast-potatoes',
-          custom_item_name: 'Roast Potatoes',
-          item_type: 'side',
-          price: 0,
-          included_with_mains: true,
-          dietary_info: ['vegan', 'gluten-free'],
-          allergens: [],
-        },
-        {
-          key: 'seasonal-veg',
-          custom_item_name: 'Seasonal Vegetables',
-          item_type: 'side',
-          price: 0,
-          included_with_mains: true,
-          dietary_info: ['vegan', 'gluten-free'],
-          allergens: [],
-        },
-      ],
-      extra_sides: [
-        {
-          key: 'cauliflower-cheese',
-          custom_item_name: 'Cauliflower Cheese',
-          item_type: 'extra',
-          price: 3.99,
-          description: 'Creamy cauliflower cheese',
-          dietary_info: ['vegetarian'],
-          allergens: ['milk'],
-          is_available: true,
-        },
-        {
-          key: 'extra-yorkshire',
-          custom_item_name: 'Extra Yorkshire Pudding',
-          item_type: 'extra',
-          price: 2.50,
-          dietary_info: ['vegetarian'],
-          allergens: ['gluten', 'eggs', 'milk'],
-          is_available: true,
-        },
-      ],
-    };
-    
     // Check if date is a Sunday
     if (date) {
       const dayOfWeek = new Date(date).getDay();
@@ -231,6 +124,28 @@ export async function getSundayLunchMenu(date?: string) {
         return { error: 'Sunday lunch menu only available on Sundays' };
       }
     }
+    
+    // Fetch active menu items from database
+    const { data: menuItems, error } = await supabase
+      .from('sunday_lunch_menu_items')
+      .select('*')
+      .eq('is_active', true)
+      .order('category')
+      .order('display_order')
+      .order('name');
+      
+    if (error) {
+      console.error('Fetch menu error:', error);
+      return { error: 'Failed to fetch menu items' };
+    }
+    
+    // Organize menu items by category
+    const mains = menuItems?.filter(item => item.category === 'main') || [];
+    const sides = menuItems?.filter(item => item.category === 'side') || [];
+    
+    // Separate included sides (price = 0) and extra sides (price > 0)
+    const includedSides = sides.filter(item => item.price === 0);
+    const extraSides = sides.filter(item => item.price > 0);
     
     // Calculate cutoff time for ordering (1pm Saturday)
     const bookingDate = date ? new Date(date) : getNextSunday();
@@ -241,7 +156,37 @@ export async function getSundayLunchMenu(date?: string) {
     return { 
       data: {
         menu_date: bookingDate.toISOString().split('T')[0],
-        ...menuItems,
+        mains: mains.map(item => ({
+          id: item.id,
+          name: item.name,
+          description: item.description,
+          price: Number(item.price),
+          dietary_info: item.dietary_info || [],
+          allergens: item.allergens || [],
+          is_available: item.is_active
+        })),
+        sides: [
+          // Included sides first
+          ...includedSides.map(item => ({
+            id: item.id,
+            name: item.name,
+            description: item.description,
+            price: 0,
+            dietary_info: item.dietary_info || [],
+            allergens: item.allergens || [],
+            included: true
+          })),
+          // Then extra sides with prices
+          ...extraSides.map(item => ({
+            id: item.id,
+            name: item.name,
+            description: item.description,
+            price: Number(item.price),
+            dietary_info: item.dietary_info || [],
+            allergens: item.allergens || [],
+            included: false
+          }))
+        ],
         cutoff_time: cutoffDate.toISOString(),
       }
     };

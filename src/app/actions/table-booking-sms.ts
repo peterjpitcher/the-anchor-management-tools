@@ -128,7 +128,7 @@ export async function testSMSTemplate(
     const sampleData: Record<string, string> = {
       customer_name: 'John Smith',
       party_size: '4',
-      date: '10/03/2024',
+      date: 'Sunday, March 10',
       time: '13:00',
       reference: 'TB-2024-TEST',
       roast_summary: '2x Roast Beef, 1x Chicken, 1x Vegetarian',
@@ -235,7 +235,11 @@ export async function queueBookingConfirmationSMS(bookingId: string) {
     const variables: Record<string, string> = {
       customer_name: booking.customer.first_name,
       party_size: booking.party_size.toString(),
-      date: new Date(booking.booking_date).toLocaleDateString('en-GB'),
+      date: new Date(booking.booking_date).toLocaleDateString('en-GB', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric'
+      }),
       time: booking.booking_time,
       reference: booking.booking_reference,
       contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707',
