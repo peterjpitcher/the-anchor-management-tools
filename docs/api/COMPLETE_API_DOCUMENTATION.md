@@ -351,7 +351,6 @@ Book tickets for an event.
   "event_id": "550e8400-e29b-41d4-a716-446655440000",
   "customer": {
     "name": "John Smith",
-    "email": "john@example.com",
     "phone": "07700900000"
   },
   "seats": 2,
@@ -534,7 +533,6 @@ Create a new table reservation.
 |-------|------|----------|-------------|
 | `first_name` | string | Yes | Customer's first name |
 | `last_name` | string | Yes | Customer's last name |
-| `email` | string | No | Email address (for future use - not currently stored) |
 | `mobile_number` | string | Yes | UK mobile number |
 | `sms_opt_in` | boolean | No | SMS marketing consent (default: false) |
 
@@ -607,7 +605,6 @@ Suggested values (free text accepted):
   "customer": {
     "first_name": "John",
     "last_name": "Smith",
-    "email": "john@example.com",
     "mobile_number": "07700900000",
     "sms_opt_in": true
   },
@@ -650,7 +647,6 @@ Suggested values (free text accepted):
   "customer": {
     "first_name": "John",
     "last_name": "Smith",
-    "email": "john@example.com",
     "mobile_number": "07700900000",
     "sms_opt_in": true
   },
@@ -801,7 +797,7 @@ Modify an existing booking.
 ### Request Body
 ```json
 {
-  "customer_email": "john@example.com",
+  "customer_phone": "07700900000",
   "updates": {
     "party_size": 6,
     "time": "19:30",
@@ -832,7 +828,7 @@ Cancel a table booking.
 ### Request Body
 ```json
 {
-  "customer_email": "john@example.com",
+  "customer_phone": "07700900000",
   "reason": "Change of plans"
 }
 ```
@@ -866,7 +862,7 @@ Search and list table bookings.
 | `date_to` | string | End date filter |
 | `status` | string | `confirmed`, `cancelled`, `no_show` |
 | `booking_type` | string | `regular` or `sunday_lunch` |
-| `search` | string | Search by name, email, or reference |
+| `search` | string | Search by name or reference |
 | `page` | integer | Page number (default: 1) |
 | `limit` | integer | Results per page (default: 20) |
 
@@ -1102,7 +1098,6 @@ const booking = await api.createTableBooking({
   customer: {
     first_name: 'John',
     last_name: 'Smith',
-    email: 'john@example.com',
     mobile_number: '07700900000'
   }
 });
@@ -1187,7 +1182,7 @@ const booking = await api.createTableBooking({
 **Common Causes and Solutions:**
 1. **Missing customer fields**: Ensure `first_name` and `last_name` are provided separately
 2. **Invalid phone format**: Use UK format without spaces (07700900000)
-3. **Email field issue**: The email field is optional; if database errors persist, try omitting it
+3. **Email field**: The customers table does NOT have an email column - do not include email in requests
 4. **Wrong field names**: Use `celebration_type` NOT `occasion`
 5. **Array fields**: `dietary_requirements` and `allergies` must be arrays, not strings
 6. **Capacity exceeded**: Check availability first before attempting to book
