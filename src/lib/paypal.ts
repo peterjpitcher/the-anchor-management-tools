@@ -33,7 +33,8 @@ async function getAccessToken(): Promise<string> {
 export async function createPayPalOrder(
   booking: TableBooking & { table_booking_items?: TableBookingItem[] },
   returnUrl: string,
-  cancelUrl: string
+  cancelUrl: string,
+  depositOnly: boolean = false
 ) {
   const accessToken = await getAccessToken();
   
@@ -44,33 +45,22 @@ export async function createPayPalOrder(
     0
   );
   
-  // Build line items
-  const lineItems = items.map(item => ({
-    name: item.custom_item_name || 'Menu Item',
-    quantity: item.quantity.toString(),
-    unit_amount: {
-      currency_code: 'GBP',
-      value: item.price_at_booking.toFixed(2),
-    },
-  }));
+  // Calculate payment amount (deposit or full amount)
+  const paymentAmount = depositOnly ? booking.party_size * 5 : totalAmount;
+  const description = depositOnly 
+    ? `Sunday Lunch Booking Deposit - ${booking.booking_reference} (£5 per person)`
+    : `Sunday Lunch Booking - ${booking.booking_reference}`;
   
   const order = {
     intent: 'CAPTURE',
     purchase_units: [{
       reference_id: booking.booking_reference,
       custom_id: booking.id,
-      description: `Sunday Lunch Booking - ${booking.booking_reference}`,
+      description,
       amount: {
         currency_code: 'GBP',
-        value: totalAmount.toFixed(2),
-        breakdown: {
-          item_total: {
-            currency_code: 'GBP',
-            value: totalAmount.toFixed(2),
-          },
-        },
+        value: paymentAmount.toFixed(2),
       },
-      items: lineItems,
     }],
     payment_source: {
       paypal: {
