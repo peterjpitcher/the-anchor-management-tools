@@ -41,6 +41,7 @@ const specialHoursSchema = z.object({
   kitchen_opens: timeSchema,
   kitchen_closes: timeSchema,
   is_closed: z.boolean(),
+  is_kitchen_closed: z.boolean(),
   note: z.preprocess(
     (val) => (val === '' || val === null || val === undefined) ? null : val,
     z.union([z.string().max(500), z.null()])
@@ -61,6 +62,25 @@ export async function getBusinessHours(): Promise<{ data?: BusinessHours[], erro
     return { data }
   } catch (error) {
     console.error('Error fetching business hours:', error)
+    return { error: 'Failed to fetch business hours' }
+  }
+}
+
+export async function getBusinessHoursByDay(dayOfWeek: number): Promise<{ data?: BusinessHours, error?: string }> {
+  try {
+    const supabase = await createClient()
+    
+    const { data, error } = await supabase
+      .from('business_hours')
+      .select('*')
+      .eq('day_of_week', dayOfWeek)
+      .single()
+
+    if (error) throw error
+
+    return { data }
+  } catch (error) {
+    console.error('Error fetching business hours for day:', error)
     return { error: 'Failed to fetch business hours' }
   }
 }
@@ -190,6 +210,7 @@ export async function createSpecialHours(formData: FormData) {
       kitchen_opens: formData.get('kitchen_opens') as string || '',
       kitchen_closes: formData.get('kitchen_closes') as string || '',
       is_closed: formData.get('is_closed') === 'true',
+      is_kitchen_closed: formData.get('is_kitchen_closed') === 'true',
       note: formData.get('note') as string || ''
     }
 
@@ -265,6 +286,7 @@ export async function updateSpecialHours(id: string, formData: FormData) {
       kitchen_opens: formData.get('kitchen_opens') as string || '',
       kitchen_closes: formData.get('kitchen_closes') as string || '',
       is_closed: formData.get('is_closed') === 'true',
+      is_kitchen_closed: formData.get('is_kitchen_closed') === 'true',
       note: formData.get('note') as string || ''
     }
 
