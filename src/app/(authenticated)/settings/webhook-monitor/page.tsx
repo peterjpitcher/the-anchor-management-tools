@@ -215,6 +215,62 @@ const supabase = useSupabase()
               data={logs}
               columns={columns}
               getRowKey={(log) => log.id}
+              renderMobileCard={(log) => (
+                <Card variant="bordered" padding="sm">
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <Badge variant={getStatusVariant(log.status)} size="sm">
+                          {log.status}
+                        </Badge>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {formatDistanceToNow(new Date(log.processed_at), { addSuffix: true })}
+                        </p>
+                      </div>
+                      <Button
+                        variant="link"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedLog(log)
+                          setDetailsOpen(true)
+                        }}
+                      >
+                        Details
+                      </Button>
+                    </div>
+                    
+                    <div className="text-sm">
+                      <span className="font-medium text-gray-700">
+                        {log.message_body ? 'Inbound' : 'Status Update'}
+                      </span>
+                      {log.from_number && (
+                        <p className="text-xs text-gray-500 mt-1">From: {log.from_number}</p>
+                      )}
+                      {log.to_number && (
+                        <p className="text-xs text-gray-500">To: {log.to_number}</p>
+                      )}
+                    </div>
+                    
+                    {log.message_body && (
+                      <p className="text-sm text-gray-700 truncate">
+                        {log.message_body}
+                      </p>
+                    )}
+                    
+                    {log.message_sid && (
+                      <p className="text-xs text-gray-500">
+                        SID: {log.message_sid}
+                      </p>
+                    )}
+                    
+                    {log.error_message && (
+                      <p className="text-xs text-red-600 truncate">
+                        Error: {log.error_message}
+                      </p>
+                    )}
+                  </div>
+                </Card>
+              )}
             />
           )}
         </Card>

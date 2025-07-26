@@ -35,7 +35,7 @@ export function PageHeader({
     <div className={`bg-sidebar ${className}`}>
       <div className="px-6 sm:px-8 lg:px-12 pt-10 pb-6">
         {/* Header row with title/subtitle on left, back button on right */}
-        <div className="flex items-start justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div className="flex-1">
             <h1 className="text-2xl sm:text-3xl font-bold text-green-600">{title}</h1>
             {subtitle && (
@@ -44,12 +44,12 @@ export function PageHeader({
           </div>
           
           {backButton && (
-            <div className="ml-4 flex-shrink-0">
+            <div className="flex-shrink-0">
               <BackButton 
                 label={backButton.label}
                 onBack={backButton.onBack || (backButton.href ? () => router.push(backButton.href!) : undefined)}
                 variant="ghost"
-                className="text-white hover:text-white/80 hover:bg-white/10"
+                className="text-white hover:text-white/80 hover:bg-white/10 w-full sm:w-auto"
               />
             </div>
           )}
@@ -66,8 +66,8 @@ export function PageHeader({
       {/* Sub-navigation row with action buttons */}
       {actions && (
         <div className="border-t border-white/20 bg-black/10">
-          <div className="px-6 sm:px-8 lg:px-12 py-4">
-            <div className="flex items-center space-x-6 text-sm">
+          <div className="px-4 sm:px-8 lg:px-12 py-4">
+            <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-sm">
               {actions}
             </div>
           </div>

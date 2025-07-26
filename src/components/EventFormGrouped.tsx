@@ -43,7 +43,7 @@ function CollapsibleSection({ title, description, icon: Icon, children, defaultO
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-4 py-5 sm:p-8 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors touch-manipulation"
+        className="w-full px-4 py-5 sm:p-8 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors touch-manipulation min-h-[60px]"
       >
         <div className="flex items-center space-x-3">
           {Icon && <Icon className="h-5 w-5 text-gray-400" />}
@@ -59,7 +59,7 @@ function CollapsibleSection({ title, description, icon: Icon, children, defaultO
         )}
       </button>
       {isOpen && (
-        <div className="border-t border-gray-200 px-4 py-5 sm:p-8">
+        <div className="border-t border-gray-200 px-4 py-6 sm:p-8">
           {children}
         </div>
       )}
@@ -667,12 +667,12 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
 
 
       {/* Form Actions */}
-      <div className="sticky bottom-0 -mx-4 sm:mx-0 px-4 sm:px-0 py-4 bg-white border-t sm:border-0 sm:relative sm:py-0">
-        <div className="flex flex-col sm:flex-row sm:justify-end gap-3">
-          <Button type="button" variant="secondary" onClick={onCancel}>
+      <div className="sticky bottom-0 -mx-4 sm:mx-0 px-4 sm:px-0 py-4 bg-white border-t sm:border-0 sm:relative sm:py-0 z-10">
+        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
+          <Button type="button" variant="secondary" onClick={onCancel} fullWidth className="sm:w-auto">
             Cancel
           </Button>
-          <Button type="submit" disabled={isSubmitting}>
+          <Button type="submit" disabled={isSubmitting} fullWidth className="sm:w-auto">
             {isSubmitting ? 'Saving...' : event ? 'Update Event' : 'Create Event'}
           </Button>
         </div>

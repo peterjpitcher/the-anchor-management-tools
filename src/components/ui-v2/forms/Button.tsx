@@ -91,27 +91,32 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(({
   type = 'button',
   ...props
 }, ref) => {
-  // Size classes
+  // Size classes with mobile-optimized touch targets
   const sizeClasses = {
     xs: cn(
-      iconOnly ? 'p-1' : 'px-2.5 py-1',
-      'text-xs'
+      iconOnly ? 'p-2.5 sm:p-1' : 'px-3 py-2.5 sm:px-2.5 sm:py-1',
+      'text-xs',
+      'min-h-[44px] sm:min-h-0'
     ),
     sm: cn(
-      iconOnly ? 'p-1.5' : 'px-3 py-1.5',
-      'text-sm'
+      iconOnly ? 'p-2.5 sm:p-1.5' : 'px-4 py-2.5 sm:px-3 sm:py-1.5',
+      'text-sm',
+      'min-h-[44px] sm:min-h-0'
     ),
     md: cn(
-      iconOnly ? 'p-2' : 'px-4 py-2',
-      'text-sm'
+      iconOnly ? 'p-2.5 sm:p-2' : 'px-4 py-2.5 sm:py-2',
+      'text-sm',
+      'min-h-[44px] sm:min-h-0'
     ),
     lg: cn(
-      iconOnly ? 'p-2.5' : 'px-5 py-2.5',
-      'text-base'
+      iconOnly ? 'p-3 sm:p-2.5' : 'px-5 py-3 sm:py-2.5',
+      'text-base',
+      'min-h-[48px] sm:min-h-0'
     ),
     xl: cn(
       iconOnly ? 'p-3' : 'px-6 py-3',
-      'text-base'
+      'text-base',
+      'min-h-[48px] sm:min-h-0'
     ),
   }
   

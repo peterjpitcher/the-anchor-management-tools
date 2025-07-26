@@ -297,7 +297,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
       {/* Overwrite Confirmation Dialog */}
       {showOverwriteConfirm && existingBookingInfo && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-          <div className="bg-white rounded-t-lg sm:rounded-lg p-6 max-w-md w-full max-h-[90vh] sm:max-h-[80vh] overflow-y-auto">
+          <div className="bg-white rounded-t-2xl sm:rounded-lg p-6 max-w-md w-full max-h-[90vh] sm:max-h-[80vh] overflow-y-auto">
             <h3 className="text-lg font-medium text-gray-900 mb-4">
               Existing Booking Found
             </h3>
@@ -305,7 +305,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
               This customer already has a booking for this event with {existingBookingInfo.seats || 0} seat{existingBookingInfo.seats !== 1 ? 's' : ''}.
               Would you like to overwrite the existing booking?
             </p>
-            <div className="mt-6 flex flex-col sm:flex-row sm:justify-end gap-3">
+            <div className="mt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
               <Button
                 type="button"
                 variant="secondary"
@@ -357,7 +357,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
                 type="text"
                 id="search"
                 name="search"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 pl-10 text-base sm:text-sm text-gray-900 placeholder-gray-500 focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 pl-10 text-base sm:text-sm text-gray-900 placeholder-gray-500 focus:border-green-500 focus:ring-green-500 min-h-[48px] sm:min-h-[44px]"
                 placeholder="Search by name or mobile number"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -376,7 +376,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
               <select
                 id="customer"
                 name="customer"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 focus:border-green-500 focus:ring-green-500 min-h-[44px] bg-white"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 focus:border-green-500 focus:ring-green-500 min-h-[48px] sm:min-h-[44px] bg-white"
                 value={customerId}
                 onChange={(e) => setCustomerId(e.target.value)}
                 required={!showNewCustomerForm}
@@ -416,7 +416,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
           {showNewCustomerForm && (
             <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
               <h3 className="text-sm font-medium text-gray-900">New Customer Details</h3>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-6 sm:gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
                     First Name
@@ -427,7 +427,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
                     name="firstName"
                     value={newCustomer.firstName}
                     onChange={(e) => setNewCustomer(prev => ({ ...prev, firstName: e.target.value }))}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[48px] sm:min-h-[44px]"
                     required={showNewCustomerForm}
                   />
                 </div>
@@ -441,7 +441,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
                     name="lastName"
                     value={newCustomer.lastName}
                     onChange={(e) => setNewCustomer(prev => ({ ...prev, lastName: e.target.value }))}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[48px] sm:min-h-[44px]"
                     required={showNewCustomerForm}
                   />
                 </div>
@@ -457,7 +457,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
                   value={newCustomer.mobileNumber}
                   onChange={(e) => setNewCustomer(prev => ({ ...prev, mobileNumber: e.target.value }))}
                   placeholder="07XXX XXXXXX"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[48px] sm:min-h-[44px]"
                   required={showNewCustomerForm}
                 />
               </div>
@@ -523,11 +523,13 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
         ></textarea>
         <p className="mt-2 text-sm text-gray-500">Add any notes about this booking...</p>
       </div>
-      <div className="flex flex-col space-y-3 sm:flex-row-reverse sm:space-y-0 sm:space-x-reverse sm:space-x-3 sm:justify-start pt-4">
+      <div className="flex flex-col gap-3 sm:flex-row-reverse sm:gap-3 sm:justify-start pt-6 sm:pt-4">
         <Button
           type="submit"
           disabled={isSubmitting}
           onClick={(e) => handleSubmit(e, false)}
+          fullWidth
+          className="sm:w-auto"
         >
           {isSubmitting ? 'Saving...' : 'Save'}
         </Button>
@@ -535,6 +537,8 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
           type="button"
           disabled={isSubmitting}
           onClick={(e) => handleSubmit(e, true)}
+          fullWidth
+          className="sm:w-auto"
         >
           Save and Add Another
         </Button>
@@ -543,6 +547,8 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
           variant="secondary"
           onClick={onCancel}
           disabled={isSubmitting}
+          fullWidth
+          className="sm:w-auto"
         >
           Cancel
         </Button>

@@ -153,8 +153,8 @@ export default function NewEmployeePage() {
       key: 'personal',
       label: 'Personal Details',
       content: (
-        <div className="p-4 sm:p-6 space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="p-4 sm:p-6 space-y-6 sm:space-y-4">
+          <div className="grid grid-cols-1 gap-6 sm:gap-4 sm:grid-cols-2">
             <FormGroup 
               label="First Name" 
               required
@@ -260,8 +260,8 @@ export default function NewEmployeePage() {
       key: 'financial',
       label: 'Financial Details',
       content: (
-        <div className="p-4 sm:p-6 space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="p-4 sm:p-6 space-y-6 sm:space-y-4">
+          <div className="grid grid-cols-1 gap-6 sm:gap-4 sm:grid-cols-2">
             <FormGroup label="NI Number">
               <Input
                 type="text"
@@ -329,8 +329,8 @@ export default function NewEmployeePage() {
       key: 'health',
       label: 'Health Records',
       content: (
-        <div className="p-4 sm:p-6 space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="p-4 sm:p-6 space-y-6 sm:space-y-4">
+          <div className="grid grid-cols-1 gap-6 sm:gap-4 sm:grid-cols-2">
             <FormGroup label="Doctor Name">
               <Input
                 type="text"
@@ -367,8 +367,8 @@ export default function NewEmployeePage() {
               />
             </FormGroup>
             <div className="sm:col-span-2">
-              <h3 className="text-base font-medium text-gray-900 mb-3">Conditions</h3>
-              <div className="space-y-2">
+              <h3 className="text-base font-medium text-gray-900 mb-4 sm:mb-3">Conditions</h3>
+              <div className="space-y-3 sm:space-y-2">
                 <Checkbox
                   label="Suffer with Diabetes?"
                   checked={formData.has_diabetes || false}
@@ -402,8 +402,8 @@ export default function NewEmployeePage() {
               </div>
             </div>
             <div className="sm:col-span-2">
-              <h3 className="text-sm font-medium text-gray-700 mb-3">Disability Information</h3>
-              <div className="space-y-4">
+              <h3 className="text-sm font-medium text-gray-700 mb-4 sm:mb-3">Disability Information</h3>
+              <div className="space-y-6 sm:space-y-4">
                 <Checkbox
                   label="Is Registered Disabled?"
                   checked={formData.is_registered_disabled || false}

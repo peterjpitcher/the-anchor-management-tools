@@ -86,13 +86,13 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(({
   // Size classes
   const sizeClasses = {
     sm: {
-      select: 'px-3 py-1.5 pr-8 text-sm',
+      select: 'px-3 py-2.5 sm:py-1.5 pr-8 text-sm',
       icon: 'h-4 w-4',
       iconPadding: 'pl-8',
       chevron: 'right-2',
     },
     md: {
-      select: 'px-3 py-2 pr-10 text-sm',
+      select: 'px-3 py-2.5 sm:py-2 pr-10 text-sm',
       icon: 'h-5 w-5',
       iconPadding: 'pl-10',
       chevron: 'right-3',
@@ -133,10 +133,10 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(({
     'disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500',
     'transition-colors duration-200',
     
-    // Touch target optimization (min 44px height)
-    selectSize === 'sm' && 'min-h-[36px]',
-    selectSize === 'md' && 'min-h-[40px]',
-    selectSize === 'lg' && 'min-h-[44px]',
+    // Touch target optimization (min 44px height on mobile)
+    selectSize === 'sm' && 'min-h-[44px] sm:min-h-[36px]',
+    selectSize === 'md' && 'min-h-[44px] sm:min-h-[40px]',
+    selectSize === 'lg' && 'min-h-[48px] sm:min-h-[44px]',
     
     // Size classes
     sizeClasses[selectSize].select,

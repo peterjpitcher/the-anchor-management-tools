@@ -275,42 +275,42 @@ function CheckInPageContent() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
               <button
                 onClick={() => setMethod('qr')}
-                className={`p-3 sm:p-4 rounded-lg border-2 transition-colors min-h-[60px] sm:min-h-[80px] ${
+                className={`p-4 rounded-lg border-2 transition-colors min-h-[70px] ${
                   method === 'qr' 
                     ? 'border-amber-500 bg-amber-50' 
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
               >
-                <div className="flex sm:flex-col items-center sm:items-center justify-center">
-                  <QrCodeIcon className="h-6 w-6 sm:h-8 sm:w-8 mb-0 sm:mb-2 mr-2 sm:mr-0 text-gray-700" />
+                <div className="flex sm:flex-col items-center justify-center gap-2 sm:gap-0">
+                  <QrCodeIcon className="h-6 w-6 sm:h-8 sm:w-8 sm:mb-2 text-gray-700 flex-shrink-0" />
                   <p className="text-sm font-medium">QR Code</p>
                 </div>
               </button>
               
               <button
                 onClick={() => setMethod('phone')}
-                className={`p-3 sm:p-4 rounded-lg border-2 transition-colors min-h-[60px] sm:min-h-[80px] ${
+                className={`p-4 rounded-lg border-2 transition-colors min-h-[70px] ${
                   method === 'phone' 
                     ? 'border-amber-500 bg-amber-50' 
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
               >
-                <div className="flex sm:flex-col items-center sm:items-center justify-center">
-                  <PhoneIcon className="h-6 w-6 sm:h-8 sm:w-8 mb-0 sm:mb-2 mr-2 sm:mr-0 text-gray-700" />
+                <div className="flex sm:flex-col items-center justify-center gap-2 sm:gap-0">
+                  <PhoneIcon className="h-6 w-6 sm:h-8 sm:w-8 sm:mb-2 text-gray-700 flex-shrink-0" />
                   <p className="text-sm font-medium">Phone Number</p>
                 </div>
               </button>
               
               <button
                 onClick={() => setMethod('manual')}
-                className={`p-3 sm:p-4 rounded-lg border-2 transition-colors min-h-[60px] sm:min-h-[80px] ${
+                className={`p-4 rounded-lg border-2 transition-colors min-h-[70px] ${
                   method === 'manual' 
                     ? 'border-amber-500 bg-amber-50' 
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
               >
-                <div className="flex sm:flex-col items-center sm:items-center justify-center">
-                  <UserPlusIcon className="h-6 w-6 sm:h-8 sm:w-8 mb-0 sm:mb-2 mr-2 sm:mr-0 text-gray-700" />
+                <div className="flex sm:flex-col items-center justify-center gap-2 sm:gap-0">
+                  <UserPlusIcon className="h-6 w-6 sm:h-8 sm:w-8 sm:mb-2 text-gray-700 flex-shrink-0" />
                   <p className="text-sm font-medium">Manual Search</p>
                 </div>
               </button>
@@ -410,8 +410,10 @@ function CheckInPageContent() {
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">Scan QR Code</h3>
                     {showScanner ? (
                       <div>
-                        <div className="relative aspect-square sm:aspect-video max-w-md mx-auto mb-4">
-                          <video id="qr-video" className="w-full h-full rounded-lg object-cover" />
+                        <div className="relative w-full max-w-md mx-auto mb-4 bg-black rounded-lg overflow-hidden">
+                          <div className="aspect-[4/3]">
+                            <video id="qr-video" className="w-full h-full object-cover" />
+                          </div>
                         </div>
                         <button
                           onClick={() => {
@@ -493,33 +495,36 @@ function CheckInPageContent() {
                         {customers.map(customer => (
                           <div
                             key={customer.id}
-                            className="p-4 border rounded-lg hover:bg-gray-50 cursor-pointer min-h-[80px]"
+                            className="p-4 border rounded-lg hover:bg-gray-50 cursor-pointer"
                             onClick={() => handleManualCheckIn(customer)}
                           >
-                            <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start justify-between gap-2">
                               <div className="flex-1 min-w-0">
                                 <p className="font-medium text-gray-900 truncate">{customer.name}</p>
-                                <p className="text-sm text-gray-500">{customer.phone_number}</p>
+                                <p className="text-sm text-gray-500 truncate">{customer.phone_number}</p>
                                 {customer.loyalty_members?.[0] && (
-                                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                                    <span className="text-xs px-2 py-1 rounded-full" style={{
+                                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    <span className="inline-flex items-center text-xs px-2 py-1 rounded-full whitespace-nowrap" style={{
                                       backgroundColor: `${customer.loyalty_members[0].tier?.color}20`,
                                       color: customer.loyalty_members[0].tier?.color
                                     }}>
-                                      {customer.loyalty_members[0].tier?.icon} {customer.loyalty_members[0].tier?.name}
+                                      <span className="mr-1">{customer.loyalty_members[0].tier?.icon}</span>
+                                      {customer.loyalty_members[0].tier?.name}
                                     </span>
-                                    <span className="text-xs text-gray-500">
-                                      {customer.loyalty_members[0].available_points} points
+                                    <span className="text-xs text-gray-500 whitespace-nowrap">
+                                      {customer.loyalty_members[0].available_points} pts
                                     </span>
                                   </div>
                                 )}
                               </div>
-                              <button
-                                disabled={state === 'processing'}
-                                className="text-amber-600 hover:text-amber-700 font-medium whitespace-nowrap px-2 py-1"
-                              >
-                                Check In →
-                              </button>
+                              <div className="flex-shrink-0 ml-2">
+                                <button
+                                  disabled={state === 'processing'}
+                                  className="text-amber-600 hover:text-amber-700 font-medium text-sm px-3 py-2 hover:bg-amber-50 rounded-md transition-colors"
+                                >
+                                  Check In
+                                </button>
+                              </div>
                             </div>
                           </div>
                         ))}

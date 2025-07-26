@@ -5,7 +5,7 @@ import { useEffect, useState, useMemo } from 'react'
 import type { Customer } from '@/types/database'
 import { CustomerForm } from '@/components/CustomerForm'
 import { CustomerImport } from '@/components/CustomerImport'
-import { PlusIcon, ArrowUpOnSquareIcon, PencilIcon, TrashIcon, XCircleIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, PencilIcon, TrashIcon, XCircleIcon } from '@heroicons/react/24/outline'
 import { CustomerName } from '@/components/CustomerName'
 import { CustomerWithLoyalty, getLoyalCustomers } from '@/lib/customerUtils'
 import Link from 'next/link'
@@ -15,7 +15,6 @@ import { getConstraintErrorMessage, isPostgrestError } from '@/lib/dbErrorHandle
 import { usePagination } from '@/hooks/usePagination'
 import { CustomerLabelDisplay } from '@/components/CustomerLabelDisplay'
 import { usePermissions } from '@/contexts/PermissionContext'
-import { TagIcon } from '@heroicons/react/24/outline'
 import { getBulkCustomerLabels } from '@/app/actions/customer-labels-bulk'
 import type { CustomerLabel, CustomerLabelAssignment } from '@/app/actions/customer-labels'
 import { LoyaltyService } from '@/lib/services/loyalty'
@@ -28,7 +27,6 @@ import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { Button, IconButton } from '@/components/ui-v2/forms/Button'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { SearchInput } from '@/components/ui-v2/forms/SearchInput'
 import { Badge, BadgeGroup } from '@/components/ui-v2/display/Badge'
 import { toast } from '@/components/ui-v2/feedback/Toast'
@@ -416,24 +414,34 @@ export default function CustomersPage() {
       <PageContent>
         <Card>
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex flex-col gap-4">
             <SearchInput
-              placeholder="Search customers..."
+              placeholder="Search customers by name or phone..."
               value={searchInput}
               onSearch={setSearchInput}
-              className="flex-1"
+              className="w-full"
             />
-            <select
-              value={customPageSize}
-              onChange={(e) => setCustomPageSize(Number(e.target.value))}
-              className="rounded-md border-gray-300 text-sm focus:border-green-500 focus:ring-green-500"
-            >
-              <option value={50}>50 per page</option>
-              <option value={100}>100 per page</option>
-              <option value={200}>200 per page</option>
-              <option value={500}>500 per page</option>
-              <option value={1000}>All customers</option>
-            </select>
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 sm:items-center sm:justify-between">
+              <div className="text-sm text-gray-600">
+                {searchTerm && (
+                  <span>Searching for &quot;{searchTerm}&quot;</span>
+                )}
+                {!searchTerm && totalCount > 0 && (
+                  <span>Showing {Math.min(pageSize, totalCount)} of {totalCount} customers</span>
+                )}
+              </div>
+              <select
+                value={customPageSize}
+                onChange={(e) => setCustomPageSize(Number(e.target.value))}
+                className="rounded-md border-gray-300 text-sm focus:border-green-500 focus:ring-green-500 py-2 px-3"
+              >
+                <option value={50}>50 per page</option>
+                <option value={100}>100 per page</option>
+                <option value={200}>200 per page</option>
+                <option value={500}>500 per page</option>
+                <option value={1000}>All customers</option>
+              </select>
+            </div>
           </div>
           <TabNav
             tabs={[

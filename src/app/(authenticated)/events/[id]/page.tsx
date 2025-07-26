@@ -293,7 +293,7 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
       key: 'created_at',
       header: 'Created',
       cell: (booking) => formatDate(booking.created_at),
-      width: '150px',
+      width: 'auto',
     },
     {
       key: 'seats',
@@ -303,7 +303,7 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
           {booking.seats} {booking.seats === 1 ? 'Seat' : 'Seats'}
         </Badge>
       ),
-      width: '100px',
+      width: 'auto',
     },
     {
       key: 'actions',
@@ -319,7 +319,7 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
         </button>
       ),
       align: 'right',
-      width: '50px',
+      width: 'auto',
     },
   ]
 

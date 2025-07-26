@@ -90,6 +90,7 @@ export default function AddNoteModal({ isOpen, onClose, defaultEmployeeId }: Add
       onClose={onClose}
       title="Add Employee Note"
       size="sm"
+      mobileFullscreen
       footer={
         <ModalActions>
           <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>

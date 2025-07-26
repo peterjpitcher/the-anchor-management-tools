@@ -229,18 +229,26 @@ export async function POST(request: NextRequest) {
 
       // Queue confirmation SMS if regular booking
       if (booking.status === 'confirmed' && customer.sms_opt_in) {
+        // Use the correct template key based on booking type
+        const templateKey = validatedData.booking_type === 'sunday_lunch'
+          ? 'booking_confirmation_sunday_lunch'
+          : 'booking_confirmation_regular';
+          
         await supabase.from('jobs').insert({
           type: 'send_sms',
           payload: {
             to: customer.mobile_number,
-            template: 'table_booking_confirmation',
+            template: templateKey,
             variables: {
               customer_name: customer.first_name,
               party_size: booking.party_size,
               date: new Date(booking.booking_date).toLocaleDateString('en-GB'),
               time: booking.booking_time,
               reference: booking.booking_reference,
+              contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707',
             },
+            booking_id: booking.id,
+            customer_id: customer.id,
           },
           scheduled_for: new Date().toISOString(),
         });

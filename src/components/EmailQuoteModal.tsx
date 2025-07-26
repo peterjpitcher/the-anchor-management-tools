@@ -79,6 +79,7 @@ P.S. The quote is attached as a PDF for your convenience.`
       onClose={onClose}
       title="Email Quote"
       size="lg"
+      mobileFullscreen
     >
 
       <div className="space-y-4">

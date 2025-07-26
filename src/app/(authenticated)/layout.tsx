@@ -114,8 +114,8 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
           <div className="fixed inset-0 z-40 md:hidden">
             <div className="fixed inset-0 bg-gray-600 bg-opacity-75" onClick={() => setIsMobileMenuOpen(false)} />
             <div className="fixed inset-y-0 left-0 flex max-w-xs w-full bg-sidebar">
-              <div className="flex w-full flex-col">
-                <div className="flex items-center justify-between h-16 px-4 border-b border-green-600">
+              <div className="flex w-full flex-col h-full">
+                <div className="flex items-center justify-between h-16 px-4 border-b border-green-600 flex-shrink-0">
                   <h2 className="text-lg font-semibold text-white">Menu</h2>
                   <button
                     type="button"
@@ -126,7 +126,7 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
                     <XMarkIcon className="h-6 w-6" aria-hidden="true" />
                   </button>
                 </div>
-                <div className="flex-1 overflow-y-auto py-4">
+                <div className="flex-1 overflow-y-auto py-4 min-h-0">
                   <Navigation onQuickAddNoteClick={() => {
                     openAddNoteModal()
                     setIsMobileMenuOpen(false)
@@ -179,7 +179,7 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
             </div>
           </header>
           
-          <main className="flex-1 overflow-y-auto bg-gray-50 pb-20 md:pb-6 px-6">
+          <main className="flex-1 overflow-y-auto bg-gray-50 pb-20 md:pb-6 px-4 sm:px-6">
             {children}
           </main>
           
