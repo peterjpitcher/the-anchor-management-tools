@@ -219,6 +219,16 @@ Retrieve the restaurant's opening hours, including kitchen hours for table booki
       },
       "status": "modified",
       "note": "Christmas Day - Limited Hours"
+    },
+    {
+      "date": "2024-12-26",
+      "opens": "10:00:00",
+      "closes": "20:00:00",
+      "kitchen": {
+        "is_closed": true
+      },
+      "status": "modified",
+      "note": "Boxing Day - Kitchen Closed"
     }
   ],
   "currentStatus": {
@@ -235,9 +245,33 @@ Retrieve the restaurant's opening hours, including kitchen hours for table booki
 ### Important Notes
 - **Day keys are lowercase**: `sunday`, `monday`, etc.
 - **Kitchen object**: Can be `null` when kitchen is closed but venue is open
+- **Kitchen closed indicator**: When `kitchen.is_closed` is `true`, the kitchen is closed while the venue remains open
 - **Time format**: Always `HH:mm:ss` (24-hour with seconds)
 - **Special hours**: Override regular hours for specific dates
 - **All times are in Europe/London timezone**
+
+### Kitchen Status Formats
+The kitchen field in the response can have three different formats:
+
+1. **Kitchen Open with Times**:
+   ```json
+   "kitchen": {
+     "opens": "12:00:00",
+     "closes": "17:00:00"
+   }
+   ```
+
+2. **Kitchen Closed (venue still open)**:
+   ```json
+   "kitchen": {
+     "is_closed": true
+   }
+   ```
+
+3. **No Kitchen Service** (e.g., regular Monday schedule):
+   ```json
+   "kitchen": null
+   ```
 
 ### Example Usage
 ```javascript
@@ -250,7 +284,19 @@ const data = await response.json();
 const today = new Date().toLocaleDateString('en-GB', { weekday: 'long' }).toLowerCase();
 const todayHours = data.regularHours[today];
 
-if (!todayHours.kitchen) {
+// Check for special hours that might override
+const todayDate = new Date().toISOString().split('T')[0];
+const specialToday = data.specialHours.find(s => s.date === todayDate);
+
+if (specialToday) {
+  if (specialToday.status === 'closed') {
+    console.log('Venue closed today');
+  } else if (specialToday.kitchen?.is_closed) {
+    console.log('Kitchen closed today - no table bookings available');
+  } else if (specialToday.kitchen) {
+    console.log(`Kitchen open from ${specialToday.kitchen.opens} to ${specialToday.kitchen.closes}`);
+  }
+} else if (!todayHours.kitchen) {
   console.log('Kitchen closed today - no table bookings available');
 } else {
   console.log(`Kitchen open from ${todayHours.kitchen.opens} to ${todayHours.kitchen.closes}`);
