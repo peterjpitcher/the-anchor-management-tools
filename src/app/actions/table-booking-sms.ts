@@ -497,8 +497,8 @@ export async function queuePaymentRequestSMS(bookingId: string) {
     // Calculate deposit amount (£5 per person)
     const depositAmount = booking.party_size * 5;
     
-    // Generate payment link 
-    const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL}/api/table-bookings/payment/create?booking_id=${bookingId}`;
+    // Generate payment link to public payment page
+    const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL}/table-booking/${booking.booking_reference}/payment`;
     
     // Prepare variables
     const variables = {

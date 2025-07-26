@@ -231,7 +231,7 @@ export async function POST(request: NextRequest) {
           total_amount: totalAmount,
           outstanding_amount: outstandingAmount,
           currency: 'GBP',
-          payment_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/table-bookings/payment/create?booking_id=${booking.id}`,
+          payment_url: `${process.env.NEXT_PUBLIC_APP_URL}/table-booking/${booking.booking_reference}/payment`,
           expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes
         };
       }

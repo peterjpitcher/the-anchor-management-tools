@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { createPayPalOrder } from '@/lib/paypal';
 
 export async function GET(request: NextRequest) {
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     
     // Get booking with items
     const { data: booking, error } = await supabase
@@ -28,6 +28,8 @@ export async function GET(request: NextRequest) {
       .single();
       
     if (error || !booking) {
+      console.error('Booking lookup error:', error);
+      console.error('Booking ID:', bookingId);
       return NextResponse.json(
         { error: 'Booking not found' },
         { status: 404 }
