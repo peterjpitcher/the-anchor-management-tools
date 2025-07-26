@@ -18,6 +18,7 @@ export async function middleware(request: NextRequest) {
   // - Public pages
   // - Loyalty demo pages
   // - Booking confirmation pages (public access for customers)
+  // - Table booking payment pages (public access for customers)
   if (
     path.startsWith('/_next') ||
     path.startsWith('/static') ||
@@ -28,7 +29,8 @@ export async function middleware(request: NextRequest) {
     path.startsWith('/privacy') ||
     path.startsWith('/loyalty') ||
     path.startsWith('/booking-confirmation') || // Allow public booking confirmation
-    path.startsWith('/booking-success') // Allow public booking success page
+    path.startsWith('/booking-success') || // Allow public booking success page
+    path.startsWith('/table-booking') // Allow public table booking pages
   ) {
     return NextResponse.next()
   }
@@ -81,7 +83,8 @@ export const config = {
      * - loyalty (loyalty dashboard, check-in, redeem, and demo)
      * - booking-confirmation (public booking confirmation pages)
      * - booking-success (public booking success pages)
+     * - table-booking (public table booking pages)
      */
-    '/((?!_next/static|_next/image|favicon.ico|api|auth|privacy|loyalty|booking-confirmation|booking-success).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api|auth|privacy|loyalty|booking-confirmation|booking-success|table-booking).*)',
   ],
 }
