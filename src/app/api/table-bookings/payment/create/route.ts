@@ -3,9 +3,10 @@ import { createClient } from '@/lib/supabase/server';
 import { createPayPalOrder } from '@/lib/paypal';
 
 export async function GET(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams;
+  const bookingId = searchParams.get('booking_id');
+  
   try {
-    const searchParams = request.nextUrl.searchParams;
-    const bookingId = searchParams.get('booking_id');
     
     if (!bookingId) {
       return NextResponse.json(
@@ -61,6 +62,13 @@ export async function GET(request: NextRequest) {
     const returnUrl = `${baseUrl}/api/table-bookings/payment/return?booking_id=${bookingId}`;
     const cancelUrl = `${baseUrl}/booking/${booking.booking_reference}?cancelled=true`;
     
+    console.log('Creating PayPal order for booking:', {
+      bookingId,
+      reference: booking.booking_reference,
+      totalItems: booking.table_booking_items.length,
+      partySize: booking.party_size
+    });
+    
     const { orderId, approveUrl } = await createPayPalOrder(
       booking,
       returnUrl,
@@ -96,10 +104,27 @@ export async function GET(request: NextRequest) {
     // Redirect to PayPal
     return NextResponse.redirect(approveUrl);
   } catch (error) {
-    console.error('PayPal order creation error:', error);
-    return NextResponse.json(
-      { error: 'Failed to create payment' },
-      { status: 500 }
-    );
+    console.error('Payment creation failed:', error);
+    
+    // Determine error message based on error type
+    let errorMessage = 'Unable to process payment. Please try again or contact support.';
+    
+    if (error instanceof Error) {
+      if (error.message.includes('PayPal credentials')) {
+        errorMessage = 'Payment system is not configured. Please contact support.';
+      } else if (error.message.includes('access token')) {
+        errorMessage = 'Payment authentication failed. Please contact support.';
+      } else if (error.message.includes('PayPal order')) {
+        errorMessage = 'Unable to create payment order. Please try again later.';
+      }
+      
+      console.error('Specific error:', error.message);
+    }
+    
+    // Redirect back to booking page with error instead of showing JSON
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
+    const errorUrl = `${baseUrl}/table-bookings/${bookingId}?error=payment_failed&message=${encodeURIComponent(errorMessage)}`;
+    
+    return NextResponse.redirect(errorUrl);
   }
 }

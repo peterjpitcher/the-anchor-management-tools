@@ -10,6 +10,11 @@ const PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET!;
 
 // Get PayPal access token
 async function getAccessToken(): Promise<string> {
+  // Check for missing credentials
+  if (!PAYPAL_CLIENT_ID || !PAYPAL_CLIENT_SECRET) {
+    throw new Error('PayPal credentials not configured. Please check PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET environment variables.');
+  }
+  
   const auth = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`).toString('base64');
   
   const response = await fetch(`${PAYPAL_BASE_URL}/v1/oauth2/token`, {
@@ -22,7 +27,9 @@ async function getAccessToken(): Promise<string> {
   });
   
   if (!response.ok) {
-    throw new Error('Failed to get PayPal access token');
+    const errorText = await response.text();
+    console.error('PayPal access token error:', errorText);
+    throw new Error(`Failed to get PayPal access token: ${response.status} ${response.statusText}`);
   }
   
   const data = await response.json();
@@ -88,9 +95,24 @@ export async function createPayPalOrder(
   });
   
   if (!response.ok) {
-    const error = await response.json();
-    console.error('PayPal order creation error:', error);
-    throw new Error('Failed to create PayPal order');
+    const errorText = await response.text();
+    let errorMessage = 'Failed to create PayPal order';
+    
+    try {
+      const errorJson = JSON.parse(errorText);
+      console.error('PayPal order creation error:', errorJson);
+      
+      // Extract specific error details if available
+      if (errorJson.details && errorJson.details.length > 0) {
+        errorMessage = errorJson.details[0].description || errorJson.message || errorMessage;
+      } else if (errorJson.message) {
+        errorMessage = errorJson.message;
+      }
+    } catch (e) {
+      console.error('PayPal order creation error (raw):', errorText);
+    }
+    
+    throw new Error(errorMessage);
   }
   
   const data = await response.json();
