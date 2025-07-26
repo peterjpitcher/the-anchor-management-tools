@@ -509,15 +509,24 @@ Create a new table reservation.
 
 ### Request Body Schema
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `booking_type` | string | Yes | `regular` for standard bookings |
-| `date` | string | Yes | Booking date (YYYY-MM-DD) |
-| `time` | string | Yes | Booking time (HH:mm) |
-| `party_size` | integer | Yes | Number of guests (1-50) |
-| `customer` | object | Yes | Customer details (see below) |
-| `special_requirements` | string | No | Special requests or notes |
-| `occasion` | string | No | Special occasion (birthday, anniversary, etc.) |
+#### Required Fields
+| Field | Type | Description |
+|-------|------|-------------|
+| `booking_type` | string | Must be `regular` for standard bookings |
+| `date` | string | Booking date (YYYY-MM-DD) |
+| `time` | string | Booking time (HH:mm) |
+| `party_size` | integer | Number of guests (1-50) |
+| `customer` | object | Customer details (see below) |
+
+#### Optional Fields - Enhance the Booking Experience
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `duration_minutes` | integer | 120 | How long the table is needed (60-240) |
+| `special_requirements` | string | null | Special requests (e.g., "Window table", "Wheelchair access") |
+| `dietary_requirements` | string[] | null | Array of dietary needs (e.g., ["vegetarian", "gluten_free"]) |
+| `allergies` | string[] | null | Array of allergies (e.g., ["nuts", "shellfish"]) |
+| `celebration_type` | string | null | Type of celebration (e.g., "birthday", "anniversary", "engagement") |
+| `source` | string | "website" | Booking source (e.g., "website", "phone", "walk-in", "social_media") |
 
 #### Customer Object
 
@@ -525,9 +534,42 @@ Create a new table reservation.
 |-------|------|----------|-------------|
 | `first_name` | string | Yes | Customer's first name |
 | `last_name` | string | Yes | Customer's last name |
-| `email` | string | No | Email address (currently not stored) |
+| `email` | string | No | Email address (for future use - not currently stored) |
 | `mobile_number` | string | Yes | UK mobile number |
 | `sms_opt_in` | boolean | No | SMS marketing consent (default: false) |
+
+### Supported Values
+
+#### Dietary Requirements
+Common values (can accept others):
+- `"vegetarian"`
+- `"vegan"`
+- `"gluten_free"`
+- `"dairy_free"`
+- `"halal"`
+- `"kosher"`
+- `"pescatarian"`
+
+#### Allergies
+Common values (can accept others):
+- `"nuts"`
+- `"peanuts"`
+- `"shellfish"`
+- `"eggs"`
+- `"milk"`
+- `"soy"`
+- `"wheat"`
+- `"fish"`
+
+#### Celebration Types
+Suggested values (free text accepted):
+- `"birthday"`
+- `"anniversary"`
+- `"engagement"`
+- `"graduation"`
+- `"business_meeting"`
+- `"date_night"`
+- `"family_gathering"`
 
 ### Important Customer Notes
 - **Names must be separate**: API requires `first_name` and `last_name` as separate fields
@@ -536,7 +578,9 @@ Create a new table reservation.
 - **Phone formats accepted**: `07700900000`, `+447700900000`, `447700900000`
 - **Email limitation**: Email field is accepted but currently not stored in database
 
-### Example Request
+### Example Requests
+
+#### Basic Booking
 ```json
 {
   "booking_type": "regular",
@@ -546,12 +590,53 @@ Create a new table reservation.
   "customer": {
     "first_name": "John",
     "last_name": "Smith",
+    "mobile_number": "07700900000",
+    "sms_opt_in": false
+  }
+}
+```
+
+#### Full Featured Booking
+```json
+{
+  "booking_type": "regular",
+  "date": "2024-03-15",
+  "time": "19:00",
+  "party_size": 4,
+  "duration_minutes": 150,
+  "customer": {
+    "first_name": "John",
+    "last_name": "Smith",
     "email": "john@example.com",
     "mobile_number": "07700900000",
     "sms_opt_in": true
   },
-  "special_requirements": "Window table please",
-  "occasion": "birthday"
+  "special_requirements": "Window table please, bringing a birthday cake",
+  "dietary_requirements": ["vegetarian", "gluten_free"],
+  "allergies": ["nuts", "shellfish"],
+  "celebration_type": "birthday",
+  "source": "website"
+}
+```
+
+#### Accessibility Focused Booking
+```json
+{
+  "booking_type": "regular",
+  "date": "2024-03-15",
+  "time": "18:00",
+  "party_size": 6,
+  "duration_minutes": 180,
+  "customer": {
+    "first_name": "Sarah",
+    "last_name": "Johnson",
+    "mobile_number": "07700900111",
+    "sms_opt_in": true
+  },
+  "special_requirements": "Wheelchair access needed, ground floor table preferred",
+  "dietary_requirements": ["vegan", "dairy_free"],
+  "allergies": ["soy"],
+  "source": "website"
 }
 ```
 
@@ -1103,7 +1188,24 @@ const booking = await api.createTableBooking({
 1. **Missing customer fields**: Ensure `first_name` and `last_name` are provided separately
 2. **Invalid phone format**: Use UK format without spaces (07700900000)
 3. **Email field issue**: The email field is optional; if database errors persist, try omitting it
-4. **Capacity exceeded**: Check availability first before attempting to book
+4. **Wrong field names**: Use `celebration_type` NOT `occasion`
+5. **Array fields**: `dietary_requirements` and `allergies` must be arrays, not strings
+6. **Capacity exceeded**: Check availability first before attempting to book
+
+**Field Name Mapping:**
+```javascript
+// WRONG ❌
+{
+  "occasion": "birthday",
+  "dietary_requirements": "vegetarian, vegan"
+}
+
+// CORRECT ✅
+{
+  "celebration_type": "birthday",
+  "dietary_requirements": ["vegetarian", "vegan"]
+}
+```
 
 ### 5. Customer Name Handling
 
