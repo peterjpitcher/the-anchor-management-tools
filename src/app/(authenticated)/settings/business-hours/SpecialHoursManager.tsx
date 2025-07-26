@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { getSpecialHours, createSpecialHours, updateSpecialHours, deleteSpecialHours } from '@/app/actions/business-hours'
+import { getSpecialHours, createSpecialHours, updateSpecialHours, deleteSpecialHours, getBusinessHoursByDay } from '@/app/actions/business-hours'
 import { SpecialHours } from '@/types/business-hours'
 import { Button, IconButton } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
@@ -22,6 +22,7 @@ export function SpecialHoursManager() {
     kitchen_opens: '',
     kitchen_closes: '',
     is_closed: false,
+    is_kitchen_closed: false,
     note: ''
   })
 
@@ -47,6 +48,7 @@ export function SpecialHoursManager() {
       kitchen_opens: '',
       kitchen_closes: '',
       is_closed: false,
+      is_kitchen_closed: false,
       note: ''
     })
     setEditingId(null)
@@ -61,6 +63,7 @@ export function SpecialHoursManager() {
       kitchen_opens: hours.kitchen_opens || '',
       kitchen_closes: hours.kitchen_closes || '',
       is_closed: hours.is_closed,
+      is_kitchen_closed: hours.is_kitchen_closed || false,
       note: hours.note || ''
     })
     setEditingId(hours.id)
@@ -78,6 +81,30 @@ export function SpecialHoursManager() {
     } else {
       toast.success('Special hours deleted successfully')
       loadSpecialHours()
+    }
+  }
+
+  const handleDateChange = async (date: string) => {
+    setFormData(prev => ({ ...prev, date }))
+    
+    // Get day of week from date (0 = Sunday, 6 = Saturday)
+    const selectedDate = new Date(date + 'T00:00:00')
+    const dayOfWeek = selectedDate.getDay()
+    
+    // Fetch regular hours for this day
+    const result = await getBusinessHoursByDay(dayOfWeek)
+    if (result.data && !result.data.is_closed) {
+      const businessHours = result.data
+      setFormData(prev => ({
+        ...prev,
+        opens: businessHours.opens || '',
+        closes: businessHours.closes || '',
+        kitchen_opens: businessHours.kitchen_opens || '',
+        kitchen_closes: businessHours.kitchen_closes || '',
+        is_closed: false,
+        is_kitchen_closed: false
+      }))
+      toast.success(`Pre-filled with ${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dayOfWeek]} hours`)
     }
   }
 
@@ -128,16 +155,22 @@ export function SpecialHoursManager() {
                   type="date"
                   required
                   value={formData.date}
-                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  onChange={(e) => handleDateChange(e.target.value)}
                   fullWidth
                 />
               </div>
               
-              <div className="flex items-end">
+              <div className="space-y-2">
                 <Checkbox
                   label="Closed all day"
                   checked={formData.is_closed}
                   onChange={(e) => setFormData({ ...formData, is_closed: e.target.checked })}
+                />
+                <Checkbox
+                  label="Kitchen closed"
+                  checked={formData.is_kitchen_closed}
+                  onChange={(e) => setFormData({ ...formData, is_kitchen_closed: e.target.checked })}
+                  disabled={formData.is_closed}
                 />
               </div>
 
@@ -175,7 +208,7 @@ export function SpecialHoursManager() {
                   type="time"
                   value={formData.kitchen_opens}
                   onChange={(e) => setFormData({ ...formData, kitchen_opens: e.target.value })}
-                  disabled={formData.is_closed}
+                  disabled={formData.is_closed || formData.is_kitchen_closed}
                   fullWidth
                 />
               </div>
@@ -188,7 +221,7 @@ export function SpecialHoursManager() {
                   type="time"
                   value={formData.kitchen_closes}
                   onChange={(e) => setFormData({ ...formData, kitchen_closes: e.target.value })}
-                  disabled={formData.is_closed}
+                  disabled={formData.is_closed || formData.is_kitchen_closed}
                   fullWidth
                 />
               </div>
@@ -252,11 +285,13 @@ export function SpecialHoursManager() {
                     ) : (
                       <>
                         <span>Open: {hours.opens || 'Not set'} - {hours.closes || 'Not set'}</span>
-                        {hours.kitchen_opens && hours.kitchen_closes && (
+                        {hours.is_kitchen_closed ? (
+                          <span className="ml-4 text-orange-600">Kitchen closed</span>
+                        ) : hours.kitchen_opens && hours.kitchen_closes ? (
                           <span className="ml-4">
                             Kitchen: {hours.kitchen_opens} - {hours.kitchen_closes}
                           </span>
-                        )}
+                        ) : null}
                       </>
                     )}
                   </p>

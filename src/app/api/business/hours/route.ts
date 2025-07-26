@@ -56,7 +56,9 @@ export async function GET(_request: NextRequest) {
     date: special.date,
     opens: special.opens,
     closes: special.closes,
-    kitchen: special.kitchen_opens && special.kitchen_closes ? {
+    kitchen: special.is_kitchen_closed ? {
+      is_closed: true
+    } : special.kitchen_opens && special.kitchen_closes ? {
       opens: special.kitchen_opens,
       closes: special.kitchen_closes,
     } : null,
@@ -85,7 +87,8 @@ export async function GET(_request: NextRequest) {
   if (todaySpecial) {
     if (!todaySpecial.is_closed && todaySpecial.opens && todaySpecial.closes) {
       const isCurrentlyOpen = currentTime >= todaySpecial.opens && currentTime < todaySpecial.closes;
-      const isKitchenOpen = !!(todaySpecial.kitchen_opens && todaySpecial.kitchen_closes &&
+      const isKitchenOpen = todaySpecial.is_kitchen_closed ? false : 
+        !!(todaySpecial.kitchen_opens && todaySpecial.kitchen_closes &&
         currentTime >= todaySpecial.kitchen_opens && currentTime < todaySpecial.kitchen_closes);
 
       currentStatus = {
