@@ -114,35 +114,28 @@ tests/                   # Playwright E2E tests
 
 ## 📖 Documentation
 
-### Getting Started
-- [Overview](./2025-06-15-overview.md) - Project introduction
-- [Installation Guide](./installation.md) - Detailed setup instructions
-- [Configuration](./configuration.md) - Environment setup
+### Quick Navigation
+- **[📑 Complete Documentation Index](./INDEX.md)** - Full directory of all documentation
 
-### Development
-- [Developer Guide](./2025-06-26-developer-guide.md) - Contributing guidelines
-- [API Documentation](./2025-06-26-api-documentation.md) - Server actions and endpoints
-- [Database Documentation](./2025-06-26-database-documentation.md) - Schema and relationships
-- [Style Guide](./2025-06-15-style-guide.md) - UI/UX conventions
+### Core Documentation
+- [📋 Architecture & System Design](./core-docs/ARCHITECTURE.md)
+- [🚀 Deployment Guide](./core-docs/DEPLOYMENT.md)
+- [🔒 Security Documentation](./core-docs/SECURITY.md)
+- [🧪 Testing Guide](./core-docs/TESTING.md)
+- [💻 Contributing Guide](./core-docs/CONTRIBUTING.md)
+- [✨ Features Documentation](./core-docs/FEATURES.md)
+- [🔧 Troubleshooting Guide](./core-docs/TROUBLESHOOTING.md)
 
-### Features
-- [Authentication](./2025-06-15-feature-authentication.md) - Auth system guide
-- [Events](./2025-06-15-feature-events.md) - Event management
-- [Customers](./2025-06-15-feature-customers.md) - Customer features
-- [Employees](./2025-06-15-feature-employees.md) - Employee management
-- [Private Bookings](./2025-06-21-feature-private-bookings.md) - Venue hire
-- [SMS](./2025-06-15-feature-sms.md) - Messaging system
+### API Documentation
+- [🔌 API Reference](./api/COMPLETE_API_DOCUMENTATION.md) - Complete API documentation
+- [📊 Table Booking API](./api/TABLE_BOOKING_API.md) - Table booking endpoints
+- [📄 OpenAPI Spec](./api/openapi.yaml) - OpenAPI specification
 
-### Operations
-- [Deployment Guide](./2025-06-26-deployment-guide.md) - Production deployment
-- [Monitoring](./monitoring.md) - Application monitoring
-- [Troubleshooting](./troubleshooting.md) - Common issues
-
-### Architecture & Security
-- [System Architecture Review](./system-architecture-review-2025.md) - Technical deep dive
-- [Security](./2025-06-15-security.md) - Security practices
-- [RBAC](./2025-06-17-rbac.md) - Role-based access control
-- [GDPR Compliance](./2025-06-21-gdpr-compliance.md) - Data protection
+### Reference Guides
+- [📊 Audit Reports](./audit-reports/) - System audits and analysis
+- [📚 Implementation Guides](./implementation-guides/) - Technical guides
+- [🎯 Loyalty Program](./loyalty-program/) - Loyalty system planning
+- [🎨 UI Audit](./ui-audit/) - Design system documentation
 
 ## 🧪 Testing
 
