@@ -178,6 +178,7 @@ export async function POST(request: NextRequest) {
 
       // Add menu selections if Sunday lunch
       let totalAmount = 0;
+      let depositAmount = 0;
       if (validatedData.booking_type === 'sunday_lunch' && validatedData.menu_selections) {
         const { error: itemsError } = await supabase
           .from('table_booking_items')
@@ -196,10 +197,14 @@ export async function POST(request: NextRequest) {
           );
         }
         
+        // Calculate total amount from menu selections
         totalAmount = validatedData.menu_selections.reduce(
           (sum, item) => sum + (item.price_at_booking * item.quantity), 
           0
         );
+        
+        // Calculate deposit: £5 per person
+        depositAmount = validatedData.party_size * 5;
       }
 
       // Prepare response
@@ -217,10 +222,14 @@ export async function POST(request: NextRequest) {
           duration_minutes: booking.duration_minutes,
         };
       } else {
-        // Sunday lunch requires payment
+        // Sunday lunch requires payment (deposit only)
+        const outstandingAmount = totalAmount - depositAmount;
+        
         response.payment_required = true;
         response.payment_details = {
-          amount: totalAmount,
+          deposit_amount: depositAmount,
+          total_amount: totalAmount,
+          outstanding_amount: outstandingAmount,
           currency: 'GBP',
           payment_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/table-bookings/payment/create?booking_id=${booking.id}`,
           expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes

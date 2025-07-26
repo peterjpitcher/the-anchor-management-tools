@@ -728,7 +728,7 @@ Suggested values (free text accepted):
 }
 ```
 
-#### Sunday Lunch Response (Payment Required)
+#### Sunday Lunch Response (Deposit Required)
 ```json
 {
   "booking_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -736,7 +736,9 @@ Suggested values (free text accepted):
   "status": "pending_payment",
   "payment_required": true,
   "payment_details": {
-    "amount": 99.80,
+    "deposit_amount": 20.00,      // £5 × 4 people
+    "total_amount": 99.80,        // Total cost of all menu selections
+    "outstanding_amount": 79.80,   // Balance due on arrival
     "currency": "GBP",
     "payment_url": "https://management.orangejelly.co.uk/api/table-bookings/payment/create?booking_id=...",
     "expires_at": "2024-03-01T10:30:00Z"

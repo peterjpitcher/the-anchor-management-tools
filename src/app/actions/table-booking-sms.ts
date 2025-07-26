@@ -136,6 +136,11 @@ export async function testSMSTemplate(
       contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '',
       refund_message: 'Full refund will be processed.',
       review_link: 'https://g.page/r/example',
+      deposit_amount: '20.00',
+      total_amount: '100.00',
+      outstanding_amount: '80.00',
+      deadline: 'Saturday 1pm',
+      payment_link: 'https://example.com/pay',
     };
     
     let messageText = template.template_text;
@@ -190,12 +195,14 @@ export async function queueBookingConfirmationSMS(bookingId: string) {
   try {
     const supabase = await createClient();
     
-    // Get booking with customer details
+    // Get booking with customer and payment details
     const { data: booking } = await supabase
       .from('table_bookings')
       .select(`
         *,
-        customer:customers(*)
+        customer:customers(*),
+        table_booking_items(*),
+        table_booking_payments(*)
       `)
       .eq('id', bookingId)
       .single();
@@ -225,13 +232,25 @@ export async function queueBookingConfirmationSMS(bookingId: string) {
     }
     
     // Prepare variables
-    const variables = {
+    const variables: Record<string, string> = {
       customer_name: booking.customer.first_name,
       party_size: booking.party_size.toString(),
       date: new Date(booking.booking_date).toLocaleDateString('en-GB'),
       time: booking.booking_time,
       reference: booking.booking_reference,
+      contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707',
     };
+    
+    // Add deposit information for Sunday lunch bookings
+    if (booking.booking_type === 'sunday_lunch' && booking.table_booking_payments?.length > 0) {
+      const payment = booking.table_booking_payments[0];
+      const depositAmount = payment.payment_metadata?.deposit_amount || payment.amount;
+      const totalAmount = payment.payment_metadata?.total_amount || 0;
+      const outstandingAmount = payment.payment_metadata?.outstanding_amount || (totalAmount - depositAmount);
+      
+      variables.deposit_amount = depositAmount.toFixed(2);
+      variables.outstanding_amount = outstandingAmount.toFixed(2);
+    }
     
     // Queue SMS
     const { error } = await supabase
@@ -265,13 +284,14 @@ export async function queueBookingReminderSMS(bookingId: string) {
   try {
     const supabase = await createClient();
     
-    // Get booking with customer and items
+    // Get booking with customer, items and payments
     const { data: booking } = await supabase
       .from('table_bookings')
       .select(`
         *,
         customer:customers(*),
-        table_booking_items(*)
+        table_booking_items(*),
+        table_booking_payments(*)
       `)
       .eq('id', bookingId)
       .single();
@@ -316,7 +336,13 @@ export async function queueBookingReminderSMS(bookingId: string) {
         .join(', ');
         
       variables.roast_summary = roastSummary || 'Your roast selections';
-      variables.allergies = booking.allergies?.join(', ') || 'None noted';
+      
+      // Add outstanding balance if payment exists
+      if (booking.table_booking_payments?.length > 0) {
+        const payment = booking.table_booking_payments[0];
+        const outstandingAmount = payment.payment_metadata?.outstanding_amount || 0;
+        variables.outstanding_amount = outstandingAmount.toFixed(2);
+      }
     }
     
     // Queue SMS
@@ -453,7 +479,7 @@ export async function queuePaymentRequestSMS(bookingId: string) {
       return { error: 'SMS template not found' };
     }
     
-    // Calculate total amount from booking items
+    // Calculate amounts
     let totalAmount = 0;
     if (booking.table_booking_items) {
       booking.table_booking_items.forEach((item: any) => {
@@ -461,17 +487,21 @@ export async function queuePaymentRequestSMS(bookingId: string) {
       });
     } else {
       // Fallback if no items (shouldn't happen)
-      totalAmount = booking.party_size * 15; // Average price
+      totalAmount = booking.party_size * 25; // £25 average per person
     }
     
-    // Generate payment link (in production, this would be a real PayPal link)
-    const paymentLink = `${process.env.NEXT_PUBLIC_BASE_URL}/table-bookings/${bookingId}/payment`;
+    // Calculate deposit amount (£5 per person)
+    const depositAmount = booking.party_size * 5;
+    
+    // Generate payment link 
+    const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL}/api/table-bookings/payment/create?booking_id=${bookingId}`;
     
     // Prepare variables
     const variables = {
       customer_name: booking.customer.first_name,
       reference: booking.booking_reference,
-      amount: totalAmount.toFixed(2),
+      deposit_amount: depositAmount.toFixed(2),
+      total_amount: totalAmount.toFixed(2),
       payment_link: paymentLink,
       deadline: 'Saturday 1pm',
     };

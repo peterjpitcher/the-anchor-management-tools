@@ -64,22 +64,33 @@ export async function GET(request: NextRequest) {
     const { orderId, approveUrl } = await createPayPalOrder(
       booking,
       returnUrl,
-      cancelUrl
+      cancelUrl,
+      true // depositOnly = true for Sunday lunch bookings
     );
     
-    // Store PayPal order ID
+    // Calculate amounts
+    const totalAmount = booking.table_booking_items.reduce(
+      (sum: number, item: any) => sum + (item.price_at_booking * item.quantity), 
+      0
+    );
+    const depositAmount = booking.party_size * 5; // £5 per person
+    
+    // Store PayPal order ID with deposit information
     await supabase
       .from('table_booking_payments')
       .insert({
         booking_id: bookingId,
         payment_method: 'paypal',
-        amount: booking.table_booking_items.reduce(
-          (sum: number, item: any) => sum + (item.price_at_booking * item.quantity), 
-          0
-        ),
+        amount: depositAmount, // Only charge deposit
         currency: 'GBP',
         status: 'pending',
-        payment_metadata: { paypal_order_id: orderId },
+        payment_metadata: { 
+          paypal_order_id: orderId,
+          payment_type: 'deposit',
+          total_amount: totalAmount,
+          deposit_amount: depositAmount,
+          outstanding_amount: totalAmount - depositAmount
+        },
       });
     
     // Redirect to PayPal
