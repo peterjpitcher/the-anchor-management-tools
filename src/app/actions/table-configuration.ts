@@ -62,12 +62,7 @@ export async function getTableCombinations() {
     
     const { data, error } = await supabase
       .from('table_combinations')
-      .select(`
-        *,
-        table_combination_tables(
-          table:table_configuration(*)
-        )
-      `)
+      .select('*')
       .order('name');
       
     if (error) {
@@ -297,8 +292,11 @@ export async function createTableCombination(formData: FormData) {
     const { data, error } = await supabase
       .from('table_combinations')
       .insert({
-        ...validatedData,
+        name: validatedData.name,
+        table_ids: validatedData.table_ids,
         total_capacity: totalCapacity,
+        preferred_for_size: validatedData.preferred_for_size,
+        is_active: validatedData.is_active,
       })
       .select()
       .single();
@@ -306,6 +304,26 @@ export async function createTableCombination(formData: FormData) {
     if (error) {
       console.error('Combination creation error:', error);
       return { error: 'Failed to create table combination' };
+    }
+    
+    // Create junction table records
+    const junctionRecords = validatedData.table_ids.map(tableId => ({
+      combination_id: data.id,
+      table_id: tableId,
+    }));
+    
+    const { error: junctionError } = await supabase
+      .from('table_combination_tables')
+      .insert(junctionRecords);
+      
+    if (junctionError) {
+      console.error('Junction table creation error:', junctionError);
+      // Clean up the combination if junction records fail
+      await supabase
+        .from('table_combinations')
+        .delete()
+        .eq('id', data.id);
+      return { error: 'Failed to create table combination relationships' };
     }
     
     // Log audit event
