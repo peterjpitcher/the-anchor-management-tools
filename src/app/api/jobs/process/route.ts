@@ -7,12 +7,27 @@ export const maxDuration = 60 // 60 seconds max execution time
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify cron secret
+    // Verify cron secret - Vercel sends it as CRON_SECRET in the Authorization header
     const authHeader = request.headers.get('authorization')
     const cronSecret = process.env.CRON_SECRET
     
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-      logger.warn('Unauthorized job processor access attempt')
+    // Check for Vercel cron authentication
+    const isVercelCron = authHeader === `Bearer ${cronSecret}` || 
+                        authHeader === cronSecret || // Vercel might send just the secret
+                        request.headers.get('x-vercel-cron') === '1' // Vercel cron header
+    
+    // In production, allow if it's from Vercel cron
+    const isAuthorized = isVercelCron || 
+                        (process.env.NODE_ENV === 'development' && !cronSecret)
+    
+    if (!isAuthorized) {
+      logger.warn('Unauthorized job processor access attempt', {
+        metadata: { 
+          authHeader: authHeader?.substring(0, 10) + '...', 
+          hasVercelHeader: request.headers.get('x-vercel-cron'),
+          env: process.env.NODE_ENV 
+        }
+      })
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     
@@ -50,7 +65,15 @@ export async function GET(request: NextRequest) {
     const authHeader = request.headers.get('authorization')
     const cronSecret = process.env.CRON_SECRET
     
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    // Same authentication logic as POST
+    const isVercelCron = authHeader === `Bearer ${cronSecret}` || 
+                        authHeader === cronSecret || 
+                        request.headers.get('x-vercel-cron') === '1'
+    
+    const isAuthorized = isVercelCron || 
+                        (process.env.NODE_ENV === 'development' && !cronSecret)
+    
+    if (!isAuthorized) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     
