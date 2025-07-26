@@ -33,9 +33,11 @@ const CreateBookingSchema = z.object({
     sms_opt_in: z.boolean().default(true),
   }),
   special_requirements: z.string().optional(),
-  dietary_requirements: z.array(z.string()).optional(),
-  allergies: z.array(z.string()).optional(),
+  dietary_requirements: z.array(z.string()).optional().default([]),
+  allergies: z.array(z.string()).optional().default([]),
   celebration_type: z.string().optional(),
+  duration_minutes: z.number().optional().default(120),
+  source: z.string().optional().default('website'),
   menu_selections: z.array(z.object({
     menu_item_id: z.string().optional(),
     custom_item_name: z.string().optional(),
@@ -84,16 +86,25 @@ export async function POST(request: NextRequest) {
       let customer = existingCustomer;
       
       if (!customer) {
+        // Remove email from customer data since the column doesn't exist
+        const { email, ...customerDataWithoutEmail } = validatedData.customer;
+        
         const { data: newCustomer, error: customerError } = await supabase
           .from('customers')
           .insert({
-            ...validatedData.customer,
+            ...customerDataWithoutEmail,
             mobile_number: standardizedPhone,
           })
           .select()
           .single();
           
         if (customerError) {
+          console.error('Customer creation error:', {
+            message: customerError.message,
+            code: customerError.code,
+            details: customerError.details,
+            hint: customerError.hint,
+          });
           return createErrorResponse(
             'Failed to create customer record',
             'DATABASE_ERROR',
@@ -136,15 +147,27 @@ export async function POST(request: NextRequest) {
           dietary_requirements: validatedData.dietary_requirements,
           allergies: validatedData.allergies,
           celebration_type: validatedData.celebration_type,
-          duration_minutes: 120,
-          source: 'website',
+          duration_minutes: validatedData.duration_minutes,
+          source: validatedData.source,
           status: validatedData.booking_type === 'sunday_lunch' ? 'pending_payment' : 'confirmed',
         })
         .select()
         .single();
         
       if (bookingError) {
-        console.error('Booking creation error:', bookingError);
+        console.error('Booking creation error:', {
+          message: bookingError.message,
+          code: bookingError.code,
+          details: bookingError.details,
+          hint: bookingError.hint,
+          bookingData: {
+            customer_id: customer.id,
+            booking_date: validatedData.date,
+            booking_time: validatedData.time,
+            party_size: validatedData.party_size,
+            booking_type: validatedData.booking_type,
+          }
+        });
         return createErrorResponse(
           'Failed to create booking',
           'DATABASE_ERROR',
