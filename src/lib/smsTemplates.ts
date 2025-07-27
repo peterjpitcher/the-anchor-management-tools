@@ -17,7 +17,7 @@ export const smsTemplates = {
     })
     const baseMessage = `Hi ${params.firstName}, your booking for ${params.seats} people for our ${params.eventName} on ${formattedDate} at ${params.eventTime} is confirmed!`
     const qrMessage = params.qrCodeUrl ? ` Check-in with QR: ${params.qrCodeUrl}` : ''
-    return `${baseMessage}${qrMessage} See you then. The Anchor 01753682707`
+    return `${baseMessage}${qrMessage} See you then. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
   },
 
   reminderOnly: (params: {
@@ -30,7 +30,7 @@ export const smsTemplates = {
       month: 'long',
       day: 'numeric',
     })
-    return `Hi ${params.firstName}, don't forget, we've got our ${params.eventName} on ${formattedDate} at ${params.eventTime}! Let us know if you want to book seats. The Anchor 01753682707`
+    return `Hi ${params.firstName}, don't forget, we've got our ${params.eventName} on ${formattedDate} at ${params.eventTime}! Let us know if you want to book seats. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
   },
 
   dayBeforeReminder: (params: {
@@ -42,7 +42,7 @@ export const smsTemplates = {
     const seatInfo = params.seats
       ? `and you have ${params.seats} seats booked`
       : ''
-    return `Hi ${params.firstName}, just a reminder that our ${params.eventName} is tomorrow at ${params.eventTime} ${seatInfo}. See you tomorrow! The Anchor 01753682707`
+    return `Hi ${params.firstName}, just a reminder that our ${params.eventName} is tomorrow at ${params.eventTime} ${seatInfo}. See you tomorrow! The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
   },
 
   weekBeforeReminder: (params: {
@@ -59,7 +59,7 @@ export const smsTemplates = {
     const seatInfo = params.seats
       ? `and you have ${params.seats} seats booked`
       : ''
-    return `Hi ${params.firstName}, just a reminder that our ${params.eventName} is next week on ${formattedDate} at ${params.eventTime} ${seatInfo}. See you here! The Anchor 01753682707`
+    return `Hi ${params.firstName}, just a reminder that our ${params.eventName} is next week on ${formattedDate} at ${params.eventTime} ${seatInfo}. See you here! The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
   },
 }
 

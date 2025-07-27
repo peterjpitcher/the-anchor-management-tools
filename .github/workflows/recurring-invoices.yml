@@ -1,0 +1,44 @@
+name: Recurring Invoices
+
+on:
+  schedule:
+    - cron: '0 8 * * *'  # Run at 8 AM UTC daily
+  workflow_dispatch:      # Allow manual triggering
+
+jobs:
+  process-recurring-invoices:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Required Secrets
+        run: |
+          if [ -z "${{ secrets.CRON_SECRET }}" ]; then
+            echo "Error: CRON_SECRET secret is not set"
+            exit 1
+          fi
+          echo "Required secrets are set"
+
+      - name: Process Recurring Invoices
+        run: |
+          VERCEL_URL="https://management.orangejelly.co.uk"
+          
+          echo "Processing recurring invoices at: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "Making request to: ${VERCEL_URL}/api/cron/recurring-invoices"
+
+          response=$(curl -X GET "${VERCEL_URL}/api/cron/recurring-invoices" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -w "\n%{http_code}" \
+            -s)
+
+          status_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+          echo "Status code: $status_code"
+
+          if [ "$status_code" -ge 400 ]; then
+            echo "Error: Request failed with status $status_code"
+            exit 1
+          fi
+
+          echo "Recurring invoices processed successfully"
