@@ -170,9 +170,9 @@ All APIs return consistent error responses:
 
 # Business Information API
 
-## Get Business Hours
+## Get Business Hours (Comprehensive)
 
-Retrieve the restaurant's opening hours, including kitchen hours for table bookings.
+Retrieve comprehensive opening hours data including regular hours, special hours, real-time status, capacity information, and service availability.
 
 **Endpoint:** `GET /business/hours`
 
@@ -196,21 +196,12 @@ Retrieve the restaurant's opening hours, including kitchen hours for table booki
       "closes": "22:00:00",
       "kitchen": null,  // Kitchen closed on Mondays
       "is_closed": false
-    },
-    "tuesday": {
-      "opens": "09:00:00",
-      "closes": "22:00:00",
-      "kitchen": {
-        "opens": "18:00:00",
-        "closes": "21:00:00"
-      },
-      "is_closed": false
     }
-    // ... other days
+    // ... all 7 days
   },
   "specialHours": [
     {
-      "date": "2024-12-25",
+      "date": "2025-12-25",
       "opens": "10:00:00",
       "closes": "16:00:00",
       "kitchen": {
@@ -219,39 +210,160 @@ Retrieve the restaurant's opening hours, including kitchen hours for table booki
       },
       "status": "modified",
       "note": "Christmas Day - Limited Hours"
-    },
-    {
-      "date": "2024-12-26",
-      "opens": "10:00:00",
-      "closes": "20:00:00",
-      "kitchen": {
-        "is_closed": true
-      },
-      "status": "modified",
-      "note": "Boxing Day - Kitchen Closed"
     }
   ],
   "currentStatus": {
     "isOpen": true,
     "kitchenOpen": true,
-    "closesIn": "6 hours 30 minutes",
-    "opensIn": null
+    "closesIn": "2 hours 30 minutes",
+    "opensIn": null,
+    "currentTime": "19:30:00",
+    "timestamp": "2025-01-27T19:30:00.000Z",
+    "services": {
+      "venue": {
+        "open": true,
+        "closesIn": "2 hours 30 minutes"
+      },
+      "kitchen": {
+        "open": true,
+        "closesIn": "1 hour 30 minutes"
+      },
+      "bookings": {
+        "accepting": true,
+        "availableSlots": ["20:00", "20:30"]
+      }
+    },
+    "capacity": {
+      "total": 50,
+      "available": 12,
+      "percentageFull": 76
+    }
   },
-  "timezone": "Europe/London",
-  "lastUpdated": "2024-03-15T10:00:00.000Z"
+  "today": {
+    "date": "2025-01-27",
+    "dayName": "Monday",
+    "summary": "Open 09:00:00 - 22:00:00",
+    "isSpecialHours": false,
+    "events": [
+      {
+        "title": "Quiz Night",
+        "time": "19:00:00",
+        "affectsCapacity": true
+      }
+    ]
+  },
+  "upcomingWeek": [
+    {
+      "date": "2025-01-27",
+      "dayName": "Monday",
+      "status": "normal",
+      "summary": "Open 09:00:00 - 22:00:00",
+      "note": null
+    },
+    {
+      "date": "2025-01-28",
+      "dayName": "Tuesday",
+      "status": "normal",
+      "summary": "Open 09:00:00 - 22:00:00",
+      "note": null
+    }
+    // ... next 7 days
+  ],
+  "patterns": {
+    "regularClosures": ["Christmas Day", "Boxing Day"],
+    "typicalBusyTimes": {
+      "friday": ["19:00-21:00"],
+      "saturday": ["12:00-14:00", "19:00-21:00"],
+      "sunday": ["12:00-15:00"]
+    },
+    "quietTimes": {
+      "tuesday": ["14:00-17:00"],
+      "wednesday": ["14:00-17:00"]
+    }
+  },
+  "services": {
+    "kitchen": {
+      "lunch": {
+        "start": "12:00:00",
+        "end": "14:30:00"
+      },
+      "dinner": {
+        "start": "17:00:00",
+        "end": "21:00:00"
+      },
+      "sundayLunch": {
+        "available": true,
+        "slots": ["12:00", "12:30", "13:00", "13:30", "14:00"],
+        "bookingRequired": true,
+        "lastOrderTime": "14:00"
+      }
+    },
+    "bar": {
+      "happyHour": {
+        "days": ["friday"],
+        "start": "17:00:00",
+        "end": "19:00:00"
+      }
+    },
+    "privateHire": {
+      "available": true,
+      "minimumNotice": "48 hours",
+      "spaces": ["Main Restaurant", "Private Dining Room", "Garden Area"]
+    }
+  },
+  "planning": {
+    "nextClosure": {
+      "date": "2025-12-25",
+      "reason": "Christmas Day"
+    },
+    "nextModifiedHours": {
+      "date": "2025-12-24",
+      "reason": "Christmas Eve",
+      "changes": "10:00:00 - 18:00:00"
+    },
+    "seasonalChanges": {
+      "summerHours": {
+        "active": false,
+        "period": "June-August",
+        "changes": "Garden open until 23:00"
+      }
+    }
+  },
+  "integration": {
+    "bookingApi": "/api/table-bookings/availability",
+    "eventsApi": "/api/events",
+    "lastUpdated": "2025-01-27T19:30:00.000Z",
+    "updateFrequency": "1 minute"
+  }
 }
 ```
+
+### Response Fields
+
+#### Core Fields
+- **regularHours**: Standard weekly opening hours for all 7 days
+- **specialHours**: Exceptions for specific dates (holidays, special events) - covers next 90 days
+- **currentStatus**: Real-time operational status including services and capacity
+
+#### Enhanced Fields
+- **today**: Comprehensive information about today's hours and events
+- **upcomingWeek**: 7-day forecast of opening hours and special notes
+- **patterns**: Typical busy/quiet times for planning visits
+- **services**: Detailed service availability (kitchen, bar, private hire)
+- **planning**: Future closures and seasonal changes
+- **integration**: Links to related APIs and update information
 
 ### Important Notes
 - **Day keys are lowercase**: `sunday`, `monday`, etc.
 - **Kitchen object**: Can be `null` when kitchen is closed but venue is open
-- **Kitchen closed indicator**: When `kitchen.is_closed` is `true`, the kitchen is closed while the venue remains open
 - **Time format**: Always `HH:mm:ss` (24-hour with seconds)
-- **Special hours**: Override regular hours for specific dates
+- **Special hours**: Override regular hours for specific dates up to 90 days ahead
 - **All times are in Europe/London timezone**
+- **Real-time capacity**: Based on current table bookings
+- **Cache-friendly**: Responses include cache headers (60 second cache)
 
 ### Kitchen Status Formats
-The kitchen field in the response can have three different formats:
+The kitchen field can have different formats:
 
 1. **Kitchen Open with Times**:
    ```json
@@ -261,45 +373,66 @@ The kitchen field in the response can have three different formats:
    }
    ```
 
-2. **Kitchen Closed (venue still open)**:
-   ```json
-   "kitchen": {
-     "is_closed": true
-   }
-   ```
-
-3. **No Kitchen Service** (e.g., regular Monday schedule):
+2. **No Kitchen Service**:
    ```json
    "kitchen": null
    ```
 
 ### Example Usage
+
+#### Basic Check
 ```javascript
-// Check if kitchen is open for table bookings
 const response = await fetch('https://management.orangejelly.co.uk/api/business/hours', {
   headers: { 'X-API-Key': 'your-api-key' }
 });
 
 const data = await response.json();
-const today = new Date().toLocaleDateString('en-GB', { weekday: 'long' }).toLowerCase();
-const todayHours = data.regularHours[today];
 
-// Check for special hours that might override
-const todayDate = new Date().toISOString().split('T')[0];
-const specialToday = data.specialHours.find(s => s.date === todayDate);
+// Quick status check
+if (data.currentStatus.isOpen && data.currentStatus.kitchenOpen) {
+  console.log('Restaurant is open and serving food');
+  console.log(`${data.currentStatus.capacity.available} seats available`);
+}
+```
 
-if (specialToday) {
-  if (specialToday.status === 'closed') {
-    console.log('Venue closed today');
-  } else if (specialToday.kitchen?.is_closed) {
-    console.log('Kitchen closed today - no table bookings available');
-  } else if (specialToday.kitchen) {
-    console.log(`Kitchen open from ${specialToday.kitchen.opens} to ${specialToday.kitchen.closes}`);
+#### Advanced Planning
+```javascript
+// Check availability for next week
+const data = await response.json();
+
+// Find quiet times for a relaxed meal
+const tomorrow = data.upcomingWeek[1];
+if (tomorrow.status === 'normal') {
+  const dayName = tomorrow.dayName.toLowerCase();
+  const quietTimes = data.patterns.quietTimes[dayName];
+  if (quietTimes) {
+    console.log(`Quiet times tomorrow: ${quietTimes.join(', ')}`);
   }
-} else if (!todayHours.kitchen) {
-  console.log('Kitchen closed today - no table bookings available');
-} else {
-  console.log(`Kitchen open from ${todayHours.kitchen.opens} to ${todayHours.kitchen.closes}`);
+}
+
+// Check for Sunday lunch availability
+if (new Date().getDay() === 0 && data.services.kitchen.sundayLunch) {
+  const sundayLunch = data.services.kitchen.sundayLunch;
+  console.log(`Sunday lunch slots: ${sundayLunch.slots.join(', ')}`);
+}
+
+// Plan around events
+const todayEvents = data.today.events;
+if (todayEvents.length > 0) {
+  console.log('Events today:', todayEvents.map(e => `${e.title} at ${e.time}`));
+}
+```
+
+#### Integration with Booking System
+```javascript
+// Check if bookings are available now
+if (data.currentStatus.services.bookings.accepting) {
+  const slots = data.currentStatus.services.bookings.availableSlots;
+  console.log(`Available booking times today: ${slots.join(', ')}`);
+  
+  // Use the booking API for detailed availability
+  const bookingApiUrl = `https://management.orangejelly.co.uk${data.integration.bookingApi}`;
+  // ... make booking availability request
 }
 ```
 
