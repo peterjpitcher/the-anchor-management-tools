@@ -2,11 +2,19 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { CheckCircleIcon, CalendarIcon, ClockIcon, UserGroupIcon, CurrencyPoundIcon } from '@heroicons/react/24/outline';
+import { CheckCircleIcon, CalendarIcon, ClockIcon, UserGroupIcon, CurrencyPoundIcon, ArrowTopRightOnSquareIcon, CameraIcon } from '@heroicons/react/24/outline';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { format } from 'date-fns';
+
+interface BookingItem {
+  custom_item_name: string;
+  quantity: number;
+  price_at_booking: number;
+  special_requests?: string;
+  guest_name?: string;
+}
 
 interface BookingDetails {
   booking_reference: string;
@@ -16,6 +24,7 @@ interface BookingDetails {
   customer_name: string;
   deposit_amount: number;
   outstanding_amount: number;
+  items: BookingItem[];
 }
 
 function BookingSuccessContent() {
@@ -59,7 +68,8 @@ function BookingSuccessContent() {
         party_size: data.party_size,
         customer_name: data.customer_name,
         deposit_amount: depositAmount,
-        outstanding_amount: totalAmount - depositAmount
+        outstanding_amount: totalAmount - depositAmount,
+        items: data.items || []
       });
       setLoading(false);
     } catch (err) {
@@ -98,106 +108,162 @@ function BookingSuccessContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
-      <div className="max-w-2xl mx-auto">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
-            <CheckCircleIcon className="h-8 w-8 text-green-600" />
+    <div className="min-h-screen bg-white">
+      {/* Header with branding */}
+      <div className="bg-[#005131] text-white px-4 py-4">
+        <div className="max-w-2xl mx-auto flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">The Anchor</h1>
+            <p className="text-sm opacity-90">Horton Road, Stanwell Moor</p>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">Payment Successful!</h1>
-          <p className="mt-2 text-gray-600">Your deposit has been received</p>
+          <a 
+            href="https://www.the-anchor.pub" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="flex items-center text-sm underline hover:no-underline"
+          >
+            Visit Website
+            <ArrowTopRightOnSquareIcon className="h-4 w-4 ml-1" />
+          </a>
         </div>
+      </div>
 
-        <Card className="mb-6">
-          <div className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Booking Confirmation</h2>
-            <p className="text-gray-600 mb-4">
-              Thank you, {booking.customer_name}. Your Sunday lunch booking has been confirmed.
-            </p>
-            
-            <div className="bg-gray-50 rounded-lg p-4 mb-4">
-              <p className="text-sm text-gray-500 mb-1">Booking Reference</p>
-              <p className="text-lg font-mono font-semibold">{booking.booking_reference}</p>
-            </div>
-            
-            <div className="space-y-3">
-              <div className="flex items-center text-gray-600">
-                <CalendarIcon className="h-5 w-5 mr-3" />
-                <span>{format(new Date(booking.booking_date), 'EEEE, MMMM d, yyyy')}</span>
-              </div>
-              
-              <div className="flex items-center text-gray-600">
-                <ClockIcon className="h-5 w-5 mr-3" />
-                <span>{formatTime(booking.booking_time)}</span>
-              </div>
-              
-              <div className="flex items-center text-gray-600">
-                <UserGroupIcon className="h-5 w-5 mr-3" />
-                <span>{booking.party_size} {booking.party_size === 1 ? 'guest' : 'guests'}</span>
-              </div>
-            </div>
+      {/* Success banner */}
+      <div className="bg-green-50 border-b border-green-200 px-4 py-6">
+        <div className="max-w-2xl mx-auto text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-3">
+            <CheckCircleIcon className="h-10 w-10 text-green-600" />
           </div>
-        </Card>
+          <h2 className="text-2xl font-bold text-gray-900">Payment Successful!</h2>
+          <p className="text-gray-600 mt-1">Your Sunday lunch is confirmed</p>
+        </div>
+      </div>
 
-        <Card className="mb-6">
-          <div className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Payment Details</h2>
-            
-            <div className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Deposit Paid</span>
-                <span className="font-medium text-green-600">£{booking.deposit_amount.toFixed(2)}</span>
+      {/* Screenshot reminder - mobile optimized */}
+      <div className="bg-blue-50 border-b border-blue-200 px-4 py-3">
+        <div className="max-w-2xl mx-auto flex items-center text-blue-800">
+          <CameraIcon className="h-5 w-5 mr-2 flex-shrink-0" />
+          <p className="text-sm font-medium">Please screenshot this page for your records</p>
+        </div>
+      </div>
+
+      <div className="px-4 py-6">
+        <div className="max-w-2xl mx-auto space-y-4">
+          {/* Booking details - most important info first */}
+          <Card className="border-2 border-[#005131]">
+            <div className="p-4">
+              <div className="text-center mb-4">
+                <p className="text-sm text-gray-500">Booking Reference</p>
+                <p className="text-2xl font-bold font-mono text-[#005131]">{booking.booking_reference}</p>
               </div>
               
-              {booking.outstanding_amount > 0 && (
-                <>
-                  <div className="border-t pt-3">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Balance Due at Venue</span>
-                      <span className="font-medium">£{booking.outstanding_amount.toFixed(2)}</span>
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <CalendarIcon className="h-6 w-6 mx-auto mb-1 text-[#005131]" />
+                  <p className="text-xs text-gray-500">Date</p>
+                  <p className="font-semibold text-sm">{format(new Date(booking.booking_date), 'EEE, MMM d')}</p>
+                </div>
+                <div>
+                  <ClockIcon className="h-6 w-6 mx-auto mb-1 text-[#005131]" />
+                  <p className="text-xs text-gray-500">Time</p>
+                  <p className="font-semibold text-sm">{formatTime(booking.booking_time)}</p>
+                </div>
+                <div>
+                  <UserGroupIcon className="h-6 w-6 mx-auto mb-1 text-[#005131]" />
+                  <p className="text-xs text-gray-500">Guests</p>
+                  <p className="font-semibold text-sm">{booking.party_size}</p>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* Order details */}
+          <Card>
+            <div className="p-4">
+              <h3 className="font-semibold text-[#005131] mb-3">Your Order</h3>
+              <div className="space-y-2">
+                {booking.items.map((item, index) => (
+                  <div key={index} className="border-b border-gray-100 pb-2 last:border-0">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <p className="font-medium">
+                          {item.quantity}x {item.custom_item_name}
+                        </p>
+                        {item.guest_name && (
+                          <p className="text-sm text-gray-600">For: {item.guest_name}</p>
+                        )}
+                        {item.special_requests && (
+                          <p className="text-sm text-gray-600 italic">Note: {item.special_requests}</p>
+                        )}
+                      </div>
+                      <p className="font-medium text-[#005131]">£{(item.price_at_booking * item.quantity).toFixed(2)}</p>
                     </div>
-                    <p className="text-sm text-gray-500 mt-1">
-                      Please pay the remaining balance when you arrive
-                    </p>
                   </div>
-                </>
-              )}
+                ))}
+              </div>
             </div>
-          </div>
-        </Card>
+          </Card>
 
-        <Card>
-          <div className="p-6">
-            <h2 className="text-xl font-semibold mb-4">What Happens Next?</h2>
-            
-            <ul className="space-y-3 text-gray-600">
-              <li className="flex">
-                <span className="text-green-600 mr-2">✓</span>
-                <span>You'll receive a confirmation text message shortly</span>
-              </li>
-              <li className="flex">
-                <span className="text-green-600 mr-2">✓</span>
-                <span>We'll send you a reminder the day before</span>
-              </li>
-              <li className="flex">
-                <span className="text-green-600 mr-2">✓</span>
-                <span>Simply give your name or booking reference when you arrive</span>
-              </li>
-            </ul>
-            
-            <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-              <p className="text-sm text-blue-800">
-                <strong>Need to make changes?</strong><br />
-                Call us at {process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}
+          {/* Payment summary */}
+          <Card>
+            <div className="p-4">
+              <h3 className="font-semibold text-[#005131] mb-3">Payment Summary</h3>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span>Deposit Paid</span>
+                  <span className="font-semibold text-green-600">£{booking.deposit_amount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Balance Due</span>
+                  <span className="font-semibold">£{booking.outstanding_amount.toFixed(2)}</span>
+                </div>
+                <div className="text-sm text-gray-600 pt-2 border-t">
+                  <p>• Balance payable at the venue</p>
+                  <p>• We accept cash or card</p>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* Contact info */}
+          <Card className="bg-gray-50">
+            <div className="p-4">
+              <h3 className="font-semibold text-[#005131] mb-2">Need to make changes?</h3>
+              <p className="text-sm">
+                Call us at <a href="tel:01753682707" className="font-semibold text-[#005131]">01753 682707</a>
+              </p>
+              <p className="text-xs text-gray-600 mt-1">
+                The Anchor, Horton Road, Stanwell Moor, Surrey TW19 6AQ
               </p>
             </div>
-          </div>
-        </Card>
+          </Card>
 
-        <div className="text-center mt-8">
-          <p className="text-gray-600">
-            We look forward to seeing you for Sunday lunch!
-          </p>
+          {/* Desktop only - additional info */}
+          <div className="hidden sm:block space-y-4">
+            <Card>
+              <div className="p-4">
+                <h3 className="font-semibold text-[#005131] mb-3">What Happens Next?</h3>
+                <ul className="space-y-2 text-sm">
+                  <li className="flex items-start">
+                    <span className="text-green-600 mr-2">✓</span>
+                    <span>You'll receive a confirmation text message shortly</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-green-600 mr-2">✓</span>
+                    <span>We'll send you a reminder the day before</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-green-600 mr-2">✓</span>
+                    <span>Simply give your name or booking reference when you arrive</span>
+                  </li>
+                </ul>
+              </div>
+            </Card>
+          </div>
+
+          <div className="text-center py-4">
+            <p className="text-gray-600">We look forward to seeing you!</p>
+          </div>
         </div>
       </div>
     </div>

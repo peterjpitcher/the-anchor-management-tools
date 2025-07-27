@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { capturePayPalPayment } from '@/lib/paypal';
 import { queueBookingConfirmationSMS } from '@/app/actions/table-booking-sms';
 import { sendBookingConfirmationEmail } from '@/app/actions/table-booking-email';
+import { sendManagerOrderNotification } from '@/app/actions/table-booking-manager-email';
 
 export async function GET(request: NextRequest) {
   console.log('[Payment Journey] PayPal return handler called');
@@ -114,6 +115,9 @@ export async function GET(request: NextRequest) {
       if (booking.customer?.email) {
         await sendBookingConfirmationEmail(bookingId);
       }
+      
+      // Send manager notification email
+      await sendManagerOrderNotification(bookingId);
       
       // Redirect to success page
       console.log('[Payment Journey] Payment completed successfully, redirecting to success page');
