@@ -219,20 +219,26 @@ export async function createTableBooking(formData: FormData) {
     // Get business hours for the booking day
     const { data: businessHours } = await supabase
       .from('business_hours')
-      .select('kitchen_opens, kitchen_closes, is_closed')
+      .select('kitchen_opens, kitchen_closes, is_closed, is_kitchen_closed')
       .eq('day_of_week', bookingDay)
       .single();
       
     // Check for special hours
     const { data: specialHours } = await supabase
       .from('special_hours')
-      .select('kitchen_opens, kitchen_closes, is_closed')
+      .select('kitchen_opens, kitchen_closes, is_closed, is_kitchen_closed')
       .eq('date', bookingData.booking_date)
       .single();
       
     const activeHours = specialHours || businessHours;
     
-    if (!activeHours || activeHours.is_closed || !activeHours.kitchen_opens || !activeHours.kitchen_closes) {
+    // Check if kitchen is closed
+    const kitchenClosed = !activeHours || 
+                         activeHours.is_closed || 
+                         activeHours.is_kitchen_closed ||
+                         (!activeHours.kitchen_opens || !activeHours.kitchen_closes);
+    
+    if (kitchenClosed) {
       return { error: 'Kitchen is closed on the selected date' };
     }
     
@@ -483,20 +489,26 @@ export async function updateTableBooking(
         // Get business hours for the booking day
         const { data: businessHours } = await supabase
           .from('business_hours')
-          .select('kitchen_opens, kitchen_closes, is_closed')
+          .select('kitchen_opens, kitchen_closes, is_closed, is_kitchen_closed')
           .eq('day_of_week', bookingDay)
           .single();
           
         // Check for special hours
         const { data: specialHours } = await supabase
           .from('special_hours')
-          .select('kitchen_opens, kitchen_closes, is_closed')
+          .select('kitchen_opens, kitchen_closes, is_closed, is_kitchen_closed')
           .eq('date', newDate)
           .single();
           
         const activeHours = specialHours || businessHours;
         
-        if (!activeHours || activeHours.is_closed || !activeHours.kitchen_opens || !activeHours.kitchen_closes) {
+        // Check if kitchen is closed
+        const kitchenClosed = !activeHours || 
+                             activeHours.is_closed || 
+                             activeHours.is_kitchen_closed ||
+                             (!activeHours.kitchen_opens || !activeHours.kitchen_closes);
+        
+        if (kitchenClosed) {
           return { error: 'Kitchen is closed on the selected date' };
         }
         

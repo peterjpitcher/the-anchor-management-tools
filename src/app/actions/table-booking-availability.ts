@@ -71,13 +71,16 @@ export async function checkAvailability(
             closes: '00:00',
             source: specialHours ? 'special_hours' : 'business_hours',
           },
-          special_notes: activeHours?.notes || 'Restaurant closed on this date',
+          special_notes: activeHours?.note || 'Restaurant closed on this date',
         }
       };
     }
     
-    // Check kitchen hours
-    if (!activeHours.kitchen_opens || !activeHours.kitchen_closes) {
+    // Check if kitchen is explicitly closed or has no hours
+    const kitchenClosed = activeHours.is_kitchen_closed || 
+                         (!activeHours.kitchen_opens || !activeHours.kitchen_closes);
+    
+    if (kitchenClosed) {
       return {
         data: {
           available: false,
@@ -87,7 +90,7 @@ export async function checkAvailability(
             closes: activeHours.closes || '00:00',
             source: specialHours ? 'special_hours' : 'business_hours',
           },
-          special_notes: 'Kitchen closed on this date',
+          special_notes: activeHours.note || 'Kitchen closed on this date',
         }
       };
     }
@@ -190,7 +193,7 @@ export async function checkAvailability(
           closes: activeHours.kitchen_closes,
           source: specialHours ? 'special_hours' : 'business_hours',
         },
-        special_notes: activeHours.notes,
+        special_notes: activeHours.note,
       }
     };
   } catch (error) {
