@@ -76,6 +76,12 @@ export interface BreadcrumbsProps {
   size?: 'sm' | 'md' | 'lg'
   
   /**
+   * Color theme variant
+   * @default 'default'
+   */
+  theme?: 'default' | 'light'
+  
+  /**
    * Additional CSS classes
    */
   className?: string
@@ -94,6 +100,7 @@ export function Breadcrumbs({
   maxItems = 3,
   separator,
   size = 'md',
+  theme = 'default',
   className,
   showOnMobile = true,
 }: BreadcrumbsProps) {
@@ -119,6 +126,24 @@ export function Breadcrumbs({
       icon: 'h-5 w-5',
       separator: 'h-6 w-6',
       gap: 'gap-3',
+    },
+  }
+  
+  // Theme classes
+  const themeClasses = {
+    default: {
+      current: 'text-gray-500 cursor-default',
+      clickable: 'text-gray-700 hover:text-gray-900 transition-colors',
+      nonClickable: 'text-gray-500',
+      separator: 'text-gray-300',
+      menuButton: 'text-gray-700 hover:text-gray-900',
+    },
+    light: {
+      current: 'text-white/60 cursor-default',
+      clickable: 'text-white/80 hover:text-white transition-colors',
+      nonClickable: 'text-white/60',
+      separator: 'text-white/40',
+      menuButton: 'text-white/80 hover:text-white',
     },
   }
   
@@ -163,10 +188,10 @@ export function Breadcrumbs({
       sizeClasses[size].gap,
       sizeClasses[size].text,
       item.current
-        ? 'text-gray-500 cursor-default'
+        ? themeClasses[theme].current
         : isClickable
-        ? 'text-gray-700 hover:text-gray-900 transition-colors'
-        : 'text-gray-500'
+        ? themeClasses[theme].clickable
+        : themeClasses[theme].nonClickable
     )
     
     if (item.href && !item.current) {
@@ -201,7 +226,8 @@ export function Breadcrumbs({
     <ChevronRightIcon
       className={cn(
         sizeClasses[size].separator,
-        'text-gray-300 flex-shrink-0'
+        themeClasses[theme].separator,
+        'flex-shrink-0'
       )}
       aria-hidden="true"
     />
@@ -232,7 +258,8 @@ export function Breadcrumbs({
                   <Menu as="div" className="relative inline-block text-left">
                     <Menu.Button
                       className={cn(
-                        'flex items-center text-gray-700 hover:text-gray-900',
+                        'flex items-center',
+                        themeClasses[theme].menuButton,
                         sizeClasses[size].text,
                         'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 rounded'
                       )}
