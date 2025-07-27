@@ -5,6 +5,8 @@ import { createPayPalOrder } from '@/lib/paypal';
 import { revalidatePath } from 'next/cache';
 
 export async function createTableBookingPayment(bookingId: string) {
+  console.log('[Payment Journey] Starting payment creation for booking:', bookingId);
+  
   try {
     const supabase = createAdminClient();
     
@@ -19,8 +21,16 @@ export async function createTableBookingPayment(bookingId: string) {
       .single();
       
     if (bookingError || !booking) {
+      console.error('[Payment Journey] Booking not found:', bookingId, bookingError);
       return { error: 'Booking not found' };
     }
+    
+    console.log('[Payment Journey] Booking found:', {
+      reference: booking.booking_reference,
+      status: booking.status,
+      type: booking.booking_type,
+      partySize: booking.party_size
+    });
     
     // Check if payment is required
     if (booking.status !== 'pending_payment' || booking.booking_type !== 'sunday_lunch') {
@@ -36,6 +46,7 @@ export async function createTableBookingPayment(bookingId: string) {
       .single();
       
     if (existingPayment) {
+      console.log('[Payment Journey] Found existing pending payment:', existingPayment.transaction_id);
       return { 
         orderId: existingPayment.transaction_id,
         approveUrl: existingPayment.payment_metadata?.approve_url 
@@ -51,18 +62,26 @@ export async function createTableBookingPayment(bookingId: string) {
     const depositAmount = booking.party_size * 5;
     const outstandingAmount = totalAmount - depositAmount;
     
+    console.log('[Payment Journey] Payment amounts calculated:', {
+      total: totalAmount,
+      deposit: depositAmount,
+      outstanding: outstandingAmount
+    });
+    
     // Create PayPal order
     const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/table-bookings/payment/return?booking_id=${bookingId}`;
     const cancelUrl = `${process.env.NEXT_PUBLIC_APP_URL}/table-booking/${booking.booking_reference}/payment?cancelled=true`;
     
     let paypalOrder;
     try {
+      console.log('[Payment Journey] Creating PayPal order...');
       paypalOrder = await createPayPalOrder(
         booking,
         returnUrl,
         cancelUrl,
         true // depositOnly
       );
+      console.log('[Payment Journey] PayPal order created:', paypalOrder.orderId);
     } catch (paypalError) {
       console.error('PayPal order creation failed:', paypalError);
       
@@ -118,6 +137,8 @@ export async function createTableBookingPayment(bookingId: string) {
       
       return { error: 'Failed to create payment record. Please try again.' };
     }
+    
+    console.log('[Payment Journey] Payment record created successfully');
     
     revalidatePath(`/table-booking/${booking.booking_reference}/payment`);
     

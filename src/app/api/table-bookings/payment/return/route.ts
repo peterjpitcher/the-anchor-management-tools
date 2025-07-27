@@ -5,11 +5,19 @@ import { queueBookingConfirmationSMS } from '@/app/actions/table-booking-sms';
 import { sendBookingConfirmationEmail } from '@/app/actions/table-booking-email';
 
 export async function GET(request: NextRequest) {
+  console.log('[Payment Journey] PayPal return handler called');
+  
   try {
     const searchParams = request.nextUrl.searchParams;
     const bookingId = searchParams.get('booking_id');
     const paypalToken = searchParams.get('token');
     const payerId = searchParams.get('PayerID');
+    
+    console.log('[Payment Journey] Return parameters:', {
+      bookingId,
+      token: paypalToken?.substring(0, 10) + '...',
+      payerId
+    });
     
     if (!bookingId || !paypalToken || !payerId) {
       return NextResponse.redirect(
@@ -54,7 +62,9 @@ export async function GET(request: NextRequest) {
     
     try {
       // Capture payment
+      console.log('[Payment Journey] Capturing PayPal payment...');
       const captureResult = await capturePayPalPayment(paypalToken);
+      console.log('[Payment Journey] Payment captured successfully:', captureResult.transactionId);
       
       // Update payment record
       await supabase
@@ -106,6 +116,7 @@ export async function GET(request: NextRequest) {
       }
       
       // Redirect to success page
+      console.log('[Payment Journey] Payment completed successfully, redirecting to success page');
       return NextResponse.redirect(
         `${process.env.NEXT_PUBLIC_APP_URL}/table-booking/success?reference=${booking.booking_reference}`
       );
