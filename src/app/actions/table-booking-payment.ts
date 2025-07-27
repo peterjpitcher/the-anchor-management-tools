@@ -32,12 +32,12 @@ export async function createTableBookingPayment(bookingId: string) {
       .from('table_booking_payments')
       .select('*')
       .eq('booking_id', bookingId)
-      .eq('payment_status', 'pending')
+      .eq('status', 'pending')
       .single();
       
     if (existingPayment) {
       return { 
-        orderId: existingPayment.provider_transaction_id,
+        orderId: existingPayment.transaction_id,
         approveUrl: existingPayment.payment_metadata?.approve_url 
       };
     }
@@ -55,15 +55,27 @@ export async function createTableBookingPayment(bookingId: string) {
     const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/table-bookings/payment/return?booking_id=${bookingId}`;
     const cancelUrl = `${process.env.NEXT_PUBLIC_APP_URL}/table-booking/${booking.booking_reference}/payment?cancelled=true`;
     
-    const paypalOrder = await createPayPalOrder(
-      booking,
-      returnUrl,
-      cancelUrl,
-      true // depositOnly
-    );
+    let paypalOrder;
+    try {
+      paypalOrder = await createPayPalOrder(
+        booking,
+        returnUrl,
+        cancelUrl,
+        true // depositOnly
+      );
+    } catch (paypalError) {
+      console.error('PayPal order creation failed:', paypalError);
+      
+      // Return specific error for PayPal configuration issues
+      if (paypalError instanceof Error && paypalError.message.includes('credentials')) {
+        return { error: 'Payment system is not configured. Please contact support.' };
+      }
+      
+      return { error: 'Failed to create payment order. Please try again later.' };
+    }
     
     if (!paypalOrder.orderId || !paypalOrder.approveUrl) {
-      return { error: 'Failed to create payment order' };
+      return { error: 'Invalid payment order response' };
     }
     
     // Create payment record
@@ -73,8 +85,8 @@ export async function createTableBookingPayment(bookingId: string) {
         booking_id: bookingId,
         amount: depositAmount,
         payment_method: 'paypal',
-        payment_status: 'pending',
-        provider_transaction_id: paypalOrder.orderId,
+        status: 'pending', // Changed from payment_status to status
+        transaction_id: paypalOrder.orderId, // Changed from provider_transaction_id to transaction_id
         payment_metadata: {
           paypal_order_id: paypalOrder.orderId,
           deposit_amount: depositAmount,
@@ -85,8 +97,26 @@ export async function createTableBookingPayment(bookingId: string) {
       });
       
     if (paymentError) {
-      console.error('Payment record error:', paymentError);
-      return { error: 'Failed to create payment record' };
+      console.error('Payment record error details:', {
+        error: paymentError,
+        message: paymentError.message,
+        code: paymentError.code,
+        details: paymentError.details,
+        hint: paymentError.hint,
+        bookingId,
+        transactionId: paypalOrder.orderId,
+      });
+      
+      // More specific error messages based on error code
+      if (paymentError.code === '23505') {
+        return { error: 'A payment for this booking already exists' };
+      }
+      
+      if (paymentError.code === '23503') {
+        return { error: 'Invalid booking reference' };
+      }
+      
+      return { error: 'Failed to create payment record. Please try again.' };
     }
     
     revalidatePath(`/table-booking/${booking.booking_reference}/payment`);
@@ -119,8 +149,8 @@ export async function checkPaymentStatus(bookingReference: string) {
         status,
         booking_reference,
         table_booking_payments(
-          payment_status,
-          provider_transaction_id,
+          status,
+          transaction_id,
           payment_metadata
         )
       `)
@@ -135,7 +165,7 @@ export async function checkPaymentStatus(bookingReference: string) {
     
     return {
       bookingStatus: booking.status,
-      paymentStatus: payment?.payment_status,
+      paymentStatus: payment?.status,
       paymentUrl: payment?.payment_metadata?.approve_url
     };
     
