@@ -1,0 +1,57 @@
+name: SMS Job Processor
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'  # Run every 5 minutes
+  workflow_dispatch:       # Allow manual triggering
+
+jobs:
+  process-jobs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Required Secrets
+        run: |
+          if [ -z "${{ secrets.CRON_SECRET }}" ]; then
+            echo "Error: CRON_SECRET secret is not set"
+            exit 1
+          fi
+          echo "Required secrets are set"
+
+      - name: Process SMS Jobs
+        run: |
+          # Use production URL directly
+          VERCEL_URL="https://management.orangejelly.co.uk"
+          
+          echo "Processing SMS jobs at: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "Making request to: ${VERCEL_URL}/api/jobs/process"
+
+          response=$(curl -X POST "${VERCEL_URL}/api/jobs/process" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -H "x-vercel-cron: 1" \
+            -w "\n%{http_code}\n%{url_effective}\n%{time_total}\n%{size_download}\n%{speed_download}" \
+            -L \
+            -s)
+
+          # Extract the response components
+          body=$(echo "$response" | sed 'N;$!N;$!N;$!N;$d')
+          status_code=$(echo "$response" | tail -n5 | head -n1)
+          url_effective=$(echo "$response" | tail -n4 | head -n1)
+          time_total=$(echo "$response" | tail -n3 | head -n1)
+          size_download=$(echo "$response" | tail -n2 | head -n1)
+          speed_download=$(echo "$response" | tail -n1)
+
+          echo "Response body: $body"
+          echo "Status code: $status_code"
+          echo "Final URL: $url_effective"
+          echo "Request time: ${time_total}s"
+          echo "Response size: ${size_download} bytes"
+          echo "Download speed: ${speed_download} bytes/sec"
+
+          if [ "$status_code" -ge 400 ]; then
+            echo "Error: Request failed with status $status_code"
+            echo "Full response: $response"
+            exit 1
+          fi
+
+          echo "Job processing completed successfully"

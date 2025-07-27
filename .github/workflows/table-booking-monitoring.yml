@@ -1,0 +1,44 @@
+name: Table Booking Monitoring
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # Run every hour
+  workflow_dispatch:      # Allow manual triggering
+
+jobs:
+  monitor-bookings:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Required Secrets
+        run: |
+          if [ -z "${{ secrets.CRON_SECRET }}" ]; then
+            echo "Error: CRON_SECRET secret is not set"
+            exit 1
+          fi
+          echo "Required secrets are set"
+
+      - name: Monitor Table Bookings
+        run: |
+          VERCEL_URL="https://management.orangejelly.co.uk"
+          
+          echo "Monitoring table bookings at: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "Making request to: ${VERCEL_URL}/api/cron/table-booking-monitoring"
+
+          response=$(curl -X GET "${VERCEL_URL}/api/cron/table-booking-monitoring" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -w "\n%{http_code}" \
+            -s)
+
+          status_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+          echo "Status code: $status_code"
+
+          if [ "$status_code" -ge 400 ]; then
+            echo "Error: Request failed with status $status_code"
+            exit 1
+          fi
+
+          echo "Table booking monitoring completed successfully"
