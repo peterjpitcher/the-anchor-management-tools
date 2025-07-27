@@ -58,7 +58,7 @@ export function PageHeader({
         {/* Breadcrumbs if provided */}
         {breadcrumbs && breadcrumbs.length > 0 && (
           <div className="mt-4">
-            <Breadcrumbs items={breadcrumbs} className="text-white/80" />
+            <Breadcrumbs items={breadcrumbs} theme="light" />
           </div>
         )}
       </div>
