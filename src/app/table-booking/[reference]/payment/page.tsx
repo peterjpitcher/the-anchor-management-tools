@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect, use } from 'react';
-import { useRouter } from 'next/navigation';
-import { CurrencyPoundIcon, CalendarIcon, ClockIcon, UserGroupIcon } from '@heroicons/react/24/outline';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { CurrencyPoundIcon, CalendarIcon, ClockIcon, UserGroupIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { Button } from '@/components/ui-v2/forms/Button';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 import { format } from 'date-fns';
+import { createTableBookingPayment } from '@/app/actions/table-booking-payment';
 
 interface TableBooking {
   id: string;
@@ -31,10 +32,15 @@ interface TableBooking {
 export default function TableBookingPaymentPage(props: { params: Promise<{ reference: string }> }) {
   const params = use(props.params);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [booking, setBooking] = useState<TableBooking | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  
+  // Check for cancellation
+  const wasCancelled = searchParams.get('cancelled') === 'true';
 
   useEffect(() => {
     loadBooking();
@@ -92,8 +98,30 @@ export default function TableBookingPaymentPage(props: { params: Promise<{ refer
     if (!booking) return;
     
     setProcessing(true);
-    // Redirect to payment API endpoint
-    window.location.href = `/api/table-bookings/payment/create?booking_id=${booking.id}`;
+    setPaymentError(null);
+    
+    try {
+      // Create payment using server action
+      const result = await createTableBookingPayment(booking.id);
+      
+      if (result.error) {
+        setPaymentError(result.error);
+        setProcessing(false);
+        return;
+      }
+      
+      if (result.approveUrl) {
+        // Redirect to PayPal
+        window.location.href = result.approveUrl;
+      } else {
+        setPaymentError('Unable to create payment link. Please try again.');
+        setProcessing(false);
+      }
+    } catch (err) {
+      console.error('Payment error:', err);
+      setPaymentError('An unexpected error occurred. Please try again.');
+      setProcessing(false);
+    }
   };
 
   if (loading) {
@@ -135,6 +163,31 @@ export default function TableBookingPaymentPage(props: { params: Promise<{ refer
           <h1 className="text-3xl font-bold text-gray-900">Complete Your Booking</h1>
           <p className="mt-2 text-gray-600">Secure your Sunday lunch reservation</p>
         </div>
+        
+        {wasCancelled && (
+          <Alert variant="warning" className="mb-6">
+            <ExclamationTriangleIcon className="h-5 w-5" />
+            <div>
+              <h3 className="font-semibold">Payment Cancelled</h3>
+              <p>You cancelled the payment process. You can try again when you're ready.</p>
+            </div>
+          </Alert>
+        )}
+        
+        {paymentError && (
+          <Alert variant="error" className="mb-6">
+            <ExclamationTriangleIcon className="h-5 w-5" />
+            <div>
+              <h3 className="font-semibold">Payment Error</h3>
+              <p>{paymentError}</p>
+              {paymentError.includes('contact support') && (
+                <p className="mt-2 text-sm">
+                  Please call us at {process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}
+                </p>
+              )}
+            </div>
+          </Alert>
+        )}
 
         <Card className="mb-6">
           <div className="p-6">
@@ -194,12 +247,17 @@ export default function TableBookingPaymentPage(props: { params: Promise<{ refer
             disabled={processing}
             leftIcon={<CurrencyPoundIcon className="h-5 w-5" />}
           >
-            Pay Deposit £{depositAmount.toFixed(2)}
+            {processing ? 'Creating secure payment...' : `Pay Deposit £${depositAmount.toFixed(2)}`}
           </Button>
           
           <p className="mt-4 text-sm text-gray-500">
             You will be redirected to PayPal to complete your payment securely
           </p>
+          
+          <div className="mt-6 text-sm text-gray-600">
+            <p className="font-semibold">Having trouble?</p>
+            <p>Call us at {process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}</p>
+          </div>
         </div>
       </div>
     </div>
