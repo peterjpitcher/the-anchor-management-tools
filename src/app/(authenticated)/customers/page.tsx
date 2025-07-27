@@ -80,7 +80,7 @@ export default function CustomersPage() {
   const [customPageSize, setCustomPageSize] = useState(50)
   
   const paginationOptions = useMemo(() => ({
-    pageSize: customPageSize,
+    pageSize: customPageSize === 1000 ? 10000 : customPageSize, // Use a very large number for "All"
     searchTerm: searchTerm,
     searchColumns: ['first_name', 'last_name', 'mobile_number']
   }), [customPageSize, searchTerm])
@@ -419,15 +419,16 @@ export default function CustomersPage() {
               placeholder="Search customers by name or phone..."
               value={searchInput}
               onSearch={setSearchInput}
+              debounceDelay={0}
               className="w-full"
             />
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 sm:items-center sm:justify-between">
               <div className="text-sm text-gray-600">
                 {searchTerm && (
-                  <span>Searching for &quot;{searchTerm}&quot;</span>
+                  <span>Searching for &quot;{searchTerm}&quot; - Found {totalCount} customers</span>
                 )}
                 {!searchTerm && totalCount > 0 && (
-                  <span>Showing {Math.min(pageSize, totalCount)} of {totalCount} customers</span>
+                  <span>Showing {customPageSize === 1000 ? totalCount : Math.min(customers.length, totalCount)} of {totalCount} customers</span>
                 )}
               </div>
               <select
@@ -805,8 +806,8 @@ export default function CustomersPage() {
           {totalPages > 1 && (
             <PaginationV2
               currentPage={currentPage}
-              totalPages={Math.ceil(filteredCount / pageSize)}
-              totalItems={filteredCount}
+              totalPages={totalPages}
+              totalItems={totalCount}
               itemsPerPage={pageSize}
               onPageChange={setPage}
             />

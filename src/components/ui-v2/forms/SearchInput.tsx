@@ -130,18 +130,21 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(({
   // Debounced search value
   const debouncedValue = useDebounce(value, debounceDelay)
   
-  // Trigger search when debounced value changes
+  // Trigger search when debounced value changes (only for uncontrolled components)
   useEffect(() => {
-    if (debouncedValue || debouncedValue === '') {
+    if (controlledValue === undefined && (debouncedValue || debouncedValue === '')) {
       onSearch(String(debouncedValue))
     }
-  }, [debouncedValue, onSearch])
+  }, [debouncedValue, onSearch, controlledValue])
   
   // Handle input change
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value
     if (controlledValue === undefined) {
       setInternalValue(newValue)
+    } else {
+      // For controlled component, call onSearch immediately to update parent state
+      onSearch(newValue)
     }
     setShowDropdown(true)
     setSelectedIndex(-1)
