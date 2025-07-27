@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CheckCircleIcon, CalendarIcon, ClockIcon, UserGroupIcon, CurrencyPoundIcon, ArrowTopRightOnSquareIcon, CameraIcon } from '@heroicons/react/24/outline';
+import Image from 'next/image';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
@@ -110,17 +111,23 @@ function BookingSuccessContent() {
   return (
     <div className="min-h-screen bg-white">
       {/* Header with branding */}
-      <div className="bg-[#005131] text-white px-4 py-4">
+      <div className="bg-[#005131] px-4 py-4">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">The Anchor</h1>
-            <p className="text-sm opacity-90">Horton Road, Stanwell Moor</p>
+          <div className="relative">
+            <Image
+              src="/logo.png"
+              alt="The Anchor"
+              width={150}
+              height={75}
+              className="object-contain"
+              priority
+            />
           </div>
           <a 
             href="https://www.the-anchor.pub" 
             target="_blank" 
             rel="noopener noreferrer"
-            className="flex items-center text-sm underline hover:no-underline"
+            className="flex items-center text-sm text-white underline hover:no-underline"
           >
             Visit Website
             <ArrowTopRightOnSquareIcon className="h-4 w-4 ml-1" />

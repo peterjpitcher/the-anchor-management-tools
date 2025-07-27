@@ -3,12 +3,21 @@
 import { useState, useEffect, use } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { CurrencyPoundIcon, CalendarIcon, ClockIcon, UserGroupIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import Image from 'next/image';
 import { Button } from '@/components/ui-v2/forms/Button';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 import { format } from 'date-fns';
 import { createTableBookingPayment } from '@/app/actions/table-booking-payment';
+
+interface BookingItem {
+  custom_item_name: string;
+  quantity: number;
+  price_at_booking: number;
+  special_requests?: string;
+  guest_name?: string;
+}
 
 interface TableBooking {
   id: string;
@@ -23,10 +32,7 @@ interface TableBooking {
     first_name: string;
     last_name: string;
   };
-  table_booking_items: Array<{
-    quantity: number;
-    price_at_booking: number;
-  }>;
+  table_booking_items: BookingItem[];
 }
 
 export default function TableBookingPaymentPage(props: { params: Promise<{ reference: string }> }) {
@@ -165,10 +171,16 @@ export default function TableBookingPaymentPage(props: { params: Promise<{ refer
   return (
     <div className="min-h-screen bg-white">
       {/* Header with branding */}
-      <div className="bg-[#005131] text-white px-4 py-4">
+      <div className="bg-[#005131] px-4 py-4">
         <div className="max-w-2xl mx-auto">
-          <h1 className="text-2xl font-bold">The Anchor</h1>
-          <p className="text-sm opacity-90">Horton Road, Stanwell Moor</p>
+          <Image
+            src="/logo.png"
+            alt="The Anchor"
+            width={150}
+            height={75}
+            className="object-contain"
+            priority
+          />
         </div>
       </div>
       
@@ -223,6 +235,33 @@ export default function TableBookingPaymentPage(props: { params: Promise<{ refer
                 <UserGroupIcon className="h-5 w-5 mr-3" />
                 <span>{booking.party_size} {booking.party_size === 1 ? 'guest' : 'guests'}</span>
               </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* Order details */}
+        <Card className="mb-6">
+          <div className="p-6">
+            <h2 className="text-xl font-semibold mb-4 text-[#005131]">Your Order</h2>
+            <div className="space-y-3">
+              {booking.table_booking_items.map((item, index) => (
+                <div key={index} className="border-b border-gray-100 pb-3 last:border-0">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <p className="font-medium">
+                        {item.quantity}x {item.custom_item_name}
+                      </p>
+                      {item.guest_name && (
+                        <p className="text-sm text-gray-600">For: {item.guest_name}</p>
+                      )}
+                      {item.special_requests && (
+                        <p className="text-sm text-gray-600 italic">Note: {item.special_requests}</p>
+                      )}
+                    </div>
+                    <p className="font-medium text-[#005131]">£{(item.price_at_booking * item.quantity).toFixed(2)}</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </Card>
