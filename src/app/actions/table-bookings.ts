@@ -213,6 +213,38 @@ export async function createTableBooking(formData: FormData) {
       return { error: policyCheck?.[0]?.error_message || 'Booking does not meet policy requirements' };
     }
     
+    // Validate that the booking time is within kitchen hours
+    const bookingDay = new Date(bookingData.booking_date).getDay();
+    
+    // Get business hours for the booking day
+    const { data: businessHours } = await supabase
+      .from('business_hours')
+      .select('kitchen_opens, kitchen_closes, is_closed')
+      .eq('day_of_week', bookingDay)
+      .single();
+      
+    // Check for special hours
+    const { data: specialHours } = await supabase
+      .from('special_hours')
+      .select('kitchen_opens, kitchen_closes, is_closed')
+      .eq('date', bookingData.booking_date)
+      .single();
+      
+    const activeHours = specialHours || businessHours;
+    
+    if (!activeHours || activeHours.is_closed || !activeHours.kitchen_opens || !activeHours.kitchen_closes) {
+      return { error: 'Kitchen is closed on the selected date' };
+    }
+    
+    // Check if booking time is within kitchen hours
+    const bookingTime = bookingData.booking_time;
+    const kitchenOpens = activeHours.kitchen_opens;
+    const kitchenCloses = activeHours.kitchen_closes;
+    
+    if (bookingTime < kitchenOpens || bookingTime >= kitchenCloses) {
+      return { error: `Kitchen is only open from ${formatTime12Hour(kitchenOpens)} to ${formatTime12Hour(kitchenCloses)} on this day` };
+    }
+    
     // Create booking
     const { data: booking, error: bookingError } = await supabase
       .from('table_bookings')
@@ -287,7 +319,7 @@ export async function createTableBooking(formData: FormData) {
     if (booking.status === 'confirmed') {
       console.log(`Booking confirmed, attempting to queue SMS for booking ${booking.id}`);
       
-      // Queue SMS directly using the same supabase client to avoid context issues
+      // Send SMS immediately for booking confirmations
       try {
         // Get customer details (we already have them from the booking creation)
         const { data: customerData } = await supabase
@@ -324,25 +356,51 @@ export async function createTableBooking(formData: FormData) {
               contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707',
             };
             
-            // Queue SMS job
-            const { error: smsError } = await supabase
-              .from('jobs')
-              .insert({
-                type: 'send_sms',
-                payload: {
-                  to: customerData.mobile_number,
-                  template: templateKey,
-                  variables,
-                  booking_id: booking.id,
-                  customer_id: customerData.id,
-                },
-                scheduled_for: new Date().toISOString(),
-              });
+            // Build the message text from template
+            let messageText = template.template_text;
+            Object.entries(variables).forEach(([key, value]) => {
+              messageText = messageText.replace(new RegExp(`{{${key}}}`, 'g'), value);
+            });
             
-            if (smsError) {
-              console.error('Failed to queue SMS:', smsError);
+            // Send SMS immediately
+            const { sendSMS } = await import('@/lib/twilio');
+            const result = await sendSMS(customerData.mobile_number, messageText);
+            
+            if (result.success && result.sid) {
+              console.log('SMS sent immediately for booking:', booking.id);
+              
+              // Log the message in the database
+              await supabase
+                .from('messages')
+                .insert({
+                  customer_id: customerData.id,
+                  direction: 'outbound',
+                  message_sid: result.sid,
+                  twilio_message_sid: result.sid,
+                  body: messageText,
+                  status: 'sent',
+                  twilio_status: 'queued',
+                  from_number: process.env.TWILIO_PHONE_NUMBER,
+                  to_number: customerData.mobile_number,
+                  message_type: 'sms',
+                  metadata: { booking_id: booking.id, template_key: templateKey }
+                });
             } else {
-              console.log('SMS queued successfully for booking:', booking.id);
+              console.error('Failed to send SMS immediately:', result.error);
+              // Fall back to queuing the SMS if immediate send fails
+              await supabase
+                .from('jobs')
+                .insert({
+                  type: 'send_sms',
+                  payload: {
+                    to: customerData.mobile_number,
+                    template: templateKey,
+                    variables,
+                    booking_id: booking.id,
+                    customer_id: customerData.id,
+                  },
+                  scheduled_for: new Date().toISOString(),
+                });
             }
           } else {
             console.error('SMS template not found:', templateKey);
@@ -351,7 +409,7 @@ export async function createTableBooking(formData: FormData) {
           console.log('Customer has opted out of SMS or has no phone number');
         }
       } catch (smsError) {
-        console.error('Error queueing SMS:', smsError);
+        console.error('Error sending SMS:', smsError);
       }
       
       // Also send email confirmation
@@ -414,6 +472,38 @@ export async function updateTableBooking(
       
       if (availability.error || !availability.data?.is_available) {
         return { error: 'No tables available for the updated time' };
+      }
+      
+      // Also validate kitchen hours if date or time changed
+      if (updates.booking_date || updates.booking_time) {
+        const newDate = updates.booking_date || currentBooking.booking_date;
+        const newTime = updates.booking_time || currentBooking.booking_time;
+        const bookingDay = new Date(newDate).getDay();
+        
+        // Get business hours for the booking day
+        const { data: businessHours } = await supabase
+          .from('business_hours')
+          .select('kitchen_opens, kitchen_closes, is_closed')
+          .eq('day_of_week', bookingDay)
+          .single();
+          
+        // Check for special hours
+        const { data: specialHours } = await supabase
+          .from('special_hours')
+          .select('kitchen_opens, kitchen_closes, is_closed')
+          .eq('date', newDate)
+          .single();
+          
+        const activeHours = specialHours || businessHours;
+        
+        if (!activeHours || activeHours.is_closed || !activeHours.kitchen_opens || !activeHours.kitchen_closes) {
+          return { error: 'Kitchen is closed on the selected date' };
+        }
+        
+        // Check if booking time is within kitchen hours
+        if (newTime < activeHours.kitchen_opens || newTime >= activeHours.kitchen_closes) {
+          return { error: `Kitchen is only open from ${formatTime12Hour(activeHours.kitchen_opens)} to ${formatTime12Hour(activeHours.kitchen_closes)} on this day` };
+        }
       }
     }
     

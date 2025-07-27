@@ -33,9 +33,11 @@ ALTER TABLE table_booking_reminder_history ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Staff can view reminder history" ON table_booking_reminder_history
     FOR SELECT USING (
         EXISTS (
-            SELECT 1 FROM user_roles
-            WHERE user_id = auth.uid()
-            AND role_name IN ('super_admin', 'manager', 'staff')
+            SELECT 1 
+            FROM user_roles ur
+            JOIN roles r ON ur.role_id = r.id
+            WHERE ur.user_id = auth.uid()
+            AND r.name IN ('super_admin', 'manager', 'staff')
         )
     );
 
