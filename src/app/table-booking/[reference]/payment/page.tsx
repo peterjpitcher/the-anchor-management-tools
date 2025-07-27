@@ -163,12 +163,21 @@ export default function TableBookingPaymentPage(props: { params: Promise<{ refer
   const outstandingAmount = totalAmount - depositAmount;
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
-      <div className="max-w-2xl mx-auto">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Complete Your Booking</h1>
-          <p className="mt-2 text-gray-600">Secure your Sunday lunch reservation</p>
+    <div className="min-h-screen bg-white">
+      {/* Header with branding */}
+      <div className="bg-[#005131] text-white px-4 py-4">
+        <div className="max-w-2xl mx-auto">
+          <h1 className="text-2xl font-bold">The Anchor</h1>
+          <p className="text-sm opacity-90">Horton Road, Stanwell Moor</p>
         </div>
+      </div>
+      
+      <div className="px-4 py-8">
+        <div className="max-w-2xl mx-auto">
+          <div className="text-center mb-8">
+            <h2 className="text-3xl font-bold text-gray-900">Complete Your Booking</h2>
+            <p className="mt-2 text-gray-600">Secure your Sunday lunch reservation</p>
+          </div>
         
         {wasCancelled && (
           <Alert variant="warning" className="mb-6">
@@ -195,9 +204,9 @@ export default function TableBookingPaymentPage(props: { params: Promise<{ refer
           </Alert>
         )}
 
-        <Card className="mb-6">
+        <Card className="mb-6 border-2 border-[#005131]">
           <div className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Booking Details</h2>
+            <h2 className="text-xl font-semibold mb-4 text-[#005131]">Booking Details</h2>
             
             <div className="space-y-3">
               <div className="flex items-center text-gray-600">
@@ -220,7 +229,7 @@ export default function TableBookingPaymentPage(props: { params: Promise<{ refer
 
         <Card className="mb-6">
           <div className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Payment Summary</h2>
+            <h2 className="text-xl font-semibold mb-4 text-[#005131]">Payment Summary</h2>
             
             <div className="space-y-3">
               <div className="flex justify-between">
@@ -230,7 +239,7 @@ export default function TableBookingPaymentPage(props: { params: Promise<{ refer
               
               <div className="flex justify-between">
                 <span className="text-gray-600">Deposit Required (£5 per person)</span>
-                <span className="font-medium text-green-600">£{depositAmount.toFixed(2)}</span>
+                <span className="font-medium text-[#005131]">£{depositAmount.toFixed(2)}</span>
               </div>
               
               <div className="border-t pt-3">
@@ -245,16 +254,23 @@ export default function TableBookingPaymentPage(props: { params: Promise<{ refer
         </Card>
 
         <div className="text-center">
-          <Button
-            variant="primary"
-            size="lg"
+          <button
             onClick={handlePayment}
-            loading={processing}
             disabled={processing}
-            leftIcon={<CurrencyPoundIcon className="h-5 w-5" />}
+            className="bg-[#005131] hover:bg-[#004028] text-white font-semibold py-4 px-8 rounded-lg flex items-center justify-center w-full sm:w-auto mx-auto disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {processing ? 'Creating secure payment...' : `Pay Deposit £${depositAmount.toFixed(2)}`}
-          </Button>
+            {processing ? (
+              <>
+                <Spinner size="sm" className="mr-2" />
+                Creating secure payment...
+              </>
+            ) : (
+              <>
+                <CurrencyPoundIcon className="h-5 w-5 mr-2" />
+                Pay Deposit £{depositAmount.toFixed(2)}
+              </>
+            )}
+          </button>
           
           <p className="mt-4 text-sm text-gray-500">
             You will be redirected to PayPal to complete your payment securely
@@ -262,10 +278,15 @@ export default function TableBookingPaymentPage(props: { params: Promise<{ refer
           
           <div className="mt-6 text-sm text-gray-600">
             <p className="font-semibold">Having trouble?</p>
-            <p>Call us at {process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}</p>
+            <p>Call us at <a href="tel:01753682707" className="text-[#005131] font-semibold">01753 682707</a></p>
           </div>
         </div>
+        
+        <div className="text-center mt-8 text-sm text-gray-500">
+          <p>The Anchor, Horton Road, Stanwell Moor, Surrey TW19 6AQ</p>
+        </div>
       </div>
+    </div>
     </div>
   );
 }
