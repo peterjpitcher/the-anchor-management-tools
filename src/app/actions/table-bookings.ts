@@ -270,9 +270,14 @@ export async function createTableBooking(formData: FormData) {
     
     // Send confirmation SMS if booking is confirmed (not pending payment)
     if (booking.status === 'confirmed') {
+      console.log(`Booking confirmed, attempting to queue SMS for booking ${booking.id}`);
       const smsResult = await queueBookingConfirmationSMS(booking.id);
       if (smsResult.error) {
-        console.error('Queue SMS error:', smsResult.error);
+        console.error('Queue SMS error:', smsResult.error, smsResult);
+      } else if (smsResult.message) {
+        console.log('SMS queue message:', smsResult.message);
+      } else {
+        console.log('SMS queued successfully for booking:', booking.id);
       }
       // Also send email confirmation
       const emailResult = await sendBookingConfirmationEmail(booking.id);
