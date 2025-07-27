@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     
     if (!bookingId || !paypalToken || !payerId) {
       return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_APP_URL}/booking-error?error=missing_parameters`
+        `${process.env.NEXT_PUBLIC_APP_URL}/table-booking/${bookingId}/payment?error=missing_parameters`
       );
     }
     
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
       
     if (bookingError || !booking) {
       return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_APP_URL}/booking-error?error=booking_not_found`
+        `${process.env.NEXT_PUBLIC_APP_URL}/table-bookings?error=booking_not_found`
       );
     }
     
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
       
     if (!payment) {
       return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_APP_URL}/booking-error?error=payment_not_found`
+        `${process.env.NEXT_PUBLIC_APP_URL}/table-booking/${booking.booking_reference}/payment?error=payment_not_found`
       );
     }
     
@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
       
       // Redirect to success page
       return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_APP_URL}/booking-success?reference=${booking.booking_reference}`
+        `${process.env.NEXT_PUBLIC_APP_URL}/table-booking/success?reference=${booking.booking_reference}`
       );
     } catch (captureError) {
       console.error('PayPal capture error:', captureError);
@@ -125,13 +125,13 @@ export async function GET(request: NextRequest) {
         .eq('id', payment.id);
       
       return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_APP_URL}/booking-error?error=payment_failed`
+        `${process.env.NEXT_PUBLIC_APP_URL}/table-booking/${booking.booking_reference}/payment?error=payment_failed&message=${encodeURIComponent('Payment could not be processed. Please try again.')}`
       );
     }
   } catch (error) {
     console.error('Payment return error:', error);
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}/booking-error?error=internal_error`
+      `${process.env.NEXT_PUBLIC_APP_URL}/table-bookings?error=internal_error&message=${encodeURIComponent('An error occurred processing your payment.')}`
     );
   }
 }
