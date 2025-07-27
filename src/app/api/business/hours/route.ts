@@ -77,11 +77,12 @@ export async function GET(_request: NextRequest) {
     acc[dayName] = {
       opens: hour.opens,
       closes: hour.closes,
-      kitchen: hour.kitchen_opens && hour.kitchen_closes ? {
+      kitchen: hour.is_kitchen_closed ? null : (hour.kitchen_opens && hour.kitchen_closes ? {
         opens: hour.kitchen_opens,
         closes: hour.kitchen_closes,
-      } : null,
+      } : null),
       is_closed: hour.is_closed,
+      is_kitchen_closed: hour.is_kitchen_closed,
     };
     return acc;
   }, {}) || {};
@@ -91,10 +92,10 @@ export async function GET(_request: NextRequest) {
     date: special.date,
     opens: special.opens,
     closes: special.closes,
-    kitchen: special.is_closed ? null : special.kitchen_opens && special.kitchen_closes ? {
+    kitchen: (special.is_closed || special.is_kitchen_closed) ? null : (special.kitchen_opens && special.kitchen_closes ? {
       opens: special.kitchen_opens,
       closes: special.kitchen_closes,
-    } : null,
+    } : null),
     status: special.is_closed ? 'closed' : 'modified',
     note: special.note,
   })) || [];
