@@ -35,7 +35,7 @@ CREATE POLICY "Staff can view reminder history" ON table_booking_reminder_histor
         EXISTS (
             SELECT 1 FROM user_roles
             WHERE user_id = auth.uid()
-            AND role IN ('super_admin', 'manager', 'staff')
+            AND role_name IN ('super_admin', 'manager', 'staff')
         )
     );
 
