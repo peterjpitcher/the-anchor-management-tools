@@ -195,7 +195,8 @@ Retrieve comprehensive opening hours data including regular hours, special hours
       "opens": "09:00:00",
       "closes": "22:00:00",
       "kitchen": null,  // Kitchen closed on Mondays
-      "is_closed": false
+      "is_closed": false,
+      "is_kitchen_closed": true  // Explicit kitchen closure flag
     }
     // ... all 7 days
   },
@@ -376,6 +377,23 @@ The kitchen field can have different formats:
 2. **No Kitchen Service**:
    ```json
    "kitchen": null
+   ```
+   
+   The kitchen will be `null` in the following cases:
+   - When `is_kitchen_closed` is `true` (explicit closure)
+   - When `kitchen_opens` and `kitchen_closes` are not set
+   - When the entire venue is closed (`is_closed` is `true`)
+
+3. **Identifying Kitchen Closure**:
+   Check the `is_kitchen_closed` flag for explicit kitchen closure:
+   ```json
+   {
+     "opens": "09:00:00",
+     "closes": "22:00:00",
+     "kitchen": null,
+     "is_closed": false,
+     "is_kitchen_closed": true  // Kitchen explicitly closed
+   }
    ```
 
 ### Example Usage
@@ -2004,3 +2022,54 @@ All responses follow this structure:
   }
 }
 ```
+
+---
+
+# Change Log
+
+## 2025-01-27: Kitchen Hours Data Consistency Update
+
+### What Changed
+
+1. **New Field: `is_kitchen_closed`**
+   - Added to both `regularHours` and `specialHours` responses
+   - Boolean flag that explicitly indicates when kitchen is closed
+   - Helps differentiate between "no kitchen hours set" and "kitchen explicitly closed"
+
+2. **Kitchen Object Behavior**
+   - `kitchen` field will now be `null` when:
+     - `is_kitchen_closed` is `true` (explicit closure)
+     - Kitchen hours are not set in the database
+     - The entire venue is closed
+   - Previously: Only checked if kitchen hours were null
+
+3. **Data Consistency**
+   - Fixed inconsistent data where `note` said "Kitchen closed" but kitchen hours were still provided
+   - Migration applied to clean up existing data
+   - Constraint added to ensure future data consistency
+
+### Impact on Integrations
+
+**No Breaking Changes** - The API response structure remains the same:
+- `kitchen` field still returns either an object with times or `null`
+- All existing fields remain in the same format
+
+**New Optional Field** - `is_kitchen_closed`:
+- Can be used for more accurate kitchen status detection
+- If not present in response, assume `false`
+
+### Recommended Updates for Frontend
+
+1. **Check `is_kitchen_closed` flag** in addition to `kitchen === null`:
+   ```javascript
+   const isKitchenClosed = hours.is_kitchen_closed || hours.kitchen === null;
+   ```
+
+2. **Display clearer messaging** when kitchen is explicitly closed vs venue closed:
+   ```javascript
+   if (hours.is_kitchen_closed && !hours.is_closed) {
+     return "Restaurant open but kitchen closed";
+   }
+   ```
+
+3. **No urgent changes required** - Existing logic checking `kitchen === null` will continue to work correctly
