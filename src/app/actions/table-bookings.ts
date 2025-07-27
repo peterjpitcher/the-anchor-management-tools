@@ -9,6 +9,21 @@ import { generatePhoneVariants, formatPhoneForStorage } from '@/lib/utils';
 import { queueBookingConfirmationSMS, queueCancellationSMS, queuePaymentRequestSMS } from './table-booking-sms';
 import { sendBookingConfirmationEmail, sendBookingCancellationEmail } from './table-booking-email';
 
+// Helper function to format time from 24hr to 12hr format
+function formatTime12Hour(time24: string): string {
+  const timeWithoutSeconds = time24.split(':').slice(0, 2).join(':');
+  const [hours, minutes] = timeWithoutSeconds.split(':').map(Number);
+  
+  const period = hours >= 12 ? 'pm' : 'am';
+  const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+  
+  if (minutes === 0) {
+    return `${hours12}${period}`;
+  } else {
+    return `${hours12}:${minutes.toString().padStart(2, '0')}${period}`;
+  }
+}
+
 // Validation schemas
 const CreateTableBookingSchema = z.object({
   customer_id: z.string().uuid().optional(),
@@ -271,14 +286,74 @@ export async function createTableBooking(formData: FormData) {
     // Send confirmation SMS if booking is confirmed (not pending payment)
     if (booking.status === 'confirmed') {
       console.log(`Booking confirmed, attempting to queue SMS for booking ${booking.id}`);
-      const smsResult = await queueBookingConfirmationSMS(booking.id);
-      if (smsResult.error) {
-        console.error('Queue SMS error:', smsResult.error, smsResult);
-      } else if (smsResult.message) {
-        console.log('SMS queue message:', smsResult.message);
-      } else {
-        console.log('SMS queued successfully for booking:', booking.id);
+      
+      // Queue SMS directly using the same supabase client to avoid context issues
+      try {
+        // Get customer details (we already have them from the booking creation)
+        const { data: customerData } = await supabase
+          .from('customers')
+          .select('*')
+          .eq('id', customerId)
+          .single();
+        
+        if (customerData?.sms_opt_in && customerData?.mobile_number) {
+          // Get the appropriate template
+          const templateKey = bookingData.booking_type === 'sunday_lunch'
+            ? 'booking_confirmation_sunday_lunch'
+            : 'booking_confirmation_regular';
+          
+          const { data: template } = await supabase
+            .from('table_booking_sms_templates')
+            .select('*')
+            .eq('template_key', templateKey)
+            .eq('is_active', true)
+            .single();
+          
+          if (template) {
+            // Prepare variables
+            const variables: Record<string, string> = {
+              customer_name: customerData.first_name,
+              party_size: booking.party_size.toString(),
+              date: new Date(booking.booking_date).toLocaleDateString('en-GB', {
+                weekday: 'long',
+                month: 'long',
+                day: 'numeric'
+              }),
+              time: formatTime12Hour(booking.booking_time),
+              reference: booking.booking_reference,
+              contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707',
+            };
+            
+            // Queue SMS job
+            const { error: smsError } = await supabase
+              .from('jobs')
+              .insert({
+                type: 'send_sms',
+                payload: {
+                  to: customerData.mobile_number,
+                  template: templateKey,
+                  variables,
+                  booking_id: booking.id,
+                  customer_id: customerData.id,
+                },
+                scheduled_for: new Date().toISOString(),
+              });
+            
+            if (smsError) {
+              console.error('Failed to queue SMS:', smsError);
+            } else {
+              console.log('SMS queued successfully for booking:', booking.id);
+            }
+          } else {
+            console.error('SMS template not found:', templateKey);
+          }
+        } else {
+          console.log('Customer has opted out of SMS or has no phone number');
+        }
+      } catch (smsError) {
+        console.error('Error queueing SMS:', smsError);
       }
+      
       // Also send email confirmation
       const emailResult = await sendBookingConfirmationEmail(booking.id);
       if (emailResult.error) {
