@@ -217,10 +217,7 @@ export async function GET(_request: NextRequest) {
     },
     bookings: {
       accepting: currentStatus.isOpen && currentStatus.kitchenOpen,
-      availableSlots: bookingSlots?.filter(slot => {
-        // Filter slots that are still available today
-        return slot.slot_time > currentTime;
-      }).map(slot => slot.slot_time.substring(0, 5)) || [],
+      availableSlots: bookingSlots?.map(slot => slot.slot_time.substring(0, 5)) || [],
     },
   };
 
