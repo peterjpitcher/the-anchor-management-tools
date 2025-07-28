@@ -65,74 +65,89 @@ export default function BookingConfirmationPage() {
     try {
       const supabase = createClient();
       
-      const { data, error } = await supabase
+      // First, fetch the pending booking without joins to avoid the .single() error
+      const { data: pendingBookingData, error: pendingError } = await supabase
         .from('pending_bookings')
-        .select(`
-          id,
-          token,
-          event_id,
-          mobile_number,
-          customer_id,
-          expires_at,
-          confirmed_at,
-          event:events(
-            id,
-            name,
-            date,
-            time,
-            capacity,
-            hero_image_url,
-            thumbnail_image_url
-          ),
-          customer:customers(
-            id,
-            first_name,
-            last_name
-          )
-        `)
+        .select('*')
         .eq('token', token)
         .single();
 
-      if (error) {
-        console.error('Error loading pending booking:', error);
-        setError(`Database error: ${error.message}`);
+      if (pendingError) {
+        console.error('Error loading pending booking:', pendingError);
+        if (pendingError.code === 'PGRST116') {
+          setError('Invalid or expired booking link');
+        } else {
+          setError(`Database error: ${pendingError.message}`);
+        }
         return;
       }
       
-      if (!data) {
+      if (!pendingBookingData) {
         console.error('No pending booking found for token:', token);
         setError('Invalid or expired booking link');
         return;
       }
       
-      console.log('Loaded pending booking:', data);
+      console.log('Loaded pending booking:', pendingBookingData);
 
       // Check if already confirmed
-      if (data.confirmed_at) {
+      if (pendingBookingData.confirmed_at) {
         setError('This booking has already been confirmed');
         return;
       }
 
       // Check if expired
-      if (new Date(data.expires_at) < new Date()) {
+      if (new Date(pendingBookingData.expires_at) < new Date()) {
         setError('This booking link has expired');
         return;
       }
 
-      // Cast the data correctly - handle both array and object cases
-      const pendingBookingData: PendingBooking = {
-        id: data.id,
-        token: data.token,
-        event_id: data.event_id,
-        mobile_number: data.mobile_number,
-        customer_id: data.customer_id,
-        expires_at: data.expires_at,
-        confirmed_at: data.confirmed_at,
-        event: Array.isArray(data.event) ? data.event[0] : data.event,
-        customer: Array.isArray(data.customer) ? data.customer[0] : data.customer,
+      // Now fetch the event data separately
+      let eventData = null;
+      if (pendingBookingData.event_id) {
+        const { data: event, error: eventError } = await supabase
+          .from('events')
+          .select('id, name, date, time, capacity, hero_image_url, thumbnail_image_url')
+          .eq('id', pendingBookingData.event_id)
+          .single();
+        
+        if (!eventError && event) {
+          eventData = event;
+        } else {
+          console.error('Error loading event:', eventError);
+        }
+      }
+
+      // Fetch customer data separately if customer_id exists
+      let customerData = null;
+      if (pendingBookingData.customer_id) {
+        const { data: customer, error: customerError } = await supabase
+          .from('customers')
+          .select('id, first_name, last_name')
+          .eq('id', pendingBookingData.customer_id)
+          .single();
+        
+        if (!customerError && customer) {
+          customerData = customer;
+        } else {
+          console.error('Error loading customer:', customerError);
+        }
+      }
+
+      // Construct the full pending booking object
+      const pendingBooking: PendingBooking = {
+        id: pendingBookingData.id,
+        token: pendingBookingData.token,
+        event_id: pendingBookingData.event_id,
+        mobile_number: pendingBookingData.mobile_number,
+        customer_id: pendingBookingData.customer_id,
+        expires_at: pendingBookingData.expires_at,
+        confirmed_at: pendingBookingData.confirmed_at,
+        event: eventData,
+        customer: customerData,
       };
 
-      setPendingBooking(pendingBookingData);
+      setPendingBooking(pendingBooking);
       
       // Don't pre-fill customer details for existing customers
       // They can't change their details during booking
