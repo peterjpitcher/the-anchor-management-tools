@@ -27,7 +27,11 @@ export async function GET(
         ),
         table_booking_items(
           quantity,
-          price_at_booking
+          price_at_booking,
+          custom_item_name,
+          guest_name,
+          special_requests,
+          item_type
         )
       `)
       .eq('booking_reference', params.booking_reference)
