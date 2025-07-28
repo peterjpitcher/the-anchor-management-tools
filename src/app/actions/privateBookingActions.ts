@@ -9,6 +9,7 @@ import type {
 } from '@/types/private-bookings'
 import { syncCalendarEvent, deleteCalendarEvent, isCalendarConfigured } from '@/lib/google-calendar'
 import { queueAndSendPrivateBookingSms } from './private-booking-sms'
+import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils'
 
 // Helper function to format time to HH:MM
 function formatTimeToHHMM(time: string | undefined): string | undefined {
@@ -56,6 +57,58 @@ const privateBookingSchema = z.object({
   balance_due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').optional().or(z.literal('')),
   status: z.enum(['draft', 'confirmed', 'completed', 'cancelled']).optional()
 })
+
+// Customer creation schema
+const CreateCustomerSchema = z.object({
+  first_name: z.string().min(1),
+  last_name: z.string().min(1),
+  mobile_number: z.string().min(10),
+  email: z.string().email().optional(),
+  sms_opt_in: z.boolean().default(true),
+})
+
+// Helper function to find or create customer
+async function findOrCreateCustomer(
+  supabase: any,
+  customerData: z.infer<typeof CreateCustomerSchema>
+) {
+  const standardizedPhone = formatPhoneForStorage(customerData.mobile_number);
+  const phoneVariants = generatePhoneVariants(standardizedPhone);
+  
+  // Try to find existing customer
+  const { data: existingCustomer } = await supabase
+    .from('customers')
+    .select('*')
+    .or(phoneVariants.map(v => `mobile_number.eq.${v}`).join(','))
+    .single();
+    
+  if (existingCustomer) {
+    // Update opt-in status if changed
+    if (customerData.sms_opt_in !== existingCustomer.sms_opt_in) {
+      await supabase
+        .from('customers')
+        .update({ sms_opt_in: customerData.sms_opt_in })
+        .eq('id', existingCustomer.id);
+    }
+    return existingCustomer;
+  }
+  
+  // Create new customer
+  const { data: newCustomer, error } = await supabase
+    .from('customers')
+    .insert({
+      ...customerData,
+      mobile_number: standardizedPhone,
+    })
+    .select()
+    .single();
+    
+  if (error) {
+    throw new Error('Failed to create customer');
+  }
+  
+  return newCustomer;
+}
 
 // Get all private bookings with optional filtering
 export async function getPrivateBookings(filters?: {
@@ -219,6 +272,32 @@ export async function createPrivateBooking(formData: FormData) {
   // Get current user
   const { data: { user } } = await supabase.auth.getUser()
   
+  // Find or create customer if not already selected
+  let customerId = bookingData.customer_id
+  if (!customerId && bookingData.customer_first_name && bookingData.contact_phone) {
+    try {
+      const customerData = {
+        first_name: bookingData.customer_first_name,
+        last_name: bookingData.customer_last_name || '',
+        mobile_number: bookingData.contact_phone,
+        email: bookingData.contact_email,
+        sms_opt_in: true, // Default to true for private bookings
+      }
+      
+      const customer = await findOrCreateCustomer(supabase, customerData)
+      customerId = customer.id
+      
+      console.log('Customer found/created:', { 
+        id: customer.id, 
+        isNew: !bookingData.customer_id,
+        name: `${customer.first_name} ${customer.last_name}`
+      })
+    } catch (error) {
+      console.error('Error creating/finding customer:', error)
+      // Continue without linking to customer - maintain backward compatibility
+    }
+  }
+  
   // Calculate balance_due_date if not provided (7 days before event)
   let balance_due_date = bookingData.balance_due_date
   if (!balance_due_date && bookingData.event_date) {
@@ -265,6 +344,7 @@ export async function createPrivateBooking(formData: FormData) {
 
   const insertData = {
     ...cleanedBookingData,
+    customer_id: customerId || null, // Include the found/created customer ID
     customer_name, // Include for backward compatibility
     balance_due_date: cleanedBookingData.balance_due_date,
     deposit_amount: bookingData.deposit_amount || 250, // Default £250 if not specified
@@ -411,9 +491,35 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
   // Get current booking to check status and date changes
   const { data: currentBooking } = await supabase
     .from('private_bookings')
-    .select('status, contact_phone, customer_first_name, event_date, start_time')
+    .select('status, contact_phone, customer_first_name, event_date, start_time, customer_id')
     .eq('id', id)
     .single()
+
+  // Find or create customer if not already linked
+  let customerId = bookingData.customer_id
+  if (!customerId && bookingData.customer_first_name && bookingData.contact_phone) {
+    try {
+      const customerData = {
+        first_name: bookingData.customer_first_name,
+        last_name: bookingData.customer_last_name || '',
+        mobile_number: bookingData.contact_phone,
+        email: bookingData.contact_email,
+        sms_opt_in: true, // Default to true for private bookings
+      }
+      
+      const customer = await findOrCreateCustomer(supabase, customerData)
+      customerId = customer.id
+      
+      console.log('Customer found/created on update:', { 
+        id: customer.id, 
+        wasLinked: !!currentBooking?.customer_id,
+        name: `${customer.first_name} ${customer.last_name}`
+      })
+    } catch (error) {
+      console.error('Error creating/finding customer on update:', error)
+      // Continue without linking to customer - maintain backward compatibility
+    }
+  }
 
   // Construct customer_name for backward compatibility
   const customer_name = bookingData.customer_last_name 
@@ -424,6 +530,7 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
     .from('private_bookings')
     .update({
       ...bookingData,
+      customer_id: customerId || null, // Include the found/created customer ID
       customer_name, // Include for backward compatibility
       updated_at: new Date().toISOString()
     })
