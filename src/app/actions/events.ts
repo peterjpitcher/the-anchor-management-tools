@@ -40,7 +40,11 @@ const eventSchema = z.object({
     .min(1, 'Time is required')
     .regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format (HH:MM)'),
   capacity: z.preprocess(
-    (val) => val === '' ? null : Number(val),
+    (val) => {
+      if (val === '' || val === null || val === undefined) return null;
+      const num = Number(val);
+      return isNaN(num) ? null : num;
+    },
     z.number().min(1, 'Capacity must be at least 1').max(10000, 'Capacity too large').nullable()
   ),
   category_id: z.string().uuid().nullable().optional(),
@@ -78,7 +82,11 @@ const eventSchema = z.object({
   performer_type: z.string().max(50).nullable().optional(),
   // Pricing
   price: z.preprocess(
-    (val) => val === '' ? 0 : Number(val),
+    (val) => {
+      if (val === '' || val === null || val === undefined) return 0;
+      const num = Number(val);
+      return isNaN(num) ? 0 : num;
+    },
     z.number().min(0).max(99999.99).default(0)
   ),
   is_free: z.boolean().default(false),
