@@ -206,11 +206,7 @@ export default function NewTableBookingPage() {
           return;
         }
         
-        // Check that exactly 2 sides are selected
-        if (item.sides.length !== 2) {
-          setError(`Please select exactly 2 sides for Guest ${i + 1}`);
-          return;
-        }
+        // Cauliflower cheese is optional, no validation needed
       }
     }
     
@@ -606,24 +602,21 @@ export default function NewTableBookingPage() {
                     </Select>
                   </FormGroup>
                   
-                  <FormGroup label="Sides (Choose 2)">
+                  <FormGroup label="Optional Extra">
                     <div className="space-y-2">
-                      {['Herb & Garlic Roast Potatoes', 'Yorkshire Pudding', 'Seasonal Vegetables', 'Cauliflower Cheese (£3.99 extra)'].map(side => (
+                      {['Cauliflower Cheese (£3.99 extra)'].map(side => (
                         <Checkbox
                           key={side}
                           checked={item.sides.includes(side)}
                           onChange={(e) => {
                             const newItems = [...sundayLunchItems];
                             if (e.target.checked) {
-                              if (newItems[index].sides.length < 2) {
-                                newItems[index].sides.push(side);
-                              }
+                              newItems[index].sides = [side];
                             } else {
-                              newItems[index].sides = newItems[index].sides.filter(s => s !== side);
+                              newItems[index].sides = [];
                             }
                             setSundayLunchItems(newItems);
                           }}
-                          disabled={!item.sides.includes(side) && item.sides.length >= 2}
                           label={side}
                         />
                       ))}

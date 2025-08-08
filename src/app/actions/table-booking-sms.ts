@@ -467,9 +467,11 @@ export async function queueCancellationSMS(
 }
 
 // Queue payment request SMS for Sunday lunch
-export async function queuePaymentRequestSMS(bookingId: string) {
+export async function queuePaymentRequestSMS(bookingId: string, useAdminClient: boolean = false) {
   try {
-    const supabase = await createClient();
+    // Use admin client when called from unauthenticated contexts
+    const { createClient, createAdminClient } = await import('@/lib/supabase/server');
+    const supabase = useAdminClient ? createAdminClient() : await createClient();
     
     // Get booking with customer and items
     const { data: booking } = await supabase
@@ -517,7 +519,21 @@ export async function queuePaymentRequestSMS(bookingId: string) {
     const depositAmount = booking.party_size * 5;
     
     // Generate payment link to public payment page
-    const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL}/table-booking/${booking.booking_reference}/payment`;
+    const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL}/table-bookings/${bookingId}/payment`;
+    
+    // Calculate payment deadline (Saturday 1pm before the Sunday booking)
+    const bookingDate = new Date(booking.booking_date);
+    const deadlineDate = new Date(bookingDate);
+    deadlineDate.setDate(bookingDate.getDate() - 1); // Saturday before
+    deadlineDate.setHours(13, 0, 0, 0); // 1pm
+    
+    const deadlineFormatted = deadlineDate.toLocaleDateString('en-GB', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    });
     
     // Prepare variables
     const variables = {
@@ -526,7 +542,7 @@ export async function queuePaymentRequestSMS(bookingId: string) {
       deposit_amount: depositAmount.toFixed(2),
       total_amount: totalAmount.toFixed(2),
       payment_link: paymentLink,
-      deadline: 'Saturday 1pm',
+      deadline: deadlineFormatted,
     };
     
     // Queue SMS
