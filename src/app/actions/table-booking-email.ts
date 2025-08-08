@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { sendEmail } from '@/lib/email/emailService';
 import { 
   generateBookingConfirmationEmail, 
@@ -10,9 +10,9 @@ import {
 import { logAuditEvent } from './audit';
 
 // Send booking confirmation email
-export async function sendBookingConfirmationEmail(bookingId: string) {
+export async function sendBookingConfirmationEmail(bookingId: string, useAdminClient: boolean = false) {
   try {
-    const supabase = await createClient();
+    const supabase = useAdminClient ? createAdminClient() : await createClient();
     
     // Get booking with customer and items
     const { data: booking, error } = await supabase

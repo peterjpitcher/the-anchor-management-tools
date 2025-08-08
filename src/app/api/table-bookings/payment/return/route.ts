@@ -119,17 +119,17 @@ export async function GET(request: NextRequest) {
           },
         });
       
-      // Queue confirmation SMS
+      // Queue confirmation SMS (use admin client since we're in unauthenticated context)
       if (booking.customer?.sms_opt_in) {
-        await queueBookingConfirmationSMS(bookingId);
+        await queueBookingConfirmationSMS(bookingId, true);
       }
       
-      // Send confirmation email
+      // Send confirmation email (use admin client since we're in unauthenticated context)
       if (booking.customer?.email) {
-        await sendBookingConfirmationEmail(bookingId);
+        await sendBookingConfirmationEmail(bookingId, true);
       }
       
-      // Send manager notification email
+      // Send manager notification email (check if this needs admin client too)
       await sendManagerOrderNotification(bookingId);
       
       // Redirect to success page

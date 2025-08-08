@@ -208,9 +208,11 @@ export async function testSMSTemplate(
 }
 
 // Queue booking confirmation SMS
-export async function queueBookingConfirmationSMS(bookingId: string) {
+export async function queueBookingConfirmationSMS(bookingId: string, useAdminClient: boolean = false) {
   try {
-    const supabase = await createClient();
+    // Use admin client when called from unauthenticated contexts (like PayPal return)
+    const { createClient, createAdminClient } = await import('@/lib/supabase/server');
+    const supabase = useAdminClient ? createAdminClient() : await createClient();
     
     // Get booking with customer and payment details
     const { data: booking } = await supabase
