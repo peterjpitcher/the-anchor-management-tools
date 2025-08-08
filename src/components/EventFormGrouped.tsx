@@ -122,12 +122,12 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
         date,
         time,
         end_time: endTime || null,
-        capacity: capacity ? parseInt(capacity) : null,
+        capacity: capacity && capacity !== '' ? parseInt(capacity) : null,
         category_id: categoryId || null,
         event_status: eventStatus,
         performer_name: performerName.trim() || null,
         performer_type: performerType.trim() || null,
-        price: parseFloat(price) || 0,
+        price: price && price !== '' ? parseFloat(price) : 0,
         is_free: isFree,
         hero_image_url: imageUrl || null,
         // Set other image URLs to match the single image (for backwards compatibility)
@@ -144,7 +144,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
         // Additional timing and booking fields
         booking_url: bookingUrl.trim() || undefined,
         doors_time: doorsTime || null,
-        duration_minutes: durationMinutes ? parseInt(durationMinutes) : null,
+        duration_minutes: durationMinutes && durationMinutes !== '' ? parseInt(durationMinutes) : null,
         last_entry_time: lastEntryTime || null,
       }
 
@@ -460,7 +460,8 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 value={price}
                 onChange={(e) => {
                   setPrice(e.target.value)
-                  setIsFree(parseFloat(e.target.value) === 0)
+                  const priceValue = e.target.value && e.target.value !== '' ? parseFloat(e.target.value) : 0
+                  setIsFree(priceValue === 0)
                 }}
                 min="0"
                 step="0.01"

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { capturePayPalPayment } from '@/lib/paypal';
 import { queueBookingConfirmationSMS } from '@/app/actions/table-booking-sms';
 import { sendBookingConfirmationEmail } from '@/app/actions/table-booking-email';
@@ -26,9 +26,10 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     
     // Get booking
+    console.log('[Payment Journey] Fetching booking with ID:', bookingId);
     const { data: booking, error: bookingError } = await supabase
       .from('table_bookings')
       .select(`
@@ -40,10 +41,22 @@ export async function GET(request: NextRequest) {
       .single();
       
     if (bookingError || !booking) {
+      console.error('[Payment Journey] Booking fetch failed:', {
+        bookingId,
+        error: bookingError,
+        message: bookingError?.message,
+        code: bookingError?.code,
+        details: bookingError?.details
+      });
       return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_APP_URL}/table-bookings?error=booking_not_found`
+        `${process.env.NEXT_PUBLIC_APP_URL}/table-bookings?error=booking_not_found&booking_id=${bookingId}`
       );
     }
+    
+    console.log('[Payment Journey] Booking found:', {
+      reference: booking.booking_reference,
+      status: booking.status
+    });
     
     // Get payment record
     const { data: payment } = await supabase
