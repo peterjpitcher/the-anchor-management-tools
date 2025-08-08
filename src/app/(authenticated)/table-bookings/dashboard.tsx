@@ -46,7 +46,7 @@ export default function TableBookingsDashboard() {
   const supabase = useSupabase();
   const { hasPermission } = usePermissions();
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState<'day' | 'week'>('day');
+  const [viewMode, setViewMode] = useState<'day' | 'week'>('week');
   const [bookings, setBookings] = useState<TableBooking[]>([]);
   const [stats, setStats] = useState<DashboardStats>({
     todayBookings: 0,
@@ -419,14 +419,12 @@ export default function TableBookingsDashboard() {
                             <div className="text-sm text-gray-500">Ref: {booking.booking_reference}</div>
                             <div className="text-sm">
                               {booking.status === 'confirmed' && (
-                                <Badge variant="success" size="sm">
-                                  <CheckCircleIcon className="h-4 w-4 mr-1" />
+                                <Badge variant="success" size="sm" icon={<CheckCircleIcon className="h-4 w-4" />}>
                                   Confirmed
                                 </Badge>
                               )}
                               {booking.status === 'pending_payment' && (
-                                <Badge variant="warning" size="sm">
-                                  <ExclamationCircleIcon className="h-4 w-4 mr-1" />
+                                <Badge variant="warning" size="sm" icon={<ExclamationCircleIcon className="h-4 w-4" />}>
                                   Awaiting Payment
                                 </Badge>
                               )}
@@ -477,20 +475,17 @@ export default function TableBookingsDashboard() {
                       <div className="text-sm text-gray-500">Ref: {booking.booking_reference}</div>
                       <div className="text-sm">
                         {booking.status === 'confirmed' && (
-                          <Badge variant="success" size="sm">
-                            <CheckCircleIcon className="h-4 w-4 mr-1" />
+                          <Badge variant="success" size="sm" icon={<CheckCircleIcon className="h-4 w-4" />}>
                             Confirmed
                           </Badge>
                         )}
                         {booking.status === 'pending_payment' && (
-                          <Badge variant="warning" size="sm">
-                            <ExclamationCircleIcon className="h-4 w-4 mr-1" />
+                          <Badge variant="warning" size="sm" icon={<ExclamationCircleIcon className="h-4 w-4" />}>
                             Awaiting Payment
                           </Badge>
                         )}
                         {booking.status === 'cancelled' && (
-                          <Badge variant="error" size="sm">
-                            <XCircleIcon className="h-4 w-4 mr-1" />
+                          <Badge variant="error" size="sm" icon={<XCircleIcon className="h-4 w-4" />}>
                             Cancelled
                           </Badge>
                         )}
