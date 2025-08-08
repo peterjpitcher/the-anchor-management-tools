@@ -424,10 +424,87 @@ export async function createTableBooking(formData: FormData) {
         console.error('Send email error:', emailResult.error);
       }
     } else if (booking.status === 'pending_payment' && booking.booking_type === 'sunday_lunch') {
-      // For Sunday lunch, send payment request SMS
-      const smsResult = await queuePaymentRequestSMS(booking.id);
-      if (smsResult.error) {
-        console.error('Queue SMS error:', smsResult.error);
+      // For Sunday lunch, send payment request SMS immediately
+      console.log(`Sunday lunch booking created, sending payment request SMS for booking ${booking.id}`);
+      
+      try {
+        // Get customer details
+        const { data: customerData } = await supabase
+          .from('customers')
+          .select('*')
+          .eq('id', customerId)
+          .single();
+        
+        if (customerData?.sms_opt_in && customerData?.mobile_number) {
+          // Calculate payment deadline (Saturday 1pm before the Sunday booking)
+          const bookingDate = new Date(booking.booking_date);
+          const deadlineDate = new Date(bookingDate);
+          deadlineDate.setDate(bookingDate.getDate() - 1); // Saturday before
+          deadlineDate.setHours(13, 0, 0, 0); // 1pm
+          
+          const deadlineFormatted = deadlineDate.toLocaleDateString('en-GB', {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit'
+          });
+          
+          // Calculate deposit amount
+          const depositAmount = booking.party_size * 5;
+          
+          // Generate payment URL
+          const paymentUrl = `${process.env.NEXT_PUBLIC_APP_URL}/table-bookings/${booking.id}/payment`;
+          
+          // Build message with dynamic deadline and urgency
+          const messageText = `Hi ${customerData.first_name}, your Sunday Lunch booking at The Anchor (ref: ${booking.booking_reference}) for ${booking.party_size} people requires a £${depositAmount.toFixed(2)} deposit to confirm. ⚠️ PAYMENT DEADLINE: ${deadlineFormatted}. Pay now: ${paymentUrl}. If payment is not received by the deadline, your booking will be automatically cancelled. Call ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'} with any questions.`;
+          
+          // Send SMS immediately
+          const { sendSMS } = await import('@/lib/twilio');
+          const result = await sendSMS(customerData.mobile_number, messageText);
+          
+          if (result.success && result.sid) {
+            console.log('Payment request SMS sent immediately for booking:', booking.id);
+            
+            // Log the message in the database
+            await supabase
+              .from('messages')
+              .insert({
+                customer_id: customerData.id,
+                direction: 'outbound',
+                message_sid: result.sid,
+                twilio_message_sid: result.sid,
+                body: messageText,
+                status: 'sent',
+                twilio_status: 'queued',
+                from_number: process.env.TWILIO_PHONE_NUMBER,
+                to_number: customerData.mobile_number,
+                message_type: 'sms',
+                metadata: { 
+                  booking_id: booking.id, 
+                  template_key: 'payment_request',
+                  deadline: deadlineFormatted,
+                  deposit_amount: depositAmount
+                }
+              });
+          } else {
+            console.error('Failed to send payment request SMS immediately:', result.error);
+            // Fall back to queueing the SMS if immediate send fails
+            const smsResult = await queuePaymentRequestSMS(booking.id);
+            if (smsResult.error) {
+              console.error('Queue SMS error:', smsResult.error);
+            }
+          }
+        } else {
+          console.log('Customer has opted out of SMS or has no phone number');
+        }
+      } catch (smsError) {
+        console.error('Error sending payment request SMS:', smsError);
+        // Try to queue as fallback
+        const smsResult = await queuePaymentRequestSMS(booking.id);
+        if (smsResult.error) {
+          console.error('Queue SMS fallback error:', smsResult.error);
+        }
       }
     }
     
