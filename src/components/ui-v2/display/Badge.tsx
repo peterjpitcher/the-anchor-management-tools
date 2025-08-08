@@ -187,7 +187,7 @@ export function Badge({
     >
       {/* Icon */}
       {icon && (
-        <span className={cn(sizeClasses[size].icon, 'flex-shrink-0')}>
+        <span className={cn(sizeClasses[size].icon, 'flex-shrink-0 inline-flex')}>
           {icon}
         </span>
       )}
