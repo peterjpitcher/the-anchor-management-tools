@@ -534,9 +534,28 @@ curl -H "X-API-Key: your-key" \
 }
 ```
 
-## Create Event Booking
+## Event Booking Overview
 
-Book tickets for an event.
+The Event Booking API supports two booking flows:
+
+1. **Direct Booking Flow** - Complete booking in one API call with all customer details
+2. **Two-Step SMS Flow** - Initiate with phone number, confirm via SMS link
+
+### Booking Flow Comparison
+
+| Feature | Direct Booking | Two-Step SMS |
+|---------|---------------|---------------|
+| API Calls | 1 | 2 |
+| Customer Data | Required upfront | Phone first, details later |
+| SMS Verification | No | Yes |
+| Best For | Website integrations | SMS campaigns |
+| Confirmation | Immediate | After SMS link click |
+
+## Direct Booking Flow
+
+### Create Event Booking
+
+Create a complete booking with all customer information.
 
 **Endpoint:** `POST /bookings`
 
@@ -547,34 +566,387 @@ Book tickets for an event.
 {
   "event_id": "550e8400-e29b-41d4-a716-446655440000",
   "customer": {
-    "name": "John Smith",
-    "phone": "07700900000"
+    "first_name": "John",
+    "last_name": "Smith",
+    "mobile_number": "07700900000",
+    "sms_opt_in": true
   },
   "seats": 2,
-  "special_requirements": "Wheelchair access needed"
+  "notes": "Wheelchair access needed"
 }
 ```
 
-### Response
+### Field Validation
+
+| Field | Type | Required | Validation |
+|-------|------|----------|------------|
+| event_id | UUID | Yes | Must be valid scheduled event |
+| customer.first_name | string | Yes | 1-50 characters |
+| customer.last_name | string | Yes | 1-50 characters |
+| customer.mobile_number | string | Yes | UK format (07xxx or +447xxx) |
+| customer.sms_opt_in | boolean | No | Default: false |
+| seats | integer | Yes | 1-10 per booking |
+| notes | string | No | Max 500 characters |
+
+### Processing Steps
+
+1. **Input Validation** - Validates all fields with Zod schema
+2. **Event Check** - Verifies event exists and is in future
+3. **Capacity Check** - Ensures sufficient seats available
+4. **Phone Standardization** - Converts to E.164 format (+44...)
+5. **Customer Management** - Finds existing or creates new customer
+6. **Booking Creation** - Creates booking with "confirmed" status
+7. **Confirmation Number** - Generates ANH-YYYY-XXXXXXXX format
+8. **SMS Queue** - Queues confirmation SMS if opted in
+9. **Audit Log** - Records operation for compliance
+
+### Success Response (201)
 ```json
 {
-  "booking": {
-    "id": "booking-uuid",
-    "reference": "BK-2024-1234",
-    "event_id": "event-uuid",
-    "customer_id": "customer-uuid",
-    "seats": 2,
-    "status": "confirmed",
-    "created_at": "2024-03-01T10:00:00Z"
+  "booking_id": "550e8400-e29b-41d4-a716-446655440000",
+  "confirmation_number": "ANH-2025-12345678",
+  "event": {
+    "id": "event-uuid",
+    "name": "Friday Night Live Music",
+    "date": "2024-03-15",
+    "time": "19:00"
   },
+  "customer": {
+    "first_name": "John",
+    "last_name": "Smith"
+  },
+  "seats": 2,
+  "sms_opt_in": true,
+  "status": "confirmed"
+}
+```
+
+### Error Responses
+
+#### Validation Error (400)
+```json
+{
+  "error": "Invalid request data",
+  "code": "VALIDATION_ERROR",
+  "details": {
+    "first_name": "First name is required",
+    "mobile_number": "Invalid UK phone number format"
+  }
+}
+```
+
+#### Event Not Available (400)
+```json
+{
+  "error": "Event is not available for booking",
+  "code": "EVENT_NOT_AVAILABLE",
+  "details": {
+    "reason": "Event has already occurred",
+    "event_date": "2024-03-01"
+  }
+}
+```
+
+#### Insufficient Capacity (400)
+```json
+{
+  "error": "Not enough seats available",
+  "code": "INSUFFICIENT_CAPACITY",
+  "details": {
+    "requested": 5,
+    "available": 3
+  }
+}
+```
+
+#### Duplicate Booking (400)
+```json
+{
+  "error": "Customer already has a booking for this event",
+  "code": "DUPLICATE_BOOKING",
+  "details": {
+    "existing_confirmation": "ANH-2025-87654321"
+  }
+}
+```
+
+## Two-Step SMS Booking Flow
+
+### Step 1: Initiate Booking
+
+Start booking with phone number only. Customer receives SMS with confirmation link.
+
+**Endpoint:** `POST /bookings/initiate`
+
+**Permissions Required:** `write:bookings`
+
+### Request Body
+```json
+{
+  "event_id": "550e8400-e29b-41d4-a716-446655440000",
+  "mobile_number": "07700900000"
+}
+```
+
+### Processing Steps
+
+1. **Event Validation** - Check event exists and has capacity
+2. **Customer Lookup** - Find existing customer by phone
+3. **SMS Opt-Out Check** - Verify customer allows SMS
+4. **Pending Booking** - Create with 24-hour expiry
+5. **Token Generation** - Create secure confirmation token
+6. **Short Link** - Generate mobile-friendly URL
+7. **SMS Dispatch** - Send via Twilio
+8. **Delivery Tracking** - Record SMS details
+
+### Success Response (201)
+```json
+{
+  "status": "pending",
+  "booking_token": "550e8400-e29b-41d4-a716-446655440000",
+  "confirmation_url": "https://management.orangejelly.co.uk/s/ABC123",
+  "expires_at": "2024-03-02T10:00:00Z",
+  "event": {
+    "id": "event-uuid",
+    "name": "Friday Night Live Music",
+    "date": "2024-03-15",
+    "time": "19:00",
+    "available_seats": 45
+  },
+  "customer_exists": true,
+  "sms_sent": true
+}
+```
+
+### SMS Message Template
+```
+Hi! To confirm your booking for {event_name} on {date} at {time}, please click: {short_link}
+
+Reply STOP to opt out.
+The Anchor 01753682707
+```
+
+### Error Responses
+
+#### Customer Opted Out (400)
+```json
+{
+  "error": "Customer has opted out of SMS communications",
+  "code": "CUSTOMER_OPTED_OUT",
+  "details": {
+    "phone_number": "+447700900000"
+  }
+}
+```
+
+#### SMS Failed (500)
+```json
+{
+  "error": "Failed to send SMS",
+  "code": "SMS_FAILED",
+  "details": {
+    "provider_error": "Invalid phone number"
+  }
+}
+```
+
+### Step 2: Confirm Booking
+
+Complete booking via SMS link. This is a public endpoint (no API key required).
+
+**Endpoint:** `POST /bookings/confirm`
+
+**Permissions Required:** None (public)
+
+### Request Body
+```json
+{
+  "token": "550e8400-e29b-41d4-a716-446655440000",
+  "seats": 2,
+  "first_name": "John",     // Required if new customer
+  "last_name": "Smith"      // Required if new customer
+}
+```
+
+### Processing Steps
+
+1. **Token Validation** - Check exists and not expired
+2. **Duplicate Check** - Ensure not already confirmed
+3. **Capacity Verification** - Re-check availability
+4. **Customer Creation** - Create if new customer
+5. **SMS History** - Record initial outbound SMS
+6. **Booking Conversion** - Change pending to confirmed
+7. **Confirmation SMS** - Send final confirmation
+8. **Audit Trail** - Log completion
+
+### Success Response (200)
+```json
+{
+  "success": true,
+  "booking_id": "booking-uuid",
+  "confirmation_number": "ANH-2025-12345678",
   "event": {
     "name": "Friday Night Live Music",
     "date": "2024-03-15",
     "time": "19:00"
   },
-  "confirmation_sent": true
+  "seats": 2,
+  "message": "Booking confirmed! You'll receive an SMS confirmation shortly."
 }
 ```
+
+### Error Responses
+
+#### Token Expired (400)
+```json
+{
+  "error": "Booking link has expired",
+  "code": "TOKEN_EXPIRED",
+  "details": {
+    "expired_at": "2024-03-02T10:00:00Z",
+    "created_at": "2024-03-01T10:00:00Z"
+  }
+}
+```
+
+#### Already Confirmed (400)
+```json
+{
+  "error": "This booking has already been confirmed",
+  "code": "ALREADY_CONFIRMED",
+  "details": {
+    "confirmation_number": "ANH-2025-12345678",
+    "confirmed_at": "2024-03-01T11:00:00Z"
+  }
+}
+```
+
+## Get Booking Details
+
+Retrieve confirmed booking information.
+
+**Endpoint:** `GET /bookings/:confirmation_number`
+
+**Permissions Required:** `read:bookings`
+
+### Example Request
+```bash
+curl -H "X-API-Key: your-key" \
+  "https://management.orangejelly.co.uk/api/bookings/ANH-2025-12345678"
+```
+
+### Response (200)
+```json
+{
+  "booking": {
+    "id": "booking-uuid",
+    "confirmation_number": "ANH-2025-12345678",
+    "status": "confirmed",
+    "seats": 2,
+    "created_at": "2024-03-01T10:00:00Z",
+    "customer": {
+      "first_name": "John",
+      "last_name": "Smith",
+      "mobile_number": "+447700900000",
+      "sms_opt_in": true
+    },
+    "event": {
+      "id": "event-uuid",
+      "name": "Friday Night Live Music",
+      "date": "2024-03-15",
+      "time": "19:00",
+      "venue": "Main Hall",
+      "category": "Live Music",
+      "price": 10.00
+    },
+    "qr_code_url": "https://management.orangejelly.co.uk/qr/ANH-2025-12345678"
+  }
+}
+```
+
+## Cancel Booking
+
+Cancel an existing booking.
+
+**Endpoint:** `DELETE /bookings/:confirmation_number`
+
+**Permissions Required:** `write:bookings`
+
+### Request Body
+```json
+{
+  "reason": "Customer requested cancellation"
+}
+```
+
+### Success Response (200)
+```json
+{
+  "success": true,
+  "message": "Booking cancelled successfully",
+  "cancellation_details": {
+    "cancelled_at": "2024-03-01T12:00:00Z",
+    "cancelled_by": "api_key_name",
+    "reason": "Customer requested cancellation"
+  },
+  "sms_sent": true
+}
+```
+
+## Event Booking System Features
+
+### Phone Number Management
+- **Standardization** - All numbers converted to E.164 (+44...)
+- **Format Support** - Accepts 07xxx, +447xxx, 447xxx formats
+- **Duplicate Prevention** - Matches against all format variants
+- **SMS Opt-Out** - Respects customer preferences
+
+### Capacity Management
+- **Real-Time Checks** - Live availability verification
+- **Race Condition Prevention** - Database-level constraints
+- **Overbooking Protection** - Atomic capacity updates
+- **Waitlist Support** - Optional waitlist for full events
+
+### SMS Integration
+- **Provider** - Twilio API
+- **Message Queue** - Processed every 5 minutes
+- **Delivery Tracking** - Status updates via webhooks
+- **Opt-Out Handling** - Automatic preference updates
+- **Template Support** - Dynamic variable substitution
+
+### Audit & Compliance
+- **Complete Trail** - All operations logged
+- **API Key Tracking** - Identity verification
+- **Data Retention** - Configurable retention policies
+- **GDPR Support** - Customer data export/deletion
+
+### Error Handling Standards
+
+All errors follow consistent format:
+```json
+{
+  "error": "Human readable message",
+  "code": "MACHINE_READABLE_CODE",
+  "details": {
+    // Context-specific information
+  }
+}
+```
+
+### Common Error Codes
+
+| Code | HTTP Status | Description |
+|------|-------------|-------------|
+| VALIDATION_ERROR | 400 | Invalid input data |
+| NOT_FOUND | 404 | Resource doesn't exist |
+| EVENT_NOT_AVAILABLE | 400 | Event can't be booked |
+| INSUFFICIENT_CAPACITY | 400 | Not enough seats |
+| DUPLICATE_BOOKING | 400 | Customer already booked |
+| CUSTOMER_OPTED_OUT | 400 | SMS not allowed |
+| TOKEN_EXPIRED | 400 | Confirmation link expired |
+| ALREADY_CONFIRMED | 400 | Booking already confirmed |
+| DATABASE_ERROR | 500 | System error |
+| SMS_FAILED | 500 | SMS delivery failed |
 
 ---
 
@@ -933,15 +1305,18 @@ Suggested values (free text accepted):
   "status": "pending_payment",
   "payment_required": true,
   "payment_details": {
+    "amount": 20.00,              // Deposit amount (for compatibility)
     "deposit_amount": 20.00,      // £5 × 4 people
     "total_amount": 99.80,        // Total cost of all menu selections
     "outstanding_amount": 79.80,   // Balance due on arrival
     "currency": "GBP",
-    "payment_url": "https://management.orangejelly.co.uk/api/table-bookings/payment/create?booking_id=...",
+    "payment_url": "https://www.paypal.com/checkoutnow?token=...",  // Direct PayPal URL
     "expires_at": "2024-03-01T10:30:00Z"
   }
 }
 ```
+
+**Note:** The `payment_url` is now a direct PayPal checkout URL. Redirect customers directly to this URL to complete payment.
 
 ## Get Booking Details
 
@@ -1933,6 +2308,164 @@ async function createSundayLunchBooking() {
 }
 ```
 
+## Sunday Lunch Booking - Developer Integration Guide
+
+### Overview
+
+Sunday lunch bookings require a deposit payment and pre-ordered menu selections. This guide explains what data to collect and send.
+
+### Step-by-Step Integration
+
+#### 1. Fetch Current Menu
+```javascript
+// Get available menu items for the selected date
+const menuResponse = await fetch(
+  'https://management.orangejelly.co.uk/api/table-bookings/menu/sunday-lunch?date=2024-03-17',
+  { headers: { 'X-API-Key': 'your-key' } }
+);
+const menu = await menuResponse.json();
+```
+
+#### 2. Build Menu Selection UI
+```javascript
+// Display menu to customer
+// For each guest, collect:
+// - Main course selection (required)
+// - Any extra sides (optional)
+// - Special requests (optional)
+```
+
+#### 3. Format Menu Selections
+```javascript
+const menuSelections = [
+  // One main course per guest
+  {
+    guest_name: "Guest 1",
+    menu_item_id: "main-uuid-1",  // From menu.mains[].id
+    item_type: "main",
+    quantity: 1,
+    price_at_booking: 13.99,  // From menu.mains[].price
+    special_requests: "No gravy please"
+  },
+  // Optional extra sides
+  {
+    guest_name: "Table",  // Shared items use "Table"
+    menu_item_id: "side-uuid-5",  // From menu.sides[].id where price > 0
+    item_type: "side",
+    quantity: 2,
+    price_at_booking: 3.99  // From menu.sides[].price
+  }
+];
+```
+
+#### 4. Create Booking Request
+```javascript
+const bookingData = {
+  booking_type: "sunday_lunch",
+  date: "2024-03-17",
+  time: "13:00",
+  party_size: 4,
+  customer: {
+    first_name: "John",
+    last_name: "Smith",
+    mobile_number: "07700900000",
+    sms_opt_in: true
+  },
+  special_requirements: "High chair needed",
+  dietary_requirements: ["nut_free"],
+  menu_selections: menuSelections
+};
+
+// Send to API
+const response = await fetch(
+  'https://management.orangejelly.co.uk/api/table-bookings',
+  {
+    method: 'POST',
+    headers: {
+      'X-API-Key': 'your-key',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(bookingData)
+  }
+);
+```
+
+#### 5. Handle Payment Response
+```javascript
+const result = await response.json();
+
+if (result.payment_required) {
+  // Save booking reference for later
+  localStorage.setItem('pending_booking', result.booking_reference);
+  
+  // Redirect to PayPal
+  window.location.href = result.payment_details.payment_url;
+} else {
+  // Handle error
+  console.error('Booking failed:', result.error);
+}
+```
+
+#### 6. Handle Payment Return (Success Page)
+```javascript
+// PayPal redirects back with token and PayerID
+const urlParams = new URLSearchParams(window.location.search);
+const token = urlParams.get('token');
+const payerId = urlParams.get('PayerID');
+
+if (token && payerId) {
+  // Payment was successful
+  const bookingRef = localStorage.getItem('pending_booking');
+  
+  // Show confirmation
+  showSuccessMessage({
+    reference: bookingRef,
+    message: "Your Sunday lunch is confirmed! You'll receive an SMS shortly."
+  });
+  
+  // Clear stored reference
+  localStorage.removeItem('pending_booking');
+}
+```
+
+### Important Integration Notes
+
+1. **Menu Item IDs**: Always use the `id` from the menu API response
+2. **Price Locking**: Include `price_at_booking` to lock in current prices
+3. **Guest Names**: Can be actual names or generic ("Guest 1", "Adult", "Child")
+4. **Shared Items**: Use "Table" as guest_name for shared sides
+5. **Payment Timeout**: Payment URL expires after 30 minutes
+6. **Deposit Amount**: Always £5 per person (based on party_size)
+7. **SMS Delivery**: Confirmation SMS sent automatically after payment
+
+### Common Validation Errors
+
+```javascript
+// Missing menu selections
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Sunday lunch bookings require menu selections"
+  }
+}
+
+// Invalid menu item
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid menu item ID: main-uuid-999"
+  }
+}
+
+// Price mismatch
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Price mismatch for Roast Beef: expected 13.99, got 10.99"
+  }
+}
+```
+
 ---
 
 # Support
@@ -2026,6 +2559,51 @@ All responses follow this structure:
 ---
 
 # Change Log
+
+## 2025-01-27: API Documentation Update - Sunday Lunch Booking Flow
+
+### What's New
+
+1. **Comprehensive Sunday Lunch Booking Documentation**
+   - Added detailed flow documentation for Sunday lunch bookings with payment
+   - Documented complete payment integration via PayPal
+   - Added menu selection object structure and validation rules
+   - Included SMS templates for payment links and confirmations
+   - Added error handling for common Sunday lunch booking scenarios
+
+2. **Table Booking System Overview**
+   - Added comparison table between Regular and Sunday Lunch bookings
+   - Clarified deposit requirements and payment flow
+   - Documented menu structure (mains + included sides + optional extras)
+
+3. **PayPal Integration Details**
+   - Added webhook handling documentation
+   - Documented payment confirmation flow
+   - Added refund handling via webhooks
+
+4. **Developer Integration Guide**
+   - Step-by-step guide for implementing Sunday lunch bookings
+   - Code examples for menu fetching and selection formatting
+   - Payment handling and return URL processing
+   - Common validation errors and solutions
+
+### Website Developer Actions Required
+
+1. **Sunday Lunch Booking Flow**:
+   - Collect menu selections for each guest before creating booking
+   - Include `price_at_booking` for each menu item to lock in current prices
+   - Handle `pending_payment` status and redirect to payment URL
+   - Implement 30-minute payment timeout handling
+
+2. **Payment Processing**:
+   - After successful PayPal payment, confirm via API endpoint
+   - Handle payment failures and allow retry with new booking
+   - Display deposit amount (£5 per person) and outstanding balance clearly
+
+3. **Menu Integration**:
+   - Fetch current menu via `/table-bookings/menu/sunday-lunch` endpoint
+   - Display included sides (price: £0) vs optional extras (price > £0)
+   - Ensure at least one main course per guest
 
 ## 2025-01-27: Kitchen Hours Data Consistency Update
 
