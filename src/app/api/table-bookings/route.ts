@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { generatePhoneVariants, formatPhoneForStorage } from '@/lib/utils';
 import { checkAvailability } from '@/app/actions/table-booking-availability';
 import { calculateBookingTotal } from '@/app/actions/table-booking-menu';
+import { createPayPalOrder } from '@/lib/paypal';
 
 // Handle CORS preflight
 export async function OPTIONS(request: NextRequest) {
@@ -222,18 +223,70 @@ export async function POST(request: NextRequest) {
           duration_minutes: booking.duration_minutes,
         };
       } else {
-        // Sunday lunch requires payment (deposit only)
+        // Sunday lunch requires payment - create PayPal order immediately
         const outstandingAmount = totalAmount - depositAmount;
         
-        response.payment_required = true;
-        response.payment_details = {
-          deposit_amount: depositAmount,
-          total_amount: totalAmount,
-          outstanding_amount: outstandingAmount,
-          currency: 'GBP',
-          payment_url: `${process.env.NEXT_PUBLIC_APP_URL}/table-booking/${booking.booking_reference}/payment`,
-          expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes
-        };
+        try {
+          // Create PayPal order for deposit
+          const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/table-bookings/payment/return?booking_id=${booking.id}`;
+          const cancelUrl = `${process.env.NEXT_PUBLIC_APP_URL}/table-booking/${booking.booking_reference}/payment?cancelled=true`;
+          
+          const bookingWithItems = {
+            ...booking,
+            table_booking_items: validatedData.menu_selections || []
+          };
+          
+          const paypalOrder = await createPayPalOrder(
+            bookingWithItems,
+            returnUrl,
+            cancelUrl,
+            true // depositOnly
+          );
+          
+          // Store payment record
+          await supabase
+            .from('table_booking_payments')
+            .insert({
+              booking_id: booking.id,
+              amount: depositAmount,
+              payment_method: 'paypal',
+              status: 'pending',
+              transaction_id: paypalOrder.orderId,
+              payment_metadata: {
+                paypal_order_id: paypalOrder.orderId,
+                deposit_amount: depositAmount,
+                total_amount: totalAmount,
+                outstanding_amount: outstandingAmount,
+                approve_url: paypalOrder.approveUrl,
+              }
+            });
+          
+          response.payment_required = true;
+          response.payment_details = {
+            amount: depositAmount, // Include 'amount' for backward compatibility
+            deposit_amount: depositAmount,
+            total_amount: totalAmount,
+            outstanding_amount: outstandingAmount,
+            currency: 'GBP',
+            payment_url: paypalOrder.approveUrl, // Direct PayPal URL
+            expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes
+          };
+        } catch (paymentError) {
+          console.error('Failed to create PayPal order:', paymentError);
+          
+          // Fall back to web-based payment flow if PayPal fails
+          response.payment_required = true;
+          response.payment_details = {
+            amount: depositAmount,
+            deposit_amount: depositAmount,
+            total_amount: totalAmount,
+            outstanding_amount: outstandingAmount,
+            currency: 'GBP',
+            payment_url: `${process.env.NEXT_PUBLIC_APP_URL}/table-booking/${booking.booking_reference}/payment`,
+            expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+            error: 'Payment system temporarily unavailable. Please use the payment link to complete your booking.'
+          };
+        }
       }
 
       // Queue confirmation SMS if regular booking
