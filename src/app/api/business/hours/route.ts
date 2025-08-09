@@ -121,10 +121,16 @@ export async function GET(_request: NextRequest) {
 
   if (todaySpecial) {
     if (!todaySpecial.is_closed && todaySpecial.opens && todaySpecial.closes) {
-      const isCurrentlyOpen = currentTime >= todaySpecial.opens && currentTime < todaySpecial.closes;
+      // Handle venues that close at or after midnight
+      const isCurrentlyOpen = todaySpecial.closes <= todaySpecial.opens
+        ? (currentTime >= todaySpecial.opens || currentTime < todaySpecial.closes)
+        : (currentTime >= todaySpecial.opens && currentTime < todaySpecial.closes);
+      
       const isKitchenOpen = todaySpecial.is_kitchen_closed ? false : 
         !!(todaySpecial.kitchen_opens && todaySpecial.kitchen_closes &&
-        currentTime >= todaySpecial.kitchen_opens && currentTime < todaySpecial.kitchen_closes);
+        (todaySpecial.kitchen_closes <= todaySpecial.kitchen_opens
+          ? (currentTime >= todaySpecial.kitchen_opens || currentTime < todaySpecial.kitchen_closes)
+          : (currentTime >= todaySpecial.kitchen_opens && currentTime < todaySpecial.kitchen_closes)));
 
       currentStatus = {
         isOpen: isCurrentlyOpen,
@@ -139,11 +145,16 @@ export async function GET(_request: NextRequest) {
   } else {
     const todayHours = regularHours?.find(h => h.day_of_week === currentDay);
     if (todayHours && !todayHours.is_closed && todayHours.opens && todayHours.closes) {
-      const isCurrentlyOpen = currentTime >= todayHours.opens && currentTime < todayHours.closes;
+      // Handle venues that close at or after midnight
+      const isCurrentlyOpen = todayHours.closes <= todayHours.opens
+        ? (currentTime >= todayHours.opens || currentTime < todayHours.closes)
+        : (currentTime >= todayHours.opens && currentTime < todayHours.closes);
       
       let isKitchenOpen = false;
       if (todayHours.kitchen_opens && todayHours.kitchen_closes) {
-        isKitchenOpen = currentTime >= todayHours.kitchen_opens && currentTime < todayHours.kitchen_closes;
+        isKitchenOpen = todayHours.kitchen_closes <= todayHours.kitchen_opens
+          ? (currentTime >= todayHours.kitchen_opens || currentTime < todayHours.kitchen_closes)
+          : (currentTime >= todayHours.kitchen_opens && currentTime < todayHours.kitchen_closes);
       }
 
       currentStatus = {
