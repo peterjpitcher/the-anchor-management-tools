@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { capturePayPalPayment } from '@/lib/paypal';
-import { queueBookingConfirmationSMS } from '@/app/actions/table-booking-sms';
 import { sendBookingConfirmationEmail } from '@/app/actions/table-booking-email';
 import { sendManagerOrderNotification } from '@/app/actions/table-booking-manager-email';
 
@@ -119,14 +118,107 @@ export async function GET(request: NextRequest) {
           },
         });
       
-      // Queue confirmation SMS (use admin client since we're in unauthenticated context)
-      if (booking.customer?.sms_opt_in) {
-        await queueBookingConfirmationSMS(bookingId, true);
+      // Send confirmation SMS immediately (we're in unauthenticated context)
+      if (booking.customer?.sms_opt_in && booking.customer?.mobile_number) {
+        try {
+          // Get appropriate template
+          const templateKey = booking.booking_type === 'sunday_lunch'
+            ? 'booking_confirmation_sunday_lunch'
+            : 'booking_confirmation_regular';
+            
+          const { data: template } = await supabase
+            .from('table_booking_sms_templates')
+            .select('*')
+            .eq('template_key', templateKey)
+            .eq('is_active', true)
+            .single();
+            
+          if (template) {
+            // Format time for SMS
+            const formatTime12Hour = (time24: string): string => {
+              const [hours, minutes] = time24.split(':').slice(0, 2).map(Number);
+              const period = hours >= 12 ? 'pm' : 'am';
+              const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+              return minutes === 0 ? `${hours12}${period}` : `${hours12}:${minutes.toString().padStart(2, '0')}${period}`;
+            };
+            
+            // Prepare variables
+            const variables: Record<string, string> = {
+              customer_name: booking.customer.first_name,
+              party_size: booking.party_size.toString(),
+              date: new Date(booking.booking_date).toLocaleDateString('en-GB', {
+                weekday: 'long',
+                month: 'long',
+                day: 'numeric'
+              }),
+              time: formatTime12Hour(booking.booking_time),
+              reference: booking.booking_reference,
+              contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707',
+            };
+            
+            // Add deposit information for Sunday lunch
+            if (booking.booking_type === 'sunday_lunch' && payment) {
+              const depositAmount = payment.payment_metadata?.deposit_amount || payment.amount;
+              const totalAmount = payment.payment_metadata?.total_amount || 0;
+              const outstandingAmount = payment.payment_metadata?.outstanding_amount || (totalAmount - depositAmount);
+              
+              variables.deposit_amount = depositAmount.toFixed(2);
+              variables.outstanding_amount = outstandingAmount.toFixed(2);
+            }
+            
+            // Build message from template
+            let messageText = template.template_text;
+            Object.entries(variables).forEach(([key, value]) => {
+              messageText = messageText.replace(new RegExp(`{{${key}}}`, 'g'), value);
+            });
+            
+            // Send SMS immediately
+            const { sendSMS } = await import('@/lib/twilio');
+            const smsResult = await sendSMS(booking.customer.mobile_number, messageText);
+            
+            if (smsResult.success && smsResult.sid) {
+              console.log('[Payment Journey] SMS confirmation sent immediately:', smsResult.sid);
+              
+              // Log message in database
+              await supabase
+                .from('messages')
+                .insert({
+                  customer_id: booking.customer.id,
+                  direction: 'outbound',
+                  message_sid: smsResult.sid,
+                  twilio_message_sid: smsResult.sid,
+                  body: messageText,
+                  status: 'sent',
+                  twilio_status: 'queued',
+                  from_number: process.env.TWILIO_PHONE_NUMBER,
+                  to_number: booking.customer.mobile_number,
+                  message_type: 'sms',
+                  metadata: { 
+                    booking_id: bookingId, 
+                    template_key: templateKey,
+                    source: 'payment_confirmation'
+                  }
+                });
+            } else {
+              console.error('[Payment Journey] Failed to send SMS confirmation:', smsResult.error);
+            }
+          } else {
+            console.error('[Payment Journey] SMS template not found:', templateKey);
+          }
+        } catch (smsError) {
+          // Log error but don't block the redirect
+          console.error('[Payment Journey] SMS error (non-blocking):', smsError);
+        }
       }
       
-      // Send confirmation email (use admin client since we're in unauthenticated context)
+      // Send confirmation email (keep existing functionality)
       if (booking.customer?.email) {
-        await sendBookingConfirmationEmail(bookingId, true);
+        try {
+          await sendBookingConfirmationEmail(bookingId, true);
+        } catch (emailError) {
+          // Log error but don't block the redirect
+          console.error('[Payment Journey] Email error (non-blocking):', emailError);
+        }
       }
       
       // Send manager notification email (check if this needs admin client too)

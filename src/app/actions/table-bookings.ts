@@ -453,8 +453,23 @@ export async function createTableBooking(formData: FormData) {
           // Calculate deposit amount
           const depositAmount = booking.party_size * 5;
           
-          // Generate payment URL
-          const paymentUrl = `${process.env.NEXT_PUBLIC_APP_URL}/table-bookings/${booking.id}/payment`;
+          // Generate payment URL with link shortening
+          const longPaymentUrl = `/table-booking/${booking.booking_reference}/payment`;
+          const { createShortLinkInternal } = await import('@/app/actions/short-links');
+          const shortLinkResult = await createShortLinkInternal({
+            destination_url: `${process.env.NEXT_PUBLIC_APP_URL}${longPaymentUrl}`,
+            link_type: 'custom',
+            metadata: { 
+              booking_id: booking.id,
+              booking_reference: booking.booking_reference,
+              type: 'sunday_lunch_payment'
+            },
+            expires_at: deadlineDate.toISOString()
+          });
+          
+          const paymentUrl = shortLinkResult.success 
+            ? shortLinkResult.data.full_url 
+            : `${process.env.NEXT_PUBLIC_APP_URL}${longPaymentUrl}`;
           
           // Build message with dynamic deadline and urgency
           const messageText = `Hi ${customerData.first_name}, your Sunday Lunch booking at The Anchor (ref: ${booking.booking_reference}) for ${booking.party_size} people requires a £${depositAmount.toFixed(2)} deposit to confirm. ⚠️ PAYMENT DEADLINE: ${deadlineFormatted}. Pay now: ${paymentUrl}. If payment is not received by the deadline, your booking will be automatically cancelled. Call ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'} with any questions.`;

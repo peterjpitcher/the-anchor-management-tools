@@ -518,9 +518,6 @@ export async function queuePaymentRequestSMS(bookingId: string, useAdminClient: 
     // Calculate deposit amount (£5 per person)
     const depositAmount = booking.party_size * 5;
     
-    // Generate payment link to public payment page
-    const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL}/table-bookings/${bookingId}/payment`;
-    
     // Calculate payment deadline (Saturday 1pm before the Sunday booking)
     const bookingDate = new Date(booking.booking_date);
     const deadlineDate = new Date(bookingDate);
@@ -534,6 +531,24 @@ export async function queuePaymentRequestSMS(bookingId: string, useAdminClient: 
       hour: 'numeric',
       minute: '2-digit'
     });
+    
+    // Generate payment link with shortening
+    const longPaymentUrl = `/table-booking/${booking.booking_reference}/payment`;
+    const { createShortLinkInternal } = await import('@/app/actions/short-links');
+    const shortLinkResult = await createShortLinkInternal({
+      destination_url: `${process.env.NEXT_PUBLIC_APP_URL}${longPaymentUrl}`,
+      link_type: 'custom',
+      metadata: { 
+        booking_id: booking.id,
+        booking_reference: booking.booking_reference,
+        type: 'sunday_lunch_payment_reminder'
+      },
+      expires_at: deadlineDate.toISOString()
+    });
+    
+    const paymentLink = shortLinkResult.success 
+      ? shortLinkResult.data.full_url 
+      : `${process.env.NEXT_PUBLIC_APP_URL}${longPaymentUrl}`;
     
     // Prepare variables
     const variables = {

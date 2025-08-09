@@ -302,8 +302,8 @@ export default function NewTableBookingPage() {
       if (result.error) {
         setError(result.error);
       } else if (bookingType === 'sunday_lunch' && result.data) {
-        // For Sunday lunch, redirect to payment page
-        router.push(`/table-bookings/${result.data.id}/payment`);
+        // For Sunday lunch, redirect to payment page using booking reference
+        router.push(`/table-booking/${result.data.booking_reference}/payment`);
       } else {
         // For regular bookings, go to booking details
         router.push(`/table-bookings/${result.data?.id}`);
