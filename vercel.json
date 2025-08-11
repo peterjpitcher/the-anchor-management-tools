@@ -35,6 +35,10 @@
     {
       "path": "/api/cron/table-booking-monitoring",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/generate-slots",
+      "schedule": "0 2 * * 1"
     }
   ],
   "rewrites": [
