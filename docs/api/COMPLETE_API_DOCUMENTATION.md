@@ -1,5 +1,17 @@
 # The Anchor Management API - Complete Documentation
 
+## Recent Updates (August 2025)
+
+### Sunday Lunch Booking API v2 - Major Improvements
+- **Simplified requests**: Only send `menu_item_id`, server fetches all details
+- **Automatic sides**: Yorkshire pudding and roast potatoes auto-added
+- **Idempotency protection**: Prevents duplicate bookings with `Idempotency-Key` header
+- **Atomic capacity**: Database-level locking prevents overbooking
+- **Better errors**: Correlation IDs and detailed error messages
+- **Data integrity**: Server validates and enriches all menu data
+
+[See Sunday Lunch Booking section](#sunday-lunch-booking-simplified-v2-api) for details.
+
 ## Overview
 
 The Anchor Management API provides programmatic access to events, table bookings, business information, and customer data. All APIs use the same authentication system and follow consistent patterns.
@@ -1075,6 +1087,20 @@ Create a new table reservation.
 
 **Permissions Required:** `write:table_bookings`
 
+### Request Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-API-Key` | Yes | Your API authentication key |
+| `Content-Type` | Yes | Must be `application/json` |
+| `Idempotency-Key` | Recommended | Unique key to prevent duplicate bookings (e.g., UUID) |
+
+**Idempotency Protection (New):**
+- Send the same `Idempotency-Key` for retries to get cached response
+- Prevents duplicate bookings from network issues or double-clicks
+- Keys are cached for 24 hours
+- Example: `Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000`
+
 ### Request Body Schema
 
 #### Required Fields
@@ -1206,13 +1232,13 @@ Suggested values (free text accepted):
 }
 ```
 
-#### Sunday Lunch Booking
+#### Sunday Lunch Booking (Simplified - v2 API)
 ```json
 {
   "booking_type": "sunday_lunch",
   "date": "2024-03-17",
   "time": "13:00",
-  "party_size": 4,
+  "party_size": 2,
   "customer": {
     "first_name": "John",
     "last_name": "Smith",
@@ -1221,15 +1247,26 @@ Suggested values (free text accepted):
   },
   "menu_selections": [
     {
-      "guest_name": "John",
-      "menu_item_id": "menu-item-uuid",
-      "item_type": "main",
+      "menu_item_id": "beef-roast-uuid",
       "quantity": 1,
-      "price_at_booking": 24.95
+      "guest_name": "Guest 1",
+      "special_requests": "Well done please"
+    },
+    {
+      "menu_item_id": "chicken-roast-uuid",
+      "quantity": 1,
+      "guest_name": "Guest 2"
     }
   ]
 }
 ```
+
+**Important Notes for Sunday Lunch:**
+- **Simplified API**: Only send `menu_item_id` - server fetches name and price
+- **Auto-added sides**: Yorkshire pudding, roast potatoes automatically included
+- **Validation**: Must have exactly 1 main course per guest (party_size must match)
+- **Deposit required**: £5 per person, payment URL returned in response
+- **No duplicate data**: Don't send `custom_item_name` or `price_at_booking` anymore
 
 ### Response
 
@@ -1256,7 +1293,7 @@ Suggested values (free text accepted):
 }
 ```
 
-#### Error Response Examples
+#### Error Response Examples (Improved v2)
 
 **Validation Error:**
 ```json
@@ -1265,6 +1302,8 @@ Suggested values (free text accepted):
   "error": {
     "code": "VALIDATION_ERROR",
     "message": "Invalid booking details",
+    "correlation_id": "550e8400-e29b-41d4-a716-446655440000",
+    "timestamp": "2024-03-15T14:30:00Z",
     "details": {
       "errors": [
         {
@@ -1281,17 +1320,48 @@ Suggested values (free text accepted):
 }
 ```
 
-**Capacity Error:**
+**Sunday Lunch Validation Error (New):**
 ```json
 {
   "success": false,
   "error": {
-    "code": "NO_AVAILABILITY",
-    "message": "No tables available for the requested time",
+    "code": "INVALID_MEAL_SELECTION",
+    "message": "Must select exactly 2 main course(s) for 2 guest(s). Currently have 1.",
+    "correlation_id": "550e8400-e29b-41d4-a716-446655440000",
+    "timestamp": "2024-03-15T14:30:00Z"
+  }
+}
+```
+
+**Capacity Error (With Atomic Locking):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "INSUFFICIENT_CAPACITY",
+    "message": "Insufficient capacity. Only 4 seats available",
+    "correlation_id": "550e8400-e29b-41d4-a716-446655440000",
+    "timestamp": "2024-03-15T14:30:00Z",
     "details": {
       "requested_capacity": 6,
       "available_capacity": 4,
       "suggestion": "Try 18:30 or 20:00 for availability"
+    }
+  }
+}
+```
+
+**Invalid Menu Item (New):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "INVALID_MENU_ITEMS",
+    "message": "Menu item not found or unavailable",
+    "correlation_id": "550e8400-e29b-41d4-a716-446655440000",
+    "timestamp": "2024-03-15T14:30:00Z",
+    "details": {
+      "invalid_items": ["fake-menu-uuid"]
     }
   }
 }

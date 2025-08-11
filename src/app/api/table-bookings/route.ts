@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { z } from 'zod';
+import crypto from 'crypto';
 import { generatePhoneVariants, formatPhoneForStorage } from '@/lib/utils';
 import { checkAvailability } from '@/app/actions/table-booking-availability';
 import { calculateBookingTotal } from '@/app/actions/table-booking-menu';
@@ -42,11 +43,11 @@ const CreateBookingSchema = z.object({
   menu_selections: z.array(z.object({
     menu_item_id: z.string().optional(),
     custom_item_name: z.string().optional(),
-    item_type: z.enum(['main', 'side']),
+    item_type: z.enum(['main', 'side']).optional(), // Made optional - server will enrich
     quantity: z.number().min(1),
     special_requests: z.string().optional(),
     guest_name: z.string().optional(),
-    price_at_booking: z.number(),
+    price_at_booking: z.number().optional(), // Made optional - server will fetch from DB
   })).optional(),
 });
 
@@ -58,21 +59,77 @@ export async function POST(request: NextRequest) {
       const validatedData = CreateBookingSchema.parse(body);
 
       const supabase = createAdminClient();
+      
+      // Phase 1B: Idempotency protection
+      const idempotencyKey = req.headers.get('Idempotency-Key');
+      if (idempotencyKey) {
+        // Generate request hash from key booking data
+        const requestHash = crypto
+          .createHash('sha256')
+          .update(JSON.stringify({
+            date: validatedData.date,
+            time: validatedData.time,
+            party_size: validatedData.party_size,
+            customer_phone: validatedData.customer.mobile_number,
+            booking_type: validatedData.booking_type
+          }))
+          .digest('hex');
+        
+        // Check if we've seen this request before
+        const { data: existingRequest } = await supabase
+          .from('idempotency_keys')
+          .select('response')
+          .eq('key', idempotencyKey)
+          .eq('request_hash', requestHash)
+          .single();
+        
+        if (existingRequest) {
+          // Return the cached response for this idempotent request
+          console.log('Idempotent request detected, returning cached response');
+          return NextResponse.json(existingRequest.response, { status: 201 });
+        }
+      }
+      
+      // Generate correlation ID for request tracing
+      const correlationId = crypto.randomUUID();
 
-      // Check availability
-      const availability = await checkAvailability(
-        validatedData.date,
-        validatedData.party_size,
-        validatedData.booking_type,
-        supabase // Pass admin client
-      );
-
-      if (!availability.data?.available) {
-        return createErrorResponse(
-          'No tables available for the selected time',
-          'NO_AVAILABILITY',
-          400
+      // Phase 2A: Use atomic capacity check for Sunday lunch
+      if (validatedData.booking_type === 'sunday_lunch') {
+        // Use the new atomic capacity check function
+        const { data: capacityCheck, error: capacityError } = await supabase.rpc(
+          'check_and_reserve_capacity',
+          {
+            p_service_date: validatedData.date,
+            p_booking_time: validatedData.time,
+            p_party_size: validatedData.party_size,
+            p_booking_type: validatedData.booking_type,
+            p_duration_minutes: validatedData.duration_minutes || 120
+          }
         );
+        
+        if (capacityError || !capacityCheck?.[0]?.available) {
+          return createErrorResponse(
+            capacityCheck?.[0]?.message || 'No tables available for the selected time',
+            'NO_AVAILABILITY',
+            400
+          );
+        }
+      } else {
+        // Regular bookings use the existing check (for now)
+        const availability = await checkAvailability(
+          validatedData.date,
+          validatedData.party_size,
+          validatedData.booking_type,
+          supabase // Pass admin client
+        );
+
+        if (!availability.data?.available) {
+          return createErrorResponse(
+            'No tables available for the selected time',
+            'NO_AVAILABILITY',
+            400
+          );
+        }
       }
 
       // Find or create customer
@@ -136,7 +193,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Create booking
+      // Create booking with correlation ID for tracing
       const { data: booking, error: bookingError } = await supabase
         .from('table_bookings')
         .insert({
@@ -152,6 +209,7 @@ export async function POST(request: NextRequest) {
           duration_minutes: validatedData.duration_minutes,
           source: validatedData.source,
           status: validatedData.booking_type === 'sunday_lunch' ? 'pending_payment' : 'confirmed',
+          correlation_id: correlationId,
         })
         .select()
         .single();
@@ -176,19 +234,161 @@ export async function POST(request: NextRequest) {
           500
         );
       }
+      
+      // Log booking creation to audit trail
+      await supabase.from('booking_audit').insert({
+        booking_id: booking.id,
+        event: 'booking_created',
+        new_status: booking.status,
+        meta: {
+          correlation_id: correlationId,
+          party_size: validatedData.party_size,
+          booking_type: validatedData.booking_type,
+          source: validatedData.source,
+          customer_id: customer.id,
+        }
+      });
 
       // Add menu selections if Sunday lunch
       let totalAmount = 0;
       let depositAmount = 0;
       if (validatedData.booking_type === 'sunday_lunch' && validatedData.menu_selections) {
+        // Phase 1A Fix: Server-side menu lookup to prevent null custom_item_name
+        // Collect all menu_item_ids that need lookup
+        const menuItemIds = validatedData.menu_selections
+          .filter(s => s.menu_item_id && !s.custom_item_name)
+          .map(s => s.menu_item_id);
+        
+        // Fetch menu items from database if needed
+        let menuItemMap = new Map<string, any>();
+        if (menuItemIds.length > 0) {
+          const { data: menuItems, error: menuError } = await supabase
+            .from('sunday_lunch_menu_items')
+            .select('id, name, price, category, is_active')
+            .in('id', menuItemIds);
+          
+          if (menuError) {
+            console.error('Failed to fetch menu items:', menuError);
+            // Rollback booking
+            await supabase.from('table_bookings').delete().eq('id', booking.id);
+            return createErrorResponse(
+              'Failed to validate menu selections',
+              'INVALID_MENU_ITEMS',
+              400
+            );
+          }
+          
+          // Create lookup map
+          menuItemMap = new Map(menuItems?.map(item => [item.id, item]) || []);
+        }
+        
+        // Phase 1C: Auto-add included sides for Sunday lunch
+        // First, fetch ALL menu items including included sides
+        const { data: allMenuItems } = await supabase
+          .from('sunday_lunch_menu_items')
+          .select('id, name, price, category, is_active')
+          .eq('is_active', true);
+        
+        const includedSides = allMenuItems?.filter(item => 
+          item.category === 'side' && item.price === 0
+        ) || [];
+        
+        // Enrich and validate menu selections
+        const enrichedSelections = validatedData.menu_selections.map(selection => {
+          // If menu_item_id provided, enrich from database
+          if (selection.menu_item_id) {
+            const dbItem = menuItemMap.get(selection.menu_item_id);
+            
+            if (!dbItem) {
+              // Menu item not found or inactive
+              throw new Error(`Invalid menu item: ${selection.menu_item_id}`);
+            }
+            
+            if (!dbItem.is_active) {
+              throw new Error(`Menu item unavailable: ${dbItem.name}`);
+            }
+            
+            // Server-side data enrichment - never trust client for these
+            return {
+              booking_id: booking.id,
+              menu_item_id: selection.menu_item_id,
+              custom_item_name: dbItem.name, // Always populate from DB
+              item_type: dbItem.category === 'main' ? 'main' : 'side', // Enforce from DB
+              quantity: selection.quantity || 1,
+              special_requests: selection.special_requests || null,
+              price_at_booking: dbItem.price || 0, // Always use DB price
+              guest_name: selection.guest_name || null,
+            };
+          } else if (selection.custom_item_name) {
+            // Custom/off-menu item - validate has required fields
+            if (!selection.price_at_booking && selection.price_at_booking !== 0) {
+              throw new Error('Custom items must have a price');
+            }
+            
+            return {
+              booking_id: booking.id,
+              menu_item_id: null,
+              custom_item_name: selection.custom_item_name,
+              item_type: selection.item_type || 'main',
+              quantity: selection.quantity || 1,
+              special_requests: selection.special_requests || null,
+              price_at_booking: selection.price_at_booking,
+              guest_name: selection.guest_name || null,
+            };
+          } else {
+            throw new Error('Each item must have either menu_item_id or custom_item_name');
+          }
+        });
+        
+        // Validate meal completeness - must have correct number of mains
+        const mainCourses = enrichedSelections.filter(s => s.item_type === 'main');
+        const totalMainQuantity = mainCourses.reduce((sum, item) => sum + item.quantity, 0);
+        
+        if (totalMainQuantity !== validatedData.party_size) {
+          // Rollback booking
+          await supabase.from('table_bookings').delete().eq('id', booking.id);
+          return createErrorResponse(
+            `Must select exactly ${validatedData.party_size} main course(s) for ${validatedData.party_size} guest(s). Currently have ${totalMainQuantity}.`,
+            'INVALID_MEAL_SELECTION',
+            400
+          );
+        }
+        
+        // Auto-add included sides for each main course
+        const finalSelections = [...enrichedSelections];
+        
+        // For each main course, add the included sides
+        mainCourses.forEach(mainCourse => {
+          // Check if included sides already exist for this guest
+          const guestName = mainCourse.guest_name || `Guest ${finalSelections.indexOf(mainCourse) + 1}`;
+          const existingSidesForGuest = enrichedSelections.filter(s => 
+            s.guest_name === guestName && s.item_type === 'side' && s.price_at_booking === 0
+          );
+          
+          // If no included sides for this guest, add them
+          if (existingSidesForGuest.length === 0 && includedSides.length > 0) {
+            includedSides.forEach(side => {
+              finalSelections.push({
+                booking_id: booking.id,
+                menu_item_id: side.id,
+                custom_item_name: side.name,
+                item_type: 'side',
+                quantity: mainCourse.quantity, // Same quantity as the main
+                special_requests: null,
+                price_at_booking: 0, // Included sides are free
+                guest_name: guestName,
+              });
+            });
+          }
+        });
+        
+        // Insert enriched menu selections with auto-added sides
         const { error: itemsError } = await supabase
           .from('table_booking_items')
-          .insert(validatedData.menu_selections.map(item => ({
-            booking_id: booking.id,
-            ...item,
-          })));
+          .insert(finalSelections);
           
         if (itemsError) {
+          console.error('Failed to insert menu items:', itemsError);
           // Rollback booking
           await supabase.from('table_bookings').delete().eq('id', booking.id);
           return createErrorResponse(
@@ -198,8 +398,8 @@ export async function POST(request: NextRequest) {
           );
         }
         
-        // Calculate total amount from menu selections
-        totalAmount = validatedData.menu_selections.reduce(
+        // Calculate total amount from final selections (using DB prices)
+        totalAmount = finalSelections.reduce(
           (sum, item) => sum + (item.price_at_booking * item.quantity), 
           0
         );
@@ -317,6 +517,26 @@ export async function POST(request: NextRequest) {
             customer_id: customer.id,
           },
           scheduled_for: new Date().toISOString(),
+        });
+      }
+
+      // Store idempotency key if provided
+      if (idempotencyKey) {
+        const requestHash = crypto
+          .createHash('sha256')
+          .update(JSON.stringify({
+            date: validatedData.date,
+            time: validatedData.time,
+            party_size: validatedData.party_size,
+            customer_phone: validatedData.customer.mobile_number,
+            booking_type: validatedData.booking_type
+          }))
+          .digest('hex');
+        
+        await supabase.from('idempotency_keys').insert({
+          key: idempotencyKey,
+          request_hash: requestHash,
+          response: response
         });
       }
 
