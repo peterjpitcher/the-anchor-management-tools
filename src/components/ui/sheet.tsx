@@ -54,6 +54,7 @@ interface SheetContentProps
     VariantProps<typeof sheetVariants> {
   hideCloseButton?: boolean
   children?: React.ReactNode
+  side?: "top" | "right" | "bottom" | "left"
 }
 
 const SheetContent = React.forwardRef<
