@@ -2,11 +2,13 @@
 
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
-import { CalendarIcon, UserGroupIcon, PencilSquareIcon, EnvelopeIcon, BuildingOfficeIcon, IdentificationIcon, DocumentTextIcon, HomeIcon, StarIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, UserGroupIcon, PencilSquareIcon, EnvelopeIcon, BuildingOfficeIcon, IdentificationIcon, DocumentTextIcon, HomeIcon, StarIcon, Bars3Icon, Cog6ToothIcon } from '@heroicons/react/24/outline'
 import { useEffect, useState, useMemo } from 'react'
 import { getUnreadMessageCount } from '@/app/actions/messagesActions'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { Badge } from '@/components/ui-v2/display/Badge'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import type { ModuleName, ActionType } from '@/types/rbac'
 
 // ADDED Props interface
@@ -17,6 +19,7 @@ interface BottomNavigationProps {
 export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps) { // ADDED onQuickAddNoteClick prop
   const pathname = usePathname()
   const [unreadCount, setUnreadCount] = useState(0)
+  const [moreDrawerOpen, setMoreDrawerOpen] = useState(false)
 
   useEffect(() => {
     // Load unread count on mount
@@ -48,8 +51,8 @@ export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps)
 
   const { hasPermission, loading: permissionsLoading } = usePermissions()
 
-  // Filter navigation items based on permissions
-  const navigationItems = useMemo(() => {
+  // Split navigation items into primary (bottom nav) and secondary (drawer)
+  const { primaryItems, secondaryItems } = useMemo(() => {
     const allNavigationItems: NavigationItem[] = [
       { name: 'Dashboard', href: '/', icon: HomeIcon, permission: { module: 'dashboard', action: 'view' } },
       { name: 'Events', href: '/events', icon: CalendarIcon, permission: { module: 'events', action: 'view' } },
@@ -60,12 +63,21 @@ export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps)
       { name: 'Employees', href: '/employees', icon: IdentificationIcon, permission: { module: 'employees', action: 'view' } },
       { name: 'Notes', href: '#', icon: PencilSquareIcon, action: true },
       { name: 'Invoices', href: '/invoices', icon: DocumentTextIcon, permission: { module: 'invoices', action: 'view' } },
+      { name: 'Settings', href: '/settings', icon: Cog6ToothIcon, permission: { module: 'settings', action: 'view' } },
     ]
     
-    if (permissionsLoading) return [];
-    return allNavigationItems.filter(item => 
+    if (permissionsLoading) return { primaryItems: [], secondaryItems: [] };
+    
+    const filteredItems = allNavigationItems.filter(item => 
       item.action || !item.permission || hasPermission(item.permission.module, item.permission.action)
     );
+    
+    // Primary items: Dashboard, Events, Customers, Messages (4 items)
+    const primary = filteredItems.slice(0, 4);
+    // Secondary items: Everything else
+    const secondary = filteredItems.slice(4);
+    
+    return { primaryItems: primary, secondaryItems: secondary };
   }, [hasPermission, permissionsLoading])
 
   if (permissionsLoading) {
@@ -84,32 +96,18 @@ export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps)
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-sidebar border-t border-gray-300 md:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-      <div className="flex h-16 overflow-x-auto scrollbar-hide relative">
-        {/* Scroll indicators */}
-        <div className="absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-sidebar to-transparent pointer-events-none z-10 md:hidden" />
-        <div className="absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-l from-sidebar to-transparent pointer-events-none z-10 md:hidden" />
-        {navigationItems.map((item) => {
-          if (item.action && item.name === 'Notes') {
-            return (
-              <button
-                key={item.name}
-                onClick={onQuickAddNoteClick}
-                className="inline-flex flex-col items-center justify-center min-w-[90px] px-3 py-2 hover:bg-white/10 active:bg-white/20 text-white/80 hover:text-white transition-colors"
-              >
-                <item.icon className="w-6 h-6" />
-                <span className="text-xs mt-1">{item.name}</span>
-              </button>
-            );
-          }
-          return (
+    <>
+      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-sidebar border-t border-gray-300 md:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <div className="flex h-16 justify-around items-center">
+          {/* Primary navigation items - max 4 items */}
+          {primaryItems.map((item) => (
             <Link
               key={item.name}
               href={item.href}
-              className={`inline-flex flex-col items-center justify-center min-w-[90px] px-3 py-2 transition-colors ${
+              className={`flex flex-col items-center justify-center flex-1 min-h-[44px] py-2 transition-colors ${
                 isActive(item.href)
                   ? 'bg-white/20 text-white'
-                  : 'text-white/80 hover:text-white hover:bg-white/10'
+                  : 'text-white/80 hover:text-white hover:bg-white/10 active:bg-white/20'
               }`}
             >
               <div className="relative">
@@ -122,9 +120,66 @@ export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps)
               </div>
               <span className="text-xs mt-1">{item.name}</span>
             </Link>
-          );
-        })}
-      </div>
-    </nav>
+          ))}
+          
+          {/* More button - opens drawer with secondary items */}
+          {secondaryItems.length > 0 && (
+            <button
+              onClick={() => setMoreDrawerOpen(true)}
+              className="flex flex-col items-center justify-center flex-1 min-h-[44px] py-2 text-white/80 hover:text-white hover:bg-white/10 active:bg-white/20 transition-colors"
+            >
+              <Bars3Icon className="w-6 h-6" />
+              <span className="text-xs mt-1">More</span>
+            </button>
+          )}
+        </div>
+      </nav>
+
+      {/* Secondary navigation drawer using shadcn/ui Sheet */}
+      <Sheet open={moreDrawerOpen} onOpenChange={setMoreDrawerOpen}>
+        <SheetContent side="bottom" className="h-auto max-h-[80vh] rounded-t-xl">
+          <SheetHeader>
+            <SheetTitle>More Options</SheetTitle>
+            <SheetDescription>
+              Access additional features and settings
+            </SheetDescription>
+          </SheetHeader>
+          <ScrollArea className="h-full max-h-[60vh] mt-4">
+            <div className="grid grid-cols-3 gap-4 pb-safe">
+              {secondaryItems.map((item) => {
+                if (item.action && item.name === 'Notes') {
+                  return (
+                    <button
+                      key={item.name}
+                      onClick={() => {
+                        onQuickAddNoteClick();
+                        setMoreDrawerOpen(false);
+                      }}
+                      className="flex flex-col items-center justify-center p-4 rounded-lg hover:bg-gray-100 active:bg-gray-200 transition-colors min-h-[88px]"
+                    >
+                      <item.icon className="w-8 h-8 text-gray-700 mb-2" />
+                      <span className="text-sm text-gray-900">{item.name}</span>
+                    </button>
+                  );
+                }
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    onClick={() => setMoreDrawerOpen(false)}
+                    className={`flex flex-col items-center justify-center p-4 rounded-lg hover:bg-gray-100 active:bg-gray-200 transition-colors min-h-[88px] ${
+                      isActive(item.href) ? 'bg-gray-100' : ''
+                    }`}
+                  >
+                    <item.icon className="w-8 h-8 text-gray-700 mb-2" />
+                    <span className="text-sm text-gray-900">{item.name}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+    </>
   )
 } 

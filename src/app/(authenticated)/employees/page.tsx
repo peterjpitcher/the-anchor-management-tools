@@ -188,10 +188,10 @@ export default function EmployeesPage() {
           
           <TabNav
             tabs={[
-              { key: 'all', label: 'All', badge: statusCounts.all },
-              { key: 'Active', label: 'Active', badge: statusCounts.active },
-              { key: 'Prospective', label: 'Prospective', badge: statusCounts.prospective },
-              { key: 'Former', label: 'Former', badge: statusCounts.former },
+              { key: 'all', label: 'All', mobileLabel: 'All', badge: statusCounts.all },
+              { key: 'Active', label: 'Active', mobileLabel: 'Active', badge: statusCounts.active },
+              { key: 'Prospective', label: 'Prospective', mobileLabel: 'Prosp.', badge: statusCounts.prospective },
+              { key: 'Former', label: 'Former', mobileLabel: 'Former', badge: statusCounts.former },
             ]}
             activeKey={statusFilter}
             onChange={(tab) => setStatusFilter(tab as 'all' | 'Active' | 'Former' | 'Prospective')}

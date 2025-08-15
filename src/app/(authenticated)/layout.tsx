@@ -3,7 +3,6 @@
 import { Navigation } from '@/components/Navigation'
 import { ArrowRightOnRectangleIcon, Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline'
 import { useRouter } from 'next/navigation'
-import { BottomNavigation } from '@/components/BottomNavigation'
 import Image from 'next/image'
 import React, { useState, useEffect } from 'react'
 import AddNoteModal from '@/components/modals/AddNoteModal'
@@ -11,7 +10,6 @@ import { redirect } from 'next/navigation'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { PermissionProvider } from '@/contexts/PermissionContext'
 import type { User } from '@supabase/supabase-js'
-import { BugReporterButton } from '@/components/BugReporterButton'
 
 function AuthenticatedLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -43,8 +41,16 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
 
     getUser()
 
+    // Add event listener for opening mobile menu from PageHeader
+    const handleOpenMenu = () => {
+      setIsMobileMenuOpen(true)
+    }
+    
+    window.addEventListener('open-mobile-menu', handleOpenMenu)
+
     return () => {
       subscription.unsubscribe()
+      window.removeEventListener('open-mobile-menu', handleOpenMenu)
     }
   }, [supabase])
 
@@ -127,10 +133,13 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
                   </button>
                 </div>
                 <div className="flex-1 overflow-y-auto py-4 min-h-0">
-                  <Navigation onQuickAddNoteClick={() => {
-                    openAddNoteModal()
-                    setIsMobileMenuOpen(false)
-                  }} />
+                  <Navigation 
+                    onQuickAddNoteClick={() => {
+                      openAddNoteModal()
+                      setIsMobileMenuOpen(false)
+                    }}
+                    onNavigate={() => setIsMobileMenuOpen(false)}
+                  />
                 </div>
                 <div className="flex flex-shrink-0 border-t border-green-600 p-4">
                   <button
@@ -154,41 +163,12 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
 
         {/* Main content */}
         <div className="flex flex-1 flex-col overflow-hidden">
-          {/* Mobile header */}
-          <header className="md:hidden bg-white shadow-sm border-b border-gray-200">
-            <div className="flex items-center justify-between px-4 py-3">
-              <button
-                type="button"
-                className="rounded-md text-gray-500 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
-                onClick={() => setIsMobileMenuOpen(true)}
-              >
-                <span className="sr-only">Open menu</span>
-                <Bars3Icon className="h-6 w-6" aria-hidden="true" />
-              </button>
-              <div className="flex items-center">
-                <Image 
-                  src="/logo.png" 
-                  alt="Logo" 
-                  width={32}
-                  height={32}
-                  className="h-8 w-8"
-                />
-                <span className="ml-2 text-sm font-semibold text-gray-900">Management Tools</span>
-              </div>
-              <div className="w-6" /> {/* Spacer for centering */}
-            </div>
-          </header>
-          
-          <main className="flex-1 overflow-y-auto bg-gray-50 pb-20 md:pb-6">
+          <main className="flex-1 overflow-y-auto bg-gray-50 pb-6 px-2 sm:px-4 md:px-6 py-2 sm:py-4">
             {children}
           </main>
-          
-          
-          <BottomNavigation onQuickAddNoteClick={openAddNoteModal} />
         </div>
       </div>
       <AddNoteModal isOpen={isAddNoteModalOpen} onClose={closeAddNoteModal} />
-      <BugReporterButton />
     </div>
   )
 }

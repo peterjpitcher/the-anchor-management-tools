@@ -202,7 +202,7 @@ export default function InvoicesPage() {
         <Alert variant="error" description={error} className="mb-6" />
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <Stat label="Outstanding"
           value={`£${summary.total_outstanding.toFixed(2)}`}
           description="Awaiting payment"
@@ -252,7 +252,7 @@ export default function InvoicesPage() {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 leftIcon={<MagnifyingGlassIcon />}
-                className="w-full sm:w-auto flex-1"
+                className="hidden sm:block w-full sm:w-auto flex-1"
                 fullWidth={false}
               />
             </div>
