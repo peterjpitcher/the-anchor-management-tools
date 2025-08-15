@@ -1,5 +1,91 @@
 # The Anchor Management API - Complete Documentation
 
+## 📑 Document Index
+
+### Quick Navigation (Lines 1-181)
+- **L3-14**: Recent Updates - Sunday Lunch API v2 improvements
+- **L15-20**: Overview & Base URL
+- **L21-37**: Quick Start Guide (API key, testing, permissions)
+- **L38-92**: Authentication (methods, examples in JS/Python/PHP)
+- **L93-170**: Error Handling (codes, responses, examples)
+- **L171-181**: Rate Limiting
+
+### Core APIs (Lines 182-2722)
+
+#### Business Information API (L183-469)
+- **L185-377**: Get Business Hours - Comprehensive endpoint
+  - Regular hours, special hours, real-time status
+  - Today's info, upcoming week, patterns
+  - Services (kitchen, bar, private hire)
+- **L378-410**: Kitchen Status Formats
+- **L411-467**: Usage Examples
+
+#### Event Booking API (L470-963)
+- **L473-547**: List Events endpoint
+- **L548-565**: Booking Flow Overview
+- **L566-683**: Direct Booking Flow
+- **L684-834**: Two-Step SMS Booking Flow
+  - Step 1: Initiate (L686-763)
+  - Step 2: Confirm (L765-834)
+- **L836-877**: Get Booking Details
+- **L878-906**: Cancel Booking
+- **L907-962**: System Features & Error Codes
+
+#### Table Booking API (L964-1361)
+- **L966-1080**: Check Availability
+- **L1082-1327**: Create Table Booking
+  - Request schema (L1104-1173)
+  - Example requests (L1174-1227)
+  - Response formats (L1228-1327)
+- **L1328-1361**: Retrieve & Cancel Bookings
+
+#### Sunday Lunch Booking API v2 (L1362-1823)
+- **L1364-1401**: Overview & Key Features
+- **L1402-1466**: Get Menu endpoint
+- **L1467-1657**: Create Sunday Lunch Booking
+  - Simplified flow (L1469-1506)
+  - Request/Response (L1507-1596)
+  - Error handling (L1597-1657)
+- **L1658-1823**: Advanced Features
+  - Idempotency (L1658-1702)
+  - Capacity management (L1703-1763)
+  - SMS integration (L1764-1823)
+
+#### Private Booking API (L1824-2151)
+- **L1826-1925**: Search Available Dates
+- **L1926-2084**: Create Private Booking
+- **L2085-2151**: Manage Private Bookings
+
+#### Customer API (L2152-2349)
+- **L2154-2214**: Search Customers
+- **L2215-2275**: Get Customer Details
+- **L2276-2349**: Update Customer
+
+#### SMS API (L2350-2571)
+- **L2352-2440**: Send SMS
+- **L2441-2527**: Send Bulk SMS
+- **L2528-2571**: Get SMS History
+
+### Advanced Topics (L2572-2722)
+- **L2574-2634**: Webhooks & Callbacks
+- **L2635-2695**: Data Export
+- **L2696-2722**: SDK Examples & Integration
+
+### Key Features Throughout
+- **Authentication**: API key required (X-API-Key header)
+- **Error Format**: Consistent JSON structure with codes
+- **Phone Numbers**: UK format, auto-converted to E.164
+- **SMS**: Twilio integration with opt-in/out handling
+- **Audit**: All operations logged for compliance
+- **Rate Limits**: 1000 requests/hour per key
+
+### Important Notes
+- Base URL: `https://management.orangejelly.co.uk/api`
+- All times in Europe/London timezone
+- Capacity system: 50 seats max for regular dining
+- Sunday lunch: Special booking flow with menu items
+- Private bookings: Separate capacity from regular dining
+
 ## Recent Updates (August 2025)
 
 ### Sunday Lunch Booking API v2 - Major Improvements

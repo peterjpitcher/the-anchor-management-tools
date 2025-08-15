@@ -64,4 +64,4 @@ test-reports/
 playwright-report/
 tests/screenshots/
 tests/auth.json
-*tests*
+*tests*playwright/.auth

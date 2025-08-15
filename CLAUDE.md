@@ -2,6 +2,70 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 📑 Document Index
+**Lines 1-100: Quick Reference**
+- L5-9: Project Overview & Production URL
+- L11-20: Tech Stack (Frontend, Backend, SMS, Email, PDF, Hosting, Validation, UI)
+- L22-62: High-Level Architecture (Structure, Directories, Patterns, Import Paths)
+- L64-94: Essential Commands (Development, Setup, TypeScript, Testing, Playwright)
+- L96-170: Pre-Development Discovery Protocol & Feature Impact Analysis
+
+**Lines 171-467: Implementation Guidelines**
+- L171-230: Quality Standards & Verification
+- L231-293: Server Action Pattern (MANDATORY)
+- L294-363: Component Pattern with Supabase Context
+- L364-417: File Storage Pattern
+- L418-467: SMS Integration Pattern
+
+**Lines 468-588: Development Workflows**
+- L468-516: Feature-Specific Discovery & Migration Checklist
+- L517-540: Performance & Monitoring
+- L541-588: Security Checklist & Patterns
+
+**Lines 589-668: Development Tasks & Review**
+- L589-618: Common Development Tasks & Testing Webhooks
+- L619-642: Code Review Checklist
+- L643-669: Critical Reminders & Definition of Done
+
+**Lines 670-751: Database & Migrations**
+- L671-715: Supabase Migration Guidelines & Templates
+- L717-751: Migration Strategy & Placeholder System
+- L753-767: Key Database Tables
+
+**Lines 769-899: Configuration & Resources**
+- L769-787: Environment Variables & Cron Jobs
+- L788-799: Common Pitfalls to Avoid
+- L801-840: Testing Configuration & Running Tests
+- L842-899: Documentation Directory & Utility Scripts
+
+## 📚 Documentation Standards
+
+### Document Indexing Requirements
+All documentation files must include a comprehensive index within the first 100 lines:
+
+1. **Index Format**:
+   - Line ranges with descriptive sections
+   - Hierarchical structure showing main topics and subtopics
+   - Specific line numbers for critical information
+   - Use emoji icons for visual navigation
+
+2. **Index Components**:
+   ```markdown
+   ## 📑 Document Index
+   **Lines 1-100: Section Name**
+   - L10-20: Subsection description
+   - L21-35: Another subsection
+   
+   **Lines 101-200: Next Section**
+   - L101-120: Details about this part
+   ```
+
+3. **Requirements**:
+   - Index must appear within first 100 lines
+   - Cover all major sections of the document
+   - Include line numbers for quick navigation
+   - Update index when document structure changes
+
 ## Project Overview
 
 The Anchor Management Tools is a comprehensive venue management system featuring event scheduling, customer management, employee records, and automated SMS notifications.

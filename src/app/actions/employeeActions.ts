@@ -358,6 +358,7 @@ export async function getEmployeeList(): Promise<{ id: string; name: string; }[]
   const { data, error } = await supabase
     .from('employees')
     .select('employee_id, first_name, last_name')
+    .eq('status', 'Active')  // Only show active employees in dropdowns
     .order('last_name')
     .order('first_name');
 
