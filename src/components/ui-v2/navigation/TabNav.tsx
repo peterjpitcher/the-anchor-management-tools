@@ -27,6 +27,11 @@ export interface TabItem {
   label: string
   
   /**
+   * Mobile-friendly short label (optional, falls back to truncated label)
+   */
+  mobileLabel?: string
+  
+  /**
    * URL to navigate to (for Link-based tabs)
    */
   href?: string
@@ -242,7 +247,10 @@ export function TabNav({
           {tab.icon}
         </span>
       )}
-      <span>{tab.label}</span>
+      <span>
+        <span className="sm:hidden">{tab.mobileLabel || tab.label}</span>
+        <span className="hidden sm:inline">{tab.label}</span>
+      </span>
       {tab.badge !== undefined && (
         <Badge
           variant={tab.badgeVariant || 'default'}
@@ -393,7 +401,10 @@ export function VerticalTabNav({
           {tab.icon}
         </span>
       )}
-      <span className="flex-1 text-left">{tab.label}</span>
+      <span className="flex-1 text-left">
+        <span className="sm:hidden">{tab.mobileLabel || tab.label}</span>
+        <span className="hidden sm:inline">{tab.label}</span>
+      </span>
       {tab.badge !== undefined && (
         <Badge
           variant={tab.badgeVariant || 'default'}

@@ -242,7 +242,7 @@ export function FormSection({
 }
 
 /**
- * FormActions - Consistent form button placement
+ * FormActions - Consistent form button placement with mobile stacking
  */
 export function FormActions({
   children,
@@ -254,15 +254,15 @@ export function FormActions({
   className?: string
 }) {
   const alignClasses = {
-    left: 'justify-start',
-    center: 'justify-center',
-    right: 'justify-end',
-    between: 'justify-between',
+    left: 'sm:justify-start',
+    center: 'sm:justify-center',
+    right: 'sm:justify-end',
+    between: 'sm:justify-between',
   }
   
   return (
     <div className={cn(
-      'flex items-center gap-3 pt-4',
+      'flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-4',
       alignClasses[align],
       className
     )}>

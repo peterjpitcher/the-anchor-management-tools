@@ -155,8 +155,8 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(({
     <div
       ref={ref}
       className={cn(
-        // Base styles
-        'overflow-hidden rounded-lg',
+        // Base styles - add w-full for mobile by default
+        'w-full overflow-hidden rounded-lg',
         
         // Variant styles
         variantClasses[variant],

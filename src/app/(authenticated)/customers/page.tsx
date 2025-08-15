@@ -446,9 +446,9 @@ export default function CustomersPage() {
           </div>
           <TabNav
             tabs={[
-              { key: 'all', label: 'All Customers', badge: totalCount },
-              { key: 'regular', label: 'Regular Only' },
-              { key: 'non-regular', label: 'Non-Regular Only' },
+              { key: 'all', label: 'All Customers', mobileLabel: 'All', badge: totalCount },
+              { key: 'regular', label: 'Regular Only', mobileLabel: 'Regular' },
+              { key: 'non-regular', label: 'Non-Regular Only', mobileLabel: 'Non-Regular' },
             ]}
             activeKey={filter}
             onChange={(tab) => setFilter(tab as 'all' | 'regular' | 'non-regular')}
@@ -719,7 +719,7 @@ export default function CustomersPage() {
                     </div>
                   </div>
                   {loyaltyProgramEnabled && (
-                    <div className="mt-2">
+                    <div className="mt-2 hidden sm:block">
                       {customer.mobile_number && loyaltyMembers[customer.mobile_number] ? (
                         <div className="flex items-center space-x-2">
                           <span style={{ color: LOYALTY_CONFIG.tiers[loyaltyMembers[customer.mobile_number].tier as keyof typeof LOYALTY_CONFIG.tiers].color }}>

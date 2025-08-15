@@ -210,8 +210,8 @@ export default function PrivateBookingsClient({ permissions }: Props) {
       />
       
       <PageContent>
-        {/* Filters */}
-        <Card>
+        {/* Filters - Hidden on mobile */}
+        <Card className="hidden sm:block">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <FormGroup label="Search">
             <div className="relative">
