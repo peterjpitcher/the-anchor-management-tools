@@ -53,6 +53,7 @@ interface SheetContentProps
   extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
     VariantProps<typeof sheetVariants> {
   hideCloseButton?: boolean
+  children?: React.ReactNode
 }
 
 const SheetContent = React.forwardRef<
