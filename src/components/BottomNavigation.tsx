@@ -137,7 +137,7 @@ export function BottomNavigation({ onQuickAddNoteClick }: BottomNavigationProps)
 
       {/* Secondary navigation drawer using shadcn/ui Sheet */}
       <Sheet open={moreDrawerOpen} onOpenChange={setMoreDrawerOpen}>
-        <SheetContent side="bottom" className="h-auto max-h-[80vh] rounded-t-xl">
+        <SheetContent side={"bottom" as const} className="h-auto max-h-[80vh] rounded-t-xl">
           <SheetHeader>
             <SheetTitle>More Options</SheetTitle>
             <SheetDescription>
