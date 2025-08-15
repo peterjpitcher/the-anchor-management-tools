@@ -1,12 +1,559 @@
-
-> the-anchor-management-tools@0.1.0 build
-> next build
-
    ▲ Next.js 15.3.3
    - Environments: .env.local
 
    Creating an optimized production build ...
- ✓ Compiled successfully in 38.0s
+ ✓ Compiled successfully in 33.0s
    Skipping linting
    Checking validity of types ...
    Collecting page data ...
+   Generating static pages (0/128) ...
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /_not-found. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /_not-found. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /settings/background-jobs. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /settings/background-jobs. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /settings/fix-phone-numbers. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /settings/fix-phone-numbers. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /settings/customer-labels. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /settings/customer-labels. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /settings/event-categories. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /settings/event-categories. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /settings/sms-delivery. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /settings/sms-delivery. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /settings/message-templates. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /settings/message-templates. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /settings/import-messages. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /settings/import-messages. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /settings. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /settings. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /settings/loyalty. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /settings/loyalty. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /settings/sms-health. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /settings/sms-health. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /settings/gdpr. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /settings/gdpr. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /settings/webhook-diagnostics. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /settings/webhook-diagnostics. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /settings/twilio-messages. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /settings/twilio-messages. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /settings/sync-birthdays. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /settings/sync-birthdays. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /table-bookings. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /table-bookings. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /table-bookings/new. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /table-bookings/new. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /settings/webhook-test. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /settings/webhook-test. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /table-bookings/reports. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /table-bookings/reports. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /settings/webhook-monitor. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /invoices/new. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /invoices/new. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /loyalty/portal. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /loyalty/portal. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /table-bookings/settings. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /table-bookings/settings. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /table-bookings/settings/sms-templates. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /table-bookings/settings/sms-templates. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /table-bookings/calendar. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /table-bookings/calendar. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /users. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /users. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /table-bookings/settings/sunday-lunch. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /table-bookings/settings/sunday-lunch. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /table-bookings/settings/tables. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /table-bookings/settings/tables. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /events. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /events. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /table-bookings/settings/policies. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /table-bookings/settings/policies. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /settings/api-keys. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /settings/api-keys. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /employees/new. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /employees/new. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /events/new. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /events/new. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /loyalty/training. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /loyalty/training. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /private-bookings. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /private-bookings. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /loyalty/admin/import. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /loyalty/admin/import. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /dashboard. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /dashboard. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /messages. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /messages. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /employees. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /employees. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /profile/change-password. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /profile/change-password. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /messages/bulk. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /messages/bulk. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /profile. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /profile. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /loyalty/event-qr. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /loyalty/event-qr. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /private-bookings/calendar. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /private-bookings/calendar. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /settings/business-hours. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /settings/business-hours. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /private-bookings/new. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /private-bookings/new. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /quotes. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /quotes. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /roles/new. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /roles/new. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /quotes/new. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /quotes/new. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+   Generating static pages (32/128) 
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /loyalty. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /loyalty. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /table-booking/success. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /table-booking/success. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /checkin. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /checkin. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /loyalty/demo. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /loyalty/demo. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /login. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /login. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /loyalty/portal/login. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /loyalty/portal/login. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /privacy. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /privacy. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+   Generating static pages (64/128) 
+ ⚠ Unsupported metadata viewport is configured in metadata export in /settings/webhook-monitor. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /table-bookings/search. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /table-bookings/search. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /settings/calendar-test. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /settings/calendar-test. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /short-links. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /short-links. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /settings/categories. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /settings/categories. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /roles. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /roles. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /settings/audit-logs. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /settings/audit-logs. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /settings/cron-test. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /settings/cron-test. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+   Generating static pages (96/128) 
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /customers. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /customers. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /invoices. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /invoices. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /loyalty/admin/enroll. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /loyalty/admin/enroll. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /invoices/catalog. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /invoices/catalog. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /invoices/export. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /invoices/export. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /invoices/recurring/new. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /invoices/recurring/new. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /invoices/recurring. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /invoices/recurring. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /loyalty/admin/export. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /loyalty/admin/export. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /loyalty/admin/achievements. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /loyalty/admin/achievements. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /loyalty/admin/campaigns. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /loyalty/admin/campaigns. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /employees/birthdays. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /employees/birthdays. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /invoices/vendors. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /invoices/vendors. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /loyalty/admin/challenges. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /loyalty/admin/challenges. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /loyalty/event-qr/batch. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /loyalty/event-qr/batch. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /loyalty/admin/rewards. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /loyalty/admin/rewards. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /loyalty/analytics. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /loyalty/analytics. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /loyalty/redeem. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /loyalty/redeem. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /loyalty/check-in. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /loyalty/check-in. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /loyalty/admin. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ✓ Generating static pages (128/128)
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /auth/login. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /auth/login. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /table-bookings/monitoring. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /table-bookings/monitoring. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /private-bookings/sms-queue. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /private-bookings/sms-queue. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /unauthorized. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /unauthorized. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /auth/reset-password. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /auth/reset-password. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /private-bookings/settings/vendors. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /private-bookings/settings/vendors. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /private-bookings/settings/spaces. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /private-bookings/settings/spaces. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata themeColor is configured in metadata export in /private-bookings/settings/catering. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /private-bookings/settings/catering. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /loyalty/admin. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                            Size  First Load JS
+┌ ○ /                                                 372 B         102 kB
+├ ○ /_not-found                                       992 B         103 kB
+├ ƒ /api/bookings                                     279 B         102 kB
+├ ƒ /api/bookings/confirm                             279 B         102 kB
+├ ƒ /api/bookings/initiate                            279 B         102 kB
+├ ƒ /api/bug-report                                   279 B         102 kB
+├ ƒ /api/business-hours                               279 B         102 kB
+├ ƒ /api/business/amenities                           279 B         102 kB
+├ ƒ /api/business/hours                               279 B         102 kB
+├ ƒ /api/cron/apply-customer-labels                   279 B         102 kB
+├ ƒ /api/cron/birthday-reminders                      279 B         102 kB
+├ ƒ /api/cron/cleanup-rate-limits                     279 B         102 kB
+├ ƒ /api/cron/generate-slots                          279 B         102 kB
+├ ƒ /api/cron/invoice-reminders                       279 B         102 kB
+├ ƒ /api/cron/recurring-invoices                      279 B         102 kB
+├ ƒ /api/cron/reminders                               279 B         102 kB
+├ ƒ /api/cron/table-booking-monitoring                279 B         102 kB
+├ ƒ /api/cron/table-booking-reminders                 279 B         102 kB
+├ ƒ /api/debug/calendar                               279 B         102 kB
+├ ƒ /api/debug/test-template                          279 B         102 kB
+├ ƒ /api/event-categories                             279 B         102 kB
+├ ƒ /api/events                                       279 B         102 kB
+├ ƒ /api/events/[id]                                  279 B         102 kB
+├ ƒ /api/events/[id]/check-availability               279 B         102 kB
+├ ƒ /api/events/recurring                             279 B         102 kB
+├ ƒ /api/events/today                                 279 B         102 kB
+├ ƒ /api/invoices/[id]/pdf                            279 B         102 kB
+├ ƒ /api/invoices/export                              279 B         102 kB
+├ ƒ /api/jobs/process                                 279 B         102 kB
+├ ƒ /api/jobs/process-now                             279 B         102 kB
+├ ƒ /api/menu                                         279 B         102 kB
+├ ƒ /api/menu/dietary/[type]                          279 B         102 kB
+├ ƒ /api/menu/specials                                279 B         102 kB
+├ ƒ /api/monitoring/table-bookings/health             279 B         102 kB
+├ ƒ /api/private-bookings/contract                    279 B         102 kB
+├ ƒ /api/quotes/[id]/pdf                              279 B         102 kB
+├ ƒ /api/redirect                                     279 B         102 kB
+├ ƒ /api/redirect/[code]                              279 B         102 kB
+├ ƒ /api/table-bookings                               279 B         102 kB
+├ ƒ /api/table-bookings/[booking_reference]           279 B         102 kB
+├ ƒ /api/table-bookings/[booking_reference]/cancel    279 B         102 kB
+├ ƒ /api/table-bookings/[booking_reference]/public    279 B         102 kB
+├ ƒ /api/table-bookings/availability                  279 B         102 kB
+├ ƒ /api/table-bookings/confirm-payment               279 B         102 kB
+├ ƒ /api/table-bookings/menu/sunday-lunch             279 B         102 kB
+├ ƒ /api/table-bookings/payment/create                279 B         102 kB
+├ ƒ /api/table-bookings/payment/return                279 B         102 kB
+├ ƒ /api/test-auth                                    279 B         102 kB
+├ ƒ /api/test-calendar                                279 B         102 kB
+├ ƒ /api/webhooks/paypal/table-bookings               279 B         102 kB
+├ ƒ /api/webhooks/twilio                              279 B         102 kB
+├ ƒ /auth/callback                                    279 B         102 kB
+├ ○ /auth/login                                     7.98 kB         174 kB
+├ ○ /auth/reset-password                            9.86 kB         176 kB
+├ ƒ /booking-confirmation/[token]                   8.56 kB         180 kB
+├ ƒ /booking-success/[id]                           4.66 kB         315 kB
+├ ○ /checkin                                          602 B         102 kB
+├ ○ /customers                                      12.2 kB         246 kB
+├ ƒ /customers/[id]                                 10.9 kB         250 kB
+├ ○ /dashboard                                      7.35 kB         171 kB
+├ ○ /employees                                      9.39 kB         241 kB
+├ ƒ /employees/[employee_id]                        18.5 kB         229 kB
+├ ƒ /employees/[employee_id]/edit                   8.35 kB         215 kB
+├ ○ /employees/birthdays                            9.52 kB         185 kB
+├ ○ /employees/new                                  7.86 kB         182 kB
+├ ○ /events                                         8.91 kB         177 kB
+├ ƒ /events/[id]                                    10.7 kB         236 kB
+├ ƒ /events/[id]/edit                               1.16 kB         225 kB
+├ ○ /events/new                                     1.07 kB         225 kB
+├ ○ /invoices                                       11.5 kB         179 kB
+├ ƒ /invoices/[id]                                    13 kB         191 kB
+├ ƒ /invoices/[id]/edit                              3.4 kB         180 kB
+├ ƒ /invoices/[id]/payment                          4.66 kB         179 kB
+├ ○ /invoices/catalog                                4.8 kB         181 kB
+├ ○ /invoices/export                                8.28 kB         177 kB
+├ ○ /invoices/new                                   6.67 kB         181 kB
+├ ○ /invoices/recurring                             8.16 kB         186 kB
+├ ○ /invoices/recurring/new                         8.22 kB         180 kB
+├ ○ /invoices/vendors                               2.39 kB         181 kB
+├ ○ /login                                            509 B         102 kB
+├ ○ /loyalty                                        6.06 kB         127 kB
+├ ○ /loyalty/admin                                  8.94 kB         173 kB
+├ ○ /loyalty/admin/achievements                     6.02 kB         175 kB
+├ ○ /loyalty/admin/campaigns                        5.92 kB         175 kB
+├ ○ /loyalty/admin/challenges                       6.57 kB         175 kB
+├ ○ /loyalty/admin/enroll                            4.5 kB         216 kB
+├ ○ /loyalty/admin/export                           4.46 kB         181 kB
+├ ○ /loyalty/admin/import                           7.85 kB         143 kB
+├ ○ /loyalty/admin/rewards                          14.5 kB         162 kB
+├ ○ /loyalty/analytics                              10.9 kB         130 kB
+├ ○ /loyalty/check-in                               5.82 kB         331 kB
+├ ○ /loyalty/demo                                   6.77 kB         137 kB
+├ ○ /loyalty/event-qr                               4.94 kB         119 kB
+├ ○ /loyalty/event-qr/batch                         5.17 kB         217 kB
+├ ○ /loyalty/portal                                 10.8 kB         134 kB
+├ ○ /loyalty/portal/login                           6.24 kB         132 kB
+├ ○ /loyalty/redeem                                 4.46 kB         330 kB
+├ ○ /loyalty/training                               5.22 kB         175 kB
+├ ○ /messages                                       8.97 kB         183 kB
+├ ○ /messages/bulk                                  11.5 kB         227 kB
+├ ○ /privacy                                         3.4 kB         248 kB
+├ ƒ /private-bookings                               10.9 kB         226 kB
+├ ƒ /private-bookings/[id]                          14.7 kB         201 kB
+├ ƒ /private-bookings/[id]/contract                 3.28 kB         116 kB
+├ ƒ /private-bookings/[id]/edit                     2.42 kB         224 kB
+├ ƒ /private-bookings/[id]/items                       6 kB         157 kB
+├ ƒ /private-bookings/[id]/messages                 6.06 kB         133 kB
+├ ƒ /private-bookings/calendar                      3.42 kB         167 kB
+├ ○ /private-bookings/new                           5.37 kB         224 kB
+├ ƒ /private-bookings/settings/catering             4.22 kB         120 kB
+├ ƒ /private-bookings/settings/spaces               4.21 kB         120 kB
+├ ƒ /private-bookings/settings/vendors              4.07 kB         168 kB
+├ ƒ /private-bookings/sms-queue                     2.87 kB         167 kB
+├ ○ /profile                                        11.2 kB         197 kB
+├ ○ /profile/change-password                        5.78 kB         169 kB
+├ ○ /quotes                                         11.9 kB         127 kB
+├ ƒ /quotes/[id]                                    8.65 kB         262 kB
+├ ƒ /quotes/[id]/convert                            6.96 kB         124 kB
+├ ƒ /quotes/[id]/edit                               8.41 kB         128 kB
+├ ○ /quotes/new                                     9.79 kB         180 kB
+├ ƒ /roles                                          7.96 kB         182 kB
+├ ○ /roles/new                                      1.78 kB         166 kB
+├ ƒ /settings                                       6.13 kB         170 kB
+├ ƒ /settings/api-keys                              7.43 kB         183 kB
+├ ○ /settings/audit-logs                            10.7 kB         221 kB
+├ ○ /settings/background-jobs                       11.3 kB         178 kB
+├ ○ /settings/business-hours                        8.53 kB         177 kB
+├ ○ /settings/calendar-test                         6.46 kB         119 kB
+├ ○ /settings/categories                            8.91 kB         164 kB
+├ ○ /settings/cron-test                             6.06 kB         118 kB
+├ ○ /settings/customer-labels                       11.1 kB         151 kB
+├ ○ /settings/event-categories                      12.4 kB         202 kB
+├ ○ /settings/fix-phone-numbers                     7.23 kB         123 kB
+├ ○ /settings/gdpr                                  6.86 kB         124 kB
+├ ○ /settings/import-messages                       6.69 kB         119 kB
+├ ○ /settings/loyalty                               7.12 kB         128 kB
+├ ○ /settings/message-templates                     13.2 kB         195 kB
+├ ○ /settings/sms-delivery                          9.24 kB         129 kB
+├ ○ /settings/sms-health                            11.6 kB         223 kB
+├ ○ /settings/sync-birthdays                        6.06 kB         123 kB
+├ ○ /settings/twilio-messages                       10.3 kB         131 kB
+├ ○ /settings/webhook-diagnostics                   5.23 kB         118 kB
+├ ○ /settings/webhook-monitor                       9.79 kB         196 kB
+├ ○ /settings/webhook-test                          3.07 kB         303 kB
+├ ○ /short-links                                    13.6 kB         237 kB
+├ ƒ /table-booking/[reference]/payment              5.96 kB         128 kB
+├ ○ /table-booking/success                          5.91 kB         128 kB
+├ ○ /table-bookings                                 13.2 kB         227 kB
+├ ƒ /table-bookings/[id]                            14.3 kB         238 kB
+├ ƒ /table-bookings/[id]/edit                        3.7 kB         222 kB
+├ ƒ /table-bookings/[id]/payment                      279 B         102 kB
+├ ○ /table-bookings/calendar                        7.27 kB         221 kB
+├ ○ /table-bookings/monitoring                      10.9 kB         172 kB
+├ ○ /table-bookings/new                             8.39 kB         226 kB
+├ ○ /table-bookings/reports                         13.1 kB         182 kB
+├ ○ /table-bookings/search                          11.4 kB         225 kB
+├ ○ /table-bookings/settings                         4.6 kB         169 kB
+├ ○ /table-bookings/settings/policies               10.2 kB         188 kB
+├ ○ /table-bookings/settings/sms-templates          12.2 kB         190 kB
+├ ○ /table-bookings/settings/sunday-lunch           12.3 kB         198 kB
+├ ○ /table-bookings/settings/tables                 12.6 kB         195 kB
+├ ○ /unauthorized                                   2.24 kB         115 kB
+└ ƒ /users                                          7.38 kB         192 kB
++ First Load JS shared by all                        102 kB
+  ├ chunks/1684-6875a7a16a6136bf.js                 46.4 kB
+  ├ chunks/4bd1b696-2cf32b2fa8a87f50.js             53.2 kB
+  └ other shared chunks (total)                     2.05 kB
+
+
+ƒ Middleware                                        83.5 kB
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

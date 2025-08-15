@@ -49,12 +49,14 @@ const sheetVariants = cva(
   }
 )
 
+// Cache bust: 2024-08-15-21:55 - Fixed TypeScript props
 interface SheetContentProps
   extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
     VariantProps<typeof sheetVariants> {
   hideCloseButton?: boolean
   children?: React.ReactNode
   side?: "top" | "right" | "bottom" | "left"
+  className?: string
 }
 
 const SheetContent = React.forwardRef<
