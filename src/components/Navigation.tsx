@@ -43,11 +43,13 @@ const quaternaryNavigation: NavigationItemWithPermission[] = [
 
 interface NavigationProps {
   onQuickAddNoteClick: () => void;
+  onNavigate?: () => void;
 }
 
-export function Navigation({ onQuickAddNoteClick }: NavigationProps) {
+export function Navigation({ onQuickAddNoteClick, onNavigate }: NavigationProps) {
   const pathname = usePathname()
   const [unreadCount, setUnreadCount] = useState(0)
+  const [isMobile, setIsMobile] = useState(false)
   const { hasPermission, loading: permissionsLoading } = usePermissions()
 
   useEffect(() => {
@@ -67,6 +69,18 @@ export function Navigation({ onQuickAddNoteClick }: NavigationProps) {
     return () => clearInterval(interval)
   }, [])
 
+  useEffect(() => {
+    // Check if mobile on mount and window resize
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 640) // 640px is Tailwind's 'sm' breakpoint
+    }
+    
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
   // Filter navigation items based on permissions
   const filteredPrimaryNav = useMemo(() => {
     if (permissionsLoading) return [];
@@ -77,10 +91,14 @@ export function Navigation({ onQuickAddNoteClick }: NavigationProps) {
 
   const filteredSecondaryNav = useMemo(() => {
     if (permissionsLoading) return [];
-    return secondaryNavigation.filter(item => 
-      !item.permission || hasPermission(item.permission.module, item.permission.action)
-    );
-  }, [hasPermission, permissionsLoading]);
+    return secondaryNavigation.filter(item => {
+      // Hide VIP Club on mobile
+      if (isMobile && item.name === 'VIP Club') {
+        return false;
+      }
+      return !item.permission || hasPermission(item.permission.module, item.permission.action);
+    });
+  }, [hasPermission, permissionsLoading, isMobile]);
 
   const filteredTertiaryNav = useMemo(() => {
     if (permissionsLoading) return [];
@@ -125,6 +143,7 @@ export function Navigation({ onQuickAddNoteClick }: NavigationProps) {
       <Link
         key={item.name}
         href={item.href}
+        onClick={onNavigate}
         className={`
           group flex items-center px-2 py-2 text-sm font-medium rounded-md
           ${isActive

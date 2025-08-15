@@ -155,6 +155,19 @@ export default function TableBookingsDashboard() {
     }
   }
 
+  // Format time from HH:mm:ss to 12-hour format (e.g., 7:30pm, 8am)
+  const formatBookingTime = (timeStr: string) => {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    const period = hours >= 12 ? 'pm' : 'am';
+    const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+    
+    // If minutes are 0, just show the hour (e.g., "7pm" instead of "7:00pm")
+    if (minutes === 0) {
+      return `${displayHours}${period}`;
+    }
+    return `${displayHours}:${minutes.toString().padStart(2, '0')}${period}`;
+  };
+
   if (!canView) {
     return (
       <PageWrapper>
@@ -246,9 +259,9 @@ export default function TableBookingsDashboard() {
         }
       />
       
-      <PageContent>
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+      <PageContent className="space-y-4 sm:space-y-6 px-0 sm:px-6">
+        {/* Stats Grid - Hidden on mobile */}
+        <div className="hidden sm:grid sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
           <Stat label="Today's Bookings"
             value={stats.todayBookings}
             icon={<CalendarIcon />}
@@ -276,16 +289,17 @@ export default function TableBookingsDashboard() {
         </div>
 
       {/* Date Selector */}
-      <Card>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <label className="font-medium">View:</label>
+      <div className="px-2 sm:px-0">
+        <Card className="w-full">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <label className="font-medium hidden sm:block">View:</label>
             
             {/* View Mode Toggle */}
-            <div className="flex bg-gray-100 rounded-md p-1">
+            <div className="flex bg-gray-100 rounded-md p-1 w-full sm:w-auto">
               <button
                 onClick={() => setViewMode('day')}
-                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                className={`flex-1 sm:flex-none px-3 py-1 rounded text-sm font-medium transition-colors ${
                   viewMode === 'day'
                     ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
@@ -295,7 +309,7 @@ export default function TableBookingsDashboard() {
               </button>
               <button
                 onClick={() => setViewMode('week')}
-                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                className={`flex-1 sm:flex-none px-3 py-1 rounded text-sm font-medium transition-colors ${
                   viewMode === 'week'
                     ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
@@ -306,7 +320,7 @@ export default function TableBookingsDashboard() {
             </div>
             
             {/* Date Navigation */}
-            <div className="flex items-center gap-2 ml-4">
+            <div className="flex items-center gap-2 sm:ml-4 justify-center sm:justify-start">
               <button
                 onClick={() => {
                   if (viewMode === 'day') {
@@ -358,16 +372,19 @@ export default function TableBookingsDashboard() {
           </Button>
         </div>
       </Card>
+      </div>
 
       {/* Bookings Timeline */}
+      <div className="px-2 sm:px-0">
       <Section
         title={
           viewMode === 'day' 
             ? `Bookings for ${format(selectedDate, 'EEEE, d MMMM yyyy')}`
             : `Bookings for week of ${format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'd MMM')} - ${format(endOfWeek(selectedDate, { weekStartsOn: 1 }), 'd MMM yyyy')}`
         }
+        className="w-full"
       >
-        <Card>
+        <Card className="w-full">
           <div className={viewMode === 'week' ? '' : 'divide-y'}>
             {bookings.length === 0 ? (
               <EmptyState
@@ -394,43 +411,50 @@ export default function TableBookingsDashboard() {
                       href={`/table-bookings/${booking.id}`}
                       className="block p-4 hover:bg-gray-50 transition-colors"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className="text-center">
-                            <div className="text-xl font-bold">{booking.booking_time}</div>
-                            <div className="text-sm text-gray-500">{booking.duration_minutes} mins</div>
-                          </div>
-                          <div>
-                            <div className="font-medium">
-                              {booking.customer?.first_name} {booking.customer?.last_name}
-                            </div>
-                            <div className="text-sm text-gray-600">
-                              Party of {booking.party_size} • {booking.booking_type === 'sunday_lunch' ? 'Sunday Lunch' : 'Regular'}
-                            </div>
-                            {booking.special_requirements && (
-                              <div className="text-sm text-orange-600 mt-1">
-                                {booking.special_requirements}
-                              </div>
-                            )}
-                          </div>
+                      {/* Top row: Time, Duration, Reference, Status */}
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 gap-1 sm:gap-2">
+                        <div className="flex items-center gap-2 sm:gap-3">
+                          <div className="text-lg font-bold">{formatBookingTime(booking.booking_time)}</div>
+                          <div className="text-sm text-gray-500">{booking.duration_minutes} mins</div>
+                          <div className="text-sm text-gray-500 hidden sm:inline">Ref: {booking.booking_reference}</div>
                         </div>
-                        <div className="flex items-center gap-4">
-                          <div className="text-right">
-                            <div className="text-sm text-gray-500">Ref: {booking.booking_reference}</div>
-                            <div className="text-sm">
-                              {booking.status === 'confirmed' && (
-                                <Badge variant="success" size="sm" icon={<CheckCircleIcon className="h-4 w-4" />}>
-                                  Confirmed
-                                </Badge>
-                              )}
-                              {booking.status === 'pending_payment' && (
-                                <Badge variant="warning" size="sm" icon={<ExclamationCircleIcon className="h-4 w-4" />}>
-                                  Awaiting Payment
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
+                        <div className="flex items-center gap-2">
+                          <div className="text-sm text-gray-500 sm:hidden">Ref: {booking.booking_reference}</div>
+                          {booking.status === 'confirmed' && (
+                            <Badge variant="success" size="sm">
+                              Confirmed
+                            </Badge>
+                          )}
+                          {booking.status === 'pending_payment' && (
+                            <Badge variant="warning" size="sm">
+                              Payment Due
+                            </Badge>
+                          )}
                         </div>
+                      </div>
+                      
+                      {/* Customer details */}
+                      <div className="space-y-1">
+                        <div className="font-medium">
+                          {booking.customer?.first_name} {booking.customer?.last_name}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          Party of {booking.party_size} • {booking.booking_type === 'sunday_lunch' ? 'Sunday Lunch' : 'Regular'}
+                        </div>
+                        
+                        {/* Full width notes */}
+                        {booking.special_requirements && (
+                          <div className="text-sm text-orange-600 mt-2 w-full">
+                            <span className="font-medium">Notes:</span> {booking.special_requirements}
+                          </div>
+                        )}
+                        
+                        {/* Full width allergies */}
+                        {booking.allergies && booking.allergies.length > 0 && (
+                          <div className="text-sm text-red-600 mt-2 w-full">
+                            ⚠️ <span className="font-medium">Allergies:</span> {booking.allergies.join(', ')}
+                          </div>
+                        )}
                       </div>
                     </Link>
                   ))}
@@ -445,53 +469,55 @@ export default function TableBookingsDashboard() {
                 href={`/table-bookings/${booking.id}`}
                 className="block p-4 hover:bg-gray-50 transition-colors"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold">{booking.booking_time}</div>
-                      <div className="text-sm text-gray-500">{booking.duration_minutes} mins</div>
-                    </div>
-                    <div>
-                      <div className="font-medium">
-                        {booking.customer?.first_name} {booking.customer?.last_name}
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        Party of {booking.party_size} • {booking.booking_type === 'sunday_lunch' ? 'Sunday Lunch' : 'Regular'}
-                      </div>
-                      {booking.special_requirements && (
-                        <div className="text-sm text-orange-600 mt-1">
-                          {booking.special_requirements}
-                        </div>
-                      )}
-                      {booking.allergies && booking.allergies.length > 0 && (
-                        <div className="text-sm text-red-600 mt-1">
-                          ⚠️ Allergies: {booking.allergies.join(', ')}
-                        </div>
-                      )}
-                    </div>
+                {/* Top row: Time, Duration, Reference, Status */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 gap-2">
+                  <div className="flex items-center gap-2 sm:gap-4">
+                    <div className="text-2xl font-bold">{formatBookingTime(booking.booking_time)}</div>
+                    <div className="text-sm text-gray-500">{booking.duration_minutes} mins</div>
+                    <div className="text-sm text-gray-500 hidden sm:inline">Ref: {booking.booking_reference}</div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <div className="text-sm text-gray-500">Ref: {booking.booking_reference}</div>
-                      <div className="text-sm">
-                        {booking.status === 'confirmed' && (
-                          <Badge variant="success" size="sm" icon={<CheckCircleIcon className="h-4 w-4" />}>
-                            Confirmed
-                          </Badge>
-                        )}
-                        {booking.status === 'pending_payment' && (
-                          <Badge variant="warning" size="sm" icon={<ExclamationCircleIcon className="h-4 w-4" />}>
-                            Awaiting Payment
-                          </Badge>
-                        )}
-                        {booking.status === 'cancelled' && (
-                          <Badge variant="error" size="sm" icon={<XCircleIcon className="h-4 w-4" />}>
-                            Cancelled
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm text-gray-500 sm:hidden">Ref: {booking.booking_reference}</div>
+                    {booking.status === 'confirmed' && (
+                      <Badge variant="success" size="sm" icon={<CheckCircleIcon className="h-4 w-4" />}>
+                        Confirmed
+                      </Badge>
+                    )}
+                    {booking.status === 'pending_payment' && (
+                      <Badge variant="warning" size="sm" icon={<ExclamationCircleIcon className="h-4 w-4" />}>
+                        Awaiting Payment
+                      </Badge>
+                    )}
+                    {booking.status === 'cancelled' && (
+                      <Badge variant="error" size="sm" icon={<XCircleIcon className="h-4 w-4" />}>
+                        Cancelled
+                      </Badge>
+                    )}
                   </div>
+                </div>
+                
+                {/* Customer details */}
+                <div className="space-y-1">
+                  <div className="font-medium">
+                    {booking.customer?.first_name} {booking.customer?.last_name}
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    Party of {booking.party_size} • {booking.booking_type === 'sunday_lunch' ? 'Sunday Lunch' : 'Regular'}
+                  </div>
+                  
+                  {/* Full width notes/special requirements */}
+                  {booking.special_requirements && (
+                    <div className="text-sm text-orange-600 mt-2 w-full">
+                      <span className="font-medium">Notes:</span> {booking.special_requirements}
+                    </div>
+                  )}
+                  
+                  {/* Full width allergies */}
+                  {booking.allergies && booking.allergies.length > 0 && (
+                    <div className="text-sm text-red-600 mt-2 w-full">
+                      ⚠️ <span className="font-medium">Allergies:</span> {booking.allergies.join(', ')}
+                    </div>
+                  )}
                 </div>
               </Link>
             ))
@@ -499,8 +525,10 @@ export default function TableBookingsDashboard() {
           </div>
         </Card>
       </Section>
+      </div>
 
       {/* Quick Actions */}
+      <div className="px-2 sm:px-0">
       <Section title="Quick Actions">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           <Link
@@ -546,6 +574,7 @@ export default function TableBookingsDashboard() {
           )}
         </div>
       </Section>
+      </div>
       </PageContent>
     </PageWrapper>
   );
