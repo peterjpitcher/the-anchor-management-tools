@@ -77,8 +77,10 @@ export default function EmployeeBirthdaysPage() {
       const result = await sendBirthdayReminders();
       if (result.error) {
         toast.error(result.error);
-      } else {
+      } else if ('message' in result) {
         toast.success(result.message || 'Birthday reminders sent');
+      } else {
+        toast.success('Birthday reminders sent');
       }
     } catch {
       toast.error('Failed to send reminders');
