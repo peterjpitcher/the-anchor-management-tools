@@ -120,7 +120,7 @@ export default function MessagesPage({
         customer_first_name: booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there',
         event_date: formatDateFull(booking.event_date),
         event_type: booking.event_type || 'event',
-        guest_badge: booking.guest_count?.toString() || 'your',
+        guest_count: booking.guest_count?.toString() || 'your',
         start_time: formatTime12Hour(booking.start_time),
         setup_time: formatTime12Hour(booking.setup_time || booking.start_time),
         deposit_amount: booking.deposit_amount?.toFixed(0) || '250',
