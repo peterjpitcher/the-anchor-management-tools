@@ -61,7 +61,7 @@ export async function GET(
     })
 
     // Return PDF with appropriate headers
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(pdfBuffer as unknown as BodyInit, {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `inline; filename="invoice-${invoice.invoice_number}.pdf"`,
