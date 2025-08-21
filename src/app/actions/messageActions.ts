@@ -92,12 +92,17 @@ export async function sendSmsReply(customerId: string, message: string) {
     return { error: 'Customer has opted out of SMS messages' }
   }
   
+  // Import environment and status helpers
+  const { TWILIO_STATUS_CALLBACK, TWILIO_STATUS_CALLBACK_METHOD, env } = await import('@/lib/env')
+  const { mapTwilioStatus } = await import('@/lib/sms-status')
+  
   // Send SMS via Twilio
-  const accountSid = process.env.TWILIO_ACCOUNT_SID
-  const authToken = process.env.TWILIO_AUTH_TOKEN
-  const fromNumber = process.env.TWILIO_PHONE_NUMBER
+  const accountSid = env.TWILIO_ACCOUNT_SID
+  const authToken = env.TWILIO_AUTH_TOKEN
+  const fromNumber = env.TWILIO_PHONE_NUMBER
+  const messagingServiceSid = env.TWILIO_MESSAGING_SERVICE_SID
 
-  if (!accountSid || !authToken || !fromNumber) {
+  if (!accountSid || !authToken || (!fromNumber && !messagingServiceSid)) {
     return { error: 'SMS service not configured' }
   }
 
@@ -105,34 +110,46 @@ export async function sendSmsReply(customerId: string, message: string) {
     const twilio = (await import('twilio')).default
     const client = twilio(accountSid, authToken)
     
-    const twilioMessage = await client.messages.create({
+    // Build message parameters with status callback
+    const messageParams: any = {
       body: message,
-      from: fromNumber,
-      to: customer.mobile_number
-    })
+      to: customer.mobile_number,
+      statusCallback: TWILIO_STATUS_CALLBACK,
+      statusCallbackMethod: TWILIO_STATUS_CALLBACK_METHOD,
+    }
+    
+    // Use messaging service if configured, otherwise use from number
+    if (messagingServiceSid) {
+      messageParams.messagingServiceSid = messagingServiceSid
+    } else {
+      messageParams.from = fromNumber
+    }
+    
+    const twilioMessage = await client.messages.create(messageParams)
     
     // Calculate segments and cost
     const messageLength = message.length
     const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153)
     const costUsd = segments * 0.04 // Approximate UK SMS cost per segment
     
-    // Save the message to database
+    // Save the message to database with proper status mapping
     const { error: saveError } = await supabase
       .from('messages')
       .insert({
         customer_id: customerId,
-        direction: 'outbound',
+        direction: 'outbound-api',
         message_sid: twilioMessage.sid,
         twilio_message_sid: twilioMessage.sid,
         body: message,
-        status: twilioMessage.status,
+        status: mapTwilioStatus(twilioMessage.status),
         twilio_status: twilioMessage.status,
-        from_number: fromNumber,
+        from_number: messagingServiceSid ? fromNumber : twilioMessage.from,
         to_number: customer.mobile_number,
         message_type: 'sms',
         segments: segments,
         cost_usd: costUsd,
         created_at: new Date().toISOString(),
+        sent_at: twilioMessage.status === 'sent' ? new Date().toISOString() : null,
         read_at: new Date().toISOString() // Mark outbound as read
       })
     

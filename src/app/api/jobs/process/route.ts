@@ -32,8 +32,9 @@ export async function POST(request: NextRequest) {
     }
     
     // Get batch size from query params or use default
+    // Increased default from 10 to 50 for better throughput
     const { searchParams } = new URL(request.url)
-    const batchSize = parseInt(searchParams.get('batch') || '10')
+    const batchSize = parseInt(searchParams.get('batch') || '50')
     
     logger.info('Processing job queue', { metadata: { batchSize } })
     

@@ -43,6 +43,7 @@ export type ModuleName =
   | 'roles'
   | 'private_bookings'
   | 'invoices'
+  | 'quotes'
   | 'loyalty';
 
 export type ActionType = 
@@ -53,6 +54,7 @@ export type ActionType =
   | 'export'
   | 'manage'
   | 'send'
+  | 'convert'
   | 'view_documents'
   | 'upload_documents'
   | 'delete_documents'

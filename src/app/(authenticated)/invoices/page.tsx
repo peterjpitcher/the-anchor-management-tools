@@ -187,6 +187,9 @@ export default function InvoicesPage() {
             <NavLink href="/invoices/vendors">
               Vendors
             </NavLink>
+            <NavLink href="/invoices/recurring">
+              Recurring
+            </NavLink>
             <NavLink href="/invoices/export">
               Export
             </NavLink>

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { usePermissions } from '@/contexts/PermissionContext';
-import { format, startOfDay, endOfDay, addDays, startOfWeek, endOfWeek, addWeeks } from 'date-fns';
+import { format, startOfDay, endOfDay, addDays, startOfWeek, endOfWeek, addWeeks, startOfMonth, endOfMonth, addMonths } from 'date-fns';
 import Link from 'next/link';
 import { 
   CalendarIcon, 
@@ -46,7 +46,7 @@ export default function TableBookingsDashboard() {
   const supabase = useSupabase();
   const { hasPermission } = usePermissions();
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState<'day' | 'week'>('week');
+  const [viewMode, setViewMode] = useState<'day' | 'week' | 'month' | 'next-month'>('week');
   const [bookings, setBookings] = useState<TableBooking[]>([]);
   const [stats, setStats] = useState<DashboardStats>({
     todayBookings: 0,
@@ -88,13 +88,28 @@ export default function TableBookingsDashboard() {
       // Apply date filter based on view mode
       if (viewMode === 'day') {
         query = query.eq('booking_date', format(selectedDate, 'yyyy-MM-dd'));
-      } else {
+      } else if (viewMode === 'week') {
         // Week view - get current week (starting Monday)
         const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
         const weekEnd = endOfWeek(selectedDate, { weekStartsOn: 1 });
         query = query
           .gte('booking_date', format(weekStart, 'yyyy-MM-dd'))
           .lte('booking_date', format(weekEnd, 'yyyy-MM-dd'));
+      } else if (viewMode === 'month') {
+        // This month view
+        const monthStart = startOfMonth(new Date());
+        const monthEnd = endOfMonth(new Date());
+        query = query
+          .gte('booking_date', format(monthStart, 'yyyy-MM-dd'))
+          .lte('booking_date', format(monthEnd, 'yyyy-MM-dd'));
+      } else if (viewMode === 'next-month') {
+        // Next month view
+        const nextMonth = addMonths(new Date(), 1);
+        const monthStart = startOfMonth(nextMonth);
+        const monthEnd = endOfMonth(nextMonth);
+        query = query
+          .gte('booking_date', format(monthStart, 'yyyy-MM-dd'))
+          .lte('booking_date', format(monthEnd, 'yyyy-MM-dd'));
       }
 
       const { data: todayBookings, error: bookingsError } = await query
@@ -299,7 +314,7 @@ export default function TableBookingsDashboard() {
             <div className="flex bg-gray-100 rounded-md p-1 w-full sm:w-auto">
               <button
                 onClick={() => setViewMode('day')}
-                className={`flex-1 sm:flex-none px-3 py-1 rounded text-sm font-medium transition-colors ${
+                className={`flex-1 sm:flex-none px-2 sm:px-3 py-1 rounded text-xs sm:text-sm font-medium transition-colors ${
                   viewMode === 'day'
                     ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
@@ -309,7 +324,7 @@ export default function TableBookingsDashboard() {
               </button>
               <button
                 onClick={() => setViewMode('week')}
-                className={`flex-1 sm:flex-none px-3 py-1 rounded text-sm font-medium transition-colors ${
+                className={`flex-1 sm:flex-none px-2 sm:px-3 py-1 rounded text-xs sm:text-sm font-medium transition-colors ${
                   viewMode === 'week'
                     ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
@@ -317,43 +332,65 @@ export default function TableBookingsDashboard() {
               >
                 Week
               </button>
+              <button
+                onClick={() => setViewMode('month')}
+                className={`flex-1 sm:flex-none px-2 sm:px-3 py-1 rounded text-xs sm:text-sm font-medium transition-colors ${
+                  viewMode === 'month'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                This Month
+              </button>
+              <button
+                onClick={() => setViewMode('next-month')}
+                className={`flex-1 sm:flex-none px-2 sm:px-3 py-1 rounded text-xs sm:text-sm font-medium transition-colors ${
+                  viewMode === 'next-month'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Next Month
+              </button>
             </div>
             
-            {/* Date Navigation */}
-            <div className="flex items-center gap-2 sm:ml-4 justify-center sm:justify-start">
-              <button
-                onClick={() => {
-                  if (viewMode === 'day') {
-                    setSelectedDate(addDays(selectedDate, -1));
-                  } else {
-                    setSelectedDate(addWeeks(selectedDate, -1));
-                  }
-                }}
-                className="p-1 hover:bg-gray-100 rounded"
-              >
-                <ArrowLeftIcon className="h-4 w-4" />
-              </button>
-              
-              <input
-                type="date"
-                value={format(selectedDate, 'yyyy-MM-dd')}
-                onChange={(e) => setSelectedDate(new Date(e.target.value))}
-                className="border rounded px-3 py-1 text-sm"
-              />
-              
-              <button
-                onClick={() => {
-                  if (viewMode === 'day') {
-                    setSelectedDate(addDays(selectedDate, 1));
-                  } else {
-                    setSelectedDate(addWeeks(selectedDate, 1));
-                  }
-                }}
-                className="p-1 hover:bg-gray-100 rounded"
-              >
-                <ArrowRightIcon className="h-4 w-4" />
-              </button>
-            </div>
+            {/* Date Navigation - Only show for day and week views */}
+            {(viewMode === 'day' || viewMode === 'week') && (
+              <div className="flex items-center gap-2 sm:ml-4 justify-center sm:justify-start">
+                <button
+                  onClick={() => {
+                    if (viewMode === 'day') {
+                      setSelectedDate(addDays(selectedDate, -1));
+                    } else if (viewMode === 'week') {
+                      setSelectedDate(addWeeks(selectedDate, -1));
+                    }
+                  }}
+                  className="p-1 hover:bg-gray-100 rounded"
+                >
+                  <ArrowLeftIcon className="h-4 w-4" />
+                </button>
+                
+                <input
+                  type="date"
+                  value={format(selectedDate, 'yyyy-MM-dd')}
+                  onChange={(e) => setSelectedDate(new Date(e.target.value))}
+                  className="border rounded px-3 py-1 text-sm"
+                />
+                
+                <button
+                  onClick={() => {
+                    if (viewMode === 'day') {
+                      setSelectedDate(addDays(selectedDate, 1));
+                    } else if (viewMode === 'week') {
+                      setSelectedDate(addWeeks(selectedDate, 1));
+                    }
+                  }}
+                  className="p-1 hover:bg-gray-100 rounded"
+                >
+                  <ArrowRightIcon className="h-4 w-4" />
+                </button>
+              </div>
+            )}
             
             <button
               onClick={() => setSelectedDate(new Date())}
@@ -380,17 +417,26 @@ export default function TableBookingsDashboard() {
         title={
           viewMode === 'day' 
             ? `Bookings for ${format(selectedDate, 'EEEE, d MMMM yyyy')}`
-            : `Bookings for week of ${format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'd MMM')} - ${format(endOfWeek(selectedDate, { weekStartsOn: 1 }), 'd MMM yyyy')}`
+            : viewMode === 'week'
+            ? `Bookings for week of ${format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'd MMM')} - ${format(endOfWeek(selectedDate, { weekStartsOn: 1 }), 'd MMM yyyy')}`
+            : viewMode === 'month'
+            ? `Bookings for ${format(new Date(), 'MMMM yyyy')}`
+            : `Bookings for ${format(addMonths(new Date(), 1), 'MMMM yyyy')}`
         }
         className="w-full"
       >
         <Card className="w-full">
-          <div className={viewMode === 'week' ? '' : 'divide-y'}>
+          <div className={viewMode === 'week' || viewMode === 'month' || viewMode === 'next-month' ? '' : 'divide-y'}>
             {bookings.length === 0 ? (
               <EmptyState
-                title={`No bookings for this ${viewMode === 'day' ? 'date' : 'week'}`}
+                title={`No bookings for ${
+                  viewMode === 'day' ? 'this date' 
+                  : viewMode === 'week' ? 'this week'
+                  : viewMode === 'month' ? 'this month'
+                  : 'next month'
+                }`}
               />
-            ) : viewMode === 'week' ? (
+            ) : viewMode !== 'day' ? (
             // Group bookings by date for week view
             Object.entries(
               bookings.reduce((groups, booking) => {

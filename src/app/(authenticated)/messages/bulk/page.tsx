@@ -296,8 +296,8 @@ export default function BulkMessagePage() {
       const selectedCustomersList = customers.filter(c => selectedCustomers.has(c.id))
       const selectedCustomerIds = selectedCustomersList.map(c => c.id)
       
-      // For large batches (>50), use job queue
-      if (selectedCustomerIds.length > 50) {
+      // Updated threshold from 50 to 100 for better performance
+      if (selectedCustomerIds.length > 100) {
         const result = await enqueueBulkSMSJob(
           selectedCustomerIds, 
           messageContent,
@@ -306,64 +306,46 @@ export default function BulkMessagePage() {
         )
         
         if (result.success && result.jobId) {
-          toast.success(`Bulk SMS job queued successfully. Processing ${selectedCustomerIds.length} messages in background.`)
+          toast.success(`Bulk SMS job queued successfully. Your ${selectedCustomerIds.length} messages will be sent within the next few minutes.`)
           setSelectedCustomers(new Set())
+          setCustomMessage('') // Clear the message after sending
         } else {
           toast.error(result.error || 'Failed to queue bulk SMS job')
         }
       } else {
-        // For smaller batches, send immediately
-        const results = { success: 0, failed: 0 }
-        const selectedEvent = events.find(e => e.id === filters.eventId)
-        const selectedCategory = categories.find(c => c.id === filters.categoryId)
+        // For smaller batches, use the optimized bulk send
+        // The backend now handles all personalization
+        const result = await sendBulkSMSDirect(
+          selectedCustomerIds,
+          messageContent,
+          filters.eventId,
+          filters.categoryId
+        )
         
-        for (const customer of selectedCustomersList) {
-          try {
-            // Personalize the message
-            let personalizedContent = messageContent
-            personalizedContent = personalizedContent.replace(/{{customer_name}}/g, `${customer.first_name} ${customer.last_name}`)
-            personalizedContent = personalizedContent.replace(/{{first_name}}/g, customer.first_name)
-            personalizedContent = personalizedContent.replace(/{{venue_name}}/g, 'The Anchor')
-            personalizedContent = personalizedContent.replace(/{{contact_phone}}/g, process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '')
+        if (result && 'error' in result) {
+          toast.error(result.error || 'Failed to send messages')
+        } else if (result && 'success' in result && result.success) {
+          // Handle the response based on what's returned
+          if ('sent' in result && result.sent !== undefined) {
+            const sent = result.sent || 0
+            const failed = 'failed' in result ? (result.failed || 0) : 0
             
-            // Add event-specific variables if an event is selected
-            if (selectedEvent) {
-              personalizedContent = personalizedContent.replace(/{{event_name}}/g, selectedEvent.name)
-              personalizedContent = personalizedContent.replace(/{{event_date}}/g, formatDate(selectedEvent.date))
-              personalizedContent = personalizedContent.replace(/{{event_time}}/g, selectedEvent.time)
+            if (sent > 0 && failed === 0) {
+              toast.success(`Successfully sent ${sent} messages`)
+            } else if (failed > 0 && sent === 0) {
+              toast.error(`Failed to send ${failed} messages`)
+            } else if (sent > 0 && failed > 0) {
+              toast.warning(`Sent ${sent} messages, failed ${failed}`)
             }
-            
-            // Add category-specific variables if a category is selected
-            if (selectedCategory) {
-              personalizedContent = personalizedContent.replace(/{{category_name}}/g, selectedCategory.name)
-            }
-
-            const result = await sendBulkSMSDirect([customer.id], personalizedContent)
-            
-            if (result && 'error' in result) {
-              console.error(`Failed to send to ${customer.first_name} ${customer.last_name}:`, result.error)
-              results.failed++
-            } else if (result && 'success' in result && result.success) {
-              results.success++
-            } else {
-              console.error(`Unexpected response for ${customer.first_name} ${customer.last_name}:`, result)
-              results.failed++
-            }
-          } catch (error) {
-            console.error(`Error sending to ${customer.first_name} ${customer.last_name}:`, error)
-            results.failed++
+          } else if ('message' in result) {
+            toast.success(result.message || `Messages sent successfully`)
+          } else {
+            toast.success(`Messages sent successfully`)
           }
-        }
-
-        // Show results
-        if (results.success > 0 && results.failed === 0) {
-          toast.success(`Successfully sent ${results.success} messages`)
-          // Clear selection
+          
+          // Clear selection and message after sending
           setSelectedCustomers(new Set())
-        } else if (results.failed > 0 && results.success === 0) {
-          toast.error(`Failed to send all ${results.failed} messages`)
-        } else {
-          toast.error(`Sent ${results.success} messages, ${results.failed} failed`)
+          setCustomMessage('')
         }
       }
     } catch (error) {

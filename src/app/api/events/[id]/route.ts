@@ -68,12 +68,12 @@ export async function GET(
       longDescription: event.long_description,
       metaTitle: event.meta_title,
       metaDescription: event.meta_description,
-      // Map single image_url to all image fields for backwards compatibility
-      heroImageUrl: event.image_url,
-      thumbnailImageUrl: event.image_url,
-      posterImageUrl: event.image_url,
-      galleryImages: event.image_url ? [event.image_url] : [],
-      imageUrl: event.image_url, // New single image field
+      // Map hero_image_url to all image fields for backwards compatibility
+      heroImageUrl: event.hero_image_url || event.image_url,
+      thumbnailImageUrl: event.thumbnail_image_url || event.hero_image_url || event.image_url,
+      posterImageUrl: event.poster_image_url || event.hero_image_url || event.image_url,
+      galleryImages: event.hero_image_url ? [event.hero_image_url] : [],
+      imageUrl: event.hero_image_url || event.image_url, // Single image field for compatibility
       promoVideoUrl: event.promo_video_url,
       highlightVideos: event.highlight_video_urls || [],
       lastEntryTime: event.last_entry_time,

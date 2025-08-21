@@ -14,6 +14,7 @@ interface ParsedCustomer {
   last_name?: string
   mobile_number: string
   isValid: boolean
+  isDuplicate?: boolean
   errors: string[]
 }
 
@@ -61,6 +62,7 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
 
   const validateCustomer = (customer: Partial<Customer>, allCustomersInFile: Partial<Customer>[]): { errors: string[], customer: ParsedCustomer } => {
     const errors: string[] = []
+    let isDuplicate = false
     
     if (!customer.first_name?.trim()) {
       errors.push('First name is required')
@@ -77,9 +79,11 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
       
       if (isDuplicateInFile) {
         errors.push('Duplicate mobile number within this file')
+        isDuplicate = true
       }
       if (isDuplicateInDb) {
         errors.push('Mobile number already exists in the database')
+        isDuplicate = true
       }
     }
 
@@ -90,6 +94,7 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
         last_name: customer.last_name?.trim(),
         mobile_number: formattedNumber,
         isValid: errors.length === 0,
+        isDuplicate,
         errors: [], // This will be populated later
       }
     }
@@ -232,15 +237,17 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white">
                 {parsedData.map((customer, index) => (
-                  <tr key={index} className={!customer.isValid ? 'bg-red-50' : ''}>
+                  <tr key={index} className={customer.isDuplicate ? 'bg-yellow-50' : !customer.isValid ? 'bg-red-50' : ''}>
                     <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">{customer.first_name}</td>
                     <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">{customer.last_name || '-'}</td>
                     <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">{customer.mobile_number}</td>
                     <td className="whitespace-nowrap px-3 py-4 text-sm">
                       {customer.isValid ? (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Valid</span>
+                      ) : customer.isDuplicate ? (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800" title={customer.errors.join(', ')}>Duplicate</span>
                       ) : (
-                        <span className="text-red-600" title={customer.errors.join(', ')}>Invalid</span>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800" title={customer.errors.join(', ')}>Invalid</span>
                       )}
                     </td>
                   </tr>

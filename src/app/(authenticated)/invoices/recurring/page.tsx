@@ -277,8 +277,9 @@ export default function RecurringInvoicesPage() {
                       <Button
                         variant="secondary"
                         size="sm"
-                        onClick={() => router.push(`/invoices/recurring/${recurring.id}/edit`)}
+                        onClick={() => router.push(`/invoices/recurring/${recurring.id}`)}
                         disabled={processing === recurring.id}
+                        title="View details"
                         iconOnly
                       >
                         <Edit className="h-4 w-4" />
