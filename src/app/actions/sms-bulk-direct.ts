@@ -18,15 +18,18 @@ interface TwilioMessageCreateParams {
 }
 
 // This is the corrected bulk SMS function that sends directly for small batches
-export async function sendBulkSMSDirect(customerIds: string[], message: string) {
+export async function sendBulkSMSDirect(customerIds: string[], message: string, eventId?: string, categoryId?: string) {
   try {
-    // For large batches (>50), queue as a job
-    if (customerIds.length > 50) {
+    // Increased threshold from 50 to 100 for better performance
+    // Queue for very large batches to avoid timeouts
+    if (customerIds.length > 100) {
       await jobQueue.enqueue('send_bulk_sms', {
         customerIds,
-        message
+        message,
+        eventId,
+        categoryId
       }, {
-        priority: 5 // Medium priority for bulk operations
+        priority: 10 // High priority for bulk operations
       })
       
       logger.info('Bulk SMS job queued for large batch', { 
@@ -35,12 +38,12 @@ export async function sendBulkSMSDirect(customerIds: string[], message: string) 
       
       return { 
         success: true, 
-        message: `Queued SMS for ${customerIds.length} customers` 
+        message: `Queued SMS for ${customerIds.length} customers. Messages will be sent within the next few minutes.` 
       }
     }
     
-    // For small batches, send directly
-    return await sendBulkSMSImmediate(customerIds, message)
+    // For smaller batches, send directly
+    return await sendBulkSMSImmediate(customerIds, message, eventId, categoryId)
     
   } catch (error) {
     logger.error('Failed to process bulk SMS', { 
@@ -51,8 +54,8 @@ export async function sendBulkSMSDirect(customerIds: string[], message: string) 
   }
 }
 
-// Send bulk SMS immediately (for small batches)
-async function sendBulkSMSImmediate(customerIds: string[], message: string) {
+// Send bulk SMS immediately (for small/medium batches)
+async function sendBulkSMSImmediate(customerIds: string[], message: string, eventId?: string, categoryId?: string) {
   try {
     // Apply rate limiting
     const headersList = await headers()
@@ -87,6 +90,28 @@ async function sendBulkSMSImmediate(customerIds: string[], message: string) {
 
     if (customerError || !customers || customers.length === 0) {
       return { error: 'No valid customers found' }
+    }
+    
+    // Get event and category details if provided for personalization
+    let eventDetails = null
+    let categoryDetails = null
+    
+    if (eventId) {
+      const { data: event } = await supabase
+        .from('events')
+        .select('id, name, date, time')
+        .eq('id', eventId)
+        .single()
+      eventDetails = event
+    }
+    
+    if (categoryId) {
+      const { data: category } = await supabase
+        .from('event_categories')
+        .select('id, name')
+        .eq('id', categoryId)
+        .single()
+      categoryDetails = category
     }
 
     // Filter out customers who have opted out or have no mobile number
@@ -123,9 +148,34 @@ async function sendBulkSMSImmediate(customerIds: string[], message: string) {
 
     for (const customer of validCustomers) {
       try {
+        // Personalize the message for this customer
+        let personalizedMessage = message
+        personalizedMessage = personalizedMessage.replace(/{{customer_name}}/g, `${customer.first_name} ${customer.last_name}`)
+        personalizedMessage = personalizedMessage.replace(/{{first_name}}/g, customer.first_name)
+        personalizedMessage = personalizedMessage.replace(/{{last_name}}/g, customer.last_name || '')
+        personalizedMessage = personalizedMessage.replace(/{{venue_name}}/g, 'The Anchor')
+        personalizedMessage = personalizedMessage.replace(/{{contact_phone}}/g, process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707')
+        
+        // Add event-specific variables if available
+        if (eventDetails) {
+          personalizedMessage = personalizedMessage.replace(/{{event_name}}/g, eventDetails.name)
+          personalizedMessage = personalizedMessage.replace(/{{event_date}}/g, new Date(eventDetails.date).toLocaleDateString('en-GB', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+          }))
+          personalizedMessage = personalizedMessage.replace(/{{event_time}}/g, eventDetails.time)
+        }
+        
+        // Add category-specific variables if available
+        if (categoryDetails) {
+          personalizedMessage = personalizedMessage.replace(/{{category_name}}/g, categoryDetails.name)
+        }
+        
         // Prepare message parameters
         const messageParams: TwilioMessageCreateParams = {
-          body: message,
+          body: personalizedMessage,
           to: customer.mobile_number,
         }
 
@@ -146,7 +196,7 @@ async function sendBulkSMSImmediate(customerIds: string[], message: string) {
           direction: 'outbound' as const,
           message_sid: twilioMessage.sid,
           twilio_message_sid: twilioMessage.sid,
-          body: message,
+          body: personalizedMessage, // Use the personalized message here
           status: twilioMessage.status,
           twilio_status: 'queued' as const,
           from_number: twilioMessage.from || process.env.TWILIO_PHONE_NUMBER || '',
@@ -154,7 +204,12 @@ async function sendBulkSMSImmediate(customerIds: string[], message: string) {
           message_type: 'sms' as const,
           segments: segments,
           cost_usd: costUsd,
-          read_at: new Date().toISOString() // Mark as read since it's outbound
+          read_at: new Date().toISOString(), // Mark as read since it's outbound
+          metadata: {
+            bulk_sms: true,
+            event_id: eventId,
+            category_id: categoryId
+          }
         })
 
         results.push({

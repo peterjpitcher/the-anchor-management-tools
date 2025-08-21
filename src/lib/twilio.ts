@@ -1,23 +1,36 @@
 import twilio from 'twilio';
 import { retry, RetryConfigs } from './retry';
 import { logger } from './logger';
+import { TWILIO_STATUS_CALLBACK, TWILIO_STATUS_CALLBACK_METHOD, env } from './env';
 
-const accountSid = process.env.TWILIO_ACCOUNT_SID;
-const authToken = process.env.TWILIO_AUTH_TOKEN;
-const fromNumber = process.env.TWILIO_PHONE_NUMBER;
+const accountSid = env.TWILIO_ACCOUNT_SID;
+const authToken = env.TWILIO_AUTH_TOKEN;
+const fromNumber = env.TWILIO_PHONE_NUMBER;
+const messagingServiceSid = env.TWILIO_MESSAGING_SERVICE_SID;
 
 export const twilioClient = twilio(accountSid, authToken);
 
 export const sendSMS = async (to: string, body: string) => {
   try {
+    // Build message parameters
+    const messageParams: any = {
+      body,
+      to,
+      statusCallback: TWILIO_STATUS_CALLBACK,
+      statusCallbackMethod: TWILIO_STATUS_CALLBACK_METHOD,
+    };
+
+    // Use messaging service if configured, otherwise use from number
+    if (messagingServiceSid) {
+      messageParams.messagingServiceSid = messagingServiceSid;
+    } else {
+      messageParams.from = fromNumber;
+    }
+
     // Send SMS with retry logic
     const message = await retry(
       async () => {
-        return await twilioClient.messages.create({
-          body,
-          to,
-          from: fromNumber,
-        });
+        return await twilioClient.messages.create(messageParams);
       },
       {
         ...RetryConfigs.sms,

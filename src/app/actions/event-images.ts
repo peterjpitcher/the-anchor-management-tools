@@ -207,7 +207,7 @@ export async function uploadEventImage(
   }
 }
 
-export async function deleteEventImage(imageId: string, eventId: string) {
+export async function deleteEventImage(imageUrl: string, entityId: string) {
   try {
     const hasPermission = await checkUserPermission('events', 'edit')
     if (!hasPermission) {
@@ -216,41 +216,59 @@ export async function deleteEventImage(imageId: string, eventId: string) {
 
     const supabase = await createClient()
     
-    // Get the image record
-    const { data: image, error: fetchError } = await supabase
+    // First, try to find the image in event_images table by URL
+    const { data: images } = await supabase
       .from('event_images')
       .select('*')
-      .eq('id', imageId)
-      .single()
+      .eq('event_id', entityId)
+    
+    // Find the image that matches the URL
+    let imageToDelete = null
+    if (images && images.length > 0) {
+      for (const img of images) {
+        const { data: { publicUrl } } = supabase.storage
+          .from(BUCKET_NAME)
+          .getPublicUrl(img.storage_path)
+        
+        if (publicUrl === imageUrl) {
+          imageToDelete = img
+          break
+        }
+      }
+    }
+    
+    // If we found the image in event_images, delete it from storage
+    if (imageToDelete) {
+      // Delete from storage
+      const { error: storageError } = await supabase.storage
+        .from(BUCKET_NAME)
+        .remove([imageToDelete.storage_path])
 
-    if (fetchError || !image) {
-      return { error: 'Image not found.' }
+      if (storageError) {
+        console.error('Storage deletion error:', storageError)
+      }
+
+      // Delete from database
+      await supabase
+        .from('event_images')
+        .delete()
+        .eq('id', imageToDelete.id)
     }
 
-    // Delete from storage
-    const { error: storageError } = await supabase.storage
-      .from(BUCKET_NAME)
-      .remove([image.storage_path])
-
-    if (storageError) {
-      console.error('Storage deletion error:', storageError)
-    }
-
-    // Delete from database
-    const { error: dbError } = await supabase
-      .from('event_images')
-      .delete()
-      .eq('id', imageId)
-
-    if (dbError) {
-      return { error: 'Failed to delete image record.' }
-    }
-
-    // Update event to remove image URL (set to null)
-    await supabase
+    // Always update the event to remove the image URL
+    const { error: updateError } = await supabase
       .from('events')
-      .update({ hero_image_url: null })
-      .eq('id', eventId)
+      .update({ 
+        hero_image_url: null,
+        thumbnail_image_url: null,
+        poster_image_url: null
+      })
+      .eq('id', entityId)
+    
+    if (updateError) {
+      console.error('Failed to clear image URLs from event:', updateError)
+      return { error: 'Failed to remove image from event.' }
+    }
 
     // Log audit event
     const { data: { user } } = await supabase.auth.getUser()
@@ -260,17 +278,16 @@ export async function deleteEventImage(imageId: string, eventId: string) {
         user_email: user.email!,
         operation_type: 'delete',
         resource_type: 'event',
-        resource_id: eventId,
+        resource_id: entityId,
         operation_status: 'success',
         old_values: {
-          imageType: image.image_type,
-          fileName: image.file_name
+          imageUrl: imageUrl
         }
       })
     }
 
-    revalidatePath(`/events/${eventId}`)
-    revalidatePath(`/events/${eventId}/edit`)
+    revalidatePath(`/events/${entityId}`)
+    revalidatePath(`/events/${entityId}/edit`)
     
     return { success: true }
   } catch (error) {

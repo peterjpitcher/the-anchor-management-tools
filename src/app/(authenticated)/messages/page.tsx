@@ -103,6 +103,9 @@ export default function MessagesPage() {
         backButton={{ label: "Back to Dashboard", href: "/dashboard" }}
         actions={
           <div className="flex gap-2">
+            <NavLink href="/messages/queue">
+              SMS Queue Status
+            </NavLink>
             <NavLink href="/messages/bulk">
               Send Bulk Message
             </NavLink>

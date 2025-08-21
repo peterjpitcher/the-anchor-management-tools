@@ -181,9 +181,16 @@ export async function POST(request: NextRequest) {
           process.env.TWILIO_AUTH_TOKEN
         );
 
+        // Import webhook URL from centralized config
+        const webhookUrl = process.env.WEBHOOK_BASE_URL || 
+                          process.env.NEXT_PUBLIC_APP_URL || 
+                          'https://management.orangejelly.co.uk';
+        
         const messageParams: any = {
           body: smsMessage,
           to: standardizedPhone,
+          statusCallback: `${webhookUrl}/api/webhooks/twilio`,
+          statusCallbackMethod: 'POST',
         };
 
         if (process.env.TWILIO_MESSAGING_SERVICE_SID) {

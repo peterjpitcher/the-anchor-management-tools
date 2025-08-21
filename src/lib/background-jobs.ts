@@ -248,38 +248,168 @@ export class JobQueue {
   }
   
   private async processBulkSms(payload: JobPayload['send_bulk_sms']) {
-    const { customerIds, message } = payload
+    const { customerIds, message, eventId, categoryId } = payload
     const results = []
+    const errors = []
     const supabase = await createAdminClient()
+    const { sendSMS } = await import('./twilio')
     
-    // Process in batches to avoid overloading
-    const batchSize = 10
+    // Process in larger batches for efficiency
+    const batchSize = 50 // Increased from 10 for better performance
+    
+    // Get event and category details if provided for personalization
+    let eventDetails = null
+    let categoryDetails = null
+    
+    if (eventId) {
+      const { data: event } = await supabase
+        .from('events')
+        .select('id, name, date, time')
+        .eq('id', eventId)
+        .single()
+      eventDetails = event
+    }
+    
+    if (categoryId) {
+      const { data: category } = await supabase
+        .from('event_categories')
+        .select('id, name')
+        .eq('id', categoryId)
+        .single()
+      categoryDetails = category
+    }
+    
+    // Calculate segments for cost estimation
+    const messageLength = message.length
+    const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153)
+    const costUsd = segments * 0.04
+    
     for (let i = 0; i < customerIds.length; i += batchSize) {
       const batch = customerIds.slice(i, i + batchSize)
       
-      // Get customer details
+      // Get customer details with all fields needed for personalization
       const { data: customers } = await supabase
         .from('customers')
-        .select('id, mobile_number, sms_opt_in')
+        .select('id, first_name, last_name, mobile_number, sms_opt_in')
         .in('id', batch)
         .eq('sms_opt_in', true)
         .not('mobile_number', 'is', null)
       
       if (!customers) continue
       
-      // Send SMS to each customer
+      // Send SMS to each customer with personalization
+      const messagesToInsert = []
+      
       for (const customer of customers) {
-        await this.enqueue('send_sms', {
-          to: customer.mobile_number!,
-          message,
-          customerId: customer.id
-        })
+        try {
+          // Personalize the message for this customer
+          let personalizedMessage = message
+          personalizedMessage = personalizedMessage.replace(/{{customer_name}}/g, `${customer.first_name} ${customer.last_name}`)
+          personalizedMessage = personalizedMessage.replace(/{{first_name}}/g, customer.first_name)
+          personalizedMessage = personalizedMessage.replace(/{{last_name}}/g, customer.last_name || '')
+          personalizedMessage = personalizedMessage.replace(/{{venue_name}}/g, 'The Anchor')
+          personalizedMessage = personalizedMessage.replace(/{{contact_phone}}/g, process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707')
+          
+          // Add event-specific variables if available
+          if (eventDetails) {
+            personalizedMessage = personalizedMessage.replace(/{{event_name}}/g, eventDetails.name)
+            personalizedMessage = personalizedMessage.replace(/{{event_date}}/g, new Date(eventDetails.date).toLocaleDateString('en-GB', {
+              weekday: 'long',
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
+            }))
+            personalizedMessage = personalizedMessage.replace(/{{event_time}}/g, eventDetails.time)
+          }
+          
+          // Add category-specific variables if available
+          if (categoryDetails) {
+            personalizedMessage = personalizedMessage.replace(/{{category_name}}/g, categoryDetails.name)
+          }
+          
+          // Send the personalized SMS directly (no more job multiplication)
+          const result = await sendSMS(customer.mobile_number!, personalizedMessage)
+          
+          if (result.success) {
+            // Prepare message for batch insert
+            messagesToInsert.push({
+              customer_id: customer.id,
+              direction: 'outbound' as const,
+              message_sid: result.sid,
+              twilio_message_sid: result.sid,
+              body: personalizedMessage,
+              status: 'sent',
+              twilio_status: 'queued' as const,
+              from_number: process.env.TWILIO_PHONE_NUMBER || '',
+              to_number: customer.mobile_number,
+              message_type: 'sms' as const,
+              segments: segments,
+              cost_usd: costUsd,
+              read_at: new Date().toISOString(), // Mark as read since it's outbound
+              metadata: {
+                bulk_job: true,
+                event_id: eventId,
+                category_id: categoryId
+              }
+            })
+            
+            results.push({
+              customerId: customer.id,
+              success: true,
+              messageSid: result.sid
+            })
+          } else {
+            errors.push({
+              customerId: customer.id,
+              error: result.error || 'Failed to send SMS'
+            })
+          }
+        } catch (error) {
+          logger.error('Failed to send SMS to customer', {
+            error: error as Error,
+            metadata: { customerId: customer.id }
+          })
+          errors.push({
+            customerId: customer.id,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          })
+        }
       }
       
-      results.push(...customers.map(c => c.id))
+      // Batch insert all successful messages
+      if (messagesToInsert.length > 0) {
+        const { error: insertError } = await supabase
+          .from('messages')
+          .insert(messagesToInsert)
+        
+        if (insertError) {
+          logger.error('Failed to store messages in database', {
+            error: insertError,
+            metadata: { count: messagesToInsert.length }
+          })
+        }
+      }
+      
+      // Add a small delay between batches to avoid overwhelming Twilio
+      if (i + batchSize < customerIds.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000)) // 1 second delay between batches
+      }
     }
     
-    return { sent: results.length }
+    logger.info('Bulk SMS job completed', {
+      metadata: {
+        total: customerIds.length,
+        sent: results.length,
+        failed: errors.length
+      }
+    })
+    
+    return { 
+      sent: results.length,
+      failed: errors.length,
+      results,
+      errors
+    }
   }
   
   private async processReminder(payload: JobPayload['process_reminder']) {

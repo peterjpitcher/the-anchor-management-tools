@@ -215,3 +215,107 @@ export async function deleteCustomer(id: string) {
     return { error: 'An unexpected error occurred' }
   }
 }
+
+export async function deleteTestCustomers() {
+  try {
+    const supabase = await createClient()
+    
+    // Get the authenticated user
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return { error: 'Unauthorized' }
+    }
+
+    // Find all customers with 'test' in first or last name (case-insensitive)
+    const { data: testCustomers, error: fetchError } = await supabase
+      .from('customers')
+      .select('id, first_name, last_name')
+      .or('first_name.ilike.%test%,last_name.ilike.%test%')
+
+    if (fetchError) {
+      console.error('Error fetching test customers:', fetchError)
+      return { error: 'Failed to fetch test customers' }
+    }
+
+    if (!testCustomers || testCustomers.length === 0) {
+      return { success: true, deletedCount: 0, message: 'No test customers found' }
+    }
+
+    // Delete each test customer
+    const deletedCustomers = []
+    const failedDeletions = []
+
+    for (const customer of testCustomers) {
+      // Delete customer (bookings will cascade delete)
+      const { error: deleteError } = await supabase
+        .from('customers')
+        .delete()
+        .eq('id', customer.id)
+
+      if (deleteError) {
+        console.error(`Failed to delete customer ${customer.id}:`, deleteError)
+        failedDeletions.push({
+          id: customer.id,
+          name: `${customer.first_name} ${customer.last_name}`,
+          error: deleteError.message
+        })
+      } else {
+        deletedCustomers.push({
+          id: customer.id,
+          name: `${customer.first_name} ${customer.last_name}`
+        })
+
+        // Log audit event for each deletion
+        await logAuditEvent({
+          user_id: user.id,
+          user_email: user.email,
+          operation_type: 'delete',
+          resource_type: 'customer',
+          resource_id: customer.id,
+          operation_status: 'success',
+          old_values: customer,
+          additional_info: { reason: 'Bulk deletion of test customers' }
+        })
+      }
+    }
+
+    // Log summary audit event
+    await logAuditEvent({
+      user_id: user.id,
+      user_email: user.email,
+      operation_type: 'bulk_delete',
+      resource_type: 'customers',
+      operation_status: failedDeletions.length > 0 ? 'failure' : 'success',
+      additional_info: {
+        total_found: testCustomers.length,
+        deleted_count: deletedCustomers.length,
+        failed_count: failedDeletions.length,
+        deleted_customers: deletedCustomers,
+        failed_deletions: failedDeletions
+      }
+    })
+
+    revalidatePath('/customers')
+
+    if (failedDeletions.length > 0) {
+      return {
+        success: false,
+        deletedCount: deletedCustomers.length,
+        failedCount: failedDeletions.length,
+        deletedCustomers,
+        failedDeletions,
+        message: `Deleted ${deletedCustomers.length} test customers. Failed to delete ${failedDeletions.length} customers.`
+      }
+    }
+
+    return {
+      success: true,
+      deletedCount: deletedCustomers.length,
+      deletedCustomers,
+      message: `Successfully deleted ${deletedCustomers.length} test customers`
+    }
+  } catch (error) {
+    console.error('Unexpected error deleting test customers:', error)
+    return { error: 'An unexpected error occurred' }
+  }
+}

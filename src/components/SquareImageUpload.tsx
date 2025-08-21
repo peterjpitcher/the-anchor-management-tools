@@ -113,6 +113,14 @@ export function SquareImageUpload({
 
     setIsDeleting(true)
     try {
+      // For now, we'll just clear the image from the event/category
+      // The deleteEventImage function expects an image ID from event_images table
+      // but we're only storing URLs in the events table
+      const formData = new FormData()
+      formData.append(entityType === 'event' ? 'event_id' : 'category_id', entityId)
+      formData.append('clear_image', 'true')
+      
+      // Call a simplified delete that just clears the URL field
       const result = await deleteEventImage(currentImageUrl, entityId)
       
       if (result.error) {
@@ -120,6 +128,7 @@ export function SquareImageUpload({
       } else {
         toast.success('Image deleted successfully')
         setPreviewUrl(null)
+        setSelectedFile(null)
         if (fileInputRef.current) {
           fileInputRef.current.value = ''
         }

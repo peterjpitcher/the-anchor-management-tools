@@ -4,6 +4,8 @@ import { createClient } from '@supabase/supabase-js';
 import twilio from 'twilio';
 import { retry, RetryConfigs } from '@/lib/retry';
 import { logger } from '@/lib/logger';
+import { mapTwilioStatus, isStatusUpgrade, formatErrorMessage } from '@/lib/sms-status';
+import { skipTwilioSignatureValidation } from '@/lib/env';
 
 // Create public Supabase client for logging (no auth required)
 function getPublicSupabaseClient() {
@@ -124,14 +126,9 @@ export async function POST(request: NextRequest) {
     }
     
     // Always verify signature unless explicitly disabled (NEVER disable in production)
-    const skipValidation = process.env.SKIP_TWILIO_SIGNATURE_VALIDATION === 'true';
+    const skipValidation = skipTwilioSignatureValidation();
     
-    if (skipValidation && process.env.NODE_ENV === 'production') {
-      console.error('CRITICAL: Twilio signature validation is disabled in production!');
-      // Force validation in production regardless of environment variable
-    }
-    
-    if (!skipValidation || process.env.NODE_ENV === 'production') {
+    if (!skipValidation) {
       const isValid = verifyTwilioSignature(request, body);
       console.log('Signature validation result:', isValid);
       console.log('Auth token configured:', !!process.env.TWILIO_AUTH_TOKEN);
@@ -376,7 +373,7 @@ async function handleStatusUpdate(
   
   try {
     const messageSid = params.MessageSid || params.SmsSid;
-    const messageStatus = params.MessageStatus || params.SmsStatus;
+    const messageStatus = (params.MessageStatus || params.SmsStatus)?.toLowerCase();
     const errorCode = params.ErrorCode;
     const errorMessage = params.ErrorMessage;
     
@@ -386,19 +383,71 @@ async function handleStatusUpdate(
       throw new Error('Missing required fields: MessageSid or MessageStatus');
     }
     
-    // Update message status
+    // First, try to find the existing message
+    const { data: existingMessage, error: fetchError } = await adminClient
+      .from('messages')
+      .select('id, status, twilio_status, direction')
+      .eq('twilio_message_sid', messageSid)
+      .single();
+    
+    if (fetchError || !existingMessage) {
+      console.log('Message not found for SID:', messageSid);
+      
+      // Log to webhook_logs but return success to prevent retries
+      if (publicClient) {
+        await logWebhookAttempt(
+          publicClient,
+          'message_not_found',
+          headers,
+          body,
+          params,
+          'Message row not found',
+          { messageSid }
+        );
+      }
+      
+      // Still return success to stop Twilio retries
+      return NextResponse.json({ success: true, note: 'Message not found' });
+    }
+    
+    // Check if this is a valid status progression
+    if (!isStatusUpgrade(existingMessage.twilio_status, messageStatus)) {
+      console.log('Skipping status regression:', {
+        current: existingMessage.twilio_status,
+        new: messageStatus
+      });
+      
+      // Still log the event for audit purposes
+      const { error: historyError } = await adminClient
+        .from('message_delivery_status')
+        .insert({
+          message_id: existingMessage.id,
+          status: messageStatus,
+          error_code: errorCode,
+          error_message: errorMessage,
+          raw_webhook_data: params,
+          note: 'Status regression prevented'
+        });
+      
+      return NextResponse.json({ success: true, note: 'Status regression prevented' });
+    }
+    
+    // Perform idempotent update with status progression
     const { data: message, error: updateError } = await adminClient
       .from('messages')
       .update({
+        status: mapTwilioStatus(messageStatus),
         twilio_status: messageStatus,
         error_code: errorCode,
-        error_message: errorMessage,
+        error_message: errorMessage || (errorCode ? formatErrorMessage(errorCode) : null),
         updated_at: new Date().toISOString(),
         ...(messageStatus === 'delivered' && { delivered_at: new Date().toISOString() }),
         ...(messageStatus === 'failed' && { failed_at: new Date().toISOString() }),
-        ...(messageStatus === 'sent' && { sent_at: new Date().toISOString() })
+        ...(messageStatus === 'undelivered' && { failed_at: new Date().toISOString() }),
+        ...(messageStatus === 'sent' && !existingMessage.sent_at && { sent_at: new Date().toISOString() })
       })
       .eq('twilio_message_sid', messageSid)
+      .eq('id', existingMessage.id) // Extra safety with ID match
       .select()
       .single();
     
@@ -407,15 +456,16 @@ async function handleStatusUpdate(
       // Don't throw - message might not exist yet
     }
     
-    // Save status history
+    // Save status history (append-only audit log)
     const { error: historyError } = await adminClient
       .from('message_delivery_status')
       .insert({
-        message_id: message?.id,
+        message_id: message?.id || existingMessage.id,
         status: messageStatus,
         error_code: errorCode,
-        error_message: errorMessage,
-        raw_webhook_data: params
+        error_message: errorMessage || (errorCode ? formatErrorMessage(errorCode) : null),
+        raw_webhook_data: params,
+        created_at: new Date().toISOString()
       });
     
     if (historyError) {
