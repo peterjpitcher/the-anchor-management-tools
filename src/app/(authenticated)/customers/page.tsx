@@ -169,7 +169,16 @@ export default function CustomersPage() {
             )
           `)
           .in('customer_id', customerIds)
-          .order('times_attended', { ascending: false })
+          .order('times_attended', { ascending: false }) as {
+            data: Array<{
+              customer_id: string
+              category_id: string
+              times_attended: number
+              last_attended_date: string
+              event_categories: any
+            }> | null
+            error: any
+          }
 
         if (error) {
           console.error('Error loading customer preferences:', error)
@@ -270,7 +279,11 @@ export default function CustomersPage() {
     customerData: Omit<Customer, 'id' | 'created_at'>
   ) {
     try {
-      const { error } = await supabase.from('customers').insert([customerData])
+      const { error } = await (supabase.from('customers') as any).insert([{
+        first_name: customerData.first_name,
+        last_name: customerData.last_name,
+        mobile_number: customerData.mobile_number
+      }])
       if (error) {
         const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Failed to create customer';
         toast.error(message)
@@ -291,9 +304,13 @@ export default function CustomersPage() {
     if (!editingCustomer) return
 
     try {
-      const { error } = await supabase
-        .from('customers')
-        .update(customerData)
+      const { error } = await (supabase
+        .from('customers') as any)
+        .update({
+          first_name: customerData.first_name,
+          last_name: customerData.last_name,
+          mobile_number: customerData.mobile_number
+        })
         .eq('id', editingCustomer.id)
 
       if (error) {
@@ -332,7 +349,7 @@ export default function CustomersPage() {
 
   async function handleImportCustomers(customersData: Omit<Customer, 'id' | 'created_at'>[]) {
     try {
-      const { error } = await supabase.from('customers').insert(customersData)
+      const { error } = await (supabase.from('customers') as any).insert(customersData)
       if (error) {
         const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Failed to import customers';
         toast.error(message)

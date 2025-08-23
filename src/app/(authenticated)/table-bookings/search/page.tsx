@@ -71,7 +71,7 @@ export default function TableBookingSearchPage() {
           .or(`first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%`);
         
         if (customers && customers.length > 0) {
-          query = query.in('customer_id', customers.map(c => c.id));
+          query = query.in('customer_id', customers.map((c: any) => c.id));
         } else {
           setResults([]);
           return;
@@ -85,7 +85,7 @@ export default function TableBookingSearchPage() {
           .like('mobile_number', `%${cleanPhone}%`);
         
         if (customers && customers.length > 0) {
-          query = query.in('customer_id', customers.map(c => c.id));
+          query = query.in('customer_id', customers.map((c: any) => c.id));
         } else {
           setResults([]);
           return;

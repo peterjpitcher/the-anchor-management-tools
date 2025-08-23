@@ -104,13 +104,13 @@ export default function EmployeeDetailPage({ params: paramsPromise }: { params: 
         };
 
         const getAttachmentCategories = async (): Promise<Map<string, string>> => {
-          const { data, error } = await supabase.from('attachment_categories').select('category_id, category_name');
+          const { data, error } = await supabase.from('attachment_categories').select('category_id, category_name') as any;
           const map = new Map<string, string>();
           if (error) {
             console.error('Error fetching attachment categories:', error);
             return map;
           }
-          data?.forEach(cat => map.set(cat.category_id, cat.category_name));
+          data?.forEach((cat: any) => map.set(cat.category_id, cat.category_name));
           return map;
         };
         

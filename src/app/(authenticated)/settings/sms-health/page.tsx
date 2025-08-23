@@ -66,10 +66,10 @@ export default function SMSHealthDashboard() {
       // Calculate stats
       const stats = {
         totalCustomers: data?.length || 0,
-        activeCustomers: data?.filter(c => c.messaging_status === 'active').length || 0,
-        suspendedCustomers: data?.filter(c => c.messaging_status === 'suspended').length || 0,
-        invalidNumbers: data?.filter(c => c.messaging_status === 'invalid_number').length || 0,
-        totalSpent: data?.reduce((sum, c) => sum + (c.total_cost_usd || 0), 0) || 0,
+        activeCustomers: data?.filter((c: any) => c.messaging_status === 'active').length || 0,
+        suspendedCustomers: data?.filter((c: any) => c.messaging_status === 'suspended').length || 0,
+        invalidNumbers: data?.filter((c: any) => c.messaging_status === 'invalid_number').length || 0,
+        totalSpent: data?.reduce((sum: number, c: any) => sum + (c.total_cost_usd || 0), 0) || 0,
         overallDeliveryRate: calculateOverallDeliveryRate(data || [])
       }
       setStats(stats)
@@ -93,8 +93,8 @@ export default function SMSHealthDashboard() {
 
   async function reactivateCustomer(customerId: string) {
     try {
-      const { error } = await supabase
-        .from('customers')
+      const { error } = await (supabase
+        .from('customers') as any)
         .update({
           messaging_status: 'active',
           consecutive_failures: 0,
@@ -114,8 +114,8 @@ export default function SMSHealthDashboard() {
 
   async function suspendCustomer(customerId: string) {
     try {
-      const { error } = await supabase
-        .from('customers')
+      const { error } = await (supabase
+        .from('customers') as any)
         .update({
           messaging_status: 'suspended',
           sms_opt_in: false

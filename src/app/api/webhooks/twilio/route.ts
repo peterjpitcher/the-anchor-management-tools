@@ -39,8 +39,8 @@ async function logWebhookAttempt(
       ...additionalData
     };
     
-    const { error: logError } = await client
-      .from('webhook_logs')
+    const { error: logError } = await (client
+      .from('webhook_logs') as any)
       .insert(logEntry);
       
     if (logError) {

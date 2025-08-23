@@ -42,8 +42,8 @@ const [testResult, setTestResult] = useState<string>('')
         .eq('user_id', user.id)
         .single()
 
-      if (userRole && userRole.roles && typeof userRole.roles === 'object' && 'name' in userRole.roles) {
-        setIsAuthorized(userRole.roles.name === 'super_admin')
+      if (userRole && (userRole as any).roles && typeof (userRole as any).roles === 'object' && 'name' in (userRole as any).roles) {
+        setIsAuthorized((userRole as any).roles.name === 'super_admin')
       } else {
         setIsAuthorized(false)
       }

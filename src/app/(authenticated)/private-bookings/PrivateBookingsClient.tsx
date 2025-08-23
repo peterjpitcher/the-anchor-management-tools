@@ -137,7 +137,7 @@ export default function PrivateBookingsClient({ permissions }: Props) {
       }
 
       // Calculate days until event
-      const enrichedBookings = (data || []).map(booking => {
+      const enrichedBookings = (data || []).map((booking: any) => {
         // Extract customer from array (Supabase returns it as an array)
         const customerData = Array.isArray(booking.customer) ? booking.customer[0] : booking.customer
         

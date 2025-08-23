@@ -47,9 +47,9 @@ export default function RightToWorkTab({ employeeId }: RightToWorkTabProps) {
         setRightToWork(data)
         
         // Load photo URL if exists
-        if (data.photo_storage_path) {
+        if ((data as any).photo_storage_path) {
           setLoadingPhoto(true)
-          const { url } = await getRightToWorkPhotoUrl(data.photo_storage_path)
+          const { url } = await getRightToWorkPhotoUrl((data as any).photo_storage_path)
           if (url) {
             setPhotoUrl(url)
           }
@@ -79,9 +79,9 @@ export default function RightToWorkTab({ employeeId }: RightToWorkTabProps) {
           setRightToWork(data)
           
           // Load new photo URL if exists
-          if (data.photo_storage_path) {
+          if ((data as any).photo_storage_path) {
             setLoadingPhoto(true)
-            const { url } = await getRightToWorkPhotoUrl(data.photo_storage_path)
+            const { url } = await getRightToWorkPhotoUrl((data as any).photo_storage_path)
             if (url) {
               setPhotoUrl(url)
             }

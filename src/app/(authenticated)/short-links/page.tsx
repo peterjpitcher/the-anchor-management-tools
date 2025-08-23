@@ -82,7 +82,7 @@ const supabase = useSupabase();
   const loadVolumeData = async (days: string) => {
     setLoadingVolume(true);
     try {
-      const { data, error } = await supabase.rpc('get_all_links_analytics', {
+      const { data, error } = await (supabase as any).rpc('get_all_links_analytics', {
         p_days: parseInt(days)
       });
 
@@ -167,7 +167,7 @@ const supabase = useSupabase();
       const result = await getShortLinkAnalytics(link.short_code);
       
       // Get enhanced analytics with demographics
-      const { data: enhancedData, error } = await supabase.rpc('get_short_link_analytics', {
+      const { data: enhancedData, error } = await (supabase as any).rpc('get_short_link_analytics', {
         p_short_code: link.short_code,
         p_days: 30
       });
@@ -269,8 +269,8 @@ const supabase = useSupabase();
         expiresAt = date.toISOString();
       }
 
-      const { error } = await supabase
-        .from('short_links')
+      const { error } = await (supabase
+        .from('short_links') as any)
         .update({
           destination_url: destinationUrl,
           link_type: linkType,

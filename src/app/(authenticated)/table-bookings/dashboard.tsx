@@ -148,13 +148,13 @@ export default function TableBookingsDashboard() {
       // Calculate stats
       const stats: DashboardStats = {
         todayBookings: todayStats?.length || 0,
-        todayCovers: todayStats?.reduce((sum, b) => sum + b.party_size, 0) || 0,
-        upcomingArrivals: todayStats?.filter(b => {
+        todayCovers: todayStats?.reduce((sum: number, b: any) => sum + b.party_size, 0) || 0,
+        upcomingArrivals: todayStats?.filter((b: any) => {
           const bookingTime = new Date(`${format(now, 'yyyy-MM-dd')} ${b.booking_time}`);
           return bookingTime >= now && bookingTime <= twoHoursFromNow;
         }).length || 0,
-        pendingPayments: todayStats?.filter(b => b.status === 'pending_payment').length || 0,
-        todayRevenue: todayStats?.reduce((sum, b) => {
+        pendingPayments: todayStats?.filter((b: any) => b.status === 'pending_payment').length || 0,
+        todayRevenue: todayStats?.reduce((sum: number, b: any) => {
           const payment = b.table_booking_payments?.find((p: any) => p.status === 'completed');
           return sum + (payment?.amount || 0);
         }, 0) || 0,

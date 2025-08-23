@@ -138,8 +138,8 @@ const supabase = useSupabase()
   async function handleSave() {
     try {
       if (editingTemplate) {
-        const { error } = await supabase
-          .from('message_templates')
+        const { error } = await (supabase
+          .from('message_templates') as any)
           .update({
             name: formData.name,
             description: formData.description,
@@ -153,8 +153,8 @@ const supabase = useSupabase()
         if (error) throw error
         toast.success('Template updated successfully')
       } else {
-        const { error } = await supabase
-          .from('message_templates')
+        const { error } = await (supabase
+          .from('message_templates') as any)
           .insert({
             name: formData.name,
             description: formData.description,
@@ -199,8 +199,8 @@ const supabase = useSupabase()
 
   async function toggleActive(template: MessageTemplate) {
     try {
-      const { error } = await supabase
-        .from('message_templates')
+      const { error } = await (supabase
+        .from('message_templates') as any)
         .update({ is_active: !template.is_active })
         .eq('id', template.id)
 

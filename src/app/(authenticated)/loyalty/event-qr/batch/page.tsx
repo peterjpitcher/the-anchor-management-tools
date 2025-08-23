@@ -68,7 +68,7 @@ export default function BatchQRPage() {
         if (error) throw error;
 
         // Transform the data to include booking counts
-        const eventsWithCounts = (data || []).map(event => ({
+        const eventsWithCounts = (data || []).map((event: any) => ({
           ...event,
           _badge: {
             bookings: event.bookings?.[0]?.count || 0

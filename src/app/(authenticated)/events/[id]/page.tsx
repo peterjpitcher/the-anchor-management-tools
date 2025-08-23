@@ -13,6 +13,7 @@ import { PlusIcon, TrashIcon, UserGroupIcon, ClipboardDocumentIcon, PencilSquare
 import { BookingForm } from '@/components/BookingForm'
 import { AddAttendeesModalWithCategories } from '@/components/AddAttendeesModalWithCategories'
 import { sendBookingConfirmationSync } from '@/app/actions/sms'
+import { addAttendeesWithScheduledSMS } from '@/app/actions/event-sms-scheduler'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { EventTemplateManager } from '@/components/EventTemplateManager'
 import { generateEventReservationPosters } from '@/app/actions/event-reservation-posters'
@@ -94,61 +95,28 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
     }
 
     try {
-      // First, check which customers already have bookings for this event
-      const { data: existingBookings, error: checkError } = await supabase
-        .from('bookings')
-        .select('customer_id')
-        .eq('event_id', event.id)
-        .in('customer_id', customerIds)
-
-      if (checkError) {
-        throw checkError
-      }
-
-      const existingCustomerIds = new Set(existingBookings?.map(b => b.customer_id) || [])
-      const customersToAdd = customerIds.filter(id => !existingCustomerIds.has(id))
-      const skippedCount = customerIds.length - customersToAdd.length
-
-      if (customersToAdd.length === 0) {
-        toast.error('All selected customers already have bookings for this event.')
+      // Use the new server action that schedules SMS instead of sending immediately
+      const result = await addAttendeesWithScheduledSMS(event.id, customerIds)
+      
+      if ('error' in result && result.error) {
+        toast.error(result.error)
         return
       }
-
-      const newBookingsToInsert = customersToAdd.map(customerId => ({
-        event_id: event.id,
-        customer_id: customerId,
-        seats: 0,
-        notes: 'Added via bulk add',
-      }))
-
-      const { data: insertedBookings, error } = await supabase
-        .from('bookings')
-        .insert(newBookingsToInsert)
-        .select('id')
-
-      if (error || !insertedBookings) {
-        throw error || new Error('Failed to insert bookings or retrieve their IDs.')
-      }
-
-      // Construct success message
-      let successMessage = `${customersToAdd.length} attendee(s) added successfully!`
-      if (skippedCount > 0) {
-        successMessage += ` (${skippedCount} skipped - already booked)`
-      }
-      toast.success(successMessage)
-      setShowAddAttendeesModal(false)
-      await loadEventData() // Refresh data
-
-      // Send SMS confirmations immediately
-      let smsErrorCount = 0
-      for (const booking of insertedBookings) {
-        sendBookingConfirmationSync(booking.id).catch(smsError => {
-          smsErrorCount++
-          console.error(`Failed to send SMS for booking ID ${booking.id}:`, smsError)
-          if (smsErrorCount === insertedBookings.length) {
-            toast.error('Attendees added, but all confirmation SMS failed to send.')
-          }
-        })
+      
+      if (result.success) {
+        // Construct success message
+        let successMessage = `${result.added} attendee(s) added successfully!`
+        if (result.skipped && result.skipped > 0) {
+          successMessage += ` (${result.skipped} skipped - already booked)`
+        }
+        if (result.remindersScheduled && result.remindersScheduled > 0) {
+          successMessage += ` SMS reminders scheduled.`
+        }
+        toast.success(successMessage)
+        setShowAddAttendeesModal(false)
+        await loadEventData() // Refresh data
+      } else {
+        toast.error('Failed to add attendees')
       }
     } catch (error) {
       console.error('Failed to add multiple attendees:', error)

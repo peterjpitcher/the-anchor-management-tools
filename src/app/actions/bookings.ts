@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { logAuditEvent } from './audit'
 import { sendBookingConfirmationSync } from './sms'
+import { scheduleBookingReminders } from './event-sms-scheduler'
 import { withRetry } from '@/lib/supabase-retry'
 import { getEventAvailableCapacity, invalidateEventCache } from '@/lib/events'
 import { formatPhoneForStorage } from '@/lib/validation'
@@ -148,7 +149,7 @@ export async function createBooking(formData: FormData): Promise<CreateBookingRe
     // Get event details to check capacity
     const { data: event } = await supabase
       .from('events')
-      .select('id, name, date, capacity')
+      .select('id, name, date, time, capacity')
       .eq('id', data.event_id)
       .single()
 
@@ -214,7 +215,8 @@ export async function createBooking(formData: FormData): Promise<CreateBookingRe
               event_id: data.event_id,
               customer_id: data.customer_id,
               seats: data.seats,
-              notes: data.notes || null
+              notes: data.notes || null,
+              booking_source: 'direct_booking' // Mark as direct booking
             })
             .select()
             .single()
@@ -248,25 +250,50 @@ export async function createBooking(formData: FormData): Promise<CreateBookingRe
       }
     })
 
-    // Send SMS confirmation immediately
-    try {
-      await sendBookingConfirmationSync(booking.id)
-      console.log(`SMS confirmation sent successfully for booking ${booking.id}`)
-    } catch (error) {
-      console.error('Failed to send booking confirmation:', error)
-      // Log detailed error information
-      await logAuditEvent({
-        user_id: user.id,
-        user_email: user.email || undefined,
-        operation_type: 'sms_failure',
-        resource_type: 'booking',
-        resource_id: booking.id,
-        operation_status: 'failure',
-        additional_info: {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          customerId: data.customer_id
-        }
-      })
+    // Send SMS confirmation immediately for direct bookings (has seats)
+    if (data.seats > 0) {
+      try {
+        await sendBookingConfirmationSync(booking.id)
+        console.log(`SMS confirmation sent successfully for booking ${booking.id}`)
+        
+        // Schedule follow-up reminders for bookings with seats
+        await scheduleBookingReminders(
+          booking.id,
+          event.date,
+          event.time,
+          true // Has seats
+        )
+        console.log(`Follow-up reminders scheduled for booking ${booking.id}`)
+      } catch (error) {
+        console.error('Failed to send booking confirmation or schedule reminders:', error)
+        // Log detailed error information
+        await logAuditEvent({
+          user_id: user.id,
+          user_email: user.email || undefined,
+          operation_type: 'sms_failure',
+          resource_type: 'booking',
+          resource_id: booking.id,
+          operation_status: 'failure',
+          additional_info: {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            customerId: data.customer_id
+          }
+        })
+      }
+    } else {
+      // For bookings without seats (shouldn't happen in createBooking, but just in case)
+      // Schedule the no-seats reminder flow
+      try {
+        await scheduleBookingReminders(
+          booking.id,
+          event.date,
+          event.time,
+          false // No seats
+        )
+        console.log(`No-seats reminders scheduled for booking ${booking.id}`)
+      } catch (error) {
+        console.error('Failed to schedule reminders:', error)
+      }
     }
 
     // Invalidate event cache

@@ -75,12 +75,12 @@ export default function TableBookingsCalendarPage() {
       
       eachDayOfInterval({ start: monthStart, end: monthEnd }).forEach(day => {
         const dateStr = format(day, 'yyyy-MM-dd');
-        const dayBookings = bookings?.filter(b => b.booking_date === dateStr) || [];
+        const dayBookings = bookings?.filter((b: any) => b.booking_date === dateStr) || [];
         
         grouped[dateStr] = {
           date: dateStr,
           bookings: dayBookings,
-          totalCovers: dayBookings.reduce((sum, b) => sum + b.party_size, 0),
+          totalCovers: dayBookings.reduce((sum: number, b: any) => sum + b.party_size, 0),
           hasAvailability: true // This could be calculated based on capacity
         };
       });

@@ -118,15 +118,15 @@ export default function SMSQueueStatusPage() {
       setJobs(jobsData || [])
 
       // Calculate stats
-      const queued = messagesData?.filter(m => m.status === 'queued') || []
-      const pending = messagesData?.filter(m => m.status === 'pending') || []
-      const sending = messagesData?.filter(m => m.status === 'sending') || []
-      const failed = messagesData?.filter(m => m.status === 'failed') || []
-      const delivered = messagesData?.filter(m => m.status === 'delivered') || []
-      const pendingJobs = jobsData?.filter(j => j.status === 'pending') || []
+      const queued = messagesData?.filter((m: any) => m.status === 'queued') || []
+      const pending = messagesData?.filter((m: any) => m.status === 'pending') || []
+      const sending = messagesData?.filter((m: any) => m.status === 'sending') || []
+      const failed = messagesData?.filter((m: any) => m.status === 'failed') || []
+      const delivered = messagesData?.filter((m: any) => m.status === 'delivered') || []
+      const pendingJobs = jobsData?.filter((j: any) => j.status === 'pending') || []
 
       const oldestQueued = [...queued, ...pending, ...sending].sort(
-        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       )[0]
 
       setStats({
@@ -136,7 +136,7 @@ export default function SMSQueueStatusPage() {
         totalFailed: failed.length,
         totalDelivered: delivered.length,
         totalJobs: pendingJobs.length,
-        oldestMessage: oldestQueued?.created_at || null
+        oldestMessage: (oldestQueued as any)?.created_at || null
       })
     } catch (error) {
       console.error('Error loading SMS queue data:', error)

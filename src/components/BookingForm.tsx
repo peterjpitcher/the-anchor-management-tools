@@ -52,7 +52,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
 
       if (error) throw error
 
-      const totalBooked = bookings?.reduce((sum, b) => sum + (b.seats || 0), 0) || 0
+      const totalBooked = bookings?.reduce((sum: number, b: any) => sum + (b.seats || 0), 0) || 0
       setAvailableCapacity(event.capacity - totalBooked)
     } catch (error) {
       console.error('Error calculating capacity:', error)
@@ -95,10 +95,10 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
 
       // Filter out customers who already have a booking with seats for this event
       // unless it's the current booking's customer
-      const existingCustomerIds = new Set(existingBookings.map(b => b.customer_id))
+      const existingCustomerIds = new Set(existingBookings.map((b: any) => b.customer_id))
       const availableCustomers = (customersData || [])
-        .filter(customer => !existingCustomerIds.has(customer.id) || customer.id === booking?.customer_id)
-        .map(customer => ({
+        .filter((customer: any) => !existingCustomerIds.has(customer.id) || customer.id === booking?.customer_id)
+        .map((customer: any) => ({
           ...customer,
           isLoyal: loyalCustomerIds.includes(customer.id)
         }))

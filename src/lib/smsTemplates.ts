@@ -17,9 +17,10 @@ export const smsTemplates = {
     })
     const baseMessage = `Hi ${params.firstName}, your booking for ${params.seats} people for our ${params.eventName} on ${formattedDate} at ${params.eventTime} is confirmed!`
     const qrMessage = params.qrCodeUrl ? ` Check-in with QR: ${params.qrCodeUrl}` : ''
-    return `${baseMessage}${qrMessage} See you then. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
+    return `${baseMessage}${qrMessage} Save this message as your confirmation. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
   },
 
+  // Legacy reminder - kept for backward compatibility
   reminderOnly: (params: {
     firstName: string
     eventName: string
@@ -33,6 +34,69 @@ export const smsTemplates = {
     return `Hi ${params.firstName}, don't forget, we've got our ${params.eventName} on ${formattedDate} at ${params.eventTime}! Let us know if you want to book seats. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
   },
 
+  // No Seats Flow - 2 weeks before
+  noSeats2Weeks: (params: {
+    firstName: string
+    eventName: string
+    eventDate: Date
+    eventTime: string
+  }) => {
+    const formattedDate = new Date(params.eventDate).toLocaleDateString('en-GB', {
+      month: 'long',
+      day: 'numeric',
+    })
+    return `Hi ${params.firstName}, we'd love to see you at our ${params.eventName} on ${formattedDate} at ${params.eventTime}! Reply with the number of seats you'd like to book or call us on ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}. The Anchor`
+  },
+
+  // No Seats Flow - 1 week before
+  noSeats1Week: (params: {
+    firstName: string
+    eventName: string
+    eventDate: Date
+    eventTime: string
+  }) => {
+    const formattedDate = new Date(params.eventDate).toLocaleDateString('en-GB', {
+      month: 'long',
+      day: 'numeric',
+    })
+    return `Hi ${params.firstName}, just 1 week until our ${params.eventName} on ${formattedDate} at ${params.eventTime}! Still time to book your seats - just reply with how many you need. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
+  },
+
+  // No Seats Flow - day before
+  noSeatsDayBefore: (params: {
+    firstName: string
+    eventName: string
+    eventTime: string
+  }) => {
+    return `Hi ${params.firstName}, our ${params.eventName} is TOMORROW at ${params.eventTime}! Last chance to book - reply NOW with number of seats needed or just turn up. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
+  },
+
+  // Has Seats Flow - 1 week before
+  hasSeats1Week: (params: {
+    firstName: string
+    eventName: string
+    eventDate: Date
+    eventTime: string
+    seats: number
+  }) => {
+    const formattedDate = new Date(params.eventDate).toLocaleDateString('en-GB', {
+      month: 'long',
+      day: 'numeric',
+    })
+    return `Hi ${params.firstName}, see you next week! You have ${params.seats} seats booked for our ${params.eventName} on ${formattedDate} at ${params.eventTime}. Want to bring more friends? Reply to add extra seats. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
+  },
+
+  // Has Seats Flow - day before
+  hasSeatsDayBefore: (params: {
+    firstName: string
+    eventName: string
+    eventTime: string
+    seats: number
+  }) => {
+    return `Hi ${params.firstName}, see you TOMORROW! You have ${params.seats} seats for our ${params.eventName} at ${params.eventTime}. Need to change numbers? Call us on ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}. The Anchor`
+  },
+
+  // Legacy templates - kept for backward compatibility
   dayBeforeReminder: (params: {
     firstName: string
     eventName: string
@@ -80,6 +144,12 @@ const TEMPLATE_TYPE_MAP: Record<string, string> = {
   weekBeforeReminder: 'reminder_7_day', 
   dayBeforeReminder: 'reminder_24_hour',
   reminderOnly: 'booking_reminder_confirmation',
+  // New template mappings for enhanced flow
+  noSeats2Weeks: 'no_seats_2_weeks',
+  noSeats1Week: 'no_seats_1_week',
+  noSeatsDayBefore: 'no_seats_day_before',
+  hasSeats1Week: 'has_seats_1_week',
+  hasSeatsDayBefore: 'has_seats_day_before',
   // Direct mappings for new template types
   booking_reminder_24_hour: 'booking_reminder_24_hour',
   booking_reminder_7_day: 'booking_reminder_7_day'
