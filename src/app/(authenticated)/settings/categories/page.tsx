@@ -59,8 +59,8 @@ export default function CategoriesPage() {
     if (!newCategoryName.trim()) return;
 
     try {
-      const { error } = await supabase
-        .from('attachment_categories')
+      const { error } = await (supabase
+        .from('attachment_categories') as any)
         .insert({ category_name: newCategoryName.trim() });
 
       if (error) throw error;
@@ -76,8 +76,8 @@ export default function CategoriesPage() {
     if (!editingName.trim()) return;
 
     try {
-      const { error } = await supabase
-        .from('attachment_categories')
+      const { error } = await (supabase
+        .from('attachment_categories') as any)
         .update({ category_name: editingName.trim() })
         .eq('category_id', categoryId);
 

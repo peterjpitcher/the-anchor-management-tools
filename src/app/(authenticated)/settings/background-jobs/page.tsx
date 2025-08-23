@@ -170,8 +170,8 @@ export default function BackgroundJobsPage() {
   }
 
   const retryJob = async (jobId: string) => {
-    const { error } = await supabase
-      .from('jobs')
+    const { error } = await (supabase
+      .from('jobs') as any)
       .update({ 
         status: 'pending',
         attempts: 0,

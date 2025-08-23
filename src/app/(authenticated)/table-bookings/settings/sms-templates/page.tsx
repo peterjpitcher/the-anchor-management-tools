@@ -99,8 +99,8 @@ export default function SMSTemplatesPage() {
 
         // Create default templates
         for (const template of defaultTemplates) {
-          await supabase
-            .from('table_booking_sms_templates')
+          await (supabase
+            .from('table_booking_sms_templates') as any)
             .insert(template);
         }
         

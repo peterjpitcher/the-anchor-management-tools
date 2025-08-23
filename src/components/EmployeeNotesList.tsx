@@ -43,10 +43,10 @@ export default function EmployeeNotesList({ employeeId }: EmployeeNotesListProps
       return;
     }
 
-    const authorIds = [...new Set(notes.map(note => note.created_by_user_id).filter(Boolean))] as string[];
+    const authorIds = [...new Set(notes.map((note: any) => note.created_by_user_id).filter(Boolean))] as string[];
 
     if (authorIds.length === 0) {
-      const systemNotes = notes.map(note => ({ ...note, author_name: 'System' }));
+      const systemNotes = notes.map((note: any) => ({ ...note, author_name: 'System' }));
       setNotesWithAuthors(systemNotes);
       setIsLoading(false);
       return;
@@ -60,7 +60,7 @@ export default function EmployeeNotesList({ employeeId }: EmployeeNotesListProps
     if (profilesError) {
       console.error('[EmployeeNotesList] Error fetching user profiles:', profilesError);
       // Still show notes, but with a fallback name
-      const fallbackNotes = notes.map(note => ({
+      const fallbackNotes = notes.map((note: any) => ({
         ...note,
         author_name: note.created_by_user_id ? `User (${note.created_by_user_id.substring(0, 6)}...)` : 'System'
       }));
@@ -70,11 +70,11 @@ export default function EmployeeNotesList({ employeeId }: EmployeeNotesListProps
     }
 
     const authorMap = new Map<string, string | null>();
-    userProfiles?.forEach(profile => {
+    userProfiles?.forEach((profile: any) => {
       authorMap.set(profile.id, profile.full_name);
     });
 
-    const finalNotes = notes.map(note => {
+    const finalNotes = notes.map((note: any) => {
       const mappedName = note.created_by_user_id ? authorMap.get(note.created_by_user_id) : undefined;
       const author_name = mappedName || (note.created_by_user_id ? `User (${note.created_by_user_id.substring(0, 6)}...)` : 'System');
       return { ...note, author_name };

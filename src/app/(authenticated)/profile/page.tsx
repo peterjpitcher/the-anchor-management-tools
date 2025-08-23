@@ -66,8 +66,8 @@ export default function ProfilePage() {
       
       if (fetchError && fetchError.code === 'PGRST116') {
         // Profile doesn't exist, create it
-        const { data: newProfile, error: createError } = await supabase
-          .from('profiles')
+        const { data: newProfile, error: createError } = await (supabase
+          .from('profiles') as any)
           .insert({
             id: user.id,
             email: user.email,
@@ -85,7 +85,7 @@ export default function ProfilePage() {
       }
 
       setProfile(existingProfile)
-      setFullName(existingProfile?.full_name || '')
+      setFullName((existingProfile as any)?.full_name || '')
     } catch (error) {
       console.error('Error loading profile:', error)
       toast.error('Failed to load profile')
@@ -103,8 +103,8 @@ export default function ProfilePage() {
 
     try {
       setSaving(true)
-      const { error } = await supabase
-        .from('profiles')
+      const { error } = await (supabase
+        .from('profiles') as any)
         .update({
           full_name: fullName,
           updated_at: new Date().toISOString()
@@ -144,8 +144,8 @@ export default function ProfilePage() {
       if (uploadError) throw uploadError
 
       // Update profile with avatar URL
-      const { error: updateError } = await supabase
-        .from('profiles')
+      const { error: updateError } = await (supabase
+        .from('profiles') as any)
         .update({ 
           avatar_url: filePath,
           updated_at: new Date().toISOString()
@@ -172,8 +172,8 @@ export default function ProfilePage() {
         ? { sms_notifications: !profile.sms_notifications }
         : { email_notifications: !profile.email_notifications }
 
-      const { error } = await supabase
-        .from('profiles')
+      const { error } = await (supabase
+        .from('profiles') as any)
         .update({
           ...update,
           updated_at: new Date().toISOString()
@@ -196,12 +196,12 @@ export default function ProfilePage() {
       const { data: bookings } = await supabase
         .from('bookings')
         .select('*, event:events(*)')
-        .eq('customer_id', profile?.id)
+        .eq('customer_id', profile?.id || '')
 
       const { data: messages } = await supabase
         .from('messages')
         .select('*')
-        .eq('customer_id', profile?.id)
+        .eq('customer_id', profile?.id || '')
 
       const userData = {
         profile,
@@ -231,8 +231,8 @@ export default function ProfilePage() {
   async function requestAccountDeletion() {
     try {
       // Log the deletion request
-      const { error } = await supabase
-        .from('audit_logs')
+      const { error } = await (supabase
+        .from('audit_logs') as any)
         .insert({
           user_id: profile?.id,
           entity_type: 'profile',

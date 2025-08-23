@@ -125,8 +125,8 @@ export default function SundayLunchMenuPage() {
       
       if (editingItem) {
         // Update existing item
-        const { error } = await supabase
-          .from('sunday_lunch_menu_items')
+        const { error } = await (supabase
+          .from('sunday_lunch_menu_items') as any)
           .update(itemData)
           .eq('id', editingItem.id);
         
@@ -134,8 +134,8 @@ export default function SundayLunchMenuPage() {
         toast.success('Menu item updated successfully');
       } else {
         // Add new item
-        const { error } = await supabase
-          .from('sunday_lunch_menu_items')
+        const { error } = await (supabase
+          .from('sunday_lunch_menu_items') as any)
           .insert(itemData);
         
         if (error) throw error;

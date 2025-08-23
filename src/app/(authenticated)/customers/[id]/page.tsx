@@ -190,7 +190,12 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   const handleUpdateBooking = async (data: Omit<Booking, 'id' | 'created_at'>) => {
     if (!editingBooking) return
 
-    const { error } = await supabase.from('bookings').update(data).eq('id', editingBooking.id)
+    const { error } = await (supabase.from('bookings') as any).update({
+      customer_id: data.customer_id,
+      event_id: data.event_id,
+      seats: data.seats,
+      notes: data.notes
+    }).eq('id', editingBooking.id)
 
     if (error) {
       toast.error(`Failed to update booking: ${error.message}`)
@@ -207,7 +212,12 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   }
 
   const handleAddBooking = async (data: Omit<Booking, 'id' | 'created_at'>) => {
-    const { data: newBooking, error } = await supabase.from('bookings').insert(data).select().single()
+    const { data: newBooking, error } = await (supabase.from('bookings') as any).insert({
+      customer_id: data.customer_id,
+      event_id: data.event_id,
+      seats: data.seats,
+      notes: data.notes
+    }).select().single()
 
     if (error) {
       toast.error(`Failed to add booking: ${error.message}`)

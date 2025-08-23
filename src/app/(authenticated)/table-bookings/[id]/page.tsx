@@ -100,8 +100,8 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
       setBooking(data);
 
       // Check refund eligibility if there's a payment
-      if (data.table_booking_payments?.some((p: TableBookingPayment) => p.status === 'completed')) {
-        const eligibility = await getRefundEligibility(data.id);
+      if ((data as any).table_booking_payments?.some((p: TableBookingPayment) => p.status === 'completed')) {
+        const eligibility = await getRefundEligibility((data as any).id);
         if (eligibility.data) {
           setRefundEligibility(eligibility.data);
         }

@@ -59,7 +59,7 @@ export function AddAttendeesModal({
         
         if (recentBookingsError) throw recentBookingsError
         
-        setRecentBookerIds(new Set(recentBookings?.map(b => b.customer_id) || []))
+        setRecentBookerIds(new Set(recentBookings?.map((b: any) => b.customer_id) || []))
 
       } catch (err) {
         console.error('Error fetching data for modal:', err)
@@ -72,7 +72,7 @@ export function AddAttendeesModal({
   }, [supabase])
 
   const availableCustomers = useMemo(() => {
-    const bookedCustomerIds = new Set(currentBookings.map(b => b.customer_id))
+    const bookedCustomerIds = new Set(currentBookings.map((b: any) => b.customer_id))
     const filtered = allCustomers
       .filter(customer => !bookedCustomerIds.has(customer.id))
       .filter(customer => {

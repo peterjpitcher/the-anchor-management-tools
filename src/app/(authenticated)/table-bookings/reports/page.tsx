@@ -87,22 +87,22 @@ export default function TableBookingReportsPage() {
 
       // Calculate metrics
       const totalBookings = bookings?.length || 0;
-      const confirmedBookings = bookings?.filter(b => b.status === 'confirmed' || b.status === 'completed') || [];
-      const cancelledBookings = bookings?.filter(b => b.status === 'cancelled') || [];
-      const noShowBookings = bookings?.filter(b => b.status === 'no_show') || [];
+      const confirmedBookings = bookings?.filter((b: any) => b.status === 'confirmed' || b.status === 'completed') || [];
+      const cancelledBookings = bookings?.filter((b: any) => b.status === 'cancelled') || [];
+      const noShowBookings = bookings?.filter((b: any) => b.status === 'no_show') || [];
       
-      const totalCovers = confirmedBookings.reduce((sum, b) => sum + b.party_size, 0);
+      const totalCovers = confirmedBookings.reduce((sum: number, b: any) => sum + b.party_size, 0);
       const averagePartySize = totalBookings > 0 ? totalCovers / confirmedBookings.length : 0;
       const noShowRate = totalBookings > 0 ? (noShowBookings.length / totalBookings) * 100 : 0;
       const cancellationRate = totalBookings > 0 ? (cancelledBookings.length / totalBookings) * 100 : 0;
       
-      const sundayLunchBookings = confirmedBookings.filter(b => b.booking_type === 'sunday_lunch').length;
-      const regularBookings = confirmedBookings.filter(b => b.booking_type === 'regular').length;
+      const sundayLunchBookings = confirmedBookings.filter((b: any) => b.booking_type === 'sunday_lunch').length;
+      const regularBookings = confirmedBookings.filter((b: any) => b.booking_type === 'regular').length;
 
       // Calculate revenue
       let totalRevenue = 0;
       let sundayLunchRevenue = 0;
-      bookings?.forEach(booking => {
+      bookings?.forEach((booking: any) => {
         const payment = booking.table_booking_payments?.find((p: any) => p.status === 'completed');
         if (payment) {
           totalRevenue += payment.amount;
@@ -123,21 +123,21 @@ export default function TableBookingReportsPage() {
         'Sunday': 0,
       };
       
-      confirmedBookings.forEach(booking => {
+      confirmedBookings.forEach((booking: any) => {
         const dayName = format(new Date(booking.booking_date), 'EEEE');
         bookingsByDay[dayName]++;
       });
 
       // Bookings by hour
       const bookingsByHour: Record<string, number> = {};
-      confirmedBookings.forEach(booking => {
+      confirmedBookings.forEach((booking: any) => {
         const hour = booking.booking_time.split(':')[0];
         bookingsByHour[hour] = (bookingsByHour[hour] || 0) + 1;
       });
 
       // Top customers
       const customerBookings: Record<string, any> = {};
-      confirmedBookings.forEach(booking => {
+      confirmedBookings.forEach((booking: any) => {
         if (booking.customer) {
           const customerId = booking.customer.id;
           if (!customerBookings[customerId]) {

@@ -70,7 +70,7 @@ export function AddAttendeesModalWithCategories({
         
         if (recentBookingsError) throw recentBookingsError
         
-        setRecentBookerIds(new Set(recentBookings?.map(b => b.customer_id) || []))
+        setRecentBookerIds(new Set(recentBookings?.map((b: any) => b.customer_id) || []))
 
         // Show category suggestions by default if event has a category
         if (event.category_id) {
@@ -88,7 +88,7 @@ export function AddAttendeesModalWithCategories({
   }, [supabase, event.category_id])
 
   const availableCustomers = useMemo(() => {
-    const bookedCustomerIds = new Set(currentBookings.map(b => b.customer_id))
+    const bookedCustomerIds = new Set(currentBookings.map((b: any) => b.customer_id))
     const filtered = allCustomers
       .filter(customer => !bookedCustomerIds.has(customer.id))
       .filter(customer => {

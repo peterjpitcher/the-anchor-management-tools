@@ -82,19 +82,19 @@ export default function EditTableBookingPage(props: { params: Promise<{ id: stri
       setBooking(data);
       
       // Initialize form with booking data
-      setBookingDate(data.booking_date);
-      setPartySize(data.party_size);
-      setSelectedTime(data.booking_time);
-      setSpecialRequirements(data.special_requirements || '');
-      setDietaryRequirements(data.dietary_requirements?.join(', ') || '');
-      setAllergies(data.allergies?.join(', ') || '');
-      setCelebrationType(data.celebration_type || '');
+      setBookingDate((data as any).booking_date);
+      setPartySize((data as any).party_size);
+      setSelectedTime((data as any).booking_time);
+      setSpecialRequirements((data as any).special_requirements || '');
+      setDietaryRequirements((data as any).dietary_requirements?.join(', ') || '');
+      setAllergies((data as any).allergies?.join(', ') || '');
+      setCelebrationType((data as any).celebration_type || '');
       
       // Set initial available slots with current time
       setAvailableSlots([{
-        time: data.booking_time,
+        time: (data as any).booking_time,
         available_capacity: 100, // Dummy capacity for current slot
-        requires_prepayment: data.booking_type === 'sunday_lunch'
+        requires_prepayment: (data as any).booking_type === 'sunday_lunch'
       }]);
     } catch (err: any) {
       console.error('Error loading booking:', err);

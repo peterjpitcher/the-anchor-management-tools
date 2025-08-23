@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { sendEventReminders } from '@/app/actions/sms'
+import { processScheduledEventReminders } from '@/app/actions/sms-event-reminders'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -18,10 +19,26 @@ export async function GET(request: Request) {
 
     console.log('Starting reminder check...')
 
-    // Use the proven legacy approach for sending event reminders
+    // Process new scheduled reminders from booking_reminders table
+    const scheduledResult = await processScheduledEventReminders()
+    console.log('Scheduled reminders processed:', scheduledResult)
+
+    // Also run legacy reminders for backward compatibility
+    // This handles any bookings that don't have entries in booking_reminders yet
     await sendEventReminders()
+    
     console.log('Reminder check completed successfully')
-    return new NextResponse('Reminders processed successfully', { status: 200 })
+    return new NextResponse(
+      JSON.stringify({
+        success: true,
+        scheduled: scheduledResult,
+        message: 'Reminders processed successfully'
+      }), 
+      { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    )
   } catch (error) {
     console.error('Error processing reminders:', error)
     // Return the error message in the response for debugging

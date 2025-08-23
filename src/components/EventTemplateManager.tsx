@@ -76,7 +76,7 @@ export function EventTemplateManager({ eventId }: Props) {
       if (error) throw error
       
       const defaults: Record<string, string> = {}
-      data?.forEach(template => {
+      data?.forEach((template: any) => {
         defaults[template.template_type] = template.content
       })
       
@@ -98,16 +98,16 @@ export function EventTemplateManager({ eventId }: Props) {
       
       if (existing) {
         // Update existing
-        const { error } = await supabase
-          .from('event_message_templates')
+        const { error } = await (supabase
+          .from('event_message_templates') as any)
           .update({ content, is_active: true })
           .eq('id', existing.id)
 
         if (error) throw error
       } else {
         // Create new
-        const { error } = await supabase
-          .from('event_message_templates')
+        const { error } = await (supabase
+          .from('event_message_templates') as any)
           .insert({
             event_id: eventId,
             template_type: templateType,
@@ -135,8 +135,8 @@ export function EventTemplateManager({ eventId }: Props) {
       const template = templates.find(t => t.template_type === templateType)
       if (!template) return
 
-      const { error } = await supabase
-        .from('event_message_templates')
+      const { error } = await (supabase
+        .from('event_message_templates') as any)
         .delete()
         .eq('id', template.id)
 

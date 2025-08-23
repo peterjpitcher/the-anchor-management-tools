@@ -129,7 +129,7 @@ export default function BulkMessagePage() {
       if (!categoriesResult.data) throw new Error('Failed to load categories')
 
       // Process customer data to include booking count, event bookings, and category preferences
-      const processedCustomers = customersData?.map(customer => ({
+      const processedCustomers = customersData?.map((customer: any) => ({
         ...customer,
         total_bookings: customer.bookings?.[0]?.count || 0,
         event_bookings: customer.event_bookings || [],

@@ -178,10 +178,10 @@ export default function NewTableBookingPage() {
         
       if (data) {
         setExistingCustomer(data);
-        setFirstName(data.first_name);
-        setLastName(data.last_name);
-        setEmail(data.email || '');
-        setSmsOptIn(data.sms_opt_in);
+        setFirstName((data as any).first_name);
+        setLastName((data as any).last_name);
+        setEmail((data as any).email || '');
+        setSmsOptIn((data as any).sms_opt_in);
       }
     } catch (err) {
       // No existing customer found
