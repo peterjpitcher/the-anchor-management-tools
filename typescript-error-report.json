@@ -1,0 +1,18 @@
+{
+  "timestamp": "2025-07-21T14:41:23.735Z",
+  "totalErrors": 1,
+  "patterns": {
+    "Unknown": {
+      "count": 1,
+      "files": [
+        {
+          "file": "src/app/(authenticated)/customers/[id]/page.tsx",
+          "line": 457
+        }
+      ]
+    }
+  },
+  "scripts": [
+    "fix-1-unknown.sh"
+  ]
+}

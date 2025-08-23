@@ -16,7 +16,7 @@ import { usePagination } from '@/hooks/usePagination'
 import { CustomerLabelDisplay } from '@/components/CustomerLabelDisplay'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { getBulkCustomerLabels } from '@/app/actions/customer-labels-bulk'
-import type { CustomerLabel, CustomerLabelAssignment } from '@/app/actions/customer-labels'
+import type { CustomerLabelAssignment } from '@/app/actions/customer-labels'
 import { LoyaltyService } from '@/lib/services/loyalty'
 import { LOYALTY_CONFIG } from '@/lib/config/loyalty'
 // New UI components
@@ -244,36 +244,23 @@ export default function CustomersPage() {
   }, [])
 
   // Process customers with loyalty status and apply filter
-  const { customersWithLoyalty, filteredCount } = useMemo(() => {
+  const customersWithLoyalty = useMemo(() => {
     const processedCustomers = customers.map(customer => ({
       ...customer,
       isLoyal: loyalCustomerIds.includes(customer.id)
     }))
     
-    // Check if customer has the "Regular" label
-    const regularLabelAssignments = Object.entries(customerLabels).reduce((acc, [customerId, assignments]) => {
-      const hasRegularLabel = assignments.some(assignment => {
-        const label = assignment.label as CustomerLabel
-        return label?.name === 'Regular'
-      })
-      if (hasRegularLabel) {
-        acc.add(customerId)
-      }
-      return acc
-    }, new Set<string>())
-    
     let filtered = processedCustomers
     if (filter === 'regular') {
-      filtered = processedCustomers.filter(customer => regularLabelAssignments.has(customer.id))
+      // Show only customers with loyalty stars (have booked seats recently)
+      filtered = processedCustomers.filter(customer => customer.isLoyal)
     } else if (filter === 'non-regular') {
-      filtered = processedCustomers.filter(customer => !regularLabelAssignments.has(customer.id))
+      // Show only customers without loyalty stars
+      filtered = processedCustomers.filter(customer => !customer.isLoyal)
     }
     
-    return { 
-      customersWithLoyalty: filtered,
-      filteredCount: filtered.length
-    }
-  }, [customers, loyalCustomerIds, filter, customerLabels])
+    return filtered
+  }, [customers, loyalCustomerIds, filter])
 
   async function handleCreateCustomer(
     customerData: Omit<Customer, 'id' | 'created_at'>
@@ -442,10 +429,14 @@ export default function CustomersPage() {
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 sm:items-center sm:justify-between">
               <div className="text-sm text-gray-600">
                 {searchTerm && (
-                  <span>Searching for &quot;{searchTerm}&quot; - Found {totalCount} customers</span>
+                  <span>Searching for &quot;{searchTerm}&quot; - Found {customersWithLoyalty.length} customers</span>
                 )}
                 {!searchTerm && totalCount > 0 && (
-                  <span>Showing {customPageSize === 1000 ? totalCount : Math.min(customers.length, totalCount)} of {totalCount} customers</span>
+                  <span>
+                    Showing {customPageSize === 1000 ? customersWithLoyalty.length : Math.min(customersWithLoyalty.length, customPageSize)} of {customersWithLoyalty.length} 
+                    {filter === 'regular' ? ' regular' : filter === 'non-regular' ? ' non-regular' : ''} customers
+                    {filter === 'all' && ` (${totalCount} total)`}
+                  </span>
                 )}
               </div>
               <select
@@ -464,8 +455,8 @@ export default function CustomersPage() {
           <TabNav
             tabs={[
               { key: 'all', label: 'All Customers', mobileLabel: 'All', badge: totalCount },
-              { key: 'regular', label: 'Regular Only', mobileLabel: 'Regular' },
-              { key: 'non-regular', label: 'Non-Regular Only', mobileLabel: 'Non-Regular' },
+              { key: 'regular', label: 'Regular Only', mobileLabel: 'Regular', badge: loyalCustomerIds.length },
+              { key: 'non-regular', label: 'Non-Regular Only', mobileLabel: 'Non-Regular', badge: totalCount - loyalCustomerIds.length },
             ]}
             activeKey={filter}
             onChange={(tab) => setFilter(tab as 'all' | 'regular' | 'non-regular')}
