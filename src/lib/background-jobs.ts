@@ -62,6 +62,19 @@ export class JobQueue {
    */
   async processJobs(limit = 10): Promise<void> {
     const supabase = await createAdminClient()
+    
+    // First, clean up any stuck processing jobs (older than 2 minutes)
+    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString()
+    await supabase
+      .from('jobs')
+      .update({
+        status: 'failed',
+        error_message: 'Job timed out - stuck in processing',
+        completed_at: new Date().toISOString()
+      })
+      .eq('status', 'processing')
+      .lt('started_at', twoMinutesAgo)
+    
     const { data: jobs, error } = await supabase
       .from('jobs')
       .select('*')
@@ -80,10 +93,25 @@ export class JobQueue {
       return
     }
     
-    // Process jobs in parallel
-    await Promise.allSettled(
-      jobs.map(job => this.processJob(job))
-    )
+    // Process jobs with timeout protection
+    // Use smaller batches to avoid overwhelming the system
+    const batchSize = 5
+    for (let i = 0; i < jobs.length; i += batchSize) {
+      const batch = jobs.slice(i, i + batchSize)
+      
+      // Add timeout wrapper for each batch (max 10 seconds per batch)
+      await Promise.race([
+        Promise.allSettled(batch.map(job => this.processJob(job))),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Batch processing timeout')), 10000)
+        )
+      ]).catch(err => {
+        logger.error('Batch processing timeout', { 
+          error: err,
+          metadata: { batchIndex: i / batchSize }
+        })
+      })
+    }
   }
   
   /**
@@ -104,8 +132,13 @@ export class JobQueue {
         })
         .eq('id', job.id)
       
-      // Process based on job type
-      const result = await this.executeJob(job.type, job.payload)
+      // Process based on job type with timeout (max 30 seconds per job)
+      const result = await Promise.race([
+        this.executeJob(job.type, job.payload),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Job execution timeout (30s)')), 30000)
+        )
+      ])
       
       // Mark as completed
       await supabase
