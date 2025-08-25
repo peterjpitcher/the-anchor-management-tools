@@ -305,12 +305,15 @@ export async function sendEventReminders() {
 
     const tomorrowStr = tomorrow.toISOString().split('T')[0]
     const nextWeekStr = nextWeek.toISOString().split('T')[0]
+    const todayStr = today.toISOString().split('T')[0]
 
-    console.log('Checking for reminders for events on:', { tomorrowStr, nextWeekStr })
+    // CRITICAL FIX: Only get events that are in the future
+    console.log('Checking for reminders for FUTURE events on:', { tomorrowStr, nextWeekStr })
     const { data: bookings, error: bookingsError } = await supabase
       .from('bookings')
       .select('*, customer:customers(id, first_name, last_name, mobile_number, sms_opt_in), event:events(name, date, time)')
       .in('event.date', [tomorrowStr, nextWeekStr])
+      .gte('event.date', todayStr) // Only future events
       .not('customer.mobile_number', 'is', null)
       .eq('customer.sms_opt_in', true)
 
@@ -388,6 +391,13 @@ export async function sendEventReminders() {
     for (const booking of validBookings) {
       try {
         const eventDate = new Date(booking.event.date)
+        
+        // CRITICAL FIX: Skip if event is in the past
+        if (eventDate < today) {
+          console.log(`Skipping reminder for past event ${booking.event.name} on ${booking.event.date}`)
+          continue
+        }
+        
         const isNextDay = eventDate.toISOString().split('T')[0] === tomorrowStr
         const reminderType = isNextDay ? '24_hour' : '7_day'
         
