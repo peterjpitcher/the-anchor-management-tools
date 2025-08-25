@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
@@ -12,13 +12,19 @@ export const metadata: Metadata = {
   title: "Management Tools",
   description: "Management tools for The Anchor, including event planning, employee management, and SMS notifications",
   manifest: "/manifest.json",
-  themeColor: "#005131",
-  viewport: "width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "Anchor Tools",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  themeColor: "#005131",
 };
 
 export default function RootLayout({
