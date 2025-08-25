@@ -73,6 +73,32 @@ export async function processScheduledEventReminders() {
     
     for (const reminder of dueReminders) {
       try {
+        // CRITICAL FIX: Skip if event is in the past
+        if (reminder.booking?.event?.date) {
+          const eventDate = new Date(reminder.booking.event.date)
+          const today = new Date()
+          today.setHours(0, 0, 0, 0)
+          
+          if (eventDate < today) {
+            logger.warn('Skipping reminder for past event', {
+              metadata: {
+                reminderId: reminder.id,
+                eventName: reminder.booking.event.name,
+                eventDate: reminder.booking.event.date
+              }
+            })
+            
+            await supabase
+              .from('booking_reminders')
+              .update({ 
+                status: 'cancelled',
+                error_message: 'Event has already passed'
+              })
+              .eq('id', reminder.id)
+            continue
+          }
+        }
+        
         // Skip if customer opted out
         if (!reminder.booking?.customer?.sms_opt_in) {
           await supabase
