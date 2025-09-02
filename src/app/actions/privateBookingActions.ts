@@ -790,12 +790,25 @@ export async function updateBookingStatus(id: string, status: BookingStatus) {
 export async function deletePrivateBooking(id: string) {
   const supabase = await createClient()
   
-  // Get the booking first to check for calendar event
-  const { data: booking } = await supabase
+  // Get the booking first to check status and calendar event
+  const { data: booking, error: fetchError } = await supabase
     .from('private_bookings')
-    .select('calendar_event_id')
+    .select('status, calendar_event_id')
     .eq('id', id)
     .single()
+  
+  if (fetchError || !booking) {
+    console.error('Error fetching booking for deletion:', fetchError)
+    return { error: 'Booking not found' }
+  }
+  
+  // Check if booking status allows deletion
+  const allowedStatuses = ['draft', 'cancelled']
+  if (!allowedStatuses.includes(booking.status)) {
+    return { 
+      error: `Only draft or cancelled bookings can be deleted. This booking is ${booking.status}. Please cancel it first if you need to delete it.`
+    }
+  }
   
   const { error } = await supabase
     .from('private_bookings')
@@ -835,6 +848,7 @@ export async function deletePrivateBooking(id: string) {
   }
 
   revalidatePath('/private-bookings')
+  revalidatePath(`/private-bookings/${id}`)
   return { success: true }
 }
 

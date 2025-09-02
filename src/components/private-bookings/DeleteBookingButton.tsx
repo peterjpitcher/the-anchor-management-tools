@@ -23,12 +23,15 @@ export default function DeleteBookingButton({ bookingId, bookingName, deleteActi
       message += `\n\nEvent Date: ${date}`
     }
     
-    if (status && status !== 'draft') {
+    if (status === 'cancelled') {
+      message += `\nStatus: Cancelled`
+      message += '\n\n⚠️ This booking is cancelled. Deleting will permanently remove it and all associated items, messages, and documents.'
+    } else if (status && status !== 'draft') {
       message += `\nStatus: ${status.charAt(0).toUpperCase() + status.slice(1)}`
       message += '\n\n⚠️ Warning: This booking is not in draft status.'
     }
     
-    message += '\n\nThis action cannot be undone.'
+    message += '\n\nThis action cannot be undone. Any linked calendar events will also be removed.'
     
     if (!confirm(message)) {
       e.preventDefault()
@@ -41,7 +44,9 @@ export default function DeleteBookingButton({ bookingId, bookingName, deleteActi
       <button
         type="submit"
         className={`p-2 rounded-lg transition-colors ${
-          status && status !== 'draft' 
+          status === 'cancelled'
+            ? 'text-orange-600 hover:bg-orange-50 hover:text-orange-700' 
+            : status && status !== 'draft' 
             ? 'text-red-700 hover:bg-red-100 hover:text-red-800' 
             : 'text-red-600 hover:bg-red-50'
         }`}
