@@ -384,16 +384,16 @@ export default function PrivateBookingsClient({ permissions }: Props) {
                           >
                             View
                           </Link>
-                          {permissions.hasDeletePermission && booking.status === 'draft' && (
+                          {permissions.hasDeletePermission && (booking.status === 'draft' || booking.status === 'cancelled') && (
                             <DeleteBookingButton
                               bookingId={booking.id}
                               bookingName={booking.customer_name}
+                              status={booking.status}
+                              eventDate={booking.event_date}
                               deleteAction={async (formData: FormData) => {
                                 const bookingId = formData.get('bookingId') as string;
                                 await handleDeleteBooking(bookingId);
                               }}
-                              eventDate={booking.event_date}
-                              status={booking.status}
                             />
                           )}
                         </div>
@@ -474,16 +474,16 @@ export default function PrivateBookingsClient({ permissions }: Props) {
                       >
                         View Details
                       </Link>
-                      {permissions.hasDeletePermission && booking.status === 'draft' && (
+                      {permissions.hasDeletePermission && (booking.status === 'draft' || booking.status === 'cancelled') && (
                         <DeleteBookingButton
                           bookingId={booking.id}
                           bookingName={booking.customer_name}
+                          status={booking.status}
+                          eventDate={booking.event_date}
                           deleteAction={async (formData: FormData) => {
                             const bookingId = formData.get('bookingId') as string;
                             await handleDeleteBooking(bookingId);
                           }}
-                          eventDate={booking.event_date}
-                          status={booking.status}
                         />
                       )}
                     </div>
