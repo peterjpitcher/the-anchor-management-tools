@@ -2,6 +2,9 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
+import { Container } from '@/components/ui-v2/layout/Container'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -12,8 +15,13 @@ export default function LoginPage() {
   }, [router])
 
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="text-center">Redirecting to login...</div>
-    </div>
+    <Container className="min-h-screen flex items-center justify-center">
+      <Card className="w-full max-w-sm text-center py-10">
+        <div className="flex items-center justify-center gap-3">
+          <Spinner />
+          <span>Redirecting to login…</span>
+        </div>
+      </Card>
+    </Container>
   )
-} 
+}

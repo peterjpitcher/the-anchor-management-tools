@@ -16,7 +16,7 @@ import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
-import { ArrowLeft, Plus, Trash2, Package } from 'lucide-react'
+import { Plus, Trash2, Package } from 'lucide-react'
 import type { InvoiceVendor, InvoiceLineItemInput, RecurringFrequency, LineItemCatalogItem } from '@/types/invoices'
 
 export default function NewRecurringInvoicePage() {

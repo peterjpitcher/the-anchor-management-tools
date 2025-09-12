@@ -3,5 +3,25 @@
   "rules": {
     "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
     "@typescript-eslint/no-explicit-any": "warn"
-  }
+  },
+  "overrides": [
+    {
+      "files": [
+        "src/components/**/*.{ts,tsx}"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@/lib/supabase-singleton",
+                "message": "Do not import Supabase singleton clients in client components or generic pages. Use server actions or route handlers with server-side helpers."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

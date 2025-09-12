@@ -5,7 +5,6 @@ import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { sendBulkSMSDirect } from '@/app/actions/sms-bulk-direct'
 import { enqueueBulkSMSJob } from '@/app/actions/job-queue'
 import { getActiveEventCategories } from '@/app/actions/event-categories'
-import Link from 'next/link'
 import { formatDate } from '@/lib/dateUtils'
 // New UI components
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
@@ -28,7 +27,6 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   ExclamationTriangleIcon,
-  ArrowLeftIcon,
   MagnifyingGlassIcon,
   CalendarIcon,
   TagIcon
@@ -85,7 +83,7 @@ export default function BulkMessagePage() {
   const [sending, setSending] = useState(false)
   const [events, setEvents] = useState<Event[]>([])
   const [categories, setCategories] = useState<EventCategory[]>([])
-  const [showConfirm, setShowConfirm] = useState(false)
+  // Removed unused showConfirm state
   const [filters, setFilters] = useState<FilterOptions>({
     smsOptIn: 'opted_in',
     hasBookings: 'all',

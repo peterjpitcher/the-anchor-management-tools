@@ -9,10 +9,10 @@ import { EventCategory } from '@/types/event-categories'
 type Event = BaseEvent & {
   category?: EventCategory | null
 }
-import { PlusIcon, TrashIcon, UserGroupIcon, ClipboardDocumentIcon, PencilSquareIcon, DocumentArrowDownIcon } from '@heroicons/react/24/outline'
+import { TrashIcon } from '@heroicons/react/24/outline'
 import { BookingForm } from '@/components/BookingForm'
 import { AddAttendeesModalWithCategories } from '@/components/AddAttendeesModalWithCategories'
-import { sendBookingConfirmationSync } from '@/app/actions/sms'
+// Removed unused sendBookingConfirmationSync import
 import { addAttendeesWithScheduledSMS } from '@/app/actions/event-sms-scheduler'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { EventTemplateManager } from '@/components/EventTemplateManager'
@@ -22,8 +22,7 @@ import { generateEventReservationPosters } from '@/app/actions/event-reservation
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+// Removed unused Button and LinkButton imports
 import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
 import { Badge } from '@/components/ui-v2/display/Badge'

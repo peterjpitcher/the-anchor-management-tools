@@ -14,7 +14,7 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
-import { ChevronLeft, Save, AlertCircle } from 'lucide-react'
+import { Save } from 'lucide-react'
 import type { InvoiceWithDetails, PaymentMethod } from '@/types/invoices'
 
 export default function RecordPaymentPage() {

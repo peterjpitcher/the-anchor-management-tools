@@ -1,8 +1,7 @@
 'use client';
 
 import { Card, CardTitle, CardDescription } from '@/components/ui-v2/layout/Card';
-import { Button, ButtonGroup } from '@/components/ui-v2/forms/Button';
-import { Alert } from '@/components/ui-v2/feedback/Alert';
+import { Button } from '@/components/ui-v2/forms/Button';
 
 export default function GlobalError({
   error,
@@ -21,7 +20,7 @@ export default function GlobalError({
                 Something went wrong!
               </CardTitle>
               <CardDescription className="text-gray-600 mb-6">
-                We've encountered an unexpected error. Please try again or contact support if the issue persists.
+                We&apos;ve encountered an unexpected error. Please try again or contact support if the issue persists.
               </CardDescription>
               <div className="flex gap-4">
                 <Button

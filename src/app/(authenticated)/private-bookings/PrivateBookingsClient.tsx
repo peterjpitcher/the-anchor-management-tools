@@ -285,213 +285,185 @@ export default function PrivateBookingsClient({ permissions }: Props) {
       >
         <Card>
           
-          {/* Desktop Table */}
-          <div className="hidden md:block overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date & Time
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Customer
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Details
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Financials
-                  </th>
-                  <th className="relative px-6 py-3">
-                    <span className="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {loading ? (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center">
-                      <div className="flex justify-center items-center">
-                        <Spinner size="lg" />
+          {/* Unified DataTable replacing custom table and mobile cards */}
+          <DataTable
+            data={bookings}
+            getRowKey={(b) => b.id}
+            loading={loading}
+            emptyMessage="No bookings found"
+            columns={[
+              {
+                key: 'datetime',
+                header: 'Date & Time',
+                cell: (booking) => (
+                  <div>
+                    <div className="text-sm text-gray-900">{formatDate(booking.event_date)}</div>
+                    <div className="text-sm text-gray-500">{formatTime(booking.start_time)}</div>
+                    {booking.days_until_event !== undefined && booking.days_until_event >= 0 && (
+                      <div className="text-xs text-gray-400 mt-1">
+                        {booking.days_until_event === 0 ? 'Today' : `${booking.days_until_event} days`}
                       </div>
-                    </td>
-                  </tr>
-                ) : bookings.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
-                      No bookings found
-                    </td>
-                  </tr>
-                ) : (
-                  bookings.map((booking) => (
-                    <tr key={booking.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{formatDate(booking.event_date)}</div>
-                        <div className="text-sm text-gray-500">{formatTime(booking.start_time)}</div>
-                        {booking.days_until_event !== undefined && booking.days_until_event >= 0 && (
-                          <div className="text-xs text-gray-400 mt-1">
-                            {booking.days_until_event === 0 ? 'Today' : `${booking.days_until_event} days`}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-gray-900">{booking.customer_name}</div>
-                        {booking.contact_phone && (
-                          <div className="text-sm text-gray-500 flex items-center gap-1">
-                            <PhoneIcon className="h-3 w-3" />
-                            {booking.contact_phone}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm text-gray-900 flex items-center gap-1">
-                          <UserGroupIcon className="h-4 w-4 text-gray-400" />
-                          {booking.guest_count} guests
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <Badge variant={statusConfig[booking.status].variant} size="sm">
-                          {statusConfig[booking.status].label}
-                        </Badge>
-                        {booking.deposit_status && booking.deposit_status !== 'Not Required' && (
-                          <div className="mt-1">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${
-                              booking.deposit_status === 'Paid' 
-                                ? 'bg-green-100 text-green-700' 
-                                : 'bg-yellow-100 text-yellow-700'
-                            }`}>
-                              Deposit {booking.deposit_status}
-                            </span>
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">£{booking.total_amount?.toFixed(2) || '0.00'}</div>
-                        {booking.deposit_amount && (
-                          <div className="text-xs text-gray-500">
-                            Deposit: £{booking.deposit_amount.toFixed(2)}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex items-center gap-2 justify-end">
-                          <Link
-                            href={`/private-bookings/${booking.id}`}
-                            className="text-blue-600 hover:text-blue-900"
-                          >
-                            View
-                          </Link>
-                          {permissions.hasDeletePermission && (booking.status === 'draft' || booking.status === 'cancelled') && (
-                            <DeleteBookingButton
-                              bookingId={booking.id}
-                              bookingName={booking.customer_name}
-                              status={booking.status}
-                              eventDate={booking.event_date}
-                              deleteAction={async (formData: FormData) => {
-                                const bookingId = formData.get('bookingId') as string;
-                                await handleDeleteBooking(bookingId);
-                              }}
-                            />
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile Cards */}
-          <div className="md:hidden">
-            {loading ? (
-              <div className="p-8 text-center">
-                <Spinner size="lg" className="mx-auto" />
-              </div>
-            ) : bookings.length === 0 ? (
-              <div className="p-8 text-center text-gray-500">
-                No bookings found
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-200">
-                {bookings.map((booking) => (
-                  <div key={booking.id} className="p-4 hover:bg-gray-50">
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="flex-1 min-w-0 mr-2">
-                        <div className="font-medium text-gray-900 truncate">{booking.customer_name}</div>
-                        <div className="text-sm text-gray-500">{formatDate(booking.event_date)}</div>
-                        <div className="text-sm text-gray-500">{formatTime(booking.start_time)}</div>
-                        {booking.days_until_event !== undefined && booking.days_until_event >= 0 && (
-                          <div className="text-xs text-gray-400 mt-1">
-                            {booking.days_until_event === 0 ? 'Today' : `${booking.days_until_event} days`}
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-shrink-0">
-                        <Badge variant={statusConfig[booking.status].variant} size="sm">
-                          {statusConfig[booking.status].label}
-                        </Badge>
-                      </div>
-                    </div>
-                    
+                    )}
+                  </div>
+                )
+              },
+              {
+                key: 'customer',
+                header: 'Customer',
+                cell: (booking) => (
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">{booking.customer_name}</div>
                     {booking.contact_phone && (
-                      <div className="text-sm text-gray-500 mb-2 flex items-center gap-1">
+                      <div className="text-sm text-gray-500 flex items-center gap-1">
                         <PhoneIcon className="h-3 w-3" />
                         {booking.contact_phone}
                       </div>
                     )}
-                    
-                    <div className="grid grid-cols-2 gap-2 text-sm mb-3">
-                      <div className="flex items-center gap-1 text-gray-500">
-                        <UserGroupIcon className="h-4 w-4" />
-                        <span>{booking.guest_count} guests</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="font-medium">£{booking.total_amount?.toFixed(2) || '0.00'}</span>
-                      </div>
-                    </div>
-                    
+                  </div>
+                )
+              },
+              {
+                key: 'details',
+                header: 'Details',
+                cell: (booking) => (
+                  <div className="text-sm text-gray-900 flex items-center gap-1">
+                    <UserGroupIcon className="h-4 w-4 text-gray-400" />
+                    {booking.guest_count} guests
+                  </div>
+                )
+              },
+              {
+                key: 'status',
+                header: 'Status',
+                cell: (booking) => (
+                  <div>
+                    <Badge variant={statusConfig[booking.status].variant} size="sm">
+                      {statusConfig[booking.status].label}
+                    </Badge>
                     {booking.deposit_status && booking.deposit_status !== 'Not Required' && (
-                      <div className="mb-3">
+                      <div className="mt-1">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${
                           booking.deposit_status === 'Paid' 
                             ? 'bg-green-100 text-green-700' 
                             : 'bg-yellow-100 text-yellow-700'
                         }`}>
                           Deposit {booking.deposit_status}
-                          {booking.deposit_amount && ` (£${booking.deposit_amount.toFixed(2)})`}
                         </span>
                       </div>
                     )}
-                    
-                    <div className="flex justify-end items-center gap-2 pt-2 border-t">
-                      <Link
-                        href={`/private-bookings/${booking.id}`}
-                        className="text-blue-600 hover:text-blue-900 text-sm font-medium px-3 py-1"
-                      >
-                        View Details
-                      </Link>
-                      {permissions.hasDeletePermission && (booking.status === 'draft' || booking.status === 'cancelled') && (
-                        <DeleteBookingButton
-                          bookingId={booking.id}
-                          bookingName={booking.customer_name}
-                          status={booking.status}
-                          eventDate={booking.event_date}
-                          deleteAction={async (formData: FormData) => {
-                            const bookingId = formData.get('bookingId') as string;
-                            await handleDeleteBooking(bookingId);
-                          }}
-                        />
-                      )}
-                    </div>
                   </div>
-                ))}
+                )
+              },
+              {
+                key: 'financials',
+                header: 'Financials',
+                cell: (booking) => (
+                  <div>
+                    <div className="text-sm text-gray-900">£{booking.total_amount?.toFixed(2) || '0.00'}</div>
+                    {booking.deposit_amount && (
+                      <div className="text-xs text-gray-500">
+                        Deposit: £{booking.deposit_amount.toFixed(2)}
+                      </div>
+                    )}
+                  </div>
+                )
+              },
+              {
+                key: 'actions',
+                header: '',
+                align: 'right',
+                cell: (booking) => (
+                  <div className="flex items-center gap-2 justify-end">
+                    <Link href={`/private-bookings/${booking.id}`} className="text-blue-600 hover:text-blue-900">
+                      View
+                    </Link>
+                    {permissions.hasDeletePermission && (booking.status === 'draft' || booking.status === 'cancelled') && (
+                      <DeleteBookingButton
+                        bookingId={booking.id}
+                        bookingName={booking.customer_name}
+                        status={booking.status}
+                        eventDate={booking.event_date}
+                        deleteAction={async (formData: FormData) => {
+                          const bookingId = formData.get('bookingId') as string;
+                          await handleDeleteBooking(bookingId);
+                        }}
+                      />
+                    )}
+                  </div>
+                )
+              },
+            ]}
+            clickableRows
+            onRowClick={(booking) => router.push(`/private-bookings/${booking.id}`)}
+            renderMobileCard={(booking) => (
+              <div>
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex-1 min-w-0 mr-2">
+                    <div className="font-medium text-gray-900 truncate">{booking.customer_name}</div>
+                    <div className="text-sm text-gray-500">{formatDate(booking.event_date)}</div>
+                    <div className="text-sm text-gray-500">{formatTime(booking.start_time)}</div>
+                    {booking.days_until_event !== undefined && booking.days_until_event >= 0 && (
+                      <div className="text-xs text-gray-400 mt-1">
+                        {booking.days_until_event === 0 ? 'Today' : `${booking.days_until_event} days`}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-shrink-0">
+                    <Badge variant={statusConfig[booking.status].variant} size="sm">
+                      {statusConfig[booking.status].label}
+                    </Badge>
+                  </div>
+                </div>
+                {booking.contact_phone && (
+                  <div className="text-sm text-gray-500 mb-2 flex items-center gap-1">
+                    <PhoneIcon className="h-3 w-3" />
+                    {booking.contact_phone}
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+                  <div className="flex items-center gap-1 text-gray-500">
+                    <UserGroupIcon className="h-4 w-4" />
+                    <span>{booking.guest_count} guests</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-medium">£{booking.total_amount?.toFixed(2) || '0.00'}</span>
+                  </div>
+                </div>
+                {booking.deposit_status && booking.deposit_status !== 'Not Required' && (
+                  <div className="mb-3">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${
+                      booking.deposit_status === 'Paid' 
+                        ? 'bg-green-100 text-green-700' 
+                        : 'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      Deposit {booking.deposit_status}
+                      {booking.deposit_amount && ` (£${booking.deposit_amount.toFixed(2)})`}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-end items-center gap-2 pt-2 border-t">
+                  <Link
+                    href={`/private-bookings/${booking.id}`}
+                    className="text-blue-600 hover:text-blue-900 text-sm font-medium px-3 py-1"
+                  >
+                    View Details
+                  </Link>
+                  {permissions.hasDeletePermission && (booking.status === 'draft' || booking.status === 'cancelled') && (
+                    <DeleteBookingButton
+                      bookingId={booking.id}
+                      bookingName={booking.customer_name}
+                      status={booking.status}
+                      eventDate={booking.event_date}
+                      deleteAction={async (formData: FormData) => {
+                        const bookingId = formData.get('bookingId') as string;
+                        await handleDeleteBooking(bookingId);
+                      }}
+                    />
+                  )}
+                </div>
               </div>
             )}
-          </div>
+          />
 
           {/* Pagination */}
           {totalPages > 1 && (

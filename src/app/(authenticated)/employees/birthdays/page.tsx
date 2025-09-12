@@ -6,7 +6,6 @@ import { usePermissions } from '@/contexts/PermissionContext';
 import Link from 'next/link';
 import { 
   CakeIcon,
-  EnvelopeIcon,
   ExclamationTriangleIcon,
   CalendarIcon
 } from '@heroicons/react/24/outline';
@@ -15,7 +14,6 @@ import { format, getMonth, addDays } from 'date-fns';
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
 import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
 import { Card } from '@/components/ui-v2/layout/Card';
-import { Button } from '@/components/ui-v2/forms/Button';
 import { NavLink } from '@/components/ui-v2/navigation/NavLink';
 import { NavGroup } from '@/components/ui-v2/navigation/NavGroup';
 import { Badge } from '@/components/ui-v2/display/Badge';
