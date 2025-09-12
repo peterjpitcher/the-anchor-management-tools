@@ -3,18 +3,16 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getMessages, markAllMessagesAsRead } from '@/app/actions/messagesActions'
 import { formatDistanceToNow } from 'date-fns'
-import Link from 'next/link'
 // New UI components
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
-import { Button } from '@/components/ui-v2/forms/Button'
 import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { toast } from '@/components/ui-v2/feedback/Toast'
-import { Skeleton, SkeletonCard } from '@/components/ui-v2/feedback/Skeleton'
+import { Skeleton } from '@/components/ui-v2/feedback/Skeleton'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
-import { List, SimpleList } from '@/components/ui-v2/display/List'
+import { SimpleList } from '@/components/ui-v2/display/List'
 
 interface Conversation {
   customer: {

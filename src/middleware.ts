@@ -6,11 +6,6 @@ export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname
   const hostname = request.headers.get('host') || ''
   
-  // Skip auth for vip-club.uk domain (short links)
-  if (hostname.includes('vip-club.uk')) {
-    return NextResponse.next()
-  }
-  
   // Skip middleware for:
   // - Static assets
   // - API routes (especially webhooks)
@@ -27,7 +22,7 @@ export async function middleware(request: NextRequest) {
     path.startsWith('/auth') ||
     path.startsWith('/error') ||
     path.startsWith('/privacy') ||
-    path.startsWith('/loyalty') ||
+    // path.startsWith('/loyalty') || // Loyalty removed
     path.startsWith('/booking-confirmation') || // Allow public booking confirmation
     path.startsWith('/booking-success') || // Allow public booking success page
     path.startsWith('/table-booking') // Allow public table booking pages
@@ -80,11 +75,11 @@ export const config = {
      * - api (ALL API routes should bypass auth middleware)
      * - auth (authentication pages)
      * - privacy (public pages)
-     * - loyalty (loyalty dashboard, check-in, redeem, and demo)
+     * - loyalty (removed)
      * - booking-confirmation (public booking confirmation pages)
      * - booking-success (public booking success pages)
      * - table-booking (public table booking pages)
      */
-    '/((?!_next/static|_next/image|favicon.ico|api|auth|privacy|loyalty|booking-confirmation|booking-success|table-booking).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api|auth|privacy|booking-confirmation|booking-success|table-booking).*)',
   ],
 }

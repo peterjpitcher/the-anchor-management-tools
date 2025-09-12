@@ -14,7 +14,6 @@ import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Tabs } from '@/components/ui-v2/navigation/Tabs';
 import { Spinner } from '@/components/ui-v2/feedback/Spinner';
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
 import { NavLink } from '@/components/ui-v2/navigation/NavLink';
 import { NavGroup } from '@/components/ui-v2/navigation/NavGroup';
 

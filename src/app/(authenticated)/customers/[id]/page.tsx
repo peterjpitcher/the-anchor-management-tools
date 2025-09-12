@@ -25,7 +25,6 @@ import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { CustomerLabelSelector } from '@/components/CustomerLabelSelector'
 import { usePermissions } from '@/contexts/PermissionContext'
-import { CustomerLoyaltyCard } from '@/components/CustomerLoyaltyCard'
 
 type BookingWithEvent = Omit<Booking, 'event'> & {
   event: Pick<Event, 'id' | 'name' | 'date' | 'time' | 'capacity' | 'created_at' | 'slug'>
@@ -190,12 +189,15 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   const handleUpdateBooking = async (data: Omit<Booking, 'id' | 'created_at'>) => {
     if (!editingBooking) return
 
-    const { error } = await (supabase.from('bookings') as any).update({
-      customer_id: data.customer_id,
-      event_id: data.event_id,
-      seats: data.seats,
-      notes: data.notes
-    }).eq('id', editingBooking.id)
+    const { error } = await (supabase as any)
+      .from('bookings')
+      .update({
+        customer_id: data.customer_id,
+        event_id: data.event_id,
+        seats: data.seats,
+        notes: data.notes
+      })
+      .eq('id', editingBooking.id)
 
     if (error) {
       toast.error(`Failed to update booking: ${error.message}`)
@@ -212,7 +214,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   }
 
   const handleAddBooking = async (data: Omit<Booking, 'id' | 'created_at'>) => {
-    const { data: newBooking, error } = await (supabase.from('bookings') as any).insert({
+    const { data: newBooking, error } = await (supabase as any).from('bookings').insert({
       customer_id: data.customer_id,
       event_id: data.event_id,
       seats: data.seats,
@@ -532,12 +534,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
         )}
       </Card>
 
-      {/* Loyalty Status */}
-      <CustomerLoyaltyCard 
-        customerId={customer.id} 
-        customerPhone={customer.mobile_number}
-        customerName={`${customer.first_name} ${customer.last_name}`}
-      />
+      {/* Loyalty removed */}
         </div>
       </PageContent>
     </PageWrapper>

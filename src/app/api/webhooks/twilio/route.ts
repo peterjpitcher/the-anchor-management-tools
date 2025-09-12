@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+export const runtime = 'nodejs'
 import { getSupabaseAdminClient, getSupabaseAnonClient } from '@/lib/supabase-singleton';
 import { createClient } from '@supabase/supabase-js';
 import twilio from 'twilio';

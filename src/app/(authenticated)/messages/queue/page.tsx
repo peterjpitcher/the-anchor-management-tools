@@ -22,6 +22,7 @@ import { Stat, StatGroup } from '@/components/ui-v2/display/Stat'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { Tabs } from '@/components/ui-v2/navigation/Tabs'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 
@@ -118,15 +119,16 @@ export default function SMSQueueStatusPage() {
       setJobs(jobsData || [])
 
       // Calculate stats
-      const queued = messagesData?.filter((m: any) => m.status === 'queued') || []
-      const pending = messagesData?.filter((m: any) => m.status === 'pending') || []
-      const sending = messagesData?.filter((m: any) => m.status === 'sending') || []
-      const failed = messagesData?.filter((m: any) => m.status === 'failed') || []
-      const delivered = messagesData?.filter((m: any) => m.status === 'delivered') || []
-      const pendingJobs = jobsData?.filter((j: any) => j.status === 'pending') || []
+      const queued = messagesData?.filter((m: QueuedMessage) => m.status === 'queued') || []
+      const pending = messagesData?.filter((m: QueuedMessage) => m.status === 'pending') || []
+      const sending = messagesData?.filter((m: QueuedMessage) => m.status === 'sending') || []
+      const failed = messagesData?.filter((m: QueuedMessage) => m.status === 'failed') || []
+      const delivered = messagesData?.filter((m: QueuedMessage) => m.status === 'delivered') || []
+      const pendingJobs = jobsData?.filter((j: Job) => j.status === 'pending') || []
 
-      const oldestQueued = [...queued, ...pending, ...sending].sort(
-        (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      const allMessages = [...queued, ...pending, ...sending] as QueuedMessage[]
+      const oldestQueued = allMessages.sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       )[0]
 
       setStats({
@@ -136,7 +138,7 @@ export default function SMSQueueStatusPage() {
         totalFailed: failed.length,
         totalDelivered: delivered.length,
         totalJobs: pendingJobs.length,
-        oldestMessage: (oldestQueued as any)?.created_at || null
+        oldestMessage: oldestQueued?.created_at || null
       })
     } catch (error) {
       console.error('Error loading SMS queue data:', error)
@@ -269,7 +271,7 @@ export default function SMSQueueStatusPage() {
     }
   })
 
-  const filteredJobs = jobs.filter(job => {
+  const filteredJobs = jobs.filter((job) => {
     switch (activeTab) {
       case 'jobs':
         return true
@@ -413,52 +415,38 @@ export default function SMSQueueStatusPage() {
                   description="All SMS jobs have been processed"
                 />
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Job ID
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Status
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Attempts
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Created
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Error
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {filteredJobs.map((job) => (
-                        <tr key={job.id}>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            {job.id.substring(0, 8)}...
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <Badge variant={getStatusBadgeVariant(job.status)}>
-                              {job.status}
-                            </Badge>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {job.attempts} / {job.max_attempts}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}
-                          </td>
-                          <td className="px-6 py-4 text-sm text-red-600">
-                            {job.error || '-'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <DataTable
+                  data={filteredJobs}
+                  getRowKey={(job) => job.id}
+                  columns={[
+                    {
+                      key: 'id',
+                      header: 'Job ID',
+                      cell: (job) => <span className="text-sm font-medium text-gray-900">{job.id.substring(0,8)}...</span>
+                    },
+                    {
+                      key: 'status',
+                      header: 'Status',
+                      cell: (job) => <Badge variant={getStatusBadgeVariant(job.status)}>{job.status}</Badge>
+                    },
+                    {
+                      key: 'attempts',
+                      header: 'Attempts',
+                      cell: (job) => <span className="text-sm text-gray-500">{job.attempts} / {job.max_attempts}</span>
+                    },
+                    {
+                      key: 'created',
+                      header: 'Created',
+                      cell: (job) => <span className="text-sm text-gray-500">{formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}</span>
+                    },
+                    {
+                      key: 'error',
+                      header: 'Error',
+                      cell: (job) => <span className="text-sm text-red-600">{job.error || '-'}</span>
+                    }
+                  ]}
+                  emptyMessage="No pending jobs"
+                />
               )
             ) : (
               // Messages view
@@ -468,119 +456,83 @@ export default function SMSQueueStatusPage() {
                   description={`There are no messages in ${activeTab} status`}
                 />
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          To
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Message
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Status
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Twilio Status
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Created
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Error
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {filteredMessages.map((message) => (
-                        <tr key={message.id}>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">
-                                {message.customer?.first_name} {message.customer?.last_name}
-                              </div>
-                              <div className="text-sm text-gray-500">{message.to_number}</div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="text-sm text-gray-900 max-w-xs truncate">
-                              {message.body}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center">
-                              {getStatusIcon(message.status)}
-                              <Badge 
-                                variant={getStatusBadgeVariant(message.status)} 
-                                size="sm" 
-                                className="ml-2"
-                              >
-                                {message.status}
-                              </Badge>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {message.twilio_status ? (
-                              <Badge variant="info" size="sm">
-                                {message.twilio_status}
-                              </Badge>
-                            ) : (
-                              <span className="text-sm text-gray-400">-</span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {formatDistanceToNow(new Date(message.created_at), { addSuffix: true })}
-                          </td>
-                          <td className="px-6 py-4 text-sm">
-                            {message.error_message ? (
-                              <div className="text-red-600">
-                                {message.error_code && (
-                                  <span className="font-medium">{message.error_code}: </span>
-                                )}
-                                {message.error_message}
-                              </div>
-                            ) : (
-                              <span className="text-gray-400">-</span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            <div className="flex gap-2">
-                              {['queued', 'pending', 'sending'].includes(message.status) && (
-                                <button
-                                  onClick={() => reconcileMessage(message.id)}
-                                  className="text-blue-600 hover:text-blue-900"
-                                  title="Check status with Twilio"
-                                >
-                                  Reconcile
-                                </button>
-                              )}
-                              {message.status === 'failed' && (
-                                <button
-                                  onClick={() => retryMessage(message.id)}
-                                  className="text-green-600 hover:text-green-900"
-                                  title="Retry sending"
-                                >
-                                  Retry
-                                </button>
-                              )}
-                              <button
-                                onClick={() => deleteMessage(message.id)}
-                                className="text-red-600 hover:text-red-900"
-                                title="Delete message"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <DataTable
+                  data={filteredMessages}
+                  getRowKey={(m) => m.id}
+                  columns={[
+                    {
+                      key: 'to',
+                      header: 'To',
+                      cell: (m) => (
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">
+                            {m.customer?.first_name} {m.customer?.last_name}
+                          </div>
+                          <div className="text-sm text-gray-500">{m.to_number}</div>
+                        </div>
+                      )
+                    },
+                    {
+                      key: 'message',
+                      header: 'Message',
+                      cell: (m) => (
+                        <div className="text-sm text-gray-900 max-w-xs truncate">{m.body}</div>
+                      )
+                    },
+                    {
+                      key: 'status',
+                      header: 'Status',
+                      cell: (m) => (
+                        <div className="flex items-center">
+                          {getStatusIcon(m.status)}
+                          <Badge variant={getStatusBadgeVariant(m.status)} size="sm" className="ml-2">
+                            {m.status}
+                          </Badge>
+                        </div>
+                      )
+                    },
+                    {
+                      key: 'twilio',
+                      header: 'Twilio Status',
+                      cell: (m) => m.twilio_status ? (
+                        <Badge variant="info" size="sm">{m.twilio_status}</Badge>
+                      ) : (
+                        <span className="text-sm text-gray-400">-</span>
+                      )
+                    },
+                    {
+                      key: 'created',
+                      header: 'Created',
+                      cell: (m) => <span className="text-sm text-gray-500">{formatDistanceToNow(new Date(m.created_at), { addSuffix: true })}</span>
+                    },
+                    {
+                      key: 'error',
+                      header: 'Error',
+                      cell: (m) => m.error_message ? (
+                        <span className="text-sm text-red-600">{m.error_code ? `${m.error_code}: ` : ''}{m.error_message}</span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )
+                    },
+                    {
+                      key: 'actions',
+                      header: 'Actions',
+                      align: 'right',
+                      cell: (m) => (
+                        <div className="flex gap-2 justify-end">
+                          {['queued', 'pending', 'sending'].includes(m.status) && (
+                            <button onClick={() => reconcileMessage(m.id)} className="text-blue-600 hover:text-blue-900" title="Check status with Twilio">Reconcile</button>
+                          )}
+                          {m.status === 'failed' && (
+                            <button onClick={() => retryMessage(m.id)} className="text-green-600 hover:text-green-900" title="Retry sending">Retry</button>
+                          )}
+                          <button onClick={() => deleteMessage(m.id)} className="text-red-600 hover:text-red-900" title="Delete message">Delete</button>
+                        </div>
+                      )
+                    },
+                  ]}
+                  emptyMessage={`No ${activeTab} messages`}
+                />
               )
             )}
           </Card>

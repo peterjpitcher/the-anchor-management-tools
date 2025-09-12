@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { eventToSchema } from '@/lib/api/schema';
-import { startOfDay, endOfDay, parseISO } from 'date-fns';
+// Removed unused date-fns imports
 
 // Handle CORS preflight
 export async function OPTIONS(request: NextRequest) {
@@ -108,4 +108,3 @@ export async function GET(_request: NextRequest) {
     });
   }, ['read:events'], _request);
 }
-

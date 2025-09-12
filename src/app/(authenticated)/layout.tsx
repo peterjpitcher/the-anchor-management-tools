@@ -1,7 +1,7 @@
 'use client'
 
 import { Navigation } from '@/components/Navigation'
-import { ArrowRightOnRectangleIcon, Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline'
+import { ArrowRightOnRectangleIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import React, { useState, useEffect } from 'react'

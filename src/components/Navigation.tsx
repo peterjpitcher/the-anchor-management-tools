@@ -27,7 +27,7 @@ const primaryNavigation: NavigationItemWithPermission[] = [
 const secondaryNavigation: NavigationItemWithPermission[] = [
   { name: 'Table Bookings', href: '/table-bookings', icon: QueueListIcon, permission: { module: 'table_bookings', action: 'view' } },
   { name: 'Private Bookings', href: '/private-bookings', icon: BuildingOfficeIcon, permission: { module: 'private_bookings', action: 'view' } },
-  { name: 'VIP Club', href: '/loyalty/admin', icon: StarIcon, permission: { module: 'loyalty', action: 'view' } },
+  // VIP Club removed
 ];
 
 const tertiaryNavigation: NavigationItemWithPermission[] = [

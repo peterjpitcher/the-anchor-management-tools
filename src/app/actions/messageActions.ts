@@ -137,7 +137,7 @@ export async function sendSmsReply(customerId: string, message: string) {
       .from('messages')
       .insert({
         customer_id: customerId,
-        direction: 'outbound-api',
+        direction: 'outbound',
         message_sid: twilioMessage.sid,
         twilio_message_sid: twilioMessage.sid,
         body: message,

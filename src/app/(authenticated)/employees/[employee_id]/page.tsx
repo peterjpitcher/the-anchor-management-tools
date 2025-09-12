@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { Employee, EmployeeAttachment, EmployeeFinancialDetails, EmployeeHealthRecord } from '@/types/database';
-import { PencilSquareIcon } from '@heroicons/react/24/outline';
 import DeleteEmployeeButton from '@/components/DeleteEmployeeButton';
 import EmployeeNotesList from '@/components/EmployeeNotesList';
 import AddEmployeeNoteForm from '@/components/AddEmployeeNoteForm';
@@ -24,7 +23,6 @@ import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
 import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
 import { NavLink } from '@/components/ui-v2/navigation/NavLink';
 import { NavGroup } from '@/components/ui-v2/navigation/NavGroup';
 import { Badge } from '@/components/ui-v2/display/Badge';

@@ -11,7 +11,7 @@ import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { toast } from '@/components/ui-v2/feedback/Toast'
-import { ChevronLeft, Download, Calendar, AlertCircle } from 'lucide-react'
+import { Download, Calendar } from 'lucide-react'
 
 export default function InvoiceExportPage() {
   const router = useRouter()

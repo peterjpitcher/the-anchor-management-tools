@@ -19,7 +19,6 @@ import { Input } from '@/components/ui-v2/forms/Input'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { DataTable, Column } from '@/components/ui-v2/display/DataTable'
-import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 
 export default function InvoicesPage() {

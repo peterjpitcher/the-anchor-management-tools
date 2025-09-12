@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { CheckCircleIcon, CalendarIcon, ClockIcon, UserGroupIcon, CurrencyPoundIcon, ArrowTopRightOnSquareIcon, CameraIcon } from '@heroicons/react/24/outline';
+import { CheckCircleIcon, CalendarIcon, ClockIcon, UserGroupIcon, ArrowTopRightOnSquareIcon, CameraIcon } from '@heroicons/react/24/outline';
 import Image from 'next/image';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Spinner } from '@/components/ui-v2/feedback/Spinner';
@@ -253,11 +253,11 @@ function BookingSuccessContent() {
                 <ul className="space-y-2 text-sm">
                   <li className="flex items-start">
                     <span className="text-green-600 mr-2">✓</span>
-                    <span>You'll receive a confirmation text message shortly</span>
+                    <span>You&apos;ll receive a confirmation text message shortly</span>
                   </li>
                   <li className="flex items-start">
                     <span className="text-green-600 mr-2">✓</span>
-                    <span>We'll send you a reminder the day before</span>
+                    <span>We&apos;ll send you a reminder the day before</span>
                   </li>
                   <li className="flex items-start">
                     <span className="text-green-600 mr-2">✓</span>

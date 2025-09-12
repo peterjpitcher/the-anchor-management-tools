@@ -1,7 +1,7 @@
 import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
 import { formatDate } from '@/lib/dateUtils'
 import Link from 'next/link'
-import { CalendarIcon, UsersIcon, PlusIcon, ChatBubbleLeftIcon, DocumentTextIcon, CurrencyPoundIcon, ClockIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, UsersIcon, PlusIcon, ChatBubbleLeftIcon, CurrencyPoundIcon } from '@heroicons/react/24/outline'
 import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { Card, CardTitle } from '@/components/ui-v2/layout/Card'
@@ -9,7 +9,7 @@ import { Section } from '@/components/ui-v2/layout/Section'
 import { Stat, StatGroup } from '@/components/ui-v2/display/Stat'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
-import { List, SimpleList } from '@/components/ui-v2/display/List'
+import { SimpleList } from '@/components/ui-v2/display/List'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 
 async function getUpcomingEvents() {

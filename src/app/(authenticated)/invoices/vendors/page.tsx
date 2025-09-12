@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import { getVendors, createVendor, updateVendor, deleteVendor } from '@/app/actions/vendors'
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
-import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
 import { Input } from '@/components/ui-v2/forms/Input'
@@ -14,9 +13,7 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
-import { toast } from '@/components/ui-v2/feedback/Toast'
-import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
-import { Plus, Edit2, Trash2, X, ChevronLeft } from 'lucide-react'
+import { Plus, Edit2, Trash2 } from 'lucide-react'
 import type { InvoiceVendor } from '@/types/invoices'
 
 interface VendorFormData {
@@ -31,7 +28,6 @@ interface VendorFormData {
 }
 
 export default function VendorsPage() {
-  const router = useRouter()
   const [vendors, setVendors] = useState<InvoiceVendor[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)

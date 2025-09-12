@@ -1,10 +1,9 @@
 'use client';
 
 import { useState, useEffect, use } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { CurrencyPoundIcon, CalendarIcon, ClockIcon, UserGroupIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import Image from 'next/image';
-import { Button } from '@/components/ui-v2/forms/Button';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { Spinner } from '@/components/ui-v2/feedback/Spinner';
@@ -196,7 +195,7 @@ export default function TableBookingPaymentPage(props: { params: Promise<{ refer
             <ExclamationTriangleIcon className="h-5 w-5" />
             <div>
               <h3 className="font-semibold">Payment Cancelled</h3>
-              <p>You cancelled the payment process. You can try again when you're ready.</p>
+            <p>You cancelled the payment process. You can try again when you&apos;re ready.</p>
             </div>
           </Alert>
         )}

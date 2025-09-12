@@ -3,19 +3,15 @@
 import { useState, useEffect } from 'react'
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
-import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
-import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
-import { toast } from '@/components/ui-v2/feedback/Toast'
-import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
-import { Plus, Edit2, Trash2, X, ChevronLeft, Package } from 'lucide-react'
+import { Plus, Edit2, Trash2, Package } from 'lucide-react'
 import { getLineItemCatalog, createCatalogItem, updateCatalogItem, deleteCatalogItem } from '@/app/actions/invoices'
 import type { LineItemCatalogItem } from '@/types/invoices'
 
@@ -27,7 +23,6 @@ interface CatalogFormData {
 }
 
 export default function LineItemCatalogPage() {
-  const router = useRouter()
   const [items, setItems] = useState<LineItemCatalogItem[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
