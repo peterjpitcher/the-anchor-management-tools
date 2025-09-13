@@ -267,190 +267,85 @@ export default function SMSHealthDashboard() {
       <Section title="Customer Messaging Health">
         <Card>
           {filteredCustomers.length === 0 ? (
-            <EmptyState
-              title="No customers found"
-              description="No customers found matching the selected filter"
-            />
+            <EmptyState title="No customers found" description="No customers found matching the selected filter" />
           ) : (
-            <>
-              {/* Desktop Table */}
-              <div className="hidden lg:block">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Customer
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Failures
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Delivery Rate
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Cost
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Last Success
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {filteredCustomers.map((customer) => (
-              <tr key={customer.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap">
+            <DataTable
+              data={filteredCustomers}
+              getRowKey={(c) => c.id}
+              emptyMessage="No customers found"
+              columns={[
+                { key: 'customer', header: 'Customer', cell: (c: any) => (
                   <div>
-                    <div className="text-sm font-medium text-gray-900">
-                      {customer.first_name} {customer.last_name}
-                    </div>
-                    <div className="text-sm text-gray-500">{customer.mobile_number}</div>
+                    <div className="text-sm font-medium text-gray-900">{c.first_name} {c.last_name}</div>
+                    <div className="text-sm text-gray-500">{c.mobile_number}</div>
                   </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
+                ) },
+                { key: 'status', header: 'Status', cell: (c: any) => (
                   <div className="flex items-center">
-                    {getStatusIcon(customer.messaging_status)}
-                    <Badge 
-                      variant={getStatusBadgeVariant(customer.messaging_status)} 
-                      size="sm" 
-                      className="ml-2"
-                    >
-                      {customer.messaging_status}
-                    </Badge>
+                    {getStatusIcon(c.messaging_status)}
+                    <Badge variant={getStatusBadgeVariant(c.messaging_status)} size="sm" className="ml-2">{c.messaging_status}</Badge>
                   </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  <div>
-                    <div>Consecutive: {customer.consecutive_failures}</div>
-                    <div>30 days: {customer.total_failures_30d}</div>
-                    {customer.last_failure_type && (
-                      <div className="text-xs text-red-600 mt-1">{customer.last_failure_type}</div>
+                ) },
+                { key: 'failures', header: 'Failures', cell: (c: any) => (
+                  <div className="text-sm text-gray-500">
+                    <div>Consecutive: {c.consecutive_failures}</div>
+                    <div>30 days: {c.total_failures_30d}</div>
+                    {c.last_failure_type && (<div className="text-xs text-red-600 mt-1">{c.last_failure_type}</div>)}
+                  </div>
+                ) },
+                { key: 'delivery', header: 'Delivery Rate', cell: (c: any) => (
+                  <div className="flex items-center">
+                    <div className="text-sm text-gray-900">{c.delivery_rate}%</div>
+                    <div className="ml-2 text-xs text-gray-500">({c.messages_delivered}/{c.total_messages_sent})</div>
+                  </div>
+                ) },
+                { key: 'cost', header: 'Cost', align: 'right', cell: (c: any) => <span className="text-sm text-gray-900">${c.total_cost_usd.toFixed(2)}</span> },
+                { key: 'last', header: 'Last Success', cell: (c: any) => <span className="text-sm text-gray-500">{c.last_successful_delivery ? formatDate(c.last_successful_delivery) : 'Never'}</span> },
+                { key: 'actions', header: 'Actions', align: 'right', cell: (c: any) => (
+                  c.messaging_status === 'active' ? (
+                    <button onClick={() => suspendCustomer(c.id)} className="text-yellow-600 hover:text-yellow-900">Suspend</button>
+                  ) : (
+                    <button onClick={() => reactivateCustomer(c.id)} className="text-green-600 hover:text-green-900">Reactivate</button>
+                  )
+                ) },
+              ]}
+              renderMobileCard={(c: any) => (
+                <div className="p-4">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-gray-900">{c.first_name} {c.last_name}</div>
+                      <div className="text-sm text-gray-500">{c.mobile_number}</div>
+                    </div>
+                    <div className="flex items-center ml-2">
+                      {getStatusIcon(c.messaging_status)}
+                      <Badge variant={getStatusBadgeVariant(c.messaging_status)} size="sm" className="ml-2">{c.messaging_status}</Badge>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 mb-3 text-sm">
+                    <div>
+                      <span className="text-gray-500">Failures:</span>
+                      <div className="font-medium">Consec: {c.consecutive_failures}, 30d: {c.total_failures_30d}</div>
+                      {c.last_failure_type && (<div className="text-xs text-red-600 mt-1">{c.last_failure_type}</div>)}
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Delivery Rate:</span>
+                      <div className="font-medium">{c.delivery_rate}% ({c.messages_delivered}/{c.total_messages_sent})</div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 mb-3 text-sm">
+                    <div><span className="text-gray-500">Cost:</span> <span className="font-medium">${c.total_cost_usd.toFixed(2)}</span></div>
+                    <div><span className="text-gray-500">Last Success:</span> <span className="font-medium">{c.last_successful_delivery ? formatDate(c.last_successful_delivery) : 'Never'}</span></div>
+                  </div>
+                  <div className="flex justify-end">
+                    {c.messaging_status === 'active' ? (
+                      <button onClick={() => suspendCustomer(c.id)} className="px-4 py-2 text-sm font-medium text-yellow-600 bg-yellow-50 rounded-lg hover:bg-yellow-100">Suspend</button>
+                    ) : (
+                      <button onClick={() => reactivateCustomer(c.id)} className="px-4 py-2 text-sm font-medium text-green-600 bg-green-50 rounded-lg hover:bg-green-100">Reactivate</button>
                     )}
                   </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    <div className="text-sm text-gray-900">{customer.delivery_rate}%</div>
-                    <div className="ml-2 text-xs text-gray-500">
-                      ({customer.messages_delivered}/{customer.total_messages_sent})
-                    </div>
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  ${customer.total_cost_usd.toFixed(2)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {customer.last_successful_delivery 
-                    ? formatDate(customer.last_successful_delivery)
-                    : 'Never'}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  {customer.messaging_status === 'active' ? (
-                    <button
-                      onClick={() => suspendCustomer(customer.id)}
-                      className="text-yellow-600 hover:text-yellow-900"
-                    >
-                      Suspend
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => reactivateCustomer(customer.id)}
-                      className="text-green-600 hover:text-green-900"
-                    >
-                      Reactivate
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
-        
-        {/* Mobile Card View */}
-        <div className="lg:hidden">
-          <div className="divide-y divide-gray-200">
-            {filteredCustomers.map((customer) => (
-              <div key={customer.id} className="p-4 hover:bg-gray-50">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-gray-900">
-                      {customer.first_name} {customer.last_name}
-                    </div>
-                    <div className="text-sm text-gray-500">{customer.mobile_number}</div>
-                  </div>
-                  <div className="flex items-center ml-2">
-                    {getStatusIcon(customer.messaging_status)}
-                    <Badge 
-                      variant={getStatusBadgeVariant(customer.messaging_status)} 
-                      size="sm" 
-                      className="ml-2"
-                    >
-                      {customer.messaging_status}
-                    </Badge>
-                  </div>
                 </div>
-                
-                <div className="grid grid-cols-2 gap-4 mb-3 text-sm">
-                  <div>
-                    <span className="text-gray-500">Failures:</span>
-                    <div className="font-medium">
-                      Consec: {customer.consecutive_failures}, 30d: {customer.total_failures_30d}
-                    </div>
-                    {customer.last_failure_type && (
-                      <div className="text-xs text-red-600 mt-1">{customer.last_failure_type}</div>
-                    )}
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Delivery Rate:</span>
-                    <div className="font-medium">
-                      {customer.delivery_rate}% ({customer.messages_delivered}/{customer.total_messages_sent})
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4 mb-3 text-sm">
-                  <div>
-                    <span className="text-gray-500">Cost:</span>
-                    <div className="font-medium">${customer.total_cost_usd.toFixed(2)}</div>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Last Success:</span>
-                    <div className="font-medium">
-                      {customer.last_successful_delivery 
-                        ? formatDate(customer.last_successful_delivery)
-                        : 'Never'}
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="flex justify-end">
-                  {customer.messaging_status === 'active' ? (
-                    <button
-                      onClick={() => suspendCustomer(customer.id)}
-                      className="px-4 py-2 text-sm font-medium text-yellow-600 bg-yellow-50 rounded-lg hover:bg-yellow-100"
-                    >
-                      Suspend
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => reactivateCustomer(customer.id)}
-                      className="px-4 py-2 text-sm font-medium text-green-600 bg-green-50 rounded-lg hover:bg-green-100"
-                    >
-                      Reactivate
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-            </>
+              )}
+            />
           )}
         </Card>
       </Section>

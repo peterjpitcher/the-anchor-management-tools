@@ -9,6 +9,7 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { Plus, Calendar, Trash2, Edit, Play, Pause } from 'lucide-react'
@@ -177,126 +178,114 @@ export default function RecurringInvoicesPage() {
           }
         />
       ) : (
-        <Card className="overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Vendor
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Frequency
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Next Invoice
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Reference
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {recurringInvoices.map((recurring) => (
-                <tr key={recurring.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">
-                        {recurring.vendor?.name || 'Unknown Vendor'}
-                      </div>
-                      {recurring.vendor?.contact_name && (
-                        <div className="text-sm text-gray-500">
-                          {recurring.vendor.contact_name}
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {getFrequencyLabel(recurring.frequency)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
-                      {getNextInvoiceLabel(recurring.next_invoice_date)}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {new Date(recurring.next_invoice_date).toLocaleDateString('en-GB')}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {recurring.reference || '-'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {recurring.is_active ? (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        <Play className="h-3 w-3 mr-1" />
-                        Active
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                        <Pause className="h-3 w-3 mr-1" />
-                        Inactive
-                      </span>
+        <Card>
+          <DataTable
+            data={recurringInvoices}
+            getRowKey={(r) => r.id}
+            columns={[
+              {
+                key: 'vendor',
+                header: 'Vendor',
+                cell: (r) => (
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">{r.vendor?.name || 'Unknown Vendor'}</div>
+                    {r.vendor?.contact_name && (
+                      <div className="text-sm text-gray-500">{r.vendor.contact_name}</div>
                     )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => handleToggleStatus(recurring.id, recurring.is_active)}
-                        disabled={processing === recurring.id}
-                        loading={processing === recurring.id}
-                        title={recurring.is_active ? "Deactivate recurring invoice" : "Activate recurring invoice"}
-                        iconOnly
-                      >
-                        {recurring.is_active ? (
-                          <Pause className="h-4 w-4" />
-                        ) : (
-                          <Play className="h-4 w-4" />
-                        )}
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => handleGenerateNow(recurring.id)}
-                        disabled={processing === recurring.id || !recurring.is_active}
-                        loading={processing === recurring.id}
-                        title="Generate invoice now"
-                        iconOnly
-                      >
-                        <Calendar className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => router.push(`/invoices/recurring/${recurring.id}`)}
-                        disabled={processing === recurring.id}
-                        title="View details"
-                        iconOnly
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => setShowDeleteConfirm(recurring.id)}
-                        disabled={processing === recurring.id}
-                        loading={processing === recurring.id}
-                        iconOnly
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                )
+              },
+              {
+                key: 'frequency',
+                header: 'Frequency',
+                cell: (r) => <span className="text-sm text-gray-900">{getFrequencyLabel(r.frequency)}</span>
+              },
+              {
+                key: 'next',
+                header: 'Next Invoice',
+                cell: (r) => (
+                  <div>
+                    <div className="text-sm text-gray-900">{getNextInvoiceLabel(r.next_invoice_date)}</div>
+                    <div className="text-xs text-gray-500">{new Date(r.next_invoice_date).toLocaleDateString('en-GB')}</div>
+                  </div>
+                )
+              },
+              {
+                key: 'reference',
+                header: 'Reference',
+                cell: (r) => <span className="text-sm text-gray-900">{r.reference || '-'}</span>
+              },
+              {
+                key: 'status',
+                header: 'Status',
+                cell: (r) => r.is_active ? (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    <Play className="h-3 w-3 mr-1" /> Active
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                    <Pause className="h-3 w-3 mr-1" /> Inactive
+                  </span>
+                )
+              },
+              {
+                key: 'actions',
+                header: 'Actions',
+                align: 'right',
+                cell: (r) => (
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleToggleStatus(r.id, r.is_active)}
+                      disabled={processing === r.id}
+                      loading={processing === r.id}
+                      title={r.is_active ? 'Deactivate recurring invoice' : 'Activate recurring invoice'}
+                      iconOnly
+                    >
+                      {r.is_active ? (
+                        <Pause className="h-4 w-4" />
+                      ) : (
+                        <Play className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleGenerateNow(r.id)}
+                      disabled={processing === r.id || !r.is_active}
+                      loading={processing === r.id}
+                      title="Generate invoice now"
+                      iconOnly
+                    >
+                      <Calendar className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => router.push(`/invoices/recurring/${r.id}`)}
+                      disabled={processing === r.id}
+                      title="View details"
+                      iconOnly
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => setShowDeleteConfirm(r.id)}
+                      disabled={processing === r.id}
+                      loading={processing === r.id}
+                      iconOnly
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )
+              },
+            ]}
+            emptyMessage="No recurring invoices"
+          />
         </Card>
       )}
       

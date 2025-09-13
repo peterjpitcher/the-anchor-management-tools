@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { CloudArrowUpIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline'
 import { Customer } from '@/types/database'
 import toast from 'react-hot-toast'
@@ -226,34 +227,40 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
           </div>
 
           <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg mb-6">
-            <table className="min-w-full divide-y divide-gray-300">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">First Name</th>
-                  <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Last Name</th>
-                  <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Mobile Number</th>
-                  <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 bg-white">
-                {parsedData.map((customer, index) => (
-                  <tr key={index} className={customer.isDuplicate ? 'bg-yellow-50' : !customer.isValid ? 'bg-red-50' : ''}>
-                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">{customer.first_name}</td>
-                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">{customer.last_name || '-'}</td>
-                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">{customer.mobile_number}</td>
-                    <td className="whitespace-nowrap px-3 py-4 text-sm">
-                      {customer.isValid ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Valid</span>
-                      ) : customer.isDuplicate ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800" title={customer.errors.join(', ')}>Duplicate</span>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800" title={customer.errors.join(', ')}>Invalid</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <DataTable<ParsedCustomer>
+              data={parsedData}
+              getRowKey={(row: ParsedCustomer) => parsedData.indexOf(row)}
+              emptyMessage="No rows to preview"
+              columns={[
+                { key: 'first_name', header: 'First Name', cell: (c: ParsedCustomer) => <span className="text-sm text-gray-900">{c.first_name}</span> },
+                { key: 'last_name', header: 'Last Name', cell: (c: ParsedCustomer) => <span className="text-sm text-gray-900">{c.last_name || '-'}</span> },
+                { key: 'mobile_number', header: 'Mobile Number', cell: (c: ParsedCustomer) => <span className="text-sm text-gray-900">{c.mobile_number}</span> },
+                { key: 'status', header: 'Status', cell: (c: ParsedCustomer) => (
+                  c.isValid ? (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Valid</span>
+                  ) : c.isDuplicate ? (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800" title={(c.errors||[]).join(', ')}>Duplicate</span>
+                  ) : (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800" title={(c.errors||[]).join(', ')}>Invalid</span>
+                  )
+                ) },
+              ]}
+              renderMobileCard={(c: ParsedCustomer) => (
+                <div className={`${c.isDuplicate ? 'bg-yellow-50' : !c.isValid ? 'bg-red-50' : ''} p-3` }>
+                  <div className="font-medium text-sm">{c.first_name} {c.last_name || '-'}</div>
+                  <div className="text-sm text-gray-600">{c.mobile_number}</div>
+                  <div className="mt-2">
+                    {c.isValid ? (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Valid</span>
+                    ) : c.isDuplicate ? (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800" title={(c.errors||[]).join(', ')}>Duplicate</span>
+                    ) : (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800" title={(c.errors||[]).join(', ')}>Invalid</span>
+                    )}
+                  </div>
+                </div>
+              )}
+            />
           </div>
           
           <div className="flex justify-end space-x-3">

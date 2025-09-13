@@ -206,28 +206,49 @@ Best regards,
 Orange Jelly Limited
 `
 
+            // Support multiple recipients — first as To, others as CC
+            const raw = String(invoice.vendor.email)
+            const recipients = raw.split(/[;,]/).map(s => s.trim()).filter(Boolean)
+            const toAddress = recipients[0] || raw
+            const ccAddresses = (recipients[0] ? recipients.slice(1) : []).filter(Boolean)
+
             const customerResult = await sendInvoiceEmail(
               invoice as InvoiceWithDetails,
-              invoice.vendor.email,
+              toAddress,
               customerSubject,
-              customerBody
+              customerBody,
+              ccAddresses
             )
 
             if (customerResult.success) {
               console.log(`[Cron] Customer reminder sent for invoice ${invoice.invoice_number}`)
               results.reminders_sent++
 
-              // Log customer reminder
+              // Log To and CC
               await supabase
                 .from('invoice_email_logs')
                 .insert({
                   invoice_id: invoice.id,
-                  sent_to: invoice.vendor.email,
+                  sent_to: toAddress,
                   sent_by: 'system',
                   subject: customerSubject,
                   body: `${reminderType} - ${daysOverdue} days overdue`,
                   status: 'sent'
                 })
+              for (const cc of ccAddresses) {
+                await supabase
+                  .from('invoice_email_logs')
+                  .insert({
+                    invoice_id: invoice.id,
+                    sent_to: cc,
+                    sent_by: 'system',
+                    subject: customerSubject,
+                    body: `${reminderType} - ${daysOverdue} days overdue`,
+                    status: 'sent'
+                  })
+              }
+            } else {
+              console.error(`[Cron] Failed to send customer reminder for invoice ${invoice.invoice_number}:`, customerResult.error)
             }
           } catch (error) {
             console.error(`[Cron] Error sending customer reminder:`, error)

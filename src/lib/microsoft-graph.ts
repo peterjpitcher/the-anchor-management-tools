@@ -52,7 +52,8 @@ export async function sendInvoiceEmail(
   invoice: InvoiceWithDetails,
   recipientEmail: string,
   subject?: string,
-  body?: string
+  body?: string,
+  ccRecipients?: string[]
 ): Promise<{ success: boolean; error?: string; messageId?: string }> {
   try {
     if (!isGraphConfigured()) {
@@ -92,7 +93,7 @@ Orange Jelly Limited
 P.S. The invoice is attached as a PDF for easy viewing and printing.`
 
     // Create email message
-    const message = {
+    const message: any = {
       subject: emailSubject,
       body: {
         contentType: 'Text',
@@ -113,6 +114,10 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`
           contentBytes: bufferToBase64(pdfBuffer)
         }
       ]
+    }
+
+    if (ccRecipients && ccRecipients.length) {
+      message.ccRecipients = ccRecipients.map(addr => ({ emailAddress: { address: addr } }))
     }
 
     // Send email
@@ -141,7 +146,8 @@ export async function sendQuoteEmail(
   quote: QuoteWithDetails,
   recipientEmail: string,
   subject?: string,
-  body?: string
+  body?: string,
+  ccRecipients?: string[]
 ): Promise<{ success: boolean; error?: string; messageId?: string }> {
   try {
     if (!isGraphConfigured()) {
@@ -180,7 +186,7 @@ Orange Jelly Limited
 P.S. The quote is attached as a PDF for your convenience.`
 
     // Create email message
-    const message = {
+    const message: any = {
       subject: emailSubject,
       body: {
         contentType: 'Text',
@@ -201,6 +207,10 @@ P.S. The quote is attached as a PDF for your convenience.`
           contentBytes: bufferToBase64(pdfBuffer)
         }
       ]
+    }
+
+    if (ccRecipients && ccRecipients.length) {
+      message.ccRecipients = ccRecipients.map(addr => ({ emailAddress: { address: addr } }))
     }
 
     // Send email

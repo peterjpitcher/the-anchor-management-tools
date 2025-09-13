@@ -21,7 +21,7 @@ export default function EditEventPage({ params }: PageProps) {
   const router = useRouter()
   const resolvedParams = use(params)
   const [event, setEvent] = useState<Event | null>(null)
-  const [categories, setCategories] = useState<any[]>([])
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -127,7 +127,7 @@ export default function EditEventPage({ params }: PageProps) {
         <Card>
           <EventFormGrouped 
             event={event}
-            categories={categories}
+            categories={categories as any}
             onSubmit={handleSubmit} 
             onCancel={handleCancel} 
           />

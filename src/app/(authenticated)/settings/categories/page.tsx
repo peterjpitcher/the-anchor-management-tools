@@ -11,7 +11,6 @@ import { Section } from '@/components/ui-v2/layout/Section';
 import { Form } from '@/components/ui-v2/forms/Form';
 import { Input } from '@/components/ui-v2/forms/Input';
 import { Button } from '@/components/ui-v2/forms/Button';
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 import { EmptyState } from '@/components/ui-v2/display/EmptyState';
@@ -59,8 +58,8 @@ export default function CategoriesPage() {
     if (!newCategoryName.trim()) return;
 
     try {
-      const { error } = await (supabase
-        .from('attachment_categories') as any)
+      const { error } = await (supabase as any)
+        .from('attachment_categories')
         .insert({ category_name: newCategoryName.trim() });
 
       if (error) throw error;
@@ -76,8 +75,8 @@ export default function CategoriesPage() {
     if (!editingName.trim()) return;
 
     try {
-      const { error } = await (supabase
-        .from('attachment_categories') as any)
+      const { error } = await (supabase as any)
+        .from('attachment_categories')
         .update({ category_name: editingName.trim() })
         .eq('category_id', categoryId);
 

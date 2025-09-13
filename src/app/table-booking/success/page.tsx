@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CheckCircleIcon, CalendarIcon, ClockIcon, UserGroupIcon, ArrowTopRightOnSquareIcon, CameraIcon } from '@heroicons/react/24/outline';
 import Image from 'next/image';
@@ -35,16 +35,7 @@ function BookingSuccessContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (reference) {
-      loadBookingDetails();
-    } else {
-      setError('No booking reference provided');
-      setLoading(false);
-    }
-  }, [reference]);
-
-  async function loadBookingDetails() {
+  const loadBookingDetails = useCallback(async () => {
     try {
       const response = await fetch(`/api/table-bookings/${reference}/public`);
       const data = await response.json();
@@ -57,8 +48,8 @@ function BookingSuccessContent() {
 
       // Extract deposit info from items
       const depositAmount = data.party_size * 5;
-      const totalAmount = data.items?.reduce(
-        (sum: number, item: any) => sum + (item.price_at_booking * item.quantity), 
+      const totalAmount = (data.items as BookingItem[] | undefined)?.reduce(
+        (sum: number, item: BookingItem) => sum + (item.price_at_booking * item.quantity), 
         0
       ) || 0;
 
@@ -78,7 +69,16 @@ function BookingSuccessContent() {
       setError('Unable to load booking details');
       setLoading(false);
     }
-  }
+  }, [reference])
+
+  useEffect(() => {
+    if (reference) {
+      loadBookingDetails();
+    } else {
+      setError('No booking reference provided');
+      setLoading(false);
+    }
+  }, [reference, loadBookingDetails]);
 
   if (loading) {
     return (

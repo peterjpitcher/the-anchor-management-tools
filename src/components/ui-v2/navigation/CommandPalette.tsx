@@ -354,7 +354,7 @@ export function CommandPalette({
                         <>
                           <MagnifyingGlassIcon className="mx-auto h-6 w-6 text-gray-400" />
                           <p className="mt-4 text-sm text-gray-900">
-                            No results found for "{query}"
+                            No results found for &quot;{query}&quot;
                           </p>
                         </>
                       )}

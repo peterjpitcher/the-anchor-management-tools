@@ -14,7 +14,7 @@ import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 export default function NewEventPage() {
   const router = useRouter()
-  const [categories, setCategories] = useState<any[]>([])
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -103,7 +103,7 @@ export default function NewEventPage() {
       <PageContent>
         <Card>
           <EventFormGrouped 
-            categories={categories}
+            categories={categories as any}
             onSubmit={handleSubmit} 
             onCancel={handleCancel} 
           />

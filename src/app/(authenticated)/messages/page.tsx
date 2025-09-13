@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import type { Message } from '@/types/database'
 import { getMessages, markAllMessagesAsRead } from '@/app/actions/messagesActions'
 import { formatDistanceToNow } from 'date-fns'
 // New UI components
@@ -21,7 +22,7 @@ interface Conversation {
     last_name: string;
     mobile_number: string;
   };
-  messages: any[];
+  messages: Message[];
   unreadCount: number;
   lastMessageAt: string;
 }
@@ -41,7 +42,7 @@ export default function MessagesPage() {
         return
       }
       
-      const convs = result.conversations || []
+      const convs = (result.conversations || []) as unknown as Conversation[]
       setConversations(convs)
       setTotalUnreadCount(convs.reduce((sum, conv) => sum + conv.unreadCount, 0))
     } catch (error) {
@@ -133,9 +134,9 @@ export default function MessagesPage() {
                 subtitle: conversation.customer.mobile_number,
                 meta: (
                   <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                    {conversation.messages.filter(m => m.direction === 'inbound' && !m.read_at).length > 0 && (
+                    {conversation.messages.filter((m) => m.direction === 'inbound' && !m.read_at).length > 0 && (
                       <Badge variant="info" size="sm" className="self-start">
-                        {conversation.messages.filter(m => m.direction === 'inbound' && !m.read_at).length} unread
+                        {conversation.messages.filter((m) => m.direction === 'inbound' && !m.read_at).length} unread
                       </Badge>
                     )}
                     <div className="text-left sm:text-right">
@@ -148,7 +149,7 @@ export default function MessagesPage() {
                     </div>
                   </div>
                 ),
-                className: conversation.messages.filter(m => m.direction === 'inbound' && !m.read_at).length > 0 ? "bg-blue-50" : "",
+                className: conversation.messages.filter((m) => m.direction === 'inbound' && !m.read_at).length > 0 ? "bg-blue-50" : "",
               }))}
             />
           </Card>

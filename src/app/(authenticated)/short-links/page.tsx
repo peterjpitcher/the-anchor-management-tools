@@ -699,7 +699,7 @@ const supabase = useSupabase();
                     data={analytics.short_link_clicks.sort((a: any, b: any) => 
                       new Date(b.clicked_at).getTime() - new Date(a.clicked_at).getTime()
                     )}
-                    getRowKey={(click) => click.id || Math.random()}
+                    getRowKey={(click: any) => click.id || Math.random()}
                     size="sm"
                     stickyHeader
                     columns={[

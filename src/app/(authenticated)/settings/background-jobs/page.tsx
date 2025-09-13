@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { formatDate } from '@/lib/dateUtils'
 import { usePagination } from '@/hooks/usePagination'
@@ -18,9 +19,9 @@ import { Page } from '@/components/ui-v2/layout/Page'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Button, IconButton } from '@/components/ui-v2/forms/Button'
-import { Badge, StatusBadge } from '@/components/ui-v2/display/Badge'
+import { Badge } from '@/components/ui-v2/display/Badge'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+// import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { Select } from '@/components/ui-v2/forms/Select'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
@@ -28,11 +29,10 @@ import { Pagination } from '@/components/ui-v2/navigation/Pagination'
 import { Stat } from '@/components/ui-v2/display/Stat'
 
 import { BackButton } from '@/components/ui-v2/navigation/BackButton';
-import { useRouter } from 'next/navigation';
 interface BackgroundJob {
   id: string
   type: string
-  payload: Record<string, any>
+  payload: Record<string, unknown>
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
   priority: number
   attempts: number
@@ -43,7 +43,7 @@ interface BackgroundJob {
   completed_at?: string
   failed_at?: string
   error_message?: string
-  result?: Record<string, any>
+  result?: Record<string, unknown>
   updated_at: string
 }
 
@@ -74,7 +74,7 @@ export default function BackgroundJobsPage() {
 
   // Build filters for pagination
   const paginationFilters = useMemo(() => {
-    const filters = []
+    const filters: Array<{ column: string; operator: string; value: unknown }> = []
     if (statusFilter) {
       filters.push({ column: 'status', operator: 'eq', value: statusFilter })
     }
@@ -104,7 +104,7 @@ export default function BackgroundJobsPage() {
     {
       select: '*',
       orderBy: { column: 'created_at', ascending: false },
-      filters: paginationFilters
+      filters: paginationFilters as any
     },
     paginationOptions
   )
@@ -170,8 +170,8 @@ export default function BackgroundJobsPage() {
   }
 
   const retryJob = async (jobId: string) => {
-    const { error } = await (supabase
-      .from('jobs') as any)
+    const { error } = await (supabase as any)
+      .from('jobs')
       .update({ 
         status: 'pending',
         attempts: 0,

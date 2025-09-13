@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { CheckCircle2, XCircle, Info, Loader2 } from 'lucide-react'
+import { CheckCircle2, XCircle, Info } from 'lucide-react'
 // New UI components
 import { Page } from '@/components/ui-v2/layout/Page'
 import { Card } from '@/components/ui-v2/layout/Card'
@@ -16,7 +16,13 @@ export default function CalendarTestPage() {
   
   const router = useRouter();
 const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<any>(null)
+  interface TestResult {
+    success: boolean
+    configStatus?: { isConfigured: boolean; calendarId: string; authMethod: string }
+    details?: { errorCode?: number } | Record<string, unknown>
+    message?: string
+  }
+  const [result, setResult] = useState<TestResult | null>(null)
 
   const testConnection = async () => {
     setLoading(true)
@@ -29,8 +35,7 @@ const [loading, setLoading] = useState(false)
     } catch (error) {
       setResult({
         success: false,
-        message: 'Failed to test connection',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: 'Failed to test connection'
       })
     } finally {
       setLoading(false)

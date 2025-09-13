@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation'
 import CalendarView from '@/components/private-bookings/CalendarView'
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 
 export default async function PrivateBookingsCalendarPage() {
   const supabase = await createClient()

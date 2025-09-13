@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { getQuotes, getQuoteSummary } from '@/app/actions/quotes'
-import { Plus, FileText, TrendingUp, Clock, AlertCircle, FileEdit, ChevronLeft, Download, Package, ArrowRight } from 'lucide-react'
+import { Plus, FileText, TrendingUp, Clock, FileEdit, Download, Package, ArrowRight } from 'lucide-react'
 import type { QuoteWithDetails, QuoteStatus } from '@/types/invoices'
 // New UI components
 import { Page } from '@/components/ui-v2/layout/Page'
@@ -13,13 +13,13 @@ import { Button } from '@/components/ui-v2/forms/Button'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Select } from '@/components/ui-v2/forms/Select'
-import { Badge } from '@/components/ui-v2/display/Badge'
+// import { Badge } from '@/components/ui-v2/display/Badge'
 import { Stat, StatGroup } from '@/components/ui-v2/display/Stat'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+// import { toast } from '@/components/ui-v2/feedback/Toast'
 
 export default function QuotesPage() {
   const router = useRouter()
@@ -35,11 +35,7 @@ export default function QuotesPage() {
     draft_badge: 0
   })
 
-  useEffect(() => {
-    loadData()
-  }, [statusFilter])
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     try {
       const [quotesResult, summaryResult] = await Promise.all([
         getQuotes(statusFilter === 'all' ? undefined : statusFilter),
@@ -60,19 +56,16 @@ export default function QuotesPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [statusFilter])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  
 
 
-  function getStatusVariant(status: QuoteStatus): 'success' | 'info' | 'warning' | 'error' | 'default' {
-    switch (status) {
-      case 'draft': return 'default'
-      case 'sent': return 'info'
-      case 'accepted': return 'success'
-      case 'rejected': return 'error'
-      case 'expired': return 'warning'
-      default: return 'default'
-    }
-  }
+  // getStatusVariant unused; remove to satisfy lint
 
   function getStatusColor(status: QuoteStatus): string {
     switch (status) {
@@ -211,132 +204,75 @@ export default function QuotesPage() {
               }
             />
           ) : (
-          <>
-            {/* Desktop Table */}
-            <div className="hidden lg:block overflow-x-auto">
-              <table className="w-full">
-              <thead>
-                <tr className="border-b bg-gray-50">
-                  <th className="text-left p-4 font-medium text-gray-700">Quote #</th>
-                  <th className="text-left p-4 font-medium text-gray-700">Vendor</th>
-                  <th className="text-left p-4 font-medium text-gray-700">Date</th>
-                  <th className="text-left p-4 font-medium text-gray-700">Valid Until</th>
-                  <th className="text-left p-4 font-medium text-gray-700">Status</th>
-                  <th className="text-right p-4 font-medium text-gray-700">Amount</th>
-                  <th className="text-center p-4 font-medium text-gray-700">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredQuotes.map((quote) => (
-                  <tr 
-                    key={quote.id} 
-                    className="border-b hover:bg-gray-50 cursor-pointer"
-                    onClick={() => router.push(`/quotes/${quote.id}`)}
-                  >
-                    <td className="p-4">
-                      <div className="font-medium">{quote.quote_number}</div>
-                      {quote.reference && (
-                        <div className="text-sm text-gray-500">{quote.reference}</div>
-                      )}
-                    </td>
-                    <td className="p-4">{quote.vendor?.name || '-'}</td>
-                    <td className="p-4 text-sm">
-                      {new Date(quote.quote_date).toLocaleDateString('en-GB')}
-                    </td>
-                    <td className="p-4 text-sm">
-                      {new Date(quote.valid_until).toLocaleDateString('en-GB')}
-                    </td>
-                    <td className="p-4">
-                      <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(quote.status)}`}>
-                        {quote.status.charAt(0).toUpperCase() + quote.status.slice(1)}
-                      </span>
-                    </td>
-                    <td className="p-4 text-right font-medium">
-                      £{quote.total_amount.toFixed(2)}
-                    </td>
-                    <td className="p-4 text-center" onClick={(e) => e.stopPropagation()}>
-                      {quote.status === 'accepted' && !quote.converted_to_invoice_id && (
-                        <Button
-                          size="sm"
-                          onClick={() => router.push(`/quotes/${quote.id}/convert`)}
-                        >
-                          <ArrowRight className="h-4 w-4 mr-1" />
-                          Convert
-                        </Button>
-                      )}
-                      {quote.converted_to_invoice_id && (
-                        <span className="text-sm text-green-600">Converted</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              </table>
-            </div>
-            
-            {/* Mobile Card View */}
-            <div className="lg:hidden">
-              <div className="space-y-3 p-3 sm:p-4">
-                {filteredQuotes.map((quote) => {
-                  const isExpired = quote.status === 'expired'
-                  const isAccepted = quote.status === 'accepted'
-                  const isDraft = quote.status === 'draft'
-                  
-                  return (
-                    <div 
-                      key={quote.id}
-                      onClick={() => router.push(`/quotes/${quote.id}`)}
-                      className="bg-white border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
-                    >
-                      <div className="flex justify-between items-start mb-3">
-                        <div className="min-w-0 flex-1">
-                          <p className="font-medium text-gray-900">{quote.quote_number}</p>
-                          {quote.reference && (
-                            <p className="text-sm text-gray-500 truncate">{quote.reference}</p>
-                          )}
-                          <p className="text-sm text-gray-600 mt-1">{quote.vendor?.name || '-'}</p>
-                        </div>
-                        <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(quote.status)}`}>
-                          {quote.status.charAt(0).toUpperCase() + quote.status.slice(1)}
-                        </span>
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-3 text-sm mb-3">
-                        <div>
-                          <p className="text-gray-500">Date</p>
-                          <p className="font-medium">{new Date(quote.quote_date).toLocaleDateString('en-GB')}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-500">Valid Until</p>
-                          <p className="font-medium">{new Date(quote.valid_until).toLocaleDateString('en-GB')}</p>
-                        </div>
-                      </div>
-                      
-                      <div className="flex justify-between items-center pt-3 border-t">
-                        <p className="text-lg font-semibold">£{quote.total_amount.toFixed(2)}</p>
-                        <div onClick={(e) => e.stopPropagation()}>
-                          {quote.status === 'accepted' && !quote.converted_to_invoice_id && (
-                            <Button
-                              size="sm"
-                              onClick={() => router.push(`/quotes/${quote.id}/convert`)}
-                              className="text-sm"
-                            >
-                              <ArrowRight className="h-3 w-3 mr-1" />
-                              Convert
-                            </Button>
-                          )}
-                          {quote.converted_to_invoice_id && (
-                            <span className="text-sm text-green-600 font-medium">Converted</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
+          <DataTable<QuoteWithDetails>
+            data={filteredQuotes}
+            getRowKey={(q) => q.id}
+            columns={[
+              { key: 'number', header: 'Quote #', cell: (q: QuoteWithDetails) => (
+                <div>
+                  <div className="font-medium">{q.quote_number}</div>
+                  {q.reference && <div className="text-sm text-gray-500">{q.reference}</div>}
+                </div>
+              ) },
+              { key: 'vendor', header: 'Vendor', cell: (q: QuoteWithDetails) => <span>{q.vendor?.name || '-'}</span> },
+              { key: 'date', header: 'Date', cell: (q: QuoteWithDetails) => <span className="text-sm">{new Date(q.quote_date).toLocaleDateString('en-GB')}</span> },
+              { key: 'valid', header: 'Valid Until', cell: (q: QuoteWithDetails) => <span className="text-sm">{new Date(q.valid_until).toLocaleDateString('en-GB')}</span> },
+              { key: 'status', header: 'Status', cell: (q: QuoteWithDetails) => (
+                <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(q.status)}`}>
+                  {q.status.charAt(0).toUpperCase() + q.status.slice(1)}
+                </span>
+              ) },
+              { key: 'amount', header: 'Amount', align: 'right', cell: (q: QuoteWithDetails) => <span className="font-medium">£{q.total_amount.toFixed(2)}</span> },
+              { key: 'actions', header: 'Actions', align: 'center', cell: (q: QuoteWithDetails) => (
+                <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
+                  {q.status === 'accepted' && !q.converted_to_invoice_id && (
+                    <Button size="sm" onClick={() => router.push(`/quotes/${q.id}/convert`)}>
+                      <ArrowRight className="h-4 w-4 mr-1" />
+                      Convert
+                    </Button>
+                  )}
+                  {q.converted_to_invoice_id && (
+                    <span className="text-sm text-green-600">Converted</span>
+                  )}
+                </div>
+              ) },
+            ]}
+            clickableRows
+            onRowClick={(q) => router.push(`/quotes/${q.id}`)}
+            renderMobileCard={(q: QuoteWithDetails) => (
+              <div className="p-4">
+                <div className="flex justify-between items-start mb-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-gray-900">{q.quote_number}</p>
+                    {q.reference && <p className="text-sm text-gray-500 truncate">{q.reference}</p>}
+                    <p className="text-sm text-gray-600 mt-1">{q.vendor?.name || '-'}</p>
+                  </div>
+                  <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(q.status)}`}>
+                    {q.status.charAt(0).toUpperCase() + q.status.slice(1)}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-sm mb-3">
+                  <div><p className="text-gray-500">Date</p><p className="font-medium">{new Date(q.quote_date).toLocaleDateString('en-GB')}</p></div>
+                  <div><p className="text-gray-500">Valid Until</p><p className="font-medium">{new Date(q.valid_until).toLocaleDateString('en-GB')}</p></div>
+                </div>
+                <div className="flex justify-between items-center pt-3 border-t">
+                  <p className="text-lg font-semibold">£{q.total_amount.toFixed(2)}</p>
+                  <div onClick={(e) => e.stopPropagation()}>
+                    {q.status === 'accepted' && !q.converted_to_invoice_id && (
+                      <Button size="sm" onClick={() => router.push(`/quotes/${q.id}/convert`)} className="text-sm">
+                        <ArrowRight className="h-3 w-3 mr-1" />
+                        Convert
+                      </Button>
+                    )}
+                    {q.converted_to_invoice_id && (
+                      <span className="text-sm text-green-600 font-medium">Converted</span>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-          </>
-        )}
+            )}
+          />
+          )}
         </Card>
       </Section>
 

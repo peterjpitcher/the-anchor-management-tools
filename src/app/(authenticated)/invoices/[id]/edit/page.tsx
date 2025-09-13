@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getInvoice, updateInvoice, getLineItemCatalog } from '@/app/actions/invoices'
 import { getVendors } from '@/app/actions/vendors'
@@ -40,11 +40,7 @@ export default function EditInvoicePage() {
   const [internalNotes, setInternalNotes] = useState('')
   const [lineItems, setLineItems] = useState<InvoiceLineItemInput[]>([])
 
-  useEffect(() => {
-    loadData()
-  }, [invoiceId])
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     try {
       const [invoiceResult, vendorsResult, catalogResult] = await Promise.all([
         getInvoice(invoiceId),
@@ -93,7 +89,11 @@ export default function EditInvoicePage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [invoiceId])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   function addLineItem() {
     setLineItems([...lineItems, {
@@ -110,7 +110,7 @@ export default function EditInvoicePage() {
     setLineItems(lineItems.filter((_, i) => i !== index))
   }
 
-  function updateLineItem(index: number, field: keyof InvoiceLineItemInput, value: any) {
+  function updateLineItem(index: number, field: keyof InvoiceLineItemInput, value: InvoiceLineItemInput[keyof InvoiceLineItemInput]) {
     const updated = [...lineItems]
     updated[index] = { ...updated[index], [field]: value }
     setLineItems(updated)

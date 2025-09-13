@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui-v2/display/Badge'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { Edit2, Trash2, Play, Pause, FileText, Calendar, Clock } from 'lucide-react'
+import { DataTable } from '@/components/ui-v2/display/DataTable'
 import type { RecurringInvoiceWithDetails } from '@/types/invoices'
 
 export default function RecurringInvoiceDetailPage() {
@@ -348,64 +349,65 @@ export default function RecurringInvoiceDetailPage() {
           </Card>
 
           <Card title="Line Items">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Description
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Qty
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Unit Price
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Discount
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      VAT
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Total
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {recurringInvoice.line_items?.map((item, index) => {
+            <DataTable
+              data={recurringInvoice.line_items || []}
+              getRowKey={(item) => `${item.description}-${item.unit_price}-${item.quantity}-${item.vat_rate}-${item.discount_percentage}`}
+              columns={[
+                {
+                  key: 'description',
+                  header: 'Description',
+                  cell: (item: any) => (
+                    <span className="text-sm text-gray-900">{item.description}</span>
+                  ),
+                },
+                {
+                  key: 'quantity',
+                  header: 'Qty',
+                  align: 'right',
+                  cell: (item: any) => (
+                    <span className="text-sm text-gray-900">{item.quantity}</span>
+                  ),
+                },
+                {
+                  key: 'unit_price',
+                  header: 'Unit Price',
+                  align: 'right',
+                  cell: (item: any) => (
+                    <span className="text-sm text-gray-900">£{item.unit_price.toFixed(2)}</span>
+                  ),
+                },
+                {
+                  key: 'discount_percentage',
+                  header: 'Discount',
+                  align: 'right',
+                  cell: (item: any) => (
+                    <span className="text-sm text-gray-900">{item.discount_percentage > 0 ? `${item.discount_percentage}%` : '-'}</span>
+                  ),
+                },
+                {
+                  key: 'vat_rate',
+                  header: 'VAT',
+                  align: 'right',
+                  cell: (item: any) => (
+                    <span className="text-sm text-gray-900">{item.vat_rate}%</span>
+                  ),
+                },
+                {
+                  key: 'total',
+                  header: 'Total',
+                  align: 'right',
+                  cell: (item: any) => {
                     const lineSubtotal = item.quantity * item.unit_price
                     const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
                     const lineAfterDiscount = lineSubtotal - lineDiscount
                     const lineVat = lineAfterDiscount * (item.vat_rate / 100)
                     const lineTotal = lineAfterDiscount + lineVat
-                    
-                    return (
-                      <tr key={index}>
-                        <td className="px-6 py-4 text-sm text-gray-900">
-                          {item.description}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                          {item.quantity}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                          £{item.unit_price.toFixed(2)}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                          {item.discount_percentage > 0 ? `${item.discount_percentage}%` : '-'}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                          {item.vat_rate}%
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-900 text-right font-medium">
-                          £{lineTotal.toFixed(2)}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    return <span className="text-sm text-gray-900 font-medium">£{lineTotal.toFixed(2)}</span>
+                  },
+                },
+              ]}
+              emptyMessage="No line items"
+            />
           </Card>
 
           <Card title="Summary">

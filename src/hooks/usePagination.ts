@@ -20,13 +20,26 @@ interface PaginationResult<T> {
   refresh: () => void
 }
 
+type FilterOperator =
+  | 'eq'
+  | 'neq'
+  | 'gt'
+  | 'gte'
+  | 'lt'
+  | 'lte'
+  | 'ilike'
+  | 'like'
+  | 'is'
+  | 'in'
+  | 'contains'
+
 export function usePagination<T>(
   supabase: SupabaseClient,
   tableName: string,
   query?: {
     select?: string
     orderBy?: { column: string; ascending?: boolean }
-    filters?: Array<{ column: string; operator: string; value: unknown }>
+    filters?: Array<{ column: string; operator: FilterOperator; value: any }>
   },
   options?: PaginationOptions
 ): PaginationResult<T> {
@@ -57,8 +70,52 @@ export function usePagination<T>(
       // Apply filters
       if (query?.filters) {
         for (const filter of query.filters) {
-          countQuery = (countQuery as any)[filter.operator](filter.column, filter.value)
-          dataQuery = (dataQuery as any)[filter.operator](filter.column, filter.value)
+          switch (filter.operator) {
+            case 'eq':
+              countQuery = countQuery.eq(filter.column, filter.value)
+              dataQuery = dataQuery.eq(filter.column, filter.value)
+              break
+            case 'neq':
+              countQuery = countQuery.neq(filter.column, filter.value)
+              dataQuery = dataQuery.neq(filter.column, filter.value)
+              break
+            case 'gt':
+              countQuery = countQuery.gt(filter.column, filter.value)
+              dataQuery = dataQuery.gt(filter.column, filter.value)
+              break
+            case 'gte':
+              countQuery = countQuery.gte(filter.column, filter.value)
+              dataQuery = dataQuery.gte(filter.column, filter.value)
+              break
+            case 'lt':
+              countQuery = countQuery.lt(filter.column, filter.value)
+              dataQuery = dataQuery.lt(filter.column, filter.value)
+              break
+            case 'lte':
+              countQuery = countQuery.lte(filter.column, filter.value)
+              dataQuery = dataQuery.lte(filter.column, filter.value)
+              break
+            case 'ilike':
+              countQuery = countQuery.ilike(filter.column, filter.value)
+              dataQuery = dataQuery.ilike(filter.column, filter.value)
+              break
+            case 'like':
+              countQuery = countQuery.like(filter.column, filter.value)
+              dataQuery = dataQuery.like(filter.column, filter.value)
+              break
+            case 'is':
+              countQuery = countQuery.is(filter.column, filter.value)
+              dataQuery = dataQuery.is(filter.column, filter.value)
+              break
+            case 'in':
+              countQuery = countQuery.in(filter.column, filter.value)
+              dataQuery = dataQuery.in(filter.column, filter.value)
+              break
+            case 'contains':
+              countQuery = countQuery.contains(filter.column as any, filter.value)
+              dataQuery = dataQuery.contains(filter.column as any, filter.value)
+              break
+          }
         }
       }
 

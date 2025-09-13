@@ -5,7 +5,6 @@ import ApiKeysManager from './ApiKeysManager';
 // New UI components
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
 export const metadata: Metadata = {
   title: 'API Keys',
   description: 'Manage API keys for external integrations',

@@ -13,13 +13,60 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
-import { Plus, Edit2, Trash2 } from 'lucide-react'
+import { DataTable } from '@/components/ui-v2/display/DataTable'
+import { Plus, Edit2, Trash2, Users } from 'lucide-react'
+import { getVendorContacts, createVendorContact, updateVendorContact, deleteVendorContact } from '@/app/actions/vendor-contacts'
+import { useSupabase } from '@/components/providers/SupabaseProvider'
+
+function PrimaryContactCell({ vendor }: { vendor: InvoiceVendor }) {
+  const supabase = useSupabase()
+  const [primary, setPrimary] = useState<{ name: string | null, email: string } | null>(null)
+  useEffect(() => {
+    let active = true
+    async function load() {
+      const { data } = await supabase
+        .from('invoice_vendor_contacts')
+        .select('name, email')
+        .eq('vendor_id', vendor.id)
+        .eq('is_primary', true)
+        .maybeSingle()
+      if (!active) return
+      if (data) {
+        const typed = data as { name: string | null; email: string | null }
+        setPrimary({ name: typed.name || null, email: typed.email || '' })
+      }
+    }
+    load()
+    return () => { active = false }
+  }, [supabase, vendor.id])
+
+  if (primary) {
+    return (
+      <div className="text-sm">
+        <div className="font-medium truncate">{primary.name || '(No name)'}</div>
+        <div className="text-gray-600 break-all">{primary.email}</div>
+      </div>
+    )
+  }
+  // Fallback to legacy vendor fields
+  return (
+    <div className="text-sm">
+      <div className="font-medium truncate">{vendor.contact_name || '(No primary set)'}</div>
+      <div className="text-gray-600 break-all">{vendor.email || '-'}</div>
+    </div>
+  )
+}
 import type { InvoiceVendor } from '@/types/invoices'
+
+interface VendorContact {
+  id: string
+  name: string
+  email: string | null
+  is_primary: boolean
+}
 
 interface VendorFormData {
   name: string
-  contact_name: string
-  email: string
   phone: string
   address: string
   vat_number: string
@@ -34,8 +81,6 @@ export default function VendorsPage() {
   const [editingVendor, setEditingVendor] = useState<InvoiceVendor | null>(null)
   const [formData, setFormData] = useState<VendorFormData>({
     name: '',
-    contact_name: '',
-    email: '',
     phone: '',
     address: '',
     vat_number: '',
@@ -44,6 +89,11 @@ export default function VendorsPage() {
   })
   const [formLoading, setFormLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [contactsModalVendor, setContactsModalVendor] = useState<InvoiceVendor | null>(null)
+  const [contacts, setContacts] = useState<VendorContact[]>([])
+  const [contactsLoading, setContactsLoading] = useState(false)
+  const [contactForm, setContactForm] = useState<{ id?: string, name: string, email: string, is_primary: boolean }>({ name: '', email: '', is_primary: false })
+  const [contactSaving, setContactSaving] = useState(false)
 
   useEffect(() => {
     loadVendors()
@@ -65,13 +115,74 @@ export default function VendorsPage() {
     }
   }
 
+  async function openContacts(vendor: InvoiceVendor) {
+    setContactsModalVendor(vendor)
+    setContactsLoading(true)
+    setError(null)
+    try {
+      const res = await getVendorContacts(vendor.id)
+      if (res.error) throw new Error(res.error)
+      setContacts(res.contacts || [])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load contacts')
+    } finally {
+      setContactsLoading(false)
+    }
+  }
+
+  function closeContacts() {
+    setContactsModalVendor(null)
+    setContacts([])
+    setContactForm({ name: '', email: '', is_primary: false })
+    setError(null)
+  }
+
+  async function saveContact(e: React.FormEvent) {
+    e.preventDefault()
+    if (!contactsModalVendor) return
+    setContactSaving(true)
+    setError(null)
+    try {
+      const fd = new FormData()
+      fd.append('vendorId', contactsModalVendor.id)
+      fd.append('name', contactForm.name)
+      fd.append('email', contactForm.email)
+      fd.append('isPrimary', String(contactForm.is_primary))
+      if (contactForm.id) fd.append('id', contactForm.id)
+
+      const res = contactForm.id ? await updateVendorContact(fd) : await createVendorContact(fd)
+      if (res.error) throw new Error(res.error)
+      // refresh list
+      const list = await getVendorContacts(contactsModalVendor.id)
+      if (!list.error) setContacts(list.contacts || [])
+      setContactForm({ name: '', email: '', is_primary: false })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save contact')
+    } finally {
+      setContactSaving(false)
+    }
+  }
+
+  async function removeContact(id: string) {
+    try {
+      const fd = new FormData()
+      fd.append('id', id)
+      const res = await deleteVendorContact(fd)
+      if (res.error) throw new Error(res.error)
+      if (contactsModalVendor) {
+        const list = await getVendorContacts(contactsModalVendor.id)
+        if (!list.error) setContacts(list.contacts || [])
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete contact')
+    }
+  }
+
   function openForm(vendor?: InvoiceVendor) {
     if (vendor) {
       setEditingVendor(vendor)
       setFormData({
         name: vendor.name,
-        contact_name: vendor.contact_name || '',
-        email: vendor.email || '',
         phone: vendor.phone || '',
         address: vendor.address || '',
         vat_number: vendor.vat_number || '',
@@ -82,8 +193,6 @@ export default function VendorsPage() {
       setEditingVendor(null)
       setFormData({
         name: '',
-        contact_name: '',
-        email: '',
         phone: '',
         address: '',
         vat_number: '',
@@ -206,69 +315,59 @@ export default function VendorsPage() {
         />
       ) : (
         <Card>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b bg-gray-50">
-                  <th className="text-left p-4 font-medium text-gray-700">Name</th>
-                  <th className="text-left p-4 font-medium text-gray-700">Contact</th>
-                  <th className="text-left p-4 font-medium text-gray-700">Email</th>
-                  <th className="text-left p-4 font-medium text-gray-700">Payment Terms</th>
-                  <th className="text-right p-4 font-medium text-gray-700">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {vendors.map((vendor) => (
-                  <tr key={vendor.id} className="border-b hover:bg-gray-50">
-                    <td className="p-4">
-                      <div>
-                        <div className="font-medium">{vendor.name}</div>
-                        {vendor.vat_number && (
-                          <div className="text-sm text-gray-500">VAT: {vendor.vat_number}</div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="text-sm">
-                        {vendor.contact_name || '-'}
-                        {vendor.phone && (
-                          <div className="text-gray-500">{vendor.phone}</div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-4 text-sm">
-                      {vendor.email || '-'}
-                    </td>
-                    <td className="p-4 text-sm">
-                      {vendor.payment_terms} days
-                    </td>
-                    <td className="p-4">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => openForm(vendor)}
-                          aria-label="Edit vendor"
-                          iconOnly
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          onClick={() => handleDelete(vendor)}
-                          aria-label="Delete vendor"
-                          iconOnly
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable<InvoiceVendor>
+            data={vendors}
+            getRowKey={(v) => v.id}
+            emptyMessage="No vendors found"
+            columns={[
+              { key: 'name', header: 'Name', cell: (v: InvoiceVendor) => (
+                <div>
+                  <div className="font-medium">{v.name}</div>
+                  {v.vat_number && (<div className="text-sm text-gray-500">VAT: {v.vat_number}</div>)}
+                </div>
+              ) },
+              { key: 'primary_contact', header: 'Primary Contact', cell: (v: InvoiceVendor) => (
+                <PrimaryContactCell vendor={v} />
+              ) },
+              { key: 'terms', header: 'Payment Terms', cell: (v: InvoiceVendor) => <span className="text-sm">{v.payment_terms} days</span> },
+              { key: 'actions', header: 'Actions', align: 'right', cell: (v: InvoiceVendor) => (
+                <div className="flex justify-end gap-2">
+                  <Button size="sm" onClick={() => openContacts(v)} aria-label="Manage contacts" leftIcon={<Users className="h-4 w-4" />}>
+                    Contacts
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => openForm(v)} aria-label="Edit vendor" iconOnly>
+                    <Edit2 className="h-4 w-4" />
+                  </Button>
+                  <Button size="sm" variant="danger" onClick={() => handleDelete(v)} aria-label="Delete vendor" iconOnly>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) },
+            ]}
+            renderMobileCard={(v: InvoiceVendor) => (
+              <div className="p-3">
+                <div className="flex justify-between items-start mb-2">
+                  <div className="min-w-0">
+                    <div className="font-medium">{v.name}</div>
+                    {v.vat_number && (<div className="text-sm text-gray-500">VAT: {v.vat_number}</div>)}
+                    <div className="text-sm text-gray-600">{v.email || '-'}</div>
+                    {v.phone && (<div className="text-sm text-gray-600">{v.phone}</div>)}
+                  </div>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <div>Terms: {v.payment_terms} days</div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => openForm(v)} aria-label="Edit vendor" iconOnly>
+                      <Edit2 className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="danger" onClick={() => handleDelete(v)} aria-label="Delete vendor" iconOnly>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          />
         </Card>
       )}
 
@@ -310,23 +409,10 @@ export default function VendorsPage() {
                   />
                 </FormGroup>
 
-                <FormGroup label="Contact Name">
-                  <Input
-                    type="text"
-                    value={formData.contact_name}
-                    onChange={(e) => setFormData({ ...formData, contact_name: e.target.value })}
-                  />
-                </FormGroup>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Email
-                  </label>
-                  <Input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  />
+                <div className="md:col-span-2">
+                  <Alert variant="info" title="Contacts moved">
+                    Manage people and email recipients via the Contacts button above. The vendor’s default email remains visible in the list for legacy invoices.
+                  </Alert>
                 </div>
 
                 <div>
@@ -386,6 +472,59 @@ export default function VendorsPage() {
                 </div>
               </div>
         </form>
+      </Modal>
+
+      {/* Contacts Manager */}
+      <Modal
+        open={!!contactsModalVendor}
+        onClose={closeContacts}
+        title={contactsModalVendor ? `Contacts — ${contactsModalVendor.name}` : 'Contacts'}
+        size="lg"
+      >
+        {error && (
+          <Alert variant="error" description={error} className="mb-4" />)
+        }
+        {contactsLoading ? (
+          <div className="py-10 text-center text-gray-600">Loading contacts…</div>
+        ) : (
+          <div className="space-y-6">
+            <div className="border rounded-md divide-y">
+              {contacts.length === 0 && (
+                <div className="p-4 text-sm text-gray-600">No contacts yet.</div>
+              )}
+              {contacts.map(c => (
+                <div key={c.id} className="p-4 flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{c.name || '(No name)'} {c.is_primary && <span className="ml-2 text-xs text-green-700 bg-green-100 px-2 py-0.5 rounded">Primary</span>}</div>
+                    <div className="text-sm text-gray-700 break-all">{c.email}</div>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <Button size="sm" variant="secondary" onClick={() => setContactForm({ id: c.id, name: c.name || '', email: c.email || '', is_primary: c.is_primary })}>Edit</Button>
+                    <Button size="sm" variant="danger" onClick={() => removeContact(c.id)}>Delete</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <form onSubmit={saveContact} className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <FormGroup label="Name">
+                  <Input value={contactForm.name} onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })} />
+                </FormGroup>
+                <FormGroup label="Email" required>
+                  <Input type="email" required value={contactForm.email} onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })} />
+                </FormGroup>
+                <label className="inline-flex items-center gap-2 md:col-span-2 text-sm">
+                  <input type="checkbox" checked={contactForm.is_primary} onChange={(e) => setContactForm({ ...contactForm, is_primary: e.target.checked })} />
+                  Set as primary contact
+                </label>
+              </div>
+              <div className="flex justify-end">
+                <Button type="submit" loading={contactSaving}>{contactForm.id ? 'Update Contact' : 'Add Contact'}</Button>
+              </div>
+            </form>
+          </div>
+        )}
       </Modal>
       </PageContent>
     </PageWrapper>

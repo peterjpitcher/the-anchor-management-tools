@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { sendChasePaymentEmail } from '@/app/actions/email'
 import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Send, Clock } from 'lucide-react'
 import type { InvoiceWithDetails } from '@/types/invoices'
+import { useSupabase } from '@/components/providers/SupabaseProvider'
 
 interface ChasePaymentModalProps {
   invoice: InvoiceWithDetails
@@ -18,7 +19,10 @@ interface ChasePaymentModalProps {
 }
 
 export function ChasePaymentModal({ invoice, isOpen, onClose, onSuccess }: ChasePaymentModalProps) {
-  const [recipientEmail, setRecipientEmail] = useState(invoice.vendor?.email || '')
+  const supabase = useSupabase()
+  // Separate To and CC fields for clarity
+  const [toEmails, setToEmails] = useState('')
+  const [ccEmails, setCcEmails] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
@@ -48,8 +52,34 @@ Orange Jelly Limited
 P.S. I've attached a copy of the invoice for your reference.`
   )
 
+  // Prefill To with Primary contact, CC with all other contacts + vendor default emails (excluding Primary)
+  useEffect(() => {
+    let active = true
+    async function loadPrimary() {
+      const vendorId = invoice.vendor?.id
+      if (!isOpen || !vendorId) return
+      const { data: contacts } = await supabase
+        .from('invoice_vendor_contacts')
+        .select('email, is_primary')
+        .eq('vendor_id', vendorId)
+        .order('is_primary', { ascending: false })
+      if (!active) return
+      const vendorEmails = (invoice.vendor?.email ? String(invoice.vendor.email).split(/[;,]/) : [])
+        .map(s => s.trim())
+        .filter(Boolean)
+      const contactEmails = (contacts || []).map((c: any) => c.email).filter(Boolean)
+      const primaryEmail = ((contacts || []) as any[]).find((c: any) => c.is_primary)?.email || vendorEmails[0] || ''
+      const all = Array.from(new Set([...vendorEmails, ...contactEmails]))
+      const cc = all.filter(e => e && e !== primaryEmail)
+      setToEmails(primaryEmail || '')
+      setCcEmails(cc.join(', '))
+    }
+    loadPrimary()
+    return () => { active = false }
+  }, [isOpen, supabase, invoice.vendor?.id, invoice.vendor?.email])
+
   async function handleSend() {
-    if (!recipientEmail) {
+    if (!toEmails) {
       setError('Please enter a recipient email address')
       return
     }
@@ -60,7 +90,9 @@ P.S. I've attached a copy of the invoice for your reference.`
     try {
       const formData = new FormData()
       formData.append('invoiceId', invoice.id)
-      formData.append('recipientEmail', recipientEmail)
+      // Combine To and CC for backend; it will split and place Primary in To
+      const combined = [toEmails, ccEmails].filter(Boolean).join(', ')
+      formData.append('recipientEmail', combined)
       formData.append('subject', subject)
       formData.append('body', body)
 
@@ -74,7 +106,7 @@ P.S. I've attached a copy of the invoice for your reference.`
         }
         onClose()
       }
-    } catch (err) {
+    } catch {
       setError('Failed to send chase email')
     } finally {
       setSending(false)
@@ -98,7 +130,7 @@ P.S. I've attached a copy of the invoice for your reference.`
             Cancel
           </Button>
           <Button onClick={handleSend}
-            disabled={!recipientEmail}
+            disabled={!toEmails}
             loading={sending}
             leftIcon={<Send className="h-4 w-4" />}
             className="bg-orange-600 hover:bg-orange-700 focus:ring-orange-500"
@@ -122,15 +154,25 @@ P.S. I've attached a copy of the invoice for your reference.`
         )}
 
         <div>
-          <label className="block text-sm font-medium mb-1">
-            Send to
-          </label>
+          <label className="block text-sm font-medium mb-1">To</label>
           <Input
-            type="email"
-            value={recipientEmail}
-            onChange={(e) => setRecipientEmail(e.target.value)}
-            placeholder="customer@example.com"
+            type="text"
+            value={toEmails}
+            onChange={(e) => setToEmails(e.target.value)}
+            placeholder="primary.contact@example.com"
           />
+          <p className="text-xs text-gray-500 mt-1">Primary recipient. Usually the vendor's primary contact.</p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">CC</label>
+          <Input
+            type="text"
+            value={ccEmails}
+            onChange={(e) => setCcEmails(e.target.value)}
+            placeholder="accounts@example.com, ops@example.com"
+          />
+          <p className="text-xs text-gray-500 mt-1">Separate multiple emails with commas or semicolons.</p>
         </div>
 
         <div>

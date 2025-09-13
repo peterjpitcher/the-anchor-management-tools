@@ -477,7 +477,7 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
     special_requirements: formData.get('special_requirements') as string || undefined,
     accessibility_needs: formData.get('accessibility_needs') as string || undefined,
     source: formData.get('source') as string || undefined,
-    status: formData.get('status') as any || undefined,
+    status: formData.get('status') as import('@/types/private-bookings').BookingStatus | undefined,
   }
 
   // Validate data
@@ -1059,6 +1059,79 @@ export async function recordFinalPayment(bookingId: string, formData: FormData) 
     }
   }
 
+  revalidatePath(`/private-bookings/${bookingId}`)
+  return { success: true }
+}
+
+// Cancel a private booking and notify customer by SMS
+export async function cancelPrivateBooking(bookingId: string, reason?: string) {
+  const supabase = await createClient()
+
+  // Get current user
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // Fetch booking details needed for SMS and to check status
+  const { data: booking, error: fetchError } = await supabase
+    .from('private_bookings')
+    .select('id, status, event_date, customer_first_name, customer_last_name, customer_name, contact_phone')
+    .eq('id', bookingId)
+    .single()
+
+  if (fetchError || !booking) {
+    return { error: 'Booking not found' }
+  }
+
+  if (booking.status === 'cancelled' || booking.status === 'completed') {
+    return { error: 'Booking cannot be cancelled' }
+  }
+
+  // Update status to cancelled
+  const { error: updateError } = await supabase
+    .from('private_bookings')
+    .update({
+      status: 'cancelled',
+      cancellation_reason: reason || 'Cancelled by staff',
+      cancelled_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', bookingId)
+
+  if (updateError) {
+    console.error('Error cancelling private booking:', updateError)
+    return { error: 'Failed to cancel booking' }
+  }
+
+  // Send SMS to customer if phone exists
+  if (booking.contact_phone) {
+    const eventDate = new Date(booking.event_date).toLocaleDateString('en-GB', {
+      day: 'numeric', month: 'long', year: 'numeric'
+    })
+
+    const firstName = booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there'
+    const smsMessage = `Hi ${firstName}, your tentative private booking date on ${eventDate} has been cancelled. If you believe this was a mistake, please contact us.`
+
+    const smsResult = await queueAndSendPrivateBookingSms({
+      booking_id: bookingId,
+      trigger_type: 'booking_cancelled',
+      template_key: 'private_booking_cancelled',
+      message_body: smsMessage,
+      customer_phone: booking.contact_phone,
+      customer_name: booking.customer_name || `${booking.customer_first_name} ${booking.customer_last_name || ''}`.trim(),
+      created_by: user?.id,
+      priority: 2,
+      metadata: {
+        template: 'private_booking_cancelled',
+        event_date: eventDate,
+        reason: reason || 'staff_cancelled'
+      }
+    })
+
+    if (smsResult && 'error' in smsResult && smsResult.error) {
+      console.error('Failed to send cancellation SMS:', smsResult.error)
+    }
+  }
+
+  revalidatePath('/private-bookings')
   revalidatePath(`/private-bookings/${bookingId}`)
   return { success: true }
 }

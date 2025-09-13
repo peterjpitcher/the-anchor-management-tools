@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { sendQuoteViaEmail } from '@/app/actions/email'
 import { Button, Modal, ModalActions, Input, Textarea, Alert, FormGroup } from '@/components/ui-v2'
 import { Send } from 'lucide-react'
 import type { QuoteWithDetails } from '@/types/invoices'
+import { useSupabase } from '@/components/providers/SupabaseProvider'
 
 interface EmailQuoteModalProps {
   quote: QuoteWithDetails
@@ -14,6 +15,7 @@ interface EmailQuoteModalProps {
 }
 
 export function EmailQuoteModal({ quote, isOpen, onClose, onSuccess }: EmailQuoteModalProps) {
+  const supabase = useSupabase()
   const [recipientEmail, setRecipientEmail] = useState(quote.vendor?.email || '')
   const [subject, setSubject] = useState(`Quote ${quote.quote_number} from Orange Jelly Limited`)
   const [body, setBody] = useState(
@@ -41,6 +43,31 @@ P.S. The quote is attached as a PDF for your convenience.`
   const [error, setError] = useState<string | null>(null)
 
   if (!isOpen) return null
+
+  // Prefill with Primary contact + vendor email(s)
+  useEffect(() => {
+    let active = true
+    async function loadPrimary() {
+      const vendorId = quote.vendor?.id
+      if (!isOpen || !vendorId) return
+      const { data } = await supabase
+        .from('invoice_vendor_contacts')
+        .select('email')
+        .eq('vendor_id', vendorId)
+        .eq('is_primary', true)
+        .maybeSingle()
+      if (!active) return
+      const parts = [(data as any)?.email, quote.vendor?.email]
+        .filter(Boolean)
+        .flatMap(v => String(v).split(/[;,]/))
+        .map(s => s.trim())
+        .filter(Boolean)
+      const unique = Array.from(new Set(parts))
+      if (unique.length) setRecipientEmail(unique.join(', '))
+    }
+    loadPrimary()
+    return () => { active = false }
+  }, [isOpen, supabase, quote.vendor?.id, quote.vendor?.email])
 
   async function handleSend() {
     if (!recipientEmail) {
@@ -89,14 +116,15 @@ P.S. The quote is attached as a PDF for your convenience.`
           </Alert>
         )}
 
-        <FormGroup label="To Email Address">
+        <FormGroup label="To Email Address(es)">
           <Input
-            type="email"
+            type="text"
             value={recipientEmail}
             onChange={(e) => setRecipientEmail(e.target.value)}
-            placeholder="customer@example.com"
+            placeholder="customer@example.com, accounts@example.com"
             required
           />
+          <p className="text-xs text-gray-500 mt-1">Separate multiple emails with commas or semicolons.</p>
         </FormGroup>
 
         <FormGroup label="Subject">

@@ -127,41 +127,55 @@ export async function GET(request: Request) {
               .eq('id', generateResult.invoice.id)
               .single()
 
-            if (!invoiceError && fullInvoice) {
-              const emailResult = await sendInvoiceEmail(
-                fullInvoice,
-                recurringInvoice.vendor.email,
-                `Invoice ${fullInvoice.invoice_number} from Orange Jelly Limited`,
-                `Dear ${recurringInvoice.vendor.contact_name || recurringInvoice.vendor.name},\n\nPlease find attached invoice ${fullInvoice.invoice_number} for your records.\n\nThis is an automatically generated recurring invoice.\n\nBest regards,\nOrange Jelly Limited`
-              )
+              if (!invoiceError && fullInvoice) {
+                // Support multiple recipients (comma/semicolon separated) — first is To, rest CC
+                const raw = String(recurringInvoice.vendor.email)
+                const recipients = raw.split(/[;,]/).map(s => s.trim()).filter(Boolean)
+                const toAddress = recipients[0] || raw
+                const ccAddresses = (recipients[0] ? recipients.slice(1) : []).filter(Boolean)
 
-              if (emailResult.success) {
-                console.log(`[Cron] Email sent for invoice ${fullInvoice.invoice_number}`)
-                
-                // Update invoice status to sent
-                await supabase
-                  .from('invoices')
-                  .update({ 
-                    status: 'sent',
-                    updated_at: new Date().toISOString()
-                  })
-                  .eq('id', fullInvoice.id)
+                const emailResult = await sendInvoiceEmail(
+                  fullInvoice,
+                  toAddress,
+                  `Invoice ${fullInvoice.invoice_number} from Orange Jelly Limited`,
+                  `Dear ${recurringInvoice.vendor.contact_name || recurringInvoice.vendor.name},\n\nPlease find attached invoice ${fullInvoice.invoice_number} for your records.\n\nThis is an automatically generated recurring invoice.\n\nBest regards,\nOrange Jelly Limited`,
+                  ccAddresses
+                )
 
-                // Log email event
-                await supabase
-                  .from('invoice_email_logs')
-                  .insert({
+                if (emailResult.success) {
+                  console.log(`[Cron] Email sent for invoice ${fullInvoice.invoice_number}`)
+                  // Update invoice status to sent
+                  await supabase
+                    .from('invoices')
+                    .update({ 
+                      status: 'sent',
+                      updated_at: new Date().toISOString()
+                    })
+                    .eq('id', fullInvoice.id)
+
+                  // Log to and cc entries
+                  await supabase.from('invoice_email_logs').insert({
                     invoice_id: fullInvoice.id,
-                    sent_to: recurringInvoice.vendor.email,
+                    sent_to: toAddress,
                     sent_by: 'system',
                     subject: `Invoice ${fullInvoice.invoice_number} from Orange Jelly Limited`,
                     body: 'Automatically generated recurring invoice',
                     status: 'sent'
                   })
-              } else {
-                console.error(`[Cron] Failed to send email for invoice ${fullInvoice.invoice_number}:`, emailResult.error)
+                  for (const cc of ccAddresses) {
+                    await supabase.from('invoice_email_logs').insert({
+                      invoice_id: fullInvoice.id,
+                      sent_to: cc,
+                      sent_by: 'system',
+                      subject: `Invoice ${fullInvoice.invoice_number} from Orange Jelly Limited`,
+                      body: 'Automatically generated recurring invoice',
+                      status: 'sent'
+                    })
+                  }
+                } else {
+                  console.error(`[Cron] Failed to send email for invoice ${fullInvoice.invoice_number}:`, emailResult.error)
+                }
               }
-            }
           } catch (emailError) {
             console.error(`[Cron] Error sending email for invoice:`, emailError)
             // Don't fail the whole process if email fails

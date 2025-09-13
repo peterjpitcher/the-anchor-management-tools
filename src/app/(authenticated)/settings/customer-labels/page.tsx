@@ -21,7 +21,7 @@ import {
 // New UI components
 import { Page } from '@/components/ui-v2/layout/Page'
 import { Card } from '@/components/ui-v2/layout/Card'
-import { Section } from '@/components/ui-v2/layout/Section'
+// import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Modal } from '@/components/ui-v2/overlay/Modal'
 import { Form } from '@/components/ui-v2/forms/Form'

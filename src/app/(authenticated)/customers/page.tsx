@@ -32,7 +32,7 @@ import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Pagination as PaginationV2 } from '@/components/ui-v2/navigation/Pagination'
 import { Skeleton } from '@/components/ui-v2/feedback/Skeleton'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
-import { TabNav } from '@/components/ui-v2/navigation/TabNav'
+// import { TabNav } from '@/components/ui-v2/navigation/TabNav'
 
 interface CustomerCategoryStats {
   customer_id: string
@@ -57,7 +57,7 @@ export default function CustomersPage() {
   // Loyalty removed: no regulars tracking
   const [customerPreferences, setCustomerPreferences] = useState<Record<string, CustomerCategoryStats[]>>({})
   const [customerLabels, setCustomerLabels] = useState<Record<string, CustomerLabelAssignment[]>>({})
-  const [filter, setFilter] = useState<'all' | 'regular' | 'non-regular'>('all')
+  const [showDeactivated, setShowDeactivated] = useState(false)
   // Loyalty program removed
 
   // Debounce search term
@@ -132,9 +132,9 @@ export default function CustomersPage() {
               category_id: string
               times_attended: number
               last_attended_date: string
-              event_categories: any
+              event_categories: { id: string; name: string } | { id: string; name: string }[]
             }> | null
-            error: any
+            error: unknown
           }
 
         if (error) {
@@ -202,29 +202,11 @@ export default function CustomersPage() {
 
   // Process customers with loyalty status and apply filter
   const customersWithLoyalty = useMemo(() => {
-    const processedCustomers = customers.map(customer => ({
-      ...customer,
-      isLoyal: false
-    }))
-    
-    let filtered = processedCustomers
-    if (filter === 'regular') {
-      // Show only customers with loyalty stars (have booked seats recently)
-      filtered = processedCustomers.filter(customer => customer.isLoyal)
-    } else if (filter === 'non-regular') {
-      // Show only customers without loyalty stars
-      filtered = processedCustomers.filter(customer => !customer.isLoyal)
-    }
-    
-    return filtered
-  }, [customers, filter])
+    return customers.filter(c => showDeactivated ? c.sms_opt_in === false : c.sms_opt_in !== false)
+  }, [customers, showDeactivated])
 
   // Calculate loyal customer IDs for badge counts
-  const loyalCustomerIds = useMemo(() => {
-    // Since isLoyal is hardcoded to false, we'll return empty for now
-    // This should be implemented based on actual loyalty logic
-    return []
-  }, [customers])
+  // Loyalty tracking removed; placeholder removed to avoid unused vars
 
   async function handleCreateCustomer(
     customerData: Omit<Customer, 'id' | 'created_at'>
@@ -255,13 +237,14 @@ export default function CustomersPage() {
     if (!editingCustomer) return
 
     try {
+      const updatePayload: import('@/types/database').Database['public']['Tables']['customers']['Update'] = {
+        first_name: customerData.first_name,
+        last_name: customerData.last_name,
+        mobile_number: customerData.mobile_number,
+      }
       const { error } = await (supabase as any)
         .from('customers')
-        .update({
-          first_name: customerData.first_name,
-          last_name: customerData.last_name,
-          mobile_number: customerData.mobile_number
-        })
+        .update(updatePayload)
         .eq('id', editingCustomer.id)
 
       if (error) {
@@ -300,7 +283,12 @@ export default function CustomersPage() {
 
   async function handleImportCustomers(customersData: Omit<Customer, 'id' | 'created_at'>[]) {
     try {
-      const { error } = await (supabase.from('customers') as any).insert(customersData)
+      const inserts: import('@/types/database').Database['public']['Tables']['customers']['Insert'][] = customersData.map((c) => ({
+        first_name: c.first_name,
+        last_name: c.last_name,
+        mobile_number: c.mobile_number,
+      }))
+      const { error } = await (supabase as any).from('customers').insert(inserts)
       if (error) {
         const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Failed to import customers';
         toast.error(message)
@@ -397,9 +385,7 @@ export default function CustomersPage() {
                 )}
                 {!searchTerm && totalCount > 0 && (
                   <span>
-                    Showing {customPageSize === 1000 ? customersWithLoyalty.length : Math.min(customersWithLoyalty.length, customPageSize)} of {customersWithLoyalty.length} 
-                    {filter === 'regular' ? ' regular' : filter === 'non-regular' ? ' non-regular' : ''} customers
-                    {filter === 'all' && ` (${totalCount} total)`}
+                    Showing {customPageSize === 1000 ? customersWithLoyalty.length : Math.min(customersWithLoyalty.length, customPageSize)} of {customersWithLoyalty.length} customers
                   </span>
                 )}
               </div>
@@ -416,15 +402,22 @@ export default function CustomersPage() {
               </select>
             </div>
           </div>
-          <TabNav
-            tabs={[
-              { key: 'all', label: 'All Customers', mobileLabel: 'All', badge: totalCount },
-              { key: 'regular', label: 'Regular Only', mobileLabel: 'Regular', badge: loyalCustomerIds.length },
-              { key: 'non-regular', label: 'Non-Regular Only', mobileLabel: 'Non-Regular', badge: totalCount - loyalCustomerIds.length },
-            ]}
-            activeKey={filter}
-            onChange={(tab) => setFilter(tab as 'all' | 'regular' | 'non-regular')}
-          />
+          <div className="flex gap-2">
+            <Button
+              variant={showDeactivated ? 'secondary' : 'primary'}
+              size="sm"
+              onClick={() => setShowDeactivated(false)}
+            >
+              SMS Active
+            </Button>
+            <Button
+              variant={showDeactivated ? 'primary' : 'secondary'}
+              size="sm"
+              onClick={() => setShowDeactivated(true)}
+            >
+              SMS Deactivated
+            </Button>
+          </div>
         </div>
       </Card>
 

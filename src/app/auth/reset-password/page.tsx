@@ -1,9 +1,8 @@
 'use client'
 
 import { useState, Suspense } from 'react'
-import { useRouter } from 'next/navigation'
+// import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import Image from 'next/image'
 import { Form, FormActions } from '@/components/ui-v2/forms/Form'
@@ -14,15 +13,15 @@ import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Container } from '@/components/ui-v2/layout/Container'
 import { Card } from '@/components/ui-v2/layout/Card'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 
 // ResetPasswordForm component - Client Component
 function ResetPasswordForm() {
   const [email, setEmail] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
-  const router = useRouter()
+  // const router = useRouter()
   const supabase = createClient()
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -45,7 +44,7 @@ function ResetPasswordForm() {
 
       setIsSubmitted(true)
       toast.success('Password reset email sent!')
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error:', error)
       toast.error('Failed to send reset email. Please try again.')
     } finally {

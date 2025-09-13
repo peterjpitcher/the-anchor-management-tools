@@ -9,14 +9,14 @@
  * Provides consistent table styling and behavior across the application.
  */
 
-import { ReactNode, forwardRef, HTMLAttributes, useState, useEffect } from 'react'
+import { ReactNode, HTMLAttributes, useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/20/solid'
 import { Checkbox } from '../forms/Checkbox'
 import { Skeleton, SkeletonCard } from '../feedback/Skeleton'
 import { EmptyState } from './EmptyState'
 
-export interface Column<T = any> {
+export interface Column<T = unknown> {
   /**
    * Unique key for the column
    */
@@ -66,7 +66,7 @@ export interface Column<T = any> {
   className?: string
 }
 
-export interface DataTableProps<T = any> extends HTMLAttributes<HTMLDivElement> {
+export interface DataTableProps<T = unknown> extends HTMLAttributes<HTMLDivElement> {
   /**
    * Array of data to display
    */
@@ -172,7 +172,7 @@ export interface DataTableProps<T = any> extends HTMLAttributes<HTMLDivElement> 
   renderMobileCard?: (row: T) => ReactNode
 }
 
-export function DataTable<T = any>({
+export function DataTable<T = unknown>({
   data,
   columns,
   getRowKey,
@@ -303,7 +303,7 @@ export function DataTable<T = any>({
             ))}
           </div>
         ) : (
-          <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 rounded-lg">
+          <div className={cn('overflow-hidden rounded-lg', bordered && 'shadow ring-1 ring-black ring-opacity-5')}>
             <table className="min-w-full divide-y divide-gray-300">
               <thead className="bg-gray-50">
                 <tr>
@@ -419,7 +419,7 @@ export function DataTable<T = any>({
   // Desktop view
   return (
     <div className={cn('w-full', className)} {...props}>
-      <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 rounded-lg">
+      <div className={cn('overflow-hidden rounded-lg', bordered && 'shadow ring-1 ring-black ring-opacity-5')}>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-300">
             <thead className={cn('bg-gray-50', stickyHeader && 'sticky top-0 z-10')}>

@@ -3,14 +3,12 @@ import { redirect } from 'next/navigation'
 import { 
   PlusIcon, 
   UserGroupIcon,
-  PhoneIcon,
-  EnvelopeIcon,
-  GlobeAltIcon,
   CheckIcon,
   StarIcon
 } from '@heroicons/react/24/outline'
 import { createVendor, updateVendor, deleteVendor } from '@/app/actions/privateBookingActions'
 import { VendorDeleteButton } from '@/components/VendorDeleteButton'
+import type { InvoiceVendor } from '@/types/invoices'
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
@@ -19,7 +17,6 @@ import { Input } from '@/components/ui-v2/forms/Input'
 import { Select } from '@/components/ui-v2/forms/Select'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 

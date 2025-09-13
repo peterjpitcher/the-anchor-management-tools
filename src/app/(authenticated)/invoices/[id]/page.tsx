@@ -10,6 +10,7 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 // Removed unused Section, DataTable, Column imports
 import { toast } from '@/components/ui-v2/feedback/Toast'
@@ -376,82 +377,45 @@ export default function InvoiceDetailPage() {
 
           <Card className="p-6">
             <h2 className="text-lg font-semibold mb-4">Line Items</h2>
-            
-            {/* Desktop Table */}
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-2 text-sm font-medium text-gray-600">Description</th>
-                    <th className="text-right py-2 text-sm font-medium text-gray-600">Qty</th>
-                    <th className="text-right py-2 text-sm font-medium text-gray-600">Unit Price</th>
-                    <th className="text-right py-2 text-sm font-medium text-gray-600">Discount</th>
-                    <th className="text-right py-2 text-sm font-medium text-gray-600">VAT</th>
-                    <th className="text-right py-2 text-sm font-medium text-gray-600">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {invoice.line_items?.map((item) => {
-                    const lineSubtotal = item.quantity * item.unit_price
-                    const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
-                    const lineAfterDiscount = lineSubtotal - lineDiscount
-                    const itemShare = subtotal > 0 ? lineAfterDiscount / subtotal : 0
-                    const lineAfterInvoiceDiscount = lineAfterDiscount - (invoiceDiscount * itemShare)
-                    const lineVat = lineAfterInvoiceDiscount * (item.vat_rate / 100)
-                    const lineTotal = lineAfterInvoiceDiscount + lineVat
-
-                    return (
-                      <tr key={item.id} className="border-b">
-                        <td className="py-3 text-sm">{item.description}</td>
-                        <td className="py-3 text-sm text-right">{item.quantity}</td>
-                        <td className="py-3 text-sm text-right">£{item.unit_price.toFixed(2)}</td>
-                        <td className="py-3 text-sm text-right">
-                          {item.discount_percentage > 0 && (
-                            <span className="text-green-600">-{item.discount_percentage}%</span>
-                          )}
-                        </td>
-                        <td className="py-3 text-sm text-right">{item.vat_rate}%</td>
-                        <td className="py-3 text-sm text-right font-medium">£{lineTotal.toFixed(2)}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Mobile Card View */}
-            <div className="md:hidden space-y-3">
-              {invoice.line_items?.map((item) => {
-                const lineSubtotal = item.quantity * item.unit_price
-                const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
+            <DataTable
+              data={invoice.line_items || []}
+              getRowKey={(it) => it.id}
+              columns={[
+                { key: 'description', header: 'Description', cell: (it: { description: string }) => <span className="text-sm">{it.description}</span> },
+                { key: 'quantity', header: 'Qty', align: 'right', cell: (it: { quantity: number }) => <span className="text-sm">{it.quantity}</span> },
+                { key: 'unit_price', header: 'Unit Price', align: 'right', cell: (it: { unit_price: number }) => <span className="text-sm">£{it.unit_price.toFixed(2)}</span> },
+                { key: 'discount', header: 'Discount', align: 'right', cell: (it: { discount_percentage: number }) => <span className="text-sm text-green-600">{it.discount_percentage > 0 ? `-${it.discount_percentage}%` : ''}</span> },
+                { key: 'vat', header: 'VAT', align: 'right', cell: (it: { vat_rate: number }) => <span className="text-sm">{it.vat_rate}%</span> },
+                { key: 'total', header: 'Total', align: 'right', cell: (it: { quantity: number; unit_price: number; discount_percentage: number; vat_rate: number }) => {
+                  const lineSubtotal = it.quantity * it.unit_price
+                  const lineDiscount = lineSubtotal * (it.discount_percentage / 100)
+                  const lineAfterDiscount = lineSubtotal - lineDiscount
+                  const itemShare = subtotal > 0 ? lineAfterDiscount / subtotal : 0
+                  const lineAfterInvoiceDiscount = lineAfterDiscount - (invoiceDiscount * itemShare)
+                  const lineVat = lineAfterInvoiceDiscount * (it.vat_rate / 100)
+                  const lineTotal = lineAfterInvoiceDiscount + lineVat
+                  return <span className="text-sm font-medium">£{lineTotal.toFixed(2)}</span>
+                } },
+              ]}
+              emptyMessage="No line items"
+              renderMobileCard={(it: { description: string; quantity: number; unit_price: number; discount_percentage: number; vat_rate: number }) => {
+                const lineSubtotal = it.quantity * it.unit_price
+                const lineDiscount = lineSubtotal * (it.discount_percentage / 100)
                 const lineAfterDiscount = lineSubtotal - lineDiscount
                 const itemShare = subtotal > 0 ? lineAfterDiscount / subtotal : 0
                 const lineAfterInvoiceDiscount = lineAfterDiscount - (invoiceDiscount * itemShare)
-                const lineVat = lineAfterInvoiceDiscount * (item.vat_rate / 100)
+                const lineVat = lineAfterInvoiceDiscount * (it.vat_rate / 100)
                 const lineTotal = lineAfterInvoiceDiscount + lineVat
-
                 return (
-                  <div key={item.id} className="border rounded-lg p-4 bg-gray-50">
-                    <div className="font-medium text-sm mb-3">{item.description}</div>
+                  <div className="border rounded-lg p-4 bg-gray-50">
+                    <div className="font-medium text-sm mb-3">{it.description}</div>
                     <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Quantity:</span>
-                        <span>{item.quantity}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Unit Price:</span>
-                        <span>£{item.unit_price.toFixed(2)}</span>
-                      </div>
-                      {item.discount_percentage > 0 && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Discount:</span>
-                          <span className="text-green-600">-{item.discount_percentage}%</span>
-                        </div>
+                      <div className="flex justify-between"><span className="text-gray-600">Quantity:</span><span>{it.quantity}</span></div>
+                      <div className="flex justify-between"><span className="text-gray-600">Unit Price:</span><span>£{it.unit_price.toFixed(2)}</span></div>
+                      {it.discount_percentage > 0 && (
+                        <div className="flex justify-between"><span className="text-gray-600">Discount:</span><span className="text-green-600">-{it.discount_percentage}%</span></div>
                       )}
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">VAT:</span>
-                        <span>{item.vat_rate}%</span>
-                      </div>
+                      <div className="flex justify-between"><span className="text-gray-600">VAT:</span><span>{it.vat_rate}%</span></div>
                     </div>
                     <div className="mt-3 pt-3 border-t flex justify-between font-medium">
                       <span>Total:</span>
@@ -459,8 +423,8 @@ export default function InvoiceDetailPage() {
                     </div>
                   </div>
                 )
-              })}
-            </div>
+              }}
+            />
 
             <div className="mt-6 pt-6 border-t space-y-2">
               <div className="flex justify-between text-sm">

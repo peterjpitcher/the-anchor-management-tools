@@ -5,6 +5,7 @@ import { useEffect, useState, useMemo } from 'react'
 import toast from 'react-hot-toast'
 import { MagnifyingGlassIcon, XMarkIcon, StarIcon } from '@heroicons/react/24/solid'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
+import { DataTable } from '@/components/ui-v2/display/DataTable'
 
 // Define a more specific type for currentBookings based on what EventViewPage uses
 // This assumes BookingWithCustomer has at least customer_id
@@ -59,7 +60,7 @@ export function AddAttendeesModal({
         
         if (recentBookingsError) throw recentBookingsError
         
-        setRecentBookerIds(new Set(recentBookings?.map((b: any) => b.customer_id) || []))
+        setRecentBookerIds(new Set(recentBookings?.map((b: { customer_id: string }) => b.customer_id) || []))
 
       } catch (err) {
         console.error('Error fetching data for modal:', err)
@@ -72,7 +73,7 @@ export function AddAttendeesModal({
   }, [supabase])
 
   const availableCustomers = useMemo(() => {
-    const bookedCustomerIds = new Set(currentBookings.map((b: any) => b.customer_id))
+    const bookedCustomerIds = new Set(currentBookings.map((b: BookingLike) => b.customer_id))
     const filtered = allCustomers
       .filter(customer => !bookedCustomerIds.has(customer.id))
       .filter(customer => {
@@ -172,55 +173,55 @@ export function AddAttendeesModal({
                 No new customers available to add.
               </div>
             ) : (
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50 sticky top-0 z-10">
-                  <tr>
-                    <th className="px-4 py-3 text-left">
+              <DataTable<Customer>
+                data={availableCustomers}
+                getRowKey={(c) => c.id}
+                columns={[
+                  {
+                    key: 'select',
+                    header: (
                       <input
                         type="checkbox"
                         className="rounded border-gray-300 text-green-600 shadow-sm focus:ring-green-500"
-                        checked={
-                          availableCustomers.length > 0 &&
-                          selectedCustomerIds.length === availableCustomers.length
-                        }
+                        checked={availableCustomers.length > 0 && selectedCustomerIds.length === availableCustomers.length}
                         onChange={handleSelectAll}
                         disabled={availableCustomers.length === 0}
                         aria-label="Select all available customers"
                       />
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Name
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Mobile Number
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {availableCustomers.map(customer => (
-                    <tr key={customer.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <input
-                          type="checkbox"
-                          className="rounded border-gray-300 text-green-600 shadow-sm focus:ring-green-500"
-                          checked={selectedCustomerIds.includes(customer.id)}
-                          onChange={() => handleSelectCustomer(customer.id)}
-                          aria-labelledby={`customer-name-${customer.id}`}
-                        />
-                      </td>
-                      <td id={`customer-name-${customer.id}`} className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 flex items-center">
+                    ),
+                    cell: (customer: Customer) => (
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300 text-green-600 shadow-sm focus:ring-green-500"
+                        checked={selectedCustomerIds.includes(customer.id)}
+                        onChange={() => handleSelectCustomer(customer.id)}
+                        aria-labelledby={`customer-name-${customer.id}`}
+                      />
+                    ),
+                    width: '1%'
+                  },
+                  {
+                    key: 'name',
+                    header: 'Name',
+                    cell: (customer: Customer) => (
+                      <div id={`customer-name-${customer.id}`} className="flex items-center text-sm text-gray-900">
                         {recentBookerIds.has(customer.id) && (
                           <StarIcon className="h-5 w-5 text-yellow-400 mr-1.5 flex-shrink-0" aria-label="Recent Booker" />
                         )}
                         {customer.first_name} {customer.last_name}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                        {customer.mobile_number}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </div>
+                    )
+                  },
+                  {
+                    key: 'mobile',
+                    header: 'Mobile Number',
+                    cell: (customer: Customer) => (
+                      <span className="text-sm text-gray-500">{customer.mobile_number}</span>
+                    )
+                  }
+                ]}
+                emptyMessage="No new customers available to add."
+              />
             )}
           </div>
         )}
