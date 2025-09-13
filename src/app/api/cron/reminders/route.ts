@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { sendEventReminders } from '@/app/actions/sms'
 import { processScheduledEventReminders } from '@/app/actions/sms-event-reminders'
 
 export const dynamic = 'force-dynamic'
@@ -17,15 +16,14 @@ export async function GET(request: Request) {
       return new NextResponse('Unauthorized', { status: 401 })
     }
 
-    console.log('Starting reminder check...')
+    console.log('Starting reminder check (scheduled pipeline only by default)...')
 
-    // Process new scheduled reminders from booking_reminders table
+    // Process new scheduled reminders from booking_reminders table (single source of truth)
     const scheduledResult = await processScheduledEventReminders()
     console.log('Scheduled reminders processed:', scheduledResult)
 
-    // Also run legacy reminders for backward compatibility
-    // This handles any bookings that don't have entries in booking_reminders yet
-    await sendEventReminders()
+    // Legacy path has been removed to prevent duplicate or early sends.
+    console.log('Legacy reminder sender removed — only scheduled pipeline runs')
     
     console.log('Reminder check completed successfully')
     return new NextResponse(
