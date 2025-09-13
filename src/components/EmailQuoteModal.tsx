@@ -16,7 +16,8 @@ interface EmailQuoteModalProps {
 
 export function EmailQuoteModal({ quote, isOpen, onClose, onSuccess }: EmailQuoteModalProps) {
   const supabase = useSupabase()
-  const [recipientEmail, setRecipientEmail] = useState(quote.vendor?.email || '')
+  const [toEmails, setToEmails] = useState('')
+  const [ccEmails, setCcEmails] = useState('')
   const [subject, setSubject] = useState(`Quote ${quote.quote_number} from Orange Jelly Limited`)
   const [body, setBody] = useState(
     `Hi ${quote.vendor?.contact_name || quote.vendor?.name || 'there'},
@@ -44,33 +45,34 @@ P.S. The quote is attached as a PDF for your convenience.`
 
   if (!isOpen) return null
 
-  // Prefill with Primary contact + vendor email(s)
+  // Prefill To with Primary contact, CC with all other contacts + vendor default emails (excluding Primary)
   useEffect(() => {
     let active = true
     async function loadPrimary() {
       const vendorId = quote.vendor?.id
       if (!isOpen || !vendorId) return
-      const { data } = await supabase
+      const { data: contacts } = await supabase
         .from('invoice_vendor_contacts')
-        .select('email')
+        .select('email, is_primary')
         .eq('vendor_id', vendorId)
-        .eq('is_primary', true)
-        .maybeSingle()
+        .order('is_primary', { ascending: false })
       if (!active) return
-      const parts = [(data as any)?.email, quote.vendor?.email]
-        .filter(Boolean)
-        .flatMap(v => String(v).split(/[;,]/))
+      const vendorEmails = (quote.vendor?.email ? String(quote.vendor.email).split(/[;,]/) : [])
         .map(s => s.trim())
         .filter(Boolean)
-      const unique = Array.from(new Set(parts))
-      if (unique.length) setRecipientEmail(unique.join(', '))
+      const contactEmails = (contacts || []).map((c: any) => c.email).filter(Boolean)
+      const primaryEmail = ((contacts || []) as any[]).find((c: any) => c.is_primary)?.email || vendorEmails[0] || ''
+      const all = Array.from(new Set([...vendorEmails, ...contactEmails]))
+      const cc = all.filter(e => e && e !== primaryEmail)
+      setToEmails(primaryEmail || '')
+      setCcEmails(cc.join(', '))
     }
     loadPrimary()
     return () => { active = false }
   }, [isOpen, supabase, quote.vendor?.id, quote.vendor?.email])
 
   async function handleSend() {
-    if (!recipientEmail) {
+    if (!toEmails && !ccEmails) {
       setError('Please enter a recipient email address')
       return
     }
@@ -81,7 +83,8 @@ P.S. The quote is attached as a PDF for your convenience.`
     try {
       const formData = new FormData()
       formData.append('quoteId', quote.id)
-      formData.append('recipientEmail', recipientEmail)
+      const combined = [toEmails, ccEmails].filter(Boolean).join(', ')
+      formData.append('recipientEmail', combined)
       formData.append('subject', subject)
       formData.append('body', body)
 
@@ -116,13 +119,23 @@ P.S. The quote is attached as a PDF for your convenience.`
           </Alert>
         )}
 
-        <FormGroup label="To Email Address(es)">
+        <FormGroup label="To" required>
           <Input
             type="text"
-            value={recipientEmail}
-            onChange={(e) => setRecipientEmail(e.target.value)}
-            placeholder="customer@example.com, accounts@example.com"
+            value={toEmails}
+            onChange={(e) => setToEmails(e.target.value)}
+            placeholder="primary.contact@example.com"
             required
+          />
+          <p className="text-xs text-gray-500 mt-1">Primary recipient. Usually the vendor's primary contact.</p>
+        </FormGroup>
+
+        <FormGroup label="CC">
+          <Input
+            type="text"
+            value={ccEmails}
+            onChange={(e) => setCcEmails(e.target.value)}
+            placeholder="accounts@example.com, ops@example.com"
           />
           <p className="text-xs text-gray-500 mt-1">Separate multiple emails with commas or semicolons.</p>
         </FormGroup>
@@ -162,7 +175,7 @@ P.S. The quote is attached as a PDF for your convenience.`
           Cancel
         </Button>
         <Button onClick={handleSend}
-          disabled={!recipientEmail}
+          disabled={!toEmails && !ccEmails}
           loading={sending}
           leftIcon={!sending && <Send className="h-4 w-4" />}
         >
