@@ -20,7 +20,8 @@ interface EmailInvoiceModalProps {
 
 export function EmailInvoiceModal({ invoice, isOpen, onClose, onSuccess }: EmailInvoiceModalProps) {
   const supabase = useSupabase()
-  const [recipientEmail, setRecipientEmail] = useState(invoice.vendor?.email || '')
+  const [toEmails, setToEmails] = useState('')
+  const [ccEmails, setCcEmails] = useState('')
   const [subject, setSubject] = useState(`Invoice ${invoice.invoice_number} from Orange Jelly Limited`)
   const [body, setBody] = useState(
     `Hi ${invoice.vendor?.contact_name || invoice.vendor?.name || 'there'},
@@ -46,32 +47,33 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`
 
   const vendorId = invoice.vendor?.id
 
-  // Prefill with Primary contact + vendor email(s) when modal opens
+  // Prefill To with Primary contact, CC with all other contacts + vendor default emails (excluding Primary)
   useEffect(() => {
     let active = true
     async function loadPrimary() {
       if (!isOpen || !vendorId) return
-      const { data } = await supabase
+      const { data: contacts } = await supabase
         .from('invoice_vendor_contacts')
-        .select('email')
+        .select('email, is_primary')
         .eq('vendor_id', vendorId)
-        .eq('is_primary', true)
-        .maybeSingle()
+        .order('is_primary', { ascending: false })
       if (!active) return
-      const parts = [(data as any)?.email, invoice.vendor?.email]
-        .filter(Boolean)
-        .flatMap(v => String(v).split(/[;,]/))
+      const vendorEmails = (invoice.vendor?.email ? String(invoice.vendor.email).split(/[;,]/) : [])
         .map(s => s.trim())
         .filter(Boolean)
-      const unique = Array.from(new Set(parts))
-      if (unique.length) setRecipientEmail(unique.join(', '))
+      const contactEmails = (contacts || []).map((c: any) => c.email).filter(Boolean)
+      const primaryEmail = ((contacts || []) as any[]).find((c: any) => c.is_primary)?.email || vendorEmails[0] || ''
+      const all = Array.from(new Set([...vendorEmails, ...contactEmails]))
+      const cc = all.filter(e => e && e !== primaryEmail)
+      setToEmails(primaryEmail || '')
+      setCcEmails(cc.join(', '))
     }
     loadPrimary()
     return () => { active = false }
   }, [isOpen, vendorId, supabase, invoice.vendor?.email])
 
   async function handleSend() {
-    if (!recipientEmail) {
+    if (!toEmails && !ccEmails) {
       setError('Please enter a recipient email address')
       return
     }
@@ -82,7 +84,8 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`
     try {
       const formData = new FormData()
       formData.append('invoiceId', invoice.id)
-      formData.append('recipientEmail', recipientEmail)
+      const combined = [toEmails, ccEmails].filter(Boolean).join(', ')
+      formData.append('recipientEmail', combined)
       formData.append('subject', subject)
       formData.append('body', body)
 
@@ -118,7 +121,7 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`
             Cancel
           </Button>
           <Button onClick={handleSend}
-            disabled={!recipientEmail}
+            disabled={!toEmails && !ccEmails}
             loading={sending}
             leftIcon={<Send className="h-4 w-4" />}
           >
@@ -133,15 +136,24 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`
         )}
 
         <div>
-          <label className="block text-sm font-medium mb-1">
-            To Email Address(es) <span className="text-red-500">*</span>
-          </label>
+          <label className="block text-sm font-medium mb-1">To <span className="text-red-500">*</span></label>
           <Input
             type="text"
-            value={recipientEmail}
-            onChange={(e) => setRecipientEmail(e.target.value)}
-            placeholder="customer@example.com, accounts@example.com"
+            value={toEmails}
+            onChange={(e) => setToEmails(e.target.value)}
+            placeholder="primary.contact@example.com"
             required
+          />
+          <p className="text-xs text-gray-500 mt-1">Primary recipient. Usually the vendor's primary contact.</p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">CC</label>
+          <Input
+            type="text"
+            value={ccEmails}
+            onChange={(e) => setCcEmails(e.target.value)}
+            placeholder="accounts@example.com, ops@example.com"
           />
           <p className="text-xs text-gray-500 mt-1">Separate multiple emails with commas or semicolons.</p>
         </div>
