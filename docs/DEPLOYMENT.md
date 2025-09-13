@@ -373,6 +373,11 @@ END $$;
            run: |
              curl -X POST "${{ secrets.VERCEL_URL }}/api/cron/reminders" \
                -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+### Reminder Pipelines Safety
+
+- Production runs only the scheduled reminder pipeline; the legacy sender has been removed.
+- Ensure no ad-hoc direct-sending scripts are executed against production.
    ```
 
 ### Deployment Workflow
