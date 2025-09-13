@@ -25,10 +25,12 @@ import { BarChart } from '@/components/charts/BarChart';
 import { useRouter } from 'next/navigation';
 interface ShortLink {
   id: string;
+  name?: string | null;
   short_code: string;
   destination_url: string;
   link_type: string;
   click_count: number;
+  click_badge?: number | null;
   created_at: string;
   expires_at: string | null;
   last_clicked_at: string | null;
@@ -51,6 +53,7 @@ const supabase = useSupabase();
   const [volumeChartType, setVolumeChartType] = useState<'clicks' | 'unique'>('clicks');
   
   // Form states
+  const [name, setName] = useState('');
   const [destinationUrl, setDestinationUrl] = useState('');
   const [linkType, setLinkType] = useState('custom');
   const [customCode, setCustomCode] = useState('');
@@ -129,6 +132,7 @@ const supabase = useSupabase();
       }
 
       const result = await createShortLink({
+        name: name || undefined,
         destination_url: destinationUrl,
         link_type: linkType as any,
         custom_code: customCode || undefined,
@@ -232,6 +236,7 @@ const supabase = useSupabase();
 
   const handleEdit = (link: ShortLink) => {
     setSelectedLink(link);
+    setName(link.name || '');
     setDestinationUrl(link.destination_url);
     setLinkType(link.link_type);
     setCustomCode(link.short_code);
@@ -269,9 +274,10 @@ const supabase = useSupabase();
         expiresAt = date.toISOString();
       }
 
-      const { error } = await (supabase
+      let { error } = await (supabase
         .from('short_links') as any)
         .update({
+          name: name || null,
           destination_url: destinationUrl,
           link_type: linkType,
           expires_at: expiresAt,
@@ -279,8 +285,23 @@ const supabase = useSupabase();
         })
         .eq('id', selectedLink.id);
 
+      // If the update failed due to the name column not existing (migration not applied), retry without name
+      if (error && typeof error.message === 'string' && error.message.toLowerCase().includes('column') && error.message.toLowerCase().includes('name')) {
+        const retry = await (supabase
+          .from('short_links') as any)
+          .update({
+            destination_url: destinationUrl,
+            link_type: linkType,
+            expires_at: expiresAt,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', selectedLink.id);
+        error = retry.error;
+      }
+
       if (error) {
-        toast.error('Failed to update short link');
+        console.error('Update short link error:', error);
+        toast.error(error.message || 'Failed to update short link');
         return;
       }
 
@@ -319,6 +340,7 @@ const supabase = useSupabase();
   };
 
   const resetForm = () => {
+    setName('');
     setDestinationUrl('');
     setCustomCode('');
     setLinkType('custom');
@@ -364,6 +386,12 @@ const supabase = useSupabase();
           emptyDescription="Get started by creating a new short link."
           columns={[
             {
+              key: 'name',
+              header: 'Name',
+              cell: (link) => link.name ? <span className="text-sm">{link.name}</span> : <span className="text-xs text-gray-400">(no name)</span>,
+              sortable: true,
+            },
+            {
               key: 'short_code',
               header: 'Short Link',
               cell: (link) => (
@@ -393,7 +421,7 @@ const supabase = useSupabase();
             {
               key: 'click_count',
               header: 'Clicks',
-              cell: (link) => link.click_count || 0,
+              cell: (link) => link.click_count ?? 0,
               sortable: true,
             },
             {
@@ -445,21 +473,24 @@ const supabase = useSupabase();
             },
           ]}
           renderMobileCard={(link) => (
-            <Card padding="sm">
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex-1 min-w-0 mr-4">
-                  <code className="text-sm font-mono bg-gray-100 px-2 py-1 rounded inline-block mb-2">
-                    vip-club.uk/{link.short_code}
-                  </code>
-                  <p className="text-xs text-gray-600 truncate">{link.destination_url}</p>
-                </div>
+              <Card padding="sm">
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex-1 min-w-0 mr-4">
+                    {link.name && (
+                      <div className="text-sm font-medium mb-1">{link.name}</div>
+                    )}
+                    <code className="text-sm font-mono bg-gray-100 px-2 py-1 rounded inline-block mb-2">
+                      vip-club.uk/{link.short_code}
+                    </code>
+                    <p className="text-xs text-gray-600 truncate">{link.destination_url}</p>
+                  </div>
                 <Badge variant="info" size="sm">
                   {link.link_type}
                 </Badge>
               </div>
               
               <div className="flex justify-between items-center text-sm text-gray-500 mb-3">
-                <span>{link.click_count || 0} clicks</span>
+                <span>{link.click_count ?? 0} clicks</span>
                 <span>{new Date(link.created_at).toLocaleDateString()}</span>
               </div>
               
@@ -510,6 +541,17 @@ const supabase = useSupabase();
         title="Create Short Link"
       >
         <form onSubmit={handleCreate} className="space-y-4">
+          <FormGroup label="Name (optional)" help="A friendly label to identify this short link.">
+            <Input
+              id="name"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Summer special landing page"
+              maxLength={120}
+            />
+          </FormGroup>
+
           <FormGroup label="Destination URL" required>
             <Input
               id="destination"
@@ -579,6 +621,79 @@ const supabase = useSupabase();
         </form>
       </Modal>
 
+      {/* Edit Modal */}
+      <Modal
+        open={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        title="Edit Short Link"
+      >
+        <form onSubmit={handleUpdate} className="space-y-4">
+          <FormGroup label="Name (optional)">
+            <Input
+              id="edit_name"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Friendly name"
+              maxLength={120}
+            />
+          </FormGroup>
+
+          <FormGroup label="Destination URL" required>
+            <Input
+              id="edit_destination"
+              type="url"
+              value={destinationUrl}
+              onChange={(e) => setDestinationUrl(e.target.value)}
+              placeholder="https://example.com/page"
+              required
+            />
+          </FormGroup>
+
+          <FormGroup label="Link Type">
+            <Select
+              id="edit_type"
+              value={linkType}
+              onChange={(e) => setLinkType(e.target.value)}
+              options={[
+                { value: 'custom', label: 'Custom' },
+                { value: 'loyalty_portal', label: 'Loyalty Portal' },
+                { value: 'event_checkin', label: 'Event Check-in' },
+                { value: 'promotion', label: 'Promotion' },
+                { value: 'reward_redemption', label: 'Reward Redemption' }
+              ]}
+            />
+          </FormGroup>
+
+          <FormGroup label="Expires">
+            <Select
+              id="edit_expires"
+              value={expiresIn}
+              onChange={(e) => setExpiresIn(e.target.value)}
+              options={[
+                { value: 'never', label: 'Never' },
+                { value: '1d', label: 'In 1 day' },
+                { value: '7d', label: 'In 7 days' },
+                { value: '30d', label: 'In 30 days' }
+              ]}
+            />
+          </FormGroup>
+
+          <ModalActions>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setShowEditModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" loading={updating}>
+              Save Changes
+            </Button>
+          </ModalActions>
+        </form>
+      </Modal>
+
       {/* Analytics Modal */}
       <Modal
         open={showAnalyticsModal}
@@ -599,7 +714,7 @@ const supabase = useSupabase();
             <div className="grid grid-cols-2 gap-4">
               <Card variant="bordered" padding="sm" className="bg-blue-50">
                 <p className="text-sm text-blue-600">Total Clicks</p>
-                <p className="text-2xl font-bold text-blue-900">{analytics.click_count || 0}</p>
+                <p className="text-2xl font-bold text-blue-900">{(analytics.short_link_clicks?.length) || 0}</p>
               </Card>
               
               <Card variant="bordered" padding="sm" className="bg-green-50">
@@ -753,79 +868,6 @@ const supabase = useSupabase();
             )}
           </div>
         )}
-      </Modal>
-
-      {/* Edit Modal */}
-      <Modal
-        open={showEditModal}
-        onClose={() => {
-          setShowEditModal(false);
-          resetForm();
-        }}
-        title="Edit Short Link"
-      >
-        <form onSubmit={handleUpdate} className="space-y-4">
-          <Card variant="bordered" padding="sm">
-            <p className="text-sm text-gray-600">Short Link</p>
-            <p className="font-mono">vip-club.uk/{selectedLink?.short_code}</p>
-          </Card>
-
-          <FormGroup label="Destination URL" required>
-            <Input
-              id="edit-destination"
-              type="url"
-              value={destinationUrl}
-              onChange={(e) => setDestinationUrl(e.target.value)}
-              placeholder="https://example.com/page"
-              required
-            />
-          </FormGroup>
-
-          <FormGroup label="Link Type">
-            <Select
-              id="edit-type"
-              value={linkType}
-              onChange={(e) => setLinkType(e.target.value)}
-              options={[
-                { value: 'custom', label: 'Custom' },
-                { value: 'loyalty_portal', label: 'Loyalty Portal' },
-                { value: 'event_checkin', label: 'Event Check-in' },
-                { value: 'promotion', label: 'Promotion' },
-                { value: 'reward_redemption', label: 'Reward Redemption' }
-              ]}
-            />
-          </FormGroup>
-
-          <FormGroup label="Expires">
-            <Select
-              id="edit-expires"
-              value={expiresIn}
-              onChange={(e) => setExpiresIn(e.target.value)}
-              options={[
-                { value: 'never', label: 'Never' },
-                { value: '1d', label: 'In 1 day' },
-                { value: '7d', label: 'In 7 days' },
-                { value: '30d', label: 'In 30 days' }
-              ]}
-            />
-          </FormGroup>
-
-          <ModalActions>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                setShowEditModal(false);
-                resetForm();
-              }}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" loading={updating}>
-              Update Link
-            </Button>
-          </ModalActions>
-        </form>
       </Modal>
 
       {/* Volume Chart Modal */}
