@@ -6,6 +6,7 @@ import { checkUserPermission } from './rbac';
 
 // Validation schemas
 const CreateShortLinkSchema = z.object({
+  name: z.string().max(120).optional(),
   destination_url: z.string().url('Invalid URL'),
   link_type: z.enum(['loyalty_portal', 'event_checkin', 'promotion', 'reward_redemption', 'custom']),
   metadata: z.record(z.any()).optional(),
@@ -47,6 +48,14 @@ export async function createShortLink(data: z.infer<typeof CreateShortLinkSchema
       return { error: 'Failed to create short link' };
     }
     
+    // If a name was provided, update the record
+    if (validatedData.name && (result as any)?.short_code) {
+      await supabase
+        .from('short_links')
+        .update({ name: validatedData.name })
+        .eq('short_code', (result as any).short_code)
+    }
+
     return { 
       success: true, 
       data: {
@@ -149,7 +158,7 @@ export async function resolveShortLink(data: z.infer<typeof ResolveShortLinkSche
         supabase
           .from('short_links')
           .update({
-            click_badge: (link.click_count || 0) + 1,
+            click_count: (link.click_count || 0) + 1,
             last_clicked_at: new Date().toISOString()
           })
           .eq('id', link.id)
