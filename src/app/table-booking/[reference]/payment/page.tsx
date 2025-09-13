@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect, use, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { CurrencyPoundIcon, CalendarIcon, ClockIcon, UserGroupIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import Image from 'next/image';
@@ -49,15 +49,7 @@ export default function TableBookingPaymentPage(props: { params: Promise<{ refer
   const errorParam = searchParams.get('error');
   const errorMessage = searchParams.get('message');
 
-  useEffect(() => {
-    loadBooking();
-    // Set error from URL parameters if present
-    if (errorParam && errorMessage) {
-      setError(decodeURIComponent(errorMessage));
-    }
-  }, [params.reference, errorParam, errorMessage]);
-
-  async function loadBooking() {
+  const loadBooking = useCallback(async () => {
     try {
       // Use public API endpoint to fetch booking
       const response = await fetch(`/api/table-bookings/${params.reference}/public`);
@@ -103,7 +95,14 @@ export default function TableBookingPaymentPage(props: { params: Promise<{ refer
       setError('Unable to load booking details. Please try again later.');
       setLoading(false);
     }
-  }
+  }, [params.reference])
+
+  useEffect(() => {
+    loadBooking();
+    if (errorParam && errorMessage) {
+      setError(decodeURIComponent(errorMessage));
+    }
+  }, [loadBooking, errorParam, errorMessage]);
 
   const handlePayment = async () => {
     if (!booking) return;

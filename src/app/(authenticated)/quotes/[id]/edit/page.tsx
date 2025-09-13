@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getQuote, updateQuote } from '@/app/actions/quotes'
 import { getVendors } from '@/app/actions/vendors'
-import { ArrowLeft, Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 import type { InvoiceVendor, InvoiceLineItemInput, QuoteWithDetails } from '@/types/invoices'
 // UI v2 components
 import { Page } from '@/components/ui-v2/layout/Page'

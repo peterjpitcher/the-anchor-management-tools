@@ -4,7 +4,6 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
-import { Loader2 } from 'lucide-react'
 import Image from 'next/image'
 import { Form, FormActions } from '@/components/ui-v2/forms/Form'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
@@ -70,9 +69,10 @@ function LoginForm() {
       // Use replace to prevent back button issues
       router.replace(redirectTo)
       router.refresh()
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error:', error)
-      if (error?.message?.includes('Invalid login credentials')) {
+      const message = error instanceof Error ? error.message : ''
+      if (message.includes('Invalid login credentials')) {
         toast.error('Invalid email or password')
       } else {
         toast.error('Failed to log in. Please try again.')

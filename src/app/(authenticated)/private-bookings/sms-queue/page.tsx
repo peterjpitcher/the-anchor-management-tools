@@ -19,7 +19,6 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 
@@ -277,8 +276,11 @@ export default async function SmsQueuePage() {
         >
           <div className="space-y-4">
             {cancelledSms.map((sms) => {
-              const metadata = sms.metadata as any || {}
-              const isDateChange = metadata.cancelled_reason === 'event_date_changed'
+              const metadata = (sms.metadata as Record<string, unknown>) || {}
+              const cancelled_reason = typeof metadata.cancelled_reason === 'string' ? metadata.cancelled_reason : ''
+              const old_date = typeof metadata.old_date === 'string' ? metadata.old_date : undefined
+              const new_date = typeof metadata.new_date === 'string' ? metadata.new_date : undefined
+              const isDateChange = cancelled_reason === 'event_date_changed'
               
               return (
                 <Card key={sms.id} className="opacity-75">
@@ -297,9 +299,9 @@ export default async function SmsQueuePage() {
                           : sms.booking?.customer_name || 'Unknown Customer'}
                       </h3>
                       
-                      {isDateChange && metadata.old_date && metadata.new_date && (
+                      {isDateChange && old_date && new_date && (
                         <Alert variant="warning" className="mb-3">
-                          <strong>Booking rescheduled:</strong> {formatDateFull(metadata.old_date)} → {formatDateFull(metadata.new_date)}
+                          <strong>Booking rescheduled:</strong> {formatDateFull(old_date)} → {formatDateFull(new_date)}
                         </Alert>
                       )}
                       
@@ -308,7 +310,7 @@ export default async function SmsQueuePage() {
                       </div>
                       
                       <p className="text-xs text-gray-500 mt-2">
-                        Cancelled {metadata.cancelled_at ? formatDateTime12Hour(metadata.cancelled_at) : 'recently'}
+                        Cancelled {metadata.cancelled_at ? formatDateTime12Hour(metadata.cancelled_at as string) : 'recently'}
                       </p>
                     </div>
                   </div>

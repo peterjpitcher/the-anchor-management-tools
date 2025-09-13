@@ -7,6 +7,7 @@ import { Input } from '@/components/ui-v2/forms/Input';
 import { Checkbox } from '@/components/ui-v2/forms/Checkbox';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Badge } from '@/components/ui-v2/display/Badge';
+import { DataTable } from '@/components/ui-v2/display/DataTable';
 import toast from 'react-hot-toast';
 import { generateApiKey } from './actions';
 import { format } from 'date-fns';
@@ -59,7 +60,7 @@ export default function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
         rate_limit: 1000,
       });
       setShowCreateForm(false);
-    } catch (error) {
+  } catch {
       toast.error('Failed to create API key');
     } finally {
       setIsCreating(false);
@@ -135,7 +136,7 @@ export default function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
                     key={option.value}
                     label={option.label}
                     checked={newKeyData.permissions.includes(option.value)}
-                    onChange={(e) => handleTogglePermission(option.value)}
+                    onChange={(_e) => handleTogglePermission(option.value)}
                   />
                 ))}
               </div>
@@ -194,63 +195,25 @@ export default function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
 
       {/* API Keys Table */}
       <Card variant="default" padding="none">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Name
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Permissions
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Rate Limit
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Last Used
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {keys.map((key) => (
-              <tr key={key.id}>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">
-                      {key.name}
-                    </div>
-                    {key.description && (
-                      <div className="text-sm text-gray-500">{key.description}</div>
-                    )}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900">
-                    {key.permissions.includes('*') 
-                      ? 'All permissions'
-                      : key.permissions.join(', ')}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {key.rate_limit}/hour
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {key.last_used_at 
-                    ? format(new Date(key.last_used_at), 'MMM d, yyyy HH:mm')
-                    : 'Never'}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <Badge variant={key.is_active ? 'success' : 'error'}>
-                    {key.is_active ? 'Active' : 'Inactive'}
-                  </Badge>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <DataTable<ApiKey>
+          data={keys}
+          getRowKey={(k) => k.id}
+          emptyMessage="No API keys yet"
+          columns={[
+            { key: 'name', header: 'Name', cell: (k: ApiKey) => (
+              <div>
+                <div className="text-sm font-medium text-gray-900">{k.name}</div>
+                {k.description && (<div className="text-sm text-gray-500">{k.description}</div>)}
+              </div>
+            ) },
+            { key: 'permissions', header: 'Permissions', cell: (k: ApiKey) => (
+              <div className="text-sm text-gray-900">{k.permissions.includes('*') ? 'All permissions' : k.permissions.join(', ')}</div>
+            ) },
+            { key: 'rate', header: 'Rate Limit', align: 'right', cell: (k: ApiKey) => <span className="text-sm text-gray-900">{k.rate_limit}/hour</span> },
+            { key: 'last', header: 'Last Used', cell: (k: ApiKey) => <span className="text-sm text-gray-500">{k.last_used_at ? format(new Date(k.last_used_at), 'MMM d, yyyy HH:mm') : 'Never'}</span> },
+            { key: 'status', header: 'Status', cell: (k: ApiKey) => <Badge variant={k.is_active ? 'success' : 'error'}>{k.is_active ? 'Active' : 'Inactive'}</Badge> },
+          ]}
+        />
       </Card>
 
       {/* Usage Instructions */}

@@ -10,13 +10,13 @@ import {
   rebuildCustomerCategoryStats 
 } from '@/app/actions/event-categories'
 import { EventCategory } from '@/types/event-categories'
-import { PlusIcon, PencilIcon, TrashIcon, SparklesIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
 import { EventCategoryFormGrouped } from '@/components/EventCategoryFormGrouped'
 // New UI components
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
-import { Section } from '@/components/ui-v2/layout/Section'
+// import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
@@ -27,10 +27,8 @@ import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
-import { useRouter } from 'next/navigation';
+// import { useRouter } from 'next/navigation';
 export default function EventCategoriesPage() {
-  
-  const router = useRouter();
 const [categories, setCategories] = useState<EventCategory[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)

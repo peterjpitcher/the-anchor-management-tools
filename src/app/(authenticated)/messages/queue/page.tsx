@@ -53,7 +53,7 @@ interface Job {
   id: string
   type: string
   status: string
-  payload: any
+  payload: unknown
   error: string | null
   attempts: number
   max_attempts: number
@@ -161,22 +161,22 @@ export default function SMSQueueStatusPage() {
     await loadData()
   }
 
-  const reconcileMessage = async (messageId: string) => {
+  const reconcileMessage = async (_messageId: string) => {
     try {
       // This would call a server action to check Twilio's API for the message status
       toast.info('Reconciliation would check Twilio API for message status')
       // TODO: Implement server action to reconcile with Twilio
-    } catch (error) {
+    } catch {
       toast.error('Failed to reconcile message')
     }
   }
 
-  const retryMessage = async (messageId: string) => {
+  const retryMessage = async (_messageId: string) => {
     try {
       // This would call a server action to retry sending the message
       toast.info('Retry functionality would resend the message via Twilio')
       // TODO: Implement server action to retry message
-    } catch (error) {
+    } catch {
       toast.error('Failed to retry message')
     }
   }
@@ -192,7 +192,7 @@ export default function SMSQueueStatusPage() {
 
       toast.success('Message deleted')
       await loadData()
-    } catch (error) {
+    } catch {
       toast.error('Failed to delete message')
     }
   }
@@ -216,7 +216,7 @@ export default function SMSQueueStatusPage() {
 
       toast.success('Old messages cleared')
       await loadData()
-    } catch (error) {
+    } catch {
       toast.error('Failed to clear old messages')
     }
   }
@@ -271,7 +271,7 @@ export default function SMSQueueStatusPage() {
     }
   })
 
-  const filteredJobs = jobs.filter((job) => {
+  const filteredJobs = jobs.filter((_job) => {
     switch (activeTab) {
       case 'jobs':
         return true

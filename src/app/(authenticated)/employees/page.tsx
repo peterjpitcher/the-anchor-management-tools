@@ -82,7 +82,7 @@ export default function EmployeesPage() {
   } = usePagination<Employee>(
     supabase,
     'employees',
-    queryConfig,
+    queryConfig as any,
     paginationOptions
   )
 

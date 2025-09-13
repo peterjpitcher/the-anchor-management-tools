@@ -19,9 +19,10 @@ async function getEvents() {
     return []
   }
   
+  type BookingSeat = { seats: number | null }
   return events.map(event => ({
     ...event,
-    booked_seats: event.bookings?.reduce((sum: number, booking: any) => sum + (booking.seats || 0), 0) || 0,
+    booked_seats: event.bookings?.reduce((sum: number, booking: BookingSeat) => sum + (booking.seats || 0), 0) || 0,
     bookings: undefined
   }))
 }

@@ -11,7 +11,7 @@ import { z } from 'zod'
 // Email validation schema
 const SendInvoiceEmailSchema = z.object({
   invoiceId: z.string().uuid('Invalid invoice ID'),
-  recipientEmail: z.string().email('Invalid email address'),
+  recipientEmail: z.string().min(3, 'Recipient required'),
   subject: z.string().optional(),
   body: z.string().optional()
 })
@@ -55,32 +55,65 @@ export async function sendInvoiceViaEmail(formData: FormData) {
 
     const invoice = invoiceResult.invoice
 
-    // Send email
+    // Support multiple recipients and prefer Primary contact in To
+    const raw = String(validatedData.recipientEmail)
+    const parts = raw.split(/[;,]/).map(s => s.trim()).filter(Boolean)
+    const emailValidator = z.string().email('Invalid email address')
+    const recipients = parts.length > 1 ? parts : [raw]
+    for (const addr of recipients) {
+      const parse = emailValidator.safeParse(addr)
+      if (!parse.success) {
+        return { error: `Invalid email address: ${addr}` }
+      }
+    }
+
+    // Determine To and CC using vendor Primary contact if present in list
+    let toAddress = recipients[0]
+    try {
+      const { data: primary } = await supabase
+        .from('invoice_vendor_contacts')
+        .select('email')
+        .eq('vendor_id', invoice.vendor_id)
+        .eq('is_primary', true)
+        .maybeSingle()
+      if (primary?.email && recipients.includes(primary.email)) {
+        toAddress = primary.email
+      }
+    } catch {}
+    const ccAddresses = recipients.filter(addr => addr !== toAddress)
+
     const result = await sendInvoiceEmail(
       invoice,
-      validatedData.recipientEmail,
+      toAddress,
       validatedData.subject,
-      validatedData.body
+      validatedData.body,
+      ccAddresses
     )
-
     if (!result.success) {
       return { error: result.error || 'Failed to send email' }
     }
 
-    // Log email sent
-    const { error: logError } = await supabase
-      .from('invoice_email_logs')
-      .insert({
+    // Log To and CC
+    const senderId = (await supabase.auth.getUser()).data.user?.id
+    const subject = validatedData.subject || `Invoice ${invoice.invoice_number} from Orange Jelly Limited`
+    const body = validatedData.body || 'Default invoice email template used'
+    await supabase.from('invoice_email_logs').insert({
+      invoice_id: validatedData.invoiceId,
+      sent_to: toAddress,
+      sent_by: senderId,
+      subject,
+      body,
+      status: 'sent'
+    })
+    for (const cc of ccAddresses) {
+      await supabase.from('invoice_email_logs').insert({
         invoice_id: validatedData.invoiceId,
-        sent_to: validatedData.recipientEmail,
-        sent_by: (await supabase.auth.getUser()).data.user?.id,
-        subject: validatedData.subject || `Invoice ${invoice.invoice_number} from Orange Jelly Limited`,
-        body: validatedData.body || 'Default invoice email template used',
-        status: 'sent' as const
+        sent_to: cc,
+        sent_by: senderId,
+        subject,
+        body,
+        status: 'sent'
       })
-
-    if (logError) {
-      console.error('Error logging email:', logError)
     }
 
     // Update invoice status if it was draft
@@ -105,7 +138,7 @@ export async function sendInvoiceViaEmail(formData: FormData) {
       operation_status: 'success',
       additional_info: { 
         action: 'email_sent',
-        recipient: validatedData.recipientEmail,
+        recipient: recipients.join(', '),
         invoice_number: invoice.invoice_number
       }
     })
@@ -184,33 +217,67 @@ Orange Jelly Limited
 
 P.S. I've attached a copy of the invoice for your reference.`
 
-    // Send email with overridden defaults
+    // Multi-recipient with Primary in To
+    const raw = String(validatedData.recipientEmail)
+    const parts = raw.split(/[;,]/).map(s => s.trim()).filter(Boolean)
+    const emailValidator = z.string().email('Invalid email address')
+    const recipients = parts.length > 1 ? parts : [raw]
+    for (const addr of recipients) {
+      const parse = emailValidator.safeParse(addr)
+      if (!parse.success) {
+        return { error: `Invalid email address: ${addr}` }
+      }
+    }
+
+    let toAddress = recipients[0]
+    try {
+      const { data: primary } = await supabase
+        .from('invoice_vendor_contacts')
+        .select('email')
+        .eq('vendor_id', invoice.vendor_id)
+        .eq('is_primary', true)
+        .maybeSingle()
+      if (primary?.email && recipients.includes(primary.email)) {
+        toAddress = primary.email
+      }
+    } catch {}
+    const ccAddresses = recipients.filter(addr => addr !== toAddress)
+
     const result = await sendInvoiceEmail(
       invoice,
-      validatedData.recipientEmail,
+      toAddress,
       validatedData.subject || defaultSubject,
-      validatedData.body || defaultBody
+      validatedData.body || defaultBody,
+      ccAddresses
     )
-
     if (!result.success) {
       return { error: result.error || 'Failed to send email' }
     }
 
-    // Log chase email sent
-    const { error: logError } = await supabase
+    const senderId = (await supabase.auth.getUser()).data.user?.id
+    await supabase
       .from('invoice_email_logs')
       .insert({
         invoice_id: validatedData.invoiceId,
-        sent_to: validatedData.recipientEmail,
-        sent_by: (await supabase.auth.getUser()).data.user?.id,
+        sent_to: toAddress,
+        sent_by: senderId,
         subject: validatedData.subject || defaultSubject,
         body: validatedData.body || defaultBody,
         status: 'sent' as const,
         email_type: 'chase' as const
       })
-
-    if (logError) {
-      console.error('Error logging chase email:', logError)
+    for (const cc of ccAddresses) {
+      await supabase
+        .from('invoice_email_logs')
+        .insert({
+          invoice_id: validatedData.invoiceId,
+          sent_to: cc,
+          sent_by: senderId,
+          subject: validatedData.subject || defaultSubject,
+          body: validatedData.body || defaultBody,
+          status: 'sent' as const,
+          email_type: 'chase' as const
+        })
     }
 
     await logAuditEvent({
@@ -268,32 +335,65 @@ export async function sendQuoteViaEmail(formData: FormData) {
 
     const quote = quoteResult.quote
 
-    // Send email
-    const result = await sendQuoteEmail(
-      quote,
-      validatedData.recipientEmail,
-      validatedData.subject,
-      validatedData.body
-    )
-
-    if (!result.success) {
-      return { error: result.error || 'Failed to send email' }
+    // Support multiple recipients and prefer Primary in To
+    const raw = String(validatedData.recipientEmail)
+    const parts = raw.split(/[;,]/).map(s => s.trim()).filter(Boolean)
+    const emailValidator = z.string().email('Invalid email address')
+    const recipients = parts.length > 1 ? parts : [raw]
+    for (const addr of recipients) {
+      const parse = emailValidator.safeParse(addr)
+      if (!parse.success) {
+        return { error: `Invalid email address: ${addr}` }
+      }
     }
 
-    // Log email sent (using invoice_email_logs table for quotes too)
-    const { error: logError } = await supabase
-      .from('invoice_email_logs')
-      .insert({
-        invoice_id: validatedData.quoteId, // We can use this for quotes too
-        sent_to: validatedData.recipientEmail,
-        sent_by: (await supabase.auth.getUser()).data.user?.id,
-        subject: validatedData.subject || `Quote ${quote.quote_number} from Orange Jelly Limited`,
-        body: validatedData.body || 'Default quote email template used',
-        status: 'sent' as const
-      })
+    let toAddress = recipients[0]
+    try {
+      const { data: primary } = await supabase
+        .from('invoice_vendor_contacts')
+        .select('email')
+        .eq('vendor_id', quote.vendor_id)
+        .eq('is_primary', true)
+        .maybeSingle()
+      if (primary?.email && recipients.includes(primary.email)) {
+        toAddress = primary.email
+      }
+    } catch {}
+    const ccAddresses = recipients.filter(addr => addr !== toAddress)
 
-    if (logError) {
-      console.error('Error logging email:', logError)
+    const resultQ = await sendQuoteEmail(
+      quote,
+      toAddress,
+      validatedData.subject,
+      validatedData.body,
+      ccAddresses
+    )
+
+    if (!resultQ.success) {
+      return { error: resultQ.error || 'Failed to send email' }
+    }
+
+    // Log To and CC
+    const senderIdQ = (await supabase.auth.getUser()).data.user?.id
+    const subjectQ = validatedData.subject || `Quote ${quote.quote_number} from Orange Jelly Limited`
+    const bodyQ = validatedData.body || 'Default quote email template used'
+    await supabase.from('invoice_email_logs').insert({
+      invoice_id: validatedData.quoteId,
+      sent_to: toAddress,
+      sent_by: senderIdQ,
+      subject: subjectQ,
+      body: bodyQ,
+      status: 'sent'
+    })
+    for (const cc of ccAddresses) {
+      await supabase.from('invoice_email_logs').insert({
+        invoice_id: validatedData.quoteId,
+        sent_to: cc,
+        sent_by: senderIdQ,
+        subject: subjectQ,
+        body: bodyQ,
+        status: 'sent'
+      })
     }
 
     // Update quote status if it was draft
@@ -318,12 +418,12 @@ export async function sendQuoteViaEmail(formData: FormData) {
       operation_status: 'success',
       additional_info: { 
         action: 'email_sent',
-        recipient: validatedData.recipientEmail,
+        recipient: recipients.join(', '),
         quote_number: quote.quote_number
       }
     })
 
-    return { success: true, messageId: result.messageId }
+    return { success: true }
   } catch (error) {
     console.error('Error in sendQuoteViaEmail:', error)
     if (error instanceof z.ZodError) {

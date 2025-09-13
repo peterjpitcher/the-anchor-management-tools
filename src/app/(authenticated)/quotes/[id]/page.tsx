@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getQuote, updateQuoteStatus, convertQuoteToInvoice, deleteQuote } from '@/app/actions/quotes'
 import { getEmailConfigStatus } from '@/app/actions/email'
-import { ChevronLeft, FileText, Download, Mail, CheckCircle, XCircle, Edit, Copy, Trash2, Clock } from 'lucide-react'
+import { FileText, Download, Mail, CheckCircle, XCircle, Edit, Copy, Trash2, Clock } from 'lucide-react'
 import { EmailQuoteModal } from '@/components/EmailQuoteModal'
 import type { QuoteWithDetails, QuoteStatus } from '@/types/invoices'
 // UI v2 components
@@ -17,6 +17,7 @@ import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
+import { DataTable } from '@/components/ui-v2/display/DataTable'
 
 import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 export default function QuoteDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -190,11 +191,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
     }
   }
 
-  function calculateLineTotal(item: { quantity: number; unit_price: number; discount_percentage: number }) {
-    const subtotal = item.quantity * item.unit_price
-    const discount = subtotal * (item.discount_percentage / 100)
-    return subtotal - discount
-  }
+  // calculateLineTotal was unused; removed to satisfy lint
 
   if (loading) {
     return (
@@ -419,80 +416,43 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
 
           <Section title="Line Items">
             <Card>
-            {/* Desktop Table */}
-            <div className="hidden lg:block overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-2 text-sm font-medium text-gray-600">Description</th>
-                    <th className="text-right py-2 text-sm font-medium text-gray-600">Qty</th>
-                    <th className="text-right py-2 text-sm font-medium text-gray-600">Unit Price</th>
-                    <th className="text-right py-2 text-sm font-medium text-gray-600">Discount</th>
-                    <th className="text-right py-2 text-sm font-medium text-gray-600">VAT</th>
-                    <th className="text-right py-2 text-sm font-medium text-gray-600">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {quote.line_items?.map((item) => {
-                    const lineSubtotal = item.quantity * item.unit_price
-                    const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
-                    const lineAfterDiscount = lineSubtotal - lineDiscount
-                    const itemShare = subtotal > 0 ? lineAfterDiscount / subtotal : 0
-                    const lineAfterQuoteDiscount = lineAfterDiscount - (quoteDiscount * itemShare)
-                    const lineVat = lineAfterQuoteDiscount * (item.vat_rate / 100)
-                    const lineTotal = lineAfterQuoteDiscount + lineVat
-
-                    return (
-                      <tr key={item.id} className="border-b">
-                        <td className="py-3 text-sm">{item.description}</td>
-                        <td className="py-3 text-sm text-right">{item.quantity}</td>
-                        <td className="py-3 text-sm text-right">£{item.unit_price.toFixed(2)}</td>
-                        <td className="py-3 text-sm text-right">
-                          {item.discount_percentage > 0 && (
-                            <span className="text-green-600">-{item.discount_percentage}%</span>
-                          )}
-                        </td>
-                        <td className="py-3 text-sm text-right">{item.vat_rate}%</td>
-                        <td className="py-3 text-sm text-right font-medium">£{lineTotal.toFixed(2)}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-            
-            {/* Mobile Card View */}
-            <div className="lg:hidden space-y-3">
-              {quote.line_items?.map((item) => {
-                const lineSubtotal = item.quantity * item.unit_price
-                const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
+            <DataTable<any>
+              data={quote.line_items || []}
+              getRowKey={(it) => it.id}
+              emptyMessage="No line items"
+              columns={[
+                { key: 'description', header: 'Description', cell: (it) => <span className="text-sm">{it.description}</span> },
+                { key: 'quantity', header: 'Qty', align: 'right', cell: (it) => <span className="text-sm">{it.quantity}</span> },
+                { key: 'unit_price', header: 'Unit Price', align: 'right', cell: (it) => <span className="text-sm">£{it.unit_price.toFixed(2)}</span> },
+                { key: 'discount', header: 'Discount', align: 'right', cell: (it) => <span className="text-sm text-green-600">{it.discount_percentage > 0 ? `-${it.discount_percentage}%` : ''}</span> },
+                { key: 'vat', header: 'VAT', align: 'right', cell: (it) => <span className="text-sm">{it.vat_rate}%</span> },
+                { key: 'total', header: 'Total', align: 'right', cell: (it) => {
+                  const lineSubtotal = it.quantity * it.unit_price
+                  const lineDiscount = lineSubtotal * (it.discount_percentage / 100)
+                  const lineAfterDiscount = lineSubtotal - lineDiscount
+                  const itemShare = subtotal > 0 ? lineAfterDiscount / subtotal : 0
+                  const lineAfterQuoteDiscount = lineAfterDiscount - (quoteDiscount * itemShare)
+                  const lineVat = lineAfterQuoteDiscount * (it.vat_rate / 100)
+                  const lineTotal = lineAfterQuoteDiscount + lineVat
+                  return <span className="text-sm font-medium">£{lineTotal.toFixed(2)}</span>
+                } },
+              ]}
+              renderMobileCard={(it) => {
+                const lineSubtotal = it.quantity * it.unit_price
+                const lineDiscount = lineSubtotal * (it.discount_percentage / 100)
                 const lineAfterDiscount = lineSubtotal - lineDiscount
                 const itemShare = subtotal > 0 ? lineAfterDiscount / subtotal : 0
                 const lineAfterQuoteDiscount = lineAfterDiscount - (quoteDiscount * itemShare)
-                const lineVat = lineAfterQuoteDiscount * (item.vat_rate / 100)
+                const lineVat = lineAfterQuoteDiscount * (it.vat_rate / 100)
                 const lineTotal = lineAfterQuoteDiscount + lineVat
-
                 return (
-                  <div key={item.id} className="border rounded-lg p-3">
-                    <p className="font-medium text-sm mb-2">{item.description}</p>
+                  <div className="border rounded-lg p-3">
+                    <p className="font-medium text-sm mb-2">{it.description}</p>
                     <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <span className="text-gray-500">Qty:</span> {item.quantity}
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Unit Price:</span> £{item.unit_price.toFixed(2)}
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Disbadge: </span> 
-                        {item.discount_percentage > 0 ? (
-                          <span className="text-green-600"> -{item.discount_percentage}%</span>
-                        ) : (
-                          <span> -</span>
-                        )}
-                      </div>
-                      <div>
-                        <span className="text-gray-500">VAT:</span> {item.vat_rate}%
-                      </div>
+                      <div><span className="text-gray-500">Qty:</span> {it.quantity}</div>
+                      <div><span className="text-gray-500">Unit Price:</span> £{it.unit_price.toFixed(2)}</div>
+                      <div><span className="text-gray-500">Discount:</span> {it.discount_percentage > 0 ? (<span className="text-green-600"> -{it.discount_percentage}%</span>) : (<span>-</span>)}</div>
+                      <div><span className="text-gray-500">VAT:</span> {it.vat_rate}%</div>
                     </div>
                     <div className="mt-2 pt-2 border-t flex justify-between">
                       <span className="text-sm font-medium">Total:</span>
@@ -500,8 +460,8 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
                     </div>
                   </div>
                 )
-              })}
-            </div>
+              }}
+            />
 
             <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t space-y-2">
               <div className="flex justify-between text-xs sm:text-sm">

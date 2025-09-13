@@ -10,7 +10,7 @@ import {
   SparklesIcon,
   UserGroupIcon,
   ClipboardDocumentListIcon,
-  XMarkIcon
+  // XMarkIcon
 } from '@heroicons/react/24/outline'
 import { 
   getPrivateBooking, 
@@ -25,7 +25,7 @@ import {
 import type { VenueSpace, CateringPackage, Vendor, ItemType } from '@/types/private-bookings'
 import { Page } from '@/components/ui-v2/layout/Page'
 import { Card } from '@/components/ui-v2/layout/Card'
-import { Section } from '@/components/ui-v2/layout/Section'
+// import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Select } from '@/components/ui-v2/forms/Select'
@@ -75,7 +75,7 @@ interface PrivateBooking {
   customer_first_name?: string;
   customer_last_name?: string;
   customer_name?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 interface AddItemModalProps {
@@ -591,7 +591,7 @@ export default function ItemsPage({
     // Load booking details
     const bookingResult = await getPrivateBooking(id)
     if (bookingResult.data) {
-      setBooking(bookingResult.data)
+      setBooking(bookingResult.data as any)
     }
     
     // Load items

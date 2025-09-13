@@ -8,9 +8,7 @@ import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Skeleton } from '@/components/ui-v2/feedback/Skeleton'
-import { useRouter } from 'next/navigation';
 export default function BusinessHoursPage() {
-  const router = useRouter();
   
   return (
     <div>

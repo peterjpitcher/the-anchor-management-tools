@@ -142,12 +142,12 @@ const [loading, setLoading] = useState(false)
                       {
                         key: 'current',
                         header: 'Current',
-                        cell: (row) => <span className="font-mono">{row.current}</span>
+                        cell: (row: any) => <span className="font-mono">{row.current}</span>
                       },
                       {
                         key: 'suggested',
                         header: 'Suggested Fix',
-                        cell: (row) => row.suggested ? (
+                        cell: (row: any) => row.suggested ? (
                           <span className="font-mono">{row.suggested}</span>
                         ) : (
                           <span className="text-red-600">Cannot fix</span>
@@ -184,17 +184,17 @@ const [loading, setLoading] = useState(false)
                           {
                             key: 'name',
                             header: 'Customer',
-                            cell: (row) => row.name
+                            cell: (row: any) => row.name
                           },
                           {
                             key: 'current',
                             header: 'From',
-                            cell: (row) => <span className="font-mono">{row.current}</span>
+                            cell: (row: any) => <span className="font-mono">{row.current}</span>
                           },
                           {
                             key: 'standardized',
                             header: 'To',
-                            cell: (row) => <span className="font-mono">{row.standardized}</span>
+                            cell: (row: any) => <span className="font-mono">{row.standardized}</span>
                           }
                         ] as Column[]}
                         getRowKey={(row) => fixResult.toUpdate.indexOf(row)}

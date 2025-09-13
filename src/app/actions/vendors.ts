@@ -10,14 +10,20 @@ import type { InvoiceVendor } from '@/types/invoices'
 // Vendor validation schema
 const VendorSchema = z.object({
   name: z.string().min(1, 'Company name is required'),
-  contact_name: z.string().optional(),
+  contact_name: z.string().optional().or(z.literal('')),
   email: z.string().email('Invalid email format').optional().or(z.literal('')),
-  phone: z.string().optional(),
-  address: z.string().optional(),
-  vat_number: z.string().optional(),
+  phone: z.string().optional().or(z.literal('')),
+  address: z.string().optional().or(z.literal('')),
+  vat_number: z.string().optional().or(z.literal('')),
   payment_terms: z.number().min(0).default(30),
-  notes: z.string().optional()
+  notes: z.string().optional().or(z.literal(''))
 })
+
+function emptyToNull(v?: string | null): string | null {
+  if (v == null) return null
+  const s = String(v).trim()
+  return s.length === 0 ? null : s
+}
 
 export async function getVendors() {
   try {
@@ -66,9 +72,21 @@ export async function createVendor(formData: FormData) {
       notes: formData.get('notes') || undefined
     })
 
+    // Map empty strings to null so fields can be cleared
+    const payload = {
+      name: validatedData.name,
+      contact_name: emptyToNull(validatedData.contact_name as any),
+      email: emptyToNull(validatedData.email as any),
+      phone: emptyToNull(validatedData.phone as any),
+      address: emptyToNull(validatedData.address as any),
+      vat_number: emptyToNull(validatedData.vat_number as any),
+      payment_terms: validatedData.payment_terms,
+      notes: emptyToNull(validatedData.notes as any)
+    }
+
     const { data: vendor, error } = await supabase
       .from('invoice_vendors')
-      .insert([validatedData])
+      .insert([payload])
       .select()
       .single()
 
@@ -123,9 +141,21 @@ export async function updateVendor(formData: FormData) {
       notes: formData.get('notes') || undefined
     })
 
+    // Map empty strings to null so fields can be cleared
+    const payload = {
+      name: validatedData.name,
+      contact_name: emptyToNull(validatedData.contact_name as any),
+      email: emptyToNull(validatedData.email as any),
+      phone: emptyToNull(validatedData.phone as any),
+      address: emptyToNull(validatedData.address as any),
+      vat_number: emptyToNull(validatedData.vat_number as any),
+      payment_terms: validatedData.payment_terms,
+      notes: emptyToNull(validatedData.notes as any)
+    }
+
     const { data: vendor, error } = await supabase
       .from('invoice_vendors')
-      .update(validatedData)
+      .update(payload)
       .eq('id', vendorId)
       .select()
       .single()

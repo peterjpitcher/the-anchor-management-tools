@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatDateFull, formatTime12Hour } from "@/lib/dateUtils";
 import {
-  ArrowLeftIcon,
   PencilIcon,
   UserGroupIcon,
   CurrencyPoundIcon,
@@ -14,13 +13,12 @@ import {
   PhoneIcon,
   ClockIcon,
   CheckCircleIcon,
-  ExclamationCircleIcon,
   BanknotesIcon,
   CreditCardIcon,
-  XMarkIcon,
   ChevronRightIcon,
   PlusIcon,
   TrashIcon,
+  XMarkIcon,
   MapPinIcon,
   SparklesIcon,
   ClipboardDocumentListIcon,
@@ -45,6 +43,7 @@ import {
   getVendors,
   applyBookingDiscount,
 } from "@/app/actions/privateBookingActions";
+import { cancelPrivateBooking } from "@/app/actions/privateBookingActions";
 import type {
   PrivateBookingWithDetails,
   BookingStatus,
@@ -59,7 +58,6 @@ import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from "@/components/ui-v2/layout/Card";
 import { Section } from "@/components/ui-v2/layout/Section";
 import { Button } from "@/components/ui-v2/forms/Button";
-import { LinkButton } from "@/components/ui-v2/navigation/LinkButton";
 import { NavLink } from "@/components/ui-v2/navigation/NavLink";
 import { NavGroup } from "@/components/ui-v2/navigation/NavGroup";
 import { Input } from "@/components/ui-v2/forms/Input";
@@ -70,7 +68,6 @@ import { FormGroup } from "@/components/ui-v2/forms/FormGroup";
 import { Badge } from "@/components/ui-v2/display/Badge";
 import { Modal } from "@/components/ui-v2/overlay/Modal";
 import { ConfirmDialog } from "@/components/ui-v2/overlay/ConfirmDialog";
-import { Spinner } from "@/components/ui-v2/feedback/Spinner";
 import { Skeleton } from "@/components/ui-v2/feedback/Skeleton";
 import { EmptyState } from "@/components/ui-v2/display/EmptyState";
 import { Alert } from "@/components/ui-v2/feedback/Alert";
@@ -384,7 +381,7 @@ function AddItemModal({
     }
   }, [selectedItem, itemType]);
 
-  const loadOptions = async () => {
+  const loadOptions = useCallback(async () => {
     if (itemType === "space") {
       const result = await getVenueSpaces();
       if (result.data) setSpaces(result.data);
@@ -400,7 +397,7 @@ function AddItemModal({
       setCustomPrice("25");
       setQuantity(1);
     }
-  };
+  }, [itemType]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1049,19 +1046,13 @@ export default function PrivateBookingDetailPage({
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
   const [showDiscountModal, setShowDiscountModal] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [showEditItemModal, setShowEditItemModal] = useState(false);
   const [editingItem, setEditingItem] = useState<PrivateBookingItem | null>(
     null,
   );
 
-  useEffect(() => {
-    params.then((p) => {
-      setBookingId(p.id);
-      loadBooking(p.id);
-    });
-  }, [params]);
-
-  const loadBooking = async (id: string) => {
+  const loadBooking = useCallback(async (id: string) => {
     setLoading(true);
     const result = await getPrivateBooking(id);
     if (result.data) {
@@ -1075,7 +1066,16 @@ export default function PrivateBookingDetailPage({
       router.push("/private-bookings");
     }
     setLoading(false);
-  };
+  }, [router]);
+
+  useEffect(() => {
+    params.then((p) => {
+      setBookingId(p.id);
+      loadBooking(p.id);
+    });
+  }, [params, loadBooking]);
+
+  
 
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
@@ -1213,7 +1213,7 @@ export default function PrivateBookingDetailPage({
     );
   }
 
-  const StatusIcon = statusConfig[booking.status].icon;
+  // StatusIcon is defined inline where needed above; remove duplicate unused const here
 
   return (
     <PageWrapper>
@@ -1231,6 +1231,12 @@ export default function PrivateBookingDetailPage({
             <NavLink href={`/private-bookings/${bookingId}/edit`}>
               Edit Details
             </NavLink>
+            {/* Temporarily commented out - missing handleCancelBooking function 
+            {(booking.status === 'draft' || booking.status === 'confirmed') && (
+              <NavLink onClick={handleCancelBooking}>
+                {cancelling ? 'Cancelling...' : 'Cancel Booking'}
+              </NavLink>
+            )} */}
           </NavGroup>
         }
       />

@@ -11,6 +11,7 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { Plus, Edit2, Trash2, Package } from 'lucide-react'
 import { getLineItemCatalog, createCatalogItem, updateCatalogItem, deleteCatalogItem } from '@/app/actions/invoices'
 import type { LineItemCatalogItem } from '@/types/invoices'
@@ -183,112 +184,51 @@ export default function LineItemCatalogPage() {
           }
         />
       ) : (
-        <>
-          {/* Desktop Table */}
-          <div className="hidden md:block">
-            <Card>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b bg-gray-50">
-                    <th className="text-left p-4 font-medium text-gray-700">Name</th>
-                    <th className="text-left p-4 font-medium text-gray-700">Description</th>
-                    <th className="text-right p-4 font-medium text-gray-700">Default Price</th>
-                    <th className="text-right p-4 font-medium text-gray-700">VAT Rate</th>
-                    <th className="text-right p-4 font-medium text-gray-700">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item) => (
-                    <tr key={item.id} className="border-b hover:bg-gray-50">
-                      <td className="p-4">
-                        <div className="font-medium">{item.name}</div>
-                      </td>
-                      <td className="p-4 text-gray-600">
-                        {item.description || '-'}
-                      </td>
-                      <td className="p-4 text-right">
-                        £{item.default_price.toFixed(2)}
-                      </td>
-                      <td className="p-4 text-right">
-                        {item.default_vat_rate}%
-                      </td>
-                      <td className="p-4 text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => openForm(item)}
-                            aria-label="Edit item"
-                            iconOnly
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            onClick={() => handleDelete(item)}
-                            aria-label="Delete item"
-                            iconOnly
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            </Card>
-          </div>
-
-          {/* Mobile Card View */}
-          <div className="md:hidden space-y-3">
-            {items.map((item) => (
-              <Card key={item.id} className="p-4">
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex-1">
-                    <h3 className="font-medium text-gray-900">{item.name}</h3>
-                    {item.description && (
-                      <p className="text-sm text-gray-600 mt-1">{item.description}</p>
-                    )}
+        <Card>
+          <DataTable
+            data={items}
+            getRowKey={(i) => i.id}
+            columns={[
+              { key: 'name', header: 'Name', cell: (i: LineItemCatalogItem) => <span className="font-medium">{i.name}</span> },
+              { key: 'description', header: 'Description', cell: (i: LineItemCatalogItem) => <span className="text-gray-600">{i.description || '-'}</span> },
+              { key: 'price', header: 'Default Price', align: 'right', cell: (i: LineItemCatalogItem) => <>£{i.default_price.toFixed(2)}</> },
+              { key: 'vat', header: 'VAT Rate', align: 'right', cell: (i: LineItemCatalogItem) => <>{i.default_vat_rate}%</> },
+              { key: 'actions', header: 'Actions', align: 'right', cell: (i: LineItemCatalogItem) => (
+                <div className="flex justify-end gap-2">
+                  <Button variant="secondary" size="sm" onClick={() => openForm(i)} aria-label="Edit item" iconOnly>
+                    <Edit2 className="h-4 w-4" />
+                  </Button>
+                  <Button variant="danger" size="sm" onClick={() => handleDelete(i)} aria-label="Delete item" iconOnly>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) },
+            ]}
+            emptyMessage="No catalog items found"
+            renderMobileCard={(i: LineItemCatalogItem) => (
+              <div className="p-2">
+                <div className="flex justify-between items-start mb-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-gray-900 truncate">{i.name}</div>
+                    {i.description && <div className="text-sm text-gray-600 mt-1 truncate">{i.description}</div>}
                   </div>
                   <div className="flex gap-2 ml-4">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => openForm(item)}
-                      aria-label="Edit item"
-                      iconOnly
-                    >
+                    <Button variant="secondary" size="sm" onClick={() => openForm(i)} aria-label="Edit item" iconOnly>
                       <Edit2 className="h-4 w-4" />
                     </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => handleDelete(item)}
-                      aria-label="Delete item"
-                      iconOnly
-                    >
+                    <Button variant="danger" size="sm" onClick={() => handleDelete(i)} aria-label="Delete item" iconOnly>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
                 <div className="flex justify-between items-center text-sm">
-                  <div>
-                    <span className="text-gray-500">Price:</span>
-                    <span className="font-medium ml-1">£{item.default_price.toFixed(2)}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">VAT:</span>
-                    <span className="font-medium ml-1">{item.default_vat_rate}%</span>
-                  </div>
+                  <div><span className="text-gray-500">Price:</span> <span className="font-medium">£{i.default_price.toFixed(2)}</span></div>
+                  <div><span className="text-gray-500">VAT:</span> <span className="font-medium">{i.default_vat_rate}%</span></div>
                 </div>
-              </Card>
-            ))}
-          </div>
-        </>
+              </div>
+            )}
+          />
+        </Card>
       )}
 
       {/* Form Modal */}

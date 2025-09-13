@@ -127,7 +127,11 @@ export default function BulkMessagePage() {
       if (!categoriesResult.data) throw new Error('Failed to load categories')
 
       // Process customer data to include booking count, event bookings, and category preferences
-      const processedCustomers = customersData?.map((customer: any) => ({
+      const processedCustomers = customersData?.map((customer: Customer & {
+        bookings?: { count: number }[]
+        event_bookings?: { event_id: string; seats: number | null }[]
+        category_preferences?: { category_id: string; times_attended: number }[]
+      }) => ({
         ...customer,
         total_bookings: customer.bookings?.[0]?.count || 0,
         event_bookings: customer.event_bookings || [],
@@ -229,7 +233,7 @@ export default function BulkMessagePage() {
     }
 
     setFilteredCustomers(filtered)
-  }, [customers, filters, events, categories])
+  }, [customers, filters])
 
   useEffect(() => {
     applyFilters()
@@ -591,7 +595,7 @@ export default function BulkMessagePage() {
                       >
                         <Checkbox
                           checked={selectedCustomers.has(customer.id)}
-                          onChange={(e) => toggleCustomer(customer.id)}
+                          onChange={(_e) => toggleCustomer(customer.id)}
                         />
                         <div className="ml-3 flex-1">
                         <div className="text-sm font-medium text-gray-900">{customer.first_name} {customer.last_name}</div>

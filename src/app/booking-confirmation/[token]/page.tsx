@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui-v2/forms/Button';
@@ -8,10 +8,8 @@ import { Input } from '@/components/ui-v2/forms/Input';
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
 import { Select } from '@/components/ui-v2/forms/Select';
 import { Card } from '@/components/ui-v2/layout/Card';
-import { Section } from '@/components/ui-v2/layout/Section';
 import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
-import { Badge } from '@/components/ui-v2/display/Badge';
 import { Calendar, Clock, Users, CheckCircle, XCircle } from 'lucide-react';
 import { formatPhoneForDisplay } from '@/lib/validation';
 import Image from 'next/image';
@@ -57,11 +55,7 @@ export default function BookingConfirmationPage() {
   const [confirmed, setConfirmed] = useState(false);
   const [confirmationError, setConfirmationError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadPendingBooking();
-  }, [token]);
-
-  async function loadPendingBooking() {
+  const loadPendingBooking = useCallback(async () => {
     try {
       const supabase = createClient();
       
@@ -157,7 +151,11 @@ export default function BookingConfirmationPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [token])
+
+  useEffect(() => {
+    loadPendingBooking();
+  }, [loadPendingBooking]);
 
   async function confirmBooking() {
     if (!pendingBooking) return;
@@ -166,17 +164,17 @@ export default function BookingConfirmationPage() {
     setConfirmationError(null);
     
     try {
-      const requestBody: any = {
+      const requestBody: { token: string; seats: number; customer?: { first_name: string; last_name: string } } = {
         token,
         seats,
       };
       
       // Only include customer details if they have values
-      if (customerDetails.first_name) {
-        requestBody.first_name = customerDetails.first_name;
-      }
-      if (customerDetails.last_name) {
-        requestBody.last_name = customerDetails.last_name;
+      if (customerDetails.first_name || customerDetails.last_name) {
+        requestBody.customer = {
+          first_name: customerDetails.first_name,
+          last_name: customerDetails.last_name
+        };
       }
       
       const response = await fetch('/api/bookings/confirm', {

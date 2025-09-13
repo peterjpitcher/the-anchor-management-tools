@@ -9,7 +9,7 @@ import { Pagination } from '@/components/Pagination'
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
-import { Form } from '@/components/ui-v2/forms/Form'
+// import { Form } from '@/components/ui-v2/forms/Form'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Select } from '@/components/ui-v2/forms/Select'
 import { Input } from '@/components/ui-v2/forms/Input'
@@ -18,7 +18,7 @@ import { Badge } from '@/components/ui-v2/display/Badge'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
-import { useRouter } from 'next/navigation';
+// import { useRouter } from 'next/navigation';
 interface AuditLog {
   id: string
   created_at: string
@@ -35,7 +35,6 @@ interface AuditLog {
 }
 
 export default function AuditLogsPage() {
-  const router = useRouter();
 const supabase = useSupabase()
   const [filterState, setFilterState] = useState({
     operationType: '',
@@ -78,14 +77,13 @@ const supabase = useSupabase()
     pageSize,
     isLoading: loading,
     setPage,
-    refresh: __
   } = usePagination<AuditLog>(
     supabase,
     'audit_logs',
     {
       select: '*',
       orderBy: { column: 'created_at', ascending: false },
-      filters: paginationFilters
+      filters: paginationFilters as any
     },
     { pageSize: 50 }
   )

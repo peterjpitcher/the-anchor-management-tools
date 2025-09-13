@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getQuote, convertQuoteToInvoice } from '@/app/actions/quotes'
-import { ArrowLeft, FileText, AlertTriangle } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import type { QuoteWithDetails } from '@/types/invoices'
 // UI v2 components
 import { Page } from '@/components/ui-v2/layout/Page'

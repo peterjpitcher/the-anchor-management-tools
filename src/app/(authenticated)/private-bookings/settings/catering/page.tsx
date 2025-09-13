@@ -1,13 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import type { CateringPackage } from '@/types/private-bookings'
 import { 
   PlusIcon, 
   SparklesIcon,
-  CurrencyPoundIcon,
-  CheckIcon,
-  UserGroupIcon
+  CheckIcon
 } from '@heroicons/react/24/outline'
 import { createCateringPackage, updateCateringPackage, deleteCateringPackage } from '@/app/actions/privateBookingActions'
 import { CateringPackageDeleteButton } from '@/components/CateringPackageDeleteButton'
@@ -241,7 +238,7 @@ export default async function CateringPackagesPage() {
         </Card>
       ) : (
         <div className="space-y-6">
-          {(Object.entries(packagesByType || {}) as [string, any[]][]).map(([type, typePackages]) => (
+          {(Object.entries(packagesByType || {}) as [string, CateringPackage[]][]).map(([type, typePackages]) => (
             <Card key={type}>
               <Section 
                 title={`${type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')} Packages`}

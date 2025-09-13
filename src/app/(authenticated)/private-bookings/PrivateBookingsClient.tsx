@@ -10,7 +10,7 @@ import {
   SparklesIcon,
   MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline'
-import { deletePrivateBooking } from '@/app/actions/privateBookingActions'
+import { deletePrivateBooking, cancelPrivateBooking } from '@/app/actions/privateBookingActions'
 import DeleteBookingButton from '@/components/private-bookings/DeleteBookingButton'
 import type { PrivateBookingWithDetails, BookingStatus } from '@/types/private-bookings'
 import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils'
@@ -21,7 +21,6 @@ import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
 import { Input } from '@/components/ui-v2/forms/Input'
@@ -30,7 +29,6 @@ import { Badge } from '@/components/ui-v2/display/Badge'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
-import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { Pagination } from '@/components/ui-v2/navigation/Pagination'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 
@@ -137,7 +135,16 @@ export default function PrivateBookingsClient({ permissions }: Props) {
       }
 
       // Calculate days until event
-      const enrichedBookings = (data || []).map((booking: any) => {
+      type CustomerRow = { id: string; first_name: string; last_name: string; mobile_number: string | null }
+      type BookingRow = {
+        event_date: string
+        status: string
+        deposit_paid_date: string | null
+        customer?: CustomerRow[] | CustomerRow
+        [key: string]: unknown
+      }
+
+      const enrichedBookings = (data || []).map((booking: BookingRow) => {
         // Extract customer from array (Supabase returns it as an array)
         const customerData = Array.isArray(booking.customer) ? booking.customer[0] : booking.customer
         
@@ -158,7 +165,7 @@ export default function PrivateBookingsClient({ permissions }: Props) {
         }
       })
 
-      setBookings(enrichedBookings)
+      setBookings(enrichedBookings as any)
       setTotalCount(count || 0)
     } finally {
       setLoading(false)
@@ -176,6 +183,17 @@ export default function PrivateBookingsClient({ permissions }: Props) {
       toast.error(result.error)
     } else {
       toast.success('Booking deleted successfully')
+      fetchBookings()
+    }
+  }
+
+  const handleCancelBooking = async (bookingId: string) => {
+    if (!window.confirm('Cancel this booking? An SMS will be sent to inform the customer.')) return
+    const result = await cancelPrivateBooking(bookingId, 'Cancelled from list view')
+    if ('error' in result && result.error) {
+      toast.error(result.error)
+    } else {
+      toast.success('Booking cancelled and customer notified')
       fetchBookings()
     }
   }
@@ -377,6 +395,11 @@ export default function PrivateBookingsClient({ permissions }: Props) {
                     <Link href={`/private-bookings/${booking.id}`} className="text-blue-600 hover:text-blue-900">
                       View
                     </Link>
+                    {(booking.status === 'draft' || booking.status === 'confirmed') && (
+                      <button onClick={() => handleCancelBooking(booking.id)} className="text-yellow-600 hover:text-yellow-800">
+                        Cancel
+                      </button>
+                    )}
                     {permissions.hasDeletePermission && (booking.status === 'draft' || booking.status === 'cancelled') && (
                       <DeleteBookingButton
                         bookingId={booking.id}

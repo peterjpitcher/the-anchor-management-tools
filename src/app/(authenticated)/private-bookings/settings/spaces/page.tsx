@@ -3,8 +3,6 @@ import { redirect } from 'next/navigation'
 import { 
   PlusIcon, 
   MapPinIcon,
-  UserGroupIcon,
-  CurrencyPoundIcon,
   CheckIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline'

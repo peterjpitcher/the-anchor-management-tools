@@ -11,7 +11,6 @@ import {
   TrashIcon,
   ArrowDownTrayIcon
 } from '@heroicons/react/24/outline'
-import Link from 'next/link'
 // New UI components
 import { Page } from '@/components/ui-v2/layout/Page'
 import { Card } from '@/components/ui-v2/layout/Card'
@@ -66,8 +65,8 @@ export default function ProfilePage() {
       
       if (fetchError && fetchError.code === 'PGRST116') {
         // Profile doesn't exist, create it
-        const { data: newProfile, error: createError } = await (supabase
-          .from('profiles') as any)
+        const { data: newProfile, error: createError } = await (supabase as any)
+          .from('profiles')
           .insert({
             id: user.id,
             email: user.email,
@@ -85,7 +84,7 @@ export default function ProfilePage() {
       }
 
       setProfile(existingProfile)
-      setFullName((existingProfile as any)?.full_name || '')
+      setFullName((existingProfile as unknown as { full_name?: string })?.full_name || '')
     } catch (error) {
       console.error('Error loading profile:', error)
       toast.error('Failed to load profile')
@@ -103,8 +102,8 @@ export default function ProfilePage() {
 
     try {
       setSaving(true)
-      const { error } = await (supabase
-        .from('profiles') as any)
+      const { error } = await (supabase as any)
+        .from('profiles')
         .update({
           full_name: fullName,
           updated_at: new Date().toISOString()
@@ -144,8 +143,8 @@ export default function ProfilePage() {
       if (uploadError) throw uploadError
 
       // Update profile with avatar URL
-      const { error: updateError } = await (supabase
-        .from('profiles') as any)
+      const { error: updateError } = await (supabase as any)
+        .from('profiles')
         .update({ 
           avatar_url: filePath,
           updated_at: new Date().toISOString()
@@ -172,8 +171,8 @@ export default function ProfilePage() {
         ? { sms_notifications: !profile.sms_notifications }
         : { email_notifications: !profile.email_notifications }
 
-      const { error } = await (supabase
-        .from('profiles') as any)
+      const { error } = await (supabase as any)
+        .from('profiles')
         .update({
           ...update,
           updated_at: new Date().toISOString()
@@ -231,8 +230,8 @@ export default function ProfilePage() {
   async function requestAccountDeletion() {
     try {
       // Log the deletion request
-      const { error } = await (supabase
-        .from('audit_logs') as any)
+      const { error } = await (supabase as any)
+        .from('audit_logs')
         .insert({
           user_id: profile?.id,
           entity_type: 'profile',

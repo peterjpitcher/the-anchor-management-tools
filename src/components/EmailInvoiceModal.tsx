@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { sendInvoiceViaEmail } from '@/app/actions/email'
 import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Send } from 'lucide-react'
 import type { InvoiceWithDetails } from '@/types/invoices'
+import { useSupabase } from '@/components/providers/SupabaseProvider'
 
 interface EmailInvoiceModalProps {
   invoice: InvoiceWithDetails
@@ -18,6 +19,7 @@ interface EmailInvoiceModalProps {
 }
 
 export function EmailInvoiceModal({ invoice, isOpen, onClose, onSuccess }: EmailInvoiceModalProps) {
+  const supabase = useSupabase()
   const [recipientEmail, setRecipientEmail] = useState(invoice.vendor?.email || '')
   const [subject, setSubject] = useState(`Invoice ${invoice.invoice_number} from Orange Jelly Limited`)
   const [body, setBody] = useState(
@@ -41,6 +43,32 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`
   )
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const vendorId = invoice.vendor?.id
+
+  // Prefill with Primary contact + vendor email(s) when modal opens
+  useEffect(() => {
+    let active = true
+    async function loadPrimary() {
+      if (!isOpen || !vendorId) return
+      const { data } = await supabase
+        .from('invoice_vendor_contacts')
+        .select('email')
+        .eq('vendor_id', vendorId)
+        .eq('is_primary', true)
+        .maybeSingle()
+      if (!active) return
+      const parts = [(data as any)?.email, invoice.vendor?.email]
+        .filter(Boolean)
+        .flatMap(v => String(v).split(/[;,]/))
+        .map(s => s.trim())
+        .filter(Boolean)
+      const unique = Array.from(new Set(parts))
+      if (unique.length) setRecipientEmail(unique.join(', '))
+    }
+    loadPrimary()
+    return () => { active = false }
+  }, [isOpen, vendorId, supabase, invoice.vendor?.email])
 
   async function handleSend() {
     if (!recipientEmail) {
@@ -106,15 +134,16 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`
 
         <div>
           <label className="block text-sm font-medium mb-1">
-            To Email Address <span className="text-red-500">*</span>
+            To Email Address(es) <span className="text-red-500">*</span>
           </label>
           <Input
-            type="email"
+            type="text"
             value={recipientEmail}
             onChange={(e) => setRecipientEmail(e.target.value)}
-            placeholder="customer@example.com"
+            placeholder="customer@example.com, accounts@example.com"
             required
           />
+          <p className="text-xs text-gray-500 mt-1">Separate multiple emails with commas or semicolons.</p>
         </div>
 
         <div>
