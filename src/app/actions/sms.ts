@@ -336,6 +336,21 @@ export async function sendSms(params: { to: string; body: string; bookingId?: st
     // If we have access to the database, store the message
     const supabase = createAdminClient()
     if (supabase) {
+      // Try to resolve customer_id for private booking messages
+      let customerIdForLog: string | undefined
+      if (params.bookingId) {
+        try {
+          const { data: pb } = await supabase
+            .from('private_bookings')
+            .select('customer_id')
+            .eq('id', params.bookingId)
+            .single()
+          if (pb?.customer_id) customerIdForLog = pb.customer_id
+        } catch (e) {
+          console.warn('[sendSms] Could not resolve customer_id for bookingId', params.bookingId, e)
+        }
+      }
+
       // Calculate segments
       const messageLength = params.body.length
       const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153)
@@ -356,7 +371,9 @@ export async function sendSms(params: { to: string; body: string; bookingId?: st
         cost_usd: costUsd,
         read_at: new Date().toISOString(), // Mark as read since it's outbound
         // Store booking reference if provided
-        metadata: params.bookingId ? { private_booking_id: params.bookingId } : undefined
+        metadata: params.bookingId ? { private_booking_id: params.bookingId } : undefined,
+        // Link to customer for visibility on customer page (when known)
+        customer_id: customerIdForLog
       }
       
       const { error: messageError } = await supabase

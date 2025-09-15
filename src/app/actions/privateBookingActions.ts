@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import type { 
@@ -1085,16 +1086,30 @@ export async function cancelPrivateBooking(bookingId: string, reason?: string) {
     return { error: 'Booking cannot be cancelled' }
   }
 
-  // Update status to cancelled
-  const { error: updateError } = await supabase
+  // Update status to cancelled (with graceful fallback if legacy schema lacks columns)
+  const nowIso = new Date().toISOString()
+  let { error: updateError } = await supabase
     .from('private_bookings')
     .update({
       status: 'cancelled',
       cancellation_reason: reason || 'Cancelled by staff',
-      cancelled_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      cancelled_at: nowIso,
+      updated_at: nowIso
     })
     .eq('id', bookingId)
+
+  // Fallback: some environments may not yet have cancellation_reason/cancelled_at
+  if (updateError && (updateError.code === 'PGRST204' || (updateError.message || '').includes('cancellation_reason') || (updateError.message || '').includes('cancelled_at'))) {
+    console.warn('Private bookings schema missing cancellation columns; applying fallback update without those fields')
+    const fallback = await supabase
+      .from('private_bookings')
+      .update({
+        status: 'cancelled',
+        updated_at: nowIso
+      })
+      .eq('id', bookingId)
+    updateError = fallback.error || null
+  }
 
   if (updateError) {
     console.error('Error cancelling private booking:', updateError)
@@ -1220,6 +1235,7 @@ export async function rejectSms(smsId: string) {
 
 export async function sendApprovedSms(smsId: string) {
   const supabase = await createClient()
+  const admin = createAdminClient()
   
   // Get the SMS details
   const { data: sms, error: fetchError } = await supabase
@@ -1258,13 +1274,30 @@ export async function sendApprovedSms(smsId: string) {
     return { error: result.error }
   }
   
+  // Link the message row to the customer_id for customer page visibility
+  try {
+    const { data: booking } = await admin
+      .from('private_bookings')
+      .select('customer_id')
+      .eq('id', sms.booking_id)
+      .single()
+    if (booking?.customer_id) {
+      await admin
+        .from('messages')
+        .update({ customer_id: booking.customer_id })
+        .eq('twilio_message_sid', result.sid as string)
+    }
+  } catch (linkErr) {
+    console.warn('[sendApprovedSms] Could not link message to customer_id:', linkErr)
+  }
+
   // Update status to sent
   await supabase
     .from('private_booking_sms_queue')
     .update({
       status: 'sent',
       sent_at: new Date().toISOString(),
-      twilio_sid: result.sid
+      twilio_message_sid: result.sid as string
     })
     .eq('id', smsId)
   

@@ -6,6 +6,13 @@ export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname
   const hostname = request.headers.get('host') || ''
   
+  // Bypass auth for short-link host so Vercel rewrite to /api/redirect works
+  // Without this, requests like https://vip-club.uk/ABC hit middleware on 
+  // the original path ("/ABC") and get redirected to login before the rewrite
+  if (hostname.includes('vip-club.uk')) {
+    return NextResponse.next()
+  }
+  
   // Skip middleware for:
   // - Static assets
   // - API routes (especially webhooks)
