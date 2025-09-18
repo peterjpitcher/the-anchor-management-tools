@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { sendEmail } from '@/lib/email/emailService';
+import { sendDailyTableBookingSummary, getLondonDateString, TableBookingNotificationRecord } from '@/lib/table-bookings/managerNotifications';
 
 interface MonitoringAlert {
   type: 'error' | 'warning' | 'info';
@@ -269,14 +270,25 @@ export async function monitorBookingPatterns() {
  */
 export async function generateDailySummary() {
   const supabase = await createClient();
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLondonDateString();
 
-  // Get today's stats
   const { data: bookings } = await supabase
     .from('table_bookings')
     .select(`
-      *,
-      table_booking_payments(amount, status)
+      id,
+      booking_reference,
+      booking_date,
+      booking_time,
+      party_size,
+      status,
+      booking_type,
+      source,
+      special_requirements,
+      dietary_requirements,
+      allergies,
+      created_at,
+      table_booking_payments(amount, status),
+      customer:customers(first_name, last_name, mobile_number, email)
     `)
     .eq('booking_date', today);
 
@@ -292,43 +304,9 @@ export async function generateDailySummary() {
     }, 0) || 0,
   };
 
-  const html = `
-    <h2>Table Booking Daily Summary - ${today}</h2>
-    <table style="border-collapse: collapse; width: 100%;">
-      <tr>
-        <td style="padding: 8px; border: 1px solid #ddd;">Total Bookings</td>
-        <td style="padding: 8px; border: 1px solid #ddd;">${stats.totalBookings}</td>
-      </tr>
-      <tr>
-        <td style="padding: 8px; border: 1px solid #ddd;">Confirmed</td>
-        <td style="padding: 8px; border: 1px solid #ddd;">${stats.confirmedBookings}</td>
-      </tr>
-      <tr>
-        <td style="padding: 8px; border: 1px solid #ddd;">Cancelled</td>
-        <td style="padding: 8px; border: 1px solid #ddd;">${stats.cancelledBookings}</td>
-      </tr>
-      <tr>
-        <td style="padding: 8px; border: 1px solid #ddd;">No Shows</td>
-        <td style="padding: 8px; border: 1px solid #ddd;">${stats.noShows}</td>
-      </tr>
-      <tr>
-        <td style="padding: 8px; border: 1px solid #ddd;">Total Covers</td>
-        <td style="padding: 8px; border: 1px solid #ddd;">${stats.totalCovers}</td>
-      </tr>
-      <tr>
-        <td style="padding: 8px; border: 1px solid #ddd;">Revenue</td>
-        <td style="padding: 8px; border: 1px solid #ddd;">£${stats.revenue.toFixed(2)}</td>
-      </tr>
-    </table>
-  `;
-
-  const summaryEmail = process.env.DAILY_SUMMARY_EMAIL;
-  if (summaryEmail) {
-    await sendEmail({
-      to: summaryEmail,
-      subject: `Table Booking Daily Summary - ${today}`,
-      html,
-    });
+  if (bookings && bookings.length > 0) {
+    const summaryBookings: TableBookingNotificationRecord[] = bookings.map(({ table_booking_payments: _payments, ...rest }) => rest as unknown as TableBookingNotificationRecord)
+    await sendDailyTableBookingSummary(today, summaryBookings);
   }
 
   return stats;

@@ -7,6 +7,7 @@ import { generatePhoneVariants, formatPhoneForStorage } from '@/lib/utils';
 import { checkAvailability } from '@/app/actions/table-booking-availability';
 import { calculateBookingTotal } from '@/app/actions/table-booking-menu';
 import { createPayPalOrder } from '@/lib/paypal';
+import { sendSameDayBookingAlertIfNeeded, TableBookingNotificationRecord } from '@/lib/table-bookings/managerNotifications';
 
 // Handle CORS preflight
 export async function OPTIONS(request: NextRequest) {
@@ -211,7 +212,10 @@ export async function POST(request: NextRequest) {
           status: validatedData.booking_type === 'sunday_lunch' ? 'pending_payment' : 'confirmed',
           correlation_id: correlationId,
         })
-        .select()
+        .select(`
+          *,
+          customer:customers(first_name, last_name, mobile_number, email)
+        `)
         .single();
         
       if (bookingError) {
@@ -407,6 +411,8 @@ export async function POST(request: NextRequest) {
         // Calculate deposit: £5 per person
         depositAmount = validatedData.party_size * 5;
       }
+
+      await sendSameDayBookingAlertIfNeeded(booking as TableBookingNotificationRecord);
 
       // Prepare response
       const response: any = {
@@ -640,5 +646,5 @@ export async function GET(request: NextRequest) {
         500
       );
     }
-  }, ['read:table_bookings'], request);
+}, ['read:table_bookings'], request);
 }

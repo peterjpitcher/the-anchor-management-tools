@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { logAuditEvent } from './audit';
 import { z } from 'zod';
@@ -8,6 +8,7 @@ import { revalidatePath } from 'next/cache';
 import { generatePhoneVariants, formatPhoneForStorage } from '@/lib/utils';
 import { queueBookingConfirmationSMS, queueCancellationSMS, queuePaymentRequestSMS } from './table-booking-sms';
 import { sendBookingConfirmationEmail, sendBookingCancellationEmail } from './table-booking-email';
+import { sendSameDayBookingAlertIfNeeded, TableBookingNotificationRecord } from '@/lib/table-bookings/managerNotifications';
 
 // Helper function to format time from 24hr to 12hr format
 function formatTime12Hour(time24: string): string {
@@ -61,44 +62,72 @@ const UpdateTableBookingSchema = z.object({
 
 // Helper function to find or create customer
 async function findOrCreateCustomer(
-  supabase: any,
+  supabase: ReturnType<typeof createAdminClient>,
   customerData: z.infer<typeof CreateCustomerSchema>
 ) {
   const standardizedPhone = formatPhoneForStorage(customerData.mobile_number);
   const phoneVariants = generatePhoneVariants(standardizedPhone);
-  
-  // Try to find existing customer
+
   const { data: existingCustomer } = await supabase
     .from('customers')
     .select('*')
     .or(phoneVariants.map(v => `mobile_number.eq.${v}`).join(','))
     .single();
-    
+
   if (existingCustomer) {
-    // Update opt-in status if changed
+    const updates: Record<string, unknown> = {};
+
     if (customerData.sms_opt_in !== existingCustomer.sms_opt_in) {
+      updates.sms_opt_in = customerData.sms_opt_in;
+    }
+
+    if (existingCustomer.mobile_number !== standardizedPhone) {
+      updates.mobile_number = standardizedPhone;
+    }
+
+    if (!existingCustomer.mobile_e164 || existingCustomer.mobile_e164 !== standardizedPhone) {
+      updates.mobile_e164 = standardizedPhone;
+    }
+
+    if (customerData.email && customerData.email !== existingCustomer.email) {
+      updates.email = customerData.email;
+    }
+
+    if (Object.keys(updates).length > 0) {
       await supabase
         .from('customers')
-        .update({ sms_opt_in: customerData.sms_opt_in })
+        .update(updates)
         .eq('id', existingCustomer.id);
+
+      return { ...existingCustomer, ...updates } as typeof existingCustomer;
     }
+
     return existingCustomer;
   }
-  
-  // Create new customer
+
+  const insertPayload: Record<string, unknown> = {
+    first_name: customerData.first_name,
+    last_name: customerData.last_name,
+    mobile_number: standardizedPhone,
+    mobile_e164: standardizedPhone,
+    sms_opt_in: customerData.sms_opt_in,
+  };
+
+  if (customerData.email) {
+    insertPayload.email = customerData.email;
+  }
+
   const { data: newCustomer, error } = await supabase
     .from('customers')
-    .insert({
-      ...customerData,
-      mobile_number: standardizedPhone,
-    })
+    .insert(insertPayload)
     .select()
     .single();
-    
+
   if (error) {
+    console.error('Failed to create customer from table booking:', error);
     throw new Error('Failed to create customer');
   }
-  
+
   return newCustomer;
 }
 
@@ -142,6 +171,7 @@ export async function checkTableAvailability(
 export async function createTableBooking(formData: FormData) {
   try {
     const supabase = await createClient();
+    const adminSupabase = createAdminClient();
     
     // Check permissions
     const hasPermission = await checkUserPermission('table_bookings', 'create');
@@ -179,7 +209,7 @@ export async function createTableBooking(formData: FormData) {
         sms_opt_in: formData.get('customer_sms_opt_in') === 'true',
       });
       
-      const customer = await findOrCreateCustomer(supabase, customerData);
+      const customer = await findOrCreateCustomer(adminSupabase, customerData);
       customerId = customer.id;
     }
     
@@ -268,7 +298,7 @@ export async function createTableBooking(formData: FormData) {
         source: bookingData.source,
         status: bookingData.booking_type === 'sunday_lunch' ? 'pending_payment' : 'confirmed',
       })
-      .select()
+      .select('*, customer:customers(first_name, last_name, mobile_number, email)')
       .single();
       
     if (bookingError) {
@@ -305,7 +335,9 @@ export async function createTableBooking(formData: FormData) {
         console.error('Menu items parsing error:', err);
       }
     }
-    
+
+    await sendSameDayBookingAlertIfNeeded(booking as TableBookingNotificationRecord);
+
     // Log audit event
     await logAuditEvent({
       operation_type: 'create',
@@ -328,7 +360,7 @@ export async function createTableBooking(formData: FormData) {
       // Send SMS immediately for booking confirmations
       try {
         // Get customer details (we already have them from the booking creation)
-        const { data: customerData } = await supabase
+        const { data: customerData } = await adminSupabase
           .from('customers')
           .select('*')
           .eq('id', customerId)
