@@ -7,6 +7,7 @@ import { rateLimiters } from '@/lib/rate-limit'
 import { headers } from 'next/headers'
 import { logger } from '@/lib/logger'
 import { jobQueue } from '@/lib/background-jobs'
+import { sendSMS } from '@/lib/twilio'
 
 // Define an interface for Twilio message creation parameters
 interface TwilioMessageCreateParams {
@@ -242,8 +243,9 @@ export async function sendBookingConfirmationSync(bookingId: string) {
 }
 
 // Send OTP message
-export async function sendOTPMessage(phoneNumber: string, message: string) {
+export async function sendOTPMessage(params: { phoneNumber: string; message: string; customerId?: string }) {
   try {
+    const { phoneNumber, message, customerId } = params
     if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
       throw new Error('Twilio credentials not configured');
     }
@@ -272,6 +274,42 @@ export async function sendOTPMessage(phoneNumber: string, message: string) {
       sid: twilioMessage.sid,
       to: twilioMessage.to
     });
+
+    if (customerId) {
+      try {
+        const supabase = createAdminClient()
+        const messageLength = message.length
+        const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153)
+        const costUsd = segments * 0.04
+
+        const { error: logError } = await supabase
+          .from('messages')
+          .insert({
+            customer_id: customerId,
+            direction: 'outbound',
+            message_sid: twilioMessage.sid,
+            twilio_message_sid: twilioMessage.sid,
+            body: message,
+            status: twilioMessage.status || 'queued',
+            twilio_status: twilioMessage.status || 'queued',
+            from_number: twilioMessage.from || process.env.TWILIO_PHONE_NUMBER || '',
+            to_number: twilioMessage.to,
+            message_type: 'sms',
+            segments,
+            cost_usd: costUsd,
+            read_at: new Date().toISOString(),
+            metadata: {
+              context: 'otp'
+            }
+          })
+
+        if (logError) {
+          console.error('Failed to log OTP SMS message:', logError)
+        }
+      } catch (logError) {
+        console.error('Error recording OTP SMS message:', logError)
+      }
+    }
     
     return { success: true, messageSid: twilioMessage.sid };
   } catch (error) {
@@ -447,11 +485,11 @@ async function sendBulkSMSInternal(customerIds: string[], message: string, skipR
     
     // Check for essential Twilio credentials
     if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
-      console.log('Skipping SMS - Twilio Account SID or Auth Token not configured')
+      logger.warn('Skipping bulk SMS - Twilio credentials not configured')
       return { error: 'SMS service not configured' }
     }
     if (!process.env.TWILIO_PHONE_NUMBER && !process.env.TWILIO_MESSAGING_SERVICE_SID) {
-      console.log('Skipping SMS - Neither Twilio Phone Number nor Messaging Service SID is configured')
+      logger.warn('Skipping bulk SMS - No Twilio sender configured')
       return { error: 'SMS service not configured' }
     }
 
@@ -460,21 +498,25 @@ async function sendBulkSMSInternal(customerIds: string[], message: string, skipR
     // Get customer details for all provided IDs
     const { data: customers, error: customerError } = await supabase
       .from('customers')
-      .select('*')
+      .select('id, mobile_number, sms_opt_in')
       .in('id', customerIds)
 
     if (customerError || !customers || customers.length === 0) {
       return { error: 'No valid customers found' }
     }
 
-    // Filter out customers who have opted out or have no mobile number
+    // Filter out customers who have not explicitly opted in or have no mobile number
     const validCustomers = customers.filter(customer => {
-      if (customer.sms_opt_in === false) {
-        console.log('Skipping customer - opted out of SMS')
+      if (!customer.mobile_number) {
+        logger.debug('Skipping customer with no mobile number', {
+          metadata: { customerId: customer.id }
+        })
         return false
       }
-      if (!customer.mobile_number) {
-        console.log('Skipping customer - no mobile number')
+      if (customer.sms_opt_in !== true) {
+        logger.debug('Skipping customer without SMS opt-in', {
+          metadata: { customerId: customer.id }
+        })
         return false
       }
       return true
@@ -483,11 +525,6 @@ async function sendBulkSMSInternal(customerIds: string[], message: string, skipR
     if (validCustomers.length === 0) {
       return { error: 'No customers with valid mobile numbers and SMS opt-in' }
     }
-
-    const twilioClientInstance = twilio(
-      process.env.TWILIO_ACCOUNT_SID,
-      process.env.TWILIO_AUTH_TOKEN
-    )
 
     // Calculate segments for cost estimation
     const messageLength = message.length
@@ -501,47 +538,46 @@ async function sendBulkSMSInternal(customerIds: string[], message: string, skipR
 
     for (const customer of validCustomers) {
       try {
-        // Prepare message parameters
-        const messageParams: TwilioMessageCreateParams = {
-          body: message,
-          to: customer.mobile_number,
-        }
+        const sendResult = await sendSMS(customer.mobile_number, message)
 
-        if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
-          messageParams.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID
-        } else if (process.env.TWILIO_PHONE_NUMBER) {
-          messageParams.from = process.env.TWILIO_PHONE_NUMBER
+        if (!sendResult.success || !sendResult.sid) {
+          errors.push({
+            customerId: customer.id,
+            error: sendResult.error || 'Failed to send message'
+          })
+          continue
         }
-
-        // Send the SMS
-        const twilioMessage = await twilioClientInstance.messages.create(messageParams)
-        
-        console.log('Bulk SMS sent successfully')
 
         // Collect message data for batch insert
         messagesToInsert.push({
           customer_id: customer.id,
           direction: 'outbound' as const,
-          message_sid: twilioMessage.sid,
-          twilio_message_sid: twilioMessage.sid,
+          message_sid: sendResult.sid,
+          twilio_message_sid: sendResult.sid,
           body: message,
-          status: twilioMessage.status,
+          status: 'sent',
           twilio_status: 'queued' as const,
-          from_number: twilioMessage.from || process.env.TWILIO_PHONE_NUMBER || '',
-          to_number: twilioMessage.to,
+          from_number: process.env.TWILIO_PHONE_NUMBER || '',
+          to_number: customer.mobile_number,
           message_type: 'sms' as const,
           segments: segments,
           cost_usd: costUsd,
-          read_at: new Date().toISOString() // Mark as read since it's outbound
+          read_at: new Date().toISOString(),
+          metadata: {
+            bulk_sms: true
+          }
         })
 
         results.push({
           customerId: customer.id,
-          messageSid: twilioMessage.sid,
+          messageSid: sendResult.sid,
           success: true
         })
       } catch (error) {
-        console.error(`Failed to send SMS to customer ${customer.id}:`, error)
+        logger.error('Failed to send SMS to customer', {
+          error: error as Error,
+          metadata: { customerId: customer.id }
+        })
         errors.push({
           customerId: customer.id,
           error: error instanceof Error ? error.message : 'Failed to send message'
@@ -556,7 +592,10 @@ async function sendBulkSMSInternal(customerIds: string[], message: string, skipR
         .insert(messagesToInsert)
 
       if (batchError) {
-        console.error('Error recording messages in batch:', batchError)
+        logger.error('Error recording bulk SMS messages', {
+          error: batchError,
+          metadata: { count: messagesToInsert.length }
+        })
         // Don't fail the action if recording fails
       }
     }
@@ -571,7 +610,9 @@ async function sendBulkSMSInternal(customerIds: string[], message: string, skipR
       errors: errors.length > 0 ? errors : undefined
     }
   } catch (error) {
-    console.error('Error in sendBulkSMS:', error)
+    logger.error('Error in sendBulkSMS', {
+      error: error as Error
+    })
     return { error: 'Failed to send message' }
   }
 } 

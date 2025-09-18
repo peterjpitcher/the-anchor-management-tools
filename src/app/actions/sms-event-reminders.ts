@@ -209,7 +209,55 @@ export async function processScheduledEventReminders() {
         }
         
         const twilioMessage = await twilioClient.messages.create(messageParams)
-        
+
+        // Log the SMS for customer visibility
+        try {
+          const messageLength = message.length
+          const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153)
+          const costUsd = segments * 0.04
+
+          const { error: logError } = await supabase
+            .from('messages')
+            .insert({
+              customer_id: customer.id,
+              direction: 'outbound',
+              message_sid: twilioMessage.sid,
+              twilio_message_sid: twilioMessage.sid,
+              body: message,
+              status: twilioMessage.status || 'queued',
+              twilio_status: twilioMessage.status || 'queued',
+              from_number: twilioMessage.from || process.env.TWILIO_PHONE_NUMBER || '',
+              to_number: twilioMessage.to,
+              message_type: 'sms',
+              segments,
+              cost_usd: costUsd,
+              read_at: new Date().toISOString(),
+              metadata: {
+                reminder_id: reminder.id,
+                reminder_type: reminder.reminder_type,
+                booking_id: reminder.booking.id
+              }
+            })
+
+          if (logError) {
+            logger.error('Failed to log reminder SMS message', {
+              error: logError,
+              metadata: {
+                reminderId: reminder.id,
+                customerId: customer.id
+              }
+            })
+          }
+        } catch (logError) {
+          logger.error('Error recording reminder SMS message', {
+            error: logError as Error,
+            metadata: {
+              reminderId: reminder.id,
+              customerId: customer.id
+            }
+          })
+        }
+
         // Update reminder as sent
         await supabase
           .from('booking_reminders')
