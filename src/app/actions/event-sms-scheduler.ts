@@ -264,45 +264,46 @@ export async function addAttendeesWithScheduledSMS(
 ) {
   try {
     const supabase = await createClient()
-    
+
     // Get the authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
       return { error: 'Unauthorized' }
     }
-    
+
     // Get event details
     const { data: event, error: eventError } = await supabase
       .from('events')
       .select('id, name, date, time')
       .eq('id', eventId)
       .single()
-    
+
     if (eventError || !event) {
       return { error: 'Event not found' }
     }
-    
+
+    const uniqueCustomerIds = Array.from(new Set(customerIds))
+
     // Check which customers already have bookings
     const { data: existingBookings, error: checkError } = await supabase
       .from('bookings')
       .select('customer_id')
       .eq('event_id', eventId)
-      .in('customer_id', customerIds)
-    
+
     if (checkError) {
       return { error: 'Failed to check existing bookings' }
     }
-    
+
     const existingCustomerIds = new Set(existingBookings?.map(b => b.customer_id) || [])
-    const customersToAdd = customerIds.filter(id => !existingCustomerIds.has(id))
-    
+    const customersToAdd = uniqueCustomerIds.filter(id => !existingCustomerIds.has(id))
+
     if (customersToAdd.length === 0) {
       return { 
         success: false, 
         error: 'All selected customers already have bookings for this event' 
       }
     }
-    
+
     // Create bookings with bulk_add source
     const newBookings = customersToAdd.map(customerId => ({
       event_id: eventId,
@@ -311,19 +312,27 @@ export async function addAttendeesWithScheduledSMS(
       booking_source: 'bulk_add',
       notes: 'Added via bulk add'
     }))
-    
-    const { data: insertedBookings, error: insertError } = await supabase
-      .from('bookings')
-      .insert(newBookings)
-      .select('id, customer_id')
-    
-    if (insertError || !insertedBookings) {
-      return { error: 'Failed to create bookings' }
+
+    const insertedBookings: { id: string; customer_id: string }[] = []
+    const chunkSize = 100
+
+    for (let i = 0; i < newBookings.length; i += chunkSize) {
+      const chunk = newBookings.slice(i, i + chunkSize)
+      const { data, error } = await supabase
+        .from('bookings')
+        .insert(chunk)
+        .select('id, customer_id')
+
+      if (error || !data) {
+        return { error: 'Failed to create bookings' }
+      }
+
+      insertedBookings.push(...data)
     }
-    
+
     // Use admin client for scheduling reminders
     const adminSupabase = createAdminClient()
-    
+
     // Schedule reminders for each booking
     let scheduledCount = 0
     for (const booking of insertedBookings) {
@@ -358,7 +367,7 @@ export async function addAttendeesWithScheduledSMS(
     return {
       success: true,
       added: customersToAdd.length,
-      skipped: customerIds.length - customersToAdd.length,
+      skipped: uniqueCustomerIds.length - customersToAdd.length,
       remindersScheduled: scheduledCount
     }
   } catch (error) {

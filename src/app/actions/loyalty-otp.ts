@@ -120,7 +120,11 @@ export async function requestLoyaltyOTP(data: z.infer<typeof RequestOTPSchema>) 
     const message = `Your Anchor VIP verification code is: ${otpCode}. Valid for ${OTP_EXPIRY_MINUTES} minutes.`;
     
     try {
-      await sendOTPMessage(formattedPhone, message);
+      await sendOTPMessage({
+        phoneNumber: formattedPhone,
+        message,
+        customerId: customer.id
+      });
     } catch (smsError) {
       console.error('Failed to send OTP SMS:', smsError);
       // Clean up the OTP record
