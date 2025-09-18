@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect, use, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { usePermissions } from '@/contexts/PermissionContext';
@@ -24,6 +24,10 @@ import { TableBooking, TableBookingItem, TableBookingPayment } from '@/types/tab
 import { cancelTableBooking, markBookingNoShow, markBookingCompleted } from '@/app/actions/table-bookings';
 import { processBookingRefund, getRefundEligibility } from '@/app/actions/table-booking-refunds';
 import { queueBookingReminderSMS } from '@/app/actions/table-booking-sms';
+import { getCustomerMessages } from '@/app/actions/customerSmsActions';
+import { markMessagesAsRead } from '@/app/actions/messageActions';
+import { Message } from '@/types/database';
+import { MessageThread } from '@/components/MessageThread';
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
 import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
 import { Card } from '@/components/ui-v2/layout/Card';
@@ -51,10 +55,40 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [refundEligibility, setRefundEligibility] = useState<any>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [messagesError, setMessagesError] = useState<string | null>(null);
 
   const canView = hasPermission('table_bookings', 'view');
   const canEdit = hasPermission('table_bookings', 'edit');
   const canManage = hasPermission('table_bookings', 'manage');
+  const canSendMessages = hasPermission('messages', 'send');
+
+  const loadMessageThread = useCallback(async (customerId: string) => {
+    try {
+      setMessagesLoading(true);
+      const result = await getCustomerMessages(customerId);
+
+      if ('error' in result) {
+        console.error('Failed to load messages:', result.error);
+        setMessagesError(result.error ?? 'Failed to load messages');
+        return;
+      }
+
+      setMessages(result.messages);
+      setMessagesError(null);
+
+      const markResult = await markMessagesAsRead(customerId);
+      if ('error' in markResult) {
+        console.error('Failed to mark messages as read:', markResult.error);
+      }
+    } catch (err) {
+      console.error('Error loading messages:', err);
+      setMessagesError('Failed to load messages');
+    } finally {
+      setMessagesLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (canView) {
@@ -77,6 +111,21 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
       window.history.replaceState({}, '', newUrl.toString());
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!booking?.customer?.id) {
+      setMessages([]);
+      return;
+    }
+
+    loadMessageThread(booking.customer.id);
+
+    const interval = setInterval(() => {
+      loadMessageThread(booking.customer!.id);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [booking?.customer?.id, loadMessageThread]);
 
   async function loadBooking() {
     try {
@@ -482,6 +531,35 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
                   ) : null}
                 </div>
               </div>
+            </Card>
+
+            {/* Messaging */}
+            <Card variant="bordered">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-semibold">Messages</h2>
+                {messagesLoading && <Spinner size="sm" />}
+              </div>
+              {messagesError && (
+                <Alert variant="error" description={messagesError} className="mb-3" />
+              )}
+              {booking.customer?.id ? (
+                <MessageThread
+                  messages={messages}
+                  customerId={booking.customer.id}
+                  customerName={`${booking.customer.first_name} ${booking.customer.last_name}`}
+                  canReply={canSendMessages && booking.customer.sms_opt_in !== false}
+                  onMessageSent={() => loadMessageThread(booking.customer!.id)}
+                />
+              ) : (
+                <p className="text-sm text-gray-500">
+                  Customer messaging is unavailable for this booking.
+                </p>
+              )}
+              {booking.customer?.sms_opt_in === false && (
+                <p className="mt-2 text-xs text-gray-500">
+                  Customer has opted out of SMS. Enable SMS on the customer profile to send messages.
+                </p>
+              )}
             </Card>
 
             {/* Actions */}

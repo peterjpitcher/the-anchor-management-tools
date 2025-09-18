@@ -42,10 +42,15 @@ export async function GET(request: Request) {
     }
 
     // 4. Generate daily summary (only at specific times)
-    const currentHour = new Date().getHours();
+    const londonHour = new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit',
+      hour12: false,
+      timeZone: 'Europe/London'
+    }).format(new Date());
+    const forceSummary = process.env.FORCE_TABLE_BOOKING_SUMMARY === 'true';
     let dailySummary = null;
     
-    if (currentHour === 22) { // 10 PM
+    if (forceSummary || londonHour === '06') { // 6am UK or forced send
       console.log('Generating daily summary...');
       dailySummary = await generateDailySummary();
     }
