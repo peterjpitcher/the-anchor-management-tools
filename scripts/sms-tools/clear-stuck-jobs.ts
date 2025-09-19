@@ -78,7 +78,7 @@ async function clearStuckJobs() {
   const { data: smsJobs, error: smsError } = await supabase
     .from('jobs')
     .select('*')
-    .or('type.eq.send_sms,type.eq.send_bulk_sms,type.eq.process_reminder')
+    .or('type.eq.send_sms,type.eq.send_bulk_sms')
     .eq('status', 'pending')
     
   if (smsJobs && smsJobs.length > 0) {

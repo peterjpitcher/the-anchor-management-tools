@@ -2,7 +2,6 @@
 export type JobType = 
   | 'send_sms'
   | 'send_bulk_sms'
-  | 'process_reminder'
   | 'sync_customer_stats'
   | 'cleanup_old_messages'
   | 'generate_report'
@@ -27,10 +26,6 @@ export interface JobPayload {
     filters?: Record<string, any>
     eventId?: string
     categoryId?: string
-  }
-  process_reminder: {
-    bookingId: string
-    reminderType: '24_hour' | '7_day'
   }
   sync_customer_stats: {
     customerId?: string

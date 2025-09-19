@@ -228,9 +228,9 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
       
       // Send SMS confirmation immediately
       if (newBooking?.id) {
-        import('@/app/actions/sms').then(({ sendBookingConfirmationSync }) => {
-          sendBookingConfirmationSync(newBooking.id).catch((error) => {
-            console.error('Failed to send SMS confirmation:', error)
+        import('@/app/actions/event-sms-scheduler').then(({ scheduleAndProcessBookingReminders }) => {
+          scheduleAndProcessBookingReminders(newBooking.id).catch((error) => {
+            console.error('Failed to trigger booking reminders:', error)
             toast.error('SMS notification could not be sent')
           })
         })

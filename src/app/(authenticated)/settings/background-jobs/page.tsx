@@ -58,7 +58,6 @@ const jobTypeLabels: Record<string, string> = {
   generate_report: 'Generate Report',
   sync_calendar: 'Sync Calendar',
   cleanup_old_data: 'Cleanup Old Data',
-  process_reminder: 'Process Reminder',
   sync_customer_stats: 'Sync Customer Stats',
   cleanup_old_messages: 'Cleanup Messages',
   update_sms_health: 'Update SMS Health'

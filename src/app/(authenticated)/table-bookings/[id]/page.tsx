@@ -23,7 +23,7 @@ import {
 import { TableBooking, TableBookingItem, TableBookingPayment } from '@/types/table-bookings';
 import { cancelTableBooking, markBookingNoShow, markBookingCompleted } from '@/app/actions/table-bookings';
 import { processBookingRefund, getRefundEligibility } from '@/app/actions/table-booking-refunds';
-import { queueBookingReminderSMS } from '@/app/actions/table-booking-sms';
+import { queueBookingReminderSMS, queuePaymentRequestSMS } from '@/app/actions/table-booking-sms';
 import { getCustomerMessages } from '@/app/actions/customerSmsActions';
 import { markMessagesAsRead } from '@/app/actions/messageActions';
 import { Message } from '@/types/database';
@@ -58,6 +58,7 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
   const [messages, setMessages] = useState<Message[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState<string | null>(null);
+  const [paymentSmsLoading, setPaymentSmsLoading] = useState(false);
 
   const canView = hasPermission('table_bookings', 'view');
   const canEdit = hasPermission('table_bookings', 'edit');
@@ -260,6 +261,36 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
       setError(err.message);
     } finally {
       setProcessing(false);
+    }
+  }
+
+  async function handleSendPaymentRequest() {
+    if (!booking) return;
+
+    try {
+      setPaymentSmsLoading(true);
+      const result = await queuePaymentRequestSMS(booking.id);
+
+      if ((result as any)?.error) {
+        const message = (result as any).error as string;
+        setError(message);
+        toast.error(message || 'Failed to queue payment request SMS');
+        return;
+      }
+
+      const message = (result as any)?.message as string | undefined;
+      if (message && message.toLowerCase().includes('opted out')) {
+        toast.info(message);
+      } else {
+        toast.success(message || 'Payment request SMS queued successfully');
+      }
+    } catch (err: any) {
+      console.error('Error queuing payment request SMS:', err);
+      const message = err?.message || 'Failed to queue payment request SMS';
+      setError(message);
+      toast.error(message);
+    } finally {
+      setPaymentSmsLoading(false);
     }
   }
 
@@ -640,6 +671,21 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
                     >
                       Process Payment
                     </Button>
+                    <Button
+                      className="mt-2"
+                      variant="secondary"
+                      onClick={handleSendPaymentRequest}
+                      loading={paymentSmsLoading}
+                      disabled={paymentSmsLoading || booking.customer?.sms_opt_in === false}
+                      fullWidth
+                    >
+                      Send Payment Link SMS
+                    </Button>
+                    {booking.customer?.sms_opt_in === false && (
+                      <p className="mt-2 text-xs text-gray-500">
+                        Customer has opted out of SMS notifications.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
