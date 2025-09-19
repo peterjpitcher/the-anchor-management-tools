@@ -94,7 +94,7 @@ async function fixPastReminders() {
     .from('jobs')
     .select('*')
     .eq('status', 'pending')
-    .or('type.eq.send_sms,type.eq.send_bulk_sms,type.eq.process_reminder')
+    .or('type.eq.send_sms,type.eq.send_bulk_sms')
     .order('created_at', { ascending: false })
     
   if (pendingJobs && pendingJobs.length > 0) {

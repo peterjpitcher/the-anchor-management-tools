@@ -255,7 +255,7 @@ components:
           format: uuid
         type:
           type: string
-          enum: [send_sms, send_bulk_sms, process_reminder, sync_customer_stats, cleanup_old_messages, update_sms_health]
+          enum: [send_sms, send_bulk_sms, sync_customer_stats, cleanup_old_messages, update_sms_health]
         payload:
           type: object
         status:

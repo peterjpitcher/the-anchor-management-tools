@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { logAuditEvent } from './audit';
 import { z } from 'zod';
@@ -35,7 +35,7 @@ const SMSTemplateSchema = z.object({
 // Get all SMS templates
 export async function getSMSTemplates() {
   try {
-    const supabase = await createClient();
+    const supabase = await createAdminClient();
     
     const { data, error } = await supabase
       .from('table_booking_sms_templates')

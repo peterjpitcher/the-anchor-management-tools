@@ -4,35 +4,143 @@ import { createAdminClient } from '@/lib/supabase/server'
 import twilio from 'twilio'
 import { smsTemplates, getMessageTemplate } from '@/lib/smsTemplates'
 import { logger } from '@/lib/logger'
+import { ReminderType } from './event-sms-scheduler'
 
-/**
- * Process scheduled event reminders from the booking_reminders table
- */
-export async function processScheduledEventReminders() {
+interface ProcessOptions {
+  reminderIds?: string[]
+  limit?: number
+  now?: Date
+}
+
+type ReminderRow = {
+  id: string
+  reminder_type: ReminderType
+  scheduled_for: string
+  target_phone: string | null
+  event_id: string | null
+  booking: {
+    id: string
+    seats: number | null
+    customer: {
+      id: string
+      first_name: string
+      last_name: string | null
+      mobile_number: string | null
+      sms_opt_in: boolean | null
+    } | null
+    event: {
+      id: string
+      name: string
+      date: string
+      time: string
+    } | null
+  } | null
+}
+
+function normalizeReminderRow(raw: any): ReminderRow {
+  const bookingRecord = Array.isArray(raw?.booking) ? raw.booking[0] : raw?.booking
+  const customerRecord = Array.isArray(bookingRecord?.customer) ? bookingRecord.customer[0] : bookingRecord?.customer
+  const eventRecord = Array.isArray(bookingRecord?.event) ? bookingRecord.event[0] : bookingRecord?.event
+
+  return {
+    id: raw?.id,
+    reminder_type: raw?.reminder_type,
+    scheduled_for: raw?.scheduled_for,
+    target_phone: raw?.target_phone ?? null,
+    event_id: raw?.event_id ?? null,
+    booking: bookingRecord
+      ? {
+          id: bookingRecord.id,
+          seats: bookingRecord.seats ?? null,
+          customer: customerRecord
+            ? {
+                id: customerRecord.id,
+                first_name: customerRecord.first_name,
+                last_name: customerRecord.last_name ?? null,
+                mobile_number: customerRecord.mobile_number ?? null,
+                sms_opt_in: customerRecord.sms_opt_in ?? null
+              }
+            : null,
+          event: eventRecord
+            ? {
+                id: eventRecord.id,
+                name: eventRecord.name,
+                date: eventRecord.date,
+                time: eventRecord.time
+              }
+            : null
+        }
+      : null
+  }
+}
+
+function buildTemplate(reminder: ReminderRow): string {
+  const booking = reminder.booking
+  if (!booking?.event || !booking.customer) {
+    return ''
+  }
+
+  const eventDate = new Date(booking.event.date)
+  const common = {
+    firstName: booking.customer.first_name,
+    eventName: booking.event.name,
+    eventDate,
+    eventTime: booking.event.time,
+    seats: booking.seats || 0
+  }
+
+  switch (reminder.reminder_type) {
+    case 'booking_confirmation':
+      return smsTemplates.bookingConfirmationNew({
+        ...common,
+        seats: common.seats || 0
+      })
+    case 'booked_1_month':
+      return smsTemplates.bookedOneMonth(common)
+    case 'booked_1_week':
+      return smsTemplates.bookedOneWeek(common)
+    case 'booked_1_day':
+      return smsTemplates.bookedOneDay(common)
+    case 'reminder_invite_1_month':
+      return smsTemplates.reminderInviteOneMonth(common)
+    case 'reminder_invite_1_week':
+      return smsTemplates.reminderInviteOneWeek(common)
+    case 'reminder_invite_1_day':
+      return smsTemplates.reminderInviteOneDay(common)
+    default:
+      return ''
+  }
+}
+
+export async function processScheduledEventReminders(options: ProcessOptions = {}) {
   try {
-    // Check for essential configuration
     if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
       logger.info('Skipping reminders - Twilio not configured')
       return { success: true, sent: 0, message: 'SMS not configured' }
     }
-    
+
     if (!process.env.TWILIO_PHONE_NUMBER && !process.env.TWILIO_MESSAGING_SERVICE_SID) {
       logger.info('Skipping reminders - No phone number or messaging service')
       return { success: true, sent: 0, message: 'SMS not configured' }
     }
-    
+
+    const now = options.now ?? new Date()
+    const nowIso = now.toISOString()
+
     const supabase = createAdminClient()
     const twilioClient = twilio(
       process.env.TWILIO_ACCOUNT_SID,
       process.env.TWILIO_AUTH_TOKEN
     )
-    
-    // Get reminders that are due to be sent
-    const now = new Date()
-    const { data: dueReminders, error: fetchError } = await supabase
+
+    let query = supabase
       .from('booking_reminders')
       .select(`
-        *,
+        id,
+        reminder_type,
+        scheduled_for,
+        target_phone,
+        event_id,
         booking:bookings(
           id,
           seats,
@@ -52,205 +160,186 @@ export async function processScheduledEventReminders() {
         )
       `)
       .eq('status', 'pending')
-      .lte('scheduled_for', now.toISOString())
-      .limit(50) // Process in batches
-    
+
+    if (options.reminderIds && options.reminderIds.length > 0) {
+      query = query.in('id', options.reminderIds)
+    } else {
+      query = query.lte('scheduled_for', nowIso).order('scheduled_for', { ascending: true }).limit(options.limit ?? 50)
+    }
+
+    // Ensure we only process reminders that are due
+    query = query.lte('scheduled_for', nowIso)
+
+    const { data: dueReminders, error: fetchError } = await query
+
     if (fetchError) {
       logger.error('Failed to fetch due reminders', {
         error: fetchError,
-        metadata: { time: now.toISOString() }
+        metadata: { time: nowIso }
       })
       return { error: 'Failed to fetch reminders' }
     }
-    
+
     if (!dueReminders || dueReminders.length === 0) {
-      logger.info('No reminders due', { metadata: { time: now.toISOString() } })
+      logger.info('No reminders due', { metadata: { time: nowIso } })
       return { success: true, sent: 0, message: 'No reminders due' }
     }
-    
+
+    const reminders: ReminderRow[] = (dueReminders || []).map(normalizeReminderRow)
+
+    const eventIds = new Set<string>()
+    const reminderTypes = new Set<ReminderType>()
+    const phones = new Set<string>()
+
+    for (const reminder of reminders) {
+      if (reminder.event_id) {
+        eventIds.add(reminder.event_id)
+      }
+      reminderTypes.add(reminder.reminder_type)
+      if (reminder.target_phone) {
+        phones.add(reminder.target_phone)
+      } else if (reminder.booking?.customer?.mobile_number) {
+        phones.add(reminder.booking.customer.mobile_number)
+      }
+    }
+
+    let existingKeys = new Set<string>()
+    if (eventIds.size > 0 && reminderTypes.size > 0 && phones.size > 0) {
+      const { data: sentRows } = await supabase
+        .from('booking_reminders')
+        .select('event_id, reminder_type, target_phone')
+        .eq('status', 'sent')
+        .in('event_id', Array.from(eventIds))
+        .in('reminder_type', Array.from(reminderTypes))
+        .in('target_phone', Array.from(phones))
+
+      if (sentRows) {
+        existingKeys = new Set(sentRows.map(row => `${row.target_phone}|${row.event_id}|${row.reminder_type}`))
+      }
+    }
+
+    const processedKeys = new Set<string>()
     let sentCount = 0
     let failedCount = 0
-    
-    for (const reminder of dueReminders) {
+    let skippedDuplicates = 0
+
+    for (const reminder of reminders) {
+      const booking = reminder.booking
+      const event = booking?.event
+      const customer = booking?.customer
+      const seats = booking?.seats || 0
+
+      if (!booking || !event || !customer) {
+        await supabase
+          .from('booking_reminders')
+          .update({ status: 'failed', error_message: 'Incomplete booking context' })
+          .eq('id', reminder.id)
+        failedCount++
+        continue
+      }
+
+      if (!customer.sms_opt_in) {
+        await supabase
+          .from('booking_reminders')
+          .update({ status: 'cancelled', error_message: 'Customer opted out' })
+          .eq('id', reminder.id)
+        continue
+      }
+
+      const targetPhone = reminder.target_phone || customer.mobile_number
+
+      if (!targetPhone) {
+        await supabase
+          .from('booking_reminders')
+          .update({ status: 'failed', error_message: 'No mobile number' })
+          .eq('id', reminder.id)
+        failedCount++
+        continue
+      }
+
+      const key = `${targetPhone}|${event.id}|${reminder.reminder_type}`
+      if (existingKeys.has(key) || processedKeys.has(key)) {
+        skippedDuplicates++
+        await supabase
+          .from('booking_reminders')
+          .update({
+            status: 'cancelled',
+            error_message: 'Duplicate reminder suppressed'
+          })
+          .eq('id', reminder.id)
+        continue
+      }
+
+      const messageFromDb = await getMessageTemplate(event.id, reminder.reminder_type, {
+        customer_name: `${customer.first_name} ${customer.last_name || ''}`.trim(),
+        first_name: customer.first_name,
+        event_name: event.name,
+        event_date: new Date(event.date).toLocaleDateString('en-GB', {
+          month: 'long',
+          day: 'numeric'
+        }),
+        event_time: event.time,
+        seats: seats.toString(),
+        venue_name: 'The Anchor',
+        contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'
+      })
+
+      const messageBody = messageFromDb || buildTemplate(reminder)
+
+      if (!messageBody) {
+        await supabase
+          .from('booking_reminders')
+          .update({ status: 'failed', error_message: 'Missing SMS template' })
+          .eq('id', reminder.id)
+        failedCount++
+        continue
+      }
+
+      const messageParams: any = {
+        body: messageBody,
+        to: targetPhone
+      }
+
+      if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
+        messageParams.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID
+      } else if (process.env.TWILIO_PHONE_NUMBER) {
+        messageParams.from = process.env.TWILIO_PHONE_NUMBER
+      }
+
       try {
-        // CRITICAL FIX: Skip if event is in the past
-        if (reminder.booking?.event?.date) {
-          const eventDate = new Date(reminder.booking.event.date)
-          const today = new Date()
-          today.setHours(0, 0, 0, 0)
-          
-          if (eventDate < today) {
-            logger.warn('Skipping reminder for past event', {
-              metadata: {
-                reminderId: reminder.id,
-                eventName: reminder.booking.event.name,
-                eventDate: reminder.booking.event.date
-              }
-            })
-            
-            await supabase
-              .from('booking_reminders')
-              .update({ 
-                status: 'cancelled',
-                error_message: 'Event has already passed'
-              })
-              .eq('id', reminder.id)
-            continue
-          }
-        }
-        
-        // Skip if customer opted out
-        if (!reminder.booking?.customer?.sms_opt_in) {
-          await supabase
-            .from('booking_reminders')
-            .update({ 
-              status: 'cancelled',
-              error_message: 'Customer opted out'
-            })
-            .eq('id', reminder.id)
-          continue
-        }
-        
-        // Skip if no mobile number
-        if (!reminder.booking?.customer?.mobile_number) {
-          await supabase
-            .from('booking_reminders')
-            .update({ 
-              status: 'failed',
-              error_message: 'No mobile number'
-            })
-            .eq('id', reminder.id)
-          failedCount++
-          continue
-        }
-        
-        // Prepare template variables
-        const customer = reminder.booking.customer
-        const event = reminder.booking.event
-        const seats = reminder.booking.seats || 0
-        
-        // Get the appropriate template based on reminder type
-        let message = ''
-        const templateParams = {
-          firstName: customer.first_name,
-          eventName: event.name,
-          eventDate: new Date(event.date),
-          eventTime: event.time,
-          seats: seats
-        }
-        
-        switch (reminder.reminder_type) {
-          case 'no_seats_2_weeks':
-            message = smsTemplates.noSeats2Weeks(templateParams)
-            break
-          case 'no_seats_1_week':
-            message = smsTemplates.noSeats1Week(templateParams)
-            break
-          case 'no_seats_day_before':
-            message = smsTemplates.noSeatsDayBefore({
-              firstName: customer.first_name,
-              eventName: event.name,
-              eventTime: event.time
-            })
-            break
-          case 'has_seats_1_week':
-            message = smsTemplates.hasSeats1Week({
-              ...templateParams,
-              seats: seats
-            })
-            break
-          case 'has_seats_day_before':
-            message = smsTemplates.hasSeatsDayBefore({
-              firstName: customer.first_name,
-              eventName: event.name,
-              eventTime: event.time,
-              seats: seats
-            })
-            break
-          default:
-            // Try to get from database templates
-            const templateMessage = await getMessageTemplate(event.id, reminder.reminder_type, {
-              customer_name: `${customer.first_name} ${customer.last_name}`,
-              first_name: customer.first_name,
-              event_name: event.name,
-              event_date: new Date(event.date).toLocaleDateString('en-GB', {
-                month: 'long',
-                day: 'numeric',
-              }),
-              event_time: event.time,
-              seats: seats.toString(),
-              venue_name: 'The Anchor',
-              contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'
-            })
-            
-            if (!templateMessage) {
-              // Fallback to generic reminder
-              message = smsTemplates.dayBeforeReminder({
-                firstName: customer.first_name,
-                eventName: event.name,
-                eventTime: event.time,
-                seats: seats > 0 ? seats : undefined
-              })
-            } else {
-              message = templateMessage
-            }
-        }
-        
-        // Send the SMS
-        const messageParams: any = {
-          body: message,
-          to: customer.mobile_number
-        }
-        
-        if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
-          messageParams.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID
-        } else if (process.env.TWILIO_PHONE_NUMBER) {
-          messageParams.from = process.env.TWILIO_PHONE_NUMBER
-        }
-        
         const twilioMessage = await twilioClient.messages.create(messageParams)
 
-        // Log the SMS for customer visibility
-        try {
-          const messageLength = message.length
-          const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153)
-          const costUsd = segments * 0.04
+        const messageLength = messageBody.length
+        const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153)
+        const costUsd = segments * 0.04
 
-          const { error: logError } = await supabase
-            .from('messages')
-            .insert({
-              customer_id: customer.id,
-              direction: 'outbound',
-              message_sid: twilioMessage.sid,
-              twilio_message_sid: twilioMessage.sid,
-              body: message,
-              status: twilioMessage.status || 'queued',
-              twilio_status: twilioMessage.status || 'queued',
-              from_number: twilioMessage.from || process.env.TWILIO_PHONE_NUMBER || '',
-              to_number: twilioMessage.to,
-              message_type: 'sms',
-              segments,
-              cost_usd: costUsd,
-              read_at: new Date().toISOString(),
-              metadata: {
-                reminder_id: reminder.id,
-                reminder_type: reminder.reminder_type,
-                booking_id: reminder.booking.id
-              }
-            })
+        const { error: logError } = await supabase
+          .from('messages')
+          .insert({
+            customer_id: customer.id,
+            direction: 'outbound',
+            message_sid: twilioMessage.sid,
+            twilio_message_sid: twilioMessage.sid,
+            body: messageBody,
+            status: twilioMessage.status || 'queued',
+            twilio_status: twilioMessage.status || 'queued',
+            from_number: twilioMessage.from || process.env.TWILIO_PHONE_NUMBER || '',
+            to_number: twilioMessage.to,
+            message_type: 'sms',
+            segments,
+            cost_usd: costUsd,
+            read_at: new Date().toISOString(),
+            metadata: {
+              reminder_id: reminder.id,
+              reminder_type: reminder.reminder_type,
+              booking_id: booking.id,
+              event_id: event.id
+            }
+          })
 
-          if (logError) {
-            logger.error('Failed to log reminder SMS message', {
-              error: logError,
-              metadata: {
-                reminderId: reminder.id,
-                customerId: customer.id
-              }
-            })
-          }
-        } catch (logError) {
-          logger.error('Error recording reminder SMS message', {
-            error: logError as Error,
+        if (logError) {
+          logger.error('Failed to log reminder SMS message', {
+            error: logError,
             metadata: {
               reminderId: reminder.id,
               customerId: customer.id
@@ -258,72 +347,70 @@ export async function processScheduledEventReminders() {
           })
         }
 
-        // Update reminder as sent
         await supabase
           .from('booking_reminders')
-          .update({ 
+          .update({
             status: 'sent',
-            sent_at: now.toISOString(),
-            message_id: twilioMessage.sid
+            sent_at: nowIso,
+            message_id: twilioMessage.sid,
+            target_phone: targetPhone,
+            event_id: event.id
           })
           .eq('id', reminder.id)
-        
-        // Update booking's last_reminder_sent
+
         await supabase
           .from('bookings')
-          .update({ 
-            last_reminder_sent: now.toISOString()
-          })
-          .eq('id', reminder.booking.id)
-        
+          .update({ last_reminder_sent: nowIso })
+          .eq('id', booking.id)
+
         sentCount++
-        
+        processedKeys.add(key)
+
         logger.info('Reminder sent successfully', {
           metadata: {
             reminderId: reminder.id,
-            bookingId: reminder.booking.id,
+            bookingId: booking.id,
             type: reminder.reminder_type,
             messageSid: twilioMessage.sid
           }
         })
-        
       } catch (error) {
         failedCount++
         logger.error('Failed to send reminder', {
           error: error as Error,
           metadata: {
             reminderId: reminder.id,
-            bookingId: reminder.booking?.id,
+            bookingId: booking.id,
             type: reminder.reminder_type
           }
         })
-        
-        // Update reminder as failed
+
         await supabase
           .from('booking_reminders')
-          .update({ 
+          .update({
             status: 'failed',
             error_message: error instanceof Error ? error.message : 'Unknown error'
           })
           .eq('id', reminder.id)
       }
     }
-    
+
     logger.info('Reminder processing complete', {
       metadata: {
         processed: dueReminders.length,
         sent: sentCount,
-        failed: failedCount
+        failed: failedCount,
+        duplicates: skippedDuplicates
       }
     })
-    
+
     return {
       success: true,
       sent: sentCount,
       failed: failedCount,
-      message: `Processed ${dueReminders.length} reminders: ${sentCount} sent, ${failedCount} failed`
+      duplicates: skippedDuplicates,
+      message: `Processed ${dueReminders.length} reminders: ${sentCount} sent, ${failedCount} failed, ${skippedDuplicates} suppressed`
     }
-    
   } catch (error) {
     logger.error('Error processing scheduled reminders', {
       error: error as Error

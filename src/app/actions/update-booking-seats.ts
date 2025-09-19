@@ -1,12 +1,10 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/server'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { logAuditEvent } from './audit'
-import { sendBookingConfirmationSync } from './sms'
-import { updateBookingReminders, scheduleBookingReminders } from './event-sms-scheduler'
+import { cancelBookingReminders, scheduleAndProcessBookingReminders } from './event-sms-scheduler'
 import { logger } from '@/lib/logger'
 
 const updateSeatsSchema = z.object({
@@ -69,55 +67,18 @@ export async function updateBookingSeats(bookingId: string, newSeats: number) {
       return { error: 'Failed to update booking' }
     }
     
-    // Handle SMS flow changes
-    if (wasNoSeats && !willBeNoSeats) {
-      // Changed from no seats to has seats
-      logger.info('Booking changed from no seats to has seats', {
-        metadata: { bookingId: validatedData.bookingId, oldSeats, newSeats: validatedData.seats }
+    // Rebuild reminder schedule to reflect the latest seat count
+    await cancelBookingReminders(validatedData.bookingId)
+
+    const reminderResult = await scheduleAndProcessBookingReminders(validatedData.bookingId)
+
+    if (!reminderResult.success) {
+      logger.error('Failed to reschedule booking reminders', {
+        error: new Error(reminderResult.error),
+        metadata: { bookingId: validatedData.bookingId }
       })
-      
-      // Send immediate confirmation
-      try {
-        await sendBookingConfirmationSync(validatedData.bookingId)
-      } catch (error) {
-        logger.error('Failed to send confirmation SMS', {
-          error: error as Error,
-          metadata: { bookingId: validatedData.bookingId }
-        })
-      }
-      
-      // Update reminders to has-seats flow
-      await updateBookingReminders(
-        validatedData.bookingId,
-        booking.event.date,
-        booking.event.time,
-        true // Has seats
-      )
-      
-    } else if (!wasNoSeats && willBeNoSeats) {
-      // Changed from has seats to no seats (cancellation)
-      logger.info('Booking changed from has seats to no seats', {
-        metadata: { bookingId: validatedData.bookingId, oldSeats, newSeats: validatedData.seats }
-      })
-      
-      // Update reminders to no-seats flow
-      await updateBookingReminders(
-        validatedData.bookingId,
-        booking.event.date,
-        booking.event.time,
-        false // No seats
-      )
-      
-    } else if (!wasNoSeats && !willBeNoSeats && oldSeats !== validatedData.seats) {
-      // Just changing seat count (still has seats)
-      logger.info('Booking seat count updated', {
-        metadata: { bookingId: validatedData.bookingId, oldSeats, newSeats: validatedData.seats }
-      })
-      
-      // No need to change reminders, they stay as has-seats flow
-      // But could send an update SMS if desired
     }
-    
+
     // Log audit event
     await logAuditEvent({
       user_id: user.id,

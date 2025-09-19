@@ -20,6 +20,105 @@ export const smsTemplates = {
     return `${baseMessage}${qrMessage} Save this message as your confirmation. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
   },
 
+  bookingConfirmationNew: (params: {
+    firstName: string
+    seats: number
+    eventName: string
+    eventDate: Date
+    eventTime: string
+  }) => {
+    const formattedDate = new Date(params.eventDate).toLocaleDateString('en-GB', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric'
+    })
+    const seatCopy = params.seats > 1
+      ? `${params.seats} seats are reserved for you`
+      : 'your seat is reserved for you'
+    return `Hi ${params.firstName}, you're all set for ${params.eventName} on ${formattedDate} at ${params.eventTime} — ${seatCopy}. Need to tweak anything? Just reply or call ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}. The Anchor`
+  },
+
+  bookedOneMonth: (params: {
+    firstName: string
+    eventName: string
+    eventDate: Date
+    eventTime: string
+    seats: number
+  }) => {
+    const formattedDate = new Date(params.eventDate).toLocaleDateString('en-GB', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric'
+    })
+    return `Hi ${params.firstName}, one month to go until ${params.eventName} on ${formattedDate}. We can't wait to host you. Questions or changes? Reply here anytime. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
+  },
+
+  bookedOneWeek: (params: {
+    firstName: string
+    eventName: string
+    eventDate: Date
+    eventTime: string
+    seats: number
+  }) => {
+    const formattedDate = new Date(params.eventDate).toLocaleDateString('en-GB', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric'
+    })
+    const seatsLine = params.seats > 1
+      ? `${params.seats} seats are waiting for you`
+      : 'your seat is waiting for you'
+    return `Hi ${params.firstName}, we're a week out from ${params.eventName} on ${formattedDate} at ${params.eventTime} — ${seatsLine}. Need more space? Reply and we'll sort it. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
+  },
+
+  bookedOneDay: (params: {
+    firstName: string
+    eventName: string
+    eventTime: string
+    seats: number
+  }) => {
+    const seatsLine = params.seats > 1
+      ? `${params.seats} seats are ready`
+      : 'your seat is ready'
+    return `Hi ${params.firstName}, tomorrow's the night! ${params.eventName} starts at ${params.eventTime} and ${seatsLine}. Anything you need before then? Call ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}. The Anchor`
+  },
+
+  reminderInviteOneMonth: (params: {
+    firstName: string
+    eventName: string
+    eventDate: Date
+    eventTime: string
+  }) => {
+    const formattedDate = new Date(params.eventDate).toLocaleDateString('en-GB', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric'
+    })
+    return `Hi ${params.firstName}, we'd love to see you at ${params.eventName} on ${formattedDate}. Want us to save you seats? Reply with how many or call ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}. The Anchor`
+  },
+
+  reminderInviteOneWeek: (params: {
+    firstName: string
+    eventName: string
+    eventDate: Date
+    eventTime: string
+  }) => {
+    const formattedDate = new Date(params.eventDate).toLocaleDateString('en-GB', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric'
+    })
+    return `Hi ${params.firstName}, ${params.eventName} is next week on ${formattedDate} at ${params.eventTime}. Fancy joining us? Reply with seats and we'll look after the rest. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
+  },
+
+  reminderInviteOneDay: (params: {
+    firstName: string
+    eventName: string
+    eventTime: string
+  }) => {
+    return `Hi ${params.firstName}, ${params.eventName} is TOMORROW at ${params.eventTime}. Last chance to grab seats — reply with how many you'd like and we'll keep them aside. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
+  },
+
   // Legacy reminder - kept for backward compatibility
   reminderOnly: (params: {
     firstName: string
@@ -141,6 +240,7 @@ export function renderTemplate(template: string, variables: Record<string, strin
 // Map legacy template names to new template types
 const TEMPLATE_TYPE_MAP: Record<string, string> = {
   bookingConfirmation: 'booking_confirmation',
+  bookingConfirmationNew: 'booking_confirmation',
   weekBeforeReminder: 'reminder_7_day', 
   dayBeforeReminder: 'reminder_24_hour',
   reminderOnly: 'booking_reminder_confirmation',
@@ -150,6 +250,12 @@ const TEMPLATE_TYPE_MAP: Record<string, string> = {
   noSeatsDayBefore: 'no_seats_day_before',
   hasSeats1Week: 'has_seats_1_week',
   hasSeatsDayBefore: 'has_seats_day_before',
+  bookedOneMonth: 'booked_1_month',
+  bookedOneWeek: 'booked_1_week',
+  bookedOneDay: 'booked_1_day',
+  reminderInviteOneMonth: 'reminder_invite_1_month',
+  reminderInviteOneWeek: 'reminder_invite_1_week',
+  reminderInviteOneDay: 'reminder_invite_1_day',
   // Direct mappings for new template types
   booking_reminder_24_hour: 'booking_reminder_24_hour',
   booking_reminder_7_day: 'booking_reminder_7_day'

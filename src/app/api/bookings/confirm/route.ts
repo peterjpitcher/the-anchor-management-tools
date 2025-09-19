@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { z } from 'zod';
 import { formatPhoneForStorage } from '@/lib/validation';
-import { sendBookingConfirmationSync } from '@/app/actions/sms';
+import { scheduleAndProcessBookingReminders } from '@/app/actions/event-sms-scheduler';
 import { logAuditEvent } from '@/app/actions/audit';
 
 const confirmBookingSchema = z.object({
@@ -262,7 +262,7 @@ export async function POST(request: NextRequest) {
 
     // Send confirmation SMS
     try {
-      await sendBookingConfirmationSync(booking.id);
+      await scheduleAndProcessBookingReminders(booking.id);
     } catch (smsError) {
       console.error('Failed to send confirmation SMS:', smsError);
       // Don't fail the request if SMS fails

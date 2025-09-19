@@ -697,7 +697,8 @@ export async function updateTableBooking(
 export async function cancelTableBooking(bookingId: string, reason: string) {
   try {
     const supabase = await createClient();
-    
+    const adminSupabase = createAdminClient();
+
     // Check permissions
     const hasPermission = await checkUserPermission('table_bookings', 'edit');
     if (!hasPermission) {
@@ -705,7 +706,7 @@ export async function cancelTableBooking(bookingId: string, reason: string) {
     }
     
     // Get booking
-    const { data: booking, error: fetchError } = await supabase
+    const { data: booking, error: fetchError } = await adminSupabase
       .from('table_bookings')
       .select('*, table_booking_payments(*)')
       .eq('id', bookingId)
@@ -731,7 +732,7 @@ export async function cancelTableBooking(bookingId: string, reason: string) {
     }
     
     // Update booking status
-    const { error: updateError } = await supabase
+    const { error: updateError } = await adminSupabase
       .from('table_bookings')
       .update({
         status: 'cancelled',
