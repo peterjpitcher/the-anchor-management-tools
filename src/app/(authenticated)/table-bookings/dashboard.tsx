@@ -3,13 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { usePermissions } from '@/contexts/PermissionContext';
-import { format, startOfDay, endOfDay, addDays, startOfWeek, endOfWeek, addWeeks, startOfMonth, endOfMonth, addMonths } from 'date-fns';
+import { format, startOfDay, addDays, startOfWeek, endOfWeek, addWeeks, startOfMonth, endOfMonth, addMonths } from 'date-fns';
 import Link from 'next/link';
-import { 
-  CalendarIcon, 
-  ClockIcon, 
+import {
+  CalendarIcon,
   UserGroupIcon,
-  CurrencyPoundIcon,
   ExclamationCircleIcon,
   CheckCircleIcon,
   XCircleIcon,
@@ -35,11 +33,9 @@ import { EmptyState } from '@/components/ui-v2/display/EmptyState';
 
 interface DashboardStats {
   todayBookings: number;
-  todayCovers: number;
-  upcomingArrivals: number;
+  weekBookings: number;
+  monthBookings: number;
   pendingPayments: number;
-  todayRevenue: number;
-  tomorrowBookings: number;
 }
 
 export default function TableBookingsDashboard() {
@@ -50,11 +46,9 @@ export default function TableBookingsDashboard() {
   const [bookings, setBookings] = useState<TableBooking[]>([]);
   const [stats, setStats] = useState<DashboardStats>({
     todayBookings: 0,
-    todayCovers: 0,
-    upcomingArrivals: 0,
+    weekBookings: 0,
+    monthBookings: 0,
     pendingPayments: 0,
-    todayRevenue: 0,
-    tomorrowBookings: 0,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -125,40 +119,52 @@ export default function TableBookingsDashboard() {
       // Calculate stats
       const now = new Date();
       const todayStart = startOfDay(now);
-      const todayEnd = endOfDay(now);
-      const twoHoursFromNow = addDays(now, 0);
-      twoHoursFromNow.setHours(now.getHours() + 2);
+      const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+      const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
+      const monthStart = startOfMonth(now);
+      const monthEnd = endOfMonth(now);
 
-      // Get today's stats
-      const { data: todayStats } = await supabase
-        .from('table_bookings')
-        .select('party_size, status, booking_time, table_booking_payments(amount, status)')
-        .gte('booking_date', format(todayStart, 'yyyy-MM-dd'))
-        .lte('booking_date', format(todayEnd, 'yyyy-MM-dd'))
-        .in('status', ['confirmed', 'pending_payment']);
+      const todayStr = format(todayStart, 'yyyy-MM-dd');
+      const weekStartStr = format(weekStart, 'yyyy-MM-dd');
+      const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
+      const monthStartStr = format(monthStart, 'yyyy-MM-dd');
+      const monthEndStr = format(monthEnd, 'yyyy-MM-dd');
 
-      // Get tomorrow's count
-      const tomorrow = addDays(todayStart, 1);
-      const { data: tomorrowData } = await supabase
-        .from('table_bookings')
-        .select('id')
-        .eq('booking_date', format(tomorrow, 'yyyy-MM-dd'))
-        .in('status', ['confirmed', 'pending_payment']);
+      const [todayCountRes, weekCountRes, monthCountRes, pendingCountRes] = await Promise.all([
+        supabase
+          .from('table_bookings')
+          .select('id', { count: 'exact', head: true })
+          .eq('booking_date', todayStr)
+          .in('status', ['confirmed', 'pending_payment']),
+        supabase
+          .from('table_bookings')
+          .select('id', { count: 'exact', head: true })
+          .gte('booking_date', weekStartStr)
+          .lte('booking_date', weekEndStr)
+          .in('status', ['confirmed', 'pending_payment']),
+        supabase
+          .from('table_bookings')
+          .select('id', { count: 'exact', head: true })
+          .gte('booking_date', monthStartStr)
+          .lte('booking_date', monthEndStr)
+          .in('status', ['confirmed', 'pending_payment']),
+        supabase
+          .from('table_bookings')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending_payment')
+          .gte('booking_date', todayStr)
+      ]);
 
-      // Calculate stats
+      if (todayCountRes.error) throw todayCountRes.error;
+      if (weekCountRes.error) throw weekCountRes.error;
+      if (monthCountRes.error) throw monthCountRes.error;
+      if (pendingCountRes.error) throw pendingCountRes.error;
+
       const stats: DashboardStats = {
-        todayBookings: todayStats?.length || 0,
-        todayCovers: todayStats?.reduce((sum: number, b: any) => sum + b.party_size, 0) || 0,
-        upcomingArrivals: todayStats?.filter((b: any) => {
-          const bookingTime = new Date(`${format(now, 'yyyy-MM-dd')} ${b.booking_time}`);
-          return bookingTime >= now && bookingTime <= twoHoursFromNow;
-        }).length || 0,
-        pendingPayments: todayStats?.filter((b: any) => b.status === 'pending_payment').length || 0,
-        todayRevenue: todayStats?.reduce((sum: number, b: any) => {
-          const payment = b.table_booking_payments?.find((p: any) => p.status === 'completed');
-          return sum + (payment?.amount || 0);
-        }, 0) || 0,
-        tomorrowBookings: tomorrowData?.length || 0,
+        todayBookings: todayCountRes.count ?? 0,
+        weekBookings: weekCountRes.count ?? 0,
+        monthBookings: monthCountRes.count ?? 0,
+        pendingPayments: pendingCountRes.count ?? 0,
       };
 
       setStats(stats);
@@ -276,30 +282,26 @@ export default function TableBookingsDashboard() {
       
       <PageContent className="space-y-4 sm:space-y-6 px-0 sm:px-6">
         {/* Stats Grid - Hidden on mobile */}
-        <div className="hidden sm:grid sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
-          <Stat label="Today's Bookings"
+        <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <Stat
+            label="Today's Bookings"
             value={stats.todayBookings}
             icon={<CalendarIcon />}
           />
-          <Stat label="Today's Covers"
-            value={stats.todayCovers}
+          <Stat
+            label="This Week's Bookings"
+            value={stats.weekBookings}
+            icon={<CalendarIcon />}
+          />
+          <Stat
+            label="This Month's Bookings"
+            value={stats.monthBookings}
             icon={<UserGroupIcon />}
           />
-          <Stat label="Next 2 Hours"
-            value={stats.upcomingArrivals}
-            icon={<ClockIcon />}
-          />
-          <Stat label="Pending Payment"
+          <Stat
+            label="Pending Payments"
             value={stats.pendingPayments}
             icon={<ExclamationCircleIcon />}
-          />
-          <Stat label="Today's Revenue"
-            value={`£${stats.todayRevenue.toFixed(2)}`}
-            icon={<CurrencyPoundIcon />}
-          />
-          <Stat label="Tomorrow"
-            value={stats.tomorrowBookings}
-            icon={<CalendarIcon />}
           />
         </div>
 
