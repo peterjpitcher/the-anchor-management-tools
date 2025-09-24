@@ -4,6 +4,13 @@ export function formatDate(date: string | Date): string {
   return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
+export function getTodayIsoDate(): string {
+  const now = new Date()
+  const offsetMinutes = now.getTimezoneOffset()
+  now.setMinutes(now.getMinutes() - offsetMinutes)
+  return now.toISOString().split('T')[0]
+}
+
 export function formatDateFull(date: string | Date | null): string {
   if (!date) return 'To be confirmed'
   const d = new Date(date)

@@ -1,5 +1,5 @@
 import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
-import { formatDate } from '@/lib/dateUtils'
+import { formatDate, getTodayIsoDate } from '@/lib/dateUtils'
 import Link from 'next/link'
 import { CalendarIcon, UsersIcon, PlusIcon, ChatBubbleLeftIcon, CurrencyPoundIcon } from '@heroicons/react/24/outline'
 import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
@@ -14,7 +14,7 @@ import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 
 async function getUpcomingEvents() {
   const supabase = getSupabaseAdminClient()
-  const today = new Date().toISOString().split('T')[0]
+  const today = getTodayIsoDate()
   
   const { data: events, error } = await supabase
     .from('events')
@@ -59,7 +59,7 @@ async function getStats() {
 
 async function getUpcomingPrivateBookings() {
   const supabase = getSupabaseAdminClient()
-  const today = new Date().toISOString().split('T')[0]
+  const today = getTodayIsoDate()
   
   const { data: bookings, error } = await supabase
     .from('private_bookings')
@@ -86,7 +86,7 @@ async function getUpcomingPrivateBookings() {
 
 async function getUpcomingTableBookings() {
   const supabase = getSupabaseAdminClient()
-  const today = new Date().toISOString().split('T')[0]
+  const today = getTodayIsoDate()
   
   const { data: bookings, error } = await supabase
     .from('table_bookings')
@@ -152,8 +152,9 @@ export default async function SimpleDashboardPage() {
     getUnpaidInvoices()
   ])
 
-  const todayEvents = events.filter(e => e.date === new Date().toISOString().split('T')[0])
-  const upcomingEvents = events.filter(e => e.date !== new Date().toISOString().split('T')[0])
+  const todayIsoDate = getTodayIsoDate()
+  const todayEvents = events.filter(e => e.date === todayIsoDate)
+  const upcomingEvents = events.filter(e => e.date !== todayIsoDate)
 
   return (
     <PageWrapper>
@@ -411,6 +412,10 @@ export default async function SimpleDashboardPage() {
               const isOverdue = invoice.due_date && new Date(invoice.due_date) < new Date()
               const vendor = Array.isArray(invoice.vendor) ? invoice.vendor[0] : invoice.vendor
               const vendorName = vendor?.name || 'Unknown Vendor'
+              const totalAmount = invoice.total_amount != null ? Number(invoice.total_amount) : null
+              const formattedTotal = totalAmount != null && Number.isFinite(totalAmount)
+                ? totalAmount.toFixed(2)
+                : '0.00'
               
               return {
                 id: invoice.id,
@@ -421,7 +426,7 @@ export default async function SimpleDashboardPage() {
                   <div className="flex items-center gap-2">
                     <div className="flex items-center text-sm font-medium text-gray-900">
                       <CurrencyPoundIcon className="h-5 w-5 mr-1 flex-shrink-0" />
-                      <span>£{invoice.total_amount?.toFixed(2)}</span>
+                      <span>£{formattedTotal}</span>
                     </div>
                     {invoice.due_date && (
                       <Badge 
