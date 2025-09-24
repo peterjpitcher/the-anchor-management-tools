@@ -5,6 +5,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
+import { toLocalIsoDate } from '@/lib/dateUtils'
 import type { RecurringInvoice, RecurringInvoiceWithDetails, RecurringFrequency, InvoiceLineItemInput, InvoiceStatus } from '@/types/invoices'
 
 // Validation schemas
@@ -477,8 +478,8 @@ export async function generateInvoiceFromRecurring(recurringInvoiceId: string) {
       .insert({
         invoice_number: invoiceNumber,
         vendor_id: recurringInvoice.vendor_id,
-        invoice_date: invoiceDate.toISOString().split('T')[0],
-        due_date: dueDate.toISOString().split('T')[0],
+        invoice_date: toLocalIsoDate(invoiceDate),
+        due_date: toLocalIsoDate(dueDate),
         reference: recurringInvoice.reference,
         invoice_discount_percentage: recurringInvoice.invoice_discount_percentage,
         subtotal_amount: subtotal,

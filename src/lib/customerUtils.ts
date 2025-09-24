@@ -1,5 +1,6 @@
 import { Customer } from '@/types/database'
 import { SupabaseClient } from '@supabase/supabase-js'
+import { toLocalIsoDate } from './dateUtils'
 
 export type CustomerWithLoyalty = Customer & {
   isLoyal?: boolean
@@ -21,8 +22,8 @@ export async function getLoyalCustomers(supabase: SupabaseClient): Promise<strin
     .from('bookings')
     .select('customer_id, event:events(date)')
     .gt('seats', 0) // Only consider bookings with actual seats reserved
-    .gte('event.date', oneMonthAgo.toISOString().split('T')[0])
-    .lte('event.date', oneMonthAhead.toISOString().split('T')[0])
+    .gte('event.date', toLocalIsoDate(oneMonthAgo))
+    .lte('event.date', toLocalIsoDate(oneMonthAhead))
 
   if (error) {
     console.error('Error fetching loyal customers:', error)

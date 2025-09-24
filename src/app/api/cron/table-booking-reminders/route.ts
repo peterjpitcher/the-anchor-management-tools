@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { queueBookingReminderSMS } from '@/app/actions/table-booking-sms';
 import { sendBookingReminderEmail } from '@/app/actions/table-booking-email';
 import { addDays, startOfDay, endOfDay } from 'date-fns';
+import { toLocalIsoDate } from '@/lib/dateUtils';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -46,8 +47,8 @@ export async function GET(request: Request) {
       `)
       .eq('status', 'confirmed')
       .eq('reminder_sent', false)
-      .gte('booking_date', startOfDay(reminderTime).toISOString().split('T')[0])
-      .lte('booking_date', endOfDay(reminderTime).toISOString().split('T')[0]);
+      .gte('booking_date', toLocalIsoDate(startOfDay(reminderTime)))
+      .lte('booking_date', toLocalIsoDate(endOfDay(reminderTime)));
       
     if (error) {
       console.error('Error fetching bookings:', error);

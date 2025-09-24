@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { logAuditEvent } from './audit'
+import { toLocalIsoDate } from '@/lib/dateUtils'
 
 // Helper function to format time to HH:MM
 function formatTimeToHHMM(time: string | undefined | null): string | undefined | null {
@@ -165,7 +166,7 @@ function generateSlug(name: string, date: string): string {
     .substring(0, 100) // Limit length
   
   // Add date to ensure uniqueness
-  const dateStr = new Date(date).toISOString().split('T')[0] // YYYY-MM-DD
+  const dateStr = toLocalIsoDate(new Date(date)) // YYYY-MM-DD
   
   return `${nameSlug}-${dateStr}`
 }

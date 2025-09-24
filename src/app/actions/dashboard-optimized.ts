@@ -2,6 +2,7 @@
 
 import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
 import { unstable_cache } from 'next/cache'
+import { getTodayIsoDate, getLocalIsoDateDaysAhead } from '@/lib/dateUtils'
 
 // Cache dashboard data for 1 minute
 export const getDashboardData = unstable_cache(
@@ -75,8 +76,8 @@ export const getDashboardData = unstable_cache(
         capacity,
         bookings (id, seats)
       `)
-      .gte('date', now.toISOString().split('T')[0])
-      .lte('date', nextWeek.toISOString().split('T')[0])
+      .gte('date', getTodayIsoDate())
+      .lte('date', getLocalIsoDateDaysAhead(7))
       .order('date', { ascending: true })
       .limit(5)
 

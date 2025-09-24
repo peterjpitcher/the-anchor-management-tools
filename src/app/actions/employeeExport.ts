@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import { logAuditEvent } from '@/app/actions/audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import type { Employee } from '@/types/database'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 
 function getSupabaseAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -64,7 +65,7 @@ export async function exportEmployees(options: ExportOptions): Promise<{ data?: 
     // Generate export based on format
     let exportData: string
     let filename: string
-    const timestamp = new Date().toISOString().split('T')[0]
+    const timestamp = getTodayIsoDate()
 
     if (options.format === 'csv') {
       exportData = generateCSV(employees, options.includeFields)

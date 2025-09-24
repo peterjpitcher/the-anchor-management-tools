@@ -2,11 +2,12 @@ import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { eventToSchema } from '@/lib/api/schema';
+import { getTodayIsoDate } from '@/lib/dateUtils';
 
 export async function GET(_request: NextRequest) {
   return withApiAuth(async (_req, _apiKey) => {
     const supabase = createAdminClient();
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayIsoDate();
     
     const { data: events, error } = await supabase
       .from('events')

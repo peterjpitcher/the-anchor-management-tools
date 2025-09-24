@@ -5,6 +5,7 @@ import { checkUserPermission } from '@/app/actions/rbac';
 import { logAuditEvent } from './audit';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
+import { toLocalIsoDate } from '@/lib/dateUtils';
 
 // Validation schemas
 const MenuItemSchema = z.object({
@@ -155,7 +156,7 @@ export async function getSundayLunchMenu(date?: string) {
     
     return { 
       data: {
-        menu_date: bookingDate.toISOString().split('T')[0],
+        menu_date: toLocalIsoDate(bookingDate),
         mains: mains.map(item => ({
           id: item.id,
           name: item.name,

@@ -11,6 +11,7 @@ import type {
 import { syncCalendarEvent, deleteCalendarEvent, isCalendarConfigured } from '@/lib/google-calendar'
 import { queueAndSendPrivateBookingSms } from './private-booking-sms'
 import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils'
+import { toLocalIsoDate } from '@/lib/dateUtils'
 
 // Helper function to format time to HH:MM
 function formatTimeToHHMM(time: string | undefined): string | undefined {
@@ -304,7 +305,7 @@ export async function createPrivateBooking(formData: FormData) {
   if (!balance_due_date && bookingData.event_date) {
     const eventDate = new Date(bookingData.event_date)
     eventDate.setDate(eventDate.getDate() - 7)
-    balance_due_date = eventDate.toISOString().split('T')[0]
+    balance_due_date = toLocalIsoDate(eventDate)
   }
 
   // Construct customer_name for backward compatibility

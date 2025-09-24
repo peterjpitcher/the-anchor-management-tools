@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { logAuditEvent } from './audit'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 
 interface ExportData {
   profile: any
@@ -143,7 +144,7 @@ export async function exportUserData(userId?: string) {
     
     // Return as JSON file
     const jsonData = JSON.stringify(exportData, null, 2)
-    const fileName = `gdpr-export-${targetUserId}-${new Date().toISOString().split('T')[0]}.json`
+    const fileName = `gdpr-export-${targetUserId}-${getTodayIsoDate()}.json`
     
     return {
       success: true,
