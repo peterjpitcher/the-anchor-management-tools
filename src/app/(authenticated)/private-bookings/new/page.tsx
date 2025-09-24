@@ -24,6 +24,7 @@ import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { toast } from '@/components/ui-v2/feedback/Toast'
+import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 interface Customer {
   id: string
   first_name: string
@@ -83,13 +84,13 @@ export default function NewPrivateBookingPage() {
   // Get tomorrow's date as default event date
   const tomorrow = new Date()
   tomorrow.setDate(tomorrow.getDate() + 1)
-  const defaultDate = tomorrow.toISOString().split('T')[0]
+  const defaultDate = toLocalIsoDate(tomorrow)
   
   // Set min date to today and max to 1 year from now
-  const today = new Date().toISOString().split('T')[0]
+  const today = getTodayIsoDate()
   const oneYearFromNow = new Date()
   oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1)
-  const maxDate = oneYearFromNow.toISOString().split('T')[0]
+  const maxDate = toLocalIsoDate(oneYearFromNow)
 
   return (
     <PageWrapper>

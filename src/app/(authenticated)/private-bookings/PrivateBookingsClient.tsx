@@ -13,7 +13,7 @@ import {
 import { deletePrivateBooking, cancelPrivateBooking } from '@/app/actions/privateBookingActions'
 import DeleteBookingButton from '@/components/private-bookings/DeleteBookingButton'
 import type { PrivateBookingWithDetails, BookingStatus } from '@/types/private-bookings'
-import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils'
+import { formatDateFull, formatTime12Hour, getTodayIsoDate } from '@/lib/dateUtils'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 // New UI components
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
@@ -119,7 +119,7 @@ export default function PrivateBookingsClient({ permissions }: Props) {
         query = query.ilike('customer_name', `%${searchTerm}%`)
       }
 
-      const today = new Date().toISOString().split('T')[0]
+      const today = getTodayIsoDate()
       if (dateFilter === 'upcoming') {
         query = query.gte('event_date', today)
       } else if (dateFilter === 'past') {
