@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui-v2/display/Badge'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { Edit2, Trash2, Play, Pause, FileText, Calendar, Clock } from 'lucide-react'
+import { toLocalIsoDate } from '@/lib/dateUtils'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import type { RecurringInvoiceWithDetails } from '@/types/invoices'
 
@@ -148,7 +149,7 @@ export default function RecurringInvoiceDetailPage() {
     }
     
     if (today < startDate) {
-      return startDate.toISOString().split('T')[0]
+      return toLocalIsoDate(startDate)
     }
     
     // Calculate next date based on frequency
@@ -198,7 +199,7 @@ export default function RecurringInvoiceDetailPage() {
       if (nextDate > endDate) return null
     }
     
-    return nextDate.toISOString().split('T')[0]
+    return toLocalIsoDate(nextDate)
   }
 
   if (loading) {

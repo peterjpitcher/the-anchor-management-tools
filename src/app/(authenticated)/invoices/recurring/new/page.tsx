@@ -17,6 +17,7 @@ import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Plus, Trash2, Package } from 'lucide-react'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 import type { InvoiceVendor, InvoiceLineItemInput, RecurringFrequency, LineItemCatalogItem } from '@/types/invoices'
 
 export default function NewRecurringInvoicePage() {
@@ -30,7 +31,7 @@ export default function NewRecurringInvoicePage() {
   // Form state
   const [vendorId, setVendorId] = useState('')
   const [frequency, setFrequency] = useState<RecurringFrequency>('monthly')
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0])
+  const [startDate, setStartDate] = useState(getTodayIsoDate())
   const [endDate, setEndDate] = useState('')
   const [daysBefore, setDaysBefore] = useState(30)
   const [reference, setReference] = useState('')

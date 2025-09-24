@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
@@ -12,6 +12,7 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Download, Calendar } from 'lucide-react'
+import { toLocalIsoDate } from '@/lib/dateUtils'
 
 export default function InvoiceExportPage() {
   const router = useRouter()
@@ -22,15 +23,15 @@ export default function InvoiceExportPage() {
   const [error, setError] = useState<string | null>(null)
 
   // Set default dates to current quarter
-  useState(() => {
+  useEffect(() => {
     const now = new Date()
     const currentQuarter = Math.floor(now.getMonth() / 3)
     const quarterStart = new Date(now.getFullYear(), currentQuarter * 3, 1)
     const quarterEnd = new Date(now.getFullYear(), (currentQuarter + 1) * 3, 0)
-    
-    setStartDate(quarterStart.toISOString().split('T')[0])
-    setEndDate(quarterEnd.toISOString().split('T')[0])
-  })
+
+    setStartDate(toLocalIsoDate(quarterStart))
+    setEndDate(toLocalIsoDate(quarterEnd))
+  }, [])
 
   async function handleExport() {
     if (!startDate || !endDate) {
@@ -95,8 +96,8 @@ export default function InvoiceExportPage() {
     const quarterStart = new Date(year, quarter * 3, 1)
     const quarterEnd = new Date(year, (quarter + 1) * 3, 0)
     
-    setStartDate(quarterStart.toISOString().split('T')[0])
-    setEndDate(quarterEnd.toISOString().split('T')[0])
+    setStartDate(toLocalIsoDate(quarterStart))
+    setEndDate(toLocalIsoDate(quarterEnd))
   }
 
   return (
@@ -145,8 +146,8 @@ export default function InvoiceExportPage() {
                   const now = new Date()
                   const yearStart = new Date(now.getFullYear(), 0, 1)
                   const yearEnd = new Date(now.getFullYear(), 11, 31)
-                  setStartDate(yearStart.toISOString().split('T')[0])
-                  setEndDate(yearEnd.toISOString().split('T')[0])
+                  setStartDate(toLocalIsoDate(yearStart))
+                  setEndDate(toLocalIsoDate(yearEnd))
                 }}
                 leftIcon={<Calendar className="h-4 w-4" />}
               >

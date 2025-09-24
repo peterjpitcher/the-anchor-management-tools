@@ -15,6 +15,7 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { PlusCircle, Trash2 } from 'lucide-react'
+import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 import type { InvoiceVendor } from '@/types/invoices'
 import type { LineItemCatalogItem, InvoiceLineItemInput } from '@/types/invoices'
 
@@ -34,7 +35,7 @@ export default function NewInvoicePage() {
   const [vendors, setVendors] = useState<InvoiceVendor[]>([])
   const [catalogItems, setCatalogItems] = useState<LineItemCatalogItem[]>([])
   const [vendorId, setVendorId] = useState('')
-  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0])
+  const [invoiceDate, setInvoiceDate] = useState(getTodayIsoDate())
   const [dueDate, setDueDate] = useState('')
   const [reference, setReference] = useState('')
   const [lineItems, setLineItems] = useState<LineItem[]>([])
@@ -52,7 +53,7 @@ export default function NewInvoicePage() {
     if (invoiceDate) {
       const date = new Date(invoiceDate)
       date.setDate(date.getDate() + 30)
-      setDueDate(date.toISOString().split('T')[0])
+      setDueDate(toLocalIsoDate(date))
     }
   }, [invoiceDate])
 

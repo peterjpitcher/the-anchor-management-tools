@@ -15,6 +15,7 @@ import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Save } from 'lucide-react'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 import type { InvoiceWithDetails, PaymentMethod } from '@/types/invoices'
 
 export default function RecordPaymentPage() {
@@ -30,7 +31,8 @@ export default function RecordPaymentPage() {
   const invoiceId = Array.isArray(rawInvoiceId) ? rawInvoiceId[0] : rawInvoiceId ?? null
   
   // Form fields
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0])
+  const todayIso = getTodayIsoDate()
+  const [paymentDate, setPaymentDate] = useState(todayIso)
   const [amount, setAmount] = useState('')
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('bank_transfer')
   const [reference, setReference] = useState('')
@@ -192,7 +194,7 @@ export default function RecordPaymentPage() {
               type="date"
               value={paymentDate}
               onChange={(e) => setPaymentDate(e.target.value)}
-              max={new Date().toISOString().split('T')[0]}
+              max={todayIso}
               required
             />
           </FormGroup>
