@@ -18,6 +18,18 @@ export function toLocalIsoDate(date: Date): string {
   return copy.toISOString().split('T')[0]
 }
 
+export function getLocalIsoDateDaysAgo(days: number): string {
+  const date = new Date()
+  date.setDate(date.getDate() - days)
+  return toLocalIsoDate(date)
+}
+
+export function getLocalIsoDateDaysAhead(days: number): string {
+  const date = new Date()
+  date.setDate(date.getDate() + days)
+  return toLocalIsoDate(date)
+}
+
 export function formatDateFull(date: string | Date | null): string {
   if (!date) return 'To be confirmed'
   const d = new Date(date)

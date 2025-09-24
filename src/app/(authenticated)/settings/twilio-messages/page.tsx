@@ -19,6 +19,7 @@ import { Stat } from '@/components/ui-v2/display/Stat'
 
 import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 import { useRouter } from 'next/navigation';
+import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 export default function TwilioMessagesPage() {
   
   const router = useRouter();
@@ -26,9 +27,9 @@ const [loading, setLoading] = useState(false)
   const [messages, setMessages] = useState<MessageComparison[]>([])
   const [unloggedCount, setUnloggedCount] = useState<number | null>(null)
   const [showUnloggedOnly, setShowUnloggedOnly] = useState(false)
-  const [dateRange, setDateRange] = useState({
-    startDate: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 24 hours ago
-    endDate: new Date().toISOString().split('T')[0] // Today
+const [dateRange, setDateRange] = useState({
+    startDate: toLocalIsoDate(new Date(Date.now() - 24 * 60 * 60 * 1000)),
+    endDate: getTodayIsoDate()
   })
 
   const loadMessages = useCallback(async () => {
