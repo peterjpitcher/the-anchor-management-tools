@@ -21,8 +21,15 @@ import type { InvoiceVendor, InvoiceWithDetails, LineItemCatalogItem, InvoiceLin
 export default function EditInvoicePage() {
   const params = useParams()
   const router = useRouter()
-  const invoiceId = params.id as string
-  
+  const rawInvoiceId = params?.id
+  const invoiceId = Array.isArray(rawInvoiceId) ? rawInvoiceId[0] : rawInvoiceId ?? null
+
+  useEffect(() => {
+    if (!invoiceId) {
+      router.replace('/invoices')
+    }
+  }, [invoiceId, router])
+
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -41,6 +48,10 @@ export default function EditInvoicePage() {
   const [lineItems, setLineItems] = useState<InvoiceLineItemInput[]>([])
 
   const loadData = useCallback(async () => {
+    if (!invoiceId) {
+      return
+    }
+
     try {
       const [invoiceResult, vendorsResult, catalogResult] = await Promise.all([
         getInvoice(invoiceId),
@@ -144,9 +155,14 @@ export default function EditInvoicePage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    
+
     if (lineItems.length === 0) {
       setError('Please add at least one line item')
+      return
+    }
+
+    if (!invoiceId) {
+      setError('Invoice not found')
       return
     }
 
@@ -184,7 +200,7 @@ export default function EditInvoicePage() {
       <PageWrapper>
         <PageHeader 
           title="Loading..."
-          backButton={{ label: 'Back to Invoice', href: `/invoices/${invoiceId}` }}
+          backButton={{ label: 'Back to Invoices', href: invoiceId ? `/invoices/${invoiceId}` : '/invoices' }}
         />
         <PageContent>
           <div className="flex items-center justify-center h-64">

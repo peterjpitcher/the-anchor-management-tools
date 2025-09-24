@@ -9,7 +9,8 @@ import { Page, Card, Badge, Spinner, Alert, Container } from '@/components/ui-v2
 
 export default function BookingSuccessPage() {
   const params = useParams();
-  const bookingId = params.id as string;
+  const rawId = params?.id;
+  const bookingId = Array.isArray(rawId) ? rawId[0] : rawId ?? null;
   
   const [booking, setBooking] = useState<{
     id: string;
@@ -28,10 +29,19 @@ export default function BookingSuccessPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!bookingId) {
+      setLoading(false);
+      return;
+    }
+
     loadBooking();
   }, [bookingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadBooking() {
+    if (!bookingId) {
+      return;
+    }
+
     try {
       const supabase = createClient();
       
@@ -94,6 +104,16 @@ export default function BookingSuccessPage() {
           <div className="flex items-center justify-center">
             <Spinner size="lg" />
           </div>
+        </Container>
+      </Page>
+    );
+  }
+
+  if (!bookingId || !booking) {
+    return (
+      <Page title="" spacing={false}>
+        <Container size="sm" className="py-8">
+          <Alert variant="error" title="Booking not found" description="We couldn't locate this booking." />
         </Container>
       </Page>
     );

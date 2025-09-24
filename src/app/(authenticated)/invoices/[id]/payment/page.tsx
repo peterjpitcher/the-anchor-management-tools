@@ -26,7 +26,8 @@ export default function RecordPaymentPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   
-  const invoiceId = params.id as string
+  const rawInvoiceId = params?.id
+  const invoiceId = Array.isArray(rawInvoiceId) ? rawInvoiceId[0] : rawInvoiceId ?? null
   
   // Form fields
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0])
@@ -36,11 +37,17 @@ export default function RecordPaymentPage() {
   const [notes, setNotes] = useState('')
 
   useEffect(() => {
+    if (!invoiceId) {
+      setError('Invoice not found')
+      setLoading(false)
+      return
+    }
+
+    const currentInvoiceId = invoiceId
+
     async function loadInvoice() {
-      if (!invoiceId) return
-      
       try {
-        const result = await getInvoice(invoiceId)
+        const result = await getInvoice(currentInvoiceId)
         
         if (result.error || !result.invoice) {
           throw new Error(result.error || 'Invoice not found')
@@ -110,7 +117,7 @@ export default function RecordPaymentPage() {
       <PageWrapper>
         <PageHeader 
           title="Loading..."
-          backButton={{ label: 'Back to Invoice', href: `/invoices/${invoiceId}` }}
+          backButton={{ label: 'Back to Invoice', href: invoiceId ? `/invoices/${invoiceId}` : '/invoices' }}
         />
         <PageContent>
           <div className="flex items-center justify-center h-64">

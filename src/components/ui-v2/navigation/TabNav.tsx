@@ -123,7 +123,7 @@ export function TabNav({
   className,
   'aria-label': ariaLabel = 'Tabs',
 }: TabNavProps) {
-  const pathname = usePathname()
+  const pathname = usePathname() ?? ''
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const activeTabRef = useRef<HTMLAnchorElement | HTMLButtonElement>(null)
   
@@ -338,7 +338,7 @@ export function VerticalTabNav({
   className,
   'aria-label': ariaLabel = 'Tabs',
 }: Omit<TabNavProps, 'variant' | 'fullWidth'>) {
-  const pathname = usePathname()
+  const pathname = usePathname() ?? ''
   
   // Determine active tab
   const getActiveTab = () => {

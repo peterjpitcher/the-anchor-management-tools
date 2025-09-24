@@ -21,7 +21,7 @@ function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
-  const redirectTo = searchParams.get('redirectedFrom') || '/events'
+  const redirectTo = searchParams?.get('redirectedFrom') || '/events'
   const supabase = createClient()
 
   // Security check: Clear URL if credentials are exposed

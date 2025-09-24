@@ -234,7 +234,6 @@ export function Accordion({
           className
         )}
         role="region"
-        aria-multiselectable={multiple}
       >
         {items.map((item, index) => {
           const isExpanded = activeKeys.includes(item.key)

@@ -45,9 +45,9 @@ export default function TableBookingPaymentPage(props: { params: Promise<{ refer
   const [paymentError, setPaymentError] = useState<string | null>(null);
   
   // Check for cancellation or errors
-  const wasCancelled = searchParams.get('cancelled') === 'true';
-  const errorParam = searchParams.get('error');
-  const errorMessage = searchParams.get('message');
+  const wasCancelled = searchParams?.get('cancelled') === 'true';
+  const errorParam = searchParams?.get('error');
+  const errorMessage = searchParams?.get('message');
 
   const loadBooking = useCallback(async () => {
     try {

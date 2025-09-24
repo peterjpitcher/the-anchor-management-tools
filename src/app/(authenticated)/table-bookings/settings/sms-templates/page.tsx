@@ -247,7 +247,10 @@ export default function SMSTemplatesPage() {
 
       <Alert variant="info" className="mt-4">
         <h3 className="font-medium mb-2">Template Variables</h3>
-        <p className="text-sm">The <code className="px-1 py-0.5 bg-gray-100 rounded">{'{{date}}'}</code> variable will display as the full date format: "Sunday, March 10" (day name, month name, day number)</p>
+        <p className="text-sm">
+          The <code className="px-1 py-0.5 bg-gray-100 rounded">{'{{date}}'}</code> variable will display as the full
+          date format: &quot;Sunday, March 10&quot; (day name, month name, day number)
+        </p>
       </Alert>
 
       <Card className="mt-6">

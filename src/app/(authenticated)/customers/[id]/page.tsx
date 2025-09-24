@@ -168,7 +168,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   }
 
   useEffect(() => {
-    const bookingId = searchParams.get('booking_id')
+    const bookingId = searchParams?.get('booking_id')
     if (bookingId && bookings.length > 0) {
       const bookingToEdit = bookings.find(b => b.id === bookingId)
       if (bookingToEdit) {
@@ -181,7 +181,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
     setEditingBooking(undefined)
     setIsAddingBooking(false)
     setEventForNewBooking(undefined)
-    const newParams = new URLSearchParams(searchParams.toString())
+    const newParams = new URLSearchParams(searchParams?.toString() ?? '')
     newParams.delete('booking_id')
     router.push(`${window.location.pathname}?${newParams.toString()}`)
   }
@@ -203,7 +203,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
       toast.error(`Failed to update booking: ${error.message}`)
     } else {
       toast.success('Booking updated successfully!')
-      const returnTo = searchParams.get('return_to')
+      const returnTo = searchParams?.get('return_to')
       if (returnTo) {
         router.push(returnTo)
       } else {
@@ -236,7 +236,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
         })
       }
       
-      const returnTo = searchParams.get('return_to')
+      const returnTo = searchParams?.get('return_to')
       if (returnTo) {
         router.push(returnTo)
       } else {

@@ -43,14 +43,15 @@ P.S. The quote is attached as a PDF for your convenience.`
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  if (!isOpen) return null
-
   // Prefill To with Primary contact, CC with all other contacts + vendor default emails (excluding Primary)
   useEffect(() => {
+    if (!isOpen) {
+      return
+    }
     let active = true
     async function loadPrimary() {
       const vendorId = quote.vendor?.id
-      if (!isOpen || !vendorId) return
+      if (!vendorId) return
       const { data: contacts } = await supabase
         .from('invoice_vendor_contacts')
         .select('email, is_primary')
@@ -70,6 +71,10 @@ P.S. The quote is attached as a PDF for your convenience.`
     loadPrimary()
     return () => { active = false }
   }, [isOpen, supabase, quote.vendor?.id, quote.vendor?.email])
+
+  if (!isOpen) {
+    return null
+  }
 
   async function handleSend() {
     if (!toEmails && !ccEmails) {
@@ -127,7 +132,9 @@ P.S. The quote is attached as a PDF for your convenience.`
             placeholder="primary.contact@example.com"
             required
           />
-          <p className="text-xs text-gray-500 mt-1">Primary recipient. Usually the vendor's primary contact.</p>
+          <p className="text-xs text-gray-500 mt-1">
+            Primary recipient. Usually the vendor&apos;s primary contact.
+          </p>
         </FormGroup>
 
         <FormGroup label="CC">
