@@ -1,6 +1,6 @@
 'use client'
 
-import { formatDate } from '@/lib/dateUtils'
+import { formatDate, getTodayIsoDate } from '@/lib/dateUtils'
 import Link from 'next/link'
 import { use, useEffect, useState, useCallback } from 'react'
 import { Customer, Booking, Event, Message } from '@/types/database'
@@ -104,10 +104,11 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
       if (bookingsError) throw bookingsError
       setBookings(bookingsData as BookingWithEvent[])
 
+      const todayIso = getTodayIsoDate()
       const { data: eventsData, error: eventsError } = await supabase
         .from('events')
         .select('*')
-        .gte('date', new Date().toISOString().split('T')[0]) // Only future events
+        .gte('date', todayIso) // Only future events
         .order('date')
       if (eventsError) throw eventsError
       setAllEvents(eventsData)
