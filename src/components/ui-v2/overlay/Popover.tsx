@@ -122,11 +122,6 @@ export function Popover({
   const open = controlledOpen ?? uncontrolledOpen
   const setOpen = onOpenChange ?? setUncontrolledOpen
   
-  // Don't render if disabled
-  if (disabled) {
-    return <>{trigger}</>
-  }
-  
   // Floating UI setup
   const { refs, floatingStyles, context } = useFloating({
     open,
@@ -165,6 +160,10 @@ export function Popover({
     dismiss,
     role,
   ])
+
+  if (disabled) {
+    return <>{trigger}</>
+  }
   
   // Clone trigger element and attach props
   const triggerElement = isValidElement(trigger) ? (

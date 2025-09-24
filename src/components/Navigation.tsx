@@ -47,7 +47,7 @@ interface NavigationProps {
 }
 
 export function Navigation({ onQuickAddNoteClick, onNavigate }: NavigationProps) {
-  const pathname = usePathname()
+  const pathname = usePathname() ?? '/'
   const [unreadCount, setUnreadCount] = useState(0)
   const [isMobile, setIsMobile] = useState(false)
   const { hasPermission, loading: permissionsLoading } = usePermissions()

@@ -313,9 +313,6 @@ export function Rating({
       onMouseLeave={handleMouseLeave}
       role="radiogroup"
       aria-label="Rating"
-      aria-valuemin={0}
-      aria-valuemax={max}
-      aria-valuenow={value}
       aria-readonly={readonly}
       aria-disabled={disabled}
     >

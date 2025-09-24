@@ -144,7 +144,9 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`
             placeholder="primary.contact@example.com"
             required
           />
-          <p className="text-xs text-gray-500 mt-1">Primary recipient. Usually the vendor's primary contact.</p>
+          <p className="text-xs text-gray-500 mt-1">
+            Primary recipient. Usually the vendor&apos;s primary contact.
+          </p>
         </div>
 
         <div>

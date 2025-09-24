@@ -161,7 +161,9 @@ P.S. I've attached a copy of the invoice for your reference.`
             onChange={(e) => setToEmails(e.target.value)}
             placeholder="primary.contact@example.com"
           />
-          <p className="text-xs text-gray-500 mt-1">Primary recipient. Usually the vendor's primary contact.</p>
+          <p className="text-xs text-gray-500 mt-1">
+            Primary recipient. Usually the vendor&apos;s primary contact.
+          </p>
         </div>
 
         <div>

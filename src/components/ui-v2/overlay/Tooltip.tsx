@@ -125,11 +125,6 @@ export function Tooltip({
   const open = controlledOpen ?? uncontrolledOpen
   const setOpen = onOpenChange ?? setUncontrolledOpen
   
-  // Don't render if no content or disabled
-  if (!content || disabled) {
-    return <>{children}</>
-  }
-  
   // Floating UI setup
   const { refs, floatingStyles, context } = useFloating({
     open,
@@ -167,6 +162,10 @@ export function Tooltip({
     dismiss,
     role,
   ])
+
+  if (!content || disabled) {
+    return <>{children}</>
+  }
   
   // Handle touch devices
   const handleLongPress = () => {

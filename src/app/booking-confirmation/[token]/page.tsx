@@ -41,7 +41,8 @@ interface PendingBooking {
 export default function BookingConfirmationPage() {
   const params = useParams();
   const router = useRouter();
-  const token = params.token as string;
+  const rawToken = params?.token;
+  const token = Array.isArray(rawToken) ? rawToken[0] : rawToken ?? null;
   
   const [loading, setLoading] = useState(true);
   const [pendingBooking, setPendingBooking] = useState<PendingBooking | null>(null);
@@ -56,6 +57,12 @@ export default function BookingConfirmationPage() {
   const [confirmationError, setConfirmationError] = useState<string | null>(null);
 
   const loadPendingBooking = useCallback(async () => {
+    if (!token) {
+      setError('Invalid or expired booking link');
+      setLoading(false);
+      return;
+    }
+
     try {
       const supabase = createClient();
       
@@ -158,7 +165,7 @@ export default function BookingConfirmationPage() {
   }, [loadPendingBooking]);
 
   async function confirmBooking() {
-    if (!pendingBooking) return;
+    if (!pendingBooking || !token) return;
     
     setConfirming(true);
     setConfirmationError(null);

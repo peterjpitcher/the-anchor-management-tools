@@ -22,7 +22,8 @@ import type { InvoiceVendor, InvoiceLineItemInput, RecurringFrequency, LineItemC
 export default function EditRecurringInvoicePage() {
   const router = useRouter()
   const params = useParams()
-  const id = params.id as string
+  const rawId = params?.id
+  const recurringInvoiceId = Array.isArray(rawId) ? rawId[0] : rawId ?? null
   
   const [recurringInvoice, setRecurringInvoice] = useState<RecurringInvoiceWithDetails | null>(null)
   const [vendors, setVendors] = useState<InvoiceVendor[]>([])
@@ -47,10 +48,18 @@ export default function EditRecurringInvoicePage() {
   const [lineItems, setLineItems] = useState<InvoiceLineItemInput[]>([])
 
   useEffect(() => {
+    if (!recurringInvoiceId) {
+      setError('Recurring invoice not found')
+      setLoading(false)
+      return
+    }
+
+    const currentId = recurringInvoiceId
+
     async function loadData() {
       try {
         const [recurringResult, vendorResult, catalogResult] = await Promise.all([
-          getRecurringInvoice(id),
+          getRecurringInvoice(currentId),
           getVendors(),
           getLineItemCatalog()
         ])
@@ -99,7 +108,7 @@ export default function EditRecurringInvoicePage() {
       }
     }
     loadData()
-  }, [id])
+  }, [recurringInvoiceId])
 
   function addLineItem() {
     setLineItems([...lineItems, {
@@ -165,8 +174,12 @@ export default function EditRecurringInvoicePage() {
     setSubmitting(true)
 
     try {
+      if (!recurringInvoiceId) {
+        throw new Error('Recurring invoice not found')
+      }
+
       const formData = new FormData()
-      formData.append('id', id) // Add the ID to the FormData
+      formData.append('id', recurringInvoiceId) // Add the ID to the FormData
       formData.append('vendor_id', vendorId)
       formData.append('frequency', frequency)
       formData.append('start_date', startDate)

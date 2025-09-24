@@ -32,15 +32,22 @@ export default function InvoiceDetailPage() {
   const [emailConfigured, setEmailConfigured] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
-  const invoiceId = params.id as string
+  const rawInvoiceId = params?.id
+  const invoiceId = Array.isArray(rawInvoiceId) ? rawInvoiceId[0] : rawInvoiceId ?? null
 
   useEffect(() => {
+    if (!invoiceId) {
+      setError('Invoice not found')
+      setLoading(false)
+      return
+    }
+
+    const currentInvoiceId = invoiceId
+
     async function loadInvoice() {
-      if (!invoiceId) return
-      
       try {
-        const result = await getInvoice(invoiceId)
-        
+        const result = await getInvoice(currentInvoiceId)
+
         if (result.error || !result.invoice) {
           throw new Error(result.error || 'Invoice not found')
         }
@@ -87,7 +94,7 @@ export default function InvoiceDetailPage() {
       }
 
       // Reload invoice
-      const refreshResult = await getInvoice(invoiceId)
+      const refreshResult = await getInvoice(invoice.id)
       if (refreshResult.invoice) {
         setInvoice(refreshResult.invoice)
       }
@@ -567,25 +574,25 @@ export default function InvoiceDetailPage() {
             invoice={invoice}
             isOpen={showEmailModal}
             onClose={() => setShowEmailModal(false)}
-            onSuccess={async () => {
-              // Reload invoice to get updated status
-              const result = await getInvoice(invoiceId)
-              if (result.invoice) {
-                setInvoice(result.invoice)
-              }
-            }}
+      onSuccess={async () => {
+        // Reload invoice to get updated status
+        const result = await getInvoice(invoice.id)
+        if (result.invoice) {
+          setInvoice(result.invoice)
+        }
+      }}
           />
           <ChasePaymentModal
             invoice={invoice}
             isOpen={showChaseModal}
             onClose={() => setShowChaseModal(false)}
-            onSuccess={async () => {
-              // Reload invoice to get updated status
-              const result = await getInvoice(invoiceId)
-              if (result.invoice) {
-                setInvoice(result.invoice)
-              }
-            }}
+      onSuccess={async () => {
+        // Reload invoice to get updated status
+        const result = await getInvoice(invoice.id)
+        if (result.invoice) {
+          setInvoice(result.invoice)
+        }
+      }}
           />
         </>
       )}

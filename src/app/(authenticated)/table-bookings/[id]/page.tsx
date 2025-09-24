@@ -99,8 +99,13 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
 
   // Handle error from payment redirect
   useEffect(() => {
-    const errorParam = searchParams.get('error');
-    const errorMessage = searchParams.get('message');
+    const paramsInstance = searchParams;
+    if (!paramsInstance) {
+      return;
+    }
+
+    const errorParam = paramsInstance.get('error');
+    const errorMessage = paramsInstance.get('message');
     
     if (errorParam === 'payment_failed' && errorMessage) {
       toast.error(decodeURIComponent(errorMessage));

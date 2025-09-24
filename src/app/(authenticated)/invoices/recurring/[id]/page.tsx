@@ -19,7 +19,8 @@ import type { RecurringInvoiceWithDetails } from '@/types/invoices'
 export default function RecurringInvoiceDetailPage() {
   const router = useRouter()
   const params = useParams()
-  const id = params.id as string
+  const rawId = params?.id
+  const recurringInvoiceId = Array.isArray(rawId) ? rawId[0] : rawId ?? null
   
   const [recurringInvoice, setRecurringInvoice] = useState<RecurringInvoiceWithDetails | null>(null)
   const [loading, setLoading] = useState(true)
@@ -28,12 +29,24 @@ export default function RecurringInvoiceDetailPage() {
   const [actionLoading, setActionLoading] = useState(false)
 
   useEffect(() => {
-    loadRecurringInvoice()
-  }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (!recurringInvoiceId) {
+      setError('Recurring invoice not found')
+      setLoading(false)
+      return
+    }
 
-  async function loadRecurringInvoice() {
+    loadRecurringInvoice(recurringInvoiceId)
+  }, [recurringInvoiceId])
+
+  async function loadRecurringInvoice(targetId: string | null = recurringInvoiceId) {
+    if (!targetId) {
+      setError('Recurring invoice not found')
+      setLoading(false)
+      return
+    }
+
     try {
-      const result = await getRecurringInvoice(id)
+      const result = await getRecurringInvoice(targetId)
       
       if (result.error || !result.recurringInvoice) {
         throw new Error(result.error || 'Failed to load recurring invoice')
@@ -52,8 +65,12 @@ export default function RecurringInvoiceDetailPage() {
     
     setActionLoading(true)
     try {
+      if (!recurringInvoiceId) {
+        throw new Error('Recurring invoice not found')
+      }
+
       const formData = new FormData()
-      formData.append('id', id)
+      formData.append('id', recurringInvoiceId)
       formData.append('current_status', recurringInvoice.is_active.toString())
       const result = await toggleRecurringInvoiceStatus(formData)
       
@@ -61,7 +78,7 @@ export default function RecurringInvoiceDetailPage() {
         throw new Error(result.error)
       }
       
-      await loadRecurringInvoice()
+      await loadRecurringInvoice(recurringInvoiceId)
       toast.success(`Recurring invoice ${recurringInvoice.is_active ? 'deactivated' : 'activated'} successfully`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to toggle status')
@@ -73,7 +90,11 @@ export default function RecurringInvoiceDetailPage() {
   async function handleGenerateNow() {
     setActionLoading(true)
     try {
-      const result = await generateInvoiceFromRecurring(id)
+      if (!recurringInvoiceId) {
+        throw new Error('Recurring invoice not found')
+      }
+
+      const result = await generateInvoiceFromRecurring(recurringInvoiceId)
       
       if (result.error) {
         throw new Error(result.error)
@@ -93,8 +114,12 @@ export default function RecurringInvoiceDetailPage() {
   async function handleDelete() {
     setActionLoading(true)
     try {
+      if (!recurringInvoiceId) {
+        throw new Error('Recurring invoice not found')
+      }
+
       const formData = new FormData()
-      formData.append('id', id)
+      formData.append('id', recurringInvoiceId)
       const result = await deleteRecurringInvoice(formData)
       
       if (result.error) {
@@ -236,7 +261,7 @@ export default function RecurringInvoiceDetailPage() {
           <div className="flex gap-2">
             <Button
               variant="secondary"
-              onClick={() => router.push(`/invoices/recurring/${id}/edit`)}
+              onClick={() => router.push(`/invoices/recurring/${recurringInvoice.id}/edit`)}
               leftIcon={<Edit2 className="h-4 w-4" />}
             >
               Edit
