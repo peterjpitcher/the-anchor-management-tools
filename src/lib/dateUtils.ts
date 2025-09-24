@@ -11,6 +11,13 @@ export function getTodayIsoDate(): string {
   return now.toISOString().split('T')[0]
 }
 
+export function toLocalIsoDate(date: Date): string {
+  const copy = new Date(date.getTime())
+  const offsetMinutes = copy.getTimezoneOffset()
+  copy.setMinutes(copy.getMinutes() - offsetMinutes)
+  return copy.toISOString().split('T')[0]
+}
+
 export function formatDateFull(date: string | Date | null): string {
   if (!date) return 'To be confirmed'
   const d = new Date(date)
