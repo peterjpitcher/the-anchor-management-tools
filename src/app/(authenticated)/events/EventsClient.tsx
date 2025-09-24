@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui-v2/display/Badge'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { ProgressBar } from '@/components/ui-v2/feedback/ProgressBar'
 import { Accordion } from '@/components/ui-v2/display/Accordion'
-import { formatDate } from '@/lib/dateUtils'
+import { formatDate, getTodayIsoDate } from '@/lib/dateUtils'
 
 interface EventCategory {
   id: string
@@ -36,7 +36,7 @@ interface EventsClientProps {
 }
 
 export default function EventsClient({ events }: EventsClientProps) {
-  const today = new Date().toISOString().split('T')[0]
+  const today = getTodayIsoDate()
   
   const pastEvents = events.filter(e => e.date < today)
   const futureEvents = events.filter(e => e.date >= today)
