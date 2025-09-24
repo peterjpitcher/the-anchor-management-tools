@@ -12,11 +12,12 @@ import { Alert } from '@/components/ui-v2/feedback/Alert'
 
 import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 import { useRouter } from 'next/navigation';
+import { getLocalIsoDateDaysAgo, getTodayIsoDate } from '@/lib/dateUtils'
 export default function ImportMessagesPage() {
   
   const router = useRouter();
-const [startDate, setStartDate] = useState('2025-06-18')
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0])
+const [startDate, setStartDate] = useState(getLocalIsoDateDaysAgo(7))
+  const [endDate, setEndDate] = useState(getTodayIsoDate())
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<{ error?: string; success?: boolean; summary?: { totalFound: number; inboundMessages: number; outboundMessages: number; alreadyInDatabase: number; imported: number; failed: number }; errors?: string[] } | null>(null)
 
