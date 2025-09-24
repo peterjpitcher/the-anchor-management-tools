@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { eventToSchema } from '@/lib/api/schema';
+import { getTodayIsoDate } from '@/lib/dateUtils';
 // Removed unused date-fns imports
 
 // Handle CORS preflight
@@ -59,7 +60,7 @@ export async function GET(_request: NextRequest) {
       query = query.gte('date', fromDate);
     } else {
       // Default to today
-      query = query.gte('date', new Date().toISOString().split('T')[0]);
+      query = query.gte('date', getTodayIsoDate());
     }
     
     if (toDate) {

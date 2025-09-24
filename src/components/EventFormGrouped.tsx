@@ -19,6 +19,7 @@ import {
   ClockIcon,
   UserGroupIcon
 } from '@heroicons/react/24/outline'
+import { getTodayIsoDate, getLocalIsoDateDaysAhead } from '@/lib/dateUtils'
 
 interface EventFormGroupedProps {
   event?: Event | null
@@ -103,9 +104,8 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Date constraints
-  const today = new Date()
-  const minDate = today.toISOString().split('T')[0]
-  const maxDate = new Date(today.getFullYear() + 2, today.getMonth(), today.getDate()).toISOString().split('T')[0]
+  const minDate = getTodayIsoDate()
+  const maxDate = getLocalIsoDateDaysAhead(730)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

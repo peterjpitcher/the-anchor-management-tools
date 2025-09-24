@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { cache } from './cache'
 import { logger } from './logger'
+import { getTodayIsoDate, getLocalIsoDateDaysAhead } from './dateUtils'
 
 /**
  * Get available capacity for an event with caching
@@ -89,9 +90,8 @@ export async function getUpcomingEvents(days: number = 7) {
     async () => {
       const supabase = await createClient()
       
-      const startDate = new Date()
-      const endDate = new Date()
-      endDate.setDate(endDate.getDate() + days)
+      const startDateIso = getTodayIsoDate()
+      const endDateIso = getLocalIsoDateDaysAhead(days)
       
       const { data: events, error } = await supabase
         .from('events')
@@ -100,8 +100,8 @@ export async function getUpcomingEvents(days: number = 7) {
           category:event_categories(id, name),
           bookings(count)
         `)
-        .gte('date', startDate.toISOString().split('T')[0])
-        .lte('date', endDate.toISOString().split('T')[0])
+        .gte('date', startDateIso)
+        .lte('date', endDateIso)
         .order('date', { ascending: true })
         .order('time', { ascending: true })
       

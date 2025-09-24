@@ -22,6 +22,7 @@ import { Dropdown } from '@/components/ui-v2/navigation/Dropdown'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 
 import { BackButton } from '@/components/ui-v2/navigation/BackButton';
+import { getTodayIsoDate, getLocalIsoDateDaysAhead } from '@/lib/dateUtils'
 interface LineItem {
   id: string
   catalog_item_id?: string
@@ -38,10 +39,8 @@ export default function NewQuotePage() {
   const [vendors, setVendors] = useState<InvoiceVendor[]>([])
   const [catalogItems, setCatalogItems] = useState<LineItemCatalogItem[]>([])
   const [vendorId, setVendorId] = useState('')
-  const [quoteDate, setQuoteDate] = useState(new Date().toISOString().split('T')[0])
-  const [validUntil, setValidUntil] = useState(
-    new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-  )
+  const [quoteDate, setQuoteDate] = useState(getTodayIsoDate())
+  const [validUntil, setValidUntil] = useState(getLocalIsoDateDaysAhead(30))
   const [reference, setReference] = useState('')
   const [lineItems, setLineItems] = useState<LineItem[]>([])
   const [quoteDiscountPercentage, setQuoteDiscountPercentage] = useState(0)

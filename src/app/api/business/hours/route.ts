@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { format } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
+import { getTodayIsoDate, getLocalIsoDateDaysAhead } from '@/lib/dateUtils';
 
 const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
@@ -24,16 +25,14 @@ export async function GET(_request: NextRequest) {
 
     // Get special hours for the next 90 days
     const today = new Date();
-    const ninetyDaysFromNow = new Date();
-    ninetyDaysFromNow.setDate(ninetyDaysFromNow.getDate() + 90);
 
     let specialHours = [];
     try {
       const { data, error } = await supabase
         .from('special_hours')
         .select('*')
-        .gte('date', today.toISOString().split('T')[0])
-        .lte('date', ninetyDaysFromNow.toISOString().split('T')[0])
+        .gte('date', getTodayIsoDate())
+        .lte('date', getLocalIsoDateDaysAhead(90))
         .order('date', { ascending: true });
       
       if (error) {

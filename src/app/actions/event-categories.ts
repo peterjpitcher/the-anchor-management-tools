@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { logAuditEvent } from '@/app/actions/audit'
 import type { EventCategory, CategoryFormData, CategoryRegular, CrossCategorySuggestion } from '@/types/event-categories'
+import { toLocalIsoDate } from '@/lib/dateUtils'
 
 // Helper function to format time to HH:MM
 function formatTimeToHHMM(time: string | undefined | null): string | undefined | null {
@@ -393,7 +394,7 @@ export async function getCategoryRegulars(categoryId: string, daysBack: number =
       `)
       .eq('category_id', categoryId)
       .eq('customers.sms_opt_in', true)
-      .gte('last_attended_date', cutoffDate.toISOString().split('T')[0])
+      .gte('last_attended_date', toLocalIsoDate(cutoffDate))
       .order('times_attended', { ascending: false })
       .order('last_attended_date', { ascending: false })
 
@@ -462,7 +463,7 @@ export async function getCrossCategorySuggestions(
       `)
       .eq('category_id', sourceCategoryId)
       .eq('customers.sms_opt_in', true)
-      .gte('last_attended_date', cutoffDate.toISOString().split('T')[0])
+      .gte('last_attended_date', toLocalIsoDate(cutoffDate))
       .order('times_attended', { ascending: false })
       .order('last_attended_date', { ascending: false })
       .limit(limit * 2) // Get more to filter out those who already attended target

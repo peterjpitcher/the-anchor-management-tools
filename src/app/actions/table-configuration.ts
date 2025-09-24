@@ -5,6 +5,7 @@ import { checkUserPermission } from '@/app/actions/rbac';
 import { logAuditEvent } from './audit';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
+import { getTodayIsoDate } from '@/lib/dateUtils';
 
 // Validation schemas
 const TableSchema = z.object({
@@ -224,7 +225,7 @@ export async function deleteTable(tableId: string) {
       .select('id')
       .contains('tables_assigned', [tableId])
       .eq('status', 'confirmed')
-      .gte('booking_date', new Date().toISOString().split('T')[0])
+      .gte('booking_date', getTodayIsoDate())
       .limit(1);
       
     if (bookings && bookings.length > 0) {
@@ -417,7 +418,7 @@ export async function deleteTableCombination(combinationId: string) {
       .select('id')
       .eq('table_combination_id', combinationId)
       .eq('status', 'confirmed')
-      .gte('booking_date', new Date().toISOString().split('T')[0])
+      .gte('booking_date', getTodayIsoDate())
       .limit(1);
       
     if (bookings && bookings.length > 0) {

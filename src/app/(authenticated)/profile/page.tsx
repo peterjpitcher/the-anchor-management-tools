@@ -24,6 +24,7 @@ import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Skeleton } from '@/components/ui-v2/feedback/Skeleton'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 
 interface Profile {
   id: string
@@ -214,7 +215,7 @@ export default function ProfilePage() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `profile-data-${new Date().toISOString().split('T')[0]}.json`
+      a.download = `profile-data-${getTodayIsoDate()}.json`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)

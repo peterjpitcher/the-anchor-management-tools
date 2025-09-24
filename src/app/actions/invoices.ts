@@ -5,6 +5,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 import type { 
   Invoice, 
   InvoiceWithDetails, 
@@ -78,7 +79,7 @@ export async function getInvoices(status?: InvoiceStatus | 'unpaid') {
     }
 
     // Update overdue status for sent invoices
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayIsoDate()
     const updatedInvoices = invoices.map(invoice => ({
       ...invoice,
       status: invoice.status === 'sent' && invoice.due_date < today ? 'overdue' as InvoiceStatus : invoice.status
@@ -118,7 +119,7 @@ export async function getInvoice(invoiceId: string) {
     }
 
     // Update overdue status if needed
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayIsoDate()
     if (invoice.status === 'sent' && invoice.due_date < today) {
       invoice.status = 'overdue' as InvoiceStatus
     }

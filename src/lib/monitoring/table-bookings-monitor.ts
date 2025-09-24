@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { sendEmail } from '@/lib/email/emailService';
 import { sendDailyTableBookingSummary, getLondonDateString, TableBookingNotificationRecord } from '@/lib/table-bookings/managerNotifications';
+import { getTodayIsoDate } from '@/lib/dateUtils';
 
 interface MonitoringAlert {
   type: 'error' | 'warning' | 'info';
@@ -69,7 +70,7 @@ export async function performHealthCheck(): Promise<HealthCheckResult> {
     }
 
     // 2. Check today's bookings
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayIsoDate();
     const { data: todayBookings, error: bookingsError } = await supabase
       .from('table_bookings')
       .select('*')

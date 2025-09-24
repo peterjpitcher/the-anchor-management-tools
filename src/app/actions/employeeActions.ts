@@ -9,6 +9,7 @@ import { logAuditEvent } from '@/app/actions/audit';
 import { getCurrentUser } from '@/lib/audit-helpers';
 import { checkUserPermission } from './rbac';
 import { syncBirthdayCalendarEvent, deleteBirthdayCalendarEvent } from '@/lib/google-calendar-birthdays';
+import { getTodayIsoDate } from '@/lib/dateUtils';
 
 // Schemas
 const employeeSchema = z.object({
@@ -1183,7 +1184,7 @@ export async function updateOnboardingChecklist(
     if (dateField === 'employee_agreement_accepted_date') {
       updateData[dateField] = new Date().toISOString();
     } else {
-      updateData[dateField] = new Date().toISOString().split('T')[0]; // Date only
+      updateData[dateField] = getTodayIsoDate();
     }
   }
   

@@ -5,6 +5,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
+import { getTodayIsoDate, getLocalIsoDateDaysAhead, toLocalIsoDate } from '@/lib/dateUtils'
 import type { 
   Quote, 
   QuoteWithDetails, 
@@ -129,7 +130,7 @@ export async function getQuotes(status?: QuoteStatus) {
     }
 
     // Update expired status for sent quotes
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayIsoDate()
     const updatedQuotes = quotes.map(quote => ({
       ...quote,
       status: quote.status === 'sent' && quote.valid_until < today ? 'expired' as QuoteStatus : quote.status
@@ -168,7 +169,7 @@ export async function getQuote(quoteId: string) {
     }
 
     // Update expired status if needed
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayIsoDate()
     if (quote.status === 'sent' && quote.valid_until < today) {
       quote.status = 'expired' as QuoteStatus
     }
@@ -650,8 +651,8 @@ export async function convertQuoteToInvoice(quoteId: string) {
       .insert({
         invoice_number: invoiceNumber,
         vendor_id: quote.vendor_id,
-        invoice_date: new Date().toISOString().split('T')[0],
-        due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        invoice_date: getTodayIsoDate(),
+        due_date: getLocalIsoDateDaysAhead(30),
         reference: quote.reference,
         invoice_discount_percentage: quote.quote_discount_percentage,
         subtotal_amount: quote.subtotal_amount,

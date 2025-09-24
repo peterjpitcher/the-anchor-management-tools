@@ -11,6 +11,7 @@ import {
   EventCheckIn,
   LoyaltyMemberFormData 
 } from '@/types/loyalty';
+import { getTodayIsoDate } from '@/lib/dateUtils';
 
 // Validation schemas
 const EnrollMemberSchema = z.object({
@@ -204,7 +205,7 @@ export async function enrollLoyaltyMember(formData: LoyaltyMemberFormData) {
         program_id: program.id,
         tier_id: defaultTier.id,
         status: validatedData.status || 'active',
-        join_date: validatedData.join_date || new Date().toISOString().split('T')[0]
+        join_date: validatedData.join_date || getTodayIsoDate()
       })
       .select('*, access_token')
       .single();
@@ -426,7 +427,7 @@ export async function adjustMemberPoints(adjustmentData: {
         available_points: newAvailable,
         total_points: newTotal,
         lifetime_points: newLifetime,
-        last_activity_date: new Date().toISOString().split('T')[0]
+        last_activity_date: getTodayIsoDate()
       })
       .eq('id', validatedData.member_id);
     
@@ -717,7 +718,7 @@ export async function bulkImportLoyaltyMembers(csvData: Array<{
             program_id: program.id,
             tier_id: appropriateTier.id,
             lifetime_events: lifetimeEvents,
-            join_date: row.join_date || new Date().toISOString().split('T')[0],
+            join_date: row.join_date || getTodayIsoDate(),
             status: 'active',
             available_points: 50, // Welcome bonus
             total_points: 50,
