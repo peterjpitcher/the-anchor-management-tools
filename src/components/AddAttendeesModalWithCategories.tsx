@@ -139,14 +139,14 @@ export function AddAttendeesModalWithCategories({
     }
   }
 
-  const handleCategorySuggestionsSelect = (customerIds: string[]) => {
-    const allowedIds = customerIds.filter(id => !bookedCustomerIds.has(id))
-    if (allowedIds.length === 0) {
-      return
-    }
-    // Add new selections to existing ones (avoid duplicates)
-    const newSet = new Set([...selectedCustomerIds, ...allowedIds])
-    setSelectedCustomerIds(Array.from(newSet))
+  const handleCategorySuggestionsSelect = (customerIds: string[], candidateIds: string[]) => {
+    const candidateSet = new Set(candidateIds)
+
+    const retainedSelections = selectedCustomerIds.filter(id => !candidateSet.has(id))
+    const allowedCandidates = customerIds.filter(id => !bookedCustomerIds.has(id))
+
+    const merged = [...retainedSelections, ...allowedCandidates]
+    setSelectedCustomerIds(Array.from(new Set(merged)))
   }
 
   const handleSubmit = async () => {
