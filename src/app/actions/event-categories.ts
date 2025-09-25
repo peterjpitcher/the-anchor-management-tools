@@ -609,6 +609,13 @@ export async function getCustomerCategoryPreferences(customerId: string) {
 }
 
 // Wrapper functions that accept FormData
+const getOptionalStringFromForm = (formData: FormData, field: string): string | undefined => {
+  const value = formData.get(field)
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
 export async function createEventCategoryFromFormData(formData: FormData) {
   // Parse array fields
   const parseArrayField = (fieldName: string): string[] | undefined => {
@@ -631,12 +638,11 @@ export async function createEventCategoryFromFormData(formData: FormData) {
       return undefined
     }
   }
-
   const categoryData: CategoryFormData = {
     name: formData.get('name') as string,
     color: formData.get('color') as string,
     icon: formData.get('icon') as string,
-    description: formData.get('description') as string,
+    description: getOptionalStringFromForm(formData, 'description'),
     sort_order: parseInt(formData.get('sort_order') as string) || 0,
     is_active: formData.get('is_active') === 'true',
     default_start_time: formatTimeToHHMM(formData.get('default_start_time') as string) || undefined,
@@ -695,12 +701,11 @@ export async function updateEventCategoryFromFormData(id: string, formData: Form
       return undefined
     }
   }
-
   const categoryData: CategoryFormData = {
     name: formData.get('name') as string,
     color: formData.get('color') as string,
     icon: formData.get('icon') as string,
-    description: formData.get('description') as string,
+    description: getOptionalStringFromForm(formData, 'description'),
     sort_order: parseInt(formData.get('sort_order') as string) || 0,
     is_active: formData.get('is_active') === 'true',
     default_start_time: formatTimeToHHMM(formData.get('default_start_time') as string) || undefined,

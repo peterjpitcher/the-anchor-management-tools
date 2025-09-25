@@ -191,10 +191,18 @@ const [categories, setCategories] = useState<EventCategory[]>([])
                   })
                   
                   if (editingCategory) {
-                    await updateEventCategoryFromFormData(editingCategory.id, formData)
+                    const result = await updateEventCategoryFromFormData(editingCategory.id, formData)
+                    if (result?.error) {
+                      toast.error(result.error)
+                      return
+                    }
                     toast.success('Category updated successfully')
                   } else {
-                    await createEventCategoryFromFormData(formData)
+                    const result = await createEventCategoryFromFormData(formData)
+                    if (result?.error) {
+                      toast.error(result.error)
+                      return
+                    }
                     toast.success('Category created successfully')
                   }
                   handleCloseForm()
