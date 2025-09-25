@@ -88,8 +88,12 @@ export function AddAttendeesModalWithCategories({
     fetchData()
   }, [supabase, event.category_id])
 
+  const bookedCustomerIds = useMemo(
+    () => new Set(currentBookings.map((b: BookingLike) => b.customer_id).filter(Boolean)),
+    [currentBookings]
+  )
+
   const availableCustomers = useMemo(() => {
-    const bookedCustomerIds = new Set(currentBookings.map((b: BookingLike) => b.customer_id))
     const filtered = allCustomers
       .filter(customer => !bookedCustomerIds.has(customer.id))
       .filter(customer => {
@@ -136,8 +140,12 @@ export function AddAttendeesModalWithCategories({
   }
 
   const handleCategorySuggestionsSelect = (customerIds: string[]) => {
+    const allowedIds = customerIds.filter(id => !bookedCustomerIds.has(id))
+    if (allowedIds.length === 0) {
+      return
+    }
     // Add new selections to existing ones (avoid duplicates)
-    const newSet = new Set([...selectedCustomerIds, ...customerIds])
+    const newSet = new Set([...selectedCustomerIds, ...allowedIds])
     setSelectedCustomerIds(Array.from(newSet))
   }
 
@@ -183,6 +191,7 @@ export function AddAttendeesModalWithCategories({
               categories={categories}
               onSelectCustomers={handleCategorySuggestionsSelect}
               selectedCustomerIds={selectedCustomerIds}
+              excludedCustomerIds={Array.from(bookedCustomerIds)}
             />
           </div>
         )}
