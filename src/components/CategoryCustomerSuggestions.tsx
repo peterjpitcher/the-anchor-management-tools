@@ -10,7 +10,7 @@ import toast from 'react-hot-toast'
 interface CategoryCustomerSuggestionsProps {
   categoryId: string | null
   categories: EventCategory[]
-  onSelectCustomers: (customerIds: string[]) => void
+  onSelectCustomers: (selectedCustomerIds: string[], candidateCustomerIds: string[]) => void
   selectedCustomerIds?: string[]
   excludedCustomerIds?: string[]
 }
@@ -108,10 +108,16 @@ export function CategoryCustomerSuggestions({
 
   const handleSelectAll = () => {
     const customerIds = regulars.map(r => r.customer_id)
-    setLocalSelectedIds(new Set(customerIds))
-    onSelectCustomers(customerIds)
+    const newSelected = customerIds.filter(id => !new Set(excludedCustomerIds).has(id))
+    setLocalSelectedIds(new Set(newSelected))
+    onSelectCustomers(newSelected, regulars.map(r => r.customer_id))
     toast.success(`Selected all ${customerIds.length} regulars`)
   }
+
+  const getCandidateIds = () =>
+    selectedTab === 'regulars'
+      ? regulars.map(r => r.customer_id)
+      : crossSuggestions.map(s => s.customer_id)
 
   const handleToggleCustomer = (customerId: string) => {
     const newSelected = new Set(localSelectedIds)
@@ -121,7 +127,7 @@ export function CategoryCustomerSuggestions({
       newSelected.add(customerId)
     }
     setLocalSelectedIds(newSelected)
-    onSelectCustomers(Array.from(newSelected))
+    onSelectCustomers(Array.from(newSelected), getCandidateIds())
   }
 
   if (!categoryId || !canViewSuggestions) {
