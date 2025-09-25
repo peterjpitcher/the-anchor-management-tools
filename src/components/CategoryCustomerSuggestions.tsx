@@ -12,13 +12,15 @@ interface CategoryCustomerSuggestionsProps {
   categories: EventCategory[]
   onSelectCustomers: (customerIds: string[]) => void
   selectedCustomerIds?: string[]
+  excludedCustomerIds?: string[]
 }
 
 export function CategoryCustomerSuggestions({ 
   categoryId, 
   categories,
   onSelectCustomers,
-  selectedCustomerIds = []
+  selectedCustomerIds = [],
+  excludedCustomerIds = []
 }: CategoryCustomerSuggestionsProps) {
   const { hasPermission } = usePermissions()
   const [regulars, setRegulars] = useState<CategoryRegular[]>([])
@@ -27,13 +29,22 @@ export function CategoryCustomerSuggestions({
   const [isLoadingCross, setIsLoadingCross] = useState(false)
   const [selectedTab, setSelectedTab] = useState<'regulars' | 'cross'>('regulars')
   const [localSelectedIds, setLocalSelectedIds] = useState<Set<string>>(new Set(selectedCustomerIds))
-
+  
   // Only show to managers
   const canViewSuggestions = hasPermission('customers', 'manage') || hasPermission('customers', 'view')
 
   useEffect(() => {
-    setLocalSelectedIds(new Set(selectedCustomerIds))
-  }, [selectedCustomerIds])
+    const excludedSet = new Set(excludedCustomerIds)
+    const normalizedSelected = selectedCustomerIds.filter(id => !excludedSet.has(id))
+    setLocalSelectedIds(new Set(normalizedSelected))
+  }, [selectedCustomerIds, excludedCustomerIds])
+
+  useEffect(() => {
+    if (excludedCustomerIds.length === 0) return
+    const excludedSet = new Set(excludedCustomerIds)
+    setRegulars(prev => prev.filter(r => !excludedSet.has(r.customer_id)))
+    setCrossSuggestions(prev => prev.filter(s => !excludedSet.has(s.customer_id)))
+  }, [excludedCustomerIds])
 
   const loadRegulars = useCallback(async () => {
     if (!categoryId) return
@@ -42,7 +53,8 @@ export function CategoryCustomerSuggestions({
     try {
       const result = await getCategoryRegulars(categoryId, 90)
       if (result.data) {
-        setRegulars(result.data)
+        const excludedSet = new Set(excludedCustomerIds)
+        setRegulars(result.data.filter(r => !excludedSet.has(r.customer_id)))
       }
     } catch (error) {
       console.error('Error loading regulars:', error)
@@ -68,10 +80,13 @@ export function CategoryCustomerSuggestions({
         }
       }
 
-      // Remove duplicates and sort by attendance
+      const excludedSet = new Set(excludedCustomerIds)
+      // Remove duplicates, exclude booked, and sort by attendance
       const uniqueSuggestions = Array.from(
         new Map(allSuggestions.map(s => [s.customer_id, s])).values()
-      ).sort((a, b) => b.source_times_attended - a.source_times_attended)
+      )
+        .filter(s => !excludedSet.has(s.customer_id))
+        .sort((a, b) => b.source_times_attended - a.source_times_attended)
 
       setCrossSuggestions(uniqueSuggestions.slice(0, 20))
     } catch (error) {
