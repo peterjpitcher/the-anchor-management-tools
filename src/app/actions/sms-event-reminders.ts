@@ -107,6 +107,12 @@ function buildTemplate(reminder: ReminderRow): string {
       return smsTemplates.reminderInviteOneWeek(common)
     case 'reminder_invite_1_day':
       return smsTemplates.reminderInviteOneDay(common)
+    case 'no_seats_2_weeks':
+      return smsTemplates.noSeats2Weeks(common)
+    case 'no_seats_1_week':
+      return smsTemplates.noSeats1Week(common)
+    case 'no_seats_day_before':
+      return smsTemplates.noSeatsDayBefore(common)
     default:
       return ''
   }
