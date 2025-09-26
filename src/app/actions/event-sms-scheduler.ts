@@ -18,6 +18,9 @@ export type ReminderType =
   | 'reminder_invite_1_month'
   | 'reminder_invite_1_week'
   | 'reminder_invite_1_day'
+  | 'no_seats_2_weeks'
+  | 'no_seats_1_week'
+  | 'no_seats_day_before'
 
 export interface BookingReminderContext {
   bookingId: string
@@ -102,14 +105,14 @@ function buildReminderSchedule(
     const dayLocal = seedLocal(subDays(eventLocal, 1))
     pushIfFuture('booked_1_day', dayLocal)
   } else {
-    const monthLocal = seedLocal(subMonths(eventLocal, 1))
-    pushIfFuture('reminder_invite_1_month', monthLocal)
+    const twoWeekLocal = seedLocal(subWeeks(eventLocal, 2))
+    pushIfFuture('no_seats_2_weeks', twoWeekLocal)
 
     const weekLocal = seedLocal(subWeeks(eventLocal, 1))
-    pushIfFuture('reminder_invite_1_week', weekLocal)
+    pushIfFuture('no_seats_1_week', weekLocal)
 
     const dayLocal = seedLocal(subDays(eventLocal, 1))
-    pushIfFuture('reminder_invite_1_day', dayLocal)
+    pushIfFuture('no_seats_day_before', dayLocal)
   }
 
   return candidates
