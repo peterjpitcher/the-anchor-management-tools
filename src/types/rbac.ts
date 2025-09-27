@@ -43,9 +43,10 @@ export type ModuleName =
   | 'roles'
   | 'private_bookings'
   | 'invoices'
+  | 'receipts'
   | 'loyalty'
   | 'quotes'
-  ;
+;
 
 export type ActionType = 
   | 'view'

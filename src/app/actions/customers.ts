@@ -17,10 +17,12 @@ export async function createCustomer(formData: FormData) {
     }
 
     // Parse and validate form data
+    const emailInput = formData.get('email')
     const rawData = {
       first_name: formData.get('first_name') as string,
-      last_name: formData.get('last_name') as string || undefined,
-      mobile_number: formData.get('mobile_number') as string || undefined,
+      last_name: (formData.get('last_name') as string | null)?.trim() || undefined,
+      mobile_number: (formData.get('mobile_number') as string | null)?.trim() || undefined,
+      email: typeof emailInput === 'string' && emailInput.trim() !== '' ? emailInput.trim() : undefined,
       sms_opt_in: formData.get('sms_opt_in') === 'on'
     }
 
@@ -30,6 +32,10 @@ export async function createCustomer(formData: FormData) {
     }
 
     const data = validationResult.data
+
+    if (data.email) {
+      data.email = data.email.toLowerCase();
+    }
 
     // Standardize phone number to E.164 format if provided
     if (data.mobile_number) {
@@ -96,10 +102,12 @@ export async function updateCustomer(id: string, formData: FormData) {
     }
 
     // Parse and validate form data
+    const emailInput = formData.get('email')
     const rawData = {
       first_name: formData.get('first_name') as string,
-      last_name: formData.get('last_name') as string || undefined,
-      mobile_number: formData.get('mobile_number') as string || undefined,
+      last_name: (formData.get('last_name') as string | null)?.trim() || undefined,
+      mobile_number: (formData.get('mobile_number') as string | null)?.trim() || undefined,
+      email: typeof emailInput === 'string' && emailInput.trim() !== '' ? emailInput.trim() : undefined,
       sms_opt_in: formData.get('sms_opt_in') === 'on'
     }
 
@@ -109,6 +117,10 @@ export async function updateCustomer(id: string, formData: FormData) {
     }
 
     const data = validationResult.data
+
+    if (data.email) {
+      data.email = data.email.toLowerCase();
+    }
 
     // Standardize phone number to E.164 format if provided
     if (data.mobile_number) {

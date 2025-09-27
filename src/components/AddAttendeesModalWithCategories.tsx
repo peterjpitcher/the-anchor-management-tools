@@ -243,6 +243,7 @@ export function AddAttendeesModalWithCategories({
                             className="rounded border-gray-300 text-green-600 shadow-sm focus:ring-green-500"
                             checked={availableCustomers.length > 0 && selectedCustomerIds.length === availableCustomers.length}
                             onChange={handleSelectAll}
+                            onClick={(event) => event.stopPropagation()}
                             disabled={availableCustomers.length === 0}
                             aria-label="Select all available customers"
                           />
@@ -253,6 +254,7 @@ export function AddAttendeesModalWithCategories({
                             className="rounded border-gray-300 text-green-600 shadow-sm focus:ring-green-500"
                             checked={selectedCustomerIds.includes(customer.id)}
                             onChange={() => handleSelectCustomer(customer.id)}
+                            onClick={(event) => event.stopPropagation()}
                             aria-labelledby={`customer-name-${customer.id}`}
                           />
                         ),

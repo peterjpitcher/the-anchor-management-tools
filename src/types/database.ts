@@ -42,11 +42,94 @@ export interface EventFAQ {
   updated_at: string;
 }
 
+export type ReceiptTransactionStatus =
+  | 'pending'
+  | 'completed'
+  | 'auto_completed'
+  | 'no_receipt_required';
+
+export type ReceiptRuleDirection = 'in' | 'out' | 'both';
+
+export interface ReceiptBatch {
+  id: string;
+  uploaded_at: string;
+  uploaded_by: string | null;
+  original_filename: string;
+  source_hash: string | null;
+  row_count: number;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface ReceiptRule {
+  id: string;
+  name: string;
+  description: string | null;
+  match_description: string | null;
+  match_transaction_type: string | null;
+  match_direction: ReceiptRuleDirection;
+  match_min_amount: number | null;
+  match_max_amount: number | null;
+  auto_status: ReceiptTransactionStatus;
+  is_active: boolean;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReceiptTransaction {
+  id: string;
+  batch_id: string | null;
+  transaction_date: string;
+  details: string;
+  transaction_type: string | null;
+  amount_in: number | null;
+  amount_out: number | null;
+  balance: number | null;
+  dedupe_hash: string;
+  status: ReceiptTransactionStatus;
+  receipt_required: boolean;
+  marked_by: string | null;
+  marked_by_email: string | null;
+  marked_by_name: string | null;
+  marked_at: string | null;
+  marked_method: string | null;
+  rule_applied_id: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReceiptFile {
+  id: string;
+  transaction_id: string;
+  storage_path: string;
+  file_name: string;
+  mime_type: string | null;
+  file_size_bytes: number | null;
+  uploaded_by: string | null;
+  uploaded_at: string;
+}
+
+export interface ReceiptTransactionLog {
+  id: string;
+  transaction_id: string;
+  previous_status: ReceiptTransactionStatus | null;
+  new_status: ReceiptTransactionStatus | null;
+  action_type: string;
+  note: string | null;
+  performed_by: string | null;
+  rule_id: string | null;
+  performed_at: string;
+}
+
 export interface Customer {
   id: string;
   first_name: string;
   last_name: string;
   mobile_number: string;
+  email?: string | null;
   created_at: string;
   sms_opt_in?: boolean;
   sms_delivery_failures?: number;
@@ -455,6 +538,31 @@ export interface Database {
         Row: Profile;
         Insert: Omit<Profile, 'created_at' | 'updated_at'>;
         Update: Partial<Omit<Profile, 'created_at' | 'updated_at'>>;
+      };
+      receipt_batches: {
+        Row: ReceiptBatch;
+        Insert: Omit<ReceiptBatch, 'id' | 'uploaded_at' | 'created_at'>;
+        Update: Partial<Omit<ReceiptBatch, 'id' | 'uploaded_at' | 'created_at'>>;
+      };
+      receipt_rules: {
+        Row: ReceiptRule;
+        Insert: Omit<ReceiptRule, 'id' | 'created_at' | 'updated_at' | 'created_by' | 'updated_by'>;
+        Update: Partial<Omit<ReceiptRule, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      receipt_transactions: {
+        Row: ReceiptTransaction;
+        Insert: Omit<ReceiptTransaction, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<ReceiptTransaction, 'id' | 'created_at'>>;
+      };
+      receipt_files: {
+        Row: ReceiptFile;
+        Insert: Omit<ReceiptFile, 'id' | 'uploaded_at'>;
+        Update: Partial<Omit<ReceiptFile, 'id' | 'uploaded_at' | 'transaction_id'>>;
+      };
+      receipt_transaction_logs: {
+        Row: ReceiptTransactionLog;
+        Insert: Omit<ReceiptTransactionLog, 'id' | 'performed_at'>;
+        Update: Partial<Omit<ReceiptTransactionLog, 'id' | 'performed_at' | 'transaction_id'>>;
       };
     };
   };
