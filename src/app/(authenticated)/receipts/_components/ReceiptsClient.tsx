@@ -25,7 +25,7 @@ import {
   type ReceiptWorkspaceFilters,
 } from '@/app/actions/receipts'
 import type { ReceiptRule, ReceiptTransaction, ReceiptFile } from '@/types/database'
-import { DocumentArrowDownIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline'
+import { DocumentArrowDownIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 
 interface ReceiptsClientProps {
   initialData: ReceiptWorkspaceData
@@ -538,25 +538,30 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
                     </td>
                     <td className="px-4 py-3 space-y-2">
                       {files.length === 0 && <p className="text-xs text-gray-500">No receipts</p>}
-                      {files.map((file) => (
-                        <div key={file.id} className="flex items-center justify-between gap-2 rounded border border-gray-200 px-2 py-1">
-                          <button
-                            type="button"
-                            className="flex-1 truncate text-left text-xs text-primary-600 hover:underline"
-                            onClick={() => handleReceiptDownload(file.id)}
-                          >
-                            {file.file_name || buildReceiptName(transaction.details, amount)}
-                          </button>
-                          <button
-                            type="button"
-                            className="text-xs text-red-500 hover:text-red-600"
-                            onClick={() => handleReceiptDelete(file.id, transaction.id)}
-                            disabled={isProcessing}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ))}
+                      {files.map((file) => {
+                        const friendlyName = file.file_name || buildReceiptName(transaction.details, amount)
+                        return (
+                          <div key={file.id} className="flex items-center justify-between gap-2 rounded border border-gray-200 px-2 py-1">
+                            <button
+                              type="button"
+                              onClick={() => handleReceiptDownload(file.id)}
+                              className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+                              title={friendlyName}
+                            >
+                              <MagnifyingGlassIcon className="h-4 w-4" aria-hidden="true" />
+                              <span className="sr-only">View receipt</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="text-xs text-red-500 hover:text-red-600"
+                              onClick={() => handleReceiptDelete(file.id, transaction.id)}
+                              disabled={isProcessing}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        )
+                      })}
                       <input
                         type="file"
                         accept="image/*,application/pdf"
