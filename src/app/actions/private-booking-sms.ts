@@ -1,7 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { sendSms } from './sms'
 
 // Function to automatically send private booking SMS
@@ -11,8 +10,6 @@ export async function sendPrivateBookingSms(
   phone: string,
   messageBody: string
 ) {
-  const supabase = await createClient()
-  
   // Only auto-send for specific trigger types
   const autoSendTriggers = [
     'booking_created',
@@ -29,34 +26,26 @@ export async function sendPrivateBookingSms(
   }
   
   try {
+    const admin = createAdminClient()
+
+    // Look up customer for logging
+    const { data: booking } = await admin
+      .from('private_bookings')
+      .select('customer_id')
+      .eq('id', bookingId)
+      .single()
+
     // Send the SMS immediately
     const result = await sendSms({
       to: phone,
       body: messageBody,
-      bookingId: bookingId
+      bookingId: bookingId,
+      customerId: booking?.customer_id || undefined
     })
     
     if (result.error) {
       console.error('[sendPrivateBookingSms] Failed to send SMS:', result.error)
       return { error: result.error }
-    }
-    
-    // Link message to the customer for visibility on customer page
-    try {
-      const admin = createAdminClient()
-      const { data: booking } = await admin
-        .from('private_bookings')
-        .select('customer_id')
-        .eq('id', bookingId)
-        .single()
-      if (booking?.customer_id) {
-        await admin
-          .from('messages')
-          .update({ customer_id: booking.customer_id })
-          .eq('twilio_message_sid', result.sid as string)
-      }
-    } catch (linkErr) {
-      console.warn('[sendPrivateBookingSms] Could not link message to customer_id:', linkErr)
     }
     
     console.log(`[sendPrivateBookingSms] Successfully sent ${triggerType} SMS for booking ${bookingId}`)

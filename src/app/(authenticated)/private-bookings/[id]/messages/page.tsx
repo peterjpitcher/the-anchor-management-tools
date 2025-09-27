@@ -219,7 +219,8 @@ export default function MessagesPage() {
       const result = await sendSms({
         to: booking.contact_phone,
         body: messageToSend,
-        bookingId: booking.id
+        bookingId: booking.id,
+        customerId: booking.customer_id || booking.customer?.id || undefined
       })
 
       if (result.error) {

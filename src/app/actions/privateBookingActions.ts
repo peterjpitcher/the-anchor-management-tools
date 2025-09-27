@@ -1354,6 +1354,13 @@ export async function sendApprovedSms(smsId: string) {
     return { error: 'SMS not found or not approved' }
   }
   
+  // Look up the booking to capture customer id for logging
+  const { data: booking } = await admin
+    .from('private_bookings')
+    .select('customer_id')
+    .eq('id', sms.booking_id)
+    .single()
+
   // Import the SMS sending function
   const { sendSms } = await import('@/app/actions/sms')
   
@@ -1361,7 +1368,8 @@ export async function sendApprovedSms(smsId: string) {
   const result = await sendSms({
     to: sms.recipient_phone,
     body: sms.message_body,
-    bookingId: sms.booking_id
+    bookingId: sms.booking_id,
+    customerId: booking?.customer_id || undefined
   })
   
   if (result.error) {
@@ -1378,23 +1386,6 @@ export async function sendApprovedSms(smsId: string) {
     return { error: result.error }
   }
   
-  // Link the message row to the customer_id for customer page visibility
-  try {
-    const { data: booking } = await admin
-      .from('private_bookings')
-      .select('customer_id')
-      .eq('id', sms.booking_id)
-      .single()
-    if (booking?.customer_id) {
-      await admin
-        .from('messages')
-        .update({ customer_id: booking.customer_id })
-        .eq('twilio_message_sid', result.sid as string)
-    }
-  } catch (linkErr) {
-    console.warn('[sendApprovedSms] Could not link message to customer_id:', linkErr)
-  }
-
   // Update status to sent
   await supabase
     .from('private_booking_sms_queue')
