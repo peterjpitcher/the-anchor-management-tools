@@ -22,6 +22,9 @@ import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 type FormState = { error: string } | { success: boolean } | null
 
+const DATE_TBD_NOTE = 'Event date/time to be confirmed'
+const DEFAULT_TBD_TIME = '12:00'
+
 interface Customer {
   id: string
   first_name: string
@@ -45,6 +48,18 @@ export default function EditPrivateBookingPage({
   const [customerLastName, setCustomerLastName] = useState('')
   const [contactPhone, setContactPhone] = useState('')
   const [contactEmail, setContactEmail] = useState('')
+  const [dateTbd, setDateTbd] = useState(false)
+  const [eventDate, setEventDate] = useState('')
+  const [startTime, setStartTime] = useState('')
+  const [endTime, setEndTime] = useState('')
+  const [setupDate, setSetupDate] = useState('')
+  const [setupTime, setSetupTime] = useState('')
+  const [previousEventDate, setPreviousEventDate] = useState('')
+  const [previousStartTime, setPreviousStartTime] = useState('')
+  const [previousEndTime, setPreviousEndTime] = useState('')
+  const [previousSetupDate, setPreviousSetupDate] = useState('')
+  const [previousSetupTime, setPreviousSetupTime] = useState('')
+  const [internalNotesField, setInternalNotesField] = useState('')
 
   useEffect(() => {
     async function loadBooking() {
@@ -58,6 +73,33 @@ export default function EditPrivateBookingPage({
         setCustomerLastName(result.data.customer_last_name || result.data.customer_name?.split(' ').slice(1).join(' ') || '')
         setContactPhone(result.data.contact_phone || '')
         setContactEmail(result.data.contact_email || '')
+        const hasTbd = !!result.data.internal_notes?.includes(DATE_TBD_NOTE)
+        setDateTbd(hasTbd)
+        const cleanedNotes = result.data.internal_notes
+          ? result.data.internal_notes
+              .split('\n')
+              .filter((line) => line.trim() !== DATE_TBD_NOTE)
+              .join('\n')
+              .trim()
+          : ''
+        setInternalNotesField(cleanedNotes)
+
+        const initialEventDate = hasTbd ? '' : (result.data.event_date || '')
+        const initialStartTime = hasTbd ? '' : (result.data.start_time || '')
+        const initialEndTime = hasTbd ? '' : (result.data.end_time || '')
+        const initialSetupDate = hasTbd ? '' : (result.data.setup_date || '')
+        const initialSetupTime = hasTbd ? '' : (result.data.setup_time || '')
+
+        setEventDate(initialEventDate)
+        setStartTime(initialStartTime)
+        setEndTime(initialEndTime)
+        setSetupDate(initialSetupDate)
+        setSetupTime(initialSetupTime)
+        setPreviousEventDate(initialEventDate || '')
+        setPreviousStartTime(initialStartTime || '')
+        setPreviousEndTime(initialEndTime || '')
+        setPreviousSetupDate(initialSetupDate || '')
+        setPreviousSetupTime(initialSetupTime || '')
         // Set selected customer if exists
         if (result.data.customer) {
           setSelectedCustomer({
@@ -85,6 +127,28 @@ export default function EditPrivateBookingPage({
       setContactEmail(selectedCustomer.email || '')
     }
   }, [selectedCustomer])
+
+  const handleToggleDateTbd = (checked: boolean) => {
+    setDateTbd(checked)
+    if (checked) {
+      setPreviousEventDate(eventDate || previousEventDate)
+      setPreviousStartTime(startTime || previousStartTime)
+      setPreviousEndTime(endTime || previousEndTime)
+      setPreviousSetupDate(setupDate || previousSetupDate)
+      setPreviousSetupTime(setupTime || previousSetupTime)
+      setEventDate('')
+      setStartTime('')
+      setEndTime('')
+      setSetupDate('')
+      setSetupTime('')
+    } else {
+      setEventDate(previousEventDate)
+      setStartTime(previousStartTime || DEFAULT_TBD_TIME)
+      setEndTime(previousEndTime)
+      setSetupDate(previousSetupDate)
+      setSetupTime(previousSetupTime)
+    }
+  }
 
   const [state, formAction, isPending] = useActionState(
     async (prevState: FormState, formData: FormData) => {
@@ -149,6 +213,7 @@ export default function EditPrivateBookingPage({
         )}
 
         <form action={formAction} className="space-y-6">
+          {dateTbd && <input type="hidden" name="date_tbd" value="true" />}
           {/* Customer Information */}
           <Section title="Customer Information">
             <div className="space-y-4">
@@ -217,22 +282,24 @@ export default function EditPrivateBookingPage({
                   />
                 </FormGroup>
 
-                <FormGroup label="Booking Source">
-                  <Select
-                    name="source"
-                    id="source"
-                    defaultValue={booking.source || ''}
-                    options={[
-                      { value: '', label: 'Select source...' },
-                      { value: 'phone', label: 'Phone' },
-                      { value: 'email', label: 'Email' },
-                      { value: 'walk-in', label: 'Walk-in' },
-                      { value: 'website', label: 'Website' },
-                      { value: 'referral', label: 'Referral' },
-                      { value: 'other', label: 'Other' }
-                    ]}
-                  />
-                </FormGroup>
+              <FormGroup label="Booking Source">
+                <Select
+                  name="source"
+                  id="source"
+                  defaultValue={booking.source || ''}
+                  options={[
+                    { value: '', label: 'Select source...' },
+                    { value: 'phone', label: 'Phone' },
+                    { value: 'email', label: 'Email' },
+                    { value: 'walk-in', label: 'Walk-in' },
+                    { value: 'website', label: 'Website' },
+                    { value: 'referral', label: 'Referral' },
+                    { value: 'whatsapp', label: 'WhatsApp' },
+                    { value: 'social_media', label: 'Social Media' },
+                    { value: 'other', label: 'Other' }
+                  ]}
+                />
+              </FormGroup>
 
                 <FormGroup 
                   label="Booking Status"
@@ -256,63 +323,97 @@ export default function EditPrivateBookingPage({
 
           {/* Event Details */}
           <Section title="Event Details">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <FormGroup label="Event Date" required>
-                <Input
-                  type="date"
-                  name="event_date"
-                  id="event_date"
-                  required
-                  defaultValue={booking.event_date}
-                />
-              </FormGroup>
+            {dateTbd && (
+              <Alert
+                variant="warning"
+                className="mb-4"
+                title="Lead without confirmed date"
+              >
+                Keep this booking in draft until the customer confirms the schedule.
+              </Alert>
+            )}
 
-              <FormGroup label="Expected Guests">
-                <Input
-                  type="number"
-                  name="guest_count"
-                  id="guest_count"
-                  min="1"
-                  defaultValue={booking.guest_count || ''}
+            <div className="space-y-4">
+              <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                <input
+                  type="checkbox"
+                  id="date_tbd"
+                  name="date_tbd_toggle"
+                  checked={dateTbd}
+                  onChange={(e) => handleToggleDateTbd(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
-              </FormGroup>
+                <span>Event date/time to be confirmed</span>
+              </label>
 
-              <FormGroup label="Setup Date">
-                <Input
-                  type="date"
-                  name="setup_date"
-                  id="setup_date"
-                  defaultValue={booking.setup_date || ''}
-                />
-              </FormGroup>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormGroup label="Event Date" required={!dateTbd}>
+                  <Input
+                    type="date"
+                    name="event_date"
+                    id="event_date"
+                    required={!dateTbd}
+                    disabled={dateTbd}
+                    value={eventDate}
+                    onChange={(e) => setEventDate(e.target.value)}
+                  />
+                </FormGroup>
 
-              <FormGroup label="Setup Time">
-                <Input
-                  type="time"
-                  name="setup_time"
-                  id="setup_time"
-                  defaultValue={booking.setup_time || ''}
-                />
-              </FormGroup>
+                <FormGroup label="Expected Guests">
+                  <Input
+                    type="number"
+                    name="guest_count"
+                    id="guest_count"
+                    min="1"
+                    defaultValue={booking.guest_count || ''}
+                  />
+                </FormGroup>
 
-              <FormGroup label="Start Time" required>
-                <Input
-                  type="time"
-                  name="start_time"
-                  id="start_time"
-                  required
-                  defaultValue={booking.start_time}
-                />
-              </FormGroup>
+                <FormGroup label="Setup Date">
+                  <Input
+                    type="date"
+                    name="setup_date"
+                    id="setup_date"
+                    disabled={dateTbd}
+                    value={setupDate}
+                    onChange={(e) => setSetupDate(e.target.value)}
+                  />
+                </FormGroup>
 
-              <FormGroup label="End Time">
-                <Input
-                  type="time"
-                  name="end_time"
-                  id="end_time"
-                  defaultValue={booking.end_time || ''}
-                />
-              </FormGroup>
+                <FormGroup label="Setup Time">
+                  <Input
+                    type="time"
+                    name="setup_time"
+                    id="setup_time"
+                    disabled={dateTbd}
+                    value={setupTime}
+                    onChange={(e) => setSetupTime(e.target.value)}
+                  />
+                </FormGroup>
+
+                <FormGroup label="Start Time" required={!dateTbd}>
+                  <Input
+                    type="time"
+                    name="start_time"
+                    id="start_time"
+                    required={!dateTbd}
+                    disabled={dateTbd}
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                  />
+                </FormGroup>
+
+                <FormGroup label="End Time">
+                  <Input
+                    type="time"
+                    name="end_time"
+                    id="end_time"
+                    disabled={dateTbd}
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                  />
+                </FormGroup>
+              </div>
             </div>
           </Section>
 
@@ -334,7 +435,8 @@ export default function EditPrivateBookingPage({
                   name="internal_notes"
                   id="internal_notes"
                   rows={3}
-                  defaultValue={booking.internal_notes || ''}
+                  value={internalNotesField}
+                  onChange={(e) => setInternalNotesField(e.target.value)}
                   placeholder="Staff notes (not visible to customer)"
                 />
               </FormGroup>

@@ -43,8 +43,8 @@ const privateBookingSchema = z.object({
   customer_id: z.string().uuid().optional().nullable(),
   contact_phone: z.string().optional(),
   contact_email: z.string().email('Invalid email format').optional().or(z.literal('')),
-  event_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
-  start_time: timeSchema,
+  event_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').optional(),
+  start_time: timeSchema.optional(),
   setup_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').optional().or(z.literal('')),
   setup_time: timeSchema.optional().or(z.literal('')),
   end_time: timeSchema.optional().or(z.literal('')),
@@ -59,6 +59,9 @@ const privateBookingSchema = z.object({
   balance_due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').optional().or(z.literal('')),
   status: z.enum(['draft', 'confirmed', 'completed', 'cancelled']).optional()
 })
+
+const DATE_TBD_NOTE = 'Event date/time to be confirmed'
+const DEFAULT_TBD_TIME = '12:00'
 
 // Customer creation schema
 const CreateCustomerSchema = z.object({
@@ -231,28 +234,47 @@ export async function getPrivateBooking(id: string) {
 // Create a new private booking
 export async function createPrivateBooking(formData: FormData) {
   const supabase = await createClient()
-  
-  // Parse form data
+  const isDateTbd = formData.get('date_tbd') === 'true'
+
+  const getString = (key: string): string | undefined => {
+    const value = formData.get(key)
+    if (typeof value === 'string' && value.trim() !== '') {
+      return value.trim()
+    }
+    return undefined
+  }
+
+  const eventDateInput = getString('event_date')
+  const startTimeRaw = getString('start_time')
+  const setupTimeRaw = getString('setup_time')
+  const endTimeRaw = getString('end_time')
+
   const rawData = {
-    customer_first_name: formData.get('customer_first_name') as string,
-    customer_last_name: formData.get('customer_last_name') as string || undefined,
-    customer_id: formData.get('customer_id') as string || undefined,
-    contact_phone: formData.get('contact_phone') as string || undefined,
-    contact_email: formData.get('contact_email') as string || undefined,
-    event_date: formData.get('event_date') as string,
-    start_time: formatTimeToHHMM(formData.get('start_time') as string) || formData.get('start_time') as string,
-    setup_date: formData.get('setup_date') as string || undefined,
-    setup_time: formatTimeToHHMM(formData.get('setup_time') as string || undefined),
-    end_time: formatTimeToHHMM(formData.get('end_time') as string || undefined),
-    guest_count: formData.get('guest_count') ? parseInt(formData.get('guest_count') as string) : undefined,
-    event_type: formData.get('event_type') as string || undefined,
-    internal_notes: formData.get('internal_notes') as string || undefined,
-    customer_requests: formData.get('customer_requests') as string || undefined,
-    special_requirements: formData.get('special_requirements') as string || undefined,
-    accessibility_needs: formData.get('accessibility_needs') as string || undefined,
-    source: formData.get('source') as string || undefined,
-    deposit_amount: formData.get('deposit_amount') ? parseFloat(formData.get('deposit_amount') as string) : undefined,
-    balance_due_date: formData.get('balance_due_date') as string || undefined,
+    customer_first_name: (getString('customer_first_name') || '').trim(),
+    customer_last_name: getString('customer_last_name'),
+    customer_id: getString('customer_id'),
+    contact_phone: getString('contact_phone'),
+    contact_email: getString('contact_email'),
+    event_date: eventDateInput,
+    start_time: startTimeRaw ? formatTimeToHHMM(startTimeRaw) : undefined,
+    setup_date: getString('setup_date'),
+    setup_time: setupTimeRaw ? formatTimeToHHMM(setupTimeRaw) : undefined,
+    end_time: endTimeRaw ? formatTimeToHHMM(endTimeRaw) : undefined,
+    guest_count: (() => {
+      const value = getString('guest_count')
+      return value ? parseInt(value, 10) : undefined
+    })(),
+    event_type: getString('event_type'),
+    internal_notes: getString('internal_notes'),
+    customer_requests: getString('customer_requests'),
+    special_requirements: getString('special_requirements'),
+    accessibility_needs: getString('accessibility_needs'),
+    source: getString('source'),
+    deposit_amount: (() => {
+      const value = getString('deposit_amount')
+      return value ? parseFloat(value) : undefined
+    })(),
+    balance_due_date: getString('balance_due_date'),
   }
 
   // Debug logging for time fields
@@ -270,6 +292,9 @@ export async function createPrivateBooking(formData: FormData) {
   }
 
   const bookingData = validationResult.data
+
+  const finalEventDate = bookingData.event_date || toLocalIsoDate(new Date())
+  const finalStartTime = bookingData.start_time || DEFAULT_TBD_TIME
 
   // Get current user
   const { data: { user } } = await supabase.auth.getUser()
@@ -302,8 +327,8 @@ export async function createPrivateBooking(formData: FormData) {
   
   // Calculate balance_due_date if not provided (7 days before event)
   let balance_due_date = bookingData.balance_due_date
-  if (!balance_due_date && bookingData.event_date) {
-    const eventDate = new Date(bookingData.event_date)
+  if (!balance_due_date && finalEventDate) {
+    const eventDate = new Date(finalEventDate)
     eventDate.setDate(eventDate.getDate() - 7)
     balance_due_date = toLocalIsoDate(eventDate)
   }
@@ -318,8 +343,8 @@ export async function createPrivateBooking(formData: FormData) {
   let cleanedEndTime = bookingData.end_time || null;
   
   // If end_time exists but is the same or before start_time, set it to null
-  if (cleanedEndTime && bookingData.start_time) {
-    const [startHour, startMin] = bookingData.start_time.split(':').map(Number);
+  if (cleanedEndTime && finalStartTime) {
+    const [startHour, startMin] = finalStartTime.split(':').map(Number);
     const [endHour, endMin] = cleanedEndTime.split(':').map(Number);
     
     const startMinutes = startHour * 60 + startMin;
@@ -336,19 +361,31 @@ export async function createPrivateBooking(formData: FormData) {
     }
   }
   
+  let internalNotes = bookingData.internal_notes
+  if (isDateTbd) {
+    if (!internalNotes) {
+      internalNotes = DATE_TBD_NOTE
+    } else if (!internalNotes.includes(DATE_TBD_NOTE)) {
+      internalNotes = `${internalNotes}\n${DATE_TBD_NOTE}`
+    }
+  }
+
   const cleanedBookingData = {
     ...bookingData,
+    event_date: finalEventDate,
+    start_time: finalStartTime,
     setup_time: bookingData.setup_time || null,
     end_time: cleanedEndTime,
     setup_date: bookingData.setup_date || null,
-    balance_due_date: bookingData.balance_due_date || balance_due_date || null,
+    balance_due_date: bookingData.balance_due_date || balance_due_date || undefined,
+    internal_notes: internalNotes,
   }
 
   const insertData = {
     ...cleanedBookingData,
     customer_id: customerId || null, // Include the found/created customer ID
     customer_name, // Include for backward compatibility
-    balance_due_date: cleanedBookingData.balance_due_date,
+    balance_due_date: isDateTbd ? null : cleanedBookingData.balance_due_date ?? null,
     deposit_amount: bookingData.deposit_amount || 250, // Default £250 if not specified
     created_by: user?.id,
     status: 'draft'
@@ -376,13 +413,13 @@ export async function createPrivateBooking(formData: FormData) {
 
   // Queue and auto-send booking creation SMS if phone number is provided
   if (data && bookingData.contact_phone) {
-    const eventDate = new Date(bookingData.event_date).toLocaleDateString('en-GB', { 
+    const eventDateReadable = new Date(finalEventDate).toLocaleDateString('en-GB', { 
       day: 'numeric', 
       month: 'long', 
       year: 'numeric' 
     })
     
-    const smsMessage = `Hi ${bookingData.customer_first_name}, thank you for your enquiry about private hire at The Anchor on ${eventDate}. To secure this date, a deposit of £${bookingData.deposit_amount || 250} is required. Reply to this message with any questions.`
+    const smsMessage = `Hi ${bookingData.customer_first_name}, thank you for your enquiry about private hire at The Anchor on ${eventDateReadable}. To secure this date, a deposit of £${bookingData.deposit_amount || 250} is required. Reply to this message with any questions.`
     
     const smsResult = await queueAndSendPrivateBookingSms({
       booking_id: data.id,
@@ -396,7 +433,7 @@ export async function createPrivateBooking(formData: FormData) {
       metadata: {
         template: 'private_booking_created',
         first_name: bookingData.customer_first_name,
-        event_date: eventDate,
+        event_date: eventDateReadable,
         deposit_amount: bookingData.deposit_amount || 250
       }
     })
@@ -460,26 +497,44 @@ export async function createPrivateBooking(formData: FormData) {
 export async function updatePrivateBooking(id: string, formData: FormData) {
   const supabase = await createClient()
   
+  const isDateTbd = formData.get('date_tbd') === 'true'
+
+  const getString = (key: string): string | undefined => {
+    const value = formData.get(key)
+    if (typeof value === 'string' && value.trim() !== '') {
+      return value.trim()
+    }
+    return undefined
+  }
+
+  const eventDateInput = getString('event_date')
+  const startTimeRaw = getString('start_time')
+  const setupTimeRaw = getString('setup_time')
+  const endTimeRaw = getString('end_time')
+
   // Parse form data
   const rawData = {
-    customer_first_name: formData.get('customer_first_name') as string,
-    customer_last_name: formData.get('customer_last_name') as string || undefined,
-    customer_id: formData.get('customer_id') as string || undefined,
-    contact_phone: formData.get('contact_phone') as string || undefined,
-    contact_email: formData.get('contact_email') as string || undefined,
-    event_date: formData.get('event_date') as string,
-    start_time: formatTimeToHHMM(formData.get('start_time') as string) || formData.get('start_time') as string,
-    setup_date: formData.get('setup_date') as string || undefined,
-    setup_time: formatTimeToHHMM(formData.get('setup_time') as string || undefined),
-    end_time: formatTimeToHHMM(formData.get('end_time') as string || undefined),
-    guest_count: formData.get('guest_count') ? parseInt(formData.get('guest_count') as string) : undefined,
-    event_type: formData.get('event_type') as string || undefined,
-    internal_notes: formData.get('internal_notes') as string || undefined,
-    customer_requests: formData.get('customer_requests') as string || undefined,
-    special_requirements: formData.get('special_requirements') as string || undefined,
-    accessibility_needs: formData.get('accessibility_needs') as string || undefined,
-    source: formData.get('source') as string || undefined,
-    status: formData.get('status') as import('@/types/private-bookings').BookingStatus | undefined,
+    customer_first_name: (getString('customer_first_name') || '').trim(),
+    customer_last_name: getString('customer_last_name'),
+    customer_id: getString('customer_id'),
+    contact_phone: getString('contact_phone'),
+    contact_email: getString('contact_email'),
+    event_date: eventDateInput,
+    start_time: startTimeRaw ? formatTimeToHHMM(startTimeRaw) : undefined,
+    setup_date: getString('setup_date'),
+    setup_time: setupTimeRaw ? formatTimeToHHMM(setupTimeRaw) : undefined,
+    end_time: endTimeRaw ? formatTimeToHHMM(endTimeRaw) : undefined,
+    guest_count: (() => {
+      const value = getString('guest_count')
+      return value ? parseInt(value, 10) : undefined
+    })(),
+    event_type: getString('event_type'),
+    internal_notes: getString('internal_notes'),
+    customer_requests: getString('customer_requests'),
+    special_requirements: getString('special_requirements'),
+    accessibility_needs: getString('accessibility_needs'),
+    source: getString('source'),
+    status: getString('status') as import('@/types/private-bookings').BookingStatus | undefined,
   }
 
   // Validate data
@@ -493,7 +548,7 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
   // Get current booking to check status and date changes
   const { data: currentBooking } = await supabase
     .from('private_bookings')
-    .select('status, contact_phone, customer_first_name, event_date, start_time, customer_id')
+    .select('status, contact_phone, customer_first_name, event_date, start_time, customer_id, internal_notes, balance_due_date')
     .eq('id', id)
     .single()
 
@@ -523,19 +578,65 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
     }
   }
 
+  if (!currentBooking) {
+    return { error: 'Booking not found' }
+  }
+
+  const finalEventDate = bookingData.event_date || currentBooking.event_date || toLocalIsoDate(new Date())
+  const finalStartTime = bookingData.start_time || currentBooking.start_time || DEFAULT_TBD_TIME
+
+  let cleanedEndTime = bookingData.end_time || null
+  if (cleanedEndTime) {
+    const [startHour, startMin] = finalStartTime.split(':').map(Number)
+    const [endHour, endMin] = cleanedEndTime.split(':').map(Number)
+    const startMinutes = startHour * 60 + startMin
+    const endMinutes = endHour * 60 + endMin
+
+    if (endMinutes <= startMinutes) {
+      cleanedEndTime = null
+    }
+  }
+
+  let internalNotes = bookingData.internal_notes ?? currentBooking.internal_notes ?? null
+  if (internalNotes && internalNotes.includes(DATE_TBD_NOTE) && !bookingData.internal_notes) {
+    // keep existing note as-is if not explicitly changed
+    internalNotes = internalNotes
+  }
+  if (isDateTbd) {
+    if (!internalNotes) {
+      internalNotes = DATE_TBD_NOTE
+    } else if (!internalNotes.includes(DATE_TBD_NOTE)) {
+      internalNotes = `${internalNotes}\n${DATE_TBD_NOTE}`
+    }
+  }
+
+  const normalizedBookingData = {
+    ...bookingData,
+    event_date: finalEventDate,
+    start_time: finalStartTime,
+    setup_time: bookingData.setup_time || null,
+    end_time: cleanedEndTime,
+    setup_date: bookingData.setup_date || null,
+    balance_due_date: bookingData.balance_due_date || currentBooking.balance_due_date || undefined,
+    internal_notes: internalNotes ?? null,
+  }
+
   // Construct customer_name for backward compatibility
   const customer_name = bookingData.customer_last_name 
     ? `${bookingData.customer_first_name} ${bookingData.customer_last_name}`
     : bookingData.customer_first_name
 
+  const updatePayload = {
+    ...normalizedBookingData,
+    customer_id: customerId || null,
+    customer_name,
+    balance_due_date: isDateTbd ? null : normalizedBookingData.balance_due_date ?? null,
+    updated_at: new Date().toISOString()
+  }
+
   const { error } = await supabase
     .from('private_bookings')
-    .update({
-      ...bookingData,
-      customer_id: customerId || null, // Include the found/created customer ID
-      customer_name, // Include for backward compatibility
-      updated_at: new Date().toISOString()
-    })
+    .update(updatePayload)
     .eq('id', id)
 
   if (error) {
@@ -545,8 +646,8 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
 
   // Check if event date or time has changed
   const dateChanged = currentBooking && (
-    currentBooking.event_date !== bookingData.event_date || 
-    currentBooking.start_time !== bookingData.start_time
+    currentBooking.event_date !== finalEventDate || 
+    currentBooking.start_time !== finalStartTime
   )
 
   if (dateChanged) {
@@ -564,9 +665,9 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
       const commonMetadata = {
         cancelled_reason: 'event_date_changed',
         old_date: currentBooking.event_date,
-        new_date: bookingData.event_date,
+        new_date: finalEventDate,
         old_time: currentBooking.start_time,
-        new_time: bookingData.start_time,
+        new_time: finalStartTime,
         cancelled_at: new Date().toISOString()
       }
 
@@ -594,9 +695,11 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
     }
 
     // Create a notification SMS about the date change if phone number exists
-    if (bookingData.contact_phone && currentBooking.status !== 'draft') {
+    const notificationPhone = bookingData.contact_phone || currentBooking.contact_phone
+
+    if (notificationPhone && currentBooking.status !== 'draft') {
       const oldDate = new Date(currentBooking.event_date)
-      const newDate = new Date(bookingData.event_date)
+      const newDate = new Date(finalEventDate)
       const oldFormattedDate = oldDate.toLocaleDateString('en-GB', { 
         day: 'numeric', 
         month: 'long', 
@@ -608,22 +711,22 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
         year: 'numeric' 
       })
       
-      const smsMessage = `Hi ${bookingData.customer_first_name}, your private booking at The Anchor has been rescheduled from ${oldFormattedDate} at ${currentBooking.start_time} to ${newFormattedDate} at ${bookingData.start_time}. The Anchor 01753 682 707`
+      const smsMessage = `Hi ${bookingData.customer_first_name}, your private booking at The Anchor has been rescheduled from ${oldFormattedDate} at ${currentBooking.start_time} to ${newFormattedDate} at ${finalStartTime}. The Anchor 01753 682 707`
       
       await supabase
         .from('private_booking_sms_queue')
         .insert({
           booking_id: id,
-          recipient_phone: bookingData.contact_phone,
+          recipient_phone: notificationPhone,
           message_body: smsMessage,
           trigger_type: 'manual',
           status: 'pending',
           metadata: {
             template: 'date_change_notification',
             old_date: currentBooking.event_date,
-            new_date: bookingData.event_date,
+            new_date: finalEventDate,
             old_time: currentBooking.start_time,
-            new_time: bookingData.start_time
+            new_time: finalStartTime
           }
         })
     }
@@ -631,7 +734,7 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
 
   // Queue SMS if status changed to confirmed
   if (currentBooking && bookingData.status === 'confirmed' && currentBooking.status !== 'confirmed' && bookingData.contact_phone) {
-    const eventDate = new Date(bookingData.event_date)
+    const eventDate = new Date(finalEventDate)
     const formattedDate = eventDate.toLocaleDateString('en-GB', { 
       day: 'numeric', 
       month: 'long', 

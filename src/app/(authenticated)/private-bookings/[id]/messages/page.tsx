@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { 
   ChatBubbleLeftRightIcon,
   PaperAirplaneIcon,
@@ -27,7 +27,7 @@ import { Badge } from '@/components/ui-v2/display/Badge'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 
 import { BackButton } from '@/components/ui-v2/navigation/BackButton';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 interface SmsTemplate {
   id: string
   name: string
@@ -74,13 +74,47 @@ const smsTemplates: SmsTemplate[] = [
   }
 ]
 
-export default function MessagesPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
+const toNumber = (value: unknown, fallback = 0): number => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : fallback
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : fallback
+  }
+  if (value === null || value === undefined) {
+    return fallback
+  }
+  return fallback
+}
+
+const normalizeBooking = (booking: PrivateBookingWithDetails): PrivateBookingWithDetails => {
+  const guestCount = booking.guest_count === null || booking.guest_count === undefined
+    ? undefined
+    : toNumber(booking.guest_count)
+
+  const discountAmount = booking.discount_amount === null || booking.discount_amount === undefined
+    ? undefined
+    : toNumber(booking.discount_amount)
+
+  const calculatedTotal = booking.calculated_total === null || booking.calculated_total === undefined
+    ? undefined
+    : toNumber(booking.calculated_total)
+
+  return {
+    ...booking,
+    guest_count: guestCount,
+    deposit_amount: toNumber(booking.deposit_amount),
+    total_amount: toNumber(booking.total_amount),
+    discount_amount: discountAmount,
+    calculated_total: calculatedTotal,
+  }
+}
+
+export default function MessagesPage() {
   const router = useRouter();
-  const [bookingId, setBookingId] = useState<string>('')
+  const params = useParams<{ id: string }>();
+  const bookingId = Array.isArray(params?.id) ? params.id[0] : params?.id ?? ''
   const [booking, setBooking] = useState<PrivateBookingWithDetails | null>(null)
   const [loading, setLoading] = useState(true)
   const [selectedTemplate, setSelectedTemplate] = useState<string>('')
@@ -89,25 +123,42 @@ export default function MessagesPage({
   const [sending, setSending] = useState(false)
   const [sentMessages, setSentMessages] = useState<PrivateBookingSmsQueue[]>([])
 
-  useEffect(() => {
-    params.then(p => {
-      setBookingId(p.id)
-      loadBooking(p.id)
-    })
-  }, [params])
-
-  const loadBooking = async (id: string) => {
+  const loadBooking = useCallback(async (id: string) => {
     setLoading(true)
     const result = await getPrivateBooking(id)
+
+    if ('error' in result && result.error) {
+      toast.error(result.error)
+      setLoading(false)
+      return
+    }
+
     if (result.data) {
-      setBooking(result.data)
-      // Load sent messages from SMS queue
-      if (result.data.sms_queue) {
-        setSentMessages(result.data.sms_queue.filter((msg: PrivateBookingSmsQueue) => msg.status === 'sent'))
+      const normalized = normalizeBooking(result.data)
+      setBooking(normalized)
+      if (normalized.sms_queue) {
+        setSentMessages(
+          normalized.sms_queue.filter((msg) => msg.status === 'sent')
+        )
       }
     }
+
     setLoading(false)
-  }
+  }, [])
+
+  useEffect(() => {
+    if (!bookingId) {
+      return
+    }
+    loadBooking(bookingId)
+  }, [bookingId, loadBooking])
+
+  const refreshBooking = useCallback(() => {
+    if (!bookingId) {
+      return
+    }
+    loadBooking(bookingId)
+  }, [bookingId, loadBooking])
 
   const handleTemplateSelect = (templateId: string) => {
     setSelectedTemplate(templateId)
@@ -115,16 +166,24 @@ export default function MessagesPage({
     if (template && booking) {
       // Replace template variables
       let message = template.template
+      const depositAmountValue = booking.deposit_amount != null
+        ? toNumber(booking.deposit_amount)
+        : 250
+      const totalValue = toNumber(booking.calculated_total ?? booking.total_amount)
+      const depositApplied = booking.deposit_paid_date ? depositAmountValue : 0
+      const balanceDueValue = Math.max(0, Math.round(totalValue - depositApplied))
+      const depositDisplay = Math.max(0, Math.round(depositAmountValue))
+
       const replacements: Record<string, string> = {
         customer_name: booking.customer_name, // Keep for backward compatibility
         customer_first_name: booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there',
         event_date: formatDateFull(booking.event_date),
         event_type: booking.event_type || 'event',
-        guest_count: booking.guest_count?.toString() || 'your',
+        guest_count: booking.guest_count !== undefined ? booking.guest_count.toString() : 'your',
         start_time: formatTime12Hour(booking.start_time),
         setup_time: formatTime12Hour(booking.setup_time || booking.start_time),
-        deposit_amount: booking.deposit_amount?.toFixed(0) || '250',
-        balance_due: ((booking.calculated_total || 0) - (booking.deposit_paid_date ? (booking.deposit_amount || 0) : 0)).toFixed(0),
+        deposit_amount: depositDisplay.toString(),
+        balance_due: balanceDueValue.toString(),
         balance_due_date: booking.balance_due_date ? formatDateFull(booking.balance_due_date) : 'TBC'
       }
 
@@ -171,7 +230,7 @@ export default function MessagesPage({
         setCustomMessage('')
         setSelectedTemplate('')
         // Reload to get updated SMS queue
-        loadBooking(bookingId)
+        refreshBooking()
       }
     } catch {
       toast.error('Failed to send message')

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { formatDateFull, formatTime12Hour } from "@/lib/dateUtils";
 import {
   PencilIcon,
@@ -34,7 +34,6 @@ import {
   updateBookingStatus,
   recordDepositPayment,
   recordFinalPayment,
-  getBookingItems,
   addBookingItem,
   updateBookingItem,
   deleteBookingItem,
@@ -42,8 +41,8 @@ import {
   getCateringPackages,
   getVendors,
   applyBookingDiscount,
+  cancelPrivateBooking,
 } from "@/app/actions/privateBookingActions";
-import { cancelPrivateBooking } from "@/app/actions/privateBookingActions";
 import type {
   PrivateBookingWithDetails,
   BookingStatus,
@@ -72,6 +71,7 @@ import { Skeleton } from "@/components/ui-v2/feedback/Skeleton";
 import { EmptyState } from "@/components/ui-v2/display/EmptyState";
 import { Alert } from "@/components/ui-v2/feedback/Alert";
 import { toast } from "@/components/ui-v2/feedback/Toast";
+import { formatCurrency } from "@/components/ui-v2/utils/format";
 // Using types from private-bookings.ts
 
 // Status configuration
@@ -104,6 +104,62 @@ const statusConfig: Record<
     icon: XMarkIcon,
   },
 };
+
+const toNumber = (value: unknown, fallback = 0): number => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : fallback
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : fallback
+  }
+  if (value === null || value === undefined) {
+    return fallback
+  }
+  return fallback
+};
+
+const normalizeItem = (item: PrivateBookingItem): PrivateBookingItem => {
+  const discountValue = item.discount_value === null || item.discount_value === undefined
+    ? undefined
+    : toNumber(item.discount_value);
+
+  return {
+    ...item,
+    quantity: toNumber(item.quantity),
+    unit_price: toNumber(item.unit_price),
+    discount_value: discountValue,
+    line_total: toNumber(item.line_total),
+  };
+};
+
+const normalizeBooking = (booking: PrivateBookingWithDetails): PrivateBookingWithDetails => {
+  const guestCount = booking.guest_count === null || booking.guest_count === undefined
+    ? undefined
+    : toNumber(booking.guest_count);
+
+  const discountAmount = booking.discount_amount === null || booking.discount_amount === undefined
+    ? undefined
+    : toNumber(booking.discount_amount);
+
+  const calculatedTotal = booking.calculated_total === null || booking.calculated_total === undefined
+    ? undefined
+    : toNumber(booking.calculated_total);
+
+  return {
+    ...booking,
+    guest_count: guestCount,
+    deposit_amount: toNumber(booking.deposit_amount),
+    total_amount: toNumber(booking.total_amount),
+    discount_amount: discountAmount,
+    calculated_total: calculatedTotal,
+    items: booking.items?.map(normalizeItem),
+  };
+};
+
+const DATE_TBD_NOTE = 'Event date/time to be confirmed';
+
+const formatMoney = (value: unknown): string => formatCurrency(toNumber(value));
 
 // Payment Modal Component
 interface PaymentModalProps {
@@ -834,17 +890,17 @@ function DiscountModal({
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-600">Current Total:</span>
-                <span className="font-medium">£{currentTotal.toFixed(2)}</span>
+                <span className="font-medium">{formatMoney(currentTotal)}</span>
               </div>
               <div className="flex justify-between text-red-600">
-                <span>Disbadge: </span>
+                <span>Discount:</span>
                 <span className="font-medium">
-                  -£{calculateDiscount().toFixed(2)}
+                  -{formatMoney(calculateDiscount())}
                 </span>
               </div>
               <div className="flex justify-between text-base font-semibold">
                 <span>New Total:</span>
-                <span>£{calculateNewTotal().toFixed(2)}</span>
+                <span>{formatMoney(calculateNewTotal())}</span>
               </div>
             </div>
           </div>
@@ -1011,7 +1067,7 @@ function EditItemModal({
           <div className="flex justify-between text-sm">
             <span className="text-gray-600">Line Total:</span>
             <span className="font-semibold text-gray-900">
-              £{calculateLineTotal().toFixed(2)}
+              {formatMoney(calculateLineTotal())}
             </span>
           </div>
         </div>
@@ -1029,13 +1085,10 @@ function EditItemModal({
   );
 }
 
-export default function PrivateBookingDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default function PrivateBookingDetailPage() {
   const router = useRouter();
-  const [bookingId, setBookingId] = useState<string>("");
+  const params = useParams<{ id: string }>();
+  const bookingId = Array.isArray(params?.id) ? params.id[0] : params?.id ?? '';
   const [booking, setBooking] = useState<PrivateBookingWithDetails | null>(
     null,
   );
@@ -1056,12 +1109,9 @@ export default function PrivateBookingDetailPage({
     setLoading(true);
     const result = await getPrivateBooking(id);
     if (result.data) {
-      setBooking(result.data);
-      // Load items
-      const itemsResult = await getBookingItems(id);
-      if (itemsResult.data) {
-        setItems(itemsResult.data);
-      }
+      const normalized = normalizeBooking(result.data);
+      setBooking(normalized);
+      setItems(normalized.items || []);
     } else if (result.error) {
       router.push("/private-bookings");
     }
@@ -1069,11 +1119,18 @@ export default function PrivateBookingDetailPage({
   }, [router]);
 
   useEffect(() => {
-    params.then((p) => {
-      setBookingId(p.id);
-      loadBooking(p.id);
-    });
-  }, [params, loadBooking]);
+    if (!bookingId) {
+      return;
+    }
+    loadBooking(bookingId);
+  }, [bookingId, loadBooking]);
+
+  const refreshBooking = useCallback(() => {
+    if (!bookingId) {
+      return;
+    }
+    loadBooking(bookingId);
+  }, [bookingId, loadBooking]);
 
   
 
@@ -1082,7 +1139,7 @@ export default function PrivateBookingDetailPage({
   const handleDeleteItem = async (itemId: string) => {
     const result = await deleteBookingItem(itemId);
     if (result.success) {
-      loadBooking(bookingId);
+      refreshBooking();
     }
     setDeleteConfirm(null);
   };
@@ -1100,84 +1157,33 @@ export default function PrivateBookingDetailPage({
     }
   };
 
-  const calculateSubtotal = () => {
-    const total = items.reduce((sum, item) => {
-      // Convert line_total to number in case it's a string
-      const lineTotal =
-        typeof item.line_total === "string"
-          ? parseFloat(item.line_total)
-          : item.line_total;
-
-      // If line_total is missing (null/undefined), calculate it manually
-      if (lineTotal === null || lineTotal === undefined) {
-        const qty =
-          typeof item.quantity === "string"
-            ? parseFloat(item.quantity)
-            : item.quantity;
-        const price =
-          typeof item.unit_price === "string"
-            ? parseFloat(item.unit_price)
-            : item.unit_price;
-        let calculatedTotal = qty * price;
-
-        if (item.discount_value) {
-          const discount =
-            typeof item.discount_value === "string"
-              ? parseFloat(item.discount_value)
-              : item.discount_value;
-          if (item.discount_type === "percent") {
-            calculatedTotal = calculatedTotal * (1 - discount / 100);
-          } else {
-            calculatedTotal = calculatedTotal - discount;
-          }
-        }
-        return sum + calculatedTotal;
-      }
-      // lineTotal could be 0 (valid for 100% discounted items)
-      return sum + lineTotal;
-    }, 0);
-
-    return total;
-  };
+  const calculateSubtotal = () =>
+    items.reduce((sum, item) => sum + toNumber(item.line_total), 0);
 
   // Calculate the original price before any item-level discounts
-  const calculateOriginalTotal = () => {
-    return items.reduce((sum, item) => {
-      const qty =
-        typeof item.quantity === "string"
-          ? parseFloat(item.quantity)
-          : item.quantity;
-      const price =
-        typeof item.unit_price === "string"
-          ? parseFloat(item.unit_price)
-          : item.unit_price;
-      return sum + qty * price;
-    }, 0);
-  };
+  const calculateOriginalTotal = () =>
+    items.reduce(
+      (sum, item) => sum + toNumber(item.quantity) * toNumber(item.unit_price),
+      0,
+    );
 
   // Calculate total item-level discounts
-  const calculateItemDiscounts = () => {
-    return items.reduce((sum, item) => {
-      if (item.discount_value && item.discount_value > 0) {
-        const qty =
-          typeof item.quantity === "string"
-            ? parseFloat(item.quantity)
-            : item.quantity;
-        const price =
-          typeof item.unit_price === "string"
-            ? parseFloat(item.unit_price)
-            : item.unit_price;
+  const calculateItemDiscounts = () =>
+    items.reduce((sum, item) => {
+      const discountValue = item.discount_value;
+      if (discountValue && discountValue > 0) {
+        const qty = toNumber(item.quantity);
+        const price = toNumber(item.unit_price);
         const originalPrice = qty * price;
 
         if (item.discount_type === "percent") {
-          return sum + originalPrice * (item.discount_value / 100);
-        } else {
-          return sum + item.discount_value;
+          return sum + originalPrice * (discountValue / 100);
         }
+
+        return sum + discountValue;
       }
       return sum;
     }, 0);
-  };
 
   const calculateTotal = () => {
     const subtotal = calculateSubtotal();
@@ -1213,6 +1219,15 @@ export default function PrivateBookingDetailPage({
     );
   }
 
+  const isDateTbd = booking.internal_notes?.includes(DATE_TBD_NOTE) ?? false;
+  const internalNotesForDisplay = booking.internal_notes
+    ? booking.internal_notes
+        .split('\n')
+        .filter((line) => line.trim() !== DATE_TBD_NOTE)
+        .join('\n')
+        .trim() || null
+    : null
+
   // StatusIcon is defined inline where needed above; remove duplicate unused const here
 
   return (
@@ -1241,6 +1256,15 @@ export default function PrivateBookingDetailPage({
         }
       />
       <PageContent>
+        {isDateTbd && (
+          <Alert
+            variant="warning"
+            title="Event date and time still to be confirmed"
+            className="mb-6"
+          >
+            Keep this booking in draft until the customer confirms the event details.
+          </Alert>
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Main Content - Left 2/3 */}
         <div className="lg:col-span-2 space-y-6">
@@ -1252,14 +1276,23 @@ export default function PrivateBookingDetailPage({
                   <label className="block text-sm font-medium text-gray-500">
                     Event Date
                   </label>
-                  <div className="mt-1 flex items-center text-sm text-gray-900">
-                    <CalendarDaysIcon className="h-5 w-5 text-gray-400 mr-2" />
-                    {formatDateFull(booking.event_date)}
-                  </div>
-                  {booking.setup_date && (
-                    <p className="mt-1 text-sm text-gray-500">
-                      Setup: {formatDateFull(booking.setup_date)}
-                    </p>
+                  {isDateTbd ? (
+                    <div className="mt-1 flex items-center text-sm font-medium text-amber-600">
+                      <CalendarDaysIcon className="h-5 w-5 text-amber-500 mr-2" />
+                      <span>To be confirmed</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mt-1 flex items-center text-sm text-gray-900">
+                        <CalendarDaysIcon className="h-5 w-5 text-gray-400 mr-2" />
+                        {formatDateFull(booking.event_date)}
+                      </div>
+                      {booking.setup_date && (
+                        <p className="mt-1 text-sm text-gray-500">
+                          Setup: {formatDateFull(booking.setup_date)}
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -1267,15 +1300,24 @@ export default function PrivateBookingDetailPage({
                   <label className="block text-sm font-medium text-gray-500">
                     Time
                   </label>
-                  <div className="mt-1 flex items-center text-sm text-gray-900">
-                    <ClockIcon className="h-5 w-5 text-gray-400 mr-2" />
-                    {formatTime12Hour(booking.start_time)} -{" "}
-                    {formatTime12Hour(booking.end_time || null)}
-                  </div>
-                  {booking.setup_time && (
-                    <p className="mt-1 text-sm text-gray-500">
-                      Setup: {formatTime12Hour(booking.setup_time || null)}
-                    </p>
+                  {isDateTbd ? (
+                    <div className="mt-1 flex items-center text-sm font-medium text-amber-600">
+                      <ClockIcon className="h-5 w-5 text-amber-500 mr-2" />
+                      <span>To be confirmed</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mt-1 flex items-center text-sm text-gray-900">
+                        <ClockIcon className="h-5 w-5 text-gray-400 mr-2" />
+                        {formatTime12Hour(booking.start_time)} -{' '}
+                        {formatTime12Hour(booking.end_time || null)}
+                      </div>
+                      {booking.setup_time && (
+                        <p className="mt-1 text-sm text-gray-500">
+                          Setup: {formatTime12Hour(booking.setup_time || null)}
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -1285,7 +1327,7 @@ export default function PrivateBookingDetailPage({
                   </label>
                   <div className="mt-1 flex items-center text-sm text-gray-900">
                     <UserGroupIcon className="h-5 w-5 text-gray-400 mr-2" />
-                    {booking.guest_count || "TBC"} guests
+                    {booking.guest_count ?? "TBC"} guests
                   </div>
                 </div>
 
@@ -1392,7 +1434,7 @@ export default function PrivateBookingDetailPage({
                           </p>
                           <div className="mt-1 flex items-center space-x-4 text-sm text-gray-500">
                             <span>Qty: {item.quantity}</span>
-                            <span>£{item.unit_price.toFixed(2)} each</span>
+                            <span>{formatMoney(item.unit_price)} each</span>
                             {!!item.discount_value &&
                               item.discount_value > 0 && (
                                 <>
@@ -1400,16 +1442,12 @@ export default function PrivateBookingDetailPage({
                                     -
                                     {item.discount_type === "percent"
                                       ? `${item.discount_value}%`
-                                      : `£${item.discount_value.toFixed(2)}`}
+                                      : `${formatMoney(item.discount_value)}`}
                                   </span>
                                   {item.discount_value === 100 &&
                                     item.discount_type === "percent" && (
                                       <span className="text-gray-400 line-through">
-                                        (was £
-                                        {(
-                                          item.quantity * item.unit_price
-                                        ).toFixed(2)}
-                                        )
+                                        (was {formatMoney(item.quantity * item.unit_price)})
                                       </span>
                                     )}
                                 </>
@@ -1424,7 +1462,7 @@ export default function PrivateBookingDetailPage({
                       </div>
                       <div className="flex items-center space-x-2">
                         <span className="text-base font-semibold text-gray-900">
-                          £{item.line_total.toFixed(2)}
+                          {formatMoney(item.line_total)}
                         </span>
                         <button
                           onClick={() => {
@@ -1489,13 +1527,13 @@ export default function PrivateBookingDetailPage({
                       </p>
                     </div>
                   )}
-                  {booking.internal_notes && (
+                  {internalNotesForDisplay && (
                     <div>
                       <h3 className="text-sm font-medium text-gray-700 mb-1">
                         Internal Notes
                       </h3>
                       <p className="text-sm text-gray-600 whitespace-pre-wrap">
-                        {booking.internal_notes}
+                        {internalNotesForDisplay}
                       </p>
                     </div>
                   )}
@@ -1527,10 +1565,9 @@ export default function PrivateBookingDetailPage({
                     Original Price (before discounts)
                   </span>
                   <span className="font-medium text-gray-900">
-                    £
                     {items.length > 0
-                      ? calculateOriginalTotal().toFixed(2)
-                      : "0.00"}
+                      ? formatMoney(calculateOriginalTotal())
+                      : formatMoney(0)}
                   </span>
                 </div>
 
@@ -1539,7 +1576,7 @@ export default function PrivateBookingDetailPage({
                   <div className="flex justify-between text-sm">
                     <span className="text-green-600">Item Discounts</span>
                     <span className="font-medium text-green-600">
-                      -£{calculateItemDiscounts().toFixed(2)}
+                      -{formatMoney(calculateItemDiscounts())}
                     </span>
                   </div>
                 )}
@@ -1547,8 +1584,7 @@ export default function PrivateBookingDetailPage({
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Subtotal</span>
                   <span className="font-medium text-gray-900">
-                    £
-                    {items.length > 0 ? calculateSubtotal().toFixed(2) : "0.00"}
+                    {items.length > 0 ? formatMoney(calculateSubtotal()) : formatMoney(0)}
                   </span>
                 </div>
 
@@ -1569,7 +1605,7 @@ export default function PrivateBookingDetailPage({
                         )}
                       </span>
                       <span className="font-medium text-green-600">
-                        -£{(calculateSubtotal() - calculateTotal()).toFixed(2)}
+                        -{formatMoney(calculateSubtotal() - calculateTotal())}
                       </span>
                     </div>
                   </>
@@ -1584,10 +1620,7 @@ export default function PrivateBookingDetailPage({
                         Total Savings
                       </span>
                       <span className="font-bold text-green-800">
-                        £
-                        {(calculateOriginalTotal() - calculateTotal()).toFixed(
-                          2,
-                        )}
+                        {formatMoney(calculateOriginalTotal() - calculateTotal())}
                       </span>
                     </div>
                   </div>
@@ -1599,7 +1632,7 @@ export default function PrivateBookingDetailPage({
                       Total Event Cost
                     </span>
                     <span className="text-xl font-bold text-gray-900">
-                      £{calculateTotal().toFixed(2)}
+                      {formatMoney(calculateTotal())}
                     </span>
                   </div>
                 </div>
@@ -1621,13 +1654,13 @@ export default function PrivateBookingDetailPage({
                           : "Not paid"}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm font-medium text-gray-900">
-                        £{(booking.deposit_amount || 250).toFixed(2)}
-                      </p>
-                      {!booking.deposit_paid_date &&
-                        booking.status !== "draft" && (
-                          <button
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-gray-900">
+                      {formatMoney(booking.deposit_amount ?? 250)}
+                    </p>
+                    {!booking.deposit_paid_date &&
+                      booking.status !== "draft" && (
+                        <button
                             onClick={() => setShowDepositModal(true)}
                             className="mt-1 text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
                           >
@@ -1657,9 +1690,9 @@ export default function PrivateBookingDetailPage({
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-medium text-gray-900">
-                      £{calculateTotal().toFixed(2)}
+                      {isDateTbd ? 'To be confirmed' : formatMoney(calculateTotal())}
                     </p>
-                    {!booking.final_payment_date && calculateTotal() > 0 && (
+                    {!isDateTbd && !booking.final_payment_date && calculateTotal() > 0 && (
                       <button
                         onClick={() => setShowFinalModal(true)}
                         className="mt-1 text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
@@ -1787,8 +1820,8 @@ export default function PrivateBookingDetailPage({
         onClose={() => setShowDepositModal(false)}
         bookingId={bookingId}
         type="deposit"
-        amount={booking.deposit_amount || 250}
-        onSuccess={() => loadBooking(bookingId)}
+        amount={booking.deposit_amount ?? 250}
+        onSuccess={refreshBooking}
       />
 
       <PaymentModal
@@ -1797,7 +1830,7 @@ export default function PrivateBookingDetailPage({
         bookingId={bookingId}
         type="final"
         amount={calculateTotal()}
-        onSuccess={() => loadBooking(bookingId)}
+        onSuccess={refreshBooking}
       />
 
       <StatusModal
@@ -1805,14 +1838,14 @@ export default function PrivateBookingDetailPage({
         onClose={() => setShowStatusModal(false)}
         bookingId={bookingId}
         currentStatus={booking.status}
-        onSuccess={() => loadBooking(bookingId)}
+        onSuccess={refreshBooking}
       />
 
       <AddItemModal
         open={showAddItemModal}
         onClose={() => setShowAddItemModal(false)}
         bookingId={bookingId}
-        onItemAdded={() => loadBooking(bookingId)}
+        onItemAdded={refreshBooking}
       />
 
       <DiscountModal
@@ -1820,7 +1853,7 @@ export default function PrivateBookingDetailPage({
         onClose={() => setShowDiscountModal(false)}
         bookingId={bookingId}
         currentTotal={calculateSubtotal()}
-        onSuccess={() => loadBooking(bookingId)}
+        onSuccess={refreshBooking}
       />
 
       {editingItem && (
@@ -1831,7 +1864,7 @@ export default function PrivateBookingDetailPage({
             setEditingItem(null);
           }}
           item={editingItem}
-          onSuccess={() => loadBooking(bookingId)}
+          onSuccess={refreshBooking}
         />
       )}
       </PageContent>
