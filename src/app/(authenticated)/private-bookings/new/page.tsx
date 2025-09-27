@@ -42,6 +42,7 @@ export default function NewPrivateBookingPage() {
   const [contactEmail, setContactEmail] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [dateTbd, setDateTbd] = useState(false)
 
   // Update form when customer is selected
   useEffect(() => {
@@ -105,6 +106,7 @@ export default function NewPrivateBookingPage() {
       <PageContent>
         <Card>
         <form onSubmit={handleSubmit} className="space-y-6">
+          {dateTbd && <input type="hidden" name="date_tbd" value="true" />}
           {/* Customer Information */}
           <Section 
             title="Customer Information"
@@ -192,19 +194,38 @@ export default function NewPrivateBookingPage() {
             title="Event Details"
             icon={<CalendarIcon className="h-5 w-5" />}
           >
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-4">
+            <div className="space-y-4">
+              <div>
+                <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <input
+                    type="checkbox"
+                    id="date_tbd"
+                    name="date_tbd_toggle"
+                    checked={dateTbd}
+                    onChange={(e) => setDateTbd(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span>Event date/time to be confirmed</span>
+                </label>
+                <p className="mt-1 text-xs text-gray-500">
+                  We’ll keep this booking in draft until you add the event details.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-4">
               <FormGroup
                 label="Event Date"
-                required
+                required={!dateTbd}
               >
                 <Input
                   type="date"
                   id="event_date"
                   name="event_date"
-                  required
+                  required={!dateTbd}
                   defaultValue={defaultDate}
                   min={today}
                   max={maxDate}
+                  disabled={dateTbd}
                 />
               </FormGroup>
               <FormGroup
@@ -230,6 +251,8 @@ export default function NewPrivateBookingPage() {
                     { value: 'walk-in', label: 'Walk-in' },
                     { value: 'website', label: 'Website' },
                     { value: 'referral', label: 'Referral' },
+                    { value: 'whatsapp', label: 'WhatsApp' },
+                    { value: 'social_media', label: 'Social Media' },
                     { value: 'other', label: 'Other' }
                   ]}
                 />
@@ -239,14 +262,15 @@ export default function NewPrivateBookingPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-4 mt-6 sm:mt-4">
               <FormGroup
                 label="Start Time"
-                required
+                required={!dateTbd}
               >
                 <Input
                   type="time"
                   id="start_time"
                   name="start_time"
-                  required
+                  required={!dateTbd}
                   defaultValue="18:00"
+                  disabled={dateTbd}
                 />
               </FormGroup>
               <FormGroup
@@ -257,6 +281,7 @@ export default function NewPrivateBookingPage() {
                   id="end_time"
                   name="end_time"
                   defaultValue="23:00"
+                  disabled={dateTbd}
                 />
               </FormGroup>
               <FormGroup
@@ -270,6 +295,7 @@ export default function NewPrivateBookingPage() {
                   placeholder="50"
                 />
               </FormGroup>
+            </div>
             </div>
           </Section>
 

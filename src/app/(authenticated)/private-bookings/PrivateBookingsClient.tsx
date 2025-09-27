@@ -31,8 +31,30 @@ import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { Pagination } from '@/components/ui-v2/navigation/Pagination'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
+import { formatCurrency } from '@/components/ui-v2/utils/format'
+
+type BookingListItem = PrivateBookingWithDetails & {
+  is_date_tbd?: boolean
+  internal_notes?: string
+}
 
 const ITEMS_PER_PAGE = 20
+
+const DATE_TBD_NOTE = 'Event date/time to be confirmed'
+
+const toNumber = (value: unknown): number => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+  if (value === null || value === undefined) {
+    return 0
+  }
+  return 0
+}
 
 // Status configuration
 const statusConfig: Record<BookingStatus, { 
@@ -67,7 +89,7 @@ interface Props {
 export default function PrivateBookingsClient({ permissions }: Props) {
   const router = useRouter()
   const supabase = useSupabase()
-  const [bookings, setBookings] = useState<PrivateBookingWithDetails[]>([])
+  const [bookings, setBookings] = useState<BookingListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [totalCount, setTotalCount] = useState(0)
   const [currentPage, setCurrentPage] = useState(1)
@@ -97,6 +119,7 @@ export default function PrivateBookingsClient({ permissions }: Props) {
           total_amount,
           deposit_amount,
           deposit_paid_date,
+          internal_notes,
           contract_version,
           created_at,
           updated_at,
@@ -140,6 +163,7 @@ export default function PrivateBookingsClient({ permissions }: Props) {
         event_date: string
         status: string
         deposit_paid_date: string | null
+        internal_notes?: string | null
         customer?: CustomerRow[] | CustomerRow
         [key: string]: unknown
       }
@@ -148,6 +172,16 @@ export default function PrivateBookingsClient({ permissions }: Props) {
         // Extract customer from array (Supabase returns it as an array)
         const customerData = Array.isArray(booking.customer) ? booking.customer[0] : booking.customer
         
+        const totalAmount = toNumber(booking.total_amount)
+        const depositAmount = booking.deposit_amount === null || booking.deposit_amount === undefined
+          ? undefined
+          : toNumber(booking.deposit_amount)
+        const guestCount = booking.guest_count === null || booking.guest_count === undefined
+          ? undefined
+          : toNumber(booking.guest_count)
+        const internalNotes = typeof booking.internal_notes === 'string' ? booking.internal_notes : undefined
+        const isDateTbd = internalNotes?.includes(DATE_TBD_NOTE) ?? false
+
         return {
           ...booking,
           days_until_event: Math.ceil((new Date(booking.event_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)),
@@ -156,6 +190,11 @@ export default function PrivateBookingsClient({ permissions }: Props) {
             : booking.status === 'confirmed' 
               ? 'Required' as const
               : 'Not Required' as const,
+          total_amount: totalAmount,
+          deposit_amount: depositAmount,
+          guest_count: guestCount,
+          internal_notes: internalNotes,
+          is_date_tbd: isDateTbd,
           customer: customerData ? {
             id: customerData.id,
             first_name: customerData.first_name,
@@ -165,7 +204,7 @@ export default function PrivateBookingsClient({ permissions }: Props) {
         }
       })
 
-      setBookings(enrichedBookings as any)
+      setBookings(enrichedBookings as BookingListItem[])
       setTotalCount(count || 0)
     } finally {
       setLoading(false)
@@ -315,9 +354,15 @@ export default function PrivateBookingsClient({ permissions }: Props) {
                 header: 'Date & Time',
                 cell: (booking) => (
                   <div>
-                    <div className="text-sm text-gray-900">{formatDate(booking.event_date)}</div>
-                    <div className="text-sm text-gray-500">{formatTime(booking.start_time)}</div>
-                    {booking.days_until_event !== undefined && booking.days_until_event >= 0 && (
+                    {booking.is_date_tbd ? (
+                      <div className="text-sm font-medium text-amber-600">To be confirmed</div>
+                    ) : (
+                      <>
+                        <div className="text-sm text-gray-900">{formatDate(booking.event_date)}</div>
+                        <div className="text-sm text-gray-500">{formatTime(booking.start_time)}</div>
+                      </>
+                    )}
+                    {!booking.is_date_tbd && booking.days_until_event !== undefined && booking.days_until_event >= 0 && (
                       <div className="text-xs text-gray-400 mt-1">
                         {booking.days_until_event === 0 ? 'Today' : `${booking.days_until_event} days`}
                       </div>
@@ -353,11 +398,11 @@ export default function PrivateBookingsClient({ permissions }: Props) {
               {
                 key: 'status',
                 header: 'Status',
-                cell: (booking) => (
-                  <div>
-                    <Badge variant={statusConfig[booking.status].variant} size="sm">
-                      {statusConfig[booking.status].label}
-                    </Badge>
+            cell: (booking) => (
+              <div>
+                <Badge variant={statusConfig[booking.status].variant} size="sm">
+                  {statusConfig[booking.status].label}
+                </Badge>
                     {booking.deposit_status && booking.deposit_status !== 'Not Required' && (
                       <div className="mt-1">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${
@@ -375,17 +420,17 @@ export default function PrivateBookingsClient({ permissions }: Props) {
               {
                 key: 'financials',
                 header: 'Financials',
-                cell: (booking) => (
-                  <div>
-                    <div className="text-sm text-gray-900">£{booking.total_amount?.toFixed(2) || '0.00'}</div>
-                    {booking.deposit_amount && (
-                      <div className="text-xs text-gray-500">
-                        Deposit: £{booking.deposit_amount.toFixed(2)}
-                      </div>
-                    )}
+            cell: (booking) => (
+              <div>
+                <div className="text-sm text-gray-900">{formatCurrency(toNumber(booking.total_amount))}</div>
+                {booking.deposit_amount && (
+                  <div className="text-xs text-gray-500">
+                    Deposit: {formatCurrency(toNumber(booking.deposit_amount))}
                   </div>
-                )
-              },
+                )}
+              </div>
+            )
+          },
               {
                 key: 'actions',
                 header: '',
@@ -423,9 +468,15 @@ export default function PrivateBookingsClient({ permissions }: Props) {
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex-1 min-w-0 mr-2">
                     <div className="font-medium text-gray-900 truncate">{booking.customer_name}</div>
-                    <div className="text-sm text-gray-500">{formatDate(booking.event_date)}</div>
-                    <div className="text-sm text-gray-500">{formatTime(booking.start_time)}</div>
-                    {booking.days_until_event !== undefined && booking.days_until_event >= 0 && (
+                    {booking.is_date_tbd ? (
+                      <div className="text-sm text-amber-600">Date to be confirmed</div>
+                    ) : (
+                      <>
+                        <div className="text-sm text-gray-500">{formatDate(booking.event_date)}</div>
+                        <div className="text-sm text-gray-500">{formatTime(booking.start_time)}</div>
+                      </>
+                    )}
+                    {!booking.is_date_tbd && booking.days_until_event !== undefined && booking.days_until_event >= 0 && (
                       <div className="text-xs text-gray-400 mt-1">
                         {booking.days_until_event === 0 ? 'Today' : `${booking.days_until_event} days`}
                       </div>
@@ -449,7 +500,7 @@ export default function PrivateBookingsClient({ permissions }: Props) {
                     <span>{booking.guest_count} guests</span>
                   </div>
                   <div className="text-right">
-                    <span className="font-medium">£{booking.total_amount?.toFixed(2) || '0.00'}</span>
+                    <span className="font-medium">{formatCurrency(toNumber(booking.total_amount))}</span>
                   </div>
                 </div>
                 {booking.deposit_status && booking.deposit_status !== 'Not Required' && (
@@ -460,7 +511,7 @@ export default function PrivateBookingsClient({ permissions }: Props) {
                         : 'bg-yellow-100 text-yellow-700'
                     }`}>
                       Deposit {booking.deposit_status}
-                      {booking.deposit_amount && ` (£${booking.deposit_amount.toFixed(2)})`}
+                      {booking.deposit_amount && ` (${formatCurrency(toNumber(booking.deposit_amount))})`}
                     </span>
                   </div>
                 )}

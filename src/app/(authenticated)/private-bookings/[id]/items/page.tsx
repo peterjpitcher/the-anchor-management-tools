@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter, useParams } from 'next/navigation'
 import { formatDateFull } from '@/lib/dateUtils'
 import { 
   PlusIcon, 
@@ -14,7 +15,6 @@ import {
 } from '@heroicons/react/24/outline'
 import { 
   getPrivateBooking, 
-  getBookingItems, 
   addBookingItem, 
   updateBookingItem, 
   deleteBookingItem,
@@ -22,7 +22,7 @@ import {
   getCateringPackages,
   getVendors
 } from '@/app/actions/privateBookingActions'
-import type { VenueSpace, CateringPackage, Vendor, ItemType } from '@/types/private-bookings'
+import type { VenueSpace, CateringPackage, Vendor, ItemType, PrivateBookingItem, PrivateBookingWithDetails } from '@/types/private-bookings'
 import { Page } from '@/components/ui-v2/layout/Page'
 import { Card } from '@/components/ui-v2/layout/Card'
 // import { Section } from '@/components/ui-v2/layout/Section'
@@ -39,50 +39,63 @@ import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 
 import { BackButton } from '@/components/ui-v2/navigation/BackButton';
-import { useRouter } from 'next/navigation';
-interface BookingItem {
-  id: string
-  booking_id: string
-  item_type: ItemType
-  space_id?: string | null
-  package_id?: string | null
-  vendor_id?: string | null
-  message: string
-  quantity: number
-  unit_price: number
-  discount_value?: number
-  discount_type?: 'percent' | 'fixed'
-  line_total: number
-  notes?: string | null
-  space?: VenueSpace
-  package?: CateringPackage
-  vendor?: Vendor
-}
-
-interface PrivateBooking {
-  id: string;
-  customer_id?: string;
-  event_date: string;
-  event_type?: string;
-  status: string;
-  notes?: string;
-  customer?: {
-    id: string;
-    first_name: string;
-    last_name: string;
-    mobile_number?: string;
-  };
-  customer_first_name?: string;
-  customer_last_name?: string;
-  customer_name?: string;
-  [key: string]: unknown;
-}
-
+import { formatCurrency } from '@/components/ui-v2/utils/format'
 interface AddItemModalProps {
   isOpen: boolean
   onClose: () => void
   bookingId: string
   onItemAdded: () => void
+}
+
+const toNumber = (value: unknown, fallback = 0): number => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : fallback
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : fallback
+  }
+  if (value === null || value === undefined) {
+    return fallback
+  }
+  return fallback
+}
+
+const formatMoney = (value: unknown): string => formatCurrency(toNumber(value))
+
+const normalizeItem = (item: any): PrivateBookingItem => ({
+  ...item,
+  description: item.description,
+  quantity: toNumber(item.quantity),
+  unit_price: toNumber(item.unit_price),
+  discount_value: item.discount_value === null || item.discount_value === undefined
+    ? undefined
+    : toNumber(item.discount_value),
+  line_total: toNumber(item.line_total),
+})
+
+const normalizeBooking = (booking: PrivateBookingWithDetails): PrivateBookingWithDetails => {
+  const guestCount = booking.guest_count === null || booking.guest_count === undefined
+    ? undefined
+    : toNumber(booking.guest_count)
+
+  const discountAmount = booking.discount_amount === null || booking.discount_amount === undefined
+    ? undefined
+    : toNumber(booking.discount_amount)
+
+  const calculatedTotal = booking.calculated_total === null || booking.calculated_total === undefined
+    ? undefined
+    : toNumber(booking.calculated_total)
+
+  return {
+    ...booking,
+    guest_count: guestCount,
+    deposit_amount: toNumber(booking.deposit_amount),
+    total_amount: toNumber(booking.total_amount),
+    discount_amount: discountAmount,
+    calculated_total: calculatedTotal,
+    items: booking.items?.map(normalizeItem),
+  }
 }
 
 function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalProps) {
@@ -406,7 +419,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-600">Total:</span>
               <span className="text-lg font-semibold text-gray-900">
-                £{calculateTotal().toFixed(2)}
+                {formatMoney(calculateTotal())}
               </span>
             </div>
           </div>
@@ -438,7 +451,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
 interface EditItemModalProps {
   isOpen: boolean
   onClose: () => void
-  item: BookingItem
+  item: PrivateBookingItem
   onItemUpdated: () => void
 }
 
@@ -485,7 +498,7 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Item
           </label>
-          <p className="text-sm text-gray-900">{item.message}</p>
+          <p className="text-sm text-gray-900">{item.description}</p>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -564,50 +577,56 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
 }
 
 // Main Component
-export default function ItemsPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
+export default function ItemsPage() {
   const router = useRouter();
-  const [bookingId, setBookingId] = useState<string>('')
-  const [booking, setBooking] = useState<PrivateBooking | null>(null)
-  const [items, setItems] = useState<BookingItem[]>([])
+  const params = useParams<{ id: string }>();
+  const bookingId = Array.isArray(params?.id) ? params.id[0] : params?.id ?? '';
+  const [booking, setBooking] = useState<PrivateBookingWithDetails | null>(null)
+  const [items, setItems] = useState<PrivateBookingItem[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
-  const [editingItem, setEditingItem] = useState<BookingItem | null>(null)
+  const [editingItem, setEditingItem] = useState<PrivateBookingItem | null>(null)
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null)
 
-  useEffect(() => {
-    params.then(p => {
-      setBookingId(p.id)
-      loadData(p.id)
-    })
-  }, [params])
-
-  const loadData = async (id: string) => {
+  const loadData = useCallback(async (id: string) => {
     setLoading(true)
-    
-    // Load booking details
+
     const bookingResult = await getPrivateBooking(id)
+
+    if ('error' in bookingResult && bookingResult.error) {
+      toast.error(bookingResult.error)
+      setLoading(false)
+      return
+    }
+
     if (bookingResult.data) {
-      setBooking(bookingResult.data as any)
+      const normalized = normalizeBooking(bookingResult.data)
+      setBooking(normalized)
+      setItems(normalized.items || [])
     }
-    
-    // Load items
-    const itemsResult = await getBookingItems(id)
-    if (itemsResult.data) {
-      setItems(itemsResult.data)
-    }
-    
+
     setLoading(false)
-  }
+  }, [])
+
+  useEffect(() => {
+    if (!bookingId) {
+      return
+    }
+    loadData(bookingId)
+  }, [bookingId, loadData])
+
+  const refreshData = useCallback(() => {
+    if (!bookingId) {
+      return
+    }
+    loadData(bookingId)
+  }, [bookingId, loadData])
 
   const handleDeleteItem = async (itemId: string) => {
     const result = await deleteBookingItem(itemId)
     if (result.success) {
       toast.success('Item deleted successfully')
-      loadData(bookingId)
+      refreshData()
     } else {
       toast.error(result.error || 'Failed to delete item')
     }
@@ -623,9 +642,8 @@ export default function ItemsPage({
     }
   }
 
-  const calculateSubtotal = () => {
-    return items.reduce((sum, item) => sum + item.line_total, 0)
-  }
+  const calculateSubtotal = () =>
+    items.reduce((sum, item) => sum + toNumber(item.line_total), 0)
 
   if (loading) {
     return (
@@ -682,14 +700,14 @@ export default function ItemsPage({
                     </div>
                     <div className="flex-1">
                       <p className="text-sm font-medium text-gray-900">
-                        {item.message}
+                        {item.description}
                       </p>
                       <div className="mt-1 flex items-center space-x-4 text-sm text-gray-500">
                         <span>Qty: {item.quantity}</span>
-                        <span>£{item.unit_price.toFixed(2)} each</span>
+                        <span>{formatMoney(item.unit_price)} each</span>
                         {item.discount_value && (
                           <span className="text-green-600">
-                            -{item.discount_type === 'percent' ? `${item.discount_value}%` : `£${item.discount_value.toFixed(2)}`}
+                            -{item.discount_type === 'percent' ? `${item.discount_value}%` : formatMoney(item.discount_value)}
                           </span>
                         )}
                       </div>
@@ -700,7 +718,7 @@ export default function ItemsPage({
                   </div>
                   <div className="flex items-center space-x-4">
                     <span className="text-lg font-semibold text-gray-900">
-                      £{item.line_total.toFixed(2)}
+                      {formatMoney(item.line_total)}
                     </span>
                     <div className="flex items-center space-x-2">
                       <button
@@ -726,7 +744,7 @@ export default function ItemsPage({
               <div className="flex justify-between items-center">
                 <span className="text-lg font-medium text-gray-900">Total</span>
                 <span className="text-2xl font-bold text-gray-900">
-                  £{calculateSubtotal().toFixed(2)}
+                  {formatMoney(calculateSubtotal())}
                 </span>
               </div>
             </div>
@@ -739,7 +757,7 @@ export default function ItemsPage({
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
         bookingId={bookingId}
-        onItemAdded={() => loadData(bookingId)}
+        onItemAdded={refreshData}
       />
 
       {editingItem && (
@@ -748,7 +766,7 @@ export default function ItemsPage({
           onClose={() => setEditingItem(null)}
           item={editingItem}
           onItemUpdated={() => {
-            loadData(bookingId)
+            refreshData()
             setEditingItem(null)
           }}
         />
