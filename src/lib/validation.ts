@@ -42,6 +42,13 @@ export const emailSchema = z.string()
   .email('Please enter a valid email address')
   .min(1, 'Email is required');
 
+export const optionalEmailSchema = z
+  .string()
+  .trim()
+  .email('Please enter a valid email address')
+  .max(255, 'Email is too long')
+  .optional();
+
 // Name validation
 export const nameSchema = z.string()
   .min(1, 'Name is required')
@@ -53,6 +60,7 @@ export const customerSchema = z.object({
   first_name: nameSchema,
   last_name: nameSchema.optional(),
   mobile_number: phoneSchema,
+  email: optionalEmailSchema,
   sms_opt_in: z.boolean().default(false),
 });
 
@@ -115,3 +123,44 @@ export function sanitizeName(name: string): string {
     .replace(/\s+/g, ' ')
     .slice(0, 100);
 }
+
+// Receipts workspace
+export const receiptTransactionStatusSchema = z.enum([
+  'pending',
+  'completed',
+  'auto_completed',
+  'no_receipt_required',
+]);
+
+export const receiptRuleDirectionSchema = z.enum(['in', 'out', 'both']);
+
+export const receiptRuleSchema = z.object({
+  name: z.string().min(1, 'Rule name is required').max(120, 'Keep the name under 120 characters'),
+  description: z.string().trim().max(500).optional(),
+  match_description: z.string().trim().max(300).optional(),
+  match_transaction_type: z.string().trim().max(120).optional(),
+  match_direction: receiptRuleDirectionSchema.default('both'),
+  match_min_amount: z.number().nonnegative().optional(),
+  match_max_amount: z.number().nonnegative().optional(),
+  auto_status: receiptTransactionStatusSchema.default('no_receipt_required'),
+}).refine((data) => {
+  if (data.match_min_amount != null && data.match_max_amount != null) {
+    return data.match_min_amount <= data.match_max_amount;
+  }
+  return true;
+}, {
+  path: ['match_max_amount'],
+  message: 'Max amount must be greater than or equal to min amount',
+});
+
+export const receiptMarkSchema = z.object({
+  transaction_id: z.string().uuid('Transaction reference is invalid'),
+  status: receiptTransactionStatusSchema,
+  note: z.string().trim().max(500).optional(),
+  receipt_required: z.boolean().optional(),
+});
+
+export const receiptQuarterExportSchema = z.object({
+  year: z.number().int().min(2020, 'Select a realistic year').max(2100),
+  quarter: z.number().int().min(1).max(4),
+});

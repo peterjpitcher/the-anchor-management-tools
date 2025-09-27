@@ -369,8 +369,8 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
               <NavLink onClick={() => setShowBookingForm(true)}>
                 New Booking
               </NavLink>
-              <NavLink href={`/loyalty/check-in?event=${event.id}`}>
-                Check-In
+              <NavLink href={`/events/${event.id}/check-in`}>
+                Launch Check-in
               </NavLink>
             </NavGroup>
           )

@@ -2,7 +2,7 @@
 
 import { Navigation } from '@/components/Navigation'
 import { ArrowRightOnRectangleIcon, XMarkIcon } from '@heroicons/react/24/outline'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import Image from 'next/image'
 import React, { useState, useEffect } from 'react'
 import AddNoteModal from '@/components/modals/AddNoteModal'
@@ -15,6 +15,7 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
   const router = useRouter()
   const supabase = useSupabase()
   const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false)
+  const pathname = usePathname()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
@@ -73,6 +74,34 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
 
   const openAddNoteModal = () => setIsAddNoteModalOpen(true)
   const closeAddNoteModal = () => setIsAddNoteModalOpen(false)
+
+  const isEventCheckIn = pathname?.match(/^\/events\/[^/]+\/check-in$/)
+
+  if (isEventCheckIn) {
+    return (
+      <div className="min-h-screen text-white flex flex-col items-center" style={{ backgroundColor: '#105131' }}>
+        <header className="w-full max-w-5xl px-6 pt-6 pb-4 flex flex-col items-center gap-2 text-center">
+          <Image
+            src="/logo.png"
+            alt="The Anchor logo"
+            width={160}
+            height={160}
+            priority
+            className="w-32 sm:w-36 h-auto drop-shadow-lg"
+          />
+          <h1 className="text-3xl sm:text-4xl font-semibold tracking-wide">Welcome to The Anchor!</h1>
+          <p className="text-base sm:text-lg text-white/80 max-w-2xl">
+            Please check in for the event today.
+          </p>
+        </header>
+        <main className="w-full flex-1 flex flex-col items-center px-4 sm:px-6 pb-12">
+          <div className="w-full max-w-4xl">
+            {children}
+          </div>
+        </main>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-100">
