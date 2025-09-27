@@ -85,7 +85,7 @@ export async function sendOTPMessage(params: { phoneNumber: string; message: str
   }
 }
 
-export async function sendSms(params: { to: string; body: string; bookingId?: string }) {
+export async function sendSms(params: { to: string; body: string; bookingId?: string; customerId?: string }) {
   try {
     const headersList = await headers()
     const ip = headersList.get('x-forwarded-for') || headersList.get('x-real-ip') || 'unknown'
@@ -133,6 +133,7 @@ export async function sendSms(params: { to: string; body: string; bookingId?: st
     const costUsd = segments * 0.04
 
     await supabase.from('messages').insert({
+      customer_id: params.customerId ?? null,
       direction: 'outbound',
       message_sid: twilioMessage.sid,
       twilio_message_sid: twilioMessage.sid,
@@ -144,6 +145,7 @@ export async function sendSms(params: { to: string; body: string; bookingId?: st
       message_type: 'sms',
       segments,
       cost_usd: costUsd,
+      read_at: new Date().toISOString(),
       metadata: params.bookingId ? { booking_id: params.bookingId } : undefined
     })
 
