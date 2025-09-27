@@ -113,7 +113,7 @@ export default function BookingConfirmationClient({
       setConfirmed(true)
 
       setTimeout(() => {
-        router.push(`/booking-success/${result.booking_id}`)
+        router.push('https://www.the-anchor.pub')
       }, 3000)
     } catch (err) {
       console.error('Error confirming booking:', err)
