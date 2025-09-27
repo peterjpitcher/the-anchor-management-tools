@@ -41,9 +41,10 @@ export function PageHeader({
     const fetchUnreadCount = async () => {
       try {
         const result = await getUnreadMessageCount();
-        setUnreadCount(result.badge || 0);
+        setUnreadCount(result?.badge ?? 0);
       } catch (error) {
         console.error('Failed to fetch unread message count:', error);
+        setUnreadCount(0);
       }
     };
     
