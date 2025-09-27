@@ -55,8 +55,13 @@ export function Navigation({ onQuickAddNoteClick, onNavigate }: NavigationProps)
   useEffect(() => {
     // Load unread count on mount
     async function loadUnreadCount() {
-      const result = await getUnreadMessageCount()
-      setUnreadCount(result.badge)
+      try {
+        const result = await getUnreadMessageCount()
+        setUnreadCount(result?.badge ?? 0)
+      } catch (error) {
+        console.error('Failed to fetch unread message count:', error)
+        setUnreadCount(0)
+      }
     }
     
     loadUnreadCount()

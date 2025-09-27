@@ -44,11 +44,19 @@ const [categories, setCategories] = useState<EventCategory[]>([])
   async function loadCategories() {
     try {
       setIsLoading(true)
-      const result = await getEventCategories()
+      const result = await getEventCategories().catch(error => {
+        console.error('getEventCategories failed:', error)
+        return undefined
+      })
       
-      if (result.error) {
+      if (!result) {
+        toast.error('Failed to load event categories')
+        return
+      }
+
+      if ('error' in result && result.error) {
         toast.error(result.error)
-      } else if (result.data) {
+      } else if ('data' in result && result.data) {
         setCategories(result.data)
       }
     } catch (error) {
