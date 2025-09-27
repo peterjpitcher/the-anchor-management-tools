@@ -19,6 +19,17 @@ import {
   CogIcon
 } from '@heroicons/react/24/outline'
 
+const MAX_NAME_LENGTH = 100
+const MAX_DESCRIPTION_LENGTH = 500
+const MAX_META_TITLE_LENGTH = 60
+const MAX_META_DESCRIPTION_LENGTH = 160
+const MAX_SHORT_DESCRIPTION_LENGTH = 150
+
+const clamp = (value: string, maxLength: number): string => {
+  if (maxLength <= 0) return value
+  return value.length > maxLength ? value.slice(0, maxLength) : value
+}
+
 interface EventCategoryFormGroupedProps {
   category?: EventCategory | null
   onSubmit: (data: Partial<EventCategory>) => Promise<void>
@@ -67,8 +78,8 @@ function CollapsibleSection({ title, description, icon: Icon, children, defaultO
 
 export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: EventCategoryFormGroupedProps) {
   // Basic fields
-  const [name, setName] = useState(category?.name ?? '')
-  const [description, setDescription] = useState(category?.description ?? '')
+  const [name, setName] = useState(() => clamp(category?.name ?? '', MAX_NAME_LENGTH))
+  const [description, setDescription] = useState(() => clamp(category?.description ?? '', MAX_DESCRIPTION_LENGTH))
   const [color, setColor] = useState(category?.color ?? CATEGORY_COLORS[0].value)
   const [icon, setIcon] = useState(category?.icon ?? CATEGORY_ICONS[0].value)
   const [isActive, setIsActive] = useState(category?.is_active ?? true)
@@ -87,9 +98,9 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
   
   // SEO and content fields
   const [slug, setSlug] = useState(category?.slug ?? '')
-  const [metaTitle, setMetaTitle] = useState(category?.meta_title ?? '')
-  const [metaDescription, setMetaDescription] = useState(category?.meta_description ?? '')
-  const [shortDescription, setShortDescription] = useState(category?.short_description ?? '')
+  const [metaTitle, setMetaTitle] = useState(() => clamp(category?.meta_title ?? '', MAX_META_TITLE_LENGTH))
+  const [metaDescription, setMetaDescription] = useState(() => clamp(category?.meta_description ?? '', MAX_META_DESCRIPTION_LENGTH))
+  const [shortDescription, setShortDescription] = useState(() => clamp(category?.short_description ?? '', MAX_SHORT_DESCRIPTION_LENGTH))
   const [longDescription, setLongDescription] = useState(category?.long_description ?? '')
   const [highlights, setHighlights] = useState(category?.highlights?.join(', ') ?? '')
   const [keywords, setKeywords] = useState(category?.keywords?.join(', ') ?? '')
@@ -111,11 +122,17 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
       return
     }
 
+    const finalMetaTitle = metaTitle.trim().length > 0 ? clamp(metaTitle.trim(), MAX_META_TITLE_LENGTH) : undefined
+    const finalMetaDescription = metaDescription.trim().length > 0 ? clamp(metaDescription.trim(), MAX_META_DESCRIPTION_LENGTH) : undefined
+    const finalShortDescription = shortDescription.trim().length > 0 ? clamp(shortDescription.trim(), MAX_SHORT_DESCRIPTION_LENGTH) : undefined
+    const finalDescription = description.trim().length > 0 ? clamp(description.trim(), MAX_DESCRIPTION_LENGTH) : undefined
+    const finalName = clamp(name.trim(), MAX_NAME_LENGTH)
+
     setIsSubmitting(true)
     try {
       const categoryData: Partial<EventCategory> = {
-        name: name.trim(),
-        description: description.trim() || null,
+        name: finalName,
+        description: finalDescription,
         color,
         icon,
         is_active: isActive,
@@ -133,9 +150,9 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
         default_reminder_hours: parseInt(defaultReminderHours) || 24,
         // SEO and content fields
         slug: slug.trim() || undefined,
-        meta_title: metaTitle.trim() || undefined,
-        meta_description: metaDescription.trim() || undefined,
-        short_description: shortDescription.trim() || undefined,
+        meta_title: finalMetaTitle,
+        meta_description: finalMetaDescription,
+        short_description: finalShortDescription,
         long_description: longDescription.trim() || undefined,
         highlights: highlights ? highlights.split(',').map(h => h.trim()).filter(h => h) : [],
         keywords: keywords ? keywords.split(',').map(k => k.trim()).filter(k => k) : [],
@@ -189,10 +206,12 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 type="text"
                 id="name"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => setName(clamp(e.target.value, MAX_NAME_LENGTH))}
                 required
+                maxLength={MAX_NAME_LENGTH}
                 fullWidth
               />
+              <p className="mt-1 text-xs text-gray-500">{name.length}/{MAX_NAME_LENGTH} characters</p>
             </div>
           </div>
 
@@ -221,9 +240,11 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 id="description"
                 rows={3}
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => setDescription(clamp(e.target.value, MAX_DESCRIPTION_LENGTH))}
+                maxLength={MAX_DESCRIPTION_LENGTH}
                 fullWidth
               />
+              <p className="mt-1 text-xs text-gray-500">{description.length}/{MAX_DESCRIPTION_LENGTH} characters</p>
             </div>
           </div>
 
@@ -553,12 +574,12 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 type="text"
                 id="meta_title"
                 value={metaTitle}
-                onChange={(e) => setMetaTitle(e.target.value)}
-                maxLength={60}
+                onChange={(e) => setMetaTitle(clamp(e.target.value, MAX_META_TITLE_LENGTH))}
+                maxLength={MAX_META_TITLE_LENGTH}
                 placeholder="SEO page title"
                 fullWidth
               />
-              <p className="mt-1 text-xs text-gray-500">{metaTitle.length}/60 characters</p>
+              <p className="mt-1 text-xs text-gray-500">{metaTitle.length}/{MAX_META_TITLE_LENGTH} characters</p>
             </div>
           </div>
 
@@ -571,12 +592,12 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 id="meta_description"
                 rows={2}
                 value={metaDescription}
-                onChange={(e) => setMetaDescription(e.target.value)}
-                maxLength={160}
+                onChange={(e) => setMetaDescription(clamp(e.target.value, MAX_META_DESCRIPTION_LENGTH))}
+                maxLength={MAX_META_DESCRIPTION_LENGTH}
                 placeholder="SEO page description"
                 fullWidth
               />
-              <p className="mt-1 text-xs text-gray-500">{metaDescription.length}/160 characters</p>
+              <p className="mt-1 text-xs text-gray-500">{metaDescription.length}/{MAX_META_DESCRIPTION_LENGTH} characters</p>
             </div>
           </div>
 
@@ -589,12 +610,12 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 id="short_description"
                 rows={2}
                 value={shortDescription}
-                onChange={(e) => setShortDescription(e.target.value)}
-                maxLength={150}
+                onChange={(e) => setShortDescription(clamp(e.target.value, MAX_SHORT_DESCRIPTION_LENGTH))}
+                maxLength={MAX_SHORT_DESCRIPTION_LENGTH}
                 placeholder="Brief description for listings"
                 fullWidth
               />
-              <p className="mt-1 text-xs text-gray-500">{shortDescription.length}/150 characters</p>
+              <p className="mt-1 text-xs text-gray-500">{shortDescription.length}/{MAX_SHORT_DESCRIPTION_LENGTH} characters</p>
             </div>
           </div>
 

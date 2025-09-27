@@ -609,11 +609,23 @@ export async function getCustomerCategoryPreferences(customerId: string) {
 }
 
 // Wrapper functions that accept FormData
-const getOptionalStringFromForm = (formData: FormData, field: string): string | undefined => {
+const getOptionalStringFromForm = (
+  formData: FormData,
+  field: string,
+  maxLength?: number
+): string | undefined => {
   const value = formData.get(field)
   if (typeof value !== 'string') return undefined
   const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : undefined
+  if (trimmed.length === 0) {
+    return undefined
+  }
+
+  if (typeof maxLength === 'number' && maxLength > 0 && trimmed.length > maxLength) {
+    return trimmed.slice(0, maxLength)
+  }
+
+  return trimmed
 }
 
 export async function createEventCategoryFromFormData(formData: FormData) {
@@ -651,28 +663,28 @@ export async function createEventCategoryFromFormData(formData: FormData) {
     default_reminder_hours: parseInt(formData.get('default_reminder_hours') as string) || 24,
     default_price: parseFloat(formData.get('default_price') as string) || 0,
     default_is_free: formData.get('default_is_free') === 'true',
-    default_performer_name: (formData.get('default_performer_name') as string) || undefined,
-    default_performer_type: (formData.get('default_performer_type') as string) || undefined,
-    default_image_url: (formData.get('default_image_url') as string) || undefined,
+    default_performer_name: getOptionalStringFromForm(formData, 'default_performer_name', 255),
+    default_performer_type: getOptionalStringFromForm(formData, 'default_performer_type'),
+    default_image_url: getOptionalStringFromForm(formData, 'default_image_url'),
     // SEO and content fields
-    slug: (formData.get('slug') as string) || undefined,
-    meta_title: (formData.get('meta_title') as string) || undefined,
-    meta_description: (formData.get('meta_description') as string) || undefined,
-    short_description: (formData.get('short_description') as string) || undefined,
-    long_description: (formData.get('long_description') as string) || undefined,
+    slug: getOptionalStringFromForm(formData, 'slug'),
+    meta_title: getOptionalStringFromForm(formData, 'meta_title', 60),
+    meta_description: getOptionalStringFromForm(formData, 'meta_description', 160),
+    short_description: getOptionalStringFromForm(formData, 'short_description', 150),
+    long_description: getOptionalStringFromForm(formData, 'long_description'),
     highlights: parseArrayField('highlights'),
     keywords: parseArrayField('keywords'),
     // Media fields
     gallery_image_urls: parseArrayField('gallery_image_urls'),
-    poster_image_url: (formData.get('poster_image_url') as string) || undefined,
-    thumbnail_image_url: (formData.get('thumbnail_image_url') as string) || undefined,
-    promo_video_url: (formData.get('promo_video_url') as string) || undefined,
+    poster_image_url: getOptionalStringFromForm(formData, 'poster_image_url'),
+    thumbnail_image_url: getOptionalStringFromForm(formData, 'thumbnail_image_url'),
+    promo_video_url: getOptionalStringFromForm(formData, 'promo_video_url'),
     highlight_video_urls: parseArrayField('highlight_video_urls'),
     // Additional timing fields
     default_duration_minutes: formData.get('default_duration_minutes') ? parseInt(formData.get('default_duration_minutes') as string) : undefined,
-    default_doors_time: (formData.get('default_doors_time') as string) || undefined,
+    default_doors_time: getOptionalStringFromForm(formData, 'default_doors_time'),
     default_last_entry_time: formatTimeToHHMM(formData.get('default_last_entry_time') as string) || undefined,
-    default_booking_url: (formData.get('default_booking_url') as string) || undefined,
+    default_booking_url: getOptionalStringFromForm(formData, 'default_booking_url'),
     faqs: parseFAQs(),
   }
   
@@ -714,28 +726,28 @@ export async function updateEventCategoryFromFormData(id: string, formData: Form
     default_reminder_hours: parseInt(formData.get('default_reminder_hours') as string) || 24,
     default_price: parseFloat(formData.get('default_price') as string) || 0,
     default_is_free: formData.get('default_is_free') === 'true',
-    default_performer_name: (formData.get('default_performer_name') as string) || undefined,
-    default_performer_type: (formData.get('default_performer_type') as string) || undefined,
-    default_image_url: (formData.get('default_image_url') as string) || undefined,
+    default_performer_name: getOptionalStringFromForm(formData, 'default_performer_name', 255),
+    default_performer_type: getOptionalStringFromForm(formData, 'default_performer_type'),
+    default_image_url: getOptionalStringFromForm(formData, 'default_image_url'),
     // SEO and content fields
-    slug: (formData.get('slug') as string) || undefined,
-    meta_title: (formData.get('meta_title') as string) || undefined,
-    meta_description: (formData.get('meta_description') as string) || undefined,
-    short_description: (formData.get('short_description') as string) || undefined,
-    long_description: (formData.get('long_description') as string) || undefined,
+    slug: getOptionalStringFromForm(formData, 'slug'),
+    meta_title: getOptionalStringFromForm(formData, 'meta_title', 60),
+    meta_description: getOptionalStringFromForm(formData, 'meta_description', 160),
+    short_description: getOptionalStringFromForm(formData, 'short_description', 150),
+    long_description: getOptionalStringFromForm(formData, 'long_description'),
     highlights: parseArrayField('highlights'),
     keywords: parseArrayField('keywords'),
     // Media fields
     gallery_image_urls: parseArrayField('gallery_image_urls'),
-    poster_image_url: (formData.get('poster_image_url') as string) || undefined,
-    thumbnail_image_url: (formData.get('thumbnail_image_url') as string) || undefined,
-    promo_video_url: (formData.get('promo_video_url') as string) || undefined,
+    poster_image_url: getOptionalStringFromForm(formData, 'poster_image_url'),
+    thumbnail_image_url: getOptionalStringFromForm(formData, 'thumbnail_image_url'),
+    promo_video_url: getOptionalStringFromForm(formData, 'promo_video_url'),
     highlight_video_urls: parseArrayField('highlight_video_urls'),
     // Additional timing fields
     default_duration_minutes: formData.get('default_duration_minutes') ? parseInt(formData.get('default_duration_minutes') as string) : undefined,
-    default_doors_time: (formData.get('default_doors_time') as string) || undefined,
+    default_doors_time: getOptionalStringFromForm(formData, 'default_doors_time'),
     default_last_entry_time: formatTimeToHHMM(formData.get('default_last_entry_time') as string) || undefined,
-    default_booking_url: (formData.get('default_booking_url') as string) || undefined,
+    default_booking_url: getOptionalStringFromForm(formData, 'default_booking_url'),
     faqs: parseFAQs(),
   }
   
