@@ -171,17 +171,25 @@ export default function BookingConfirmationPage() {
     setConfirmationError(null);
     
     try {
-      const requestBody: { token: string; seats: number; customer?: { first_name: string; last_name: string } } = {
+      const requestBody: {
+        token: string
+        seats: number
+        first_name?: string
+        last_name?: string
+      } = {
         token,
         seats,
       };
-      
-      // Only include customer details if they have values
-      if (customerDetails.first_name || customerDetails.last_name) {
-        requestBody.customer = {
-          first_name: customerDetails.first_name,
-          last_name: customerDetails.last_name
-        };
+
+      if (needsCustomerDetails) {
+        if (!trimmedFirstName || !trimmedLastName) {
+          setConfirmationError('Please add your first and last name to confirm your booking.');
+          setConfirming(false);
+          return;
+        }
+
+        requestBody.first_name = trimmedFirstName;
+        requestBody.last_name = trimmedLastName;
       }
       
       const response = await fetch('/api/bookings/confirm', {
@@ -310,6 +318,8 @@ export default function BookingConfirmationPage() {
   }
 
   const needsCustomerDetails = !pendingBooking.customer_id;
+  const trimmedFirstName = customerDetails.first_name.trim();
+  const trimmedLastName = customerDetails.last_name.trim();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -437,7 +447,10 @@ export default function BookingConfirmationPage() {
             <div className="flex gap-3 pt-4">
               <Button
                 onClick={confirmBooking}
-                disabled={confirming || (needsCustomerDetails && (!customerDetails.first_name || !customerDetails.last_name))}
+                disabled={
+                  confirming ||
+                  (needsCustomerDetails && (!trimmedFirstName || !trimmedLastName))
+                }
                 className="flex-1"
                 loading={confirming}
               >

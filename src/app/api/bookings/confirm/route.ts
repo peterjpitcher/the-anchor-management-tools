@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { z } from 'zod';
-import { formatPhoneForStorage } from '@/lib/validation';
 import { scheduleAndProcessBookingReminders } from '@/app/actions/event-sms-scheduler';
 import { logAuditEvent } from '@/app/actions/audit';
 
@@ -10,6 +9,12 @@ const confirmBookingSchema = z.object({
   seats: z.number().min(1).max(10),
   first_name: z.string().min(1).max(100).optional(),
   last_name: z.string().min(1).max(100).optional(),
+  customer: z
+    .object({
+      first_name: z.string().min(1).max(100).optional(),
+      last_name: z.string().min(1).max(100).optional(),
+    })
+    .optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -25,7 +30,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { token, seats, first_name, last_name } = validation.data;
+    const {
+      token,
+      seats,
+      first_name: topLevelFirstName,
+      last_name: topLevelLastName,
+      customer,
+    } = validation.data;
+
+    const rawFirstName = topLevelFirstName ?? customer?.first_name;
+    const rawLastName = topLevelLastName ?? customer?.last_name;
+    const firstName = rawFirstName?.trim();
+    const lastName = rawLastName?.trim();
     const supabase = createAdminClient();
     
     // Get pending booking with metadata
@@ -132,12 +148,12 @@ export async function POST(request: NextRequest) {
     }
     
     // Create customer if needed
-    if (!customerId && first_name && last_name) {
+    if (!customerId && firstName && lastName) {
       const { data: newCustomer, error: customerError } = await supabase
         .from('customers')
         .insert({
-          first_name,
-          last_name,
+          first_name: firstName,
+          last_name: lastName,
           mobile_number: pendingBooking.mobile_number,
           sms_opt_in: true, // They confirmed via SMS
         })
