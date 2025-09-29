@@ -903,6 +903,173 @@ async function applyAutomationRules(
   }
 }
 
+const RETRO_CHUNK_SIZE = 100
+
+type RetroStepSuccess = {
+  success: true
+  reviewed: number
+  matched: number
+  statusAutoUpdated: number
+  classificationUpdated: number
+  vendorIntended: number
+  expenseIntended: number
+  samples: AutomationResult['samples']
+  nextOffset: number
+  total: number
+  done: boolean
+  durationMs: number
+}
+
+type RetroStepResult = RetroStepSuccess | { success: false; error: string }
+
+export async function runReceiptRuleRetroactivelyStep({
+  ruleId,
+  scope = 'pending',
+  offset = 0,
+  chunkSize = RETRO_CHUNK_SIZE,
+}: {
+  ruleId: string
+  scope?: 'pending' | 'all'
+  offset?: number
+  chunkSize?: number
+}): Promise<RetroStepResult> {
+  const startedAt = Date.now()
+  await checkUserPermission('receipts', 'manage')
+
+  const supabase = createAdminClient()
+
+  const { data: rule, error: ruleError } = await supabase
+    .from('receipt_rules')
+    .select('*')
+    .eq('id', ruleId)
+    .maybeSingle()
+
+  if (ruleError || !rule) {
+    console.error('[retro-step] rule lookup failed', { ruleId, ruleError })
+    return { success: false, error: 'Rule not found' }
+  }
+
+  if (!rule.is_active) {
+    console.warn('[retro-step] rule inactive', { ruleId })
+    return { success: false, error: 'Enable the rule before running it' }
+  }
+
+  let idsQuery = supabase
+    .from('receipt_transactions')
+    .select('id', { count: 'exact', head: false })
+    .order('transaction_date', { ascending: false })
+
+  if (scope === 'pending') {
+    idsQuery = idsQuery.eq('status', 'pending')
+  }
+
+  const { data: idRows, count, error: idsError } = await idsQuery.range(offset, offset + chunkSize - 1)
+
+  if (idsError) {
+    console.error('[retro-step] failed to load ids', { idsError, ruleId, offset, chunkSize })
+    return { success: false, error: 'Failed to load transactions' }
+  }
+
+  const ids = (idRows ?? []).map((row) => row.id ?? null).filter((value): value is string => Boolean(value))
+
+  const total = typeof count === 'number' ? count : offset + ids.length
+
+  if (!ids.length) {
+    return {
+      success: true,
+      reviewed: 0,
+      matched: 0,
+      statusAutoUpdated: 0,
+      classificationUpdated: 0,
+      vendorIntended: 0,
+      expenseIntended: 0,
+      samples: [],
+      nextOffset: offset,
+      total,
+      done: true,
+      durationMs: Date.now() - startedAt,
+    }
+  }
+
+  const summary = await applyAutomationRules(ids, {
+    includeClosed: scope === 'all',
+    targetRuleId: ruleId,
+    overrideManual: scope === 'all',
+    allowClosedStatusUpdates: scope === 'all',
+  })
+
+  const nextOffset = offset + ids.length
+  const done = nextOffset >= total
+
+  const durationMs = Date.now() - startedAt
+
+  console.log('[retro-step] processed chunk', {
+    ruleId,
+    scope,
+    offset,
+    processed: ids.length,
+    matched: summary.matched,
+    statusAutoUpdated: summary.statusAutoUpdated,
+    classificationUpdated: summary.classificationUpdated,
+    vendorIntended: summary.vendorIntended,
+    expenseIntended: summary.expenseIntended,
+    nextOffset,
+    total,
+    done,
+    durationMs,
+  })
+
+  return {
+    success: true,
+    reviewed: ids.length,
+    matched: summary.matched,
+    statusAutoUpdated: summary.statusAutoUpdated,
+    classificationUpdated: summary.classificationUpdated,
+    vendorIntended: summary.vendorIntended,
+    expenseIntended: summary.expenseIntended,
+    samples: summary.samples,
+    nextOffset,
+    total,
+    done,
+    durationMs,
+  }
+}
+
+export async function finalizeReceiptRuleRetroRun(input: {
+  ruleId: string
+  scope: 'pending' | 'all'
+  reviewed: number
+  statusAutoUpdated: number
+  classificationUpdated: number
+  matched: number
+  vendorIntended: number
+  expenseIntended: number
+}) {
+  await checkUserPermission('receipts', 'manage')
+
+  await logAuditEvent({
+    operation_type: 'retro_run',
+    resource_type: 'receipt_rule',
+    resource_id: input.ruleId,
+    operation_status: 'success',
+    additional_info: {
+      scope: input.scope,
+      reviewed: input.reviewed,
+      auto_marked: input.statusAutoUpdated,
+      classified: input.classificationUpdated,
+      matched: input.matched,
+      vendor_intended: input.vendorIntended,
+      expense_intended: input.expenseIntended,
+    },
+  })
+
+  revalidatePath('/receipts')
+  revalidatePath('/receipts/vendors')
+  revalidatePath('/receipts/monthly')
+
+  return { success: true }
+}
+
 async function recordAIUsage(
   supabase: AdminClient,
   usage: ClassificationUsage | undefined,
@@ -2251,142 +2418,95 @@ export async function runReceiptRuleRetroactively(
   ruleId: string,
   scope: 'pending' | 'all' = 'pending'
 ) {
-  console.log('[retro] runReceiptRuleRetroactively invoked', {
-    ruleId,
-    scope,
-    timestamp: new Date().toISOString(),
-  })
-  await checkUserPermission('receipts', 'manage')
-
-  const supabase = createAdminClient()
-
-  const { data: rule, error: ruleError } = await supabase
-    .from('receipt_rules')
-    .select('*')
-    .eq('id', ruleId)
-    .maybeSingle()
-
-  if (ruleError || !rule) {
-    console.error('[retro] rule lookup failed', { ruleId, ruleError })
-    return { error: 'Rule not found' }
-  }
-
-  if (!rule.is_active) {
-    console.warn('[retro] rule inactive', { ruleId })
-    return { error: 'Enable the rule before running it' }
-  }
+  const start = Date.now()
+  const timeBudgetMs = 12_000
 
   let offset = 0
-  const pageSize = 500
-  let totalApplied = 0
-  let totalReviewed = 0
-  let totalClassified = 0
-  let totalMatched = 0
-  let totalVendorIntended = 0
-  let totalExpenseIntended = 0
-  let sampleTransactions: AutomationResult['samples'] = []
-
-  // Iterate through transactions in batches to avoid large payloads.
-  while (true) {
-    let query = supabase
-      .from('receipt_transactions')
-      .select('id')
-      .order('transaction_date', { ascending: false })
-      .range(offset, offset + pageSize - 1)
-
-    if (scope === 'pending') {
-      query = query.eq('status', 'pending')
-    }
-
-    const { data: batch, error: batchError } = await query
-
-    if (batchError) {
-      console.error('Failed to fetch transactions for retro run', batchError)
-      break
-    }
-
-    const ids = (batch ?? []).map((row) => row.id ?? null)
-    console.log('[retro] batch fetched', {
-      ruleId,
-      offset,
-      fetched: ids.length,
-      scope,
-      sampleIds: ids.slice(0, 5),
-    })
-    if (!ids.length) {
-      break
-    }
-
-    totalReviewed += ids.length
-    const {
-      statusAutoUpdated,
-      classificationUpdated,
-      matched,
-      vendorIntended,
-      expenseIntended,
-      samples,
-    } = await applyAutomationRules(ids, {
-      includeClosed: scope === 'all',
-      targetRuleId: ruleId,
-      overrideManual: scope === 'all',
-      allowClosedStatusUpdates: scope === 'all',
-    })
-    totalApplied += statusAutoUpdated
-    totalClassified += classificationUpdated
-    totalMatched += matched
-    totalVendorIntended += vendorIntended
-    totalExpenseIntended += expenseIntended
-    if (sampleTransactions.length === 0 && samples.length) {
-      sampleTransactions = samples
-    }
-    offset += pageSize
-
-    if (ids.length < pageSize) {
-      break
-    }
+  let totals = {
+    reviewed: 0,
+    matched: 0,
+    statusAutoUpdated: 0,
+    classificationUpdated: 0,
+    vendorIntended: 0,
+    expenseIntended: 0,
   }
+  let samples: AutomationResult['samples'] = []
+  let totalRecords = 0
 
-  await logAuditEvent({
-    operation_type: 'retro_run',
-    resource_type: 'receipt_rule',
-    resource_id: ruleId,
-    operation_status: 'success',
-    additional_info: {
-      reviewed: totalReviewed,
-      auto_marked: totalApplied,
-      classified: totalClassified,
-      matched: totalMatched,
-      vendor_intended: totalVendorIntended,
-      expense_intended: totalExpenseIntended,
-      scope,
-    },
-  })
+  while (true) {
+    const step = await runReceiptRuleRetroactivelyStep({ ruleId, scope, offset })
 
-  console.log('[retro] runReceiptRuleRetroactively summary', {
-    ruleId,
-    scope,
-    reviewed: totalReviewed,
-    auto_marked: totalApplied,
-    classified: totalClassified,
-    matched: totalMatched,
-    vendor_intended: totalVendorIntended,
-    expense_intended: totalExpenseIntended,
-    samplePreview: sampleTransactions.slice(0, 3),
-  })
+    if (!step.success) {
+      return { error: step.error }
+    }
 
-  revalidatePath('/receipts')
+    totals = {
+      reviewed: totals.reviewed + step.reviewed,
+      matched: totals.matched + step.matched,
+      statusAutoUpdated: totals.statusAutoUpdated + step.statusAutoUpdated,
+      classificationUpdated: totals.classificationUpdated + step.classificationUpdated,
+      vendorIntended: totals.vendorIntended + step.vendorIntended,
+      expenseIntended: totals.expenseIntended + step.expenseIntended,
+    }
 
-  return {
-    success: true,
-    ruleId,
-    reviewed: totalReviewed,
-    autoApplied: totalApplied,
-    classified: totalClassified,
-    matched: totalMatched,
-    vendorIntended: totalVendorIntended,
-    expenseIntended: totalExpenseIntended,
-    samples: sampleTransactions,
-    scope,
+    if (!samples.length && step.samples.length) {
+      samples = step.samples
+    }
+
+    offset = step.nextOffset
+    totalRecords = step.total
+
+    if (step.done) {
+      await finalizeReceiptRuleRetroRun({
+        ruleId,
+        scope,
+        reviewed: totals.reviewed,
+        statusAutoUpdated: totals.statusAutoUpdated,
+        classificationUpdated: totals.classificationUpdated,
+        matched: totals.matched,
+        vendorIntended: totals.vendorIntended,
+        expenseIntended: totals.expenseIntended,
+      })
+
+      return {
+        success: true,
+        ruleId,
+        reviewed: totals.reviewed,
+        autoApplied: totals.statusAutoUpdated,
+        classified: totals.classificationUpdated,
+        matched: totals.matched,
+        vendorIntended: totals.vendorIntended,
+        expenseIntended: totals.expenseIntended,
+        samples,
+        scope,
+        done: true,
+      }
+    }
+
+    if (Date.now() - start > timeBudgetMs) {
+      console.warn('[retro] time budget exceeded, returning partial result', {
+        ruleId,
+        scope,
+        offset,
+        totals,
+        totalRecords,
+      })
+      return {
+        success: true,
+        ruleId,
+        reviewed: totals.reviewed,
+        autoApplied: totals.statusAutoUpdated,
+        classified: totals.classificationUpdated,
+        matched: totals.matched,
+        vendorIntended: totals.vendorIntended,
+        expenseIntended: totals.expenseIntended,
+        samples,
+        scope,
+        done: false,
+        nextOffset: offset,
+        total: totalRecords,
+      }
+    }
   }
 }
 
