@@ -22,6 +22,10 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
 
   const outstandingParam = typeof resolvedParams?.outstanding === 'string' ? resolvedParams.outstanding : undefined
   const showOnlyOutstanding = outstandingParam === '0' ? false : true
+  const needsVendorParam = typeof resolvedParams?.needsVendor === 'string' ? resolvedParams.needsVendor : undefined
+  const needsExpenseParam = typeof resolvedParams?.needsExpense === 'string' ? resolvedParams.needsExpense : undefined
+  const missingVendorOnly = needsVendorParam === '1'
+  const missingExpenseOnly = needsExpenseParam === '1'
   const search = typeof resolvedParams?.search === 'string' ? resolvedParams.search : ''
 
   const rawSort = typeof resolvedParams?.sort === 'string' ? resolvedParams.sort : undefined
@@ -37,6 +41,8 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
     direction: direction !== 'all' ? direction : undefined,
     search: search ? search : undefined,
     showOnlyOutstanding,
+    missingVendorOnly: missingVendorOnly ? true : undefined,
+    missingExpenseOnly: missingExpenseOnly ? true : undefined,
     page,
     sortBy,
     sortDirection,
@@ -58,6 +64,8 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
             direction,
             search,
             showOnlyOutstanding,
+            missingVendorOnly,
+            missingExpenseOnly,
             page,
             sortBy,
             sortDirection,
