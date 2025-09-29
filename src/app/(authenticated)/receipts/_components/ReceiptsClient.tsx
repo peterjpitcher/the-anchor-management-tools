@@ -108,12 +108,15 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   const [retroRuleId, setRetroRuleId] = useState<string | null>(null)
 
   const { summary, transactions, rules, pagination, knownVendors } = initialData
-  const currentSortBy = (initialFilters.sortBy ?? 'transaction_date') as NonNullable<ReceiptWorkspaceFilters['sortBy']>
+  type SortColumn = NonNullable<ReceiptWorkspaceFilters['sortBy']>
+  type WorkspaceTransaction = ReceiptWorkspaceData['transactions'][number]
+  const currentSortBy = (initialFilters.sortBy ?? 'transaction_date') as SortColumn
   const currentSortDirection: 'asc' | 'desc' = initialFilters.sortDirection ?? 'desc'
-  const defaultSort: { column: NonNullable<ReceiptWorkspaceFilters['sortBy']>; direction: 'asc' | 'desc' } = {
+  const defaultSort: { column: SortColumn; direction: 'asc' | 'desc' } = {
     column: 'transaction_date',
     direction: 'desc',
   }
+  const mobileSortValue = `${currentSortBy}:${currentSortDirection}`
 
   const totalPages = Math.max(1, Math.ceil(pagination.total / pagination.pageSize))
 
@@ -138,6 +141,19 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
     ]
   ), [])
 
+  const mobileSortOptions = useMemo(() => (
+    [
+      { value: 'transaction_date:desc', label: 'Date · newest first' },
+      { value: 'transaction_date:asc', label: 'Date · oldest first' },
+      { value: 'details:asc', label: 'Details · A → Z' },
+      { value: 'details:desc', label: 'Details · Z → A' },
+      { value: 'amount_out:desc', label: 'Money out · high to low' },
+      { value: 'amount_out:asc', label: 'Money out · low to high' },
+      { value: 'amount_in:desc', label: 'Money in · high to low' },
+      { value: 'amount_in:asc', label: 'Money in · low to high' },
+    ]
+  ), [])
+
   const expenseCategoryOptions = useMemo(() => receiptExpenseCategorySchema.options, [])
 
   function updateQuery(next: Record<string, string | null>) {
@@ -154,22 +170,34 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
     router.push(`/receipts${query ? `?${query}` : ''}`)
   }
 
-  function handleSort(column: NonNullable<ReceiptWorkspaceFilters['sortBy']>) {
+  function applySort(column: SortColumn, direction: 'asc' | 'desc') {
+    const isDefault = column === defaultSort.column && direction === defaultSort.direction
+
+    updateQuery({
+      sort: isDefault ? null : column,
+      sortDirection: isDefault ? null : direction,
+    })
+  }
+
+  function handleSort(column: SortColumn) {
     let nextDirection: 'asc' | 'desc' = column === 'transaction_date' ? 'desc' : 'asc'
 
     if (currentSortBy === column) {
       nextDirection = currentSortDirection === 'asc' ? 'desc' : 'asc'
     }
 
-    const isDefault = column === defaultSort.column && nextDirection === defaultSort.direction
-
-    updateQuery({
-      sort: isDefault ? null : column,
-      sortDirection: isDefault ? null : nextDirection,
-    })
+    applySort(column, nextDirection)
   }
 
-  function handleClassificationStart(transaction: ReceiptTransaction, field: 'vendor' | 'expense') {
+  function handleMobileSortChange(event: ChangeEvent<HTMLSelectElement>) {
+    const value = event.target.value
+    if (!value) return
+
+    const [column, direction] = value.split(':') as [SortColumn, 'asc' | 'desc']
+    applySort(column, direction)
+  }
+
+  function handleClassificationStart(transaction: WorkspaceTransaction, field: 'vendor' | 'expense') {
     setEditingCell({ id: transaction.id, field })
     if (field === 'vendor') {
       const vendorValue = transaction.vendor_name?.trim() ?? ''
@@ -254,7 +282,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
     ), { duration: 8000 })
   }
 
-  function handleClassificationSave(transaction: ReceiptTransaction, field: 'vendor' | 'expense') {
+  function handleClassificationSave(transaction: WorkspaceTransaction, field: 'vendor' | 'expense') {
     const draftValue = classificationDraft.trim()
     setClassificationTargetId(transaction.id)
     startClassificationTransition(async () => {
@@ -632,6 +660,269 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
     window.location.href = url
   }
 
+  function renderVendorField(transaction: WorkspaceTransaction, variant: 'table' | 'card' = 'table') {
+    const isEditingVendor = editingCell?.id === transaction.id && editingCell.field === 'vendor'
+    const isClassificationLoading = classificationTargetId === transaction.id && isClassificationPending
+
+    if (isEditingVendor) {
+      return (
+        <div className="flex flex-col gap-2">
+          {isCustomVendor ? (
+            <div className="space-y-2">
+              <Input
+                autoFocus
+                value={classificationDraft}
+                onChange={(event) => setClassificationDraft(event.target.value)}
+                placeholder="Enter new vendor"
+                disabled={isClassificationLoading}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                onClick={showVendorSelect}
+                disabled={isClassificationLoading}
+              >
+                ⟵ Choose existing vendor
+              </Button>
+            </div>
+          ) : (
+            <Select
+              autoFocus
+              value={classificationDraft}
+              onChange={handleVendorSelectChange}
+              disabled={isClassificationLoading}
+            >
+              <option value="">Clear vendor</option>
+              {vendorOptions.map((vendor) => (
+                <option key={vendor} value={vendor}>
+                  {vendor}
+                </option>
+              ))}
+              <option value="__custom__">+ Add new vendor</option>
+            </Select>
+          )}
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => handleClassificationSave(transaction, 'vendor')}
+              disabled={isClassificationLoading}
+            >
+              {isClassificationLoading && <Spinner className="mr-2 h-3 w-3" />}Save
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={handleClassificationCancel}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className={`flex flex-col gap-1 ${variant === 'card' ? 'text-sm' : ''}`}>
+        <button
+          type="button"
+          className={`text-left text-sm ${transaction.vendor_name ? 'font-medium text-gray-900 hover:text-emerald-600' : 'text-gray-400 hover:text-emerald-600'}`}
+          onClick={() => handleClassificationStart(transaction, 'vendor')}
+        >
+          {transaction.vendor_name ?? 'Add vendor'}
+        </button>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+          <ClassificationBadge source={transaction.vendor_source} />
+          {transaction.vendor_source === 'ai' && (
+            <span className="inline-flex items-center gap-1 text-blue-600">
+              <SparklesIcon className="h-3 w-3" />
+              AI suggested
+            </span>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  function renderExpenseField(transaction: WorkspaceTransaction, variant: 'table' | 'card' = 'table') {
+    const isEditingExpense = editingCell?.id === transaction.id && editingCell.field === 'expense'
+    const isClassificationLoading = classificationTargetId === transaction.id && isClassificationPending
+
+    if (isEditingExpense) {
+      return (
+        <div className="flex flex-col gap-2">
+          <Select
+            value={classificationDraft}
+            onChange={(event) => setClassificationDraft(event.target.value)}
+            disabled={isClassificationLoading}
+          >
+            <option value="">Leave unset</option>
+            {expenseCategoryOptions.map((option) => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+          </Select>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => handleClassificationSave(transaction, 'expense')}
+              disabled={isClassificationLoading}
+            >
+              {isClassificationLoading && <Spinner className="mr-2 h-3 w-3" />}Save
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={handleClassificationCancel}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className={`flex flex-col gap-1 ${variant === 'card' ? 'text-sm' : ''}`}>
+        <button
+          type="button"
+          className={`text-left text-sm ${transaction.expense_category ? 'font-medium text-gray-900 hover:text-emerald-600' : 'text-gray-400 hover:text-emerald-600'}`}
+          onClick={() => handleClassificationStart(transaction, 'expense')}
+        >
+          {transaction.expense_category ?? 'Add expense type'}
+        </button>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+          <ClassificationBadge source={transaction.expense_category_source} />
+          {transaction.expense_category_source === 'ai' && (
+            <span className="inline-flex items-center gap-1 text-blue-600">
+              <SparklesIcon className="h-3 w-3" />
+              AI suggested
+            </span>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  function renderReceiptsSection(transaction: WorkspaceTransaction, variant: 'table' | 'card' = 'table') {
+    const isProcessing = activeTransactionId === transaction.id && isRowPending
+    const files = transaction.files as ReceiptFile[]
+    const amount = transaction.amount_out ?? transaction.amount_in
+
+    return (
+      <div className={`space-y-2 ${variant === 'card' ? 'mt-1' : ''}`}>
+        {files.length === 0 && <p className="text-xs text-gray-500">No receipts</p>}
+        {files.map((file) => {
+          const friendlyName = file.file_name || buildReceiptName(transaction.details, amount)
+          return (
+            <div
+              key={file.id}
+              className="flex items-center justify-between gap-2 rounded border border-gray-200 px-2 py-1"
+            >
+              <button
+                type="button"
+                onClick={() => handleReceiptDownload(file.id)}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+                title={friendlyName}
+              >
+                <MagnifyingGlassIcon className="h-4 w-4" aria-hidden="true" />
+                <span className="sr-only">View receipt</span>
+              </button>
+              {variant === 'card' && (
+                <span className="flex-1 truncate text-xs text-gray-600" title={friendlyName}>{friendlyName}</span>
+              )}
+              <button
+                type="button"
+                className="text-xs text-red-500 hover:text-red-600"
+                onClick={() => handleReceiptDelete(file.id, transaction.id)}
+                disabled={isProcessing}
+              >
+                Remove
+              </button>
+            </div>
+          )
+        })}
+        <input
+          type="file"
+          accept="image/*,application/pdf"
+          className="hidden"
+          ref={(element) => handleFileInputRef(transaction.id, element)}
+          onChange={(event) => handleReceiptUpload(transaction.id, event)}
+        />
+      </div>
+    )
+  }
+
+  function renderActionButtons(transaction: WorkspaceTransaction, variant: 'table' | 'card' = 'table') {
+    const isProcessing = activeTransactionId === transaction.id && isRowPending
+    const containerClasses =
+      variant === 'card'
+        ? 'flex flex-wrap items-center gap-2'
+        : 'flex flex-wrap gap-2 sm:flex-nowrap sm:items-center sm:gap-3'
+
+    return (
+      <div className={containerClasses}>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => handleUploadClick(transaction.id)}
+          disabled={isProcessing}
+        >
+          Upload
+        </Button>
+        {transaction.status !== 'completed' && (
+          <Button
+            variant="success"
+            size="sm"
+            onClick={() => handleStatusUpdate(transaction.id, 'completed')}
+            disabled={isProcessing}
+          >
+            Done
+          </Button>
+        )}
+        {transaction.status !== 'no_receipt_required' && (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => handleStatusUpdate(transaction.id, 'no_receipt_required')}
+            disabled={isProcessing}
+          >
+            Skip
+          </Button>
+        )}
+        {transaction.status !== 'pending' && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleStatusUpdate(transaction.id, 'pending')}
+            disabled={isProcessing}
+          >
+            Reopen
+          </Button>
+        )}
+      </div>
+    )
+  }
+
+  function renderStatusSection(transaction: WorkspaceTransaction, align: 'left' | 'right' = 'left') {
+    const baseClasses =
+      transaction.status === 'pending'
+        ? 'bg-amber-100 text-amber-700'
+        : transaction.status === 'completed'
+          ? 'bg-emerald-100 text-emerald-700'
+          : transaction.status === 'auto_completed'
+            ? 'bg-blue-100 text-blue-700'
+            : 'bg-gray-200 text-gray-700'
+
+    return (
+      <div className={`flex flex-col gap-1 ${align === 'right' ? 'items-end text-right' : ''}`}>
+        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap ${baseClasses}`}>
+          {transaction.status === 'completed' && <CheckCircleIcon className="h-4 w-4" />}
+          {transaction.status === 'pending' && <XCircleIcon className="h-4 w-4" />}
+          {statusLabels[transaction.status]}
+        </span>
+        {transaction.marked_by_email && (
+          <p className="text-xs text-gray-500">
+            By {transaction.marked_by_name ?? transaction.marked_by_email}
+          </p>
+        )}
+      </div>
+    )
+  }
+
   const currentYear = new Date().getUTCFullYear()
   const exportYears = [currentYear, currentYear - 1, currentYear - 2]
 
@@ -799,80 +1090,147 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50 text-left text-sm font-semibold text-gray-600">
-              <tr>
-                <th className="px-4 py-3">
-                  <button
-                    type="button"
-                    className={`flex items-center gap-1 text-left text-sm font-semibold ${currentSortBy === 'transaction_date' ? 'text-emerald-700' : 'text-gray-600'}`}
-                    onClick={() => handleSort('transaction_date')}
-                  >
-                    Date
-                    {currentSortBy === 'transaction_date' && (
-                      <span aria-hidden>{currentSortDirection === 'asc' ? '↑' : '↓'}</span>
+        <div className="w-full sm:hidden">
+          <label htmlFor="mobile-receipts-sort" className="text-xs font-medium text-gray-600">Sort</label>
+          <Select
+            id="mobile-receipts-sort"
+            value={mobileSortValue}
+            onChange={handleMobileSortChange}
+            className="mt-1"
+            selectSize="sm"
+          >
+            {mobileSortOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </Select>
+        </div>
+
+        <div className="flex flex-col gap-4 lg:hidden">
+          {transactions.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center text-sm text-gray-500">
+              No transactions match your filters.
+            </div>
+          ) : (
+            transactions.map((transaction) => (
+              <div key={transaction.id} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm" data-testid="receipt-mobile-card">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500">
+                      {formatDate(transaction.transaction_date)}
+                      {transaction.transaction_type ? ` · ${transaction.transaction_type}` : ''}
+                    </p>
+                    <p className="text-sm font-semibold text-gray-900">{transaction.details}</p>
+                    {transaction.rule_applied_id && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
+                        <ArrowPathIcon className="h-4 w-4" /> Auto rule
+                      </span>
                     )}
-                  </button>
-                </th>
-                <th className="px-4 py-3">
-                  <button
-                    type="button"
-                    className={`flex items-center gap-1 text-left text-sm font-semibold ${currentSortBy === 'details' ? 'text-emerald-700' : 'text-gray-600'}`}
-                    onClick={() => handleSort('details')}
-                  >
-                    Details
-                    {currentSortBy === 'details' && (
-                      <span aria-hidden>{currentSortDirection === 'asc' ? '↑' : '↓'}</span>
+                  </div>
+                  <div className="flex flex-col items-end gap-2 text-sm text-gray-600">
+                    {transaction.amount_out != null && (
+                      <div className="text-right">
+                        <p className="text-xs text-gray-500">Out</p>
+                        <p className="text-sm font-semibold text-gray-900">{formatCurrency(transaction.amount_out)}</p>
+                      </div>
                     )}
-                  </button>
-                </th>
-                <th className="px-4 py-3">Vendor</th>
-                <th className="px-4 py-3">Expense type</th>
-                <th className="px-4 py-3 text-right">
-                  <button
-                    type="button"
-                    className={`flex w-full items-center justify-end gap-1 text-sm font-semibold ${currentSortBy === 'amount_in' ? 'text-emerald-700' : 'text-gray-600'}`}
-                    onClick={() => handleSort('amount_in')}
-                  >
-                    In
-                    {currentSortBy === 'amount_in' && (
-                      <span aria-hidden>{currentSortDirection === 'asc' ? '↑' : '↓'}</span>
+                    {transaction.amount_in != null && (
+                      <div className="text-right">
+                        <p className="text-xs text-gray-500">In</p>
+                        <p className="text-sm font-semibold text-gray-900">{formatCurrency(transaction.amount_in)}</p>
+                      </div>
                     )}
-                  </button>
-                </th>
-                <th className="px-4 py-3 text-right">
-                  <button
-                    type="button"
-                    className={`flex w-full items-center justify-end gap-1 text-sm font-semibold ${currentSortBy === 'amount_out' ? 'text-emerald-700' : 'text-gray-600'}`}
-                    onClick={() => handleSort('amount_out')}
-                  >
-                    Out
-                    {currentSortBy === 'amount_out' && (
-                      <span aria-hidden>{currentSortDirection === 'asc' ? '↑' : '↓'}</span>
-                    )}
-                  </button>
-                </th>
-                <th className="px-4 py-3 w-48">Status</th>
-                <th className="px-4 py-3">Receipts</th>
-                <th className="px-4 py-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
-              {transactions.length === 0 && (
+                    {renderStatusSection(transaction, 'right')}
+                  </div>
+                </div>
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Vendor</p>
+                    <div className="mt-1">{renderVendorField(transaction, 'card')}</div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Expense category</p>
+                    <div className="mt-1">{renderExpenseField(transaction, 'card')}</div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Receipts</p>
+                    {renderReceiptsSection(transaction, 'card')}
+                  </div>
+                  <div className="border-t border-gray-100 pt-2">
+                    {renderActionButtons(transaction, 'card')}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="hidden lg:block">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50 text-left text-sm font-semibold text-gray-600">
                 <tr>
-                  <td colSpan={9} className="px-4 py-6 text-center text-gray-500">No transactions match your filters.</td>
+                  <th className="px-4 py-3">
+                    <button
+                      type="button"
+                      className={`flex items-center gap-1 text-left text-sm font-semibold ${currentSortBy === 'transaction_date' ? 'text-emerald-700' : 'text-gray-600'}`}
+                      onClick={() => handleSort('transaction_date')}
+                    >
+                      Date
+                      {currentSortBy === 'transaction_date' && (
+                        <span aria-hidden>{currentSortDirection === 'asc' ? '↑' : '↓'}</span>
+                      )}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3">
+                    <button
+                      type="button"
+                      className={`flex items-center gap-1 text-left text-sm font-semibold ${currentSortBy === 'details' ? 'text-emerald-700' : 'text-gray-600'}`}
+                      onClick={() => handleSort('details')}
+                    >
+                      Details
+                      {currentSortBy === 'details' && (
+                        <span aria-hidden>{currentSortDirection === 'asc' ? '↑' : '↓'}</span>
+                      )}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3">Vendor</th>
+                  <th className="px-4 py-3">Expense type</th>
+                  <th className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      className={`flex w-full items-center justify-end gap-1 text-sm font-semibold ${currentSortBy === 'amount_in' ? 'text-emerald-700' : 'text-gray-600'}`}
+                      onClick={() => handleSort('amount_in')}
+                    >
+                      In
+                      {currentSortBy === 'amount_in' && (
+                        <span aria-hidden>{currentSortDirection === 'asc' ? '↑' : '↓'}</span>
+                      )}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      className={`flex w-full items-center justify-end gap-1 text-sm font-semibold ${currentSortBy === 'amount_out' ? 'text-emerald-700' : 'text-gray-600'}`}
+                      onClick={() => handleSort('amount_out')}
+                    >
+                      Out
+                      {currentSortBy === 'amount_out' && (
+                        <span aria-hidden>{currentSortDirection === 'asc' ? '↑' : '↓'}</span>
+                      )}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 w-48">Status</th>
+                  <th className="px-4 py-3">Receipts</th>
+                  <th className="px-4 py-3">Actions</th>
                 </tr>
-              )}
-              {transactions.map((transaction) => {
-                const isProcessing = activeTransactionId === transaction.id && isRowPending
-                const files = transaction.files as ReceiptFile[]
-                const amount = transaction.amount_out ?? transaction.amount_in
-                const isEditingVendor = editingCell?.id === transaction.id && editingCell.field === 'vendor'
-                const isEditingExpense = editingCell?.id === transaction.id && editingCell.field === 'expense'
-                const isClassificationLoading =
-                  classificationTargetId === transaction.id && isClassificationPending
-                return (
+              </thead>
+              <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
+                {transactions.length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="px-4 py-6 text-center text-gray-500">No transactions match your filters.</td>
+                  </tr>
+                )}
+                {transactions.map((transaction) => (
                   <tr key={transaction.id} className="align-top">
                     <td className="px-4 py-3 text-gray-600">{formatDate(transaction.transaction_date)}</td>
                     <td className="px-4 py-3">
@@ -884,230 +1242,18 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
                         </p>
                       )}
                     </td>
-                    <td className="px-4 py-3 align-top">
-                      {isEditingVendor ? (
-                        <div className="flex flex-col gap-2">
-                          {isCustomVendor ? (
-                            <div className="space-y-2">
-                              <Input
-                                autoFocus
-                                value={classificationDraft}
-                                onChange={(event) => setClassificationDraft(event.target.value)}
-                                placeholder="Enter new vendor"
-                                disabled={isClassificationLoading}
-                              />
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="xs"
-                                onClick={showVendorSelect}
-                                disabled={isClassificationLoading}
-                              >
-                                ⟵ Choose existing vendor
-                              </Button>
-                            </div>
-                          ) : (
-                            <Select
-                              autoFocus
-                              value={classificationDraft}
-                              onChange={handleVendorSelectChange}
-                              disabled={isClassificationLoading}
-                            >
-                              <option value="">Clear vendor</option>
-                              {vendorOptions.map((vendor) => (
-                                <option key={vendor} value={vendor}>
-                                  {vendor}
-                                </option>
-                              ))}
-                              <option value="__custom__">+ Add new vendor</option>
-                            </Select>
-                          )}
-                          <div className="flex items-center gap-2">
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={() => handleClassificationSave(transaction, 'vendor')}
-                              disabled={isClassificationLoading}
-                            >
-                              {isClassificationLoading && <Spinner className="mr-2 h-3 w-3" />}Save
-                            </Button>
-                            <Button type="button" variant="ghost" size="sm" onClick={handleClassificationCancel}>
-                              Cancel
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col gap-1">
-                          <button
-                            type="button"
-                            className={`text-left text-sm ${transaction.vendor_name ? 'font-medium text-gray-900 hover:text-emerald-600' : 'text-gray-400 hover:text-emerald-600'}`}
-                            onClick={() => handleClassificationStart(transaction, 'vendor')}
-                          >
-                            {transaction.vendor_name ?? 'Add vendor'}
-                          </button>
-                          <div className="flex items-center gap-2 text-xs text-gray-500">
-                            <ClassificationBadge source={transaction.vendor_source} />
-                            {transaction.vendor_source === 'ai' && (
-                              <span className="inline-flex items-center gap-1 text-blue-600">
-                                <SparklesIcon className="h-3 w-3" />
-                                AI suggested
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 align-top">
-                      {isEditingExpense ? (
-                        <div className="flex flex-col gap-2">
-                          <Select
-                            value={classificationDraft}
-                            onChange={(event) => setClassificationDraft(event.target.value)}
-                            disabled={isClassificationLoading}
-                          >
-                            <option value="">Leave unset</option>
-                            {expenseCategoryOptions.map((option) => (
-                              <option key={option} value={option}>{option}</option>
-                            ))}
-                          </Select>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={() => handleClassificationSave(transaction, 'expense')}
-                              disabled={isClassificationLoading}
-                            >
-                              {isClassificationLoading && <Spinner className="mr-2 h-3 w-3" />}Save
-                            </Button>
-                            <Button type="button" variant="ghost" size="sm" onClick={handleClassificationCancel}>
-                              Cancel
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col gap-1">
-                          <button
-                            type="button"
-                            className={`text-left text-sm ${transaction.expense_category ? 'font-medium text-gray-900 hover:text-emerald-600' : 'text-gray-400 hover:text-emerald-600'}`}
-                            onClick={() => handleClassificationStart(transaction, 'expense')}
-                          >
-                            {transaction.expense_category ?? 'Add expense type'}
-                          </button>
-                          <div className="flex items-center gap-2 text-xs text-gray-500">
-                            <ClassificationBadge source={transaction.expense_category_source} />
-                            {transaction.expense_category_source === 'ai' && (
-                              <span className="inline-flex items-center gap-1 text-blue-600">
-                                <SparklesIcon className="h-3 w-3" />
-                                AI suggested
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </td>
+                    <td className="px-4 py-3 align-top">{renderVendorField(transaction)}</td>
+                    <td className="px-4 py-3 align-top">{renderExpenseField(transaction)}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{formatCurrency(transaction.amount_in)}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{formatCurrency(transaction.amount_out)}</td>
-                    <td className="px-4 py-3 min-w-[12rem]">
-                      <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap ${
-                        transaction.status === 'pending'
-                          ? 'bg-amber-100 text-amber-700'
-                          : transaction.status === 'completed'
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : transaction.status === 'auto_completed'
-                              ? 'bg-blue-100 text-blue-700'
-                              : 'bg-gray-200 text-gray-700'
-                      }`}>
-                        {transaction.status === 'completed' && <CheckCircleIcon className="h-4 w-4" />}
-                        {transaction.status === 'pending' && <XCircleIcon className="h-4 w-4" />}
-                        {statusLabels[transaction.status]}
-                      </span>
-                      {transaction.marked_by_email && (
-                        <p className="mt-1 text-xs text-gray-500">
-                          By {transaction.marked_by_name ?? transaction.marked_by_email}
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 space-y-2">
-                      {files.length === 0 && <p className="text-xs text-gray-500">No receipts</p>}
-                      {files.map((file) => {
-                        const friendlyName = file.file_name || buildReceiptName(transaction.details, amount)
-                        return (
-                          <div key={file.id} className="flex items-center justify-between gap-2 rounded border border-gray-200 px-2 py-1">
-                            <button
-                              type="button"
-                              onClick={() => handleReceiptDownload(file.id)}
-                              className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
-                              title={friendlyName}
-                            >
-                              <MagnifyingGlassIcon className="h-4 w-4" aria-hidden="true" />
-                              <span className="sr-only">View receipt</span>
-                            </button>
-                            <button
-                              type="button"
-                              className="text-xs text-red-500 hover:text-red-600"
-                              onClick={() => handleReceiptDelete(file.id, transaction.id)}
-                              disabled={isProcessing}
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        )
-                      })}
-                      <input
-                        type="file"
-                        accept="image/*,application/pdf"
-                        className="hidden"
-                        ref={(element) => handleFileInputRef(transaction.id, element)}
-                        onChange={(event) => handleReceiptUpload(transaction.id, event)}
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2 sm:flex-nowrap sm:items-center sm:gap-3">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => handleUploadClick(transaction.id)}
-                          disabled={isProcessing}
-                        >
-                          Upload
-                        </Button>
-                        {transaction.status !== 'completed' && (
-                          <Button
-                            variant="success"
-                            size="sm"
-                            onClick={() => handleStatusUpdate(transaction.id, 'completed')}
-                            disabled={isProcessing}
-                          >
-                            Done
-                          </Button>
-                        )}
-                        {transaction.status !== 'no_receipt_required' && (
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => handleStatusUpdate(transaction.id, 'no_receipt_required')}
-                            disabled={isProcessing}
-                          >
-                            Skip
-                          </Button>
-                        )}
-                        {transaction.status !== 'pending' && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleStatusUpdate(transaction.id, 'pending')}
-                            disabled={isProcessing}
-                          >
-                            Reopen
-                          </Button>
-                        )}
-                      </div>
-                    </td>
+                    <td className="px-4 py-3 min-w-[12rem]">{renderStatusSection(transaction)}</td>
+                    <td className="px-4 py-3 align-top">{renderReceiptsSection(transaction)}</td>
+                    <td className="px-4 py-3 align-top">{renderActionButtons(transaction)}</td>
                   </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <Pagination

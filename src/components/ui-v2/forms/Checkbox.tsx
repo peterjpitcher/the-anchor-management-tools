@@ -162,7 +162,7 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(({
   // If no label, render just the checkbox
   if (!label && !description) {
     return (
-      <div className={touchTargetClasses}>
+      <label className={touchTargetClasses}>
         <input
           ref={setRefs}
           type="checkbox"
@@ -175,7 +175,7 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(({
           <CheckIcon className={cn(iconClasses, 'peer-indeterminate:hidden')} />
           <MinusIcon className={cn(iconClasses, 'peer-checked:hidden')} />
         </div>
-      </div>
+      </label>
     )
   }
   
