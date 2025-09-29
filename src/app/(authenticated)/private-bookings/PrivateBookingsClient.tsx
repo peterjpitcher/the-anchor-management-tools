@@ -131,7 +131,7 @@ export default function PrivateBookingsClient({ permissions }: Props) {
           )
         `, { count: 'exact' })
         .range(from, to)
-        .order('event_date', { ascending: false })
+        .order('event_date', { ascending: false, nullsFirst: true })
 
       // Apply filters
       if (statusFilter !== 'all') {
@@ -144,7 +144,7 @@ export default function PrivateBookingsClient({ permissions }: Props) {
 
       const today = getTodayIsoDate()
       if (dateFilter === 'upcoming') {
-        query = query.gte('event_date', today)
+        query = query.or(`event_date.is.null,event_date.gte.${today}`)
       } else if (dateFilter === 'past') {
         query = query.lt('event_date', today)
       }
@@ -169,9 +169,8 @@ export default function PrivateBookingsClient({ permissions }: Props) {
       }
 
       const enrichedBookings = (data || []).map((booking: BookingRow) => {
-        // Extract customer from array (Supabase returns it as an array)
         const customerData = Array.isArray(booking.customer) ? booking.customer[0] : booking.customer
-        
+
         const totalAmount = toNumber(booking.total_amount)
         const depositAmount = booking.deposit_amount === null || booking.deposit_amount === undefined
           ? undefined
@@ -182,9 +181,14 @@ export default function PrivateBookingsClient({ permissions }: Props) {
         const internalNotes = typeof booking.internal_notes === 'string' ? booking.internal_notes : undefined
         const isDateTbd = internalNotes?.includes(DATE_TBD_NOTE) ?? false
 
+        const eventDateValue = booking.event_date ? new Date(booking.event_date) : null
+        const daysUntilEvent = eventDateValue
+          ? Math.ceil((eventDateValue.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+          : null
+
         return {
           ...booking,
-          days_until_event: Math.ceil((new Date(booking.event_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)),
+          days_until_event: daysUntilEvent,
           deposit_status: booking.deposit_paid_date 
             ? 'Paid' as const
             : booking.status === 'confirmed' 
