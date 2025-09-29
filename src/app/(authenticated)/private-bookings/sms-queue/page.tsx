@@ -17,10 +17,10 @@ import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
-import { Button } from '@/components/ui-v2/forms/Button'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { SmsQueueActionForm } from '@/components/private-bookings/SmsQueueActionForm'
 
 async function handleApproveSms(formData: FormData) {
   'use server'
@@ -185,25 +185,25 @@ export default async function SmsQueuePage() {
                 </div>
                 
                 <div className="flex gap-3">
-                  <form action={handleApproveSms} className="inline">
-                    <input type="hidden" name="smsId" value={sms.id} />
-                    <Button type="submit"
-                      variant="primary"
-                      leftIcon={<CheckIcon className="h-4 w-4" />}
-                    >
-                      Approve
-                    </Button>
-                  </form>
-                  
-                  <form action={handleRejectSms} className="inline">
-                    <input type="hidden" name="smsId" value={sms.id} />
-                    <Button type="submit"
-                      variant="danger"
-                      leftIcon={<XMarkIcon className="h-4 w-4" />}
-                    >
-                      Reject
-                    </Button>
-                  </form>
+                  <SmsQueueActionForm
+                    action={handleApproveSms}
+                    smsId={sms.id}
+                    confirmMessage="Approve this SMS for sending?"
+                    leftIcon={<CheckIcon className="h-4 w-4" />}
+                    variant="primary"
+                  >
+                    Approve
+                  </SmsQueueActionForm>
+
+                  <SmsQueueActionForm
+                    action={handleRejectSms}
+                    smsId={sms.id}
+                    confirmMessage="Reject this SMS?"
+                    leftIcon={<XMarkIcon className="h-4 w-4" />}
+                    variant="danger"
+                  >
+                    Reject
+                  </SmsQueueActionForm>
                 </div>
               </Card>
             ))}
@@ -253,14 +253,14 @@ export default async function SmsQueuePage() {
                   </div>
                 </div>
                 
-                <form action={handleSendSms} className="inline">
-                  <input type="hidden" name="smsId" value={sms.id} />
-                  <Button type="submit"
-                    leftIcon={<PaperAirplaneIcon className="h-4 w-4" />}
-                  >
-                    Send Now
-                  </Button>
-                </form>
+                <SmsQueueActionForm
+                  action={handleSendSms}
+                  smsId={sms.id}
+                  confirmMessage="Send this approved SMS now?"
+                  leftIcon={<PaperAirplaneIcon className="h-4 w-4" />}
+                >
+                  Send Now
+                </SmsQueueActionForm>
               </Card>
             ))}
           </div>

@@ -213,6 +213,15 @@ export default function MessagesPage() {
       return
     }
 
+    const confirmed = typeof window !== 'undefined'
+      ? window.confirm('Send this SMS message now?')
+      : true
+
+    if (!confirmed) {
+      toast.info('SMS sending cancelled')
+      return
+    }
+
     setSending(true)
 
     try {
