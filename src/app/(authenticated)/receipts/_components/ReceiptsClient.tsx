@@ -23,7 +23,8 @@ import {
   deleteReceiptRule,
   getReceiptSignedUrl,
   updateReceiptClassification,
-  runReceiptRuleRetroactively,
+  runReceiptRuleRetroactivelyStep,
+  finalizeReceiptRuleRetroRun,
   type ReceiptWorkspaceData,
   type ReceiptWorkspaceFilters,
   type ClassificationRuleSuggestion,
@@ -310,37 +311,93 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
     setRetroRuleId(ruleId)
     startRetroTransition(async () => {
       try {
-        const result = await runReceiptRuleRetroactively(ruleId, scope)
-        if (result?.error) {
-          toast.error(result.error)
-          return
+        const CHUNK_SIZE = 100
+        const MAX_ITERATIONS = 300
+
+        let offset = 0
+        let iterations = 0
+        let lastSamples: Array<Record<string, unknown>> = []
+        const totals = {
+          reviewed: 0,
+          matched: 0,
+          statusAutoUpdated: 0,
+          classificationUpdated: 0,
+          vendorIntended: 0,
+          expenseIntended: 0,
         }
-        const scopeLabel = scope === 'all' ? 'transactions' : 'pending transactions'
-        const autoCount = result.autoApplied ?? 0
-        const classifiedCount = result.classified ?? 0
-        const matchedCount = result.matched ?? 0
-        const vendorCount = result.vendorIntended ?? 0
-        const expenseCount = result.expenseIntended ?? 0
-        toast.success(
-          `Rule processed ${matchedCount} / ${result.reviewed ?? 0} ${scopeLabel} · ${autoCount} status updates · ${classifiedCount} classifications · vendor intents ${vendorCount} · expense intents ${expenseCount}`
-        )
-        if (result.samples && result.samples.length) {
-          console.groupCollapsed(
-            `Receipt rule analysis (${result.samples.length} sample transactions)`
-          )
-          console.table(result.samples)
-          console.groupEnd()
+
+        while (iterations < MAX_ITERATIONS) {
+          const step = await runReceiptRuleRetroactivelyStep({
+            ruleId,
+            scope,
+            offset,
+            chunkSize: CHUNK_SIZE,
+          })
+
+          if (!step.success) {
+            toast.error(step.error)
+            console.error('[retro-ui] step failed', { ruleId, scope, offset, error: step.error })
+            break
+          }
+
+          totals.reviewed += step.reviewed
+          totals.matched += step.matched
+          totals.statusAutoUpdated += step.statusAutoUpdated
+          totals.classificationUpdated += step.classificationUpdated
+          totals.vendorIntended += step.vendorIntended
+          totals.expenseIntended += step.expenseIntended
+
+          if (step.samples.length) {
+            lastSamples = step.samples
+          }
+
+          offset = step.nextOffset
+          iterations += 1
+
+          if (step.done) {
+            await finalizeReceiptRuleRetroRun({
+              ruleId,
+              scope,
+              reviewed: totals.reviewed,
+              statusAutoUpdated: totals.statusAutoUpdated,
+              classificationUpdated: totals.classificationUpdated,
+              matched: totals.matched,
+              vendorIntended: totals.vendorIntended,
+              expenseIntended: totals.expenseIntended,
+            })
+
+            const scopeLabel = scope === 'all' ? 'transactions' : 'pending transactions'
+            toast.success(
+              `Rule processed ${totals.matched} / ${totals.reviewed} ${scopeLabel} · ${totals.statusAutoUpdated} status updates · ${totals.classificationUpdated} classifications · vendor intents ${totals.vendorIntended} · expense intents ${totals.expenseIntended}`
+            )
+
+            if (lastSamples.length) {
+              console.groupCollapsed(
+                `Receipt rule analysis (${lastSamples.length} sample transactions)`
+              )
+              console.table(lastSamples)
+              console.groupEnd()
+            }
+
+            setRetroPrompt(null)
+            setRetroScope('pending')
+            router.refresh()
+            return
+          }
+
+          if (step.reviewed === 0) {
+            console.warn('[retro-ui] step reviewed 0 transactions', { ruleId, scope, offset })
+            break
+          }
         }
-        if (!result.samples?.length) {
-          console.warn('[retro-ui] no samples returned for rule', ruleId)
-        }
-        setRetroPrompt(null)
-        setRetroScope('pending')
-        router.refresh()
+
+        toast.error('Stopped before completion. Please run again to continue.')
+        console.warn('[retro-ui] retro run incomplete', { ruleId, scope, offset, iterations, totals })
       } catch (error) {
         console.error('Failed to run receipt rule retroactively', error)
         toast.error('Failed to run the rule. Please try again.')
       } finally {
+        setRetroPrompt(null)
         setRetroRuleId(null)
       }
     })

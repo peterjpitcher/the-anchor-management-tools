@@ -15,7 +15,8 @@ import type { ReceiptBulkReviewData } from '@/app/actions/receipts'
 import {
   applyReceiptGroupClassification,
   createReceiptRuleFromGroup,
-  runReceiptRuleRetroactively,
+  runReceiptRuleRetroactivelyStep,
+  finalizeReceiptRuleRetroRun,
 } from '@/app/actions/receipts'
 import { receiptExpenseCategorySchema, receiptTransactionStatusSchema } from '@/lib/validation'
 import type { ReceiptExpenseCategory, ReceiptTransaction } from '@/types/database'
@@ -325,21 +326,93 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
     console.log('[retro-ui] bulk handleRunRetro', { ruleId: rule.id, details })
     setRetroGroupId(details)
     startRunRetro(async () => {
-      const result = await runReceiptRuleRetroactively(rule.id)
-      setRetroGroupId(null)
-      if (result?.error) {
-        toast.error(result.error)
-        return
+      try {
+        const scope: 'pending' | 'all' = 'pending'
+        const CHUNK_SIZE = 100
+        const MAX_ITERATIONS = 300
+
+        let offset = 0
+        let iterations = 0
+        let lastSamples: Array<Record<string, unknown>> = []
+        const totals = {
+          reviewed: 0,
+          matched: 0,
+          statusAutoUpdated: 0,
+          classificationUpdated: 0,
+          vendorIntended: 0,
+          expenseIntended: 0,
+        }
+
+        while (iterations < MAX_ITERATIONS) {
+          const step = await runReceiptRuleRetroactivelyStep({
+            ruleId: rule.id,
+            scope,
+            offset,
+            chunkSize: CHUNK_SIZE,
+          })
+
+          if (!step.success) {
+            toast.error(step.error)
+            console.error('[retro-ui] bulk step failed', { ruleId: rule.id, details, error: step.error })
+            setRetroGroupId(null)
+            return
+          }
+
+          totals.reviewed += step.reviewed
+          totals.matched += step.matched
+          totals.statusAutoUpdated += step.statusAutoUpdated
+          totals.classificationUpdated += step.classificationUpdated
+          totals.vendorIntended += step.vendorIntended
+          totals.expenseIntended += step.expenseIntended
+
+          if (step.samples.length) {
+            lastSamples = step.samples
+          }
+
+          offset = step.nextOffset
+          iterations += 1
+
+          if (step.done) {
+            await finalizeReceiptRuleRetroRun({
+              ruleId: rule.id,
+              scope,
+              reviewed: totals.reviewed,
+              statusAutoUpdated: totals.statusAutoUpdated,
+              classificationUpdated: totals.classificationUpdated,
+              matched: totals.matched,
+              vendorIntended: totals.vendorIntended,
+              expenseIntended: totals.expenseIntended,
+            })
+
+            toast.success(
+              `Rule reviewed ${totals.matched}/${totals.reviewed} transactions · ${totals.statusAutoUpdated} status updates · ${totals.classificationUpdated} classifications · vendor intents ${totals.vendorIntended} · expense intents ${totals.expenseIntended}`
+            )
+
+            if (lastSamples.length) {
+              console.groupCollapsed(`Bulk rule analysis (${lastSamples.length} sample transactions)`)
+              console.table(lastSamples)
+              console.groupEnd()
+            }
+
+            router.refresh()
+            setRetroGroupId(null)
+            return
+          }
+
+          if (step.reviewed === 0) {
+            console.warn('[retro-ui] bulk step reviewed zero transactions', { ruleId: rule.id, details, offset })
+            break
+          }
+        }
+
+        toast.error('Stopped before completion. Please run again to continue.')
+        console.warn('[retro-ui] bulk retro run incomplete', { ruleId: rule.id, details, offset, totals })
+      } catch (error) {
+        console.error('Failed to run bulk retro rule', error)
+        toast.error('Failed to run the rule. Please try again.')
+      } finally {
+        setRetroGroupId(null)
       }
-      toast.success(
-        `Rule reviewed ${result.matched ?? 0}/${result.reviewed ?? 0} transactions · ${result.autoApplied ?? 0} status updates · ${result.classified ?? 0} classifications · vendor intents ${result.vendorIntended ?? 0} · expense intents ${result.expenseIntended ?? 0}`
-      )
-      if (result.samples && result.samples.length) {
-        console.groupCollapsed(`Bulk rule analysis (${result.samples.length} sample transactions)`)
-        console.table(result.samples)
-        console.groupEnd()
-      }
-      router.refresh()
     })
   }
 
