@@ -25,6 +25,8 @@ const CreateInvoiceSchema = z.object({
   internal_notes: z.string().optional()
 })
 
+type CreateInvoiceResult = { error: string } | { success: true; invoice: Invoice }
+
 // Get next invoice number from series
 async function getNextInvoiceNumber(seriesCode: string): Promise<string> {
   const adminClient = await createAdminClient()
@@ -131,7 +133,7 @@ export async function getInvoice(invoiceId: string) {
   }
 }
 
-export async function createInvoice(formData: FormData) {
+export async function createInvoice(formData: FormData): Promise<CreateInvoiceResult> {
   try {
     const supabase = await createClient()
     
@@ -263,7 +265,7 @@ export async function createInvoice(formData: FormData) {
 
     revalidatePath('/invoices')
     
-    return { invoice, success: true }
+    return { success: true, invoice }
   } catch (error) {
     console.error('Error in createInvoice:', error)
     if (error instanceof z.ZodError) {

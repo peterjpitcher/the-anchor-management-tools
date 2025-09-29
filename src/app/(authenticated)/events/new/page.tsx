@@ -12,6 +12,8 @@ import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+type CreateEventActionResult = Awaited<ReturnType<typeof createEvent>>
+
 export default function NewEventPage() {
   const router = useRouter()
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
@@ -50,13 +52,15 @@ export default function NewEventPage() {
         }
       })
 
-      const result = await createEvent(formData)
-      
-      if (result.error) {
+      const result = await createEvent(formData) as CreateEventActionResult
+
+      if ('error' in result && result.error) {
         toast.error(result.error)
-      } else if (result.data) {
+      } else if ('success' in result && result.success && 'data' in result && result.data) {
         toast.success('Event created successfully')
         router.push(`/events/${result.data.id}`)
+      } else {
+        toast.error('Failed to create event')
       }
     } catch (error) {
       console.error('Error creating event:', error)

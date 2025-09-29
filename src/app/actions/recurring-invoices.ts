@@ -6,7 +6,7 @@ import { logAuditEvent } from './audit'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { toLocalIsoDate } from '@/lib/dateUtils'
-import type { RecurringInvoice, RecurringInvoiceWithDetails, RecurringFrequency, InvoiceLineItemInput, InvoiceStatus } from '@/types/invoices'
+import type { RecurringInvoice, RecurringInvoiceWithDetails, RecurringFrequency, InvoiceLineItemInput, InvoiceStatus, Invoice } from '@/types/invoices'
 
 // Validation schemas
 const CreateRecurringInvoiceSchema = z.object({
@@ -379,7 +379,9 @@ export async function deleteRecurringInvoice(formData: FormData) {
 }
 
 // Generate invoice from recurring invoice
-export async function generateInvoiceFromRecurring(recurringInvoiceId: string) {
+type GenerateInvoiceResult = { error: string } | { success: true; invoice: Invoice }
+
+export async function generateInvoiceFromRecurring(recurringInvoiceId: string): Promise<GenerateInvoiceResult> {
   try {
     const supabase = await createClient()
     const adminClient = await createAdminClient()

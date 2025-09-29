@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useMemo, useState, useTransition, useRef, ChangeEvent, FormEvent } from 'react'
 import { toast } from 'react-hot-toast'
@@ -21,11 +22,21 @@ import {
   updateReceiptRule,
   deleteReceiptRule,
   getReceiptSignedUrl,
+  updateReceiptClassification,
+  runReceiptRuleRetroactively,
   type ReceiptWorkspaceData,
   type ReceiptWorkspaceFilters,
+  type ClassificationRuleSuggestion,
 } from '@/app/actions/receipts'
-import type { ReceiptRule, ReceiptTransaction, ReceiptFile } from '@/types/database'
-import { DocumentArrowDownIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
+import type {
+  ReceiptRule,
+  ReceiptTransaction,
+  ReceiptFile,
+  ReceiptClassificationSource,
+  ReceiptExpenseCategory,
+} from '@/types/database'
+import { receiptExpenseCategorySchema } from '@/lib/validation'
+import { DocumentArrowDownIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon, MagnifyingGlassIcon, SparklesIcon } from '@heroicons/react/24/outline'
 
 interface ReceiptsClientProps {
   initialData: ReceiptWorkspaceData
@@ -52,6 +63,10 @@ function formatCurrency(value: number | null) {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(value)
 }
 
+function formatCurrencyStrict(value: number) {
+  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(value ?? 0)
+}
+
 function formatDate(value: string) {
   if (!value) return ''
   return new Date(value).toLocaleDateString('en-GB', { timeZone: 'UTC' })
@@ -76,7 +91,15 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   const [isStatementPending, startStatementTransition] = useTransition()
   const [isRowPending, startRowTransition] = useTransition()
   const [isRulePending, startRuleTransition] = useTransition()
+  const [isClassificationPending, startClassificationTransition] = useTransition()
+  const [isRetroPending, startRetroTransition] = useTransition()
+  const [editingCell, setEditingCell] = useState<{ id: string; field: 'vendor' | 'expense' } | null>(null)
+  const [classificationDraft, setClassificationDraft] = useState('')
+  const [classificationTargetId, setClassificationTargetId] = useState<string | null>(null)
+  const [pendingRuleSuggestion, setPendingRuleSuggestion] = useState<ClassificationRuleSuggestion | null>(null)
+  const [retroPrompt, setRetroPrompt] = useState<{ id: string; name: string } | null>(null)
   const fileInputsRef = useRef<Record<string, HTMLInputElement | null>>({})
+  const newRuleFormRef = useRef<HTMLFormElement | null>(null)
 
   const { summary, transactions, rules, pagination } = initialData
   const currentSortBy = (initialFilters.sortBy ?? 'transaction_date') as NonNullable<ReceiptWorkspaceFilters['sortBy']>
@@ -106,6 +129,8 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
     ]
   ), [])
 
+  const expenseCategoryOptions = useMemo(() => receiptExpenseCategorySchema.options, [])
+
   function updateQuery(next: Record<string, string | null>) {
     const params = new URLSearchParams(searchParams.toString())
     Object.entries(next).forEach(([key, value]) => {
@@ -132,6 +157,137 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
     updateQuery({
       sort: isDefault ? null : column,
       sortDirection: isDefault ? null : nextDirection,
+    })
+  }
+
+  function handleClassificationStart(transaction: ReceiptTransaction, field: 'vendor' | 'expense') {
+    setEditingCell({ id: transaction.id, field })
+    if (field === 'vendor') {
+      setClassificationDraft(transaction.vendor_name ?? '')
+    } else {
+      setClassificationDraft(transaction.expense_category ?? '')
+    }
+  }
+
+  function handleClassificationCancel() {
+    setEditingCell(null)
+    setClassificationDraft('')
+    setClassificationTargetId(null)
+  }
+
+  function applyRuleSuggestion(suggestion: ClassificationRuleSuggestion) {
+    const form = newRuleFormRef.current
+    if (!form) return
+
+    const getInput = <T extends HTMLElement>(name: string) => form.elements.namedItem(name) as T | null
+
+    const nameInput = getInput<HTMLInputElement>('name')
+    if (nameInput) nameInput.value = suggestion.suggestedName
+
+    const matchDescriptionInput = getInput<HTMLInputElement>('match_description')
+    if (matchDescriptionInput) {
+      matchDescriptionInput.value = suggestion.matchDescription ?? ''
+    }
+
+    const matchTypeInput = getInput<HTMLInputElement>('match_transaction_type')
+    if (matchTypeInput) matchTypeInput.value = suggestion.transactionType ?? ''
+
+    const matchDirectionSelect = getInput<HTMLSelectElement>('match_direction')
+    if (matchDirectionSelect) matchDirectionSelect.value = suggestion.direction
+
+    const vendorInput = getInput<HTMLInputElement>('set_vendor_name')
+    if (vendorInput) vendorInput.value = suggestion.setVendorName ?? ''
+
+    const expenseSelect = getInput<HTMLSelectElement>('set_expense_category')
+    if (expenseSelect) expenseSelect.value = suggestion.setExpenseCategory ?? ''
+
+    const autoStatusSelect = getInput<HTMLSelectElement>('auto_status')
+    if (autoStatusSelect) autoStatusSelect.value = 'pending'
+
+    const descriptionInput = getInput<HTMLInputElement>('description')
+    if (descriptionInput) descriptionInput.value = ''
+
+    const minAmountInput = getInput<HTMLInputElement>('match_min_amount')
+    if (minAmountInput) minAmountInput.value = ''
+
+    const maxAmountInput = getInput<HTMLInputElement>('match_max_amount')
+    if (maxAmountInput) maxAmountInput.value = ''
+
+    form.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    toast.success('Prefilled the new rule form from your classification')
+    setPendingRuleSuggestion(null)
+  }
+
+  function showRuleSuggestionPrompt(suggestion: ClassificationRuleSuggestion) {
+    setPendingRuleSuggestion(suggestion)
+    toast((t) => (
+      <div className="rounded-md bg-white p-3 shadow-md">
+        <p className="text-sm font-semibold text-gray-900">Create a rule for this vendor?</p>
+        <p className="mt-1 text-xs text-gray-600">Apply this classification automatically next time.</p>
+        <div className="mt-3 flex items-center gap-2">
+          <Button
+            size="xs"
+            onClick={() => {
+              applyRuleSuggestion(suggestion)
+              toast.dismiss(t.id)
+            }}
+          >
+            Prefill rule
+          </Button>
+          <Button size="xs" variant="ghost" onClick={() => toast.dismiss(t.id)}>
+            Dismiss
+          </Button>
+        </div>
+      </div>
+    ), { duration: 8000 })
+  }
+
+  function handleClassificationSave(transaction: ReceiptTransaction, field: 'vendor' | 'expense') {
+    const draftValue = classificationDraft.trim()
+    setClassificationTargetId(transaction.id)
+    startClassificationTransition(async () => {
+      const payload: {
+        transactionId: string
+        vendorName?: string | null
+        expenseCategory?: ReceiptExpenseCategory | null
+      } = { transactionId: transaction.id }
+
+      if (field === 'vendor') {
+        payload.vendorName = draftValue.length ? draftValue : null
+      } else {
+        payload.expenseCategory = draftValue.length ? (draftValue as ReceiptExpenseCategory) : null
+      }
+
+      const result = await updateReceiptClassification(payload)
+
+      if (result?.error) {
+        toast.error(result.error)
+        setClassificationTargetId(null)
+        return
+      }
+
+      toast.success('Classification updated')
+      router.refresh()
+
+      if (result?.ruleSuggestion) {
+        showRuleSuggestionPrompt(result.ruleSuggestion)
+      }
+
+      handleClassificationCancel()
+      setClassificationTargetId(null)
+    })
+  }
+
+  function handleRetroRun(ruleId: string) {
+    startRetroTransition(async () => {
+      const result = await runReceiptRuleRetroactively(ruleId)
+      if (result?.error) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(`Rule processed ${result.autoApplied ?? 0} of ${result.reviewed ?? 0} pending transactions`)
+      setRetroPrompt(null)
+      router.refresh()
     })
   }
 
@@ -298,14 +454,40 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
       const result = ruleId
         ? await updateReceiptRule(ruleId, formData)
         : await createReceiptRule(formData)
-      if (result?.error) {
-        toast.error(result.error)
+
+      if (!result || 'error' in result) {
+        toast.error(result?.error ?? 'Failed to save rule')
         setActiveRuleId(null)
         return
       }
       toast.success(`Rule ${ruleId ? 'updated' : 'created'}`)
+      const createdRule = result.rule
+      if (result.canPromptRetro && createdRule) {
+        setRetroPrompt({ id: createdRule.id, name: createdRule.name })
+        toast((t) => (
+          <div className="rounded-md bg-white p-3 shadow-md">
+            <p className="text-sm font-semibold text-gray-900">Run this rule on existing items?</p>
+            <p className="mt-1 text-xs text-gray-600">Apply “{createdRule.name}” to pending transactions now.</p>
+            <div className="mt-3 flex items-center gap-2">
+              <Button
+                size="xs"
+                onClick={() => {
+                  handleRetroRun(createdRule.id)
+                  toast.dismiss(t.id)
+                }}
+              >
+                Run now
+              </Button>
+              <Button size="xs" variant="ghost" onClick={() => toast.dismiss(t.id)}>
+                Later
+              </Button>
+            </div>
+          </div>
+        ), { duration: 8000 })
+      }
       setEditingRuleId(null)
       formElement.reset()
+      setPendingRuleSuggestion(null)
       router.refresh()
       setActiveRuleId(null)
     })
@@ -329,11 +511,39 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <CostSummaryCard cost={summary.openAICost} />
         <SummaryCard title="Pending" value={summary.totals.pending} tone="warning" />
         <SummaryCard title="Completed" value={summary.totals.completed} tone="success" />
         <SummaryCard title="Auto-matched" value={summary.totals.autoCompleted} tone="info" />
         <SummaryCard title="No receipt required" value={summary.totals.noReceiptRequired} tone="neutral" />
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href="/receipts/monthly"
+          className="inline-flex items-center rounded-md border border-emerald-100 bg-white px-3 py-1.5 text-sm font-medium text-emerald-700 shadow-sm hover:bg-emerald-50"
+        >
+          Monthly overview
+        </Link>
+        <Link
+          href="/receipts/vendors"
+          className="inline-flex items-center rounded-md border border-emerald-100 bg-white px-3 py-1.5 text-sm font-medium text-emerald-700 shadow-sm hover:bg-emerald-50"
+        >
+          Vendor trends
+        </Link>
+        <Link
+          href="/receipts/pnl"
+          className="inline-flex items-center rounded-md border border-emerald-100 bg-white px-3 py-1.5 text-sm font-medium text-emerald-700 shadow-sm hover:bg-emerald-50"
+        >
+          P&amp;L dashboard
+        </Link>
+        <Link
+          href="/receipts/bulk"
+          className="inline-flex items-center rounded-md border border-emerald-100 bg-white px-3 py-1.5 text-sm font-medium text-emerald-700 shadow-sm hover:bg-emerald-50"
+        >
+          Bulk classification
+        </Link>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-5">
@@ -463,6 +673,8 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
                     )}
                   </button>
                 </th>
+                <th className="px-4 py-3">Vendor</th>
+                <th className="px-4 py-3">Expense type</th>
                 <th className="px-4 py-3 text-right">
                   <button
                     type="button"
@@ -495,13 +707,17 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
             <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
               {transactions.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-gray-500">No transactions match your filters.</td>
+                  <td colSpan={9} className="px-4 py-6 text-center text-gray-500">No transactions match your filters.</td>
                 </tr>
               )}
               {transactions.map((transaction) => {
                 const isProcessing = activeTransactionId === transaction.id && isRowPending
                 const files = transaction.files as ReceiptFile[]
                 const amount = transaction.amount_out ?? transaction.amount_in
+                const isEditingVendor = editingCell?.id === transaction.id && editingCell.field === 'vendor'
+                const isEditingExpense = editingCell?.id === transaction.id && editingCell.field === 'expense'
+                const isClassificationLoading =
+                  classificationTargetId === transaction.id && isClassificationPending
                 return (
                   <tr key={transaction.id} className="align-top">
                     <td className="px-4 py-3 text-gray-600">{formatDate(transaction.transaction_date)}</td>
@@ -512,6 +728,99 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
                         <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
                           <ArrowPathIcon className="h-4 w-4" /> Auto rule
                         </p>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      {isEditingVendor ? (
+                        <div className="flex flex-col gap-2">
+                          <Input
+                            autoFocus
+                            value={classificationDraft}
+                            onChange={(event) => setClassificationDraft(event.target.value)}
+                            placeholder="Vendor name"
+                            disabled={isClassificationLoading}
+                          />
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => handleClassificationSave(transaction, 'vendor')}
+                              disabled={isClassificationLoading}
+                            >
+                              {isClassificationLoading && <Spinner className="mr-2 h-3 w-3" />}Save
+                            </Button>
+                            <Button type="button" variant="ghost" size="sm" onClick={handleClassificationCancel}>
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-1">
+                          <button
+                            type="button"
+                            className={`text-left text-sm ${transaction.vendor_name ? 'font-medium text-gray-900 hover:text-emerald-600' : 'text-gray-400 hover:text-emerald-600'}`}
+                            onClick={() => handleClassificationStart(transaction, 'vendor')}
+                          >
+                            {transaction.vendor_name ?? 'Add vendor'}
+                          </button>
+                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <ClassificationBadge source={transaction.vendor_source} />
+                            {transaction.vendor_source === 'ai' && (
+                              <span className="inline-flex items-center gap-1 text-blue-600">
+                                <SparklesIcon className="h-3 w-3" />
+                                AI suggested
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      {isEditingExpense ? (
+                        <div className="flex flex-col gap-2">
+                          <Select
+                            value={classificationDraft}
+                            onChange={(event) => setClassificationDraft(event.target.value)}
+                            disabled={isClassificationLoading}
+                          >
+                            <option value="">Leave unset</option>
+                            {expenseCategoryOptions.map((option) => (
+                              <option key={option} value={option}>{option}</option>
+                            ))}
+                          </Select>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => handleClassificationSave(transaction, 'expense')}
+                              disabled={isClassificationLoading}
+                            >
+                              {isClassificationLoading && <Spinner className="mr-2 h-3 w-3" />}Save
+                            </Button>
+                            <Button type="button" variant="ghost" size="sm" onClick={handleClassificationCancel}>
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-1">
+                          <button
+                            type="button"
+                            className={`text-left text-sm ${transaction.expense_category ? 'font-medium text-gray-900 hover:text-emerald-600' : 'text-gray-400 hover:text-emerald-600'}`}
+                            onClick={() => handleClassificationStart(transaction, 'expense')}
+                          >
+                            {transaction.expense_category ?? 'Add expense type'}
+                          </button>
+                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <ClassificationBadge source={transaction.expense_category_source} />
+                            {transaction.expense_category_source === 'ai' && (
+                              <span className="inline-flex items-center gap-1 text-blue-600">
+                                <SparklesIcon className="h-3 w-3" />
+                                AI suggested
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       )}
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums">{formatCurrency(transaction.amount_in)}</td>
@@ -640,7 +949,52 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
             variant="bordered"
             header={<h3 className="text-md font-semibold text-gray-900">New rule</h3>}
           >
-            <form onSubmit={(event) => handleRuleSubmit(event)} className="space-y-3">
+            {pendingRuleSuggestion && (
+              <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-medium text-emerald-800">
+                    Suggestion ready for {pendingRuleSuggestion.setVendorName ?? pendingRuleSuggestion.setExpenseCategory}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="xs"
+                      variant="secondary"
+                      onClick={() => applyRuleSuggestion(pendingRuleSuggestion)}
+                    >
+                      Apply
+                    </Button>
+                    <Button size="xs" variant="ghost" onClick={() => setPendingRuleSuggestion(null)}>
+                      Dismiss
+                    </Button>
+                  </div>
+                </div>
+                <p className="mt-1">Prefill the form to auto-tag similar transactions next time.</p>
+              </div>
+            )}
+            {retroPrompt && (
+              <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-medium text-blue-800">
+                    Run rule “{retroPrompt.name}” on pending transactions?
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="xs"
+                      variant="secondary"
+                      onClick={() => handleRetroRun(retroPrompt.id)}
+                      disabled={isRetroPending}
+                    >
+                      {isRetroPending && <Spinner className="mr-2 h-3 w-3" />}Run now
+                    </Button>
+                    <Button size="xs" variant="ghost" onClick={() => setRetroPrompt(null)}>
+                      Later
+                    </Button>
+                  </div>
+                </div>
+                <p className="mt-1">We can re-check recent pending transactions immediately.</p>
+              </div>
+            )}
+            <form ref={newRuleFormRef} onSubmit={(event) => handleRuleSubmit(event)} className="space-y-3">
               <Input name="name" placeholder="Rule name" required />
               <Input name="match_description" placeholder="Match description (comma separated keywords)" />
               <Input name="match_transaction_type" placeholder="Match transaction type" />
@@ -658,6 +1012,13 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
                 <option value="auto_completed">Mark as auto completed</option>
                 <option value="completed">Mark as completed</option>
                 <option value="pending">Leave pending</option>
+              </Select>
+              <Input name="set_vendor_name" placeholder="Set vendor name (optional)" />
+              <Select name="set_expense_category" defaultValue="">
+                <option value="">Leave expense unset</option>
+                {expenseCategoryOptions.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
               </Select>
               <Button type="submit" disabled={isRulePending && activeRuleId === 'new'}>
                 {isRulePending && activeRuleId === 'new' && <Spinner className="mr-2 h-4 w-4" />}Create rule
@@ -726,6 +1087,13 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
                       <option value="completed">Mark as completed</option>
                       <option value="pending">Leave pending</option>
                     </Select>
+                    <Input name="set_vendor_name" defaultValue={rule.set_vendor_name ?? ''} placeholder="Set vendor name (optional)" />
+                    <Select name="set_expense_category" defaultValue={rule.set_expense_category ?? ''}>
+                      <option value="">Leave expense unset</option>
+                      {expenseCategoryOptions.map((option) => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </Select>
                     <Button type="submit" disabled={isRulePending && activeRuleId === rule.id}>
                       {isRulePending && activeRuleId === rule.id && <Spinner className="mr-2 h-4 w-4" />}Save changes
                     </Button>
@@ -737,6 +1105,8 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
                     {rule.match_min_amount != null && <p>Min amount: £{rule.match_min_amount.toFixed(2)}</p>}
                     {rule.match_max_amount != null && <p>Max amount: £{rule.match_max_amount.toFixed(2)}</p>}
                     <p>Outcome: {statusLabels[rule.auto_status]}</p>
+                    {rule.set_vendor_name && <p>Sets vendor: {rule.set_vendor_name}</p>}
+                    {rule.set_expense_category && <p>Sets expense: {rule.set_expense_category}</p>}
                   </div>
                 )}
               </Card>
@@ -772,5 +1142,41 @@ function SummaryCard({ title, value, tone }: SummaryCardProps) {
         </span>
       </div>
     </Card>
+  )
+}
+
+function CostSummaryCard({ cost }: { cost: number }) {
+  const badge = cost > 0
+    ? { label: 'Includes AI tagging', className: 'bg-blue-50 text-blue-700' }
+    : { label: 'No spend yet', className: 'bg-gray-100 text-gray-600' }
+
+  return (
+    <Card variant="bordered" className="h-full">
+      <div className="space-y-2">
+        <p className="text-sm text-gray-500">OpenAI spend</p>
+        <p className="text-3xl font-semibold text-gray-900">{formatCurrencyStrict(cost)}</p>
+        <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${badge.className}`}>
+          {badge.label}
+        </span>
+      </div>
+    </Card>
+  )
+}
+
+function ClassificationBadge({ source }: { source?: ReceiptClassificationSource | null }) {
+  if (!source) return null
+
+  const styles: Record<ReceiptClassificationSource, { label: string; className: string }> = {
+    ai: { label: 'AI', className: 'bg-blue-50 text-blue-700' },
+    manual: { label: 'Manual', className: 'bg-emerald-50 text-emerald-700' },
+    rule: { label: 'Rule', className: 'bg-purple-50 text-purple-700' },
+    import: { label: 'Import', className: 'bg-gray-100 text-gray-600' },
+  }
+
+  const config = styles[source]
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${config.className}`}>
+      {config.label}
+    </span>
   )
 }

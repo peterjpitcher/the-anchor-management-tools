@@ -48,6 +48,34 @@ export type ReceiptTransactionStatus =
   | 'auto_completed'
   | 'no_receipt_required';
 
+export type ReceiptClassificationSource = 'ai' | 'manual' | 'rule' | 'import';
+
+export type ReceiptExpenseCategory =
+  | 'Total Staff'
+  | 'Business Rate'
+  | 'Water Rates'
+  | 'Heat/Light/Power'
+  | 'Premises Repairs/Maintenance'
+  | 'Equipment Repairs/Maintenance'
+  | 'Gardening Expenses'
+  | 'Buildings Insurance'
+  | 'Maintenance and Service Plan Charges'
+  | 'Licensing'
+  | 'Tenant Insurance'
+  | 'Entertainment'
+  | 'Sky / PRS / Vidimix'
+  | 'Marketing/Promotion/Advertising'
+  | 'Print/Post Stationary'
+  | 'Telephone'
+  | 'Travel/Car'
+  | 'Waste Disposal/Cleaning/Hygiene'
+  | 'Third Party Booking Fee'
+  | 'Accountant/StockTaker/Professional Fees'
+  | 'Bank Charges/Credit Card Commission'
+  | 'Equipment Hire'
+  | 'Sundries/Consumables'
+  | 'Drinks Gas';
+
 export type ReceiptRuleDirection = 'in' | 'out' | 'both';
 
 export interface ReceiptBatch {
@@ -76,6 +104,8 @@ export interface ReceiptRule {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+  set_vendor_name: string | null;
+  set_expense_category: ReceiptExpenseCategory | null;
 }
 
 export interface ReceiptTransaction {
@@ -96,6 +126,14 @@ export interface ReceiptTransaction {
   marked_at: string | null;
   marked_method: string | null;
   rule_applied_id: string | null;
+  vendor_name: string | null;
+  vendor_source: ReceiptClassificationSource | null;
+  vendor_rule_id: string | null;
+  vendor_updated_at: string | null;
+  expense_category: ReceiptExpenseCategory | null;
+  expense_category_source: ReceiptClassificationSource | null;
+  expense_rule_id: string | null;
+  expense_updated_at: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -122,6 +160,33 @@ export interface ReceiptTransactionLog {
   performed_by: string | null;
   rule_id: string | null;
   performed_at: string;
+}
+
+export interface AIUsageEvent {
+  id: number;
+  occurred_at: string;
+  context: string | null;
+  model: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cost: number;
+}
+
+export type PLTimeframe = '1m' | '3m' | '12m'
+
+export interface PLTarget {
+  metric_key: string;
+  timeframe: PLTimeframe;
+  target_value: number | null;
+  updated_at: string;
+}
+
+export interface PLManualActual {
+  metric_key: string;
+  timeframe: PLTimeframe;
+  value: number | null;
+  updated_at: string;
 }
 
 export interface Customer {
@@ -563,6 +628,21 @@ export interface Database {
         Row: ReceiptTransactionLog;
         Insert: Omit<ReceiptTransactionLog, 'id' | 'performed_at'>;
         Update: Partial<Omit<ReceiptTransactionLog, 'id' | 'performed_at' | 'transaction_id'>>;
+      };
+      ai_usage_events: {
+        Row: AIUsageEvent;
+        Insert: Omit<AIUsageEvent, 'id' | 'occurred_at' | 'total_tokens'> & { total_tokens?: number };
+        Update: Partial<Omit<AIUsageEvent, 'id' | 'occurred_at'>>;
+      };
+      pl_targets: {
+        Row: PLTarget;
+        Insert: Omit<PLTarget, 'updated_at'> & { updated_at?: string };
+        Update: Partial<Omit<PLTarget, 'metric_key' | 'timeframe'>>;
+      };
+      pl_manual_actuals: {
+        Row: PLManualActual;
+        Insert: Omit<PLManualActual, 'updated_at'> & { updated_at?: string };
+        Update: Partial<Omit<PLManualActual, 'metric_key' | 'timeframe'>>;
       };
     };
   };

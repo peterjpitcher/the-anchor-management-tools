@@ -5,15 +5,59 @@ import { checkUserPermission } from './rbac'
 import { logAuditEvent } from '@/lib/audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import { createAdminClient } from '@/lib/supabase/server'
-import { receiptRuleSchema, receiptMarkSchema } from '@/lib/validation'
-import type { ReceiptBatch, ReceiptRule, ReceiptTransaction, ReceiptFile, ReceiptTransactionLog } from '@/types/database'
+import {
+  receiptRuleSchema,
+  receiptMarkSchema,
+  receiptExpenseCategorySchema,
+  receiptRuleDirectionSchema,
+  receiptTransactionStatusSchema,
+} from '@/lib/validation'
+import type {
+  ReceiptBatch,
+  ReceiptRule,
+  ReceiptTransaction,
+  ReceiptFile,
+  ReceiptTransactionLog,
+  ReceiptExpenseCategory,
+  ReceiptClassificationSource,
+  Database,
+} from '@/types/database'
 import Papa from 'papaparse'
 import { createHash } from 'crypto'
 import { z } from 'zod'
+import { classifyReceiptTransaction, type ClassificationUsage } from '@/lib/openai'
 
 const RECEIPT_BUCKET = 'receipts'
 const MAX_RECEIPT_UPLOAD_SIZE = 15 * 1024 * 1024 // 15 MB safety limit
 const DEFAULT_PAGE_SIZE = 25
+const EXPENSE_CATEGORY_OPTIONS = receiptExpenseCategorySchema.options
+const BULK_STATUS_OPTIONS = receiptTransactionStatusSchema.options
+type BulkStatus = (typeof BULK_STATUS_OPTIONS)[number]
+
+const bulkGroupQuerySchema = z.object({
+  limit: z.number().int().min(1).max(500).optional(),
+  statuses: z.array(receiptTransactionStatusSchema).optional(),
+  onlyUnclassified: z.boolean().optional(),
+})
+
+const bulkGroupApplySchema = z.object({
+  details: z.string().min(1),
+  statuses: z.array(receiptTransactionStatusSchema).optional(),
+  vendorName: z.union([z.string(), z.null()]).optional(),
+  expenseCategory: z.union([z.string(), z.null()]).optional(),
+})
+
+const groupRuleInputSchema = z.object({
+  name: z.string().min(1).max(120),
+  details: z.string().min(1),
+  matchDescription: z.string().trim().max(300).optional(),
+  description: z.string().trim().max(500).optional(),
+  direction: receiptRuleDirectionSchema.default('both'),
+  autoStatus: receiptTransactionStatusSchema.default('no_receipt_required'),
+  vendorName: z.union([z.string(), z.null()]).optional(),
+  expenseCategory: z.union([z.string(), z.null()]).optional(),
+})
+type AdminClient = ReturnType<typeof createAdminClient>
 
 type CsvRow = {
   Date: string
@@ -56,6 +100,7 @@ export type ReceiptWorkspaceSummary = {
   }
   needsAttentionValue: number
   lastImport?: ReceiptBatch | null
+  openAICost: number
 }
 
 export type ReceiptWorkspaceData = {
@@ -72,6 +117,182 @@ export type ReceiptWorkspaceData = {
   }
 }
 
+export type ReceiptMonthlySummaryItem = {
+  monthStart: string
+  totalIncome: number
+  totalOutgoing: number
+  topIncome: Array<{ label: string; amount: number }>
+  topOutgoing: Array<{ label: string; amount: number }>
+}
+
+export type ReceiptVendorTrendMonth = {
+  monthStart: string
+  totalOutgoing: number
+  totalIncome: number
+  transactionCount: number
+}
+
+export type ReceiptVendorSummary = {
+  vendorLabel: string
+  months: ReceiptVendorTrendMonth[]
+  totalOutgoing: number
+  totalIncome: number
+  recentAverageOutgoing: number
+  previousAverageOutgoing: number
+  changePercentage: number
+}
+
+export type ReceiptDetailGroupSuggestion = {
+  vendorName: string | null
+  expenseCategory: ReceiptExpenseCategory | null
+  reasoning: string | null
+  source: 'ai' | 'existing' | 'none'
+  model?: string | null
+}
+
+export type ReceiptDetailGroup = {
+  details: string
+  transactionIds: string[]
+  transactionCount: number
+  needsVendorCount: number
+  needsExpenseCount: number
+  totalIn: number
+  totalOut: number
+  firstDate: string | null
+  lastDate: string | null
+  dominantVendor: string | null
+  dominantExpense: ReceiptExpenseCategory | null
+  sampleTransaction: {
+    id: string
+    transactionDate: string | null
+    transactionType: string | null
+    amountIn: number | null
+    amountOut: number | null
+    vendorName: string | null
+    vendorSource: ReceiptClassificationSource | null
+    expenseCategory: ReceiptExpenseCategory | null
+    expenseCategorySource: ReceiptClassificationSource | null
+  } | null
+  suggestion: ReceiptDetailGroupSuggestion
+}
+
+export type ReceiptBulkReviewData = {
+  groups: ReceiptDetailGroup[]
+  generatedAt: string
+  config: {
+    limit: number
+    statuses: ReceiptTransaction['status'][]
+    onlyUnclassified: boolean
+    openAIEnabled: boolean
+  }
+}
+
+type RpcDetailGroupRow = {
+  details: string
+  transaction_ids: string[]
+  transaction_count: number
+  needs_vendor_count: number
+  needs_expense_count: number
+  total_in: number | string | null
+  total_out: number | string | null
+  first_date: string | null
+  last_date: string | null
+  dominant_vendor: string | null
+  dominant_expense: string | null
+  sample_transaction: unknown
+}
+
+type NormalizedDetailGroupRow = {
+  details: string
+  transactionIds: string[]
+  transactionCount: number
+  needsVendorCount: number
+  needsExpenseCount: number
+  totalIn: number
+  totalOut: number
+  firstDate: string | null
+  lastDate: string | null
+  dominantVendor: string | null
+  dominantExpense: ReceiptExpenseCategory | null
+  sampleTransaction: GroupSample
+}
+
+function normalizeDetailGroupRow(row: RpcDetailGroupRow): NormalizedDetailGroupRow {
+  const transactionIds = Array.isArray(row.transaction_ids) ? row.transaction_ids : []
+  const transactionCount = Number(row.transaction_count ?? transactionIds.length ?? 0)
+  return {
+    details: row.details,
+    transactionIds,
+    transactionCount,
+    needsVendorCount: Number(row.needs_vendor_count ?? 0),
+    needsExpenseCount: Number(row.needs_expense_count ?? 0),
+    totalIn: parseNumeric(row.total_in),
+    totalOut: parseNumeric(row.total_out),
+    firstDate: row.first_date,
+    lastDate: row.last_date,
+    dominantVendor: normalizeVendorInput(row.dominant_vendor) ?? null,
+    dominantExpense: coerceExpenseCategory(row.dominant_expense),
+    sampleTransaction: parseSampleTransaction(row.sample_transaction),
+  }
+}
+
+async function buildGroupSuggestion(
+  supabase: AdminClient,
+  group: NormalizedDetailGroupRow,
+  openAIEnabled: boolean
+): Promise<ReceiptDetailGroupSuggestion> {
+  const existingVendor = group.dominantVendor
+  const existingExpense = group.dominantExpense
+
+  let suggestion: ReceiptDetailGroupSuggestion = {
+    vendorName: existingVendor,
+    expenseCategory: existingExpense ?? null,
+    reasoning: null,
+    source: existingVendor || existingExpense ? 'existing' : 'none',
+  }
+
+  const needsAI = group.needsVendorCount > 0 || group.needsExpenseCount > 0 || (!existingVendor && !existingExpense)
+
+  if (!openAIEnabled || !needsAI) {
+    return suggestion
+  }
+
+  const sample = group.sampleTransaction
+  const averageIn = group.transactionCount ? group.totalIn / group.transactionCount : 0
+  const averageOut = group.transactionCount ? group.totalOut / group.transactionCount : 0
+  const amountIn = sample?.amountIn && sample.amountIn > 0 ? sample.amountIn : averageIn || null
+  const amountOut = sample?.amountOut && sample.amountOut > 0 ? sample.amountOut : averageOut || null
+  const direction = deriveDirection(amountIn, amountOut)
+
+  const outcome = await classifyReceiptTransaction({
+    details: group.details,
+    amountIn,
+    amountOut,
+    transactionType: sample?.transactionType ?? null,
+    categories: EXPENSE_CATEGORY_OPTIONS,
+    direction,
+    existingVendor: existingVendor ?? undefined,
+    existingExpenseCategory: existingExpense ?? undefined,
+  })
+
+  if (outcome?.result) {
+    const vendorName = normalizeVendorInput(outcome.result.vendorName) ?? existingVendor ?? null
+    const expenseCategory = coerceExpenseCategory(outcome.result.expenseCategory) ?? existingExpense ?? null
+    suggestion = {
+      vendorName,
+      expenseCategory,
+      reasoning: outcome.result.reasoning,
+      source: 'ai',
+      model: outcome.usage?.model,
+    }
+    if (outcome.usage) {
+      await recordAIUsage(supabase, outcome.usage, `receipt_group:${hashDetails(group.details)}`)
+    }
+  }
+
+  return suggestion
+}
+
 const fileSchema = z.instanceof(File, { message: 'Please attach a CSV file' })
   .refine((file) => file.size > 0, { message: 'File is empty' })
   .refine((file) => file.type === 'text/csv' || file.name.endsWith('.csv'), {
@@ -83,6 +304,17 @@ const receiptFileSchema = z.instanceof(File, { message: 'Please choose a receipt
   .refine((file) => file.size <= MAX_RECEIPT_UPLOAD_SIZE, {
     message: 'File is too large. Please keep receipts under 15MB.'
   })
+
+const classificationUpdateSchema = z.object({
+  transactionId: z.string().uuid('Transaction reference is invalid'),
+  vendorName: z
+    .string()
+    .trim()
+    .max(120, 'Keep the vendor name under 120 characters')
+    .nullable()
+    .optional(),
+  expenseCategory: receiptExpenseCategorySchema.nullable().optional(),
+})
 
 function sanitizeText(input: string): string {
   return input
@@ -208,6 +440,65 @@ function parseCurrency(value: string | null | undefined): number | null {
   return Number.isFinite(result) ? Number(result.toFixed(2)) : null
 }
 
+function normalizeVendorInput(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  return trimmed.slice(0, 120)
+}
+
+function coerceExpenseCategory(value: unknown): ReceiptExpenseCategory | null {
+  const parsed = receiptExpenseCategorySchema.safeParse(value)
+  return parsed.success ? parsed.data : null
+}
+
+function hashDetails(details: string): string {
+  return createHash('sha256').update(details).digest('hex').slice(0, 24)
+}
+
+function parseNumeric(value: unknown): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+  return 0
+}
+
+function roundToCurrency(value: number): number {
+  return Number(value.toFixed(2))
+}
+
+type GroupSample = ReceiptDetailGroup['sampleTransaction']
+
+function parseSampleTransaction(value: unknown): GroupSample {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  const id = typeof record.id === 'string' ? record.id : null
+  if (!id) return null
+  return {
+    id,
+    transactionDate: typeof record.transaction_date === 'string' ? record.transaction_date : null,
+    transactionType: typeof record.transaction_type === 'string' ? record.transaction_type : null,
+    amountIn: parseNumeric(record.amount_in) || null,
+    amountOut: parseNumeric(record.amount_out) || null,
+    vendorName: normalizeVendorInput(record.vendor_name) ?? null,
+    vendorSource: typeof record.vendor_source === 'string' ? (record.vendor_source as ReceiptClassificationSource) : null,
+    expenseCategory: coerceExpenseCategory(record.expense_category) ?? null,
+    expenseCategorySource: typeof record.expense_category_source === 'string'
+      ? (record.expense_category_source as ReceiptClassificationSource)
+      : null,
+  }
+}
+
+function deriveDirection(amountIn: number | null, amountOut: number | null): 'in' | 'out' {
+  const inValue = amountIn ?? 0
+  const outValue = amountOut ?? 0
+  if (outValue > 0 && outValue >= inValue) return 'out'
+  if (inValue > 0) return 'in'
+  return outValue > inValue ? 'out' : 'in'
+}
+
 function createTransactionHash(input: {
   transactionDate: string
   details: string
@@ -261,7 +552,7 @@ async function applyAutomationRules(transactionIds: string[]): Promise<number> {
     return 0
   }
 
-  let autoUpdated = 0
+  let statusAutoUpdated = 0
   const now = new Date().toISOString()
   const logs: Array<Omit<ReceiptTransactionLog, 'id'>> = []
 
@@ -271,7 +562,6 @@ async function applyAutomationRules(transactionIds: string[]): Promise<number> {
     const direction = getTransactionDirection(transaction)
     const amountValue = guessAmountValue(transaction)
     const detailText = transaction.details.toLowerCase()
-
     const matchingRule = rules.find((rule) => {
       if (!rule.is_active) return false
 
@@ -311,16 +601,78 @@ async function applyAutomationRules(transactionIds: string[]): Promise<number> {
       continue
     }
 
-    const updatePayload = {
-      status: matchingRule.auto_status,
-      receipt_required: matchingRule.auto_status === 'pending' ? true : false,
-      marked_by: null,
-      marked_by_email: null,
-      marked_by_name: null,
-      marked_at: now,
-      marked_method: 'rule',
-      rule_applied_id: matchingRule.id,
+    const vendorLocked = transaction.vendor_source === 'manual'
+    const expenseLocked = transaction.expense_category_source === 'manual'
+
+    const shouldUpdateVendor = Boolean(
+      matchingRule.set_vendor_name &&
+        !vendorLocked &&
+        (
+          transaction.vendor_name !== matchingRule.set_vendor_name ||
+          transaction.vendor_source !== 'rule' ||
+          transaction.vendor_rule_id !== matchingRule.id
+        )
+    )
+
+    const shouldUpdateExpense = Boolean(
+      matchingRule.set_expense_category &&
+        !expenseLocked &&
+        (
+          transaction.expense_category !== matchingRule.set_expense_category ||
+          transaction.expense_category_source !== 'rule' ||
+          transaction.expense_rule_id !== matchingRule.id
+        )
+    )
+
+    const updatePayload: Record<string, unknown> = {}
+    const classificationNotes: string[] = []
+    const targetStatus = matchingRule.auto_status
+    const statusChanged = targetStatus !== transaction.status
+
+    if (statusChanged) {
+      updatePayload.status = targetStatus
+      updatePayload.receipt_required = targetStatus === 'pending'
+      updatePayload.marked_by = null
+      updatePayload.marked_by_email = null
+      updatePayload.marked_by_name = null
+      updatePayload.marked_at = now
+      updatePayload.marked_method = 'rule'
+      updatePayload.rule_applied_id = matchingRule.id
+    } else if (targetStatus !== 'pending') {
+      updatePayload.receipt_required = false
+      updatePayload.marked_by = null
+      updatePayload.marked_by_email = null
+      updatePayload.marked_by_name = null
+      updatePayload.marked_at = now
+      updatePayload.marked_method = 'rule'
+      updatePayload.rule_applied_id = matchingRule.id
     }
+
+    if (shouldUpdateVendor) {
+      updatePayload.vendor_name = matchingRule.set_vendor_name
+      updatePayload.vendor_source = 'rule'
+      updatePayload.vendor_rule_id = matchingRule.id
+      updatePayload.vendor_updated_at = now
+      classificationNotes.push(`Vendor → ${matchingRule.set_vendor_name}`)
+    }
+
+    if (shouldUpdateExpense) {
+      updatePayload.expense_category = matchingRule.set_expense_category
+      updatePayload.expense_category_source = 'rule'
+      updatePayload.expense_rule_id = matchingRule.id
+      updatePayload.expense_updated_at = now
+      classificationNotes.push(`Expense → ${matchingRule.set_expense_category}`)
+    }
+
+    if (
+      !Object.keys(updatePayload).length &&
+      !statusChanged &&
+      (matchingRule.auto_status === transaction.status)
+    ) {
+      continue
+    }
+
+    updatePayload.updated_at = now
 
     const { error } = await supabase
       .from('receipt_transactions')
@@ -328,17 +680,32 @@ async function applyAutomationRules(transactionIds: string[]): Promise<number> {
       .eq('id', transaction.id)
 
     if (!error) {
-      autoUpdated += 1
-      logs.push({
-        transaction_id: transaction.id,
-        previous_status: transaction.status,
-        new_status: matchingRule.auto_status,
-        action_type: 'rule_auto_mark',
-        note: `Auto-marked by rule: ${matchingRule.name}`,
-        performed_by: null,
-        rule_id: matchingRule.id,
-        performed_at: now,
-      })
+      if (statusChanged) {
+        statusAutoUpdated += 1
+        logs.push({
+          transaction_id: transaction.id,
+          previous_status: transaction.status,
+          new_status: targetStatus,
+          action_type: 'rule_auto_mark',
+          note: `Auto-marked by rule: ${matchingRule.name}`,
+          performed_by: null,
+          rule_id: matchingRule.id,
+          performed_at: now,
+        })
+      }
+
+      if (classificationNotes.length) {
+        logs.push({
+          transaction_id: transaction.id,
+          previous_status: transaction.status,
+          new_status: statusChanged ? targetStatus : transaction.status,
+          action_type: 'rule_classification',
+          note: `Classification updated by rule ${matchingRule.name}: ${classificationNotes.join(' | ')}`,
+          performed_by: null,
+          rule_id: matchingRule.id,
+          performed_at: now,
+        })
+      }
     }
   }
 
@@ -346,7 +713,197 @@ async function applyAutomationRules(transactionIds: string[]): Promise<number> {
     await supabase.from('receipt_transaction_logs').insert(logs)
   }
 
-  return autoUpdated
+  return statusAutoUpdated
+}
+
+async function recordAIUsage(
+  supabase: AdminClient,
+  usage: ClassificationUsage | undefined,
+  context: string
+) {
+  if (!usage) return
+
+  const { error } = await (supabase.from('ai_usage_events') as any).insert([
+    {
+      context,
+      model: usage.model,
+      prompt_tokens: usage.promptTokens,
+      completion_tokens: usage.completionTokens,
+      total_tokens: usage.totalTokens,
+      cost: usage.cost,
+    },
+  ])
+
+  if (error) {
+    console.error('Failed to record OpenAI usage', error)
+  }
+}
+
+async function classifyTransactionsWithAI(
+  supabase: AdminClient,
+  transactionIds: string[]
+): Promise<void> {
+  if (!transactionIds.length) return
+
+  if (!process.env.OPENAI_API_KEY) {
+    return
+  }
+
+  const client = supabase as any
+
+  const { data: transactions, error } = await client
+    .from('receipt_transactions')
+    .select(
+      'id, details, transaction_type, amount_in, amount_out, vendor_name, vendor_source, vendor_rule_id, expense_category, expense_category_source, expense_rule_id, status'
+    )
+    .in('id', transactionIds)
+
+  if (error) {
+    console.error('Failed to load transactions for AI classification', error)
+    return
+  }
+
+  const transactionRows = (transactions ?? []) as ReceiptTransaction[]
+
+  if (!transactionRows.length) return
+
+  const logs: Array<Omit<ReceiptTransactionLog, 'id'>> = []
+
+  for (const transaction of transactionRows) {
+    const vendorLocked = transaction.vendor_source === 'manual' || transaction.vendor_source === 'rule'
+    const expenseLocked = transaction.expense_category_source === 'manual'
+
+    const needsVendor = !vendorLocked && !transaction.vendor_name
+    const needsExpense = !expenseLocked && !transaction.expense_category
+
+    if (!needsVendor && !needsExpense) {
+      continue
+    }
+
+    const direction = getTransactionDirection(transaction)
+
+    const outcome = await classifyReceiptTransaction({
+      details: transaction.details,
+      amountIn: transaction.amount_in,
+      amountOut: transaction.amount_out,
+      transactionType: transaction.transaction_type,
+      categories: EXPENSE_CATEGORY_OPTIONS,
+      direction,
+      existingVendor: transaction.vendor_name ?? undefined,
+      existingExpenseCategory: transaction.expense_category ?? undefined,
+    })
+
+    if (!outcome?.result) {
+      continue
+    }
+
+    await recordAIUsage(supabase, outcome.usage, `receipt_classification:${transaction.id}`)
+
+    const { vendorName, expenseCategory, reasoning } = outcome.result
+    const updatePayload: Record<string, unknown> = {}
+    const changeNotes: string[] = []
+    const now = new Date().toISOString()
+
+    if (needsVendor && vendorName) {
+      updatePayload.vendor_name = vendorName
+      updatePayload.vendor_source = 'ai'
+      updatePayload.vendor_rule_id = null
+      updatePayload.vendor_updated_at = now
+      changeNotes.push(`Vendor → ${vendorName}`)
+    }
+
+    if (needsExpense && expenseCategory) {
+      updatePayload.expense_category = expenseCategory
+      updatePayload.expense_category_source = 'ai'
+      updatePayload.expense_rule_id = null
+      updatePayload.expense_updated_at = now
+      changeNotes.push(`Expense → ${expenseCategory}`)
+    }
+
+    if (!Object.keys(updatePayload).length) {
+      continue
+    }
+
+    updatePayload.updated_at = now
+
+    const { error: updateError } = await client
+      .from('receipt_transactions')
+      .update(updatePayload)
+      .eq('id', transaction.id)
+
+    if (updateError) {
+      console.error('Failed to persist AI classification', updateError)
+      continue
+    }
+
+    logs.push({
+      transaction_id: transaction.id,
+      previous_status: transaction.status,
+      new_status: transaction.status,
+      action_type: 'ai_classification',
+      note: reasoning
+        ? `AI suggestion applied: ${changeNotes.join(' | ')} (Reason: ${reasoning})`
+        : `AI suggestion applied: ${changeNotes.join(' | ')}`,
+      performed_by: null,
+      rule_id: null,
+      performed_at: now,
+    })
+  }
+
+  if (logs.length) {
+    await client.from('receipt_transaction_logs').insert(logs)
+  }
+}
+
+type RuleSuggestion = {
+  suggestedName: string
+  matchDescription: string | null
+  direction: 'in' | 'out'
+  amountValue: number
+  details: string
+  transactionType: string | null
+  setVendorName: string | null
+  setExpenseCategory: ReceiptExpenseCategory | null
+}
+
+export type ClassificationRuleSuggestion = RuleSuggestion
+
+function buildRuleSuggestion(
+  transaction: ReceiptTransaction,
+  updates: {
+    vendorName?: string | null
+    expenseCategory?: ReceiptExpenseCategory | null
+  }
+): RuleSuggestion | null {
+  if (!updates.vendorName && !updates.expenseCategory) {
+    return null
+  }
+
+  const direction = getTransactionDirection(transaction)
+  const amountValue = guessAmountValue(transaction)
+  const details = transaction.details?.trim() ?? ''
+
+  const keywords = details
+    .split(/\s+/)
+    .map((token) => token.replace(/[^a-zA-Z0-9]/g, '').toLowerCase())
+    .filter((token) => token.length >= 4)
+    .slice(0, 3)
+
+  const matchDescription = keywords.join(',') || null
+
+  const suggestedNameBase = updates.vendorName ?? updates.expenseCategory ?? 'Receipt rule'
+  const suggestedName = `${suggestedNameBase} auto-tag`
+
+  return {
+    suggestedName,
+    matchDescription,
+    direction,
+    amountValue,
+    details,
+    transactionType: transaction.transaction_type,
+    setVendorName: updates.vendorName ?? null,
+    setExpenseCategory: updates.expenseCategory ?? null,
+  }
 }
 export async function importReceiptStatement(formData: FormData) {
   await checkUserPermission('receipts', 'manage')
@@ -439,6 +996,8 @@ export async function importReceiptStatement(formData: FormData) {
 
     await supabase.from('receipt_transaction_logs').insert(logs)
   }
+
+  await classifyTransactionsWithAI(supabase, insertedIds)
 
   await logAuditEvent({
     action: 'create',
@@ -552,6 +1111,134 @@ export async function markReceiptTransaction(input: {
   revalidatePath('/receipts')
 
   return { success: true, transaction: updated }
+}
+
+export async function updateReceiptClassification(input: {
+  transactionId: string
+  vendorName?: string | null
+  expenseCategory?: ReceiptExpenseCategory | null
+}) {
+  await checkUserPermission('receipts', 'manage')
+
+  const hasVendorField = Object.prototype.hasOwnProperty.call(input, 'vendorName')
+  const hasExpenseField = Object.prototype.hasOwnProperty.call(input, 'expenseCategory')
+
+  if (!hasVendorField && !hasExpenseField) {
+    return { error: 'Nothing to update' }
+  }
+
+  const normalizedVendor = hasVendorField
+    ? (typeof input.vendorName === 'string' ? input.vendorName.trim() : null)
+    : undefined
+
+  const validation = classificationUpdateSchema.safeParse({
+    transactionId: input.transactionId,
+    vendorName: hasVendorField ? (normalizedVendor ? normalizedVendor : null) : undefined,
+    expenseCategory: hasExpenseField ? (input.expenseCategory ?? null) : undefined,
+  })
+
+  if (!validation.success) {
+    return { error: validation.error.issues[0]?.message ?? 'Invalid classification data' }
+  }
+
+  const { transactionId, vendorName, expenseCategory } = validation.data
+
+  const supabase = createAdminClient()
+  const { user_id } = await getCurrentUser()
+
+  const { data: transaction, error: fetchError } = await supabase
+    .from('receipt_transactions')
+    .select('*')
+    .eq('id', transactionId)
+    .single()
+
+  if (fetchError || !transaction) {
+    return { error: 'Transaction not found' }
+  }
+
+  const updatePayload: Record<string, unknown> = {}
+  const changeNotes: string[] = []
+  const now = new Date().toISOString()
+  let vendorChanged = false
+  let expenseChanged = false
+
+  if (hasVendorField) {
+    const currentVendor = transaction.vendor_name ?? null
+    if (currentVendor !== (vendorName ?? null)) {
+      updatePayload.vendor_name = vendorName ?? null
+      updatePayload.vendor_source = (vendorName ? 'manual' : null) as ReceiptClassificationSource | null
+      updatePayload.vendor_rule_id = null
+      updatePayload.vendor_updated_at = now
+      changeNotes.push(vendorName ? `Vendor → ${vendorName}` : 'Vendor cleared')
+      vendorChanged = true
+    }
+  }
+
+  if (hasExpenseField) {
+    const currentExpense = transaction.expense_category ?? null
+    if (currentExpense !== (expenseCategory ?? null)) {
+      updatePayload.expense_category = expenseCategory ?? null
+      updatePayload.expense_category_source = (expenseCategory ? 'manual' : null) as ReceiptClassificationSource | null
+      updatePayload.expense_rule_id = null
+      updatePayload.expense_updated_at = now
+      changeNotes.push(expenseCategory ? `Expense → ${expenseCategory}` : 'Expense cleared')
+      expenseChanged = true
+    }
+  }
+
+  if (!vendorChanged && !expenseChanged) {
+    return { success: true, transaction, ruleSuggestion: null }
+  }
+
+  updatePayload.updated_at = now
+
+  const { data: updated, error: updateError } = await supabase
+    .from('receipt_transactions')
+    .update(updatePayload)
+    .eq('id', transactionId)
+    .select('*')
+    .single()
+
+  if (updateError || !updated) {
+    console.error('Failed to update receipt classification:', updateError)
+    return { error: 'Failed to update classification.' }
+  }
+
+  await supabase.from('receipt_transaction_logs').insert({
+    transaction_id: transactionId,
+    previous_status: transaction.status,
+    new_status: updated.status,
+    action_type: 'manual_classification',
+    note: changeNotes.join(' | '),
+    performed_by: user_id,
+    rule_id: null,
+    performed_at: now,
+  })
+
+  await logAuditEvent({
+    action: 'update',
+    resource_type: 'receipt_transaction_classification',
+    resource_id: transactionId,
+    details: {
+      vendor_changed: vendorChanged,
+      expense_changed: expenseChanged,
+      vendor: vendorName ?? null,
+      expense: expenseCategory ?? null,
+    },
+  })
+
+  const ruleSuggestion = buildRuleSuggestion(updated, {
+    vendorName: vendorChanged ? vendorName ?? null : undefined,
+    expenseCategory: expenseChanged ? expenseCategory ?? null : undefined,
+  })
+
+  revalidatePath('/receipts')
+
+  return {
+    success: true,
+    transaction: updated,
+    ruleSuggestion,
+  }
 }
 
 export async function uploadReceiptForTransaction(formData: FormData) {
@@ -744,8 +1431,15 @@ export async function deleteReceiptFile(fileId: string) {
   return { success: true }
 }
 
-export async function createReceiptRule(formData: FormData) {
+type RuleMutationResult =
+  | { success: true; rule: ReceiptRule; canPromptRetro: true }
+  | { error: string }
+
+export async function createReceiptRule(formData: FormData): Promise<RuleMutationResult> {
   await checkUserPermission('receipts', 'manage')
+
+  const rawVendor = formData.get('set_vendor_name')
+  const rawExpense = formData.get('set_expense_category')
 
   const rawData = {
     name: formData.get('name'),
@@ -756,6 +1450,10 @@ export async function createReceiptRule(formData: FormData) {
     match_min_amount: toOptionalNumber(formData.get('match_min_amount')),
     match_max_amount: toOptionalNumber(formData.get('match_max_amount')),
     auto_status: formData.get('auto_status') || 'no_receipt_required',
+    set_vendor_name:
+      typeof rawVendor === 'string' && rawVendor.trim().length ? rawVendor.trim() : undefined,
+    set_expense_category:
+      typeof rawExpense === 'string' && rawExpense.trim().length ? rawExpense.trim() : undefined,
   }
 
   const parsed = receiptRuleSchema.safeParse(rawData)
@@ -788,16 +1486,16 @@ export async function createReceiptRule(formData: FormData) {
     details: parsed.data,
   })
 
-  // Re-run automation on pending transactions after creating a new rule
-  await refreshAutomationForPendingTransactions()
-
   revalidatePath('/receipts')
 
-  return { success: true, rule }
+  return { success: true, rule, canPromptRetro: true }
 }
 
-export async function updateReceiptRule(ruleId: string, formData: FormData) {
+export async function updateReceiptRule(ruleId: string, formData: FormData): Promise<RuleMutationResult> {
   await checkUserPermission('receipts', 'manage')
+
+  const rawVendor = formData.get('set_vendor_name')
+  const rawExpense = formData.get('set_expense_category')
 
   const rawData = {
     name: formData.get('name'),
@@ -808,6 +1506,10 @@ export async function updateReceiptRule(ruleId: string, formData: FormData) {
     match_min_amount: toOptionalNumber(formData.get('match_min_amount')),
     match_max_amount: toOptionalNumber(formData.get('match_max_amount')),
     auto_status: formData.get('auto_status') || 'no_receipt_required',
+    set_vendor_name:
+      typeof rawVendor === 'string' && rawVendor.trim().length ? rawVendor.trim() : undefined,
+    set_expense_category:
+      typeof rawExpense === 'string' && rawExpense.trim().length ? rawExpense.trim() : undefined,
   }
 
   const parsed = receiptRuleSchema.safeParse(rawData)
@@ -839,11 +1541,9 @@ export async function updateReceiptRule(ruleId: string, formData: FormData) {
     details: parsed.data,
   })
 
-  await refreshAutomationForPendingTransactions()
-
   revalidatePath('/receipts')
 
-  return { success: true, rule: updated }
+  return { success: true, rule: updated, canPromptRetro: true }
 }
 
 export async function toggleReceiptRule(ruleId: string, isActive: boolean) {
@@ -990,9 +1690,261 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
   }
 }
 
+export async function getReceiptBulkReviewData(options: {
+  limit?: number
+  statuses?: BulkStatus[]
+  onlyUnclassified?: boolean
+} = {}): Promise<ReceiptBulkReviewData> {
+  await checkUserPermission('receipts', 'manage')
+
+  const parsed = bulkGroupQuerySchema.safeParse(options ?? {})
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? 'Invalid bulk review filters')
+  }
+
+  const limit = parsed.data.limit ?? 50
+  const statuses = parsed.data.statuses && parsed.data.statuses.length
+    ? (Array.from(new Set(parsed.data.statuses)) as BulkStatus[])
+    : (['pending'] as BulkStatus[])
+  const onlyUnclassified = parsed.data.onlyUnclassified ?? true
+
+  const supabase = createAdminClient()
+
+  const { data, error } = await supabase.rpc('get_receipt_detail_groups', {
+    limit_groups: limit,
+    include_statuses: statuses,
+    only_unclassified: onlyUnclassified,
+  })
+
+  if (error) {
+    console.error('Failed to fetch receipt detail groups', error)
+    throw error
+  }
+
+  const rows = (data ?? []) as RpcDetailGroupRow[]
+  const openAIEnabled = Boolean(process.env.OPENAI_API_KEY)
+
+  const groups: ReceiptDetailGroup[] = []
+
+  for (const row of rows) {
+    const normalized = normalizeDetailGroupRow(row)
+    const suggestion = await buildGroupSuggestion(supabase, normalized, openAIEnabled)
+
+    groups.push({
+      details: normalized.details,
+      transactionIds: normalized.transactionIds,
+      transactionCount: normalized.transactionCount,
+      needsVendorCount: normalized.needsVendorCount,
+      needsExpenseCount: normalized.needsExpenseCount,
+      totalIn: roundToCurrency(normalized.totalIn),
+      totalOut: roundToCurrency(normalized.totalOut),
+      firstDate: normalized.firstDate,
+      lastDate: normalized.lastDate,
+      dominantVendor: normalized.dominantVendor,
+      dominantExpense: normalized.dominantExpense,
+      sampleTransaction: normalized.sampleTransaction,
+      suggestion,
+    })
+  }
+
+  return {
+    groups,
+    generatedAt: new Date().toISOString(),
+    config: {
+      limit,
+      statuses,
+      onlyUnclassified,
+      openAIEnabled,
+    },
+  }
+}
+
+export async function applyReceiptGroupClassification(input: {
+  details: string
+  vendorName?: string | null
+  expenseCategory?: ReceiptExpenseCategory | null
+  statuses?: BulkStatus[]
+}) {
+  await checkUserPermission('receipts', 'manage')
+
+  const vendorProvided = Object.prototype.hasOwnProperty.call(input, 'vendorName')
+  const expenseProvided = Object.prototype.hasOwnProperty.call(input, 'expenseCategory')
+
+  if (!vendorProvided && !expenseProvided) {
+    return { error: 'Nothing to update' }
+  }
+
+  const parsed = bulkGroupApplySchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid request' }
+  }
+
+  const supabase = createAdminClient()
+  const { user_id } = await getCurrentUser()
+
+  const statuses = parsed.data.statuses && parsed.data.statuses.length
+    ? (Array.from(new Set(parsed.data.statuses)) as BulkStatus[])
+    : (BULK_STATUS_OPTIONS as BulkStatus[])
+
+  const normalizedVendor = vendorProvided ? normalizeVendorInput(parsed.data.vendorName ?? null) : undefined
+  const normalizedExpense = expenseProvided ? coerceExpenseCategory(parsed.data.expenseCategory ?? null) : undefined
+
+  if (vendorProvided && parsed.data.vendorName && !normalizedVendor) {
+    return { error: 'Vendor name must be between 1 and 120 characters' }
+  }
+
+  if (expenseProvided && parsed.data.expenseCategory && !normalizedExpense) {
+    return { error: 'Expense category is not recognised' }
+  }
+
+  const selection = supabase
+    .from('receipt_transactions')
+    .select('id, status')
+    .eq('details', parsed.data.details)
+    .in('status', statuses)
+
+  const { data: matches, error: selectError } = await selection
+
+  if (selectError) {
+    console.error('Failed to load transactions for bulk classification', selectError)
+    return { error: 'Failed to load matching transactions' }
+  }
+
+  if (!matches?.length) {
+    return { success: true, updated: 0 }
+  }
+
+  const now = new Date().toISOString()
+
+  const updatePayload: Record<string, unknown> = {
+    updated_at: now,
+  }
+
+  if (vendorProvided) {
+    updatePayload.vendor_name = normalizedVendor
+    updatePayload.vendor_source = normalizedVendor ? 'manual' : null
+    updatePayload.vendor_rule_id = null
+    updatePayload.vendor_updated_at = now
+  }
+
+  if (expenseProvided) {
+    updatePayload.expense_category = normalizedExpense ?? null
+    updatePayload.expense_category_source = normalizedExpense ? 'manual' : null
+    updatePayload.expense_rule_id = null
+    updatePayload.expense_updated_at = now
+  }
+
+  const ids = matches.map((row) => row.id)
+
+  const { error: updateError } = await supabase
+    .from('receipt_transactions')
+    .update(updatePayload)
+    .in('id', ids)
+
+  if (updateError) {
+    console.error('Failed to apply bulk classification', updateError)
+    return { error: 'Failed to apply changes' }
+  }
+
+  const summaryParts: string[] = []
+  if (vendorProvided) {
+    summaryParts.push(normalizedVendor ? `Vendor → ${normalizedVendor}` : 'Vendor cleared')
+  }
+  if (expenseProvided) {
+    summaryParts.push(normalizedExpense ? `Expense → ${normalizedExpense}` : 'Expense cleared')
+  }
+
+  const note = `Bulk classification: ${summaryParts.join(' | ')}`
+  const statusMap = new Map(matches.map((row) => [row.id, row.status]))
+
+  const logs = ids.map((id) => ({
+    transaction_id: id,
+    previous_status: statusMap.get(id) ?? 'pending',
+    new_status: statusMap.get(id) ?? 'pending',
+    action_type: 'bulk_classification' as const,
+    note,
+    performed_by: user_id,
+    rule_id: null,
+    performed_at: now,
+  }))
+
+  if (logs.length) {
+    const { error: logError } = await supabase.from('receipt_transaction_logs').insert(logs)
+    if (logError) {
+      console.error('Failed to record bulk classification logs', logError)
+    }
+  }
+
+  await logAuditEvent({
+    action: 'update',
+    resource_type: 'receipt_bulk_classification',
+    resource_id: hashDetails(parsed.data.details),
+    details: {
+      details: parsed.data.details,
+      vendor_applied: vendorProvided,
+      expense_applied: expenseProvided,
+      vendor_value: normalizedVendor,
+      expense_value: normalizedExpense,
+      statuses,
+      count: ids.length,
+    },
+  })
+
+  revalidatePath('/receipts')
+  revalidatePath('/receipts/bulk')
+
+  return { success: true, updated: ids.length }
+}
+
+export async function createReceiptRuleFromGroup(input: {
+  name: string
+  details: string
+  matchDescription?: string
+  description?: string
+  direction?: 'in' | 'out' | 'both'
+  autoStatus?: ReceiptTransaction['status']
+  vendorName?: string | null
+  expenseCategory?: ReceiptExpenseCategory | null
+}) {
+  await checkUserPermission('receipts', 'manage')
+
+  const parsed = groupRuleInputSchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid rule details' }
+  }
+
+  const data = parsed.data
+  const vendor = normalizeVendorInput(data.vendorName ?? null)
+  const expense = coerceExpenseCategory(data.expenseCategory ?? null)
+
+  const formData = new FormData()
+  formData.set('name', data.name)
+  if (data.description) {
+    formData.set('description', data.description)
+  }
+  formData.set('match_description', data.matchDescription ?? data.details)
+  formData.set('match_direction', data.direction)
+  formData.set('auto_status', data.autoStatus)
+  formData.set('match_transaction_type', '')
+  if (vendor) {
+    formData.set('set_vendor_name', vendor)
+  }
+  if (expense) {
+    formData.set('set_expense_category', expense)
+  }
+
+  const result = await createReceiptRule(formData)
+
+  if ('success' in result) {
+    revalidatePath('/receipts/bulk')
+  }
+
+  return result
+}
+
 async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
   const supabase = createAdminClient()
-  const [{ data: statusCounts }, { data: lastBatch }] = await Promise.all([
+  const [{ data: statusCounts }, { data: lastBatch }, { data: costData, error: costError }] = await Promise.all([
     supabase.rpc('count_receipt_statuses'),
     supabase
       .from('receipt_batches')
@@ -1000,14 +1952,20 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
       .order('uploaded_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
+    supabase.rpc('get_openai_usage_total'),
   ])
 
   const counts = Array.isArray(statusCounts) ? statusCounts[0] : statusCounts
+
+  if (costError) {
+    console.error('Failed to fetch OpenAI usage total', costError)
+  }
 
   const pending = Number(counts?.pending ?? 0)
   const completed = Number(counts?.completed ?? 0)
   const autoCompleted = Number(counts?.auto_completed ?? 0)
   const noReceiptRequired = Number(counts?.no_receipt_required ?? 0)
+  const openAICost = costError ? 0 : Number(costData ?? 0)
 
   return {
     totals: {
@@ -1018,6 +1976,7 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
     },
     needsAttentionValue: pending,
     lastImport: lastBatch ?? null,
+    openAICost,
   }
 }
 
@@ -1032,6 +1991,78 @@ async function refreshAutomationForPendingTransactions() {
   const ids = data?.map((row) => row.id) ?? []
   if (!ids.length) return
   await applyAutomationRules(ids)
+}
+
+export async function runReceiptRuleRetroactively(ruleId: string) {
+  await checkUserPermission('receipts', 'manage')
+
+  const supabase = createAdminClient()
+
+  const { data: rule, error: ruleError } = await supabase
+    .from('receipt_rules')
+    .select('*')
+    .eq('id', ruleId)
+    .maybeSingle()
+
+  if (ruleError || !rule) {
+    return { error: 'Rule not found' }
+  }
+
+  if (!rule.is_active) {
+    return { error: 'Enable the rule before running it' }
+  }
+
+  let offset = 0
+  const pageSize = 500
+  let totalApplied = 0
+  let totalReviewed = 0
+
+  // Iterate through pending transactions in batches to avoid large payloads.
+  while (true) {
+    const { data: batch, error: batchError } = await supabase
+      .from('receipt_transactions')
+      .select('id')
+      .eq('status', 'pending')
+      .order('transaction_date', { ascending: false })
+      .range(offset, offset + pageSize - 1)
+
+    if (batchError) {
+      console.error('Failed to fetch transactions for retro run', batchError)
+      break
+    }
+
+    const ids = batch?.map((row) => row.id) ?? []
+    if (!ids.length) {
+      break
+    }
+
+    totalReviewed += ids.length
+    totalApplied += await applyAutomationRules(ids)
+    offset += pageSize
+
+    if (ids.length < pageSize) {
+      break
+    }
+  }
+
+  await logAuditEvent({
+    action: 'update',
+    resource_type: 'receipt_rule_retro_run',
+    resource_id: ruleId,
+    details: {
+      reviewed: totalReviewed,
+      auto_marked: totalApplied,
+    },
+  })
+
+  revalidatePath('/receipts')
+
+  return {
+    success: true,
+    ruleId,
+    reviewed: totalReviewed,
+    autoApplied: totalApplied,
+  }
 }
 
 function toOptionalNumber(input: FormDataEntryValue | null): number | undefined {
@@ -1065,4 +2096,127 @@ export async function getReceiptSignedUrl(fileId: string) {
   }
 
   return { success: true, url: urlData.signedUrl }
+}
+
+function parseTopList(input: unknown): Array<{ label: string; amount: number }> {
+  if (!input) return []
+  if (Array.isArray(input)) {
+    return input
+      .map((item) => {
+        const label = typeof item?.label === 'string' ? item.label : 'Uncategorised'
+        const amount = Number(item?.amount ?? 0)
+        return { label, amount }
+      })
+  }
+
+  if (typeof input === 'string') {
+    try {
+      const parsed = JSON.parse(input)
+      return parseTopList(parsed)
+    } catch (_error) {
+      return []
+    }
+  }
+
+  if (typeof input === 'object') {
+    return parseTopList([input])
+  }
+
+  return []
+}
+
+export async function getMonthlyReceiptSummary(limit = 12): Promise<ReceiptMonthlySummaryItem[]> {
+  await checkUserPermission('receipts', 'view')
+
+  const supabase = createAdminClient()
+  const { data, error } = await supabase.rpc('get_receipt_monthly_summary', {
+    limit_months: limit,
+  })
+
+  if (error) {
+    console.error('Failed to load monthly receipt summary', error)
+    throw error
+  }
+
+  const rows = Array.isArray(data) ? data : []
+
+  return rows.map((row) => ({
+    monthStart: row.month_start,
+    totalIncome: Number(row.total_income ?? 0),
+    totalOutgoing: Number(row.total_outgoing ?? 0),
+    topIncome: parseTopList(row.top_income),
+    topOutgoing: parseTopList(row.top_outgoing),
+  }))
+}
+
+export async function getReceiptVendorSummary(monthWindow = 12): Promise<ReceiptVendorSummary[]> {
+  await checkUserPermission('receipts', 'view')
+
+  const supabase = createAdminClient()
+  const { data, error } = await supabase.rpc('get_receipt_vendor_trends', {
+    month_window: monthWindow,
+  })
+
+  if (error) {
+    console.error('Failed to load vendor trends', error)
+    throw error
+  }
+
+  const rows = Array.isArray(data) ? data : []
+  const grouped = new Map<string, ReceiptVendorTrendMonth[]>()
+
+  rows.forEach((row) => {
+    const vendorLabel = row.vendor_label ?? 'Uncategorised'
+    const list = grouped.get(vendorLabel) ?? []
+    list.push({
+      monthStart: row.month_start,
+      totalOutgoing: Number(row.total_outgoing ?? 0),
+      totalIncome: Number(row.total_income ?? 0),
+      transactionCount: Number(row.transaction_count ?? 0),
+    })
+    grouped.set(vendorLabel, list)
+  })
+
+  const summaries: ReceiptVendorSummary[] = []
+
+  grouped.forEach((months, vendorLabel) => {
+    months.sort((a, b) => a.monthStart.localeCompare(b.monthStart))
+
+    const totalOutgoing = months.reduce((sum, month) => sum + month.totalOutgoing, 0)
+    const totalIncome = months.reduce((sum, month) => sum + month.totalIncome, 0)
+
+    if (!totalOutgoing) {
+      return
+    }
+
+    const recent = months.slice(-3)
+    const previous = months.slice(-6, -3)
+
+    const average = (items: ReceiptVendorTrendMonth[]) =>
+      items.length ? items.reduce((sum, item) => sum + item.totalOutgoing, 0) / items.length : 0
+
+    const recentAverage = average(recent)
+    const previousAverage = average(previous)
+
+    let changePercentage = 0
+    if (previousAverage === 0) {
+      changePercentage = recentAverage > 0 ? 100 : 0
+    } else {
+      changePercentage = Number((((recentAverage - previousAverage) / previousAverage) * 100).toFixed(2))
+    }
+
+    summaries.push({
+      vendorLabel,
+      months,
+      totalOutgoing,
+      totalIncome,
+      recentAverageOutgoing: Number(recentAverage.toFixed(2)),
+      previousAverageOutgoing: Number(previousAverage.toFixed(2)),
+      changePercentage,
+    })
+  })
+
+  summaries.sort((a, b) => b.totalOutgoing - a.totalOutgoing)
+
+  return summaries
 }
