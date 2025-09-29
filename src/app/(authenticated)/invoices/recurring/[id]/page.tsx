@@ -17,6 +17,8 @@ import { toLocalIsoDate } from '@/lib/dateUtils'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import type { RecurringInvoiceWithDetails } from '@/types/invoices'
 
+type GenerateInvoiceActionResult = Awaited<ReturnType<typeof generateInvoiceFromRecurring>>
+
 export default function RecurringInvoiceDetailPage() {
   const router = useRouter()
   const params = useParams()
@@ -95,16 +97,18 @@ export default function RecurringInvoiceDetailPage() {
         throw new Error('Recurring invoice not found')
       }
 
-      const result = await generateInvoiceFromRecurring(recurringInvoiceId)
+      const result = await generateInvoiceFromRecurring(recurringInvoiceId) as GenerateInvoiceActionResult
       
-      if (result.error) {
+      if ('error' in result && result.error) {
         throw new Error(result.error)
       }
       
-      toast.success('Invoice generated successfully')
-      if (result.invoice) {
-        router.push(`/invoices/${result.invoice.id}`)
+      if (!('success' in result) || !result.success || !('invoice' in result) || !result.invoice) {
+        throw new Error('Failed to generate invoice')
       }
+      
+      toast.success('Invoice generated successfully')
+      router.push(`/invoices/${result.invoice.id}`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to generate invoice')
     } finally {

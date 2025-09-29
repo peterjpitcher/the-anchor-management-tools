@@ -137,11 +137,8 @@ async function buildSummaryPdf(
 
   let cursorY = height - margin
 
-  const logoFileName = 'logo-oj.jpg'
-  try {
-    const logoPath = path.join(process.cwd(), 'public', logoFileName)
-    const logoBytes = await fs.readFile(logoPath)
-    const logoImage = await pdfDoc.embedJpg(logoBytes)
+  const logoImage = await loadLogoImage(pdfDoc)
+  if (logoImage) {
     const logoWidth = 120
     const logoHeight = (logoImage.height / logoImage.width) * logoWidth
     page.drawImage(logoImage, {
@@ -151,8 +148,6 @@ async function buildSummaryPdf(
       height: logoHeight,
     })
     cursorY -= logoHeight + 20
-  } catch (error) {
-    console.warn('Receipts export: logo image unavailable', error)
   }
 
   const drawText = (
@@ -226,13 +221,14 @@ async function buildSummaryPdf(
 
   function drawHeaderRow() {
     const headers = [
-      { label: 'Date', width: 80 },
-      { label: 'Details', width: 265 },
-      { label: 'Type', width: 110 },
-      { label: 'In', width: 70 },
-      { label: 'Out', width: 70 },
-      { label: 'Status', width: 90 },
-      { label: 'Marked By', width: 120 },
+      { label: 'Date', width: 70 },
+      { label: 'Details', width: 200 },
+      { label: 'Vendor', width: 110 },
+      { label: 'Expense type', width: 120 },
+      { label: 'In', width: 60 },
+      { label: 'Out', width: 60 },
+      { label: 'Status', width: 60 },
+      { label: 'Marked By', width: 105 },
     ]
 
     let offsetX = margin
@@ -257,15 +253,16 @@ async function buildSummaryPdf(
     maxWidth: number
   ): Array<Array<{ text: string; width: number; bold?: boolean; size?: number }>> {
     const columns = [
-      { text: formatDate(tx.transaction_date), width: 80, bold: true },
-      { text: tx.details ?? '', width: 265 },
-      { text: tx.transaction_type ?? '', width: 110 },
-      { text: tx.amount_in ? formatCurrency(tx.amount_in) : '', width: 70 },
-      { text: tx.amount_out ? formatCurrency(tx.amount_out) : '', width: 70 },
-      { text: friendlyStatus(tx.status), width: 90 },
+      { text: formatDate(tx.transaction_date), width: 70, bold: true },
+      { text: tx.details ?? '', width: 200 },
+      { text: tx.vendor_name ?? '', width: 110 },
+      { text: tx.expense_category ?? '', width: 120 },
+      { text: tx.amount_in ? formatCurrency(tx.amount_in) : '', width: 60 },
+      { text: tx.amount_out ? formatCurrency(tx.amount_out) : '', width: 60 },
+      { text: friendlyStatus(tx.status), width: 60 },
       {
         text: tx.marked_by_name || tx.marked_by_email || (tx.rule_applied_id ? 'Auto rule' : ''),
-        width: 120,
+        width: 105,
       },
     ]
 
@@ -285,10 +282,28 @@ async function buildSummaryPdf(
       lines.push(segments)
     }
 
+    const extraLines: string[] = []
+    if (tx.transaction_type) {
+      extraLines.push(`Type: ${tx.transaction_type}`)
+    }
+    const sourceParts: string[] = []
+    if (tx.vendor_source) {
+      sourceParts.push(`Vendor via ${tx.vendor_source}`)
+    }
+    if (tx.expense_category_source) {
+      sourceParts.push(`Expense via ${tx.expense_category_source}`)
+    }
+    if (sourceParts.length) {
+      extraLines.push(sourceParts.join(' · '))
+    }
     const notes = tx.notes?.trim()
     if (notes) {
-      const wrappedNotes = wrapText(`Notes: ${notes}`, regular, 10, maxWidth)
-      wrappedNotes.forEach((noteLine, idx) => {
+      extraLines.push(`Notes: ${notes}`)
+    }
+
+    extraLines.forEach((line) => {
+      const wrapped = wrapText(line, regular, 10, maxWidth)
+      wrapped.forEach((noteLine, idx) => {
         lines.push([
           {
             text: idx === 0 ? noteLine : `   ${noteLine}`,
@@ -296,36 +311,56 @@ async function buildSummaryPdf(
           },
         ])
       })
-    }
+    })
 
     return lines
   }
 
-  function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
-    if (!text) return ['']
-    const words = text.split(/\s+/)
-    const lines: string[] = []
-    let currentLine: string[] = []
-    let lineWidth = 0
+function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+  if (!text) return ['']
+  const words = text.split(/\s+/)
+  const lines: string[] = []
+  let currentLine: string[] = []
+  let lineWidth = 0
 
-    words.forEach((word) => {
-      const wordWidth = font.widthOfTextAtSize(`${word} `, size)
-      if (lineWidth + wordWidth > maxWidth && currentLine.length > 0) {
-        lines.push(currentLine.join(' '))
-        currentLine = [word]
-        lineWidth = wordWidth
-      } else {
-        currentLine.push(word)
-        lineWidth += wordWidth
-      }
-    })
-
-    if (currentLine.length > 0) {
+  words.forEach((word) => {
+    const wordWidth = font.widthOfTextAtSize(`${word} `, size)
+    if (lineWidth + wordWidth > maxWidth && currentLine.length > 0) {
       lines.push(currentLine.join(' '))
+      currentLine = [word]
+      lineWidth = wordWidth
+    } else {
+      currentLine.push(word)
+      lineWidth += wordWidth
     }
+  })
 
-    return lines.length ? lines : ['']
+  if (currentLine.length > 0) {
+    lines.push(currentLine.join(' '))
   }
+
+  return lines.length ? lines : ['']
+}
+}
+
+async function loadLogoImage(pdfDoc: PDFDocument) {
+  const candidates = ['logo-oj.png', 'logo-oj.jpg', 'logo-oj.jpeg']
+  for (const fileName of candidates) {
+    try {
+      const logoPath = path.join(process.cwd(), 'public', fileName)
+      const logoBytes = await fs.readFile(logoPath)
+      const ext = path.extname(fileName).toLowerCase()
+      if (ext === '.png') {
+        return await pdfDoc.embedPng(logoBytes)
+      }
+      return await pdfDoc.embedJpg(logoBytes)
+    } catch (error) {
+      // Try next candidate
+      continue
+    }
+  }
+  console.warn('Receipts export: logo image unavailable')
+  return null
 }
 
 function deriveQuarterRange(year: number, quarter: number): QuarterRange {

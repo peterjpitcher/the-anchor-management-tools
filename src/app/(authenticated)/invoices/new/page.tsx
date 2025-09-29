@@ -19,6 +19,8 @@ import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 import type { InvoiceVendor } from '@/types/invoices'
 import type { LineItemCatalogItem, InvoiceLineItemInput } from '@/types/invoices'
 
+type CreateInvoiceActionResult = Awaited<ReturnType<typeof createInvoice>>
+
 interface LineItem {
   id: string
   catalog_item_id?: string
@@ -180,14 +182,18 @@ export default function NewInvoicePage() {
       
       formData.append('line_items', JSON.stringify(lineItemsData))
 
-      const result = await createInvoice(formData)
+      const result = await createInvoice(formData) as CreateInvoiceActionResult
 
-      if (result.error) {
+      if ('error' in result && result.error) {
         throw new Error(result.error)
       }
 
+      if (!('success' in result) || !result.success || !('invoice' in result) || !result.invoice) {
+        throw new Error('Failed to create invoice')
+      }
+
       toast.success('Invoice created successfully')
-      router.push(`/invoices/${result.invoice?.id}`)
+      router.push(`/invoices/${result.invoice.id}`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create invoice')
       setLoading(false)

@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { logAuditEvent } from './audit'
 import { toLocalIsoDate } from '@/lib/dateUtils'
+import type { Event } from '@/types/database'
 
 // Helper function to format time to HH:MM
 function formatTimeToHHMM(time: string | undefined | null): string | undefined | null {
@@ -171,7 +172,9 @@ function generateSlug(name: string, date: string): string {
   return `${nameSlug}-${dateStr}`
 }
 
-export async function createEvent(formData: FormData) {
+type CreateEventResult = { error: string } | { success: true; data: Event }
+
+export async function createEvent(formData: FormData): Promise<CreateEventResult> {
   try {
     const supabase = await createClient()
     

@@ -88,7 +88,7 @@ export async function GET(request: Request) {
         // Generate the invoice
         const generateResult = await generateInvoiceFromRecurring(recurringInvoice.id)
         
-        if (generateResult.error) {
+        if ('error' in generateResult && generateResult.error) {
           console.error(`[Cron] Failed to generate invoice for ${recurringInvoice.id}:`, generateResult.error)
           results.failed++
           results.errors.push({
@@ -99,7 +99,7 @@ export async function GET(request: Request) {
           continue
         }
 
-        if (!generateResult.invoice) {
+        if (!('invoice' in generateResult) || !generateResult.invoice) {
           console.error(`[Cron] No invoice returned for ${recurringInvoice.id}`)
           results.failed++
           results.errors.push({

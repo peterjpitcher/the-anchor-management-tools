@@ -2,6 +2,7 @@
 
 import { createAdminClient } from '@/lib/supabase/server'
 import { headers } from 'next/headers'
+import type { Database } from '@/types/database'
 
 interface AuditLogParams {
   user_id?: string;
@@ -18,7 +19,7 @@ interface AuditLogParams {
 
 export async function logAuditEvent(params: AuditLogParams) {
   try {
-    const supabase = await createAdminClient()
+    const supabase = createAdminClient()
     const headersList = await headers()
     
     // Get client info
@@ -29,27 +30,36 @@ export async function logAuditEvent(params: AuditLogParams) {
     
     // If we have user_id but no user_email, try to look it up
     let user_email = params.user_email
-    if (params.user_id && !user_email) {
-      const { data: userData } = await supabase
-        .from('auth.users')
-        .select('email')
-        .eq('id', params.user_id)
-        .single()
-      
-      if (userData?.email) {
-        user_email = userData.email
+  if (params.user_id && !user_email) {
+      const { data: userResponse, error: userLookupError } = await supabase.auth.admin.getUserById(params.user_id)
+
+      if (!userLookupError) {
+        const email = userResponse?.user?.email
+        if (email) {
+          user_email = email
+        }
       }
     }
 
     // Create audit log entry
+    const payload = {
+      user_id: params.user_id ?? null,
+      user_email: user_email ?? null,
+      operation_type: params.operation_type,
+      resource_type: params.resource_type,
+      resource_id: params.resource_id ?? null,
+      operation_status: params.operation_status,
+      error_message: params.error_message ?? null,
+      old_values: params.old_values ?? null,
+      new_values: params.new_values ?? null,
+      additional_info: params.additional_info ?? null,
+      ip_address: ip,
+      user_agent: userAgent,
+    } satisfies Database['public']['Tables']['audit_logs']['Insert']
+
     const { error } = await supabase
       .from('audit_logs')
-      .insert({
-        ...params,
-        user_email,
-        ip_address: ip,
-        user_agent: userAgent
-      })
+      .insert(payload)
 
     if (error) {
       console.error('Failed to create audit log:', error)

@@ -132,6 +132,35 @@ export const receiptTransactionStatusSchema = z.enum([
   'no_receipt_required',
 ]);
 
+export const receiptClassificationSourceSchema = z.enum(['ai', 'manual', 'rule', 'import']);
+
+export const receiptExpenseCategorySchema = z.enum([
+  'Total Staff',
+  'Business Rate',
+  'Water Rates',
+  'Heat/Light/Power',
+  'Premises Repairs/Maintenance',
+  'Equipment Repairs/Maintenance',
+  'Gardening Expenses',
+  'Buildings Insurance',
+  'Maintenance and Service Plan Charges',
+  'Licensing',
+  'Tenant Insurance',
+  'Entertainment',
+  'Sky / PRS / Vidimix',
+  'Marketing/Promotion/Advertising',
+  'Print/Post Stationary',
+  'Telephone',
+  'Travel/Car',
+  'Waste Disposal/Cleaning/Hygiene',
+  'Third Party Booking Fee',
+  'Accountant/StockTaker/Professional Fees',
+  'Bank Charges/Credit Card Commission',
+  'Equipment Hire',
+  'Sundries/Consumables',
+  'Drinks Gas',
+]);
+
 export const receiptRuleDirectionSchema = z.enum(['in', 'out', 'both']);
 
 export const receiptRuleSchema = z.object({
@@ -143,6 +172,8 @@ export const receiptRuleSchema = z.object({
   match_min_amount: z.number().nonnegative().optional(),
   match_max_amount: z.number().nonnegative().optional(),
   auto_status: receiptTransactionStatusSchema.default('no_receipt_required'),
+  set_vendor_name: z.string().trim().max(120).optional(),
+  set_expense_category: receiptExpenseCategorySchema.optional(),
 }).refine((data) => {
   if (data.match_min_amount != null && data.match_max_amount != null) {
     return data.match_min_amount <= data.match_max_amount;

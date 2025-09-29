@@ -15,6 +15,8 @@ import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { Plus, Calendar, Trash2, Edit, Play, Pause } from 'lucide-react'
 import type { RecurringInvoiceWithDetails } from '@/types/invoices'
 
+type GenerateInvoiceActionResult = Awaited<ReturnType<typeof generateInvoiceFromRecurring>>
+
 export default function RecurringInvoicesPage() {
   const router = useRouter()
   const [recurringInvoices, setRecurringInvoices] = useState<RecurringInvoiceWithDetails[]>([])
@@ -68,13 +70,15 @@ export default function RecurringInvoicesPage() {
 
     setProcessing(id)
     try {
-      const result = await generateInvoiceFromRecurring(id)
-      if (result.success && result.invoice) {
+      const result = await generateInvoiceFromRecurring(id) as GenerateInvoiceActionResult
+      if ('error' in result && result.error) {
+        toast.error(result.error)
+      } else if ('success' in result && result.success && 'invoice' in result && result.invoice) {
         toast.success(`Invoice ${result.invoice.invoice_number} generated successfully`)
         await loadRecurringInvoices()
         router.push(`/invoices/${result.invoice.id}`)
       } else {
-        toast.error(result.error || 'Failed to generate invoice')
+        toast.error('Failed to generate invoice')
       }
     } catch (error) {
       console.error('Error generating invoice:', error)
