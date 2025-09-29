@@ -168,7 +168,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
     setCreatedRules({})
   }, [initialData.generatedAt])
 
-  const limitOptions = useMemo(() => [25, 50, 100, 150, 200, 300, 500], [])
+  const limitOptions = useMemo(() => [10, 25, 50, 100, 150, 200, 300, 500], [])
   const statusOrder: BulkStatus[] = useMemo(() => ['pending', 'auto_completed', 'completed', 'no_receipt_required'], [])
 
   function updateQuery(next: Record<string, string | null>) {
@@ -322,6 +322,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
   const handleRunRetro = (details: string) => {
     const rule = createdRules[details]
     if (!rule) return
+    console.log('[retro-ui] bulk handleRunRetro', { ruleId: rule.id, details })
     setRetroGroupId(details)
     startRunRetro(async () => {
       const result = await runReceiptRuleRetroactively(rule.id)
@@ -330,7 +331,14 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
         toast.error(result.error)
         return
       }
-      toast.success(`Rule reviewed ${result.reviewed} transactions and auto-tagged ${result.autoApplied}`)
+      toast.success(
+        `Rule reviewed ${result.matched ?? 0}/${result.reviewed ?? 0} transactions · ${result.autoApplied ?? 0} status updates · ${result.classified ?? 0} classifications · vendor intents ${result.vendorIntended ?? 0} · expense intents ${result.expenseIntended ?? 0}`
+      )
+      if (result.samples && result.samples.length) {
+        console.groupCollapsed(`Bulk rule analysis (${result.samples.length} sample transactions)`)
+        console.table(result.samples)
+        console.groupEnd()
+      }
       router.refresh()
     })
   }

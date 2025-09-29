@@ -44,6 +44,8 @@ interface ReceiptsClientProps {
     status: ReceiptWorkspaceFilters['status'] | 'all'
     direction: 'in' | 'out' | 'all'
     showOnlyOutstanding: boolean
+    missingVendorOnly: boolean
+    missingExpenseOnly: boolean
     search: string
     page: number
     sortBy?: ReceiptWorkspaceFilters['sortBy']
@@ -100,8 +102,11 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   const [retroPrompt, setRetroPrompt] = useState<{ id: string; name: string } | null>(null)
   const fileInputsRef = useRef<Record<string, HTMLInputElement | null>>({})
   const newRuleFormRef = useRef<HTMLFormElement | null>(null)
+  const [isCustomVendor, setIsCustomVendor] = useState(false)
+  const [retroScope, setRetroScope] = useState<'pending' | 'all'>('pending')
+  const [retroRuleId, setRetroRuleId] = useState<string | null>(null)
 
-  const { summary, transactions, rules, pagination } = initialData
+  const { summary, transactions, rules, pagination, knownVendors } = initialData
   const currentSortBy = (initialFilters.sortBy ?? 'transaction_date') as NonNullable<ReceiptWorkspaceFilters['sortBy']>
   const currentSortDirection: 'asc' | 'desc' = initialFilters.sortDirection ?? 'desc'
   const defaultSort: { column: NonNullable<ReceiptWorkspaceFilters['sortBy']>; direction: 'asc' | 'desc' } = {
@@ -110,6 +115,9 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   }
 
   const totalPages = Math.max(1, Math.ceil(pagination.total / pagination.pageSize))
+
+  const vendorOptions = useMemo(() => knownVendors.slice(0, 500), [knownVendors])
+  const vendorLookup = useMemo(() => new Set(vendorOptions.map((vendor) => vendor.toLowerCase())), [vendorOptions])
 
   const statusOptions = useMemo(() => (
     [
@@ -163,7 +171,9 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   function handleClassificationStart(transaction: ReceiptTransaction, field: 'vendor' | 'expense') {
     setEditingCell({ id: transaction.id, field })
     if (field === 'vendor') {
-      setClassificationDraft(transaction.vendor_name ?? '')
+      const vendorValue = transaction.vendor_name?.trim() ?? ''
+      setClassificationDraft(vendorValue)
+      setIsCustomVendor(vendorValue.length > 0 && !vendorLookup.has(vendorValue.toLowerCase()))
     } else {
       setClassificationDraft(transaction.expense_category ?? '')
     }
@@ -173,6 +183,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
     setEditingCell(null)
     setClassificationDraft('')
     setClassificationTargetId(null)
+    setIsCustomVendor(false)
   }
 
   function applyRuleSuggestion(suggestion: ClassificationRuleSuggestion) {
@@ -275,19 +286,63 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
 
       handleClassificationCancel()
       setClassificationTargetId(null)
+      setIsCustomVendor(false)
     })
   }
 
-  function handleRetroRun(ruleId: string) {
+  function handleVendorSelectChange(event: ChangeEvent<HTMLSelectElement>) {
+    const value = event.target.value
+    if (value === '__custom__') {
+      setClassificationDraft('')
+      setIsCustomVendor(true)
+      return
+    }
+    setClassificationDraft(value)
+  }
+
+  function showVendorSelect() {
+    setIsCustomVendor(false)
+    setClassificationDraft('')
+  }
+
+  function handleRetroRun(ruleId: string, scope: 'pending' | 'all') {
+    console.log('[retro-ui] handleRetroRun click', { ruleId, scope })
+    setRetroRuleId(ruleId)
     startRetroTransition(async () => {
-      const result = await runReceiptRuleRetroactively(ruleId)
-      if (result?.error) {
-        toast.error(result.error)
-        return
+      try {
+        const result = await runReceiptRuleRetroactively(ruleId, scope)
+        if (result?.error) {
+          toast.error(result.error)
+          return
+        }
+        const scopeLabel = scope === 'all' ? 'transactions' : 'pending transactions'
+        const autoCount = result.autoApplied ?? 0
+        const classifiedCount = result.classified ?? 0
+        const matchedCount = result.matched ?? 0
+        const vendorCount = result.vendorIntended ?? 0
+        const expenseCount = result.expenseIntended ?? 0
+        toast.success(
+          `Rule processed ${matchedCount} / ${result.reviewed ?? 0} ${scopeLabel} · ${autoCount} status updates · ${classifiedCount} classifications · vendor intents ${vendorCount} · expense intents ${expenseCount}`
+        )
+        if (result.samples && result.samples.length) {
+          console.groupCollapsed(
+            `Receipt rule analysis (${result.samples.length} sample transactions)`
+          )
+          console.table(result.samples)
+          console.groupEnd()
+        }
+        if (!result.samples?.length) {
+          console.warn('[retro-ui] no samples returned for rule', ruleId)
+        }
+        setRetroPrompt(null)
+        setRetroScope('pending')
+        router.refresh()
+      } catch (error) {
+        console.error('Failed to run receipt rule retroactively', error)
+        toast.error('Failed to run the rule. Please try again.')
+      } finally {
+        setRetroRuleId(null)
       }
-      toast.success(`Rule processed ${result.autoApplied ?? 0} of ${result.reviewed ?? 0} pending transactions`)
-      setRetroPrompt(null)
-      router.refresh()
     })
   }
 
@@ -306,7 +361,12 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
         toast.error(result.error)
         return
       }
-      toast.success(`Imported ${result?.inserted ?? 0} new transactions${result?.autoApplied ? ` · ${result.autoApplied} auto-matched` : ''}`)
+      const autoApplied = result?.autoApplied ?? 0
+      const autoClassified = result?.autoClassified ?? 0
+      const parts = [`Imported ${result?.inserted ?? 0} new transactions`]
+      if (autoApplied > 0) parts.push(`${autoApplied} auto-matched`)
+      if (autoClassified > 0) parts.push(`${autoClassified} auto-classified`)
+      toast.success(parts.join(' · '))
       setStatementFile(null)
       router.refresh()
     })
@@ -330,6 +390,14 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
 
   function handleOutstandingToggle(event: ChangeEvent<HTMLInputElement>) {
     updateQuery({ outstanding: event.target.checked ? null : '0' })
+  }
+
+  function handleMissingVendorToggle(event: ChangeEvent<HTMLInputElement>) {
+    updateQuery({ needsVendor: event.target.checked ? '1' : null })
+  }
+
+  function handleMissingExpenseToggle(event: ChangeEvent<HTMLInputElement>) {
+    updateQuery({ needsExpense: event.target.checked ? '1' : null })
   }
 
   function handlePageChange(page: number) {
@@ -464,6 +532,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
       const createdRule = result.rule
       if (result.canPromptRetro && createdRule) {
         setRetroPrompt({ id: createdRule.id, name: createdRule.name })
+        setRetroScope('pending')
         toast((t) => (
           <div className="rounded-md bg-white p-3 shadow-md">
             <p className="text-sm font-semibold text-gray-900">Run this rule on existing items?</p>
@@ -472,7 +541,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
               <Button
                 size="xs"
                 onClick={() => {
-                  handleRetroRun(createdRule.id)
+                  handleRetroRun(createdRule.id, 'pending')
                   toast.dismiss(t.id)
                 }}
               >
@@ -511,11 +580,11 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <CostSummaryCard cost={summary.openAICost} />
-        <SummaryCard title="Pending" value={summary.totals.pending} tone="warning" />
-        <SummaryCard title="Completed" value={summary.totals.completed} tone="success" />
-        <SummaryCard title="Auto-matched" value={summary.totals.autoCompleted} tone="info" />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <CostSummaryCard cost={summary.openAICost} />
+          <SummaryCard title="Pending" value={summary.totals.pending} tone="warning" />
+          <SummaryCard title="Completed" value={summary.totals.completed} tone="success" />
+          <SummaryCard title="Auto-matched" value={summary.totals.autoCompleted} tone="info" />
         <SummaryCard title="No receipt required" value={summary.totals.noReceiptRequired} tone="neutral" />
       </div>
 
@@ -543,6 +612,18 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           className="inline-flex items-center rounded-md border border-emerald-100 bg-white px-3 py-1.5 text-sm font-medium text-emerald-700 shadow-sm hover:bg-emerald-50"
         >
           Bulk classification
+        </Link>
+        <Link
+          href="/receipts?needsVendor=1"
+          className="inline-flex items-center rounded-md border border-amber-100 bg-white px-3 py-1.5 text-sm font-medium text-amber-700 shadow-sm hover:bg-amber-50"
+        >
+          Needs vendor
+        </Link>
+        <Link
+          href="/receipts?needsExpense=1"
+          className="inline-flex items-center rounded-md border border-blue-100 bg-white px-3 py-1.5 text-sm font-medium text-blue-700 shadow-sm hover:bg-blue-50"
+        >
+          Needs expense
         </Link>
       </div>
 
@@ -636,13 +717,29 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
             />
             <Button type="submit" variant="secondary">Search</Button>
           </form>
-          <label className="flex items-center gap-2 text-sm text-gray-600">
-            <Checkbox
-              checked={initialFilters.showOnlyOutstanding}
-              onChange={handleOutstandingToggle}
-            />
-            Outstanding only
-          </label>
+          <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
+            <label className="flex items-center gap-2">
+              <Checkbox
+                checked={initialFilters.showOnlyOutstanding}
+                onChange={handleOutstandingToggle}
+              />
+              Outstanding only
+            </label>
+            <label className="flex items-center gap-2">
+              <Checkbox
+                checked={initialFilters.missingVendorOnly}
+                onChange={handleMissingVendorToggle}
+              />
+              Missing vendor
+            </label>
+            <label className="flex items-center gap-2">
+              <Checkbox
+                checked={initialFilters.missingExpenseOnly}
+                onChange={handleMissingExpenseToggle}
+              />
+              Missing expense
+            </label>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -733,13 +830,41 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
                     <td className="px-4 py-3 align-top">
                       {isEditingVendor ? (
                         <div className="flex flex-col gap-2">
-                          <Input
-                            autoFocus
-                            value={classificationDraft}
-                            onChange={(event) => setClassificationDraft(event.target.value)}
-                            placeholder="Vendor name"
-                            disabled={isClassificationLoading}
-                          />
+                          {isCustomVendor ? (
+                            <div className="space-y-2">
+                              <Input
+                                autoFocus
+                                value={classificationDraft}
+                                onChange={(event) => setClassificationDraft(event.target.value)}
+                                placeholder="Enter new vendor"
+                                disabled={isClassificationLoading}
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="xs"
+                                onClick={showVendorSelect}
+                                disabled={isClassificationLoading}
+                              >
+                                ⟵ Choose existing vendor
+                              </Button>
+                            </div>
+                          ) : (
+                            <Select
+                              autoFocus
+                              value={classificationDraft}
+                              onChange={handleVendorSelectChange}
+                              disabled={isClassificationLoading}
+                            >
+                              <option value="">Clear vendor</option>
+                              {vendorOptions.map((vendor) => (
+                                <option key={vendor} value={vendor}>
+                                  {vendor}
+                                </option>
+                              ))}
+                              <option value="__custom__">+ Add new vendor</option>
+                            </Select>
+                          )}
                           <div className="flex items-center gap-2">
                             <Button
                               type="button"
@@ -975,23 +1100,39 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
               <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-medium text-blue-800">
-                    Run rule “{retroPrompt.name}” on pending transactions?
+                    Run rule “{retroPrompt.name}” on {retroScope === 'all' ? 'all transactions' : 'pending transactions'}?
                   </p>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="xs"
-                      variant="secondary"
-                      onClick={() => handleRetroRun(retroPrompt.id)}
-                      disabled={isRetroPending}
-                    >
-                      {isRetroPending && <Spinner className="mr-2 h-3 w-3" />}Run now
-                    </Button>
-                    <Button size="xs" variant="ghost" onClick={() => setRetroPrompt(null)}>
-                      Later
-                    </Button>
-                  </div>
+                  <Select
+                    value={retroScope}
+                    onChange={(event) => setRetroScope(event.target.value as 'pending' | 'all')}
+                    className="w-44"
+                    selectSize="sm"
+                  >
+                    <option value="pending">Pending only</option>
+                    <option value="all">All historical</option>
+                  </Select>
                 </div>
-                <p className="mt-1">We can re-check recent pending transactions immediately.</p>
+                <div className="mt-3 flex items-center gap-2">
+                  <Button
+                    size="xs"
+                    variant="secondary"
+                    onClick={() => handleRetroRun(retroPrompt.id, retroScope)}
+                    disabled={isRetroPending}
+                  >
+                    {isRetroPending && <Spinner className="mr-2 h-3 w-3" />}Run now
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => {
+                      setRetroPrompt(null)
+                      setRetroScope('pending')
+                    }}
+                  >
+                    Later
+                  </Button>
+                </div>
+                <p className="mt-1">We can re-check historical records without reopening completed items.</p>
               </div>
             )}
             <form ref={newRuleFormRef} onSubmit={(event) => handleRuleSubmit(event)} className="space-y-3">
@@ -1047,6 +1188,23 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
                       disabled={isRulePending && activeRuleId === rule.id}
                     >
                       Edit
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRetroRun(rule.id, 'all')}
+                      disabled={!rule.is_active || isRetroPending}
+                      title={rule.is_active ? 'Run this rule across all historical transactions' : 'Enable the rule before running it'}
+                      className="flex items-center gap-1"
+                    >
+                      {isRetroPending && retroRuleId === rule.id ? (
+                        <>
+                          <Spinner className="h-4 w-4" />
+                          <span>Running…</span>
+                        </>
+                      ) : (
+                        'Run historical'
+                      )}
                     </Button>
                     <Button
                       variant={rule.is_active ? 'success' : 'ghost'}

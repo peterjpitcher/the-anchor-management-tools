@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { checkUserPermission } from './rbac'
-import { logAuditEvent } from '@/lib/audit'
+import { logAuditEvent } from '@/app/actions/audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import { createAdminClient } from '@/lib/supabase/server'
 import {
@@ -85,6 +85,8 @@ export type ReceiptWorkspaceFilters = {
   direction?: 'in' | 'out' | 'all'
   search?: string
   showOnlyOutstanding?: boolean
+  missingVendorOnly?: boolean
+  missingExpenseOnly?: boolean
   page?: number
   pageSize?: number
   sortBy?: ReceiptSortColumn
@@ -115,6 +117,7 @@ export type ReceiptWorkspaceData = {
     pageSize: number
     total: number
   }
+  knownVendors: string[]
 }
 
 export type ReceiptMonthlySummaryItem = {
@@ -531,38 +534,164 @@ function guessAmountValue(tx: ParsedTransactionRow | ReceiptTransaction): number
   return 0
 }
 
-async function applyAutomationRules(transactionIds: string[]): Promise<number> {
-  if (!transactionIds.length) return 0
+type AutomationResult = {
+  statusAutoUpdated: number
+  classificationUpdated: number
+  matched: number
+  vendorIntended: number
+  expenseIntended: number
+  samples: Array<{
+    id: string
+    status: ReceiptTransaction['status']
+    details: string
+    transaction_type: string | null
+    amount_in: number | null
+    amount_out: number | null
+    direction: 'in' | 'out'
+    vendor_name: string | null
+    vendor_source: ReceiptClassificationSource | null
+    expense_category: ReceiptExpenseCategory | null
+    expense_source: ReceiptClassificationSource | null
+  }>
+}
+
+async function applyAutomationRules(
+  transactionIds: string[],
+  options: {
+    includeClosed?: boolean
+    targetRuleId?: string | null
+    overrideManual?: boolean
+    allowClosedStatusUpdates?: boolean
+  } = {}
+): Promise<AutomationResult> {
+  console.log('[retro] applyAutomationRules start', {
+    transactionCount: transactionIds.length,
+    options,
+  })
+
+  if (!transactionIds.length) {
+    console.warn('[retro] applyAutomationRules called with empty transactionIds', options)
+    return {
+      statusAutoUpdated: 0,
+      classificationUpdated: 0,
+      matched: 0,
+      vendorIntended: 0,
+      expenseIntended: 0,
+      samples: [],
+    }
+  }
 
   const supabase = createAdminClient()
 
-  const [{ data: rules }, { data: transactions }] = await Promise.all([
-    supabase
-      .from('receipt_rules')
-      .select('*')
-      .eq('is_active', true)
-      .order('created_at', { ascending: true }),
-    supabase
-      .from('receipt_transactions')
-      .select('*')
-      .in('id', transactionIds)
-  ])
+  const {
+    includeClosed = false,
+    targetRuleId = null,
+    overrideManual = false,
+    allowClosedStatusUpdates = false,
+  } = options
+
+  let rulesQuery = supabase
+    .from('receipt_rules')
+    .select('*')
+    .eq('is_active', true)
+    .order('created_at', { ascending: true })
+
+  if (targetRuleId) {
+    rulesQuery = rulesQuery.eq('id', targetRuleId)
+  }
+
+  const [{ data: rules, error: rulesError }] = await Promise.all([rulesQuery])
+
+  const chunkSize = 100
+  const idChunks: string[][] = []
+  for (let index = 0; index < transactionIds.length; index += chunkSize) {
+    idChunks.push(transactionIds.slice(index, index + chunkSize))
+  }
+
+  const chunkResults = await Promise.all(
+    idChunks.map(async (chunk, chunkIndex) => {
+      const { data, error } = await supabase
+        .from('receipt_transactions')
+        .select('*')
+        .in('id', chunk)
+      if (error) {
+        console.error('[retro] applyAutomationRules chunk error', {
+          chunkIndex,
+          chunkSize: chunk.length,
+          error,
+        })
+      }
+      return { data: data ?? [], error, chunkIndex }
+    })
+  )
+
+  const transactions = chunkResults.flatMap((result) => result.data)
+
+  if (rulesError) {
+    console.error('[retro] applyAutomationRules rules query error', rulesError)
+  }
+
+  if (!rules?.length) {
+    console.warn('[retro] applyAutomationRules no active rules found', {
+      targetRuleId,
+      includeClosed,
+    })
+  }
+
+  if (!transactions?.length) {
+    console.warn('[retro] applyAutomationRules no transactions fetched', {
+      transactionIdsLength: transactionIds.length,
+      sampleIds: transactionIds.slice(0, 20),
+    })
+  }
 
   if (!rules?.length || !transactions?.length) {
-    return 0
+    return {
+      statusAutoUpdated: 0,
+      classificationUpdated: 0,
+      matched: 0,
+      vendorIntended: 0,
+      expenseIntended: 0,
+      samples: [],
+    }
+  }
+
+  const ruleList = targetRuleId ? rules.filter((rule) => rule.id === targetRuleId) : rules
+  if (!ruleList.length) {
+    console.warn('[retro] applyAutomationRules ruleList empty after filtering', {
+      targetRuleId,
+      availableRules: rules.map((rule) => rule.id),
+    })
+    return {
+      statusAutoUpdated: 0,
+      classificationUpdated: 0,
+      matched: 0,
+      vendorIntended: 0,
+      expenseIntended: 0,
+      samples: [],
+    }
   }
 
   let statusAutoUpdated = 0
+  let classificationUpdated = 0
+  let matchedCount = 0
+  let vendorIntended = 0
+  let expenseIntended = 0
+  const classificationLogs: Array<Omit<ReceiptTransactionLog, 'id'>> = []
   const now = new Date().toISOString()
-  const logs: Array<Omit<ReceiptTransactionLog, 'id'>> = []
+  const inspectedTransactions: ReceiptTransaction[] = []
+  const unmatchedSamples: Array<AutomationResult['samples'][number]> = []
 
   for (const transaction of transactions) {
-    if (transaction.status !== 'pending') continue
+    const isPending = transaction.status === 'pending'
+    if (!includeClosed && !isPending) continue
 
     const direction = getTransactionDirection(transaction)
     const amountValue = guessAmountValue(transaction)
     const detailText = transaction.details.toLowerCase()
-    const matchingRule = rules.find((rule) => {
+    inspectedTransactions.push(transaction)
+
+    const matchingRule = ruleList.find((rule) => {
       if (!rule.is_active) return false
 
       if (rule.match_direction !== 'both' && rule.match_direction !== direction) {
@@ -598,11 +727,28 @@ async function applyAutomationRules(transactionIds: string[]): Promise<number> {
     })
 
     if (!matchingRule) {
+      if (unmatchedSamples.length < 20) {
+        unmatchedSamples.push({
+          id: transaction.id,
+          status: transaction.status,
+          direction,
+          details: transaction.details,
+          transaction_type: transaction.transaction_type,
+          amount_in: transaction.amount_in,
+          amount_out: transaction.amount_out,
+          vendor_name: transaction.vendor_name,
+          vendor_source: transaction.vendor_source,
+          expense_category: transaction.expense_category,
+          expense_source: transaction.expense_category_source,
+        })
+      }
       continue
     }
 
-    const vendorLocked = transaction.vendor_source === 'manual'
-    const expenseLocked = transaction.expense_category_source === 'manual'
+    matchedCount += 1
+
+    const vendorLocked = !overrideManual && transaction.vendor_source === 'manual'
+    const expenseLocked = !overrideManual && transaction.expense_category_source === 'manual'
 
     const shouldUpdateVendor = Boolean(
       matchingRule.set_vendor_name &&
@@ -627,28 +773,32 @@ async function applyAutomationRules(transactionIds: string[]): Promise<number> {
     const updatePayload: Record<string, unknown> = {}
     const classificationNotes: string[] = []
     const targetStatus = matchingRule.auto_status
-    const statusChanged = targetStatus !== transaction.status
+    const allowStatusUpdates = isPending || allowClosedStatusUpdates
+    const statusChanged = allowStatusUpdates && targetStatus !== transaction.status
 
-    if (statusChanged) {
-      updatePayload.status = targetStatus
-      updatePayload.receipt_required = targetStatus === 'pending'
-      updatePayload.marked_by = null
-      updatePayload.marked_by_email = null
-      updatePayload.marked_by_name = null
-      updatePayload.marked_at = now
-      updatePayload.marked_method = 'rule'
-      updatePayload.rule_applied_id = matchingRule.id
-    } else if (targetStatus !== 'pending') {
-      updatePayload.receipt_required = false
-      updatePayload.marked_by = null
-      updatePayload.marked_by_email = null
-      updatePayload.marked_by_name = null
-      updatePayload.marked_at = now
-      updatePayload.marked_method = 'rule'
-      updatePayload.rule_applied_id = matchingRule.id
+    if (allowStatusUpdates) {
+      if (statusChanged) {
+        updatePayload.status = targetStatus
+        updatePayload.receipt_required = targetStatus === 'pending'
+        updatePayload.marked_by = null
+        updatePayload.marked_by_email = null
+        updatePayload.marked_by_name = null
+        updatePayload.marked_at = now
+        updatePayload.marked_method = 'rule'
+        updatePayload.rule_applied_id = matchingRule.id
+      } else if (targetStatus !== 'pending') {
+        updatePayload.receipt_required = false
+        updatePayload.marked_by = null
+        updatePayload.marked_by_email = null
+        updatePayload.marked_by_name = null
+        updatePayload.marked_at = now
+        updatePayload.marked_method = 'rule'
+        updatePayload.rule_applied_id = matchingRule.id
+      }
     }
 
     if (shouldUpdateVendor) {
+      vendorIntended += 1
       updatePayload.vendor_name = matchingRule.set_vendor_name
       updatePayload.vendor_source = 'rule'
       updatePayload.vendor_rule_id = matchingRule.id
@@ -657,6 +807,7 @@ async function applyAutomationRules(transactionIds: string[]): Promise<number> {
     }
 
     if (shouldUpdateExpense) {
+      expenseIntended += 1
       updatePayload.expense_category = matchingRule.set_expense_category
       updatePayload.expense_category_source = 'rule'
       updatePayload.expense_rule_id = matchingRule.id
@@ -664,11 +815,7 @@ async function applyAutomationRules(transactionIds: string[]): Promise<number> {
       classificationNotes.push(`Expense → ${matchingRule.set_expense_category}`)
     }
 
-    if (
-      !Object.keys(updatePayload).length &&
-      !statusChanged &&
-      (matchingRule.auto_status === transaction.status)
-    ) {
+    if (!Object.keys(updatePayload).length && classificationNotes.length === 0) {
       continue
     }
 
@@ -682,7 +829,7 @@ async function applyAutomationRules(transactionIds: string[]): Promise<number> {
     if (!error) {
       if (statusChanged) {
         statusAutoUpdated += 1
-        logs.push({
+        classificationLogs.push({
           transaction_id: transaction.id,
           previous_status: transaction.status,
           new_status: targetStatus,
@@ -695,7 +842,7 @@ async function applyAutomationRules(transactionIds: string[]): Promise<number> {
       }
 
       if (classificationNotes.length) {
-        logs.push({
+        classificationLogs.push({
           transaction_id: transaction.id,
           previous_status: transaction.status,
           new_status: statusChanged ? targetStatus : transaction.status,
@@ -705,15 +852,55 @@ async function applyAutomationRules(transactionIds: string[]): Promise<number> {
           rule_id: matchingRule.id,
           performed_at: now,
         })
+        classificationUpdated += 1
       }
     }
   }
 
-  if (logs.length) {
-    await supabase.from('receipt_transaction_logs').insert(logs)
+  if (classificationLogs.length) {
+    await supabase.from('receipt_transaction_logs').insert(classificationLogs)
   }
 
-  return statusAutoUpdated
+  if (targetRuleId) {
+    const summary = {
+      targetRuleId,
+      includeClosed,
+      overrideManual,
+      allowClosedStatusUpdates,
+      totalTransactions: transactions.length,
+      matchedCount,
+      statusAutoUpdated,
+      classificationUpdated,
+      vendorIntended,
+      expenseIntended,
+    }
+    console.log('[receipts] applyAutomationRules summary', summary)
+
+    if (matchedCount === 0) {
+      console.warn('[receipts] applyAutomationRules sample transactions', unmatchedSamples.slice(0, 10))
+    }
+  }
+
+  return {
+    statusAutoUpdated,
+    classificationUpdated,
+    matched: matchedCount,
+    vendorIntended,
+    expenseIntended,
+    samples: inspectedTransactions.slice(0, 50).map((tx) => ({
+      id: tx.id,
+      status: tx.status,
+      direction: getTransactionDirection(tx),
+      details: tx.details,
+      transaction_type: tx.transaction_type,
+      amount_in: tx.amount_in,
+      amount_out: tx.amount_out,
+      vendor_name: tx.vendor_name,
+      vendor_source: tx.vendor_source,
+      expense_category: tx.expense_category,
+      expense_source: tx.expense_category_source,
+    })),
+  }
 }
 
 async function recordAIUsage(
@@ -980,7 +1167,8 @@ export async function importReceiptStatement(formData: FormData) {
 
   const insertedIds = inserted?.map((row) => row.id) ?? []
 
-  const autoApplied = await applyAutomationRules(insertedIds)
+  const { statusAutoUpdated: autoApplied, classificationUpdated: autoClassified } =
+    await applyAutomationRules(insertedIds)
 
   if (insertedIds.length) {
     const logs = insertedIds.map<Omit<ReceiptTransactionLog, 'id'>>((transactionId) => ({
@@ -1000,24 +1188,30 @@ export async function importReceiptStatement(formData: FormData) {
   await classifyTransactionsWithAI(supabase, insertedIds)
 
   await logAuditEvent({
-    action: 'create',
+    operation_type: 'create',
     resource_type: 'receipt_batch',
     resource_id: batch.id,
-    details: {
+    operation_status: 'success',
+    additional_info: {
       filename: receiptFile.name,
       rows: rows.length,
       inserted: insertedIds.length,
       skipped: rows.length - insertedIds.length,
+      auto_applied: autoApplied,
+      auto_classified: autoClassified,
     },
   })
 
   revalidatePath('/receipts')
+  revalidatePath('/receipts/vendors')
+  revalidatePath('/receipts/monthly')
 
   return {
     success: true,
     inserted: insertedIds.length,
     skipped: rows.length - insertedIds.length,
     autoApplied,
+    autoClassified,
     batch,
   }
 }
@@ -1098,10 +1292,11 @@ export async function markReceiptTransaction(input: {
   })
 
   await logAuditEvent({
-    action: 'update',
+    operation_type: 'update_status',
     resource_type: 'receipt_transaction',
     resource_id: input.transactionId,
-    details: {
+    operation_status: 'success',
+    additional_info: {
       previous_status: existing.status,
       new_status: updated.status,
       note: validation.data.note ?? null,
@@ -1216,10 +1411,11 @@ export async function updateReceiptClassification(input: {
   })
 
   await logAuditEvent({
-    action: 'update',
-    resource_type: 'receipt_transaction_classification',
+    operation_type: 'update_classification',
+    resource_type: 'receipt_transaction',
     resource_id: transactionId,
-    details: {
+    operation_status: 'success',
+    additional_info: {
       vendor_changed: vendorChanged,
       expense_changed: expenseChanged,
       vendor: vendorName ?? null,
@@ -1343,10 +1539,11 @@ export async function uploadReceiptForTransaction(formData: FormData) {
   })
 
   await logAuditEvent({
-    action: 'update',
+    operation_type: 'upload_receipt',
     resource_type: 'receipt_transaction',
     resource_id: transactionId,
-    details: {
+    operation_status: 'success',
+    additional_info: {
       status: 'completed',
       file: storagePath,
     },
@@ -1418,10 +1615,11 @@ export async function deleteReceiptFile(fileId: string) {
   }
 
   await logAuditEvent({
-    action: 'delete',
+    operation_type: 'delete_receipt',
     resource_type: 'receipt_file',
     resource_id: fileId,
-    details: {
+    operation_status: 'success',
+    additional_info: {
       transaction_id: receipt.transaction_id,
     },
   })
@@ -1480,10 +1678,11 @@ export async function createReceiptRule(formData: FormData): Promise<RuleMutatio
   }
 
   await logAuditEvent({
-    action: 'create',
+    operation_type: 'create',
     resource_type: 'receipt_rule',
     resource_id: rule.id,
-    details: parsed.data,
+    operation_status: 'success',
+    additional_info: parsed.data,
   })
 
   revalidatePath('/receipts')
@@ -1535,10 +1734,11 @@ export async function updateReceiptRule(ruleId: string, formData: FormData): Pro
   }
 
   await logAuditEvent({
-    action: 'update',
+    operation_type: 'update',
     resource_type: 'receipt_rule',
     resource_id: ruleId,
-    details: parsed.data,
+    operation_status: 'success',
+    additional_info: parsed.data,
   })
 
   revalidatePath('/receipts')
@@ -1562,10 +1762,11 @@ export async function toggleReceiptRule(ruleId: string, isActive: boolean) {
   }
 
   await logAuditEvent({
-    action: 'update',
+    operation_type: 'toggle',
     resource_type: 'receipt_rule',
     resource_id: ruleId,
-    details: { is_active: isActive },
+    operation_status: 'success',
+    additional_info: { is_active: isActive },
   })
 
   if (isActive) {
@@ -1591,10 +1792,10 @@ export async function deleteReceiptRule(ruleId: string) {
   }
 
   await logAuditEvent({
-    action: 'delete',
+    operation_type: 'delete',
     resource_type: 'receipt_rule',
     resource_id: ruleId,
-    details: {},
+    operation_status: 'success',
   })
 
   revalidatePath('/receipts')
@@ -1656,15 +1857,37 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
     baseQuery = baseQuery.or(`details.ilike.${qs},transaction_type.ilike.${qs}`)
   }
 
+  if (filters.missingVendorOnly) {
+    baseQuery = baseQuery.or('vendor_name.is.null,vendor_name.eq.')
+  }
+
+  if (filters.missingExpenseOnly) {
+    baseQuery = baseQuery.is('expense_category', null)
+  }
+
   baseQuery = baseQuery.range(offset, offset + pageSize - 1)
 
-  const [{ data: transactions, count, error }, { data: rules }, summary] = await Promise.all([
+  const vendorQuery = supabase
+    .from('receipt_transactions')
+    .select('vendor_name')
+    .not('vendor_name', 'is', null)
+    .neq('vendor_name', '')
+    .order('vendor_name', { ascending: true })
+    .limit(2000)
+
+  const [
+    { data: transactions, count, error },
+    { data: rules },
+    summary,
+    { data: vendorRecords, error: vendorError },
+  ] = await Promise.all([
     baseQuery,
     supabase
       .from('receipt_rules')
       .select('*')
       .order('created_at', { ascending: true }),
     fetchSummary(),
+    vendorQuery,
   ])
 
   if (error) {
@@ -1672,11 +1895,40 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
     throw error
   }
 
+  if (vendorError) {
+    console.error('Failed to load vendor list for receipts workspace:', vendorError)
+  }
+
   const shapedTransactions = (transactions ?? []).map((tx) => ({
     ...tx,
     files: tx.receipt_files ?? [],
     autoRule: tx.receipt_rules?.[0] ?? null,
   }))
+
+  const knownVendorSet = new Set<string>()
+
+  ;(vendorRecords ?? []).forEach((record) => {
+    const normalized = normalizeVendorInput(record.vendor_name)
+    if (normalized) {
+      knownVendorSet.add(normalized)
+    }
+  })
+
+  shapedTransactions.forEach((tx) => {
+    const normalized = normalizeVendorInput(tx.vendor_name)
+    if (normalized) {
+      knownVendorSet.add(normalized)
+    }
+  })
+
+  ;(rules ?? []).forEach((rule) => {
+    const normalized = normalizeVendorInput(rule.set_vendor_name)
+    if (normalized) {
+      knownVendorSet.add(normalized)
+    }
+  })
+
+  const knownVendors = Array.from(knownVendorSet).sort((a, b) => a.localeCompare(b))
 
   return {
     transactions: shapedTransactions,
@@ -1687,6 +1939,7 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
       pageSize,
       total: count ?? 0,
     },
+    knownVendors,
   }
 }
 
@@ -1702,7 +1955,7 @@ export async function getReceiptBulkReviewData(options: {
     throw new Error(parsed.error.issues[0]?.message ?? 'Invalid bulk review filters')
   }
 
-  const limit = parsed.data.limit ?? 50
+  const limit = parsed.data.limit ?? 10
   const statuses = parsed.data.statuses && parsed.data.statuses.length
     ? (Array.from(new Set(parsed.data.statuses)) as BulkStatus[])
     : (['pending'] as BulkStatus[])
@@ -1876,10 +2129,11 @@ export async function applyReceiptGroupClassification(input: {
   }
 
   await logAuditEvent({
-    action: 'update',
-    resource_type: 'receipt_bulk_classification',
+    operation_type: 'bulk_classification',
+    resource_type: 'receipt_transaction_group',
     resource_id: hashDetails(parsed.data.details),
-    details: {
+    operation_status: 'success',
+    additional_info: {
       details: parsed.data.details,
       vendor_applied: vendorProvided,
       expense_applied: expenseProvided,
@@ -1993,7 +2247,15 @@ async function refreshAutomationForPendingTransactions() {
   await applyAutomationRules(ids)
 }
 
-export async function runReceiptRuleRetroactively(ruleId: string) {
+export async function runReceiptRuleRetroactively(
+  ruleId: string,
+  scope: 'pending' | 'all' = 'pending'
+) {
+  console.log('[retro] runReceiptRuleRetroactively invoked', {
+    ruleId,
+    scope,
+    timestamp: new Date().toISOString(),
+  })
   await checkUserPermission('receipts', 'manage')
 
   const supabase = createAdminClient()
@@ -2005,10 +2267,12 @@ export async function runReceiptRuleRetroactively(ruleId: string) {
     .maybeSingle()
 
   if (ruleError || !rule) {
+    console.error('[retro] rule lookup failed', { ruleId, ruleError })
     return { error: 'Rule not found' }
   }
 
   if (!rule.is_active) {
+    console.warn('[retro] rule inactive', { ruleId })
     return { error: 'Enable the rule before running it' }
   }
 
@@ -2016,28 +2280,65 @@ export async function runReceiptRuleRetroactively(ruleId: string) {
   const pageSize = 500
   let totalApplied = 0
   let totalReviewed = 0
+  let totalClassified = 0
+  let totalMatched = 0
+  let totalVendorIntended = 0
+  let totalExpenseIntended = 0
+  let sampleTransactions: AutomationResult['samples'] = []
 
-  // Iterate through pending transactions in batches to avoid large payloads.
+  // Iterate through transactions in batches to avoid large payloads.
   while (true) {
-    const { data: batch, error: batchError } = await supabase
+    let query = supabase
       .from('receipt_transactions')
       .select('id')
-      .eq('status', 'pending')
       .order('transaction_date', { ascending: false })
       .range(offset, offset + pageSize - 1)
+
+    if (scope === 'pending') {
+      query = query.eq('status', 'pending')
+    }
+
+    const { data: batch, error: batchError } = await query
 
     if (batchError) {
       console.error('Failed to fetch transactions for retro run', batchError)
       break
     }
 
-    const ids = batch?.map((row) => row.id) ?? []
+    const ids = (batch ?? []).map((row) => row.id ?? null)
+    console.log('[retro] batch fetched', {
+      ruleId,
+      offset,
+      fetched: ids.length,
+      scope,
+      sampleIds: ids.slice(0, 5),
+    })
     if (!ids.length) {
       break
     }
 
     totalReviewed += ids.length
-    totalApplied += await applyAutomationRules(ids)
+    const {
+      statusAutoUpdated,
+      classificationUpdated,
+      matched,
+      vendorIntended,
+      expenseIntended,
+      samples,
+    } = await applyAutomationRules(ids, {
+      includeClosed: scope === 'all',
+      targetRuleId: ruleId,
+      overrideManual: scope === 'all',
+      allowClosedStatusUpdates: scope === 'all',
+    })
+    totalApplied += statusAutoUpdated
+    totalClassified += classificationUpdated
+    totalMatched += matched
+    totalVendorIntended += vendorIntended
+    totalExpenseIntended += expenseIntended
+    if (sampleTransactions.length === 0 && samples.length) {
+      sampleTransactions = samples
+    }
     offset += pageSize
 
     if (ids.length < pageSize) {
@@ -2046,13 +2347,31 @@ export async function runReceiptRuleRetroactively(ruleId: string) {
   }
 
   await logAuditEvent({
-    action: 'update',
-    resource_type: 'receipt_rule_retro_run',
+    operation_type: 'retro_run',
+    resource_type: 'receipt_rule',
     resource_id: ruleId,
-    details: {
+    operation_status: 'success',
+    additional_info: {
       reviewed: totalReviewed,
       auto_marked: totalApplied,
+      classified: totalClassified,
+      matched: totalMatched,
+      vendor_intended: totalVendorIntended,
+      expense_intended: totalExpenseIntended,
+      scope,
     },
+  })
+
+  console.log('[retro] runReceiptRuleRetroactively summary', {
+    ruleId,
+    scope,
+    reviewed: totalReviewed,
+    auto_marked: totalApplied,
+    classified: totalClassified,
+    matched: totalMatched,
+    vendor_intended: totalVendorIntended,
+    expense_intended: totalExpenseIntended,
+    samplePreview: sampleTransactions.slice(0, 3),
   })
 
   revalidatePath('/receipts')
@@ -2062,6 +2381,12 @@ export async function runReceiptRuleRetroactively(ruleId: string) {
     ruleId,
     reviewed: totalReviewed,
     autoApplied: totalApplied,
+    classified: totalClassified,
+    matched: totalMatched,
+    vendorIntended: totalVendorIntended,
+    expenseIntended: totalExpenseIntended,
+    samples: sampleTransactions,
+    scope,
   }
 }
 
@@ -2186,6 +2511,10 @@ export async function getReceiptVendorSummary(monthWindow = 12): Promise<Receipt
     const totalIncome = months.reduce((sum, month) => sum + month.totalIncome, 0)
 
     if (!totalOutgoing) {
+      return
+    }
+
+    if (vendorLabel === 'Uncategorised') {
       return
     }
 
