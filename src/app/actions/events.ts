@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { logAuditEvent } from './audit'
 import { toLocalIsoDate } from '@/lib/dateUtils'
 import type { Event } from '@/types/database'
+import { generateEventMarketingLinks } from './event-marketing-links'
 
 // Helper function to format time to HH:MM
 function formatTimeToHHMM(time: string | undefined | null): string | undefined | null {
@@ -306,6 +307,11 @@ export async function createEvent(formData: FormData): Promise<CreateEventResult
       }
     })
 
+    const marketingLinksResult = await generateEventMarketingLinks(event.id)
+    if (!marketingLinksResult.success) {
+      console.error('Failed to generate marketing links for event', event.id, marketingLinksResult.error)
+    }
+
     revalidatePath('/events')
     return { success: true, data: event }
   } catch (error) {
@@ -432,6 +438,11 @@ export async function updateEvent(id: string, formData: FormData) {
         eventDate: event.date
       }
     })
+
+    const marketingLinksResult = await generateEventMarketingLinks(event.id)
+    if (!marketingLinksResult.success) {
+      console.error('Failed to refresh marketing links for event', event.id, marketingLinksResult.error)
+    }
 
     revalidatePath('/events')
     revalidatePath(`/events/${id}`)
