@@ -15,8 +15,10 @@ import { AddAttendeesModalWithCategories } from '@/components/AddAttendeesModalW
 // Removed unused sendBookingConfirmationSync import
 import { addAttendeesWithScheduledSMS } from '@/app/actions/event-sms-scheduler'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
-import { EventTemplateManager } from '@/components/EventTemplateManager'
 import { generateEventReservationPosters } from '@/app/actions/event-reservation-posters'
+import { EventChecklistCard } from '@/components/EventChecklistCard'
+import { EventMarketingLinksCard } from '@/components/EventMarketingLinksCard'
+import { getEventMarketingLinks, regenerateEventMarketingLinks, type EventMarketingLink } from '@/app/actions/event-marketing-links'
 
 // ui-v2 imports
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
@@ -43,6 +45,29 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
   const [isLoading, setIsLoading] = useState(true)
   const [showBookingForm, setShowBookingForm] = useState(false)
   const [showAddAttendeesModal, setShowAddAttendeesModal] = useState(false)
+  const [marketingLinks, setMarketingLinks] = useState<EventMarketingLink[]>([])
+  const [marketingLoading, setMarketingLoading] = useState(true)
+  const [marketingError, setMarketingError] = useState<string | null>(null)
+
+  const loadMarketingLinks = useCallback(async (eventId: string) => {
+    try {
+      setMarketingLoading(true)
+      setMarketingError(null)
+      const result = await getEventMarketingLinks(eventId)
+      if (!result.success) {
+        setMarketingLinks([])
+        setMarketingError(result.error || 'Failed to load marketing links')
+        return
+      }
+      setMarketingLinks(result.links || [])
+    } catch (error) {
+      console.error('Error loading marketing links:', error)
+      setMarketingLinks([])
+      setMarketingError('Failed to load marketing links.')
+    } finally {
+      setMarketingLoading(false)
+    }
+  }, [])
 
   const loadEventData = useCallback(async () => {
     try {
@@ -54,7 +79,8 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
         .single()
 
       if (eventError) throw eventError
-      setEvent(eventData)
+      const typedEvent = eventData ? (eventData as Event) : null
+      setEvent(typedEvent)
 
       const { data: bookingsData, error: bookingsError } = await supabase
         .from('bookings')
@@ -64,17 +90,49 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
 
       if (bookingsError) throw bookingsError
       setBookings(bookingsData as BookingWithCustomer[])
+
+      if (typedEvent?.id) {
+        await loadMarketingLinks(typedEvent.id)
+      }
     } catch (error) {
       console.error('Error loading event:', error)
       toast.error('Failed to load event details.')
+      setMarketingLoading(false)
+      setMarketingError('Failed to load marketing links.')
     } finally {
       setIsLoading(false)
     }
-  }, [params.id, supabase])
+  }, [loadMarketingLinks, params.id, supabase])
 
   useEffect(() => {
     loadEventData()
   }, [loadEventData])
+
+  const handleRegenerateMarketingLinks = useCallback(async () => {
+    if (!event) return
+
+    try {
+      setMarketingLoading(true)
+      setMarketingError(null)
+      const result = await regenerateEventMarketingLinks(event.id)
+      if (!result.success) {
+        setMarketingLinks([])
+        const errorMessage = result.error || 'Failed to refresh marketing links'
+        setMarketingError(errorMessage)
+        toast.error(errorMessage)
+        return
+      }
+
+      setMarketingLinks(result.links || [])
+      toast.success('Marketing links refreshed')
+    } catch (error) {
+      console.error('Failed to regenerate marketing links:', error)
+      setMarketingError('Failed to refresh marketing links.')
+      toast.error('Failed to refresh marketing links')
+    } finally {
+      setMarketingLoading(false)
+    }
+  }, [event])
 
   const handleCreateBooking = async (_data: Omit<Booking, 'id' | 'created_at'>) => {
     // The BookingForm now handles all the logic including duplicate checking
@@ -437,29 +495,37 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
         )}
 
         {event && (
-          <Section
-            title={`Active Bookings (${activeBookings.length})`}
-            description={`${totalSeats} seats booked${event.capacity ? ` of ${event.capacity}` : ''}`}
-            variant="gray"
-          >
-            <BookingTable items={activeBookings} type="booking" />
-          </Section>
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+            <div className="space-y-6">
+              <Section
+                title={`Active Bookings (${activeBookings.length})`}
+                description={`${totalSeats} seats booked${event.capacity ? ` of ${event.capacity}` : ''}`}
+                variant="gray"
+              >
+                <BookingTable items={activeBookings} type="booking" />
+              </Section>
+
+              <Section
+                title={`Reminders (${reminders.length})`}
+                variant="gray"
+              >
+                <BookingTable items={reminders} type="reminder" />
+              </Section>
+
+              <EventMarketingLinksCard
+                links={marketingLinks}
+                loading={marketingLoading}
+                error={marketingError}
+                onRegenerate={handleRegenerateMarketingLinks}
+              />
+            </div>
+
+            <div className="space-y-6">
+              <EventChecklistCard eventId={event.id} eventName={event.name} />
+            </div>
+          </div>
         )}
 
-        {event && (
-          <Section
-            title={`Reminders (${reminders.length})`}
-            variant="gray"
-          >
-            <BookingTable items={reminders} type="reminder" />
-          </Section>
-        )}
-
-        {event && (
-          <Card>
-            <EventTemplateManager eventId={event.id} eventName={event.name} />
-          </Card>
-        )}
       </PageContent>
     </PageWrapper>
   )

@@ -32,6 +32,15 @@ export interface Event {
   last_entry_time?: string | null;
 }
 
+export interface EventChecklistStatus {
+  id: string;
+  event_id: string;
+  task_key: string;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface EventFAQ {
   id: string;
   event_id: string;

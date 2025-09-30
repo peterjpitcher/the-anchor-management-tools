@@ -1,4 +1,6 @@
 import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
+import { buildEventChecklist, EVENT_CHECKLIST_TOTAL_TASKS } from '@/lib/event-checklist'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 import EventsClient from './EventsClient'
 
 async function getEvents() {
@@ -19,11 +21,75 @@ async function getEvents() {
     return []
   }
   
+  const eventIds = events?.map(event => event.id).filter(Boolean) as string[]
+  let statusMap = new Map<string, { task_key: string; completed_at: string | null }[]>()
+
+  if (eventIds.length > 0) {
+    const { data: checklistStatuses, error: checklistError } = await supabase
+      .from('event_checklist_statuses')
+      .select('event_id, task_key, completed_at')
+      .in('event_id', eventIds)
+
+    if (checklistError) {
+      console.error('Error loading event checklist statuses:', checklistError)
+    } else if (checklistStatuses) {
+      statusMap = checklistStatuses.reduce((map, status) => {
+        const list = map.get(status.event_id) ?? []
+        list.push({ task_key: status.task_key, completed_at: status.completed_at })
+        map.set(status.event_id, list)
+        return map
+      }, new Map<string, { task_key: string; completed_at: string | null }[]>())
+    }
+  }
+
+  const todayIso = getTodayIsoDate()
+
   type BookingSeat = { seats: number | null }
   return events.map(event => ({
     ...event,
     booked_seats: event.bookings?.reduce((sum: number, booking: BookingSeat) => sum + (booking.seats || 0), 0) || 0,
-    bookings: undefined
+    bookings: undefined,
+    checklist: (() => {
+      if (!event.date) {
+        return {
+          completed: 0,
+          total: EVENT_CHECKLIST_TOTAL_TASKS,
+          overdueCount: 0,
+          dueTodayCount: 0,
+          nextTask: null
+        }
+      }
+      const statuses = statusMap.get(event.id) ?? []
+      const checklist = buildEventChecklist(
+        { id: event.id, name: event.name, date: event.date },
+        statuses.map(status => ({
+          event_id: event.id,
+          task_key: status.task_key,
+          completed_at: status.completed_at
+        })),
+        todayIso
+      )
+
+      const outstanding = checklist
+        .filter(item => !item.completed)
+        .sort((a, b) => {
+          if (a.dueDate === b.dueDate) {
+            return a.order - b.order
+          }
+          return a.dueDate.localeCompare(b.dueDate)
+        })
+
+      const overdueCount = outstanding.filter(item => item.status === 'overdue').length
+      const dueTodayCount = outstanding.filter(item => item.status === 'due_today').length
+
+      return {
+        completed: checklist.filter(item => item.completed).length,
+        total: EVENT_CHECKLIST_TOTAL_TASKS,
+        overdueCount,
+        dueTodayCount,
+        nextTask: outstanding[0] || null
+      }
+    })()
   }))
 }
 

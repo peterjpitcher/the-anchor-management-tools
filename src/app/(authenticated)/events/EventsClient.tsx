@@ -14,6 +14,7 @@ import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { ProgressBar } from '@/components/ui-v2/feedback/ProgressBar'
 import { Accordion } from '@/components/ui-v2/display/Accordion'
 import { formatDate, getTodayIsoDate } from '@/lib/dateUtils'
+import type { EventChecklistItem } from '@/lib/event-checklist'
 
 interface EventCategory {
   id: string
@@ -29,6 +30,13 @@ interface Event {
   capacity: number | null
   booked_seats: number
   category: EventCategory | null
+  checklist?: {
+    completed: number
+    total: number
+    overdueCount: number
+    dueTodayCount: number
+    nextTask: EventChecklistItem | null
+  }
 }
 
 interface EventsClientProps {
@@ -52,6 +60,9 @@ export default function EventsClient({ events }: EventsClientProps) {
         }}
         actions={
           <NavGroup>
+            <NavLink href="/events/todo">
+              Checklist Todo
+            </NavLink>
             <NavLink href="/settings/event-categories">
               Manage Categories
             </NavLink>
@@ -120,6 +131,59 @@ export default function EventsClient({ events }: EventsClientProps) {
                     </div>
                   )
                 },
+              },
+              {
+                key: 'checklist',
+                header: 'Checklist',
+                cell: (event) => {
+                  const summary = event.checklist
+                  if (!summary) {
+                    return <span className="text-sm text-gray-500">No data</span>
+                  }
+
+                  const percent = summary.total > 0 ? Math.round((summary.completed / summary.total) * 100) : 0
+                  const hasAllComplete = summary.completed === summary.total
+                  const statusBadgeVariant = summary.overdueCount > 0
+                    ? 'error'
+                    : summary.dueTodayCount > 0
+                      ? 'warning'
+                      : hasAllComplete
+                        ? 'success'
+                        : 'info'
+                  const statusBadgeLabel = summary.overdueCount > 0
+                    ? `${summary.overdueCount} overdue`
+                    : summary.dueTodayCount > 0
+                      ? `${summary.dueTodayCount} due today`
+                      : hasAllComplete
+                        ? 'Complete'
+                        : 'On track'
+
+                  return (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium text-gray-900">{summary.completed}/{summary.total}</span>
+                        <Badge variant={statusBadgeVariant} size="sm">
+                          {statusBadgeLabel}
+                        </Badge>
+                      </div>
+                      <ProgressBar value={percent} size="sm" />
+                      {summary.nextTask && !hasAllComplete && (
+                        <div className="text-xs text-gray-500">
+                          Next: <span className="font-medium text-gray-700">{summary.nextTask.label}</span>
+                          <span className="ml-1">
+                            • due {
+                              summary.nextTask.status === 'overdue'
+                                ? `since ${summary.nextTask.dueDateFormatted}`
+                                : summary.nextTask.status === 'due_today'
+                                  ? 'today'
+                                  : `on ${summary.nextTask.dueDateFormatted}`
+                            }
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )
+                }
               },
               {
                 key: 'bookings',
