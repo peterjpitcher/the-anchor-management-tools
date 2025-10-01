@@ -319,55 +319,98 @@ export async function processScheduledEventReminders(options: ProcessOptions = {
         const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153)
         const costUsd = segments * 0.04
 
-        const { error: logError } = await supabase
-          .from('messages')
-          .insert({
-            customer_id: customer.id,
-            direction: 'outbound',
-            message_sid: twilioMessage.sid,
-            twilio_message_sid: twilioMessage.sid,
-            body: messageBody,
-            status: twilioMessage.status || 'queued',
-            twilio_status: twilioMessage.status || 'queued',
-            from_number: twilioMessage.from || process.env.TWILIO_PHONE_NUMBER || '',
-            to_number: twilioMessage.to,
-            message_type: 'sms',
-            segments,
-            cost_usd: costUsd,
-            read_at: new Date().toISOString(),
+        const messageInsertBase = {
+          customer_id: customer.id,
+          direction: 'outbound' as const,
+          message_sid: twilioMessage.sid,
+          twilio_message_sid: twilioMessage.sid,
+          body: messageBody,
+          status: twilioMessage.status || 'queued',
+          twilio_status: twilioMessage.status || 'queued',
+          from_number: twilioMessage.from || process.env.TWILIO_PHONE_NUMBER || '',
+          to_number: twilioMessage.to,
+          message_type: 'sms' as const,
+          segments,
+          cost_usd: costUsd,
+          read_at: new Date().toISOString()
+        }
+
+        let loggedMessageId: string | null = null
+
+        const messagePayloads = [
+          {
+            ...messageInsertBase,
             metadata: {
               reminder_id: reminder.id,
               reminder_type: reminder.reminder_type,
               booking_id: booking.id,
               event_id: event.id
             }
-          })
+          },
+          messageInsertBase
+        ]
 
-        if (logError) {
-          logger.error('Failed to log reminder SMS message', {
-            error: logError,
-            metadata: {
-              reminderId: reminder.id,
-              customerId: customer.id
-            }
-          })
+        for (const payload of messagePayloads) {
+          if (loggedMessageId) break
+
+          const { data, error: messageInsertError } = await supabase
+            .from('messages')
+            .insert(payload)
+            .select('id')
+            .single()
+
+          if (messageInsertError) {
+            logger.error('Failed to log reminder SMS message', {
+              error: messageInsertError,
+              metadata: {
+                reminderId: reminder.id,
+                customerId: customer.id,
+                hasMetadata: 'metadata' in payload
+              }
+            })
+
+            continue
+          }
+
+          loggedMessageId = data?.id ?? null
         }
 
-        await supabase
+        const { error: reminderUpdateError } = await supabase
           .from('booking_reminders')
           .update({
             status: 'sent',
             sent_at: nowIso,
-            message_id: twilioMessage.sid,
+            message_id: loggedMessageId,
             target_phone: targetPhone,
             event_id: event.id
           })
           .eq('id', reminder.id)
 
-        await supabase
+        if (reminderUpdateError) {
+          logger.error('Failed to update booking reminder after send', {
+            error: reminderUpdateError,
+            metadata: {
+              reminderId: reminder.id,
+              bookingId: booking.id,
+              type: reminder.reminder_type
+            }
+          })
+        }
+
+        const { error: bookingUpdateError } = await supabase
           .from('bookings')
           .update({ last_reminder_sent: nowIso })
           .eq('id', booking.id)
+
+        if (bookingUpdateError) {
+          logger.error('Failed to stamp booking with last reminder sent', {
+            error: bookingUpdateError,
+            metadata: {
+              bookingId: booking.id,
+              reminderId: reminder.id
+            }
+          })
+        }
 
         sentCount++
         processedKeys.add(key)

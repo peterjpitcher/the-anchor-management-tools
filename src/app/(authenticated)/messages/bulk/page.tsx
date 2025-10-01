@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { sendBulkSMSDirect } from '@/app/actions/sms-bulk-direct'
 import { enqueueBulkSMSJob } from '@/app/actions/job-queue'
@@ -238,6 +238,26 @@ export default function BulkMessagePage() {
   useEffect(() => {
     applyFilters()
   }, [applyFilters])
+
+  useEffect(() => {
+    const filteredIds = filteredCustomers.map(customer => customer.id)
+    const filteredSet = new Set(filteredIds)
+
+    setSelectedCustomers(prev => {
+      if (prev.size === filteredSet.size) {
+        const hasDifference = filteredIds.some(id => !prev.has(id))
+        if (!hasDifference) {
+          return prev
+        }
+      }
+      return filteredSet
+    })
+  }, [filteredCustomers])
+
+  const selectedRecipients = useMemo(() => {
+    if (selectedCustomers.size === 0) return []
+    return customers.filter(customer => selectedCustomers.has(customer.id))
+  }, [customers, selectedCustomers])
 
   function toggleCustomer(customerId: string) {
     const newSelected = new Set(selectedCustomers)
@@ -643,6 +663,33 @@ export default function BulkMessagePage() {
 
         {/* Message Composition */}
         <div className="space-y-6">
+          <Section title="Recipients">
+            <Card>
+              <div className="space-y-3">
+                <div className="text-sm text-gray-700">
+                  {selectedRecipients.length === 0
+                    ? 'No customers selected. Adjust your filters to target specific recipients.'
+                    : `${selectedRecipients.length} customer${selectedRecipients.length === 1 ? '' : 's'} will receive this message.`}
+                </div>
+                {selectedRecipients.length > 0 && (
+                  <div className="max-h-48 overflow-y-auto border rounded-md divide-y">
+                    {selectedRecipients.slice(0, 20).map(recipient => (
+                      <div key={recipient.id} className="px-3 py-2 text-sm flex justify-between">
+                        <span>{recipient.first_name} {recipient.last_name}</span>
+                        <span className="text-gray-500">{recipient.mobile_number}</span>
+                      </div>
+                    ))}
+                    {selectedRecipients.length > 20 && (
+                      <div className="px-3 py-2 text-xs text-gray-500 text-right">
+                        + {selectedRecipients.length - 20} more
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </Card>
+          </Section>
+
           <Section title="Compose Message">
             <Card>
               <div className="space-y-4">
