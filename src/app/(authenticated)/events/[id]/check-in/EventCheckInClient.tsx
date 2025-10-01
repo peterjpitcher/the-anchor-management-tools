@@ -99,11 +99,9 @@ export default function EventCheckInClient({ event, reviewLink }: EventCheckInCl
       setKnownGuest(result.data)
 
       if (result.data.alreadyCheckedIn) {
+        const displayName = `${result.data.customer.first_name} ${result.data.customer.last_name ?? ''}`.trim() || 'there'
         setStep('already')
-        setStatusMessage(
-          `${result.data.customer.first_name} ${result.data.customer.last_name ?? ''}`.trim() +
-            ' is already checked in for this event.'
-        )
+        setStatusMessage(`Hello ${displayName}! You're already checked in for ${event.name}. Enjoy the evening!`)
         return
       }
 
@@ -128,11 +126,10 @@ export default function EventCheckInClient({ event, reviewLink }: EventCheckInCl
         return
       }
 
-      setStatusMessage(
-        `Checked in ${
-          result.data.customerName || `${knownGuest.customer.first_name} ${knownGuest.customer.last_name ?? ''}`.trim()
-        }.`
-      )
+      const displayName =
+        result.data.customerName || `${knownGuest.customer.first_name} ${knownGuest.customer.last_name ?? ''}`.trim() || 'there'
+
+      setStatusMessage(`Hello ${displayName}! Welcome to ${event.name}. Thank you for checking in.`)
       setStep('success')
     })
   }
@@ -157,7 +154,8 @@ export default function EventCheckInClient({ event, reviewLink }: EventCheckInCl
         return
       }
 
-      setStatusMessage(`Checked in ${result.data.customerName}.`)
+      const displayName = result.data.customerName || newGuestDetails.firstName || 'there'
+      setStatusMessage(`Hello ${displayName}! Welcome to ${event.name}. Thank you for checking in.`)
       setStep('success')
     })
   }
@@ -166,7 +164,7 @@ export default function EventCheckInClient({ event, reviewLink }: EventCheckInCl
     <form onSubmit={handleLookup} className="space-y-4">
       <div className="space-y-3">
         <label htmlFor="phone" className="block text-lg font-semibold text-gray-900">
-          Please pop your mobile number in to check in
+          Welcome! Pop your mobile number in to check in for tonight’s event
         </label>
         <Input
           id="phone"
@@ -192,16 +190,17 @@ export default function EventCheckInClient({ event, reviewLink }: EventCheckInCl
     if (!knownGuest) return null
 
     const fullName = `${knownGuest.customer.first_name} ${knownGuest.customer.last_name ?? ''}`.trim()
+    const greetingName = fullName || 'there'
 
     return (
       <div className="space-y-5">
         <div className="rounded-2xl bg-gray-50 border border-gray-200 p-5 text-gray-900">
-          <p className="text-sm font-semibold uppercase tracking-wide text-gray-600">Guest recognised</p>
-          <p className="text-2xl font-semibold mt-2">{fullName}</p>
+          <p className="text-sm font-semibold uppercase tracking-wide text-emerald-600">Great news</p>
+          <p className="text-2xl font-semibold mt-2">Hello {greetingName}!</p>
           <p className="text-base mt-3">
             {knownGuest.booking
-              ? `They have ${knownGuest.booking.seats ?? 1} seat reserved.`
-              : 'There is no booking yet. We will create one seat automatically so their visit is recorded.'}
+              ? `We have you down for ${knownGuest.booking.seats ?? 1} seat${(knownGuest.booking.seats ?? 1) > 1 ? 's' : ''}. Tap below and we’ll mark you as arrived.`
+              : 'We could not see a booking, so we will pop you on the list now and mark you as arrived.'}
           </p>
         </div>
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -212,7 +211,7 @@ export default function EventCheckInClient({ event, reviewLink }: EventCheckInCl
             disabled={isPending}
             className="sm:w-auto text-base px-6 py-3"
           >
-            {isPending ? 'Checking in…' : `Check in ${fullName || 'guest'}`}
+            {isPending ? 'Checking in…' : `Yes, check me in`}
           </Button>
           <Button
             type="button"
@@ -231,9 +230,9 @@ export default function EventCheckInClient({ event, reviewLink }: EventCheckInCl
   const renderUnknownGuest = () => (
     <form onSubmit={handleNewCheckIn} className="space-y-5">
       <div className="rounded-2xl bg-gray-50 border border-gray-200 p-5 text-gray-900">
-        <p className="text-sm font-semibold uppercase tracking-wide text-gray-600">New guest</p>
+        <p className="text-sm font-semibold uppercase tracking-wide text-emerald-600">Let’s get you on the list</p>
         <p className="text-base mt-3">
-          We could not find a match for {normalizedPhone}. Add their details below so we can welcome them properly.
+          We could not find a match for {normalizedPhone}. Add your name so we can welcome you properly this evening.
         </p>
       </div>
 
@@ -275,14 +274,14 @@ export default function EventCheckInClient({ event, reviewLink }: EventCheckInCl
             className="text-lg"
           />
           <p className="text-sm text-gray-500">
-            Email is optional but helps us send highlights or offers if they choose.
+            Email is optional but helps us share highlights or offers if you fancy.
           </p>
         </div>
       </div>
 
       <div className="flex flex-col sm:flex-row sm:items-center gap-4">
         <Button type="submit" variant="primary" disabled={isPending} className="sm:w-auto text-base px-6 py-3">
-          {isPending ? 'Checking in…' : 'Create booking & check in'}
+          {isPending ? 'Checking in…' : 'All set – check me in'}
         </Button>
         <Button type="button" variant="secondary" onClick={() => setStep('lookup')} className="sm:w-auto text-base px-6 py-3">
           <ArrowLeftIcon className="h-5 w-5 mr-2" />
@@ -298,7 +297,7 @@ export default function EventCheckInClient({ event, reviewLink }: EventCheckInCl
         <div className="rounded-2xl bg-gray-50 border border-gray-200 p-5 text-gray-900">
           <p className="text-base font-semibold">{statusMessage}</p>
           <p className="text-sm mt-2 text-gray-600">
-            If they return later, you can repeat the check-in to confirm again.
+            If you pop back later just say hello again and we’ll double-check for you.
           </p>
         </div>
       )}
@@ -312,10 +311,10 @@ export default function EventCheckInClient({ event, reviewLink }: EventCheckInCl
     <div className="space-y-5 text-center text-gray-900">
       <div className="flex flex-col items-center space-y-3">
         <CheckCircleIcon className="h-12 w-12 text-emerald-500" aria-hidden />
-        <p className="text-2xl font-semibold">Guest checked in</p>
-        {statusMessage && <p className="text-sm text-gray-600">{statusMessage}</p>}
+        <p className="text-2xl font-semibold">You’re all checked in!</p>
+        {statusMessage && <p className="text-base text-gray-700">{statusMessage}</p>}
         <p className="text-sm text-gray-500 max-w-sm">
-          We will send a thank-you SMS tomorrow with a direct link to our Google reviews at {reviewLink}.
+          We’ll send a friendly thank-you text tomorrow with a quick link to share a review: {reviewLink}
         </p>
       </div>
       <Button type="button" variant="primary" onClick={resetFlow} className="sm:w-auto text-base px-6 py-3">
