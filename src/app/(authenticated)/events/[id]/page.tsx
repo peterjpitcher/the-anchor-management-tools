@@ -1,6 +1,7 @@
 'use client'
 
 import { formatDate } from '@/lib/dateUtils'
+import { formatDistanceToNow } from 'date-fns'
 import Link from 'next/link'
 import { use, useEffect, useState, useCallback } from 'react'
 import { Event as BaseEvent, Booking, Customer } from '@/types/database'
@@ -30,9 +31,22 @@ import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { DataTable, Column } from '@/components/ui-v2/display/DataTable'
 import { toast } from '@/components/ui-v2/feedback/Toast'
+import { formatPhoneForDisplay } from '@/lib/validation'
 import { Section } from '@/components/ui-v2/layout/Section'
 type BookingWithCustomer = Omit<Booking, 'customer'> & {
   customer: Pick<Customer, 'first_name' | 'last_name' | 'id'>
+}
+
+type EventCheckInRecord = {
+  id: string
+  check_in_time: string
+  check_in_method: string | null
+  customer: {
+    id: string
+    first_name: string
+    last_name: string | null
+    mobile_number: string | null
+  }
 }
 
 export const dynamic = 'force-dynamic'
@@ -48,6 +62,7 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
   const [marketingLinks, setMarketingLinks] = useState<EventMarketingLink[]>([])
   const [marketingLoading, setMarketingLoading] = useState(true)
   const [marketingError, setMarketingError] = useState<string | null>(null)
+  const [checkIns, setCheckIns] = useState<EventCheckInRecord[]>([])
 
   const loadMarketingLinks = useCallback(async (eventId: string) => {
     try {
@@ -93,6 +108,21 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
 
       if (typedEvent?.id) {
         await loadMarketingLinks(typedEvent.id)
+
+        const { data: checkInsData, error: checkInsError } = await supabase
+          .from('event_check_ins')
+          .select('id, check_in_time, check_in_method, customer:customers!inner(id, first_name, last_name, mobile_number)')
+          .eq('event_id', typedEvent.id)
+          .order('check_in_time', { ascending: false })
+
+        if (checkInsError) {
+          console.error('Error loading check-ins:', checkInsError)
+          setCheckIns([])
+        } else {
+          setCheckIns((checkInsData as EventCheckInRecord[]) || [])
+        }
+      } else {
+        setCheckIns([])
       }
     } catch (error) {
       console.error('Error loading event:', error)
@@ -215,6 +245,16 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
       text += 'No attendees yet.\n'
     }
 
+    if (checkIns.length > 0) {
+      text += `\nChecked-in guests (${checkIns.length}):\n`
+      checkIns.forEach((checkIn, index) => {
+        const fullName = `${checkIn.customer.first_name} ${checkIn.customer.last_name ?? ''}`.trim() || 'Guest'
+        const phone = formatPhoneForDisplay(checkIn.customer.mobile_number)
+        const phoneDisplay = phone ? ` - ${phone}` : ''
+        text += `${index + 1}. ${fullName}${phoneDisplay}\n`
+      })
+    }
+
     // Add reminders section
     if (reminders.length > 0) {
       text += `\nReminder List (${reminders.length}):\n`
@@ -294,6 +334,7 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
   const activeBookings = bookings.filter(booking => booking.seats && booking.seats > 0)
   const reminders = bookings.filter(booking => !booking.seats || booking.seats === 0)
   const totalSeats = activeBookings.reduce((sum, booking) => sum + (booking.seats ?? 0), 0)
+  const totalCheckIns = checkIns.length
 
   // Define columns for bookings table
   const bookingColumns: Column<BookingWithCustomer>[] = [
@@ -351,6 +392,88 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
   // Columns for reminders (no seats column)
   const reminderColumns: Column<BookingWithCustomer>[] = bookingColumns.filter(
     col => col.key !== 'seats'
+  )
+
+  const formatCheckInMethod = (method: string | null) => {
+    if (!method) return 'Manual'
+    switch (method) {
+      case 'qr':
+        return 'QR'
+      case 'self':
+        return 'Self check-in'
+      case 'manual':
+      default:
+        return 'Manual'
+    }
+  }
+
+  const checkInColumns: Column<EventCheckInRecord>[] = [
+    {
+      key: 'guest',
+      header: 'Guest',
+      cell: (record) => (
+        <div>
+          <div className="text-sm font-medium text-gray-900">
+            {`${record.customer.first_name} ${record.customer.last_name ?? ''}`.trim() || 'Guest'}
+          </div>
+          {record.customer.mobile_number && (
+            <div className="text-sm text-gray-500">{formatPhoneForDisplay(record.customer.mobile_number)}</div>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'checked_in',
+      header: 'Checked in',
+      cell: (record) => (
+        <span className="text-sm text-gray-500">
+          {formatDistanceToNow(new Date(record.check_in_time), { addSuffix: true })}
+        </span>
+      ),
+      width: 'auto',
+    },
+    {
+      key: 'method',
+      header: 'Method',
+      cell: (record) => (
+        <Badge variant="info" size="sm" className="capitalize">
+          {formatCheckInMethod(record.check_in_method)}
+        </Badge>
+      ),
+      width: 'auto',
+    },
+  ]
+
+  const CheckInTable = ({ items }: { items: EventCheckInRecord[] }) => (
+    <DataTable
+      data={items}
+      columns={checkInColumns}
+      getRowKey={(record) => record.id}
+      emptyMessage="No guests have checked in yet"
+      bordered
+      renderMobileCard={(record) => (
+        <Card variant="bordered" padding="sm">
+          <div className="space-y-2">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="font-medium text-gray-900">
+                  {`${record.customer.first_name} ${record.customer.last_name ?? ''}`.trim() || 'Guest'}
+                </p>
+                {record.customer.mobile_number && (
+                  <p className="text-sm text-gray-500">{formatPhoneForDisplay(record.customer.mobile_number)}</p>
+                )}
+              </div>
+              <Badge variant="info" size="sm" className="capitalize">
+                {formatCheckInMethod(record.check_in_method)}
+              </Badge>
+            </div>
+            <p className="text-sm text-gray-500">
+              Checked in {formatDistanceToNow(new Date(record.check_in_time), { addSuffix: true })}
+            </p>
+          </div>
+        </Card>
+      )}
+    />
   )
 
   const BookingTable = ({ items, type }: { items: BookingWithCustomer[], type: 'booking' | 'reminder' }) => (
@@ -510,6 +633,14 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
                 variant="gray"
               >
                 <BookingTable items={reminders} type="reminder" />
+              </Section>
+
+              <Section
+                title={`Checked-in Guests (${totalCheckIns})`}
+                description="Everyone who has arrived and been welcomed tonight."
+                variant="gray"
+              >
+                <CheckInTable items={checkIns} />
               </Section>
 
               <EventMarketingLinksCard
