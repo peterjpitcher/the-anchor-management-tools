@@ -353,39 +353,84 @@ async function assignEventLabels(
   customerId: string,
   assignedBy: string | null
 ) {
-  const { data: labels, error } = await admin
+  const REQUIRED_LABELS = [
+    {
+      name: 'Event Booker',
+      description: 'Guests who have an event booking at The Anchor.',
+      color: '#0EA5E9',
+      icon: 'calendar-star',
+    },
+    {
+      name: 'Event Attendee',
+      description: 'Guests who have attended an event at The Anchor.',
+      color: '#16A34A',
+      icon: 'user-group',
+    },
+    {
+      name: 'Event Checked-In',
+      description: 'Guests who have checked in for an event at The Anchor.',
+      color: '#0F766E',
+      icon: 'badge-check',
+    },
+  ] as const
+
+  const labelNames = REQUIRED_LABELS.map((label) => label.name)
+
+  const { data: existingLabels, error: labelsError } = await admin
     .from('customer_labels')
     .select('id, name')
-    .in('name', ['Event Booker', 'Event Attendee'])
+    .in('name', labelNames)
 
-  if (error) {
-    console.error('Failed to load event labels:', error)
+  if (labelsError) {
+    console.error('Failed to load event labels:', labelsError)
     return
   }
 
-  const labelMap = new Map(labels?.map((label) => [label.name, label.id]))
+  const labelMap = new Map(existingLabels?.map((label) => [label.name, label.id]))
 
-  const assignments = [] as Array<{ customer_id: string; label_id: string; auto_assigned: boolean; assigned_by: string | null; notes: string }>
+  const missingLabels = REQUIRED_LABELS.filter((label) => !labelMap.has(label.name))
 
-  const bookerId = labelMap.get('Event Booker')
-  if (bookerId) {
-    assignments.push({
-      customer_id: customerId,
-      label_id: bookerId,
-      auto_assigned: true,
-      assigned_by: assignedBy,
-      notes: 'Auto-applied via event check-in',
-    })
+  if (missingLabels.length > 0) {
+    const { data: insertedLabels, error: insertError } = await admin
+      .from('customer_labels')
+      .insert(
+        missingLabels.map((label) => ({
+          name: label.name,
+          description: label.description,
+          color: label.color,
+          icon: label.icon,
+          auto_apply_rules: null,
+        }))
+      )
+      .select('id, name')
+
+    if (insertError) {
+      console.error('Failed to create required event labels:', insertError)
+    } else {
+      for (const label of insertedLabels || []) {
+        labelMap.set(label.name, label.id)
+      }
+    }
   }
 
-  const attendeeId = labelMap.get('Event Attendee')
-  if (attendeeId) {
+  const assignments: Array<{
+    customer_id: string
+    label_id: string
+    auto_assigned: boolean
+    assigned_by: string | null
+    notes: string
+  }> = []
+
+  for (const label of REQUIRED_LABELS) {
+    const labelId = labelMap.get(label.name)
+    if (!labelId) continue
+
     assignments.push({
       customer_id: customerId,
-      label_id: attendeeId,
+      label_id: labelId,
       auto_assigned: true,
       assigned_by: assignedBy,
-      notes: 'Auto-applied via event check-in',
+      notes: label.name === 'Event Checked-In' ? 'Checked in via event check-in flow' : 'Auto-applied via event check-in',
     })
   }
 
