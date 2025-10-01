@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { formatDistanceToNow } from 'date-fns'
 import { 
@@ -73,6 +73,19 @@ interface QueueStats {
   oldestMessage: string | null
 }
 
+interface QueueResponse {
+  messages: QueuedMessage[]
+  jobs: Job[]
+  stats: QueueStats
+  lastSyncedAt: string
+}
+
+const QUEUED_STATUSES = new Set(['queued', 'accepted', 'scheduled'])
+const PENDING_STATUSES = new Set(['pending', 'sent'])
+const SENDING_STATUSES = new Set(['sending'])
+const FAILED_STATUSES = new Set(['failed', 'undelivered', 'canceled'])
+const DELIVERED_STATUSES = new Set(['delivered', 'received'])
+
 export default function SMSQueueStatusPage() {
   const supabase = useSupabase()
   const [loading, setLoading] = useState(true)
@@ -89,57 +102,39 @@ export default function SMSQueueStatusPage() {
     oldestMessage: null
   })
   const [refreshing, setRefreshing] = useState(false)
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
     try {
-      // Load messages
-      const { data: messagesData, error: messagesError } = await supabase
-        .from('messages')
-        .select(`
-          *,
-          customer:customers(first_name, last_name)
-        `)
-        .eq('direction', 'outbound')
-        .order('created_at', { ascending: false })
-        .limit(500)
-
-      if (messagesError) throw messagesError
-
-      // Load jobs
-      const { data: jobsData, error: jobsError } = await supabase
-        .from('jobs')
-        .select('*')
-        .eq('type', 'send_sms')
-        .order('created_at', { ascending: false })
-        .limit(100)
-
-      if (jobsError) throw jobsError
-
-      setMessages(messagesData || [])
-      setJobs(jobsData || [])
-
-      // Calculate stats
-      const queued = messagesData?.filter((m: QueuedMessage) => m.status === 'queued') || []
-      const pending = messagesData?.filter((m: QueuedMessage) => m.status === 'pending') || []
-      const sending = messagesData?.filter((m: QueuedMessage) => m.status === 'sending') || []
-      const failed = messagesData?.filter((m: QueuedMessage) => m.status === 'failed') || []
-      const delivered = messagesData?.filter((m: QueuedMessage) => m.status === 'delivered') || []
-      const pendingJobs = jobsData?.filter((j: Job) => j.status === 'pending') || []
-
-      const allMessages = [...queued, ...pending, ...sending] as QueuedMessage[]
-      const oldestQueued = allMessages.sort(
-        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      )[0]
-
-      setStats({
-        totalQueued: queued.length,
-        totalPending: pending.length,
-        totalSending: sending.length,
-        totalFailed: failed.length,
-        totalDelivered: delivered.length,
-        totalJobs: pendingJobs.length,
-        oldestMessage: oldestQueued?.created_at || null
+      const response = await fetch('/api/messages/queue', {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json'
+        },
+        cache: 'no-store'
       })
+
+      if (!response.ok) {
+        throw new Error(`Failed to load queue: ${response.status}`)
+      }
+
+      const data = (await response.json()) as QueueResponse
+
+      const normalizedMessages = (data.messages || []).map(message => ({
+        ...message,
+        status: typeof message.status === 'string' ? message.status.toLowerCase() : message.status,
+        twilio_status: typeof message.twilio_status === 'string' ? message.twilio_status.toLowerCase() : message.twilio_status
+      }))
+
+      const normalizedJobs = (data.jobs || []).map(job => ({
+        ...job,
+        status: typeof job.status === 'string' ? job.status.toLowerCase() : job.status
+      }))
+
+      setMessages(normalizedMessages)
+      setJobs(normalizedJobs)
+      setStats(data.stats)
+      setLastSyncedAt(data.lastSyncedAt)
     } catch (error) {
       console.error('Error loading SMS queue data:', error)
       toast.error('Failed to load SMS queue data')
@@ -147,12 +142,13 @@ export default function SMSQueueStatusPage() {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [supabase])
+  }, [])
 
   useEffect(() => {
-    loadData()
-    // Refresh every 10 seconds
-    const interval = setInterval(loadData, 10000)
+    void loadData()
+    const interval = setInterval(() => {
+      void loadData()
+    }, 10000)
     return () => clearInterval(interval)
   }, [loadData])
 
@@ -161,12 +157,36 @@ export default function SMSQueueStatusPage() {
     await loadData()
   }
 
-  const reconcileMessage = async (_messageId: string) => {
+  const reconcileMessage = async (messageId: string) => {
     try {
-      // This would call a server action to check Twilio's API for the message status
-      toast.info('Reconciliation would check Twilio API for message status')
-      // TODO: Implement server action to reconcile with Twilio
-    } catch {
+      const response = await fetch('/api/messages/queue', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ action: 'reconcile', messageId })
+      })
+
+      if (!response.ok) {
+        const message = await response.json().catch(() => ({ error: 'Failed to reconcile message' }))
+        throw new Error(message.error || 'Failed to reconcile message')
+      }
+
+      const result = await response.json()
+
+      if (result?.message) {
+        setMessages(prev => prev.map(msg => (msg.id === result.message.id ? {
+          ...msg,
+          ...result.message,
+          status: typeof result.message.status === 'string' ? result.message.status.toLowerCase() : result.message.status,
+          twilio_status: typeof result.message.twilio_status === 'string' ? result.message.twilio_status.toLowerCase() : result.message.twilio_status
+        } : msg)))
+      }
+
+      toast.success('Message reconciled with Twilio')
+      await loadData()
+    } catch (error) {
       toast.error('Failed to reconcile message')
     }
   }
@@ -203,16 +223,18 @@ export default function SMSQueueStatusPage() {
     }
 
     try {
-      const sevenDaysAgo = new Date()
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+      const response = await fetch('/api/messages/queue', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ action: 'clear_old' })
+      })
 
-      const { error } = await supabase
-        .from('messages')
-        .delete()
-        .in('status', ['queued', 'pending', 'failed'])
-        .lt('created_at', sevenDaysAgo.toISOString())
-
-      if (error) throw error
+      if (!response.ok) {
+        throw new Error('Request failed')
+      }
 
       toast.success('Old messages cleared')
       await loadData()
@@ -221,8 +243,10 @@ export default function SMSQueueStatusPage() {
     }
   }
 
+  const normalizedStatus = useCallback((status: string) => (status || '').toLowerCase(), [])
+
   const getStatusIcon = (status: string) => {
-    switch (status) {
+    switch (normalizedStatus(status)) {
       case 'delivered':
         return <CheckCircleIcon className="h-5 w-5 text-green-500" />
       case 'sent':
@@ -232,6 +256,8 @@ export default function SMSQueueStatusPage() {
         return <XCircleIcon className="h-5 w-5 text-red-500" />
       case 'queued':
       case 'pending':
+      case 'accepted':
+      case 'scheduled':
         return <ClockIcon className="h-5 w-5 text-yellow-500" />
       case 'sending':
         return <ArrowPathIcon className="h-5 w-5 text-blue-500 animate-spin" />
@@ -241,35 +267,41 @@ export default function SMSQueueStatusPage() {
   }
 
   const getStatusBadgeVariant = (status: string): 'success' | 'warning' | 'error' | 'info' => {
-    switch (status) {
+    switch (normalizedStatus(status)) {
       case 'delivered':
         return 'success'
       case 'sent':
         return 'info'
       case 'failed':
       case 'undelivered':
+      case 'canceled':
         return 'error'
       case 'queued':
       case 'pending':
       case 'sending':
+      case 'accepted':
+      case 'scheduled':
         return 'warning'
       default:
         return 'info'
     }
   }
 
-  const filteredMessages = messages.filter(message => {
-    switch (activeTab) {
-      case 'queued':
-        return ['queued', 'pending', 'sending'].includes(message.status)
-      case 'failed':
-        return ['failed', 'undelivered'].includes(message.status)
-      case 'delivered':
-        return ['delivered', 'sent'].includes(message.status)
-      default:
-        return true
-    }
-  })
+  const filteredMessages = useMemo(() => {
+    return messages.filter(message => {
+      const status = normalizedStatus(message.status)
+      switch (activeTab) {
+        case 'queued':
+          return QUEUED_STATUSES.has(status) || PENDING_STATUSES.has(status) || SENDING_STATUSES.has(status)
+        case 'failed':
+          return FAILED_STATUSES.has(status)
+        case 'delivered':
+          return DELIVERED_STATUSES.has(status) || status === 'sent'
+        default:
+          return true
+      }
+    })
+  }, [messages, activeTab, normalizedStatus])
 
   const filteredJobs = jobs.filter((_job) => {
     switch (activeTab) {
@@ -373,6 +405,14 @@ export default function SMSQueueStatusPage() {
               color={stats.totalJobs > 0 ? "warning" : "default"} 
             />
           </StatGroup>
+          <div className="mt-4 text-sm text-gray-500">
+            Last synced {lastSyncedAt ? formatDistanceToNow(new Date(lastSyncedAt), { addSuffix: true }) : 'just now'}
+            {stats.oldestMessage && (
+              <span className="ml-4">
+                Oldest queued message {formatDistanceToNow(new Date(stats.oldestMessage), { addSuffix: true })}
+              </span>
+            )}
+          </div>
         </Card>
 
         {/* Alert for stuck messages */}
