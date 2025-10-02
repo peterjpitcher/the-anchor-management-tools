@@ -51,13 +51,22 @@ export default function NewInvoicePage() {
   }, [])
 
   useEffect(() => {
-    // Set default due date to 30 days from invoice date
-    if (invoiceDate) {
-      const date = new Date(invoiceDate)
-      date.setDate(date.getDate() + 30)
-      setDueDate(toLocalIsoDate(date))
+    if (!invoiceDate || !vendors.length || !vendorId) {
+      return
     }
-  }, [invoiceDate])
+
+    const vendor = vendors.find((v) => v.id === vendorId)
+    const paymentTerms = vendor?.payment_terms ?? 30
+
+    const baseDate = new Date(invoiceDate)
+    if (Number.isNaN(baseDate.getTime())) {
+      return
+    }
+
+    const dueDateCandidate = new Date(baseDate)
+    dueDateCandidate.setDate(dueDateCandidate.getDate() + paymentTerms)
+    setDueDate(toLocalIsoDate(dueDateCandidate))
+  }, [invoiceDate, vendorId, vendors])
 
   async function loadData() {
     try {
@@ -222,7 +231,13 @@ export default function NewInvoicePage() {
             <FormGroup label="Vendor" required>
               <Select
                 value={vendorId}
-                onChange={(e) => setVendorId(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setVendorId(value)
+                  if (!value) {
+                    setDueDate('')
+                  }
+                }}
                 required
               >
                 <option value="">Select a vendor</option>

@@ -1387,12 +1387,19 @@ export async function sendApprovedSms(smsId: string) {
   }
   
   // Update status to sent
+  const updatedMetadata = {
+    ...(sms.metadata ?? {}),
+    ...(result.customerId ? { customer_id: result.customerId } : {}),
+    ...(result.messageId ? { message_id: result.messageId } : {})
+  }
+
   await supabase
     .from('private_booking_sms_queue')
     .update({
       status: 'sent',
       sent_at: new Date().toISOString(),
-      twilio_message_sid: result.sid as string
+      twilio_message_sid: result.sid as string,
+      metadata: updatedMetadata
     })
     .eq('id', smsId)
   

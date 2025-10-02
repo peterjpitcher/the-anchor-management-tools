@@ -18,21 +18,40 @@ interface MessageThreadProps {
 export function MessageThread({ messages, customerId, canReply, onMessageSent }: MessageThreadProps) {
   const [newMessage, setNewMessage] = useState('')
   const [sending, setSending] = useState(false)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-
   const messagesContainerRef = useRef<HTMLDivElement>(null)
-  
-  const scrollToBottom = () => {
+  const hasAutoScrolledRef = useRef(false)
+
+  const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
     if (messagesContainerRef.current) {
-      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+      const container = messagesContainerRef.current
+      container.scrollTo({ top: container.scrollHeight, behavior })
     }
   }
 
-  // Scroll to bottom only on initial load
   useEffect(() => {
-    scrollToBottom()
-  }, [])
+    hasAutoScrolledRef.current = false
+  }, [customerId])
+
+  useEffect(() => {
+    if (!messagesContainerRef.current || messages.length === 0) {
+      return
+    }
+
+    const container = messagesContainerRef.current
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+
+    if (!hasAutoScrolledRef.current) {
+      scrollToBottom()
+      hasAutoScrolledRef.current = true
+      return
+    }
+
+    if (distanceFromBottom < 60) {
+      // Keep the latest message in view when the user is already near the bottom
+      scrollToBottom('smooth')
+    }
+  }, [messages])
 
   const handleSend = async () => {
     if (!newMessage.trim() || sending) return
@@ -47,7 +66,7 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
         toast.success('Message sent')
         setNewMessage('')
         onMessageSent?.()
-        setTimeout(scrollToBottom, 100) // Scroll after message is added to the list
+        setTimeout(() => scrollToBottom('smooth'), 100) // Scroll after message is added to the list
       }
     } catch {
       toast.error('Failed to send message')
@@ -151,7 +170,6 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
             })}
           </div>
         )))}
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Reply area */}
