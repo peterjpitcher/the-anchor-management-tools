@@ -113,11 +113,22 @@ tsx scripts/sms-tools/[script-name].ts
 
 - **Event Management**: Create and manage venue events with capacity tracking
 - **Customer Database**: Track customer information and SMS preferences
-- **Booking System**: Handle event bookings and registrations
+- **Booking System**: Handle event, table, and car-park bookings
 - **SMS Notifications**: Automated reminders and confirmations via Twilio
 - **Employee Management**: Staff records with document storage
 - **Private Bookings**: Manage private venue hire
 - **Invoicing**: Generate and email PDF invoices
+
+## 🕒 Scheduled Jobs
+
+The application relies on Vercel Cron (or an equivalent scheduler) for background processing. All cron endpoints expect the `Authorization: Bearer <CRON_SECRET>` header in production environments.
+
+| Endpoint | Frequency | Purpose |
+| --- | --- | --- |
+| `/api/cron/parking-notifications` | Daily at 07:00 London | Sends pending-payment reminders, customer start/end SMS, and manager emails for parking bookings. |
+| `/api/cron/table-booking-reminders` | Daily | Existing table booking reminder flow. |
+
+Set `CRON_SECRET` in deployment environments to the shared secret used by your scheduler.
 - **Loyalty Program**: Customer loyalty tracking and rewards
 
 ## 🚦 Database Tables
