@@ -90,6 +90,11 @@ export async function getCustomerSmsStats(customerId: string) {
 }
 
 export async function getCustomerMessages(customerId: string) {
+  const hasPermission = await checkUserPermission('customers', 'view');
+  if (!hasPermission) {
+    return { error: 'Insufficient permissions' };
+  }
+
   const supabase = createAdminClient();
 
   const { data: messages, error } = await supabase
@@ -106,6 +111,11 @@ export async function getCustomerMessages(customerId: string) {
 }
 
 export async function getDeliveryFailureReport() {
+  const hasPermission = await checkUserPermission('customers', 'view');
+  if (!hasPermission) {
+    return { error: 'Insufficient permissions' };
+  }
+
   const supabase = createAdminClient();
 
   // Get customers with delivery failures
@@ -123,6 +133,11 @@ export async function getDeliveryFailureReport() {
 }
 
 export async function getSmsDeliveryStats() {
+  const hasPermission = await checkUserPermission('customers', 'view');
+  if (!hasPermission) {
+    return { error: 'Insufficient permissions' };
+  }
+
   const supabase = createAdminClient();
 
   // Get overall message statistics for the last 30 days
