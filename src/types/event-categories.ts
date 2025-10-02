@@ -73,6 +73,15 @@ export interface CrossCategorySuggestion {
   already_attended_target: boolean
 }
 
+export interface CategoryRecentCheckIn {
+  customer_id: string
+  first_name: string
+  last_name: string | null
+  mobile_number: string | null
+  last_check_in_time: string
+  check_in_count: number
+}
+
 export interface CategoryFormData {
   name: string
   description?: string

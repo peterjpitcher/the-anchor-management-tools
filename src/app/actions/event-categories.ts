@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { logAuditEvent } from '@/app/actions/audit'
-import type { EventCategory, CategoryFormData, CategoryRegular, CrossCategorySuggestion } from '@/types/event-categories'
+import type { EventCategory, CategoryFormData, CategoryRegular, CrossCategorySuggestion, CategoryRecentCheckIn } from '@/types/event-categories'
 import { toLocalIsoDate } from '@/lib/dateUtils'
 
 // Helper function to format time to HH:MM
@@ -415,6 +415,80 @@ export async function getCategoryRegulars(categoryId: string, daysBack: number =
   } catch (error) {
     console.error('Error fetching category regulars:', error)
     return { error: 'Failed to fetch category regulars' }
+  }
+}
+
+export async function getCategoryRecentCheckIns(categoryId: string, daysBack: number = 90): Promise<{ data?: CategoryRecentCheckIn[], error?: string }> {
+  try {
+    const supabase = await createClient()
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return { error: 'Unauthorized' }
+    }
+
+    const cutoffDate = new Date()
+    cutoffDate.setDate(cutoffDate.getDate() - daysBack)
+
+    const { data, error } = await supabase
+      .from('event_check_ins')
+      .select(`
+        customer_id,
+        check_in_time,
+        customer:customers!inner(
+          id,
+          first_name,
+          last_name,
+          mobile_number
+        ),
+        event:events!inner(
+          id,
+          category_id
+        )
+      `)
+      .eq('event.category_id', categoryId)
+      .gte('check_in_time', cutoffDate.toISOString())
+
+    if (error) throw error
+
+    const aggregated = new Map<string, CategoryRecentCheckIn>()
+
+    for (const row of data || []) {
+      const rawCustomer = row.customer
+      const customer = Array.isArray(rawCustomer) ? rawCustomer[0] : rawCustomer
+
+      if (!customer || !row.customer_id || !row.check_in_time) {
+        continue
+      }
+
+      const existing = aggregated.get(row.customer_id)
+      if (existing) {
+        existing.check_in_count += 1
+        if (new Date(row.check_in_time) > new Date(existing.last_check_in_time)) {
+          existing.last_check_in_time = row.check_in_time
+        }
+      } else {
+        aggregated.set(row.customer_id, {
+          customer_id: row.customer_id,
+          first_name: customer.first_name,
+          last_name: customer.last_name,
+          mobile_number: customer.mobile_number,
+          last_check_in_time: row.check_in_time,
+          check_in_count: 1,
+        })
+      }
+    }
+
+    const result = Array.from(aggregated.values()).sort((a, b) => {
+      const timeA = new Date(a.last_check_in_time).getTime()
+      const timeB = new Date(b.last_check_in_time).getTime()
+      return timeB - timeA
+    })
+
+    return { data: result }
+  } catch (error) {
+    console.error('Error fetching recent check-ins for category:', error)
+    return { error: 'Failed to fetch recent check-ins' }
   }
 }
 

@@ -5,6 +5,8 @@
 
 import { createAdminClient } from '@/lib/supabase/server'
 import { logger } from './logger'
+import { ensureReplyInstruction } from '@/lib/sms/support'
+import { formatTime12Hour } from '@/lib/dateUtils'
 
 export type JobType = 
   | 'send_sms'
@@ -298,7 +300,8 @@ export class UnifiedJobQueue {
           // Replace variables in template
           let messageText = template.template_text
           Object.entries(payload.variables).forEach(([key, value]) => {
-            messageText = messageText.replace(new RegExp(`{{${key}}}`, 'g'), String(value))
+            const replacement = key === 'event_time' ? formatTime12Hour(String(value)) : String(value)
+            messageText = messageText.replace(new RegExp(`{{${key}}}`, 'g'), replacement)
           })
           
           // Add contact phone if not in variables
@@ -307,7 +310,9 @@ export class UnifiedJobQueue {
           }
           
           const { sendSMS } = await import('@/lib/twilio')
-          const result = await sendSMS(payload.to, messageText)
+          const supportPhone = (payload.variables?.contact_phone as string | undefined) || process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+          const messageWithSupport = ensureReplyInstruction(messageText, supportPhone)
+          const result = await sendSMS(payload.to, messageWithSupport)
           
           // Log the message if customer_id or booking_id is provided
           if (result.success && (payload.customer_id || payload.booking_id)) {
@@ -318,7 +323,7 @@ export class UnifiedJobQueue {
                 direction: 'outbound',
                 message_sid: result.sid,
                 twilio_message_sid: result.sid,
-                body: messageText,
+                body: messageWithSupport,
                 status: 'sent',
                 twilio_status: 'queued',
                 from_number: process.env.TWILIO_PHONE_NUMBER,
@@ -332,7 +337,9 @@ export class UnifiedJobQueue {
         } else {
           // Regular SMS with plain text message
           const { sendSMS } = await import('@/lib/twilio')
-          return await sendSMS(payload.to, payload.message)
+          const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+          const messageWithSupport = ensureReplyInstruction(payload.message || '', supportPhone)
+          return await sendSMS(payload.to, messageWithSupport)
         }
       
       case 'send_bulk_sms':

@@ -62,37 +62,37 @@ export default function SMSTemplatesPage() {
           {
             template_key: 'booking_confirmation_regular',
             booking_type: 'regular',
-            template_text: 'Hi {{customer_name}}, your table for {{party_size}} at The Anchor on {{date}} at {{time}} is confirmed. Reference: {{reference}}. Questions? Call {{contact_phone}}',
+            template_text: 'Hi {{customer_name}}, your table for {{party_size}} at The Anchor on {{date}} at {{time}} is confirmed. Reference: {{reference}}. Questions? Reply to this message or call {{contact_phone}}.',
             is_active: true,
           },
           {
             template_key: 'booking_confirmation_sunday_lunch',
             booking_type: 'sunday_lunch',
-            template_text: 'Hi {{customer_name}}, your Sunday Lunch booking for {{party_size}} on {{date}} at {{time}} is confirmed & paid. Ref: {{reference}}. Call {{contact_phone}} if needed.',
+            template_text: 'Hi {{customer_name}}, your Sunday Lunch booking for {{party_size}} on {{date}} at {{time}} is confirmed & paid. Ref: {{reference}}. Reply to this message if you need anything or call {{contact_phone}}.',
             is_active: true,
           },
           {
             template_key: 'reminder_regular',
             booking_type: 'regular',
-            template_text: 'Reminder: Your table for {{party_size}} at The Anchor is tomorrow at {{time}}. Ref: {{reference}}. See you then!',
+            template_text: 'Reminder: Your table for {{party_size}} at The Anchor is tomorrow at {{time}}. Ref: {{reference}}. Reply to this message if you need anything. See you then!',
             is_active: true,
           },
           {
             template_key: 'reminder_sunday_lunch',
             booking_type: 'sunday_lunch',
-            template_text: 'Reminder: Your Sunday Lunch at The Anchor is tomorrow at {{time}}. {{roast_summary}}. Allergies noted: {{allergies}}. See you then!',
+            template_text: 'Reminder: Your Sunday Lunch at The Anchor is tomorrow at {{time}}. {{roast_summary}}. Allergies noted: {{allergies}}. Reply to this message if you need anything. See you then!',
             is_active: true,
           },
           {
             template_key: 'cancellation',
             booking_type: null,
-            template_text: 'Your booking {{reference}} has been cancelled. {{refund_message}} Questions? Call {{contact_phone}}',
+            template_text: 'Your booking {{reference}} has been cancelled. {{refund_message}} Reply to this message if you need any help or call {{contact_phone}}.',
             is_active: true,
           },
           {
             template_key: 'review_request',
             booking_type: null,
-            template_text: 'Thanks for dining at The Anchor! We hope you enjoyed your visit. Please leave a review: {{review_link}}',
+            template_text: 'Thanks for dining at The Anchor! We hope you enjoyed your visit. Please leave a review: {{review_link}}. Reply to this message if you need anything.',
             is_active: true,
           },
         ];

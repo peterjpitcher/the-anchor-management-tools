@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { capturePayPalPayment } from '@/lib/paypal';
 import { sendBookingConfirmationEmail } from '@/app/actions/table-booking-email';
 import { sendManagerOrderNotification } from '@/app/actions/table-booking-manager-email';
+import { ensureReplyInstruction } from '@/lib/sms/support';
 
 export async function GET(request: NextRequest) {
   console.log('[Payment Journey] PayPal return handler called');
@@ -174,7 +175,11 @@ export async function GET(request: NextRequest) {
             
             // Send SMS immediately
             const { sendSMS } = await import('@/lib/twilio');
-            const smsResult = await sendSMS(booking.customer.mobile_number, messageText);
+            const messageWithSupport = ensureReplyInstruction(
+              messageText,
+              process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+            );
+            const smsResult = await sendSMS(booking.customer.mobile_number, messageWithSupport);
             
             if (smsResult.success && smsResult.sid) {
               console.log('[Payment Journey] SMS confirmation sent immediately:', smsResult.sid);
@@ -187,7 +192,7 @@ export async function GET(request: NextRequest) {
                   direction: 'outbound',
                   message_sid: smsResult.sid,
                   twilio_message_sid: smsResult.sid,
-                  body: messageText,
+                  body: messageWithSupport,
                   status: 'sent',
                   twilio_status: 'queued',
                   from_number: process.env.TWILIO_PHONE_NUMBER,

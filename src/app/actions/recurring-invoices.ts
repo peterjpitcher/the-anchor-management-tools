@@ -397,6 +397,13 @@ export async function generateInvoiceFromRecurring(recurringInvoiceId: string): 
       .from('recurring_invoices')
       .select(`
         *,
+        vendor:invoice_vendors(
+          id,
+          name,
+          payment_terms,
+          email,
+          contact_name
+        ),
         line_items:recurring_invoice_line_items(
           catalog_item_id,
           description,
@@ -421,7 +428,11 @@ export async function generateInvoiceFromRecurring(recurringInvoiceId: string): 
     // Calculate dates
     const invoiceDate = new Date()
     const dueDate = new Date()
-    dueDate.setDate(dueDate.getDate() + recurringInvoice.days_before_due)
+    const vendorPaymentTerms = typeof recurringInvoice.vendor?.payment_terms === 'number'
+      ? recurringInvoice.vendor.payment_terms
+      : null
+    const effectivePaymentTerms = vendorPaymentTerms ?? recurringInvoice.days_before_due ?? 0
+    dueDate.setDate(dueDate.getDate() + effectivePaymentTerms)
 
     // Get next invoice number
     const { data: seriesData } = await adminClient

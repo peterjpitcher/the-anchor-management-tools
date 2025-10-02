@@ -5,6 +5,8 @@ import twilio from 'twilio'
 import { smsTemplates, getMessageTemplate } from '@/lib/smsTemplates'
 import { logger } from '@/lib/logger'
 import { ReminderType } from './event-sms-scheduler'
+import { formatTime12Hour } from '@/lib/dateUtils'
+import { ensureReplyInstruction } from '@/lib/sms/support'
 
 interface ProcessOptions {
   reminderIds?: string[]
@@ -85,7 +87,7 @@ function buildTemplate(reminder: ReminderRow): string {
     firstName: booking.customer.first_name,
     eventName: booking.event.name,
     eventDate,
-    eventTime: booking.event.time,
+    eventTime: booking.event.time ? formatTime12Hour(booking.event.time) : 'TBC',
     seats: booking.seats || 0
   }
 
@@ -301,8 +303,11 @@ export async function processScheduledEventReminders(options: ProcessOptions = {
         continue
       }
 
+      const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+      const messageWithSupport = ensureReplyInstruction(messageBody, supportPhone)
+
       const messageParams: any = {
-        body: messageBody,
+        body: messageWithSupport,
         to: targetPhone
       }
 
@@ -315,7 +320,7 @@ export async function processScheduledEventReminders(options: ProcessOptions = {
       try {
         const twilioMessage = await twilioClient.messages.create(messageParams)
 
-        const messageLength = messageBody.length
+        const messageLength = messageWithSupport.length
         const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153)
         const costUsd = segments * 0.04
 
@@ -324,7 +329,7 @@ export async function processScheduledEventReminders(options: ProcessOptions = {
           direction: 'outbound' as const,
           message_sid: twilioMessage.sid,
           twilio_message_sid: twilioMessage.sid,
-          body: messageBody,
+          body: messageWithSupport,
           status: twilioMessage.status || 'queued',
           twilio_status: twilioMessage.status || 'queued',
           from_number: twilioMessage.from || process.env.TWILIO_PHONE_NUMBER || '',
