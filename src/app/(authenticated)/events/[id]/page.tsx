@@ -570,6 +570,7 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
           <AddAttendeesModalWithCategories
             event={event}
             currentBookings={bookings}
+            checkIns={checkIns}
             onClose={() => setShowAddAttendeesModal(false)}
             onAddAttendees={handleAddMultipleAttendees}
           />

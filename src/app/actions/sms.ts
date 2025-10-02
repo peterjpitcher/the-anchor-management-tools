@@ -7,6 +7,7 @@ import { headers } from 'next/headers'
 import { sendSMS } from '@/lib/twilio'
 import { logger } from '@/lib/logger'
 import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils'
+import { ensureReplyInstruction } from '@/lib/sms/support'
 
 interface TwilioMessageCreateParams {
   to: string
@@ -305,8 +306,11 @@ export async function sendSms(params: { to: string; body: string; bookingId?: st
       process.env.TWILIO_AUTH_TOKEN
     )
 
+    const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+    const messageBody = ensureReplyInstruction(params.body, supportPhone)
+
     const messageParams: TwilioMessageCreateParams = {
-      body: params.body,
+      body: messageBody,
       to: params.to
     }
 
@@ -318,7 +322,7 @@ export async function sendSms(params: { to: string; body: string; bookingId?: st
 
     const twilioMessage = await twilioClientInstance.messages.create(messageParams)
 
-    const messageLength = params.body.length
+    const messageLength = messageBody.length
     const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153)
     const costUsd = segments * 0.04
 
@@ -332,7 +336,7 @@ export async function sendSms(params: { to: string; body: string; bookingId?: st
           direction: 'outbound',
           message_sid: twilioMessage.sid,
           twilio_message_sid: twilioMessage.sid,
-          body: params.body,
+          body: messageBody,
           status: twilioMessage.status || 'queued',
           twilio_status: twilioMessage.status || 'queued',
           from_number: twilioMessage.from || process.env.TWILIO_PHONE_NUMBER || '',
@@ -410,7 +414,9 @@ export async function sendBulkSMSAsync(customerIds: string[], message: string) {
       return { error: 'No customers with valid mobile numbers and SMS opt-in' }
     }
 
-    const messageLength = message.length
+    const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+    const messageWithSupportTemplate = ensureReplyInstruction(message, supportPhone)
+    const messageLength = messageWithSupportTemplate.length
     const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153)
     const costUsd = segments * 0.04
 
@@ -420,7 +426,8 @@ export async function sendBulkSMSAsync(customerIds: string[], message: string) {
 
     for (const customer of validCustomers) {
       try {
-        const sendResult = await sendSMS(customer.mobile_number, message)
+        const messageWithSupport = messageWithSupportTemplate
+        const sendResult = await sendSMS(customer.mobile_number, messageWithSupport)
 
         if (!sendResult.success || !sendResult.sid) {
           errors.push({
@@ -435,7 +442,7 @@ export async function sendBulkSMSAsync(customerIds: string[], message: string) {
           direction: 'outbound' as const,
           message_sid: sendResult.sid,
           twilio_message_sid: sendResult.sid,
-          body: message,
+          body: messageWithSupport,
           status: 'sent' as const,
           twilio_status: 'queued' as const,
           from_number: process.env.TWILIO_PHONE_NUMBER || '',

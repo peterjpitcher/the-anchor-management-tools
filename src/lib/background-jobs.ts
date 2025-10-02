@@ -1,6 +1,8 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { Job, JobType, JobPayload, JobOptions } from './job-types'
 import { logger } from './logger'
+import { ensureReplyInstruction } from '@/lib/sms/support'
+import { formatTime12Hour } from '@/lib/dateUtils'
 
 export class JobQueue {
   private static instance: JobQueue
@@ -239,7 +241,8 @@ export class JobQueue {
       // Replace variables in template
       messageText = template.template_text
       Object.entries(payload.variables).forEach(([key, value]) => {
-        messageText = messageText.replace(new RegExp(`{{${key}}}`, 'g'), String(value))
+        const replacement = key === 'event_time' ? formatTime12Hour(String(value)) : String(value)
+        messageText = messageText.replace(new RegExp(`{{${key}}}`, 'g'), replacement)
       })
       
       // Add contact phone if not in variables
@@ -248,7 +251,10 @@ export class JobQueue {
       }
     }
     
-    const result = await sendSMS(payload.to, messageText)
+    const supportPhone = (payload.variables?.contact_phone as string | undefined) || process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+    const messageWithSupport = ensureReplyInstruction(messageText, supportPhone)
+
+    const result = await sendSMS(payload.to, messageWithSupport)
     
     if (!result.success) {
       throw new Error(result.error as string)
@@ -264,7 +270,7 @@ export class JobQueue {
           direction: 'outbound',
           message_sid: result.sid,
           twilio_message_sid: result.sid,
-          body: messageText,
+          body: messageWithSupport,
           status: 'sent',
           twilio_status: 'queued',
           from_number: process.env.TWILIO_PHONE_NUMBER,
@@ -292,7 +298,7 @@ export class JobQueue {
     let categoryDetails = null
     
     if (eventId) {
-      const { data: event } = await supabase
+        const { data: event } = await supabase
         .from('events')
         .select('id, name, date, time')
         .eq('id', eventId)
@@ -349,7 +355,10 @@ export class JobQueue {
               month: 'long',
               day: 'numeric'
             }))
-            personalizedMessage = personalizedMessage.replace(/{{event_time}}/g, eventDetails.time)
+            personalizedMessage = personalizedMessage.replace(
+              /{{event_time}}/g,
+              eventDetails.time ? formatTime12Hour(eventDetails.time) : 'TBC'
+            )
           }
           
           // Add category-specific variables if available
@@ -358,16 +367,21 @@ export class JobQueue {
           }
           
           // Send the personalized SMS directly (no more job multiplication)
-          const result = await sendSMS(customer.mobile_number!, personalizedMessage)
+          const personalizedWithSupport = ensureReplyInstruction(
+            personalizedMessage,
+            process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+          )
+
+          const result = await sendSMS(customer.mobile_number!, personalizedWithSupport)
           
           if (result.success) {
             // Prepare message for batch insert
-            messagesToInsert.push({
-              customer_id: customer.id,
-              direction: 'outbound' as const,
-              message_sid: result.sid,
-              twilio_message_sid: result.sid,
-              body: personalizedMessage,
+          messagesToInsert.push({
+            customer_id: customer.id,
+            direction: 'outbound' as const,
+            message_sid: result.sid,
+            twilio_message_sid: result.sid,
+            body: personalizedWithSupport,
               status: 'sent',
               twilio_status: 'queued' as const,
               from_number: process.env.TWILIO_PHONE_NUMBER || '',

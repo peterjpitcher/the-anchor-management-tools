@@ -5,6 +5,7 @@ import { checkUserPermission } from '@/app/actions/rbac';
 import { logAuditEvent } from './audit';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
+import { formatDateWithTimeForSms } from '@/lib/dateUtils';
 
 // Helper function to format time from 24hr to 12hr format
 function formatTime12Hour(time24: string): string {
@@ -525,13 +526,10 @@ export async function queuePaymentRequestSMS(bookingId: string, useAdminClient: 
     deadlineDate.setDate(bookingDate.getDate() - 1); // Saturday before
     deadlineDate.setHours(13, 0, 0, 0); // 1pm
     
-    const deadlineFormatted = deadlineDate.toLocaleDateString('en-GB', {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit'
-    });
+    const deadlineFormatted = formatDateWithTimeForSms(
+      deadlineDate,
+      `${deadlineDate.getHours().toString().padStart(2, '0')}:${deadlineDate.getMinutes().toString().padStart(2, '0')}`
+    );
     
     // Generate payment link with shortening
     const longPaymentUrl = `/table-booking/${booking.booking_reference}/payment`;

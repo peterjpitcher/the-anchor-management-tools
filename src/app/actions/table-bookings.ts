@@ -9,6 +9,8 @@ import { generatePhoneVariants, formatPhoneForStorage } from '@/lib/utils';
 import { queueBookingConfirmationSMS, queueCancellationSMS, queuePaymentRequestSMS } from './table-booking-sms';
 import { sendBookingConfirmationEmail, sendBookingCancellationEmail } from './table-booking-email';
 import { sendSameDayBookingAlertIfNeeded, TableBookingNotificationRecord } from '@/lib/table-bookings/managerNotifications';
+import { formatDateWithTimeForSms } from '@/lib/dateUtils';
+import { ensureReplyInstruction } from '@/lib/sms/support';
 
 // Helper function to format time from 24hr to 12hr format
 function formatTime12Hour(time24: string): string {
@@ -402,8 +404,12 @@ export async function createTableBooking(formData: FormData) {
             
             // Send SMS immediately
             const { sendSMS } = await import('@/lib/twilio');
-            const result = await sendSMS(customerData.mobile_number, messageText);
-            
+            const messageWithSupport = ensureReplyInstruction(
+              messageText,
+              process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+            );
+            const result = await sendSMS(customerData.mobile_number, messageWithSupport);
+
             if (result.success && result.sid) {
               console.log('SMS sent immediately for booking:', booking.id);
               
@@ -415,7 +421,7 @@ export async function createTableBooking(formData: FormData) {
                   direction: 'outbound',
                   message_sid: result.sid,
                   twilio_message_sid: result.sid,
-                  body: messageText,
+                  body: messageWithSupport,
                   status: 'sent',
                   twilio_status: 'queued',
                   from_number: process.env.TWILIO_PHONE_NUMBER,
@@ -474,13 +480,10 @@ export async function createTableBooking(formData: FormData) {
           deadlineDate.setDate(bookingDate.getDate() - 1); // Saturday before
           deadlineDate.setHours(13, 0, 0, 0); // 1pm
           
-          const deadlineFormatted = deadlineDate.toLocaleDateString('en-GB', {
-            weekday: 'long',
-            month: 'long',
-            day: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit'
-          });
+          const deadlineFormatted = formatDateWithTimeForSms(
+            deadlineDate,
+            `${deadlineDate.getHours().toString().padStart(2, '0')}:${deadlineDate.getMinutes().toString().padStart(2, '0')}`
+          );
           
           // Calculate deposit amount
           const depositAmount = booking.party_size * 5;
@@ -504,12 +507,16 @@ export async function createTableBooking(formData: FormData) {
             : `${process.env.NEXT_PUBLIC_APP_URL}${longPaymentUrl}`;
           
           // Build message with dynamic deadline and urgency
-          const messageText = `Hi ${customerData.first_name}, your Sunday Lunch booking at The Anchor (ref: ${booking.booking_reference}) for ${booking.party_size} people requires a £${depositAmount.toFixed(2)} deposit to confirm. ⚠️ PAYMENT DEADLINE: ${deadlineFormatted}. Pay now: ${paymentUrl}. If payment is not received by the deadline, your booking will be automatically cancelled. Call ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'} with any questions.`;
+          const messageText = `Hi ${customerData.first_name}, your Sunday Lunch booking at The Anchor (ref: ${booking.booking_reference}) for ${booking.party_size} people requires a £${depositAmount.toFixed(2)} deposit to confirm. ⚠️ PAYMENT DEADLINE: ${deadlineFormatted}. Pay now: ${paymentUrl}. If payment is not received by the deadline, your booking will be automatically cancelled. Reply to this message if you have any questions or call ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}.`;
           
           // Send SMS immediately
           const { sendSMS } = await import('@/lib/twilio');
-          const result = await sendSMS(customerData.mobile_number, messageText);
-          
+          const messageWithSupport = ensureReplyInstruction(
+            messageText,
+            process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+          );
+          const result = await sendSMS(customerData.mobile_number, messageWithSupport);
+
           if (result.success && result.sid) {
             console.log('Payment request SMS sent immediately for booking:', booking.id);
             
@@ -521,7 +528,7 @@ export async function createTableBooking(formData: FormData) {
                 direction: 'outbound',
                 message_sid: result.sid,
                 twilio_message_sid: result.sid,
-                body: messageText,
+                body: messageWithSupport,
                 status: 'sent',
                 twilio_status: 'queued',
                 from_number: process.env.TWILIO_PHONE_NUMBER,

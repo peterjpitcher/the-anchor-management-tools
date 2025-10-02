@@ -11,7 +11,7 @@ import type {
 import { syncCalendarEvent, deleteCalendarEvent, isCalendarConfigured } from '@/lib/google-calendar'
 import { queueAndSendPrivateBookingSms } from './private-booking-sms'
 import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils'
-import { toLocalIsoDate } from '@/lib/dateUtils'
+import { toLocalIsoDate, formatTime12Hour } from '@/lib/dateUtils'
 
 // Helper function to format time to HH:MM
 function formatTimeToHHMM(time: string | undefined): string | undefined {
@@ -711,7 +711,9 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
         year: 'numeric' 
       })
       
-      const smsMessage = `Hi ${bookingData.customer_first_name}, your private booking at The Anchor has been rescheduled from ${oldFormattedDate} at ${currentBooking.start_time} to ${newFormattedDate} at ${finalStartTime}. The Anchor 01753 682 707`
+      const oldTimeFriendly = currentBooking.start_time ? formatTime12Hour(currentBooking.start_time) : 'TBC'
+      const newTimeFriendly = finalStartTime ? formatTime12Hour(finalStartTime) : 'TBC'
+      const smsMessage = `Hi ${bookingData.customer_first_name}, your private booking at The Anchor has been rescheduled from ${oldFormattedDate} at ${oldTimeFriendly} to ${newFormattedDate} at ${newTimeFriendly}. Reply to this message if you have any questions or call 01753 682 707.`
       
       await supabase
         .from('private_booking_sms_queue')
@@ -741,7 +743,7 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
       year: 'numeric' 
     })
     
-    const smsMessage = `Hi ${bookingData.customer_first_name}, your private booking at The Anchor on ${formattedDate} has been confirmed. We look forward to hosting your event. The Anchor 01753 682 707`
+    const smsMessage = `Hi ${bookingData.customer_first_name}, your private booking at The Anchor on ${formattedDate} has been confirmed. We look forward to hosting your event. Reply to this message if you need any help or call 01753 682 707.`
     
     await supabase
       .from('private_booking_sms_queue')
@@ -1227,7 +1229,7 @@ export async function cancelPrivateBooking(bookingId: string, reason?: string) {
     })
 
     const firstName = booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there'
-    const smsMessage = `Hi ${firstName}, your tentative private booking date on ${eventDate} has been cancelled. If you believe this was a mistake, please contact us.`
+    const smsMessage = `Hi ${firstName}, your tentative private booking date on ${eventDate} has been cancelled. Reply to this message if you need any help or call 01753 682 707 if you believe this was a mistake.`
 
     const smsResult = await queueAndSendPrivateBookingSms({
       booking_id: bookingId,

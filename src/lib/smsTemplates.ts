@@ -17,7 +17,7 @@ export const smsTemplates = {
     })
     const baseMessage = `Hi ${params.firstName}, your booking for ${params.seats} people for our ${params.eventName} on ${formattedDate} at ${params.eventTime} is confirmed!`
     const qrMessage = params.qrCodeUrl ? ` Check-in with QR: ${params.qrCodeUrl}` : ''
-    return `${baseMessage}${qrMessage} Save this message as your confirmation. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
+    return `${baseMessage}${qrMessage} Save this message as your confirmation. Reply to this message if you need anything. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
   },
 
   bookingConfirmationNew: (params: {
@@ -80,7 +80,7 @@ export const smsTemplates = {
     const seatsLine = params.seats > 1
       ? `${params.seats} seats are ready`
       : 'your seat is ready'
-    return `Hi ${params.firstName}, tomorrow's the night! ${params.eventName} starts at ${params.eventTime} and ${seatsLine}. Anything you need before then? Call ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}. The Anchor`
+    return `Hi ${params.firstName}, tomorrow's the night! ${params.eventName} starts at ${params.eventTime} and ${seatsLine}. Anything you need before then? Reply to this message or call ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}. The Anchor`
   },
 
   reminderInviteOneMonth: (params: {
@@ -192,7 +192,7 @@ export const smsTemplates = {
     eventTime: string
     seats: number
   }) => {
-    return `Hi ${params.firstName}, see you TOMORROW! You have ${params.seats} seats for our ${params.eventName} at ${params.eventTime}. Need to change numbers? Call us on ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}. The Anchor`
+    return `Hi ${params.firstName}, see you TOMORROW! You have ${params.seats} seats for our ${params.eventName} at ${params.eventTime}. Need to change numbers? Reply to this message or call ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}. The Anchor`
   },
 
   // Legacy templates - kept for backward compatibility

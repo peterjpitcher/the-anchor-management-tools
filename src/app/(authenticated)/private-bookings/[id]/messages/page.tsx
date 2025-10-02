@@ -40,37 +40,37 @@ const smsTemplates: SmsTemplate[] = [
     id: 'booking_confirmation',
     name: 'Booking Confirmation',
     message: 'Send when booking is confirmed',
-    template: 'Hi {customer_first_name}, your private event booking at The Anchor on {event_date} has been confirmed! We look forward to hosting your {event_type}. If you have any questions, please call us on 01753 682 707. The Anchor Team'
+    template: 'Hi {customer_first_name}, your private event booking at The Anchor on {event_date} has been confirmed! We look forward to hosting your {event_type}. If you have any questions, reply to this message or call us on 01753 682 707. The Anchor Team'
   },
   {
     id: 'deposit_reminder',
     name: 'Deposit Reminder',
     message: 'Remind customer about deposit payment',
-    template: 'Hi {customer_first_name}, just a reminder that your £{deposit_amount} deposit for your event on {event_date} is due. Please call 01753 682 707 to arrange payment. Thank you! The Anchor'
+    template: 'Hi {customer_first_name}, just a reminder that your £{deposit_amount} deposit for your event on {event_date} is due. Reply to this message if you need any help or call 01753 682 707 to arrange payment. Thank you! The Anchor'
   },
   {
     id: 'balance_reminder',
     name: 'Balance Reminder',
     message: 'Remind about final balance',
-    template: 'Hi {customer_first_name}, your event at The Anchor is coming up on {event_date}! Your remaining balance of £{balance_due} is due by {balance_due_date}. Please call 01753 682 707 to settle. Looking forward to seeing you!'
+    template: 'Hi {customer_first_name}, your event at The Anchor is coming up on {event_date}! Your remaining balance of £{balance_due} is due by {balance_due_date}. Reply to this message if you need any help or call 01753 682 707 to settle. Looking forward to seeing you!'
   },
   {
     id: 'event_reminder',
     name: 'Event Reminder',
     message: '24 hours before event',
-    template: 'Hi {customer_first_name}, just a reminder that your event at The Anchor is tomorrow at {start_time}! We\'re all set for your {guest_count} guests. If you need anything, call 01753 682 707. See you tomorrow!'
+    template: 'Hi {customer_first_name}, just a reminder that your event at The Anchor is tomorrow at {start_time}! We\'re all set for your {guest_count} guests. If you need anything, reply to this message or call 01753 682 707. See you tomorrow!'
   },
   {
     id: 'setup_notification',
     name: 'Setup Time Notification',
     message: 'Notify about setup arrangements',
-    template: 'Hi {customer_first_name}, confirming setup for your event on {event_date}. Your vendors/team can access the venue from {setup_time}. The event space will be ready. Any questions? Call 01753 682 707.'
+    template: 'Hi {customer_first_name}, confirming setup for your event on {event_date}. Your vendors/team can access the venue from {setup_time}. The event space will be ready. Any questions? Reply to this message or call 01753 682 707.'
   },
   {
     id: 'thank_you',
     name: 'Thank You Message',
     message: 'Send after event completion',
-    template: 'Hi {customer_first_name}, thank you for choosing The Anchor for your event! We hope you and your guests had a wonderful time. We\'d love to welcome you back again soon. Best wishes, The Anchor Team'
+    template: 'Hi {customer_first_name}, thank you for choosing The Anchor for your event! We hope you and your guests had a wonderful time. We\'d love to welcome you back again soon. Reply to this message if you need anything at all. Best wishes, The Anchor Team'
   }
 ]
 
