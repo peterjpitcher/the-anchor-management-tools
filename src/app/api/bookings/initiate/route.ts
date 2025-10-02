@@ -7,6 +7,8 @@ import { formatPhoneForStorage, formatPhoneForDisplay } from '@/lib/validation';
 import { generatePhoneVariants } from '@/lib/utils';
 import { createShortLinkInternal } from '@/app/actions/short-links';
 import twilio from 'twilio';
+import { formatTime12Hour } from '@/lib/dateUtils';
+import { ensureReplyInstruction } from '@/lib/sms/support';
 
 const initiateBookingSchema = z.object({
   event_id: z.string().uuid(),
@@ -160,9 +162,21 @@ export async function POST(request: NextRequest) {
       ? `${existingCustomer.first_name} ${existingCustomer.last_name}`
       : 'Guest';
 
-    const smsMessage = existingCustomer
-      ? `Hi ${existingCustomer.first_name}, please confirm your booking for ${event.name} on ${new Date(event.date).toLocaleDateString('en-GB')} at ${event.time}. Click here to confirm: ${shortLink.full_url}`
-      : `Welcome to The Anchor! Please confirm your booking for ${event.name} on ${new Date(event.date).toLocaleDateString('en-GB')} at ${event.time}. Click here to confirm: ${shortLink.full_url}`;
+    const eventDateDisplay = new Date(event.date).toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+    const eventTimeFriendly = event.time ? formatTime12Hour(event.time) : null;
+    const eventSlot = eventTimeFriendly ? `${eventDateDisplay} at ${eventTimeFriendly}` : eventDateDisplay;
+
+    const baseMessage = existingCustomer
+      ? `Hi ${existingCustomer.first_name}, please confirm your booking for ${event.name} on ${eventSlot}.`
+      : `Welcome to The Anchor! Please confirm your booking for ${event.name} on ${eventSlot}.`;
+
+    const confirmationSentence = `Click here to confirm: ${shortLink.full_url}`;
+    const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || null;
+    const smsMessage = ensureReplyInstruction(`${baseMessage} ${confirmationSentence}`.trim(), supportPhone);
 
     // Send SMS and store details for later recording
     let smsSent = false;

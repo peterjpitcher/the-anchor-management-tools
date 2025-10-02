@@ -2,9 +2,15 @@
 
 import { createClient } from '@supabase/supabase-js'
 import twilio from 'twilio'
+import { checkUserPermission } from '@/app/actions/rbac'
 
 export async function diagnoseMessages(date: string) {
   try {
+    const hasPermission = await checkUserPermission('messages', 'manage')
+    if (!hasPermission) {
+      return { error: 'You do not have permission to diagnose message delivery' }
+    }
+
     // Check for required environment variables
     if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
       return { error: 'Twilio credentials not configured' }

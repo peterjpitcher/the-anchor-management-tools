@@ -86,7 +86,9 @@ export async function GET(request: Request) {
         }
 
         // Generate the invoice
-        const generateResult = await generateInvoiceFromRecurring(recurringInvoice.id)
+        const generateResult = await generateInvoiceFromRecurring(recurringInvoice.id, {
+          bypassPermissionCheck: true,
+        })
         
         if ('error' in generateResult && generateResult.error) {
           console.error(`[Cron] Failed to generate invoice for ${recurringInvoice.id}:`, generateResult.error)

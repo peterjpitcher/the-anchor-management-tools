@@ -1,10 +1,16 @@
 'use server'
 
 import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
+import { checkUserPermission } from '@/app/actions/rbac'
 import twilio from 'twilio'
 
 export async function importMissedMessages(startDate: string, endDate: string) {
   try {
+    const hasPermission = await checkUserPermission('messages', 'manage')
+    if (!hasPermission) {
+      return { error: 'You do not have permission to import messages' }
+    }
+
     // Check for required environment variables
     if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
       return { error: 'Twilio credentials not configured' }
