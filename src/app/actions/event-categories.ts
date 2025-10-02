@@ -608,6 +608,93 @@ export async function getCustomerCategoryPreferences(customerId: string) {
   }
 }
 
+export async function getCustomerEventActivity(customerId: string) {
+  try {
+    const supabase = await createClient()
+
+    const [{ data: bookings, error: bookingsError }, { data: checkIns, error: checkInsError }] = await Promise.all([
+      supabase
+        .from('bookings')
+        .select(`
+          id,
+          event_id,
+          seats,
+          created_at,
+          notes,
+          event:events(
+            id,
+            name,
+            date,
+            time,
+            slug,
+            category:event_categories(id, name, color)
+          )
+        `)
+        .eq('customer_id', customerId)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('event_check_ins')
+        .select(`
+          id,
+          event_id,
+          booking_id,
+          check_in_time,
+          check_in_method,
+          event:events(
+            id,
+            name,
+            date,
+            time,
+            slug
+          )
+        `)
+        .eq('customer_id', customerId)
+        .order('check_in_time', { ascending: false }),
+    ])
+
+    if (bookingsError) throw bookingsError
+    if (checkInsError) throw checkInsError
+
+    const normalizeEvent = <T extends { event?: any }>(record: T) => {
+      const rawEvent = record.event
+      const event = Array.isArray(rawEvent) ? rawEvent[0] : rawEvent
+
+      if (!event) {
+        return { ...record, event: null }
+      }
+
+      const category = event.category
+      const normalizedCategory = Array.isArray(category) ? category[0] : category
+
+      return {
+        ...record,
+        event: {
+          id: event.id,
+          name: event.name,
+          date: event.date,
+          time: event.time,
+          slug: event.slug,
+          category: normalizedCategory
+            ? {
+              id: normalizedCategory.id,
+              name: normalizedCategory.name,
+              color: normalizedCategory.color,
+            }
+            : null,
+        },
+      }
+    }
+
+    const normalizedBookings = (bookings || []).map(booking => normalizeEvent(booking))
+    const normalizedCheckIns = (checkIns || []).map(checkIn => normalizeEvent(checkIn))
+
+    return { bookings: normalizedBookings, checkIns: normalizedCheckIns }
+  } catch (error) {
+    console.error('Error fetching customer event activity:', error)
+    return { error: 'Failed to fetch customer event activity' }
+  }
+}
+
 // Wrapper functions that accept FormData
 const getOptionalStringFromForm = (
   formData: FormData,

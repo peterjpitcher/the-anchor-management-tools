@@ -450,6 +450,7 @@ export async function queueCancellationSMS(
           template: 'cancellation',
           variables,
           booking_id: bookingId,
+          customer_id: booking.customer.id
         },
         scheduled_for: new Date().toISOString(),
       });
@@ -570,6 +571,7 @@ export async function queuePaymentRequestSMS(bookingId: string, useAdminClient: 
           template: 'payment_request',
           variables,
           booking_id: bookingId,
+          customer_id: booking.customer.id
         },
         scheduled_for: new Date().toISOString(),
       });

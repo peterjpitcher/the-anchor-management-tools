@@ -49,10 +49,12 @@ export async function sendPrivateBookingSms(
     }
     
     console.log(`[sendPrivateBookingSms] Successfully sent ${triggerType} SMS for booking ${bookingId}`)
-    return { 
-      success: true, 
+    return {
+      success: true,
       sid: result.sid,
-      sent: true 
+      sent: true,
+      messageId: result.messageId,
+      customerId: result.customerId
     }
   } catch (error) {
     console.error('[sendPrivateBookingSms] Exception sending SMS:', error)
@@ -108,13 +110,20 @@ export async function queueAndSendPrivateBookingSms(data: {
   )
   
   if (autoSendResult.sent && autoSendResult.sid) {
+    const mergedMetadata = {
+      ...(smsRecord.metadata ?? {}),
+      ...(autoSendResult.customerId ? { customer_id: autoSendResult.customerId } : {}),
+      ...(autoSendResult.messageId ? { message_id: autoSendResult.messageId } : {})
+    }
+
     // Update the queue record with sent status
     await supabase
       .from('private_booking_sms_queue')
       .update({
         status: 'sent',
         sent_at: new Date().toISOString(),
-        twilio_message_sid: autoSendResult.sid
+        twilio_message_sid: autoSendResult.sid,
+        metadata: mergedMetadata
       })
       .eq('id', smsRecord.id)
     
@@ -122,7 +131,8 @@ export async function queueAndSendPrivateBookingSms(data: {
       success: true, 
       sent: true,
       queueId: smsRecord.id,
-      sid: autoSendResult.sid
+      sid: autoSendResult.sid,
+      messageId: autoSendResult.messageId
     }
   } else if (autoSendResult.requiresApproval) {
     // Message requires manual approval

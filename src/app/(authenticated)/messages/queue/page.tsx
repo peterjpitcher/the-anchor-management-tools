@@ -86,6 +86,8 @@ const SENDING_STATUSES = new Set(['sending'])
 const FAILED_STATUSES = new Set(['failed', 'undelivered', 'canceled'])
 const DELIVERED_STATUSES = new Set(['delivered', 'received'])
 
+export const dynamic = 'force-dynamic'
+
 export default function SMSQueueStatusPage() {
   const supabase = useSupabase()
   const [loading, setLoading] = useState(true)
