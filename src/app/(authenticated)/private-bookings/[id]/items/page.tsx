@@ -20,7 +20,8 @@ import {
   deleteBookingItem,
   getVenueSpaces,
   getCateringPackages,
-  getVendors
+  getVendors,
+  getVendorRate
 } from '@/app/actions/privateBookingActions'
 import type { VenueSpace, CateringPackage, Vendor, ItemType, PrivateBookingItem, PrivateBookingWithDetails } from '@/types/private-bookings'
 import { Page } from '@/components/ui-v2/layout/Page'
@@ -63,6 +64,28 @@ const toNumber = (value: unknown, fallback = 0): number => {
 
 const formatMoney = (value: unknown): string => formatCurrency(toNumber(value))
 
+const sanitizeMoneyString = (value: unknown): string => {
+  if (value === null || value === undefined) return ''
+
+  const raw = typeof value === 'number' ? value.toString() : String(value)
+  const trimmed = raw.trim()
+  if (!trimmed) return ''
+
+  // Normalise thousands separators and capture the first numeric segment
+  const normalised = trimmed.replace(/,/g, '')
+  const match = normalised.match(/-?\d+(?:\.\d+)?/)
+
+  return match ? match[0] : ''
+}
+
+const moneyStringToNumber = (value: unknown): number => {
+  const sanitised = sanitizeMoneyString(value)
+  if (!sanitised) return 0
+
+  const parsed = Number.parseFloat(sanitised)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
 const normalizeItem = (item: any): PrivateBookingItem => ({
   ...item,
   description: item.description,
@@ -72,6 +95,9 @@ const normalizeItem = (item: any): PrivateBookingItem => ({
     ? undefined
     : toNumber(item.discount_value),
   line_total: toNumber(item.line_total),
+  display_order: item.display_order === null || item.display_order === undefined
+    ? undefined
+    : toNumber(item.display_order),
 })
 
 const normalizeBooking = (booking: PrivateBookingWithDetails): PrivateBookingWithDetails => {
@@ -94,7 +120,16 @@ const normalizeBooking = (booking: PrivateBookingWithDetails): PrivateBookingWit
     total_amount: toNumber(booking.total_amount),
     discount_amount: discountAmount,
     calculated_total: calculatedTotal,
-    items: booking.items?.map(normalizeItem),
+    items: booking.items
+      ?.map(normalizeItem)
+      ?.sort((a, b) => {
+        const orderA = a.display_order ?? 0
+        const orderB = b.display_order ?? 0
+        if (orderA === orderB) {
+          return (a.created_at || '').localeCompare(b.created_at || '')
+        }
+        return orderA - orderB
+      }),
   }
 }
 
@@ -111,6 +146,16 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
   const [discountType, setDiscountType] = useState<'percent' | 'fixed'>('percent')
   const [notes, setNotes] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    setSelectedItem(null)
+    setQuantity(1)
+    setCustomDescription('')
+    setCustomPrice('')
+    setDiscountAmount('')
+    setDiscountType('percent')
+    setNotes('')
+  }, [itemType])
 
   const loadOptions = useCallback(async () => {
     if (itemType === 'space') {
@@ -129,6 +174,40 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
     loadOptions()
   }, [loadOptions])
 
+  useEffect(() => {
+    if (itemType !== 'vendor') {
+      return
+    }
+
+    if (!selectedItem || !('typical_rate' in selectedItem)) {
+      return
+    }
+
+    let cancelled = false
+
+    const hydrateRate = async () => {
+      const vendor = selectedItem as Vendor
+
+      const normalized = vendor.typical_rate_normalized ?? sanitizeMoneyString(vendor.typical_rate)
+
+      if (normalized) {
+        setCustomPrice((current) => (current === normalized ? current : normalized))
+        return
+      }
+
+      const rateResult = await getVendorRate(vendor.id)
+      if (cancelled) return
+      const remoteRate = rateResult.data?.typical_rate_normalized ?? null
+      setCustomPrice(remoteRate ?? '')
+    }
+
+    hydrateRate()
+
+    return () => {
+      cancelled = true
+    }
+  }, [itemType, selectedItem])
+
   // Set quantity to 1 for total_value items
   useEffect(() => {
     if (itemType === 'catering' && selectedItem && 'pricing_model' in selectedItem && selectedItem.pricing_model === 'total_value') {
@@ -140,24 +219,38 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
     e.preventDefault()
     setIsSubmitting(true)
 
+    const hasCustomPrice = customPrice.trim() !== ''
+
+    if (itemType !== 'other' && !selectedItem) {
+      toast.error('Please select an item to add')
+      setIsSubmitting(false)
+      return
+    }
+
     let description = customDescription
-    let unitPrice = parseFloat(customPrice) || 0
+    let unitPrice = hasCustomPrice ? moneyStringToNumber(customPrice) : 0
 
     if (itemType !== 'other' && selectedItem) {
       if (itemType === 'space' && 'rate_per_hour' in selectedItem) {
         description = selectedItem.name
-        unitPrice = selectedItem.rate_per_hour
+        unitPrice = toNumber(selectedItem.rate_per_hour)
       } else if (itemType === 'catering' && 'cost_per_head' in selectedItem) {
         description = selectedItem.name
-        // For total_value items, use the custom price entered by the user
         if ('pricing_model' in selectedItem && selectedItem.pricing_model === 'total_value') {
-          unitPrice = parseFloat(customPrice) || selectedItem.cost_per_head
+          unitPrice = hasCustomPrice
+            ? moneyStringToNumber(customPrice)
+            : toNumber(selectedItem.cost_per_head)
         } else {
-          unitPrice = selectedItem.cost_per_head
+          unitPrice = toNumber(selectedItem.cost_per_head)
         }
       } else if (itemType === 'vendor' && 'service_type' in selectedItem) {
         description = `${selectedItem.name} (${selectedItem.service_type})`
-        unitPrice = parseFloat(selectedItem.typical_rate || '0') || 0
+        if (!hasCustomPrice) {
+          const normalized = 'typical_rate_normalized' in selectedItem
+            ? selectedItem.typical_rate_normalized
+            : undefined
+          unitPrice = moneyStringToNumber(normalized ?? selectedItem.typical_rate)
+        }
       }
     }
 
@@ -175,8 +268,8 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
       description,
       quantity: finalQuantity,
       unit_price: unitPrice,
-      discount_value: discountAmount ? parseFloat(discountAmount) : undefined,
-      discount_type: discountAmount ? discountType : undefined,
+      discount_value: discountAmount.trim() ? moneyStringToNumber(discountAmount) : undefined,
+      discount_type: discountAmount.trim() ? discountType : undefined,
       notes: notes || null
     }
 
@@ -200,25 +293,48 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
     setIsSubmitting(false)
   }
 
-  const calculateTotal = () => {
-    const price = parseFloat(customPrice) || (selectedItem && (
-      itemType === 'space' && 'rate_per_hour' in selectedItem ? selectedItem.rate_per_hour :
-      itemType === 'catering' && 'cost_per_head' in selectedItem ? selectedItem.cost_per_head :
-      itemType === 'vendor' && 'typical_rate' in selectedItem ? parseFloat(selectedItem.typical_rate || '0') :
-      0
-    )) || 0
+  const resolveBasePrice = () => {
+    if (customPrice.trim()) {
+      return moneyStringToNumber(customPrice)
+    }
 
-    let total = price * quantity
-    
-    if (discountAmount) {
-      const discount = parseFloat(discountAmount)
+    if (!selectedItem) return 0
+
+    if (itemType === 'space' && 'rate_per_hour' in selectedItem) {
+      return toNumber(selectedItem.rate_per_hour)
+    }
+
+    if (itemType === 'catering' && 'cost_per_head' in selectedItem) {
+      if ('pricing_model' in selectedItem && selectedItem.pricing_model === 'total_value') {
+        return toNumber(selectedItem.cost_per_head)
+      }
+      return toNumber(selectedItem.cost_per_head)
+    }
+
+    if (itemType === 'vendor' && 'typical_rate' in selectedItem) {
+      return moneyStringToNumber(selectedItem.typical_rate)
+    }
+
+    return 0
+  }
+
+  const calculateTotal = () => {
+    const basePrice = resolveBasePrice()
+    const effectiveQuantity = itemType === 'catering' && selectedItem && 'pricing_model' in selectedItem && selectedItem.pricing_model === 'total_value'
+      ? 1
+      : quantity
+
+    let total = basePrice * effectiveQuantity
+
+    if (discountAmount.trim()) {
+      const discount = moneyStringToNumber(discountAmount)
       if (discountType === 'percent') {
         total = total * (1 - discount / 100)
       } else {
         total = total - discount
       }
     }
-    
+
     return Math.max(0, total)
   }
 
@@ -299,6 +415,17 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                 const items = itemType === 'space' ? spaces : itemType === 'catering' ? packages : vendors
                 const item = items.find(i => i.id === e.target.value)
                 setSelectedItem(item || null)
+
+                if (!item) {
+                  setCustomPrice('')
+                  return
+                }
+
+                if (itemType === 'space' && 'rate_per_hour' in item) {
+                  setCustomPrice(sanitizeMoneyString(item.rate_per_hour))
+                } else if (itemType === 'catering' && 'cost_per_head' in item) {
+                  setCustomPrice(sanitizeMoneyString(item.cost_per_head))
+                }
               }}
               options={[
                 { value: '', label: 'Select...' },
@@ -363,12 +490,18 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
             <FormGroup label="Unit Price (£)" required>
               <Input
                 type="number"
-                value={customPrice || (selectedItem && (
-                  itemType === 'space' && 'rate_per_hour' in selectedItem ? selectedItem.rate_per_hour :
-                  itemType === 'catering' && 'cost_per_head' in selectedItem ? selectedItem.cost_per_head :
-                  itemType === 'vendor' && 'typical_rate' in selectedItem ? (selectedItem.typical_rate ?? '') :
-                  ''
-                )) || ''}
+                value={customPrice !== '' ? customPrice : (
+                  selectedItem ? (
+                    itemType === 'space' && 'rate_per_hour' in selectedItem ? sanitizeMoneyString(selectedItem.rate_per_hour) :
+                    itemType === 'catering' && 'cost_per_head' in selectedItem ? sanitizeMoneyString(selectedItem.cost_per_head) :
+                    itemType === 'vendor' && 'typical_rate' in selectedItem ? (
+                      'typical_rate_normalized' in selectedItem
+                        ? (selectedItem.typical_rate_normalized ?? '')
+                        : sanitizeMoneyString(selectedItem.typical_rate)
+                    ) :
+                    ''
+                  ) : ''
+                )}
                 onChange={(e) => setCustomPrice(e.target.value)}
                 step="0.01"
                 min="0"

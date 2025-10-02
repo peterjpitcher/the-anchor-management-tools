@@ -4,7 +4,17 @@ export type ItemType = 'space' | 'catering' | 'vendor' | 'other'
 export type DiscountType = 'percent' | 'fixed'
 export type PackageType = 'buffet' | 'sit-down' | 'canapes' | 'drinks' | 'pizza' | 'other'
 export type PricingModel = 'per_head' | 'total_value'
-export type VendorServiceType = 'dj' | 'band' | 'photographer' | 'florist' | 'decorator' | 'cake' | 'transport' | 'other'
+export type VendorServiceType =
+  | 'dj'
+  | 'band'
+  | 'photographer'
+  | 'florist'
+  | 'decorator'
+  | 'cake'
+  | 'entertainment'
+  | 'transport'
+  | 'equipment'
+  | 'other'
 export type DocumentType = 'contract' | 'invoice' | 'receipt' | 'correspondence' | 'other'
 export type SmsTriggerType = 'status_change' | 'deposit_received' | 'payment_received' | 'reminder' | 'payment_due' | 'urgent' | 'manual'
 export type SmsStatus = 'pending' | 'approved' | 'sent' | 'cancelled' | 'failed'
@@ -88,6 +98,7 @@ export interface Vendor {
   contact_email?: string
   website?: string
   typical_rate?: string
+  typical_rate_normalized?: string | null
   notes?: string
   preferred: boolean
   active: boolean
@@ -111,6 +122,7 @@ export interface PrivateBookingItem {
   line_total: number
   notes?: string
   created_at: string
+  display_order?: number
   // Relations
   space?: VenueSpace
   package?: CateringPackage

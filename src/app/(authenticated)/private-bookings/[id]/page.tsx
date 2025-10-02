@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import { formatDateFull, formatTime12Hour } from "@/lib/dateUtils";
@@ -28,7 +28,25 @@ import {
   CalendarDaysIcon,
   BuildingOfficeIcon,
   BoltIcon,
+  Bars3Icon,
 } from "@heroicons/react/24/outline";
+import {
+  DndContext,
+  type DragEndEvent,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   getPrivateBooking,
   updateBookingStatus,
@@ -37,6 +55,7 @@ import {
   addBookingItem,
   updateBookingItem,
   deleteBookingItem,
+  reorderBookingItems,
   getVenueSpaces,
   getCateringPackages,
   getVendors,
@@ -130,6 +149,9 @@ const normalizeItem = (item: PrivateBookingItem): PrivateBookingItem => {
     unit_price: toNumber(item.unit_price),
     discount_value: discountValue,
     line_total: toNumber(item.line_total),
+    display_order: item.display_order === null || item.display_order === undefined
+      ? undefined
+      : toNumber(item.display_order)
   };
 };
 
@@ -153,7 +175,16 @@ const normalizeBooking = (booking: PrivateBookingWithDetails): PrivateBookingWit
     total_amount: toNumber(booking.total_amount),
     discount_amount: discountAmount,
     calculated_total: calculatedTotal,
-    items: booking.items?.map(normalizeItem),
+    items: booking.items
+      ?.map(normalizeItem)
+      ?.sort((a, b) => {
+        const orderA = a.display_order ?? 0;
+        const orderB = b.display_order ?? 0;
+        if (orderA === orderB) {
+          return (a.created_at || '').localeCompare(b.created_at || '');
+        }
+        return orderA - orderB;
+      }),
   };
 };
 
@@ -260,6 +291,112 @@ function PaymentModal({
       </Form>
     </Modal>
   );
+}
+
+interface SortableBookingItemProps {
+  item: PrivateBookingItem
+  getItemIcon: (type: string) => ReactNode
+  onEdit: (item: PrivateBookingItem) => void
+  onDelete: (itemId: string) => void
+  formatMoney: (value: unknown) => string
+}
+
+function SortableBookingItem({
+  item,
+  getItemIcon,
+  onEdit,
+  onDelete,
+  formatMoney,
+}: SortableBookingItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    touchAction: 'manipulation' as const,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-start justify-between border-b pb-4 last:border-0 ${
+        isDragging ? 'bg-white shadow-md rounded-md' : ''
+      }`}
+    >
+      <div className="flex items-start space-x-3 flex-1">
+        <button
+          type="button"
+          className="mt-1 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing"
+          aria-label="Reorder booking item"
+          {...attributes}
+          {...listeners}
+        >
+          <Bars3Icon className="h-5 w-5" />
+        </button>
+        <div className="text-gray-400 pt-1">
+          {getItemIcon(item.item_type)}
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-medium text-gray-900">
+            {item.description}
+          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
+            <span>Qty: {item.quantity}</span>
+            <span>{formatMoney(item.unit_price)} each</span>
+            {!!item.discount_value && item.discount_value > 0 && (
+              <>
+                <span className="text-green-600">
+                  -
+                  {item.discount_type === 'percent'
+                    ? `${item.discount_value}%`
+                    : `${formatMoney(item.discount_value)}`}
+                </span>
+                {item.discount_value === 100 && item.discount_type === 'percent' && (
+                  <span className="text-gray-400 line-through">
+                    (was {formatMoney(item.quantity * item.unit_price)})
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+          {item.notes && (
+            <p className="mt-1 text-sm text-gray-500">
+              {item.notes}
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center space-x-2">
+        <span className="text-base font-semibold text-gray-900">
+          {formatMoney(item.line_total)}
+        </span>
+        <button
+          onClick={() => onEdit(item)}
+          className="text-gray-400 hover:text-gray-500"
+          title="Edit item"
+          type="button"
+        >
+          <PencilIcon className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => onDelete(item.id)}
+          className="text-red-400 hover:text-red-500"
+          title="Delete item"
+          type="button"
+        >
+          <TrashIcon className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  )
 }
 
 // Status Change Modal Component
@@ -1093,6 +1230,7 @@ export default function PrivateBookingDetailPage() {
     null,
   );
   const [items, setItems] = useState<PrivateBookingItem[]>([]);
+  const [isReordering, setIsReordering] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showFinalModal, setShowFinalModal] = useState(false);
@@ -1103,6 +1241,11 @@ export default function PrivateBookingDetailPage() {
   const [showEditItemModal, setShowEditItemModal] = useState(false);
   const [editingItem, setEditingItem] = useState<PrivateBookingItem | null>(
     null,
+  );
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
   const loadBooking = useCallback(async (id: string) => {
@@ -1132,9 +1275,53 @@ export default function PrivateBookingDetailPage() {
     loadBooking(bookingId);
   }, [bookingId, loadBooking]);
 
-  
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    if (isReordering || !bookingId) {
+      return;
+    }
 
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    const activeId = String(active.id);
+    const overId = String(over.id);
+
+    const oldIndex = items.findIndex((item) => item.id === activeId);
+    const newIndex = items.findIndex((item) => item.id === overId);
+
+    if (oldIndex === -1 || newIndex === -1) {
+      return;
+    }
+
+    const reordered = arrayMove(items, oldIndex, newIndex).map((item, index) => ({
+      ...item,
+      display_order: index,
+    }));
+
+    setItems(reordered);
+    setBooking((prev) => (prev ? { ...prev, items: reordered } : prev));
+    setIsReordering(true);
+
+    try {
+      const result = await reorderBookingItems(bookingId, reordered.map((item) => item.id));
+
+      if (result?.error) {
+        toast.error(result.error);
+        await loadBooking(bookingId);
+      } else {
+        toast.success('Item order updated');
+      }
+    } catch (error) {
+      console.error('Error reordering booking items:', error);
+      toast.error('Failed to update item order');
+      await loadBooking(bookingId);
+    } finally {
+      setIsReordering(false);
+    }
+  }, [isReordering, bookingId, items, loadBooking]);
 
   const handleDeleteItem = async (itemId: string) => {
     const result = await deleteBookingItem(itemId);
@@ -1405,10 +1592,15 @@ export default function PrivateBookingDetailPage() {
           <Section
             title="Booking Items"
             actions={
-              <Button onClick={() => setShowAddItemModal(true)} size="sm">
-                <PlusIcon className="h-4 w-4 mr-1" />
-                Add Item
-              </Button>
+              <div className="flex items-center gap-3">
+                {isReordering && (
+                  <span className="text-xs text-gray-500">Saving order…</span>
+                )}
+                <Button onClick={() => setShowAddItemModal(true)} size="sm">
+                  <PlusIcon className="h-4 w-4 mr-1" />
+                  Add Item
+                </Button>
+              </div>
             }
           >
             <Card>
@@ -1418,73 +1610,32 @@ export default function PrivateBookingDetailPage() {
                   description="Click 'Add Item' to build this booking."
                 />
               ) : (
-                <div className="space-y-4">
-                  {items.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-start justify-between border-b pb-4 last:border-0"
-                    >
-                      <div className="flex items-start space-x-3 flex-1">
-                        <div className="text-gray-400">
-                          {getItemIcon(item.item_type)}
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-gray-900">
-                            {item.description}
-                          </p>
-                          <div className="mt-1 flex items-center space-x-4 text-sm text-gray-500">
-                            <span>Qty: {item.quantity}</span>
-                            <span>{formatMoney(item.unit_price)} each</span>
-                            {!!item.discount_value &&
-                              item.discount_value > 0 && (
-                                <>
-                                  <span className="text-green-600">
-                                    -
-                                    {item.discount_type === "percent"
-                                      ? `${item.discount_value}%`
-                                      : `${formatMoney(item.discount_value)}`}
-                                  </span>
-                                  {item.discount_value === 100 &&
-                                    item.discount_type === "percent" && (
-                                      <span className="text-gray-400 line-through">
-                                        (was {formatMoney(item.quantity * item.unit_price)})
-                                      </span>
-                                    )}
-                                </>
-                              )}
-                          </div>
-                          {item.notes && (
-                            <p className="mt-1 text-sm text-gray-500">
-                              {item.notes}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <span className="text-base font-semibold text-gray-900">
-                          {formatMoney(item.line_total)}
-                        </span>
-                        <button
-                          onClick={() => {
-                            setEditingItem(item);
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={items.map((item) => item.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="space-y-4">
+                      {items.map((item) => (
+                        <SortableBookingItem
+                          key={item.id}
+                          item={item}
+                          getItemIcon={getItemIcon}
+                          formatMoney={formatMoney}
+                          onEdit={(current) => {
+                            setEditingItem(current);
                             setShowEditItemModal(true);
                           }}
-                          className="text-gray-400 hover:text-gray-500"
-                          title="Edit item"
-                        >
-                          <PencilIcon className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => setDeleteConfirm(item.id)}
-                          className="text-red-400 hover:text-red-500"
-                          title="Delete item"
-                        >
-                          <TrashIcon className="h-4 w-4" />
-                        </button>
-                      </div>
+                          onDelete={(id) => setDeleteConfirm(id)}
+                        />
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </SortableContext>
+                </DndContext>
               )}
             </Card>
           </Section>

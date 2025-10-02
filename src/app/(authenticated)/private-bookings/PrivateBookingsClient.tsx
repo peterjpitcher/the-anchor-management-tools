@@ -42,6 +42,31 @@ const ITEMS_PER_PAGE = 20
 
 const DATE_TBD_NOTE = 'Event date/time to be confirmed'
 
+const SELECT_FIELDS = `
+  id,
+  customer_id,
+  customer_name,
+  customer_first_name,
+  customer_last_name,
+  customer_full_name,
+  customer_mobile,
+  contact_phone,
+  event_date,
+  start_time,
+  status,
+  guest_count,
+  total_amount,
+  calculated_total,
+  deposit_amount,
+  deposit_paid_date,
+  deposit_status,
+  days_until_event,
+  internal_notes,
+  contract_version,
+  created_at,
+  updated_at
+`
+
 const toNumber = (value: unknown): number => {
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : 0
@@ -105,111 +130,235 @@ export default function PrivateBookingsClient({ permissions }: Props) {
       const from = (currentPage - 1) * ITEMS_PER_PAGE
       const to = from + ITEMS_PER_PAGE - 1
 
-      // Build query - only fetch essential data for list view
-      let query = supabase
-        .from('private_bookings')
-        .select(`
-          id,
-          event_date,
-          start_time,
-          customer_name,
-          contact_phone,
-          status,
-          guest_count,
-          total_amount,
-          deposit_amount,
-          deposit_paid_date,
-          internal_notes,
-          contract_version,
-          created_at,
-          updated_at,
-          customer:customers(
-            id,
-            first_name,
-            last_name,
-            mobile_number
-          )
-        `, { count: 'exact' })
-        .range(from, to)
-        .order('event_date', { ascending: false, nullsFirst: true })
+      const buildSelectQuery = (options?: { withCount?: boolean }) => {
+        let builder = supabase
+          .from('private_bookings_with_details')
+          .select(SELECT_FIELDS, options?.withCount ? { count: 'exact' } : undefined)
 
-      // Apply filters
-      if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter)
+        if (statusFilter !== 'all') {
+          builder = builder.eq('status', statusFilter)
+        }
+
+        if (searchTerm) {
+          builder = builder.ilike('customer_name', `%${searchTerm}%`)
+        }
+
+        return builder
       }
 
-      if (searchTerm) {
-        query = query.ilike('customer_name', `%${searchTerm}%`)
+      const buildCountQuery = () => {
+        let builder = supabase
+          .from('private_bookings_with_details')
+          .select('id', { count: 'exact', head: true })
+
+        if (statusFilter !== 'all') {
+          builder = builder.eq('status', statusFilter)
+        }
+
+        if (searchTerm) {
+          builder = builder.ilike('customer_name', `%${searchTerm}%`)
+        }
+
+        return builder
       }
 
       const today = getTodayIsoDate()
+      let rawBookings: BookingRow[] = []
+      let totalCountValue = 0
+
       if (dateFilter === 'upcoming') {
-        query = query.or(`event_date.is.null,event_date.gte.${today}`)
-      } else if (dateFilter === 'past') {
-        query = query.lt('event_date', today)
+        const includeUndatedDrafts = statusFilter === 'all' || statusFilter === 'draft'
+
+        const tbdNoteEscaped = DATE_TBD_NOTE.replace(/%/g, '\\%')
+
+        const futureCountResult = await buildCountQuery()
+          .gte('event_date', today)
+
+        if (futureCountResult.error) {
+          console.error('Error counting upcoming bookings:', futureCountResult.error)
+          toast.error('Failed to load bookings')
+          return
+        }
+
+        const futureCount = futureCountResult.count ?? 0
+
+        let undatedCount = 0
+        if (includeUndatedDrafts) {
+          const undatedCountResult = await buildCountQuery()
+            .or(`event_date.is.null,and(event_date.lt.${today},internal_notes.ilike.%${tbdNoteEscaped}%)`)
+            .eq('status', 'draft')
+
+          if (undatedCountResult.error) {
+            console.error('Error counting draft bookings without date:', undatedCountResult.error)
+            toast.error('Failed to load bookings')
+            return
+          }
+
+          undatedCount = undatedCountResult.count ?? 0
+        }
+
+        totalCountValue = futureCount + undatedCount
+
+        const upcomingResults: BookingRow[] = []
+
+        if (includeUndatedDrafts && undatedCount > 0 && from <= undatedCount - 1) {
+          const undatedFrom = from
+          const undatedTo = Math.min(to, undatedCount - 1)
+          const undatedResult = await buildSelectQuery()
+            .or(`event_date.is.null,and(event_date.lt.${today},internal_notes.ilike.%${tbdNoteEscaped}%)`)
+            .eq('status', 'draft')
+            .order('created_at', { ascending: false })
+            .range(undatedFrom, undatedTo)
+
+          if (undatedResult.error) {
+            console.error('Error fetching draft bookings without date:', undatedResult.error)
+            toast.error('Failed to load bookings')
+            return
+          }
+
+          upcomingResults.push(...((undatedResult.data as BookingRow[]) || []))
+        }
+
+        if (futureCount > 0 && to >= undatedCount) {
+          const futureFrom = Math.max(from - undatedCount, 0)
+          const futureTo = Math.min(to - undatedCount, futureCount - 1)
+
+          if (futureFrom <= futureTo) {
+            const futureResult = await buildSelectQuery()
+              .gte('event_date', today)
+              .order('event_date', { ascending: true, nullsFirst: false })
+              .order('created_at', { ascending: false })
+              .range(futureFrom, futureTo)
+
+            if (futureResult.error) {
+              console.error('Error fetching upcoming bookings:', futureResult.error)
+              toast.error('Failed to load bookings')
+              return
+            }
+
+            upcomingResults.push(...((futureResult.data as BookingRow[]) || []))
+          }
+        }
+
+        rawBookings = upcomingResults
+      } else {
+        let query = buildSelectQuery({ withCount: true })
+
+        if (dateFilter === 'past') {
+          query = query.lt('event_date', today)
+        }
+
+        query = query
+          .order('event_date', { ascending: true, nullsFirst: true })
+          .order('created_at', { ascending: false })
+          .range(from, to)
+
+        const { data, count, error } = await query
+
+        if (error) {
+          console.error('Error fetching bookings:', error)
+          toast.error('Failed to load bookings')
+          return
+        }
+
+        rawBookings = (data as BookingRow[]) || []
+        totalCountValue = count || 0
       }
 
-      const { data, count, error } = await query
-
-      if (error) {
-        console.error('Error fetching bookings:', error)
-        toast.error('Failed to load bookings')
-        return
-      }
-
-      // Calculate days until event
-      type CustomerRow = { id: string; first_name: string; last_name: string; mobile_number: string | null }
+      // Normalise view data for UI consumption
       type BookingRow = {
-        event_date: string
+        id: string
+        event_date: string | null
+        start_time?: string | null
         status: string
         deposit_paid_date: string | null
+        deposit_status?: string | null
         internal_notes?: string | null
-        customer?: CustomerRow[] | CustomerRow
+        customer_id?: string | null
+        customer_name?: string | null
+        customer_first_name?: string | null
+        customer_last_name?: string | null
+        customer_full_name?: string | null
+        customer_mobile?: string | null
+        contact_phone?: string | null
+        guest_count?: number | string | null
+        total_amount?: number | string | null
+        calculated_total?: number | string | null
+        deposit_amount?: number | string | null
+        days_until_event?: number | string | null
+        created_at?: string | null
+        updated_at?: string | null
         [key: string]: unknown
       }
 
-      const enrichedBookings = (data || []).map((booking: BookingRow) => {
-        const customerData = Array.isArray(booking.customer) ? booking.customer[0] : booking.customer
+      const enrichedBookings = rawBookings.map((booking: BookingRow) => {
+        const rawCalculatedTotal = booking.calculated_total
+        const calculatedTotal = rawCalculatedTotal === null || rawCalculatedTotal === undefined
+          ? undefined
+          : toNumber(rawCalculatedTotal)
 
-        const totalAmount = toNumber(booking.total_amount)
+        const totalAmount = calculatedTotal ?? toNumber(booking.total_amount)
+
         const depositAmount = booking.deposit_amount === null || booking.deposit_amount === undefined
           ? undefined
           : toNumber(booking.deposit_amount)
+
         const guestCount = booking.guest_count === null || booking.guest_count === undefined
           ? undefined
           : toNumber(booking.guest_count)
-        const internalNotes = typeof booking.internal_notes === 'string' ? booking.internal_notes : undefined
-        const isDateTbd = internalNotes?.includes(DATE_TBD_NOTE) ?? false
+
+        const internalNotes = typeof booking.internal_notes === 'string'
+          ? booking.internal_notes
+          : undefined
+
+        const isDateTbd = (!booking.event_date) || (internalNotes?.includes(DATE_TBD_NOTE) ?? false)
 
         const eventDateValue = booking.event_date ? new Date(booking.event_date) : null
-        const daysUntilEvent = eventDateValue
-          ? Math.ceil((eventDateValue.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
-          : null
+        const daysUntilEvent = booking.days_until_event === null || booking.days_until_event === undefined
+          ? (eventDateValue
+              ? Math.ceil((eventDateValue.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+              : null)
+          : toNumber(booking.days_until_event)
+
+        const customerName = booking.customer_full_name
+          || booking.customer_name
+          || [booking.customer_first_name, booking.customer_last_name].filter(Boolean).join(' ')
+          || 'Unnamed booking'
+
+        const normalizedPhone = booking.contact_phone || booking.customer_mobile || undefined
+
+        const normalizedDepositStatus = typeof booking.deposit_status === 'string'
+          ? booking.deposit_status as 'Paid' | 'Required' | 'Not Required'
+          : booking.deposit_paid_date
+            ? 'Paid'
+            : booking.status === 'confirmed'
+              ? 'Required'
+              : 'Not Required'
 
         return {
           ...booking,
+          customer_name: customerName,
+          contact_phone: normalizedPhone,
+          status: booking.status as BookingStatus,
           days_until_event: daysUntilEvent,
-          deposit_status: booking.deposit_paid_date 
-            ? 'Paid' as const
-            : booking.status === 'confirmed' 
-              ? 'Required' as const
-              : 'Not Required' as const,
+          deposit_status: normalizedDepositStatus,
           total_amount: totalAmount,
+          calculated_total: calculatedTotal,
           deposit_amount: depositAmount,
           guest_count: guestCount,
           internal_notes: internalNotes,
           is_date_tbd: isDateTbd,
-          customer: customerData ? {
-            id: customerData.id,
-            first_name: customerData.first_name,
-            last_name: customerData.last_name,
-            phone: customerData.mobile_number || undefined
+          customer: booking.customer_id ? {
+            id: booking.customer_id,
+            first_name: booking.customer_first_name || customerName,
+            last_name: booking.customer_last_name || '',
+            phone: booking.customer_mobile || undefined
           } : undefined
         }
       })
 
       setBookings(enrichedBookings as BookingListItem[])
-      setTotalCount(count || 0)
+      setTotalCount(totalCountValue)
     } finally {
       setLoading(false)
     }
@@ -241,8 +390,8 @@ export default function PrivateBookingsClient({ permissions }: Props) {
     }
   }
 
-  const formatDate = (date: string) => formatDateFull(date)
-  const formatTime = (time: string) => formatTime12Hour(time)
+  const formatDate = (date: string | null) => formatDateFull(date)
+  const formatTime = (time: string | null) => formatTime12Hour(time)
 
   return (
     <PageWrapper>
@@ -325,7 +474,7 @@ export default function PrivateBookingsClient({ permissions }: Props) {
               onClick={() => {
                 setSearchTerm('')
                 setStatusFilter('all')
-                setDateFilter('all')
+                setDateFilter('upcoming')
                 setCurrentPage(1)
               }}
               variant="secondary"
@@ -426,7 +575,7 @@ export default function PrivateBookingsClient({ permissions }: Props) {
                 header: 'Financials',
             cell: (booking) => (
               <div>
-                <div className="text-sm text-gray-900">{formatCurrency(toNumber(booking.total_amount))}</div>
+                <div className="text-sm text-gray-900">{formatCurrency(toNumber(booking.calculated_total ?? booking.total_amount))}</div>
                 {booking.deposit_amount && (
                   <div className="text-xs text-gray-500">
                     Deposit: {formatCurrency(toNumber(booking.deposit_amount))}
@@ -504,7 +653,7 @@ export default function PrivateBookingsClient({ permissions }: Props) {
                     <span>{booking.guest_count} guests</span>
                   </div>
                   <div className="text-right">
-                    <span className="font-medium">{formatCurrency(toNumber(booking.total_amount))}</span>
+                    <span className="font-medium">{formatCurrency(toNumber(booking.calculated_total ?? booking.total_amount))}</span>
                   </div>
                 </div>
                 {booking.deposit_status && booking.deposit_status !== 'Not Required' && (
