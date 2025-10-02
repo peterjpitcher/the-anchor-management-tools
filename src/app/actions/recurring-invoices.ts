@@ -381,15 +381,20 @@ export async function deleteRecurringInvoice(formData: FormData) {
 // Generate invoice from recurring invoice
 type GenerateInvoiceResult = { error: string } | { success: true; invoice: Invoice }
 
-export async function generateInvoiceFromRecurring(recurringInvoiceId: string): Promise<GenerateInvoiceResult> {
+export async function generateInvoiceFromRecurring(
+  recurringInvoiceId: string,
+  options: { bypassPermissionCheck?: boolean } = {}
+): Promise<GenerateInvoiceResult> {
   try {
     const supabase = await createClient()
     const adminClient = await createAdminClient()
     
     // Check permissions
-    const hasPermission = await checkUserPermission('invoices', 'create')
-    if (!hasPermission) {
-      return { error: 'You do not have permission to generate invoices' }
+    if (!options.bypassPermissionCheck) {
+      const hasPermission = await checkUserPermission('invoices', 'create')
+      if (!hasPermission) {
+        return { error: 'You do not have permission to generate invoices' }
+      }
     }
 
     // Get recurring invoice details

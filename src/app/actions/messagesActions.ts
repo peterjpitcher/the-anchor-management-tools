@@ -2,8 +2,14 @@
 
 import { createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { checkUserPermission } from './rbac'
 
 export async function getMessages() {
+  const canView = await checkUserPermission('messages', 'view')
+  if (!canView) {
+    return { error: 'Insufficient permissions' }
+  }
+
   console.log('=== Getting all messages ===')
   
   const supabase = createAdminClient()
@@ -138,6 +144,11 @@ export async function markMessageAsRead(messageId: string) {
 }
 
 export async function markAllMessagesAsRead() {
+  const canManage = await checkUserPermission('messages', 'manage')
+  if (!canManage) {
+    throw new Error('Insufficient permissions')
+  }
+
   const supabase = createAdminClient()
   
   const { error } = await supabase
@@ -156,6 +167,11 @@ export async function markAllMessagesAsRead() {
 }
 
 export async function markConversationAsRead(customerId: string) {
+  const canManage = await checkUserPermission('messages', 'manage')
+  if (!canManage) {
+    throw new Error('Insufficient permissions')
+  }
+
   const supabase = createAdminClient()
   
   const { error } = await supabase

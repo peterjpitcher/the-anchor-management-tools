@@ -1,7 +1,7 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { checkUserPermission } from '@/app/actions/rbac'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import type { 
@@ -187,6 +187,11 @@ export async function getPrivateBookings(filters?: {
 // Get single private booking by ID
 export async function getPrivateBooking(id: string) {
   const supabase = await createClient()
+
+  const canView = await checkUserPermission('private_bookings', 'view')
+  if (!canView) {
+    return { error: 'You do not have permission to view private bookings' }
+  }
   
   const { data, error } = await supabase
     .from('private_bookings')
@@ -235,6 +240,11 @@ export async function getPrivateBooking(id: string) {
 export async function createPrivateBooking(formData: FormData) {
   const supabase = await createClient()
   const isDateTbd = formData.get('date_tbd') === 'true'
+
+  const canCreate = await checkUserPermission('private_bookings', 'create')
+  if (!canCreate) {
+    return { error: 'You do not have permission to create private bookings' }
+  }
 
   const getString = (key: string): string | undefined => {
     const value = formData.get(key)
@@ -497,6 +507,11 @@ export async function createPrivateBooking(formData: FormData) {
 export async function updatePrivateBooking(id: string, formData: FormData) {
   const supabase = await createClient()
   
+  const canEdit = await checkUserPermission('private_bookings', 'edit')
+  if (!canEdit) {
+    return { error: 'You do not have permission to update private bookings' }
+  }
+
   const isDateTbd = formData.get('date_tbd') === 'true'
 
   const getString = (key: string): string | undefined => {
@@ -828,6 +843,11 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
 export async function updateBookingStatus(id: string, status: BookingStatus) {
   const supabase = await createClient()
   
+  const canEdit = await checkUserPermission('private_bookings', 'edit')
+  if (!canEdit) {
+    return { error: 'You do not have permission to update private bookings' }
+  }
+
   const { error } = await supabase
     .from('private_bookings')
     .update({
@@ -897,6 +917,11 @@ export async function updateBookingStatus(id: string, status: BookingStatus) {
 export async function deletePrivateBooking(id: string) {
   const supabase = await createClient()
   
+  const canDelete = await checkUserPermission('private_bookings', 'delete')
+  if (!canDelete) {
+    return { error: 'You do not have permission to delete private bookings' }
+  }
+
   // Get the booking first to check status and calendar event
   const { data: booking, error: fetchError } = await supabase
     .from('private_bookings')
@@ -962,6 +987,11 @@ export async function deletePrivateBooking(id: string) {
 // Get venue spaces
 export async function getVenueSpaces(activeOnly = true) {
   const supabase = await createClient()
+
+  const canView = await checkUserPermission('private_bookings', 'view')
+  if (!canView) {
+    return { error: 'You do not have permission to view private bookings' }
+  }
   
   let query = supabase
     .from('venue_spaces')
@@ -985,6 +1015,11 @@ export async function getVenueSpaces(activeOnly = true) {
 // Get catering packages
 export async function getCateringPackages(activeOnly = true) {
   const supabase = await createClient()
+
+  const canView = await checkUserPermission('private_bookings', 'view')
+  if (!canView) {
+    return { error: 'You do not have permission to view private bookings' }
+  }
   
   let query = supabase
     .from('catering_packages')
@@ -1008,6 +1043,11 @@ export async function getCateringPackages(activeOnly = true) {
 // Get vendors
 export async function getVendors(serviceType?: string, activeOnly = true) {
   const supabase = await createClient()
+
+  const canView = await checkUserPermission('private_bookings', 'view')
+  if (!canView) {
+    return { error: 'You do not have permission to view private bookings' }
+  }
   
   let query = supabase
     .from('vendors')
@@ -1037,6 +1077,11 @@ export async function getVendors(serviceType?: string, activeOnly = true) {
 export async function recordDepositPayment(bookingId: string, formData: FormData) {
   const supabase = await createClient()
   
+  const canManageDeposits = await checkUserPermission('private_bookings', 'manage_deposits')
+  if (!canManageDeposits) {
+    return { error: 'You do not have permission to record deposits' }
+  }
+
   const paymentMethod = formData.get('payment_method') as string
   const amount = parseFloat(formData.get('amount') as string)
   
@@ -1107,6 +1152,11 @@ export async function recordDepositPayment(bookingId: string, formData: FormData
 export async function recordFinalPayment(bookingId: string, formData: FormData) {
   const supabase = await createClient()
   
+  const canManageDeposits = await checkUserPermission('private_bookings', 'manage_deposits')
+  if (!canManageDeposits) {
+    return { error: 'You do not have permission to record payments' }
+  }
+
   const paymentMethod = formData.get('payment_method') as string
   
   // Get current user
@@ -1173,6 +1223,11 @@ export async function recordFinalPayment(bookingId: string, formData: FormData) 
 // Cancel a private booking and notify customer by SMS
 export async function cancelPrivateBooking(bookingId: string, reason?: string) {
   const supabase = await createClient()
+
+  const canEdit = await checkUserPermission('private_bookings', 'edit')
+  if (!canEdit) {
+    return { error: 'You do not have permission to cancel private bookings' }
+  }
 
   // Get current user
   const { data: { user } } = await supabase.auth.getUser()
@@ -1265,6 +1320,11 @@ export async function applyBookingDiscount(bookingId: string, data: {
 }) {
   const supabase = await createClient()
   
+  const canEdit = await checkUserPermission('private_bookings', 'edit')
+  if (!canEdit) {
+    return { error: 'You do not have permission to update private bookings' }
+  }
+
   const { error } = await supabase
     .from('private_bookings')
     .update({
@@ -1287,7 +1347,12 @@ export async function applyBookingDiscount(bookingId: string, data: {
 // SMS Queue Management
 export async function approveSms(smsId: string) {
   const supabase = await createClient()
-  
+
+  const canApprove = await checkUserPermission('private_bookings', 'approve_sms')
+  if (!canApprove) {
+    return { error: 'You do not have permission to approve SMS messages' }
+  }
+
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     return { error: 'Unauthorized' }
@@ -1314,7 +1379,12 @@ export async function approveSms(smsId: string) {
 
 export async function rejectSms(smsId: string) {
   const supabase = await createClient()
-  
+
+  const canApprove = await checkUserPermission('private_bookings', 'approve_sms')
+  if (!canApprove) {
+    return { error: 'You do not have permission to manage SMS messages' }
+  }
+
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     return { error: 'Unauthorized' }
@@ -1342,7 +1412,12 @@ export async function rejectSms(smsId: string) {
 export async function sendApprovedSms(smsId: string) {
   const supabase = await createClient()
   const admin = createAdminClient()
-  
+
+  const canSend = await checkUserPermission('private_bookings', 'send')
+  if (!canSend) {
+    return { error: 'You do not have permission to send SMS messages' }
+  }
+
   // Get the SMS details
   const { data: sms, error: fetchError } = await supabase
     .from('private_booking_sms_queue')
@@ -1418,7 +1493,12 @@ export async function createVenueSpace(data: {
   is_active: boolean
 }) {
   const supabase = await createClient()
-  
+
+  const canManageSpaces = await checkUserPermission('private_bookings', 'manage_spaces')
+  if (!canManageSpaces) {
+    return { error: 'You do not have permission to manage venue spaces' }
+  }
+
   // Map to correct database columns
   const dbData = {
     name: data.name,
@@ -1452,7 +1532,12 @@ export async function updateVenueSpace(id: string, data: {
   is_active: boolean
 }) {
   const supabase = await createClient()
-  
+
+  const canManageSpaces = await checkUserPermission('private_bookings', 'manage_spaces')
+  if (!canManageSpaces) {
+    return { error: 'You do not have permission to manage venue spaces' }
+  }
+
   // Map to correct database columns
   const dbData = {
     name: data.name,
@@ -1478,7 +1563,12 @@ export async function updateVenueSpace(id: string, data: {
 
 export async function deleteVenueSpace(id: string) {
   const supabase = await createClient()
-  
+
+  const canManageSpaces = await checkUserPermission('private_bookings', 'manage_spaces')
+  if (!canManageSpaces) {
+    return { error: 'You do not have permission to manage venue spaces' }
+  }
+
   const { error } = await supabase
     .from('venue_spaces')
     .delete()
@@ -1505,7 +1595,12 @@ export async function createCateringPackage(data: {
   is_active: boolean
 }) {
   const supabase = await createClient()
-  
+
+  const canManageCatering = await checkUserPermission('private_bookings', 'manage_catering')
+  if (!canManageCatering) {
+    return { error: 'You do not have permission to manage catering packages' }
+  }
+
   // Map to correct database columns
   const dbData = {
     name: data.name,
@@ -1543,7 +1638,12 @@ export async function updateCateringPackage(id: string, data: {
   is_active: boolean
 }) {
   const supabase = await createClient()
-  
+
+  const canManageCatering = await checkUserPermission('private_bookings', 'manage_catering')
+  if (!canManageCatering) {
+    return { error: 'You do not have permission to manage catering packages' }
+  }
+
   // Map to correct database columns
   const dbData = {
     name: data.name,
@@ -1572,7 +1672,12 @@ export async function updateCateringPackage(id: string, data: {
 
 export async function deleteCateringPackage(id: string) {
   const supabase = await createClient()
-  
+
+  const canManageCatering = await checkUserPermission('private_bookings', 'manage_catering')
+  if (!canManageCatering) {
+    return { error: 'You do not have permission to manage catering packages' }
+  }
+
   const { error } = await supabase
     .from('catering_packages')
     .delete()
@@ -1624,7 +1729,12 @@ export async function addBookingItem(data: {
   notes?: string | null
 }) {
   const supabase = await createClient()
-  
+
+  const canEdit = await checkUserPermission('private_bookings', 'edit')
+  if (!canEdit) {
+    return { error: 'You do not have permission to modify private bookings' }
+  }
+
   // Don't include line_total as it's a generated column
   const { error } = await supabase
     .from('private_booking_items')
@@ -1660,7 +1770,12 @@ export async function updateBookingItem(itemId: string, data: {
   notes?: string | null
 }) {
   const supabase = await createClient()
-  
+
+  const canEdit = await checkUserPermission('private_bookings', 'edit')
+  if (!canEdit) {
+    return { error: 'You do not have permission to modify private bookings' }
+  }
+
   // Get current item to find booking ID for revalidation
   const { data: currentItem, error: fetchError } = await supabase
     .from('private_booking_items')
@@ -1701,7 +1816,12 @@ export async function updateBookingItem(itemId: string, data: {
 
 export async function deleteBookingItem(itemId: string) {
   const supabase = await createClient()
-  
+
+  const canEdit = await checkUserPermission('private_bookings', 'edit')
+  if (!canEdit) {
+    return { error: 'You do not have permission to modify private bookings' }
+  }
+
   // Get booking ID before deleting
   const { data: item, error: fetchError } = await supabase
     .from('private_booking_items')
@@ -1742,7 +1862,12 @@ export async function createVendor(data: {
   is_active: boolean
 }) {
   const supabase = await createClient()
-  
+
+  const canManageVendors = await checkUserPermission('private_bookings', 'manage_vendors')
+  if (!canManageVendors) {
+    return { error: 'You do not have permission to manage vendors' }
+  }
+
   // Map to correct database columns
   const dbData = {
     name: data.name,
@@ -1783,7 +1908,12 @@ export async function updateVendor(id: string, data: {
   is_active: boolean
 }) {
   const supabase = await createClient()
-  
+
+  const canManageVendors = await checkUserPermission('private_bookings', 'manage_vendors')
+  if (!canManageVendors) {
+    return { error: 'You do not have permission to manage vendors' }
+  }
+
   // Map to correct database columns
   const dbData = {
     name: data.name,
@@ -1814,7 +1944,12 @@ export async function updateVendor(id: string, data: {
 
 export async function deleteVendor(id: string) {
   const supabase = await createClient()
-  
+
+  const canManageVendors = await checkUserPermission('private_bookings', 'manage_vendors')
+  if (!canManageVendors) {
+    return { error: 'You do not have permission to manage vendors' }
+  }
+
   const { error } = await supabase
     .from('vendors')
     .delete()

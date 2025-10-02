@@ -3,6 +3,7 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { checkUserPermission } from './rbac'
 import { revalidatePath } from 'next/cache'
+import { ensureReplyInstruction } from '@/lib/sms/support'
 
 export async function getUnreadMessageCounts() {
   const canView = await checkUserPermission('messages', 'view')
@@ -131,9 +132,12 @@ export async function sendSmsReply(customerId: string, message: string) {
     const twilio = (await import('twilio')).default
     const client = twilio(accountSid, authToken)
     
+    const supportPhone = env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || env.TWILIO_PHONE_NUMBER || null
+    const messageWithSupport = ensureReplyInstruction(message, supportPhone)
+
     // Build message parameters with status callback
     const messageParams: any = {
-      body: message,
+      body: messageWithSupport,
       to: customer.mobile_number,
       statusCallback: TWILIO_STATUS_CALLBACK,
       statusCallbackMethod: TWILIO_STATUS_CALLBACK_METHOD,
@@ -147,11 +151,13 @@ export async function sendSmsReply(customerId: string, message: string) {
     }
     
     const twilioMessage = await client.messages.create(messageParams)
-    
+
     // Calculate segments and cost
-    const messageLength = message.length
+    const messageLength = messageWithSupport.length
     const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153)
     const costUsd = segments * 0.04 // Approximate UK SMS cost per segment
+
+    const resolvedFromNumber = twilioMessage.from || fromNumber || ''
     
     // Save the message to database with proper status mapping
     const { error: saveError } = await supabase
@@ -161,10 +167,10 @@ export async function sendSmsReply(customerId: string, message: string) {
         direction: 'outbound',
         message_sid: twilioMessage.sid,
         twilio_message_sid: twilioMessage.sid,
-        body: message,
+        body: messageWithSupport,
         status: mapTwilioStatus(twilioMessage.status),
         twilio_status: twilioMessage.status,
-        from_number: messagingServiceSid ? fromNumber : twilioMessage.from,
+        from_number: resolvedFromNumber,
         to_number: customer.mobile_number,
         message_type: 'sms',
         segments: segments,
