@@ -46,6 +46,7 @@ export type ModuleName =
   | 'receipts'
   | 'loyalty'
   | 'quotes'
+  | 'parking'
 ;
 
 export type ActionType = 
@@ -73,7 +74,8 @@ export type ActionType =
   | 'view_sms_queue'
   | 'approve_sms'
   | 'enroll'
-  | 'redeem';
+  | 'redeem'
+  | 'refund';
 
 export type UserPermission = {
   module_name: ModuleName;

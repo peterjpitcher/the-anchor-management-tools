@@ -122,6 +122,80 @@ export async function createPayPalOrder(
   };
 }
 
+export interface PayPalOrderOptions {
+  customId: string;
+  reference: string;
+  description: string;
+  amount: number;
+  returnUrl: string;
+  cancelUrl: string;
+  currency?: string;
+}
+
+export async function createSimplePayPalOrder(options: PayPalOrderOptions) {
+  const accessToken = await getAccessToken();
+
+  const {
+    customId,
+    reference,
+    description,
+    amount,
+    returnUrl,
+    cancelUrl,
+    currency = 'GBP'
+  } = options;
+
+  const orderPayload = {
+    intent: 'CAPTURE',
+    purchase_units: [
+      {
+        reference_id: reference,
+        custom_id: customId,
+        description,
+        amount: {
+          currency_code: currency,
+          value: amount.toFixed(2)
+        }
+      }
+    ],
+    payment_source: {
+      paypal: {
+        experience_context: {
+          payment_method_preference: 'IMMEDIATE_PAYMENT_REQUIRED',
+          brand_name: 'The Anchor Pub',
+          locale: 'en-GB',
+          landing_page: 'LOGIN',
+          user_action: 'PAY_NOW',
+          return_url: returnUrl,
+          cancel_url: cancelUrl
+        }
+      }
+    }
+  };
+
+  const response = await fetch(`${PAYPAL_BASE_URL}/v2/checkout/orders`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`,
+      'PayPal-Request-Id': `parking-${customId}`
+    },
+    body: JSON.stringify(orderPayload)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('PayPal order creation error:', errorText);
+    throw new Error('Failed to create PayPal order');
+  }
+
+  const data = await response.json();
+  return {
+    orderId: data.id,
+    approveUrl: data.links.find((link: any) => link.rel === 'payer-action')?.href
+  };
+}
+
 // Capture PayPal payment
 export async function capturePayPalPayment(orderId: string) {
   const accessToken = await getAccessToken();
