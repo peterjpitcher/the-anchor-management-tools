@@ -137,6 +137,7 @@ export async function getPrivateBookings(filters?: {
       )
     `)
     .order('event_date', { ascending: true })
+    .order('display_order', { ascending: true, foreignTable: 'private_booking_items' })
 
   if (filters?.status) {
     query = query.eq('status', filters.status)
@@ -207,6 +208,7 @@ export async function getPrivateBooking(id: string) {
       documents:private_booking_documents(*),
       sms_queue:private_booking_sms_queue(*)
     `)
+    .order('display_order', { ascending: true, foreignTable: 'private_booking_items' })
     .eq('id', id)
     .single()
 
@@ -1070,7 +1072,45 @@ export async function getVendors(serviceType?: string, activeOnly = true) {
     return { error: error.message || 'An error occurred' }
   }
 
-  return { data }
+  const normalizedData = (data || []).map(vendor => {
+    const normalizedRate = sanitizeMoneyString(vendor.typical_rate)
+    return {
+      ...vendor,
+      typical_rate_normalized: normalizedRate,
+    }
+  })
+
+  return { data: normalizedData }
+}
+
+export async function getVendorRate(vendorId: string) {
+  const supabase = await createClient()
+
+  const canView = await checkUserPermission('private_bookings', 'view')
+  if (!canView) {
+    return { error: 'You do not have permission to view private bookings' }
+  }
+
+  const { data, error } = await supabase
+    .from('vendors')
+    .select('id, typical_rate')
+    .eq('id', vendorId)
+    .single()
+
+  if (error || !data) {
+    console.error('Error fetching vendor rate:', error)
+    return { error: error?.message || 'Vendor not found' }
+  }
+
+  const normalizedRate = sanitizeMoneyString(data.typical_rate)
+
+  return {
+    data: {
+      vendor_id: data.id,
+      typical_rate: data.typical_rate ?? null,
+      typical_rate_normalized: normalizedRate
+    }
+  }
 }
 
 // Record deposit payment
@@ -1735,6 +1775,22 @@ export async function addBookingItem(data: {
     return { error: 'You do not have permission to modify private bookings' }
   }
 
+  const { data: lastItem, error: orderError } = await supabase
+    .from('private_booking_items')
+    .select('display_order')
+    .eq('booking_id', data.booking_id)
+    .order('display_order', { ascending: false })
+    .limit(1)
+
+  if (orderError) {
+    console.error('Error determining next item order:', orderError)
+    return { error: orderError.message || 'Failed to determine item order' }
+  }
+
+  const nextDisplayOrder = lastItem && lastItem.length > 0 && lastItem[0]?.display_order !== null && lastItem[0]?.display_order !== undefined
+    ? Number(lastItem[0].display_order) + 1
+    : 0
+
   // Don't include line_total as it's a generated column
   const { error } = await supabase
     .from('private_booking_items')
@@ -1749,7 +1805,8 @@ export async function addBookingItem(data: {
       unit_price: data.unit_price,
       discount_value: data.discount_value,
       discount_type: data.discount_type,
-      notes: data.notes
+      notes: data.notes,
+      display_order: nextDisplayOrder
     })
   
   if (error) {
@@ -1848,7 +1905,82 @@ export async function deleteBookingItem(itemId: string) {
   return { success: true }
 }
 
+export async function reorderBookingItems(bookingId: string, orderedIds: string[]) {
+  const supabase = await createClient()
+
+  const canEdit = await checkUserPermission('private_bookings', 'edit')
+  if (!canEdit) {
+    return { error: 'You do not have permission to modify private bookings' }
+  }
+
+  if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+    return { error: 'No booking items supplied for reordering' }
+  }
+
+  const { data: existingItems, error: fetchError } = await supabase
+    .from('private_booking_items')
+    .select('id')
+    .eq('booking_id', bookingId)
+
+  if (fetchError) {
+    console.error('Error fetching booking items for reorder:', fetchError)
+    return { error: fetchError.message || 'Failed to fetch booking items' }
+  }
+
+  const existingIds = new Set((existingItems || []).map((item) => item.id))
+
+  const hasInvalidId = orderedIds.some((id) => !existingIds.has(id))
+  if (hasInvalidId || existingIds.size !== orderedIds.length) {
+    return { error: 'Booking items list must include all existing items' }
+  }
+
+  const updateResults = await Promise.all(
+    orderedIds.map((id, index) =>
+      supabase
+        .from('private_booking_items')
+        .update({ display_order: index })
+        .eq('id', id)
+        .eq('booking_id', bookingId)
+        .select('id')
+    )
+  )
+
+  const updateError = updateResults.find((result) => result.error)?.error
+
+  if (updateError) {
+    console.error('Error updating booking item order:', updateError)
+    return { error: updateError.message || 'Failed to update booking item order' }
+  }
+
+  revalidatePath(`/private-bookings/${bookingId}`)
+  revalidatePath(`/private-bookings/${bookingId}/items`)
+  return { success: true }
+}
+
 // Vendor Management
+const ALLOWED_VENDOR_TYPES = [
+  'dj',
+  'band',
+  'photographer',
+  'florist',
+  'decorator',
+  'cake',
+  'entertainment',
+  'transport',
+  'equipment',
+  'other'
+] as const
+
+function sanitizeMoneyString(value: unknown): string | null {
+  if (value === null || value === undefined) return null
+  const raw = typeof value === 'number' ? value.toString() : String(value)
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  const normalised = trimmed.replace(/,/g, '')
+  const match = normalised.match(/-?\d+(?:\.\d+)?/)
+  return match ? match[0] : null
+}
+
 export async function createVendor(data: {
   name: string
   vendor_type: string
@@ -1868,15 +2000,22 @@ export async function createVendor(data: {
     return { error: 'You do not have permission to manage vendors' }
   }
 
+  if (!ALLOWED_VENDOR_TYPES.includes(data.vendor_type as (typeof ALLOWED_VENDOR_TYPES)[number])) {
+    return { error: 'Invalid vendor type provided' }
+  }
+
+  const formattedPhone = data.phone ? formatPhoneForStorage(data.phone) : null
+  const typicalRate = sanitizeMoneyString(data.typical_rate) ?? null
+
   // Map to correct database columns
   const dbData = {
     name: data.name,
     service_type: data.vendor_type,
     contact_name: data.contact_name,
-    contact_phone: data.phone,
-    email: data.email,
+    contact_phone: formattedPhone,
+    contact_email: data.email,
     website: data.website,
-    typical_rate: data.typical_rate,
+    typical_rate: typicalRate,
     notes: data.notes,
     preferred: data.is_preferred,
     active: data.is_active
@@ -1914,15 +2053,22 @@ export async function updateVendor(id: string, data: {
     return { error: 'You do not have permission to manage vendors' }
   }
 
+  if (!ALLOWED_VENDOR_TYPES.includes(data.vendor_type as (typeof ALLOWED_VENDOR_TYPES)[number])) {
+    return { error: 'Invalid vendor type provided' }
+  }
+
+  const formattedPhone = data.phone ? formatPhoneForStorage(data.phone) : null
+  const typicalRate = sanitizeMoneyString(data.typical_rate) ?? null
+
   // Map to correct database columns
   const dbData = {
     name: data.name,
     service_type: data.vendor_type,
     contact_name: data.contact_name,
-    contact_phone: data.phone,
-    email: data.email,
+    contact_phone: formattedPhone,
+    contact_email: data.email,
     website: data.website,
-    typical_rate: data.typical_rate,
+    typical_rate: typicalRate,
     notes: data.notes,
     preferred: data.is_preferred,
     active: data.is_active
