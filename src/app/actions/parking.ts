@@ -254,3 +254,163 @@ export async function updateParkingBookingStatus(
     return { error: 'Failed to update parking booking' }
   }
 }
+
+export async function generateParkingPaymentLink(bookingId: string) {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return { error: 'Unauthorized' }
+    }
+
+    const hasPermission = await checkUserPermission('parking', 'manage', user.id)
+    if (!hasPermission) {
+      return { error: 'You do not have permission to manage parking payments' }
+    }
+
+    const adminClient = createAdminClient()
+    const booking = await getParkingBooking(bookingId, adminClient)
+    if (!booking) {
+      return { error: 'Parking booking not found' }
+    }
+
+    let dueAt = booking.payment_due_at ? new Date(booking.payment_due_at) : null
+    if (!dueAt || dueAt < new Date()) {
+      dueAt = new Date()
+      dueAt.setDate(dueAt.getDate() + 7)
+      await updateParkingBooking(
+        bookingId,
+        {
+          payment_due_at: dueAt.toISOString(),
+          expires_at: dueAt.toISOString()
+        },
+        adminClient
+      )
+      booking.payment_due_at = dueAt.toISOString()
+      booking.expires_at = dueAt.toISOString()
+    }
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL
+      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+
+    const { approveUrl } = await createParkingPaymentOrder(booking as ParkingBooking, {
+      returnUrl: `${appUrl}/api/parking/payment/return?booking_id=${booking.id}`,
+      cancelUrl: `${appUrl}/parking`,
+      client: adminClient
+    })
+
+    if (!approveUrl) {
+      return { error: 'PayPal did not return an approval link' }
+    }
+
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'update',
+      resource_type: 'parking_booking',
+      resource_id: bookingId,
+      operation_status: 'success',
+      additional_info: {
+        action: 'generate_payment_link'
+      }
+    })
+
+    revalidatePath('/parking')
+
+    return { success: true, approveUrl }
+  } catch (error) {
+    console.error('Failed to generate parking payment link', error)
+    return { error: 'Failed to generate payment link' }
+  }
+}
+
+export async function markParkingBookingPaid(bookingId: string) {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return { error: 'Unauthorized' }
+    }
+
+    const hasPermission = await checkUserPermission('parking', 'manage', user.id)
+    if (!hasPermission) {
+      return { error: 'You do not have permission to update parking bookings' }
+    }
+
+    const adminClient = createAdminClient()
+    const booking = await getParkingBooking(bookingId, adminClient)
+    if (!booking) {
+      return { error: 'Parking booking not found' }
+    }
+
+    const amount = booking.override_price ?? booking.calculated_price ?? 0
+    const nowIso = new Date().toISOString()
+
+    const { data: paymentRecord } = await adminClient
+      .from('parking_booking_payments')
+      .select('*')
+      .eq('booking_id', bookingId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (paymentRecord) {
+      await adminClient
+        .from('parking_booking_payments')
+        .update({
+          status: 'paid',
+          amount,
+          paid_at: nowIso,
+          metadata: {
+            ...(paymentRecord.metadata || {}),
+            manual_settlement: true,
+            settled_by: user.id
+          }
+        })
+        .eq('id', paymentRecord.id)
+    } else {
+      await adminClient
+        .from('parking_booking_payments')
+        .insert({
+          booking_id: bookingId,
+          provider: 'manual',
+          status: 'paid',
+          amount,
+          currency: 'GBP',
+          paid_at: nowIso,
+          metadata: {
+            manual_settlement: true,
+            settled_by: user.id
+          }
+        })
+    }
+
+    const updated = await updateParkingBooking(
+      bookingId,
+      {
+        status: 'confirmed',
+        payment_status: 'paid',
+        confirmed_at: nowIso
+      },
+      adminClient
+    )
+
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'update',
+      resource_type: 'parking_booking',
+      resource_id: bookingId,
+      operation_status: 'success',
+      additional_info: {
+        action: 'mark_paid',
+        amount
+      }
+    })
+
+    revalidatePath('/parking')
+
+    return { success: true, booking: updated }
+  } catch (error) {
+    console.error('Failed to mark parking booking as paid', error)
+    return { error: 'Failed to update payment status' }
+  }
+}
