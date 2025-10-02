@@ -1,26 +1,42 @@
-import Link from 'next/link'
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import ParkingClient from './ParkingClient'
 
-export default function ParkingDashboard() {
-  return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold text-slate-900">Parking Management</h1>
-        <p className="text-sm text-slate-600">Track car park bookings, payments, and availability.</p>
-      </header>
+export default async function ParkingPage() {
+  const supabase = await createClient()
 
-      <div className="rounded-lg border border-slate-200 bg-white p-6">
-        <p className="text-sm text-slate-700">
-          The parking dashboard is under active development. Booking creation, pricing, and payment APIs
-          are available now. UI workflows for booking management will follow shortly.
-        </p>
-        <p className="mt-4 text-sm text-slate-600">
-          In the meantime you can create bookings through the internal action layer or public API endpoints
-          documented in the API guide.
-        </p>
-        <div className="mt-4">
-          <Link className="text-sm font-medium text-blue-600 hover:underline" href="/docs/guides/api">View API documentation</Link>
-        </div>
-      </div>
-    </div>
-  )
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    redirect('/login')
+  }
+
+  const { data: canView } = await supabase.rpc('user_has_permission', {
+    p_user_id: user.id,
+    p_module_name: 'parking',
+    p_action: 'view'
+  })
+
+  if (!canView) {
+    redirect('/unauthorized')
+  }
+
+  const { data: canManage } = await supabase.rpc('user_has_permission', {
+    p_user_id: user.id,
+    p_module_name: 'parking',
+    p_action: 'manage'
+  })
+
+  const { data: canRefund } = await supabase.rpc('user_has_permission', {
+    p_user_id: user.id,
+    p_module_name: 'parking',
+    p_action: 'refund'
+  })
+
+  const permissions = {
+    canCreate: !!canManage,
+    canManage: !!canManage,
+    canRefund: !!canRefund
+  }
+
+  return <ParkingClient permissions={permissions} />
 }
