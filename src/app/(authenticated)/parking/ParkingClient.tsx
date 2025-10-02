@@ -18,7 +18,7 @@ import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { Toggle } from '@/components/ui-v2/forms/Toggle'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
-import type { ParkingBooking, ParkingBookingStatus, ParkingPaymentStatus } from '@/types/parking'
+import type { ParkingBooking, ParkingBookingStatus, ParkingNotificationRecord, ParkingPaymentStatus } from '@/types/parking'
 import { createParkingBooking, generateParkingPaymentLink, markParkingBookingPaid, updateParkingBookingStatus } from '@/app/actions/parking'
 
 interface ParkingPermissions {
@@ -91,6 +91,8 @@ export default function ParkingClient({ permissions }: Props) {
   const [bookings, setBookings] = useState<ParkingBooking[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [selectedBooking, setSelectedBooking] = useState<ParkingBooking | null>(null)
+  const [notifications, setNotifications] = useState<ParkingNotificationRecord[]>([])
+  const [loadingNotifications, setLoadingNotifications] = useState(false)
   const [search, setSearch] = useState<string>('')
   const [statusFilter, setStatusFilter] = useState<'all' | ParkingBookingStatus>('all')
   const [paymentFilter, setPaymentFilter] = useState<'all' | ParkingPaymentStatus>('all')
@@ -233,6 +235,7 @@ export default function ParkingClient({ permissions }: Props) {
       const updated = latest.find((b) => b.id === bookingId)
       if (updated) {
         setSelectedBooking(updated)
+        void loadNotifications(updated.id)
       }
     })
   }
@@ -250,6 +253,7 @@ export default function ParkingClient({ permissions }: Props) {
       const updated = latest.find((b) => b.id === bookingId)
       if (updated) {
         setSelectedBooking(updated)
+        void loadNotifications(updated.id)
       }
     })
   }
@@ -275,8 +279,30 @@ export default function ParkingClient({ permissions }: Props) {
       const updated = latest.find((b) => b.id === bookingId)
       if (updated) {
         setSelectedBooking(updated)
+        void loadNotifications(updated.id)
       }
     })
+  }
+
+  const loadNotifications = async (bookingId: string) => {
+    setLoadingNotifications(true)
+    try {
+      const { data, error } = await supabase
+        .from('parking_booking_notifications')
+        .select('*')
+        .eq('booking_id', bookingId)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Failed to load parking notifications', error)
+        setNotifications([])
+        return
+      }
+
+      setNotifications((data || []) as ParkingNotificationRecord[])
+    } finally {
+      setLoadingNotifications(false)
+    }
   }
 
   const upcomingCount = useMemo(() => bookings.filter((b) => new Date(b.start_at) > new Date() && ['pending_payment', 'confirmed'].includes(b.status)).length, [bookings])
@@ -286,7 +312,10 @@ export default function ParkingClient({ permissions }: Props) {
     <tr
       key={booking.id}
       className="cursor-pointer transition hover:bg-slate-50"
-      onClick={() => setSelectedBooking(booking)}
+      onClick={() => {
+        setSelectedBooking(booking)
+        void loadNotifications(booking.id)
+      }}
     >
       <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-900">{booking.reference}</td>
       <td className="px-4 py-3 text-sm text-slate-700">
@@ -377,6 +406,48 @@ export default function ParkingClient({ permissions }: Props) {
             )}
           </div>
         )}
+
+        <Section title="Recent notifications" description="SMS and email attempts for this booking." className="mt-6">
+          <div className="overflow-hidden rounded-md border border-slate-200">
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-medium uppercase text-slate-500">Channel</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium uppercase text-slate-500">Event</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium uppercase text-slate-500">Status</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium uppercase text-slate-500">Sent at</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 bg-white">
+                {loadingNotifications ? (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-6 text-center text-sm text-slate-500">
+                      <div className="flex items-center justify-center gap-2">
+                        <Spinner size="sm" />
+                        <span>Loading notifications…</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : notifications.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-6 text-center text-sm text-slate-500">
+                      No notification history yet.
+                    </td>
+                  </tr>
+                ) : (
+                  notifications.map((notification) => (
+                    <tr key={notification.id}>
+                      <td className="px-3 py-2 text-sm capitalize text-slate-700">{notification.channel}</td>
+                      <td className="px-3 py-2 text-sm capitalize text-slate-700">{notification.event_type.replace('_', ' ')}</td>
+                      <td className="px-3 py-2 text-sm text-slate-700">{notification.status}</td>
+                      <td className="px-3 py-2 text-sm text-slate-500">{notification.sent_at ? formatDateTime(notification.sent_at) : '—'}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Section>
       </Section>
     )
   }

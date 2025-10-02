@@ -15,6 +15,7 @@ The Anchor Management Tools is a comprehensive venue management system that stre
 | **SMS Communications** | SMS | ✅ Live | Automated reminders, confirmations, Twilio integration |
 | **Private Bookings** | Private Bookings | ✅ Live | Venue hire, deposits, contracts, item management |
 | **Table Bookings** | Table Bookings | ✅ Live | Restaurant reservations, PayPal integration, availability |
+| **Parking Management** | Parking | 🚧 Beta | Car-park bookings, PayPal payments, automated SMS/email reminders (UI live; refunds & automated tests pending) |
 | **Invoicing System** | Invoices | ✅ Live | Invoice/quote management, VAT compliance, payment tracking |
 | **Loyalty Program** | Loyalty | 🚧 Planned | Points, tiers, achievements, rewards, check-in system |
 
