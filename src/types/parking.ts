@@ -70,6 +70,9 @@ export interface ParkingBooking {
   notes?: string | null;
   capacity_override?: boolean;
   capacity_override_reason?: string | null;
+  payment_overdue_notified?: boolean | null;
+  start_notification_sent?: boolean | null;
+  end_notification_sent?: boolean | null;
   created_at: string;
   updated_at: string;
 }
