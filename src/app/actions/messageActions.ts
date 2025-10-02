@@ -1,9 +1,15 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/server'
+import { checkUserPermission } from './rbac'
 import { revalidatePath } from 'next/cache'
 
 export async function getUnreadMessageCounts() {
+  const canView = await checkUserPermission('messages', 'view')
+  if (!canView) {
+    return {}
+  }
+
   const supabase = createAdminClient()
   
   const { data, error } = await supabase
@@ -27,6 +33,11 @@ export async function getUnreadMessageCounts() {
 }
 
 export async function getTotalUnreadCount() {
+  const canView = await checkUserPermission('messages', 'view')
+  if (!canView) {
+    return 0
+  }
+
   const supabase = createAdminClient()
   
   const { count, error } = await supabase
@@ -44,6 +55,11 @@ export async function getTotalUnreadCount() {
 }
 
 export async function markMessagesAsRead(customerId: string) {
+  const canManage = await checkUserPermission('messages', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
+
   const supabase = createAdminClient()
   
   const { error } = await supabase
@@ -68,6 +84,11 @@ export async function markMessagesAsRead(customerId: string) {
 }
 
 export async function sendSmsReply(customerId: string, message: string) {
+  const canManage = await checkUserPermission('messages', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
+
   const supabase = createAdminClient()
   
   // Get customer details

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
 import { createAdminClient } from '@/lib/supabase/server'
 import { logger } from '@/lib/logger'
+import { checkUserPermission } from '@/app/actions/rbac'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -216,6 +217,11 @@ async function syncWithTwilio(messages: any[]) {
 }
 
 export async function GET(request: NextRequest) {
+  const canView = await checkUserPermission('messages', 'view')
+  if (!canView) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  }
+
   try {
     const url = new URL(request.url)
     const limit = Math.max(1, Number(url.searchParams.get('limit') ?? QUEUE_LIMIT_DEFAULT))
@@ -249,6 +255,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const canManage = await checkUserPermission('messages', 'manage')
+  if (!canManage) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  }
+
   try {
     const body = await request.json()
     const action: QueueAction | undefined = body?.action
