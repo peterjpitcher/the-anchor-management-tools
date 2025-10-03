@@ -197,10 +197,13 @@ export async function createParkingBooking(formData: FormData) {
     }
   } catch (error) {
     console.error('Unexpected error creating parking booking', error)
-    if (error instanceof Error) {
+    if (error instanceof Error && error.message) {
       return { error: error.message }
     }
-    return { error: 'Failed to create parking booking' }
+    if (error && typeof error === 'object' && 'message' in (error as Record<string, unknown>)) {
+      return { error: String((error as Record<string, unknown>).message) }
+    }
+    return { error: JSON.stringify(error) || 'Failed to create parking booking' }
   }
 }
 
