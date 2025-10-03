@@ -274,18 +274,34 @@ CREATE POLICY parking_rates_read ON public.parking_rates
 CREATE POLICY parking_bookings_read ON public.parking_bookings
   FOR SELECT TO authenticated USING (true);
 
-CREATE POLICY parking_bookings_modify ON public.parking_bookings
-  FOR INSERT, UPDATE, DELETE TO authenticated
+CREATE POLICY parking_bookings_insert ON public.parking_bookings
+  FOR INSERT TO authenticated
+  WITH CHECK (public.user_has_permission(auth.uid(), 'parking', 'manage'));
+
+CREATE POLICY parking_bookings_update ON public.parking_bookings
+  FOR UPDATE TO authenticated
   USING (public.user_has_permission(auth.uid(), 'parking', 'manage'))
   WITH CHECK (public.user_has_permission(auth.uid(), 'parking', 'manage'));
+
+CREATE POLICY parking_bookings_delete ON public.parking_bookings
+  FOR DELETE TO authenticated
+  USING (public.user_has_permission(auth.uid(), 'parking', 'manage'));
 
 CREATE POLICY parking_booking_payments_read ON public.parking_booking_payments
   FOR SELECT TO authenticated USING (true);
 
-CREATE POLICY parking_booking_payments_modify ON public.parking_booking_payments
-  FOR INSERT, UPDATE, DELETE TO authenticated
+CREATE POLICY parking_booking_payments_insert ON public.parking_booking_payments
+  FOR INSERT TO authenticated
+  WITH CHECK (public.user_has_permission(auth.uid(), 'parking', 'manage'));
+
+CREATE POLICY parking_booking_payments_update ON public.parking_booking_payments
+  FOR UPDATE TO authenticated
   USING (public.user_has_permission(auth.uid(), 'parking', 'manage'))
   WITH CHECK (public.user_has_permission(auth.uid(), 'parking', 'manage'));
+
+CREATE POLICY parking_booking_payments_delete ON public.parking_booking_payments
+  FOR DELETE TO authenticated
+  USING (public.user_has_permission(auth.uid(), 'parking', 'manage'));
 
 CREATE POLICY parking_notifications_read ON public.parking_booking_notifications
   FOR SELECT TO authenticated USING (true);

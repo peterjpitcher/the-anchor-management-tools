@@ -18,8 +18,18 @@ import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { Toggle } from '@/components/ui-v2/forms/Toggle'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
-import type { ParkingBooking, ParkingBookingStatus, ParkingNotificationRecord, ParkingPaymentStatus } from '@/types/parking'
+import type {
+  ParkingBooking,
+  ParkingBookingStatus,
+  ParkingNotificationRecord,
+  ParkingPaymentStatus,
+  ParkingRate,
+  ParkingPricingBreakdownLine,
+  ParkingPricingResult
+} from '@/types/parking'
+import { calculateParkingPricing } from '@/lib/parking/pricing'
 import { createParkingBooking, generateParkingPaymentLink, markParkingBookingPaid, updateParkingBookingStatus } from '@/app/actions/parking'
+import type { ParkingRateConfig } from '@/lib/parking/pricing'
 
 interface ParkingPermissions {
   canCreate: boolean
@@ -93,6 +103,9 @@ export default function ParkingClient({ permissions }: Props) {
   const [selectedBooking, setSelectedBooking] = useState<ParkingBooking | null>(null)
   const [notifications, setNotifications] = useState<ParkingNotificationRecord[]>([])
   const [loadingNotifications, setLoadingNotifications] = useState(false)
+  const [activeRates, setActiveRates] = useState<ParkingRateConfig | null>(null)
+  const [pricingPreview, setPricingPreview] = useState<ParkingPricingResult | null>(null)
+  const [pricingError, setPricingError] = useState<string | null>(null)
   const [search, setSearch] = useState<string>('')
   const [statusFilter, setStatusFilter] = useState<'all' | ParkingBookingStatus>('all')
   const [paymentFilter, setPaymentFilter] = useState<'all' | ParkingPaymentStatus>('all')
@@ -105,6 +118,57 @@ export default function ParkingClient({ permissions }: Props) {
     void fetchBookings()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, paymentFilter, search])
+
+  useEffect(() => {
+    const loadRates = async () => {
+      const { data, error } = await supabase
+        .from('parking_rates')
+        .select('*')
+        .order('effective_from', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (error) {
+        console.error('Failed to load parking rates', error)
+        toast.error('Unable to load parking rates')
+        setActiveRates(null)
+        return
+      }
+
+      if (data) {
+        const rate = data as ParkingRate
+        setActiveRates({
+          hourlyRate: Number(rate.hourly_rate) || 0,
+          dailyRate: Number(rate.daily_rate) || 0,
+          weeklyRate: Number(rate.weekly_rate) || 0,
+          monthlyRate: Number(rate.monthly_rate) || 0
+        })
+      }
+    }
+
+    void loadRates()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (!activeRates || !createForm.start_at || !createForm.end_at) {
+      setPricingPreview(null)
+      setPricingError(null)
+      return
+    }
+
+    try {
+      const start = new Date(createForm.start_at)
+      const end = new Date(createForm.end_at)
+      const preview = calculateParkingPricing(start, end, activeRates)
+      setPricingPreview(preview)
+      setPricingError(null)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to calculate pricing'
+      setPricingPreview(null)
+      setPricingError(message)
+    }
+  }, [activeRates, createForm.start_at, createForm.end_at])
 
   const fetchBookings = async (): Promise<ParkingBooking[]> => {
     setLoading(true)
@@ -666,6 +730,39 @@ export default function ParkingClient({ permissions }: Props) {
 
           <Section title="Pricing & notes" description="Override pricing sparingly—always record why.">
             <div className="grid gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-slate-900">Estimated price</span>
+                  {pricingPreview && (
+                    <span className="text-base font-semibold text-slate-900">{formatCurrency(pricingPreview.total)}</span>
+                  )}
+                </div>
+                {pricingError && (
+                  <p className="mt-2 text-sm text-red-600">{pricingError}</p>
+                )}
+                {!pricingError && !pricingPreview && (
+                  <p className="mt-2 text-sm text-slate-600">Enter start and end time to preview the standard charge.</p>
+                )}
+                {pricingPreview && (
+                  <div className="mt-3 space-y-2 text-sm text-slate-600">
+                    <p>
+                      Covers {formatDuration(pricingPreview.durationMinutes)} using the lowest combination of hourly, daily, weekly, and monthly rates.
+                    </p>
+                    <ul className="list-disc pl-5">
+                      {pricingPreview.breakdown.map((line, index) => (
+                        <li key={`${line.unit}-${index}`}>
+                          {line.quantity} × {line.unit}(s) @ {formatCurrency(line.rate)} = {formatCurrency(line.subtotal)}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {createForm.override_price && (
+                  <p className="mt-3 text-xs text-slate-500">
+                    Override price in effect (£{Number(createForm.override_price).toFixed(2)}). Customers will be charged this amount instead of the estimate above.
+                  </p>
+                )}
+              </div>
               <FormGroup label="Override price (£)">
                 <Input
                   type="number"
@@ -770,4 +867,23 @@ function StatCard({ label, value, variant = 'primary' }: StatCardProps) {
       </div>
     </Card>
   )
+}
+
+function formatDuration(minutes: number) {
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    return '0 minutes'
+  }
+
+  const hours = Math.floor(minutes / 60)
+  const remainingMinutes = minutes % 60
+
+  const parts: string[] = []
+  if (hours > 0) {
+    parts.push(`${hours} ${hours === 1 ? 'hour' : 'hours'}`)
+  }
+  if (remainingMinutes > 0) {
+    parts.push(`${remainingMinutes} minutes`)
+  }
+
+  return parts.join(' ')
 }
