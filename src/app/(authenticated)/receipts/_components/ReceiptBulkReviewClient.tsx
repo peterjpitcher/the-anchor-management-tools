@@ -471,7 +471,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                 checked={initialFilters.onlyUnclassified}
                 onChange={(event) => handleOnlyUnclassifiedToggle(event.target.checked)}
               />
-              Only show transactions missing vendor or expense tags
+              Only show transactions missing vendor and expense tags
             </div>
             <p className="mt-2 text-xs text-gray-500">Currently reviewing: {statusesLabel || 'pending transactions'}.</p>
           </div>

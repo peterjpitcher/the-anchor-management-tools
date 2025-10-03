@@ -61,6 +61,14 @@ const statusLabels: Record<ReceiptTransaction['status'], string> = {
   cant_find: "Can't find",
 }
 
+const statusToneClasses: Record<ReceiptTransaction['status'], string> = {
+  pending: 'bg-amber-100 text-amber-700',
+  completed: 'bg-emerald-100 text-emerald-700',
+  auto_completed: 'bg-blue-100 text-blue-700',
+  no_receipt_required: 'bg-gray-200 text-gray-700',
+  cant_find: 'bg-rose-100 text-rose-700',
+}
+
 const summaryStatusTotalsKey: Record<ReceiptTransaction['status'], 'pending' | 'completed' | 'autoCompleted' | 'noReceiptRequired' | 'cantFind'> = {
   pending: 'pending',
   completed: 'completed',
@@ -823,8 +831,22 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
       )
     }
 
+    if (variant === 'card') {
+      return (
+        <button
+          type="button"
+          className={`inline-flex max-w-[140px] items-center truncate text-[13px] leading-tight px-0 py-0 h-auto min-h-0 bg-transparent ${transaction.vendor_name ? 'font-medium text-gray-900 hover:text-emerald-600' : 'text-gray-400 hover:text-emerald-600'}`}
+          onClick={() => handleClassificationStart(transaction, 'vendor')}
+          title={transaction.vendor_name ?? undefined}
+          style={{ minHeight: 'auto', padding: 0 }}
+        >
+          {transaction.vendor_name ?? 'Add vendor'}
+        </button>
+      )
+    }
+
     return (
-      <div className={`flex flex-col gap-1 ${variant === 'card' ? 'text-sm' : ''}`}>
+      <div className="flex flex-col gap-1">
         <button
           type="button"
           className={`text-left text-sm ${transaction.vendor_name ? 'font-medium text-gray-900 hover:text-emerald-600' : 'text-gray-400 hover:text-emerald-600'}`}
@@ -879,8 +901,22 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
       )
     }
 
+    if (variant === 'card') {
+      return (
+        <button
+          type="button"
+          className={`inline-flex max-w-[160px] items-center truncate text-[13px] leading-tight px-0 py-0 h-auto min-h-0 bg-transparent ${transaction.expense_category ? 'font-medium text-gray-900 hover:text-emerald-600' : 'text-gray-400 hover:text-emerald-600'}`}
+          onClick={() => handleClassificationStart(transaction, 'expense')}
+          title={transaction.expense_category ?? undefined}
+          style={{ minHeight: 'auto', padding: 0 }}
+        >
+          {transaction.expense_category ?? 'Add expense type'}
+        </button>
+      )
+    }
+
     return (
-      <div className={`flex flex-col gap-1 ${variant === 'card' ? 'text-sm' : ''}`}>
+      <div className="flex flex-col gap-1">
         <button
           type="button"
           className={`text-left text-sm ${transaction.expense_category ? 'font-medium text-gray-900 hover:text-emerald-600' : 'text-gray-400 hover:text-emerald-600'}`}
@@ -906,8 +942,58 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
     const files = transaction.files as ReceiptFile[]
     const amount = transaction.amount_out ?? transaction.amount_in
 
+    if (variant === 'card') {
+      return (
+        <div className="flex flex-wrap items-center gap-1">
+          {files.length === 0 ? (
+            <span className="inline-flex items-center rounded-full border border-gray-200 px-2 py-0.5 text-[11px] text-gray-500">
+              No receipts
+            </span>
+          ) : (
+            files.map((file) => {
+              const friendlyName = file.file_name || buildReceiptName(transaction.details, amount)
+              return (
+                <div
+                  key={file.id}
+                  className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-0.5"
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleReceiptDownload(file.id)}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+                    title={friendlyName}
+                  >
+                    <MagnifyingGlassIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span className="sr-only">View receipt</span>
+                  </button>
+                  <span className="max-w-[120px] truncate text-[11px] text-gray-600" title={friendlyName}>
+                    {friendlyName}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-[11px] text-rose-500 transition hover:text-rose-600"
+                    onClick={() => handleReceiptDelete(file.id, transaction.id)}
+                    disabled={isProcessing}
+                  >
+                    Remove
+                  </button>
+                </div>
+              )
+            })
+          )}
+          <input
+            type="file"
+            accept="image/*,application/pdf"
+            className="hidden"
+            ref={(element) => handleFileInputRef(transaction.id, element)}
+            onChange={(event) => handleReceiptUpload(transaction.id, event)}
+          />
+        </div>
+      )
+    }
+
     return (
-      <div className={`space-y-2 ${variant === 'card' ? 'mt-1' : ''}`}>
+      <div className="space-y-2">
         {files.length === 0 && <p className="text-xs text-gray-500">No receipts</p>}
         {files.map((file) => {
           const friendlyName = file.file_name || buildReceiptName(transaction.details, amount)
@@ -925,9 +1011,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
                 <MagnifyingGlassIcon className="h-4 w-4" aria-hidden="true" />
                 <span className="sr-only">View receipt</span>
               </button>
-              {variant === 'card' && (
-                <span className="flex-1 truncate text-xs text-gray-600" title={friendlyName}>{friendlyName}</span>
-              )}
+              <span className="flex-1 truncate text-xs text-gray-600" title={friendlyName}>{friendlyName}</span>
               <button
                 type="button"
                 className="text-xs text-red-500 hover:text-red-600"
@@ -952,16 +1036,18 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
 
   function renderActionButtons(transaction: WorkspaceTransaction, variant: 'table' | 'card' = 'table') {
     const isProcessing = activeTransactionId === transaction.id && isRowPending
-    const containerClasses =
-      variant === 'card'
-        ? 'flex flex-wrap items-center gap-1.5'
-        : 'flex flex-wrap gap-2 sm:flex-nowrap sm:items-center sm:gap-3'
+    const isCard = variant === 'card'
+    const containerClasses = isCard
+      ? 'flex flex-wrap gap-0.5'
+      : 'flex flex-wrap gap-2 sm:flex-nowrap sm:items-center sm:gap-3'
+    const buttonClasses = isCard ? 'flex-1 min-w-[88px] px-2 py-1' : ''
 
     return (
       <div className={containerClasses}>
         <Button
           variant="secondary"
           size="xs"
+          className={buttonClasses}
           onClick={() => handleUploadClick(transaction.id)}
           disabled={isProcessing}
         >
@@ -971,6 +1057,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           <Button
             variant="success"
             size="xs"
+            className={buttonClasses}
             onClick={() => handleStatusUpdate(transaction.id, 'completed')}
             disabled={isProcessing}
           >
@@ -981,6 +1068,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           <Button
             variant="secondary"
             size="xs"
+            className={buttonClasses}
             onClick={() => handleStatusUpdate(transaction.id, 'no_receipt_required')}
             disabled={isProcessing}
           >
@@ -991,7 +1079,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           <Button
             variant="secondary"
             size="xs"
-            className="border border-rose-200 text-rose-700 hover:bg-rose-50"
+            className={`${buttonClasses} border border-rose-200 text-rose-700 hover:bg-rose-50`}
             onClick={() => handleStatusUpdate(transaction.id, 'cant_find')}
             disabled={isProcessing}
           >
@@ -1002,6 +1090,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           <Button
             variant="ghost"
             size="xs"
+            className={buttonClasses}
             onClick={() => handleStatusUpdate(transaction.id, 'pending')}
             disabled={isProcessing}
           >
@@ -1045,7 +1134,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
 
   return (
     <div className="space-y-6">
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+      <div className="hidden md:grid md:grid-cols-2 md:gap-4 xl:grid-cols-6">
           <CostSummaryCard cost={summary.openAICost} />
           <SummaryCard title="Pending" value={summary.totals.pending} tone="warning" />
           <SummaryCard title="Completed" value={summary.totals.completed} tone="success" />
@@ -1054,7 +1143,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           <SummaryCard title="Can't find" value={summary.totals.cantFind} tone="danger" />
         </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="hidden md:flex md:flex-wrap md:gap-2">
         <Link
           href="/receipts/monthly"
           className="inline-flex items-center rounded-md border border-emerald-100 bg-white px-3 py-1.5 text-sm font-medium text-emerald-700 shadow-sm hover:bg-emerald-50"
@@ -1099,7 +1188,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
         </Link>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-5">
+      <div className="hidden md:grid md:gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-3" header={<div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Upload bank statement</h2>
@@ -1254,62 +1343,68 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           </Select>
         </div>
 
-        <div className="flex flex-col gap-3 lg:hidden">
+        <div className="flex flex-col gap-2 px-2 lg:hidden">
           {transactions.length === 0 ? (
             <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center text-sm text-gray-500">
               No transactions match your filters.
             </div>
           ) : (
-            transactions.map((transaction) => (
-              <div key={transaction.id} className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm" data-testid="receipt-mobile-card">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="space-y-0.5">
-                    <p className="text-xs text-gray-500">
-                      {formatDate(transaction.transaction_date)}
-                      {transaction.transaction_type ? ` · ${transaction.transaction_type}` : ''}
-                    </p>
-                    <p className="text-sm font-semibold text-gray-900">{transaction.details}</p>
-                    {transaction.rule_applied_id && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700">
-                        <ArrowPathIcon className="h-4 w-4" /> Auto rule
+            transactions.map((transaction) => {
+              return (
+                <div
+                  key={transaction.id}
+                  className="rounded-xl border border-gray-200 bg-white p-2 shadow-sm"
+                  data-testid="receipt-mobile-card"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
+                    <div className="min-w-0 space-y-0.5">
+                      <p className="text-[11px] text-gray-500">
+                        {formatDate(transaction.transaction_date)}
+                        {transaction.transaction_type ? ` · ${transaction.transaction_type}` : ''}
+                      </p>
+                      <h3 className="text-sm font-semibold leading-snug text-gray-900">{transaction.details}</h3>
+                      {transaction.rule_applied_id && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600">
+                          <ArrowPathIcon className="h-3.5 w-3.5" /> Auto rule
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center justify-end gap-0.5 text-right text-[11px]">
+                      {transaction.amount_out != null && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 font-medium text-rose-700">
+                          Out
+                          <span className="font-semibold text-gray-900">{formatCurrency(transaction.amount_out)}</span>
+                        </span>
+                      )}
+                      {transaction.amount_in != null && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700">
+                          In
+                          <span className="font-semibold text-gray-900">{formatCurrency(transaction.amount_in)}</span>
+                        </span>
+                      )}
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium ${statusToneClasses[transaction.status]}`}
+                      >
+                        {statusLabels[transaction.status]}
                       </span>
-                    )}
+                    </div>
                   </div>
-                  <div className="flex flex-col items-end gap-1.5 text-sm text-gray-600">
-                    {transaction.amount_out != null && (
-                      <div className="text-right">
-                        <p className="text-xs text-gray-500">Out</p>
-                        <p className="text-sm font-semibold text-gray-900">{formatCurrency(transaction.amount_out)}</p>
-                      </div>
-                    )}
-                    {transaction.amount_in != null && (
-                      <div className="text-right">
-                        <p className="text-xs text-gray-500">In</p>
-                        <p className="text-sm font-semibold text-gray-900">{formatCurrency(transaction.amount_in)}</p>
-                      </div>
-                    )}
-                    {renderStatusSection(transaction, 'right')}
+
+                  <div className="mt-1.5 grid w-full grid-cols-[auto,1fr] items-center gap-x-2 text-xs text-gray-500">
+                    <span className="font-semibold uppercase tracking-wide leading-none">Vendor</span>
+                    <div className="text-sm leading-tight text-gray-900">{renderVendorField(transaction, 'card')}</div>
+                    <span className="font-semibold uppercase tracking-wide leading-none">Expense</span>
+                    <div className="text-sm leading-tight text-gray-900">{renderExpenseField(transaction, 'card')}</div>
+                    <span className="font-semibold uppercase tracking-wide leading-none">Receipts</span>
+                    <div className="text-sm leading-tight text-gray-900">{renderReceiptsSection(transaction, 'card')}</div>
                   </div>
-                </div>
-                <div className="mt-3 space-y-3">
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Vendor</p>
-                    <div className="mt-1.5">{renderVendorField(transaction, 'card')}</div>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Expense category</p>
-                    <div className="mt-1.5">{renderExpenseField(transaction, 'card')}</div>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Receipts</p>
-                    <div className="mt-1.5">{renderReceiptsSection(transaction, 'card')}</div>
-                  </div>
-                  <div className="border-t border-gray-100 pt-2">
+
+                  <div className="mt-1 border-t border-gray-100 pt-1">
                     {renderActionButtons(transaction, 'card')}
                   </div>
                 </div>
-              </div>
-            ))
+              )
+            })
           )}
         </div>
 
