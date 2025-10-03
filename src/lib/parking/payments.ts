@@ -1,9 +1,16 @@
 import { createSimplePayPalOrder, capturePayPalPayment, refundPayPalPayment } from '@/lib/paypal'
-import { insertParkingPayment, getPendingParkingPayment, updateParkingBooking } from './repository'
+import { insertParkingPayment, getPendingParkingPayment, updateParkingBooking, logParkingNotification } from './repository'
 import { ParkingBooking, ParkingPaymentRecord } from '@/types/parking'
 import { createAdminClient } from '@/lib/supabase/server'
 import { logger } from '@/lib/logger'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { sendSMS } from '@/lib/twilio'
+import { ensureReplyInstruction } from '@/lib/sms/support'
+import { sendEmail } from '@/lib/email/emailService'
+import {
+  buildPaymentConfirmationSms,
+  buildPaymentConfirmationManagerEmail,
+} from '@/lib/parking/notifications'
 
 interface CreatePaymentOptions {
   returnUrl: string
@@ -89,7 +96,7 @@ export async function captureParkingPayment(
 
   const captureResult = await capturePayPalPayment(paypalOrderId)
 
-  await updateParkingBooking(
+  const updatedBooking = await updateParkingBooking(
     booking.id,
     {
       payment_status: 'paid',
@@ -120,6 +127,8 @@ export async function captureParkingPayment(
     })
     throw new Error('Failed to update payment status')
   }
+
+  await sendConfirmationNotifications(updatedBooking, supabase)
 }
 
 export async function refundParkingPayment(
@@ -180,4 +189,94 @@ function formatDateTime(date: Date) {
     hour: '2-digit',
     minute: '2-digit'
   })
+}
+
+async function sendConfirmationNotifications(booking: ParkingBooking, supabase: SupabaseClient<any, 'public', any>) {
+  const replyNumber = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+
+  // Determine SMS opt-in
+  let smsAllowed = true
+  if (booking.customer_id) {
+    const { data, error } = await supabase
+      .from('customers')
+      .select('sms_opt_in')
+      .eq('id', booking.customer_id)
+      .maybeSingle()
+
+    if (error) {
+      logger.warn('Failed to load customer sms preference', { error, metadata: { bookingId: booking.id } })
+    }
+
+    if (data && data.sms_opt_in === false) {
+      smsAllowed = false
+    }
+  }
+
+  if (smsAllowed && booking.customer_mobile) {
+    try {
+      const smsBody = ensureReplyInstruction(buildPaymentConfirmationSms(booking), replyNumber)
+      const smsResult = await sendSMS(booking.customer_mobile, smsBody)
+
+      await logParkingNotification({
+        booking_id: booking.id,
+        channel: 'sms',
+        event_type: 'payment_confirmation',
+        status: smsResult.success ? 'sent' : 'failed',
+        sent_at: smsResult.success ? new Date().toISOString() : null,
+        payload: { sms: smsBody }
+      }, supabase)
+
+      if (!smsResult.success) {
+        logger.warn('Parking payment confirmation SMS failed', {
+          metadata: { bookingId: booking.id, error: smsResult.error }
+        })
+      }
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error))
+      logger.error('Unexpected error sending parking confirmation SMS', {
+        error: err,
+        metadata: { bookingId: booking.id }
+      })
+      await logParkingNotification({
+        booking_id: booking.id,
+        channel: 'sms',
+        event_type: 'payment_confirmation',
+        status: 'failed',
+        payload: { error: err.message }
+      }, supabase)
+    }
+  }
+
+  try {
+    const managerEmail = buildPaymentConfirmationManagerEmail(booking)
+    const emailResult = await sendEmail({ to: managerEmail.to, subject: managerEmail.subject, html: managerEmail.html })
+
+    await logParkingNotification({
+      booking_id: booking.id,
+      channel: 'email',
+      event_type: 'payment_confirmation',
+      status: emailResult.success ? 'sent' : 'failed',
+      sent_at: emailResult.success ? new Date().toISOString() : null,
+      payload: { subject: managerEmail.subject }
+    }, supabase)
+
+    if (!emailResult.success) {
+      logger.warn('Parking payment confirmation email failed', {
+        metadata: { bookingId: booking.id, error: emailResult.error }
+      })
+    }
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error))
+    logger.error('Unexpected error sending parking confirmation email', {
+      error: err,
+      metadata: { bookingId: booking.id }
+    })
+    await logParkingNotification({
+      booking_id: booking.id,
+      channel: 'email',
+      event_type: 'payment_confirmation',
+      status: 'failed',
+      payload: { error: err.message }
+    }, supabase)
+  }
 }
