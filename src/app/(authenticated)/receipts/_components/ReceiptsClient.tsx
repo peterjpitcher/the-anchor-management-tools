@@ -954,7 +954,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
     const isProcessing = activeTransactionId === transaction.id && isRowPending
     const containerClasses =
       variant === 'card'
-        ? 'flex flex-wrap items-center gap-2'
+        ? 'flex flex-wrap items-center gap-1.5'
         : 'flex flex-wrap gap-2 sm:flex-nowrap sm:items-center sm:gap-3'
 
     return (
@@ -1248,28 +1248,28 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           </Select>
         </div>
 
-        <div className="flex flex-col gap-4 lg:hidden">
+        <div className="flex flex-col gap-3 lg:hidden">
           {transactions.length === 0 ? (
             <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center text-sm text-gray-500">
               No transactions match your filters.
             </div>
           ) : (
             transactions.map((transaction) => (
-              <div key={transaction.id} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm" data-testid="receipt-mobile-card">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="space-y-1">
+              <div key={transaction.id} className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm" data-testid="receipt-mobile-card">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="space-y-0.5">
                     <p className="text-xs text-gray-500">
                       {formatDate(transaction.transaction_date)}
                       {transaction.transaction_type ? ` · ${transaction.transaction_type}` : ''}
                     </p>
                     <p className="text-sm font-semibold text-gray-900">{transaction.details}</p>
                     {transaction.rule_applied_id && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700">
                         <ArrowPathIcon className="h-4 w-4" /> Auto rule
                       </span>
                     )}
                   </div>
-                  <div className="flex flex-col items-end gap-2 text-sm text-gray-600">
+                  <div className="flex flex-col items-end gap-1.5 text-sm text-gray-600">
                     {transaction.amount_out != null && (
                       <div className="text-right">
                         <p className="text-xs text-gray-500">Out</p>
@@ -1285,18 +1285,18 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
                     {renderStatusSection(transaction, 'right')}
                   </div>
                 </div>
-                <div className="mt-4 space-y-4">
+                <div className="mt-3 space-y-3">
                   <div>
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Vendor</p>
-                    <div className="mt-1">{renderVendorField(transaction, 'card')}</div>
+                    <div className="mt-1.5">{renderVendorField(transaction, 'card')}</div>
                   </div>
                   <div>
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Expense category</p>
-                    <div className="mt-1">{renderExpenseField(transaction, 'card')}</div>
+                    <div className="mt-1.5">{renderExpenseField(transaction, 'card')}</div>
                   </div>
                   <div>
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Receipts</p>
-                    {renderReceiptsSection(transaction, 'card')}
+                    <div className="mt-1.5">{renderReceiptsSection(transaction, 'card')}</div>
                   </div>
                   <div className="border-t border-gray-100 pt-2">
                     {renderActionButtons(transaction, 'card')}

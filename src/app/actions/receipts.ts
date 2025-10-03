@@ -2078,19 +2078,16 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
     .order('vendor_name', { ascending: true })
     .limit(2000)
 
-  const monthsQuery = supabase
-    .from('receipt_transactions')
-    .select('transaction_date')
-    .not('transaction_date', 'is', null)
-    .order('transaction_date', { ascending: false })
-    .limit(720)
+  const monthsQuery = supabase.rpc('get_receipt_monthly_summary', {
+    limit_months: 1000,
+  })
 
   const [
     { data: transactions, count, error },
     { data: rules },
     summary,
     { data: vendorRecords, error: vendorError },
-    { data: monthRecords, error: monthError },
+    { data: monthSummary, error: monthError },
   ] = await Promise.all([
     baseQuery,
     supabase
@@ -2157,25 +2154,21 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
     },
   }
 
-  const availableMonths: string[] = []
-  const monthSeen = new Set<string>()
+  const availableMonthsSet = new Set<string>()
 
-  for (const record of monthRecords ?? []) {
-    const iso = (record as { transaction_date?: string | null }).transaction_date
-    if (!iso) continue
-    const date = new Date(iso)
-    if (Number.isNaN(date.getTime())) continue
-    const value = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
-    if (monthSeen.has(value)) continue
-    monthSeen.add(value)
-    availableMonths.push(value)
+  const monthRows = Array.isArray(monthSummary) ? monthSummary : []
+  monthRows.forEach((row) => {
+    const value = typeof row?.month_start === 'string' ? row.month_start.slice(0, 7) : null
+    if (value) {
+      availableMonthsSet.add(value)
+    }
+  })
+
+  if (filters.month) {
+    availableMonthsSet.add(filters.month)
   }
 
-  if (filters.month && !monthSeen.has(filters.month)) {
-    availableMonths.push(filters.month)
-  }
-
-  availableMonths.sort((a, b) => b.localeCompare(a))
+  const availableMonths = Array.from(availableMonthsSet).sort((a, b) => b.localeCompare(a))
 
   const effectivePageSize = isMonthScoped ? shapedTransactions.length : pageSize
 
