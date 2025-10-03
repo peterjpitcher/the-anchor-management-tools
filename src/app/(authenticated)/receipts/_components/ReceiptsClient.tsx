@@ -961,7 +961,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
       <div className={containerClasses}>
         <Button
           variant="secondary"
-          size="sm"
+          size="xs"
           onClick={() => handleUploadClick(transaction.id)}
           disabled={isProcessing}
         >
@@ -970,7 +970,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
         {transaction.status !== 'completed' && (
           <Button
             variant="success"
-            size="sm"
+            size="xs"
             onClick={() => handleStatusUpdate(transaction.id, 'completed')}
             disabled={isProcessing}
           >
@@ -980,7 +980,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
         {transaction.status !== 'no_receipt_required' && (
           <Button
             variant="secondary"
-            size="sm"
+            size="xs"
             onClick={() => handleStatusUpdate(transaction.id, 'no_receipt_required')}
             disabled={isProcessing}
           >
@@ -989,8 +989,9 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
         )}
         {transaction.status !== 'cant_find' && (
           <Button
-            variant="danger"
-            size="sm"
+            variant="secondary"
+            size="xs"
+            className="border border-rose-200 text-rose-700 hover:bg-rose-50"
             onClick={() => handleStatusUpdate(transaction.id, 'cant_find')}
             disabled={isProcessing}
           >
@@ -1000,7 +1001,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
         {transaction.status !== 'pending' && (
           <Button
             variant="ghost"
-            size="sm"
+            size="xs"
             onClick={() => handleStatusUpdate(transaction.id, 'pending')}
             disabled={isProcessing}
           >
