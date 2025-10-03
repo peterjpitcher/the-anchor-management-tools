@@ -1,9 +1,11 @@
 import { notFound } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/server'
+import Link from 'next/link'
+import Image from 'next/image'
 import { formatDateTime } from '@/lib/dateUtils'
 import { formatCurrency } from '@/components/ui-v2/utils/format'
-import Link from 'next/link'
 import { Card } from '@/components/ui-v2/layout/Card'
+import { Container } from '@/components/ui-v2/layout/Container'
 import type { ParkingBooking } from '@/types/parking'
 
 interface GuestBookingPageProps {
@@ -35,12 +37,16 @@ export default async function ParkingGuestBookingPage({ params, searchParams }: 
   const paymentMessage = buildPaymentMessage(paymentStatus, paymentParam)
 
   return (
-    <main className="min-h-screen bg-slate-50 py-16">
-      <div className="mx-auto max-w-3xl px-4">
-        <Card className="p-8 shadow-lg">
-          <h1 className="text-2xl font-semibold text-slate-900">Parking booking {paymentStatus === 'paid' ? 'confirmed' : 'received'}</h1>
+    <main className="min-h-screen bg-sidebar py-12 sm:py-20">
+      <Container size="sm" className="flex flex-col items-center">
+        <div className="w-52 sm:w-64 mb-8">
+          <Image src="/logo.png" alt="The Anchor logo" width={256} height={256} className="w-full h-auto" priority />
+        </div>
+
+        <Card className="w-full border border-white/10 bg-white/95 p-6 sm:p-8">
+          <h1 className="text-2xl font-semibold text-slate-900 text-center">Parking booking {paymentStatus === 'paid' ? 'confirmed' : 'received'}</h1>
           {paymentMessage && (
-            <p className="mt-2 text-sm text-slate-600">{paymentMessage}</p>
+            <p className="mt-2 text-center text-sm text-slate-600">{paymentMessage}</p>
           )}
 
           <dl className="mt-8 grid gap-4 sm:grid-cols-2">
@@ -68,14 +74,14 @@ export default async function ParkingGuestBookingPage({ params, searchParams }: 
               <span className="font-semibold text-slate-900">{process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753 682707'}</span>
             </div>
             <Link
-              href="https://management.orangejelly.co.uk"
-              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+              href="https://www.the-anchor.pub"
+              className="inline-flex items-center justify-center rounded-md border border-white/20 bg-sidebar px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-sidebar/80"
             >
               Return to The Anchor website
             </Link>
-         </div>
-       </Card>
-     </div>
+          </div>
+        </Card>
+      </Container>
     </main>
   )
 }
