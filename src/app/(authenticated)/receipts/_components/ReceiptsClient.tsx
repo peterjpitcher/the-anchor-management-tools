@@ -128,7 +128,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   const fileInputsRef = useRef<Record<string, HTMLInputElement | null>>({})
   const newRuleFormRef = useRef<HTMLFormElement | null>(null)
   const [isCustomVendor, setIsCustomVendor] = useState(false)
-  const [retroScope, setRetroScope] = useState<'pending' | 'all'>('pending')
+  const [retroScope, setRetroScope] = useState<'pending' | 'all'>('all')
   const [retroRuleId, setRetroRuleId] = useState<string | null>(null)
 
   const { rules, knownVendors, availableMonths } = initialData
@@ -1090,6 +1090,12 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           className="inline-flex items-center rounded-md border border-blue-100 bg-white px-3 py-1.5 text-sm font-medium text-blue-700 shadow-sm hover:bg-blue-50"
         >
           Needs expense
+        </Link>
+        <Link
+          href="/receipts/missing-expense"
+          className="inline-flex items-center rounded-md border border-rose-100 bg-white px-3 py-1.5 text-sm font-medium text-rose-700 shadow-sm hover:bg-rose-50"
+        >
+          Missing expense summary
         </Link>
       </div>
 

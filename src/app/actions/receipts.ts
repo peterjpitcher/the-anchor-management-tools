@@ -124,6 +124,14 @@ export type ReceiptWorkspaceData = {
   availableMonths: string[]
 }
 
+export type ReceiptMissingExpenseSummaryItem = {
+  vendorLabel: string
+  transactionCount: number
+  totalOutgoing: number
+  totalIncoming: number
+  latestTransaction?: string | null
+}
+
 export type ReceiptMonthlySummaryItem = {
   monthStart: string
   totalIncome: number
@@ -2798,4 +2806,53 @@ export async function getReceiptVendorMonthTransactions(input: {
       vendor_name: row.vendor_name,
     })),
   }
+}
+
+export async function getReceiptMissingExpenseSummary(): Promise<ReceiptMissingExpenseSummaryItem[]> {
+  await checkUserPermission('receipts', 'view')
+
+  const supabase = createAdminClient()
+
+  const { data, error } = await supabase
+    .from('receipt_transactions')
+    .select('vendor_name, amount_out, amount_in, transaction_date')
+    .is('expense_category', null)
+
+  if (error) {
+    console.error('Failed to load missing expense summary', error)
+    throw error
+  }
+
+  const summaryMap = new Map<string, ReceiptMissingExpenseSummaryItem>()
+
+  ;(data ?? []).forEach((row) => {
+    const normalizedVendor = normalizeVendorInput(row.vendor_name)
+    const label = normalizedVendor ?? 'Unassigned vendor'
+    const existing = summaryMap.get(label) ?? {
+      vendorLabel: label,
+      transactionCount: 0,
+      totalOutgoing: 0,
+      totalIncoming: 0,
+      latestTransaction: null as string | null,
+    }
+
+    existing.transactionCount += 1
+    existing.totalOutgoing += Number(row.amount_out ?? 0)
+    existing.totalIncoming += Number(row.amount_in ?? 0)
+
+    const currentDate = row.transaction_date ? new Date(row.transaction_date).getTime() : null
+    const latestDate = existing.latestTransaction ? new Date(existing.latestTransaction).getTime() : null
+    if (currentDate && (!latestDate || currentDate > latestDate)) {
+      existing.latestTransaction = row.transaction_date
+    }
+
+    summaryMap.set(label, existing)
+  })
+
+  return Array.from(summaryMap.values()).sort((a, b) => {
+    if (b.totalOutgoing !== a.totalOutgoing) {
+      return b.totalOutgoing - a.totalOutgoing
+    }
+    return b.transactionCount - a.transactionCount
+  })
 }
