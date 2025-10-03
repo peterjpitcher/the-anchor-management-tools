@@ -214,7 +214,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
     })
     params.delete('page')
     const query = params.toString()
-    router.push(`/receipts${query ? `?${query}` : ''}`)
+    router.replace(`/receipts${query ? `?${query}` : ''}`, { scroll: false })
   }
 
   function applySort(column: SortColumn, direction: 'asc' | 'desc') {

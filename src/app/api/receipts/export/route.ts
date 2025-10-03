@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
       .select('*, receipt_files(*), receipt_rules!receipt_transactions_rule_applied_id_fkey(id, name)')
       .gte('transaction_date', startDate)
       .lte('transaction_date', endDate)
-      .order('transaction_date', { ascending: true })
+      .order('transaction_date', { ascending: false })
       .order('details', { ascending: true })
 
     if (error) {
@@ -154,7 +154,7 @@ async function buildSummaryPdf(
     text: string,
     options: { x?: number; font?: PDFFont; size?: number; color?: ReturnType<typeof rgb> }
   ) => {
-    const { x = margin, font = fontRegular, size = 9, color = rgb(0, 0, 0) } = options
+    const { x = margin, font = fontRegular, size = 6, color = rgb(0, 0, 0) } = options
     page.drawText(text, { x, y: cursorY, size, font, color })
   }
 
@@ -173,6 +173,9 @@ async function buildSummaryPdf(
     acc[tx.status] = (acc[tx.status] || 0) + 1
     return acc
   }, {})
+
+  const lineSpacing = 10
+  const rowGap = 5
 
   drawSummaryGrid({
     total: transactions.length,
@@ -194,19 +197,25 @@ async function buildSummaryPdf(
 
   transactions.forEach((tx) => {
     const rowLines = buildRowLines(tx, fontRegular, fontBold, width - margin * 2)
+    const rowHeight = rowLines.length * lineSpacing
+    ensureSpace(rowHeight + rowGap)
+    const rowTop = cursorY
+
     rowLines.forEach((segments) => {
-      ensureSpace(16)
       let offsetX = margin
-      segments.forEach((segment, index) => {
+      segments.forEach((segment) => {
         const font = segment.bold ? fontBold : fontRegular
-        const size = segment.size ?? 9
-        drawText(segment.text, { x: offsetX, font, size })
+        const size = segment.size ?? 6
+        page.drawText(segment.text, { x: offsetX + 2, y: cursorY, size, font, color: rgb(0.15, 0.17, 0.2) })
         offsetX += segment.width
       })
-      cursorY -= 12
+      cursorY -= lineSpacing
     })
 
-    cursorY -= 6
+    const rowBottom = cursorY
+    drawRowGrid(rowTop, rowBottom)
+
+    cursorY = rowBottom - rowGap
   })
 
   const pdfBytes = await pdfDoc.save()
@@ -231,7 +240,7 @@ async function buildSummaryPdf(
 
     const cardsPerRow = 3
     const gap = 12
-    const cardHeight = 44
+    const cardHeight = 40
     const cardWidth = (width - margin * 2 - gap * (cardsPerRow - 1)) / cardsPerRow
 
     let index = 0
@@ -256,15 +265,15 @@ async function buildSummaryPdf(
         page.drawText(card.label.toUpperCase(), {
           x: offsetX + 10,
           y: labelY,
-          size: 8,
+          size: 5,
           font: fontBold,
           color: rgb(0.35, 0.4, 0.45),
         })
 
         page.drawText(String(card.value), {
           x: offsetX + 10,
-          y: rowY + 14,
-          size: 14,
+          y: rowY + 12,
+          size: 11,
           font: fontBold,
           color: card.accent,
         })
@@ -277,30 +286,29 @@ async function buildSummaryPdf(
     }
   }
 
-  function drawHeaderRow() {
-    const headers = [
-      { label: 'Date', width: 68 },
-      { label: 'Details', width: 190 },
-      { label: 'Vendor', width: 110 },
-      { label: 'Expense type', width: 120 },
-      { label: 'In', width: 60 },
-      { label: 'Out', width: 60 },
-      { label: 'Status', width: 70 },
-      { label: 'Marked by', width: 110 },
-    ]
+  const columnDefs = [
+    { key: 'date', label: 'Date', width: 60 },
+    { key: 'details', label: 'Details', width: 200 },
+    { key: 'vendor', label: 'Vendor', width: 110 },
+    { key: 'expense', label: 'Expense type', width: 120 },
+    { key: 'in', label: 'In', width: 60 },
+    { key: 'out', label: 'Out', width: 60 },
+    { key: 'status', label: 'Status', width: 70 },
+  ] as const
 
+  function drawHeaderRow() {
     let offsetX = margin
-    headers.forEach((header) => {
+    columnDefs.forEach((header) => {
       drawText(header.label.toUpperCase(), {
         x: offsetX,
         font: fontBold,
-        size: 9,
+        size: 6,
         color: rgb(0.28, 0.35, 0.42),
       })
       offsetX += header.width
     })
 
-    const lineY = cursorY - 12
+    const lineY = cursorY - 10
     page.drawLine({
       start: { x: margin, y: lineY },
       end: { x: width - margin, y: lineY },
@@ -308,7 +316,41 @@ async function buildSummaryPdf(
       thickness: 0.75,
     })
 
-    cursorY = lineY - 8
+    cursorY = lineY - 6
+  }
+
+  function drawRowGrid(rowTop: number, rowBottom: number) {
+    page.drawLine({
+      start: { x: margin, y: rowTop },
+      end: { x: width - margin, y: rowTop },
+      color: rgb(0.88, 0.88, 0.9),
+      thickness: 0.5,
+    })
+
+    page.drawLine({
+      start: { x: margin, y: rowBottom },
+      end: { x: width - margin, y: rowBottom },
+      color: rgb(0.88, 0.88, 0.9),
+      thickness: 0.5,
+    })
+
+    let offsetX = margin
+    columnDefs.forEach((column) => {
+      page.drawLine({
+        start: { x: offsetX, y: rowTop },
+        end: { x: offsetX, y: rowBottom },
+        color: rgb(0.88, 0.88, 0.9),
+        thickness: 0.5,
+      })
+      offsetX += column.width
+    })
+
+    page.drawLine({
+      start: { x: offsetX, y: rowTop },
+      end: { x: offsetX, y: rowBottom },
+      color: rgb(0.88, 0.88, 0.9),
+      thickness: 0.5,
+    })
   }
 
   function buildRowLines(
@@ -318,21 +360,17 @@ async function buildSummaryPdf(
     maxWidth: number
   ): Array<Array<{ text: string; width: number; bold?: boolean; size?: number }>> {
     const columns = [
-      { text: formatDate(tx.transaction_date), width: 68, bold: true },
-      { text: tx.details ?? '', width: 190 },
-      { text: tx.vendor_name ?? '', width: 110 },
-      { text: tx.expense_category ?? '', width: 120 },
-      { text: tx.amount_in ? formatCurrency(tx.amount_in) : '', width: 60 },
-      { text: tx.amount_out ? formatCurrency(tx.amount_out) : '', width: 60 },
-      { text: friendlyStatus(tx.status), width: 70 },
-      {
-        text: tx.marked_by_name || tx.marked_by_email || (tx.rule_applied_id ? 'Auto rule' : ''),
-        width: 110,
-      },
+      { text: formatDate(tx.transaction_date), width: columnDefs[0].width, bold: true },
+      { text: tx.details ?? '', width: columnDefs[1].width },
+      { text: tx.vendor_name ?? '', width: columnDefs[2].width },
+      { text: tx.expense_category ?? '', width: columnDefs[3].width },
+      { text: tx.amount_in ? formatCurrency(tx.amount_in) : '', width: columnDefs[4].width },
+      { text: tx.amount_out ? formatCurrency(tx.amount_out) : '', width: columnDefs[5].width },
+      { text: friendlyStatus(tx.status), width: columnDefs[6].width },
     ]
 
     const columnLines = columns.map((column) =>
-      wrapText(column.text, column.bold ? bold : regular, 9, column.width)
+      wrapText(column.text, column.bold ? bold : regular, 6, column.width)
     )
 
     const totalLines = Math.max(...columnLines.map((lines) => lines.length))
@@ -347,36 +385,25 @@ async function buildSummaryPdf(
       lines.push(segments)
     }
 
-    const extraLines: string[] = []
     if (tx.transaction_type) {
-      extraLines.push(`Type: ${tx.transaction_type}`)
-    }
-    const sourceParts: string[] = []
-    if (tx.vendor_source) {
-      sourceParts.push(`Vendor via ${tx.vendor_source}`)
-    }
-    if (tx.expense_category_source) {
-      sourceParts.push(`Expense via ${tx.expense_category_source}`)
-    }
-    if (sourceParts.length) {
-      extraLines.push(sourceParts.join(' · '))
-    }
-    const notes = tx.notes?.trim()
-    if (notes) {
-      extraLines.push(`Notes: ${notes}`)
+      lines.push([
+        { text: '', width: columns[0].width },
+        { text: `Type: ${tx.transaction_type}`, width: columns[1].width },
+        ...columns.slice(2).map((column) => ({ text: '', width: column.width })),
+      ])
     }
 
-    extraLines.forEach((line) => {
-      const wrapped = wrapText(line, regular, 9, maxWidth)
+    const notes = tx.notes?.trim()
+    if (notes) {
+      const wrapped = wrapText(`Notes: ${notes}`, regular, 6, columns[1].width)
       wrapped.forEach((noteLine, idx) => {
         lines.push([
-          {
-            text: idx === 0 ? noteLine : `   ${noteLine}`,
-            width: maxWidth,
-          },
+          { text: '', width: columns[0].width },
+          { text: idx === 0 ? noteLine : `   ${noteLine}`, width: columns[1].width },
+          ...columns.slice(2).map((column) => ({ text: '', width: column.width })),
         ])
       })
-    })
+    }
 
     return lines
   }
