@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useMemo, useState, useTransition, useRef, ChangeEvent, FormEvent } from 'react'
+import { useMemo, useState, useTransition, useRef, ChangeEvent, FormEvent, useEffect } from 'react'
 import { toast } from 'react-hot-toast'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
@@ -11,7 +11,6 @@ import { Checkbox } from '@/components/ui-v2/forms/Checkbox'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
-import { Pagination } from '@/components/Pagination'
 import {
   importReceiptStatement,
   markReceiptTransaction,
@@ -41,14 +40,14 @@ import { DocumentArrowDownIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon, Mag
 
 interface ReceiptsClientProps {
   initialData: ReceiptWorkspaceData
-  initialFilters: ReceiptWorkspaceFilters & {
+  initialFilters: {
     status: ReceiptWorkspaceFilters['status'] | 'all'
     direction: 'in' | 'out' | 'all'
     showOnlyOutstanding: boolean
     missingVendorOnly: boolean
     missingExpenseOnly: boolean
     search: string
-    page: number
+    month: string
     sortBy?: ReceiptWorkspaceFilters['sortBy']
     sortDirection?: 'asc' | 'desc'
   }
@@ -61,6 +60,13 @@ const statusLabels: Record<ReceiptTransaction['status'], string> = {
   no_receipt_required: 'No receipt required',
 }
 
+const summaryStatusTotalsKey: Record<ReceiptTransaction['status'], 'pending' | 'completed' | 'autoCompleted' | 'noReceiptRequired'> = {
+  pending: 'pending',
+  completed: 'completed',
+  auto_completed: 'autoCompleted',
+  no_receipt_required: 'noReceiptRequired',
+}
+
 function formatCurrency(value: number | null) {
   if (!value) return ''
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(value)
@@ -68,6 +74,22 @@ function formatCurrency(value: number | null) {
 
 function formatCurrencyStrict(value: number) {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(value ?? 0)
+}
+
+function formatMonthLabel(value: string) {
+  const [year, month] = value.split('-').map((part) => Number.parseInt(part, 10))
+  if (!Number.isFinite(year) || !Number.isFinite(month)) {
+    return value
+  }
+  const date = new Date(Date.UTC(year, (month ?? 1) - 1, 1))
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+  return date.toLocaleDateString('en-GB', {
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
 }
 
 function formatDate(value: string) {
@@ -107,7 +129,17 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   const [retroScope, setRetroScope] = useState<'pending' | 'all'>('pending')
   const [retroRuleId, setRetroRuleId] = useState<string | null>(null)
 
-  const { summary, transactions, rules, pagination, knownVendors } = initialData
+  const { rules, knownVendors, availableMonths } = initialData
+  const [transactions, setTransactions] = useState(initialData.transactions)
+  const [summary, setSummary] = useState(initialData.summary)
+
+  useEffect(() => {
+    setTransactions(initialData.transactions)
+  }, [initialData.transactions])
+
+  useEffect(() => {
+    setSummary(initialData.summary)
+  }, [initialData.summary])
   type SortColumn = NonNullable<ReceiptWorkspaceFilters['sortBy']>
   type WorkspaceTransaction = ReceiptWorkspaceData['transactions'][number]
   const currentSortBy = (initialFilters.sortBy ?? 'transaction_date') as SortColumn
@@ -118,10 +150,22 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   }
   const mobileSortValue = `${currentSortBy}:${currentSortDirection}`
 
-  const totalPages = Math.max(1, Math.ceil(pagination.total / pagination.pageSize))
-
   const vendorOptions = useMemo(() => knownVendors.slice(0, 500), [knownVendors])
   const vendorLookup = useMemo(() => new Set(vendorOptions.map((vendor) => vendor.toLowerCase())), [vendorOptions])
+
+  const monthOptions = useMemo(() => {
+    const result: string[] = []
+    const seen = new Set<string>()
+    ;(availableMonths ?? []).forEach((value) => {
+      if (!value || seen.has(value)) return
+      seen.add(value)
+      result.push(value)
+    })
+    if (initialFilters.month && !seen.has(initialFilters.month)) {
+      result.push(initialFilters.month)
+    }
+    return result.sort((a, b) => b.localeCompare(a))
+  }, [availableMonths, initialFilters.month])
 
   const statusOptions = useMemo(() => (
     [
@@ -465,6 +509,11 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
     updateQuery({ direction: event.target.value })
   }
 
+  function handleMonthSelect(value: string) {
+    if (!value || value === initialFilters.month) return
+    updateQuery({ month: value })
+  }
+
   function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = event.currentTarget
@@ -485,14 +534,6 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
     updateQuery({ needsExpense: event.target.checked ? '1' : null })
   }
 
-  function handlePageChange(page: number) {
-    if (page < 1 || page > totalPages) return
-    const params = new URLSearchParams(searchParams.toString())
-    params.set('page', String(page))
-    const query = params.toString()
-    router.push(`/receipts${query ? `?${query}` : ''}`)
-  }
-
   function handleFileInputRef(transactionId: string, element: HTMLInputElement | null) {
     fileInputsRef.current[transactionId] = element
   }
@@ -500,15 +541,74 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   async function handleStatusUpdate(transactionId: string, status: ReceiptTransaction['status']) {
     setActiveTransactionId(transactionId)
     startRowTransition(async () => {
-      const result = await markReceiptTransaction({ transactionId, status })
-      if (result?.error) {
-        toast.error(result.error)
+      const previousTransaction = transactions.find((tx) => tx.id === transactionId)
+      try {
+        const result = await markReceiptTransaction({ transactionId, status })
+        if (!result || result.error || !result.transaction) {
+          toast.error(result?.error ?? 'Failed to update the transaction.')
+          return
+        }
+
+        const updatedTransaction = result.transaction as ReceiptTransaction
+        const shouldKeep = (() => {
+          if (initialFilters.status && initialFilters.status !== 'all' && initialFilters.status !== updatedTransaction.status) {
+            return false
+          }
+          if (initialFilters.showOnlyOutstanding && updatedTransaction.status !== 'pending') {
+            return false
+          }
+          return true
+        })()
+
+        setTransactions((prev) => {
+          if (!shouldKeep) {
+            return prev.filter((tx) => tx.id !== transactionId)
+          }
+
+          return prev.map((tx) => {
+            if (tx.id !== transactionId) return tx
+            return {
+              ...tx,
+              ...updatedTransaction,
+              files: tx.files,
+              autoRule: tx.autoRule,
+            }
+          })
+        })
+
+        if (!shouldKeep) {
+          delete fileInputsRef.current[transactionId]
+          setEditingCell((cell) => (cell?.id === transactionId ? null : cell))
+          if (classificationTargetId === transactionId) {
+            setClassificationTargetId(null)
+            setClassificationDraft('')
+          }
+        }
+
+        if (previousTransaction) {
+          setSummary((prev) => {
+            if (!prev) return prev
+            const previousKey = summaryStatusTotalsKey[previousTransaction.status]
+            const nextKey = summaryStatusTotalsKey[updatedTransaction.status]
+            if (previousKey === nextKey) return prev
+            return {
+              ...prev,
+              totals: {
+                ...prev.totals,
+                [previousKey]: Math.max(0, prev.totals[previousKey] - 1),
+                [nextKey]: prev.totals[nextKey] + 1,
+              },
+            }
+          })
+        }
+
+        toast.success('Transaction updated')
+      } catch (error) {
+        console.error('Failed to update receipt transaction', error)
+        toast.error('Failed to update the transaction.')
+      } finally {
         setActiveTransactionId(null)
-        return
       }
-      toast.success('Transaction updated')
-      router.refresh()
-      setActiveTransactionId(null)
     })
   }
 
@@ -1042,7 +1142,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           <h2 className="text-lg font-semibold text-gray-900">Transactions</h2>
           <p className="text-sm text-gray-500">Tick off receipts as you collect them and keep the finance trail tidy.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-end gap-2">
           <Select value={initialFilters.status ?? 'all'} onChange={handleStatusChange} className="w-40">
             {statusOptions.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
@@ -1055,38 +1155,60 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           </Select>
         </div>
       </div>}>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <form onSubmit={handleSearchSubmit} className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-            <Input
-              name="search"
-              placeholder="Search description or type"
-              defaultValue={initialFilters.search ?? ''}
-              className="sm:w-64"
-            />
-            <Button type="submit" variant="secondary">Search</Button>
-          </form>
-          <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
-            <label className="flex items-center gap-2">
-              <Checkbox
-                checked={initialFilters.showOnlyOutstanding}
-                onChange={handleOutstandingToggle}
+        <div className="mb-4 space-y-3">
+          {monthOptions.length > 0 && (
+            <div className="flex w-full flex-wrap items-center gap-2 overflow-x-auto pb-1">
+              {monthOptions.map((monthValue) => {
+                const isActive = monthValue === initialFilters.month
+                return (
+                  <Button
+                    key={monthValue}
+                    variant="ghost"
+                    size="xs"
+                    active={isActive}
+                    aria-pressed={isActive}
+                    onClick={() => handleMonthSelect(monthValue)}
+                    className="whitespace-nowrap"
+                  >
+                    {formatMonthLabel(monthValue)}
+                  </Button>
+                )
+              })}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <form onSubmit={handleSearchSubmit} className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+              <Input
+                name="search"
+                placeholder="Search description or type"
+                defaultValue={initialFilters.search ?? ''}
+                className="sm:w-64"
               />
-              Outstanding only
-            </label>
-            <label className="flex items-center gap-2">
-              <Checkbox
-                checked={initialFilters.missingVendorOnly}
-                onChange={handleMissingVendorToggle}
-              />
-              Missing vendor
-            </label>
-            <label className="flex items-center gap-2">
-              <Checkbox
-                checked={initialFilters.missingExpenseOnly}
-                onChange={handleMissingExpenseToggle}
-              />
-              Missing expense
-            </label>
+              <Button type="submit" variant="secondary">Search</Button>
+            </form>
+            <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
+              <label className="flex items-center gap-2">
+                <Checkbox
+                  checked={initialFilters.showOnlyOutstanding}
+                  onChange={handleOutstandingToggle}
+                />
+                Outstanding only
+              </label>
+              <label className="flex items-center gap-2">
+                <Checkbox
+                  checked={initialFilters.missingVendorOnly}
+                  onChange={handleMissingVendorToggle}
+                />
+                Missing vendor
+              </label>
+              <label className="flex items-center gap-2">
+                <Checkbox
+                  checked={initialFilters.missingExpenseOnly}
+                  onChange={handleMissingExpenseToggle}
+                />
+                Missing expense
+              </label>
+            </div>
           </div>
         </div>
 
@@ -1255,14 +1377,6 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
             </table>
           </div>
         </div>
-
-        <Pagination
-          currentPage={pagination.page}
-          totalPages={totalPages}
-          totalItems={pagination.total}
-          itemsPerPage={pagination.pageSize}
-          onPageChange={handlePageChange}
-        />
       </Card>
 
       <Card header={<div className="flex items-center justify-between">
