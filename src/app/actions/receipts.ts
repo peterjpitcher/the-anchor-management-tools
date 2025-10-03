@@ -148,6 +148,10 @@ export type ReceiptVendorSummary = {
   changePercentage: number
 }
 
+export type ReceiptVendorMonthTransaction = Pick<ReceiptTransaction,
+  'id' | 'transaction_date' | 'details' | 'amount_in' | 'amount_out' | 'status' | 'transaction_type' | 'vendor_name'
+>
+
 export type ReceiptDetailGroupSuggestion = {
   vendorName: string | null
   expenseCategory: ReceiptExpenseCategory | null
@@ -2736,4 +2740,56 @@ export async function getReceiptVendorSummary(monthWindow = 12): Promise<Receipt
   summaries.sort((a, b) => b.totalOutgoing - a.totalOutgoing)
 
   return summaries
+}
+
+export async function getReceiptVendorMonthTransactions(input: {
+  vendorLabel: string
+  monthStart: string
+}): Promise<{ transactions: ReceiptVendorMonthTransaction[]; error?: string }> {
+  await checkUserPermission('receipts', 'view')
+
+  const normalizedVendor = normalizeVendorInput(input.vendorLabel)
+  if (!normalizedVendor) {
+    return { transactions: [] }
+  }
+
+  const startDate = new Date(input.monthStart)
+  if (Number.isNaN(startDate.getTime())) {
+    return { transactions: [], error: 'Invalid month provided' }
+  }
+
+  const start = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), 1))
+  const end = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth() + 1, 1))
+
+  const supabase = createAdminClient()
+
+  const { data, error } = await supabase
+    .from('receipt_transactions')
+    .select('id, transaction_date, details, amount_in, amount_out, status, vendor_name, transaction_type')
+    .gte('transaction_date', start.toISOString())
+    .lt('transaction_date', end.toISOString())
+    .order('transaction_date', { ascending: true })
+    .limit(1000)
+
+  if (error) {
+    console.error('Failed to load vendor month transactions', error)
+    return { transactions: [], error: 'Failed to load transactions for this vendor.' }
+  }
+
+  const rows = Array.isArray(data) ? data : []
+
+  const filtered = rows.filter((row) => normalizeVendorInput(row?.vendor_name) === normalizedVendor)
+
+  return {
+    transactions: filtered.map((row) => ({
+      id: row.id,
+      transaction_date: row.transaction_date,
+      details: row.details,
+      amount_in: row.amount_in,
+      amount_out: row.amount_out,
+      status: row.status,
+      transaction_type: row.transaction_type,
+      vendor_name: row.vendor_name,
+    })),
+  }
 }
