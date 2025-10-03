@@ -55,7 +55,8 @@ export type ReceiptTransactionStatus =
   | 'pending'
   | 'completed'
   | 'auto_completed'
-  | 'no_receipt_required';
+  | 'no_receipt_required'
+  | 'cant_find';
 
 export type ReceiptClassificationSource = 'ai' | 'manual' | 'rule' | 'import';
 

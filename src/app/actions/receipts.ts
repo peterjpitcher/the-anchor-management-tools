@@ -101,6 +101,7 @@ export type ReceiptWorkspaceSummary = {
     completed: number
     autoCompleted: number
     noReceiptRequired: number
+    cantFind: number
   }
   needsAttentionValue: number
   lastImport?: ReceiptBatch | null
@@ -2039,7 +2040,7 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
   }
 
   if (filters.showOnlyOutstanding) {
-    baseQuery = baseQuery.in('status', ['pending'])
+    baseQuery = baseQuery.in('status', ['pending', 'cant_find'])
   }
 
   if (filters.direction && filters.direction !== 'all') {
@@ -2145,6 +2146,17 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
 
   const knownVendors = Array.from(knownVendorSet).sort((a, b) => a.localeCompare(b))
 
+  const enrichedSummary: ReceiptWorkspaceSummary = {
+    ...summary,
+    totals: {
+      pending: summary.totals.pending ?? 0,
+      completed: summary.totals.completed ?? 0,
+      autoCompleted: summary.totals.autoCompleted ?? 0,
+      noReceiptRequired: summary.totals.noReceiptRequired ?? 0,
+      cantFind: summary.totals.cantFind ?? 0,
+    },
+  }
+
   const availableMonths: string[] = []
   const monthSeen = new Set<string>()
 
@@ -2157,7 +2169,6 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
     if (monthSeen.has(value)) continue
     monthSeen.add(value)
     availableMonths.push(value)
-    if (availableMonths.length >= 18) break
   }
 
   if (filters.month && !monthSeen.has(filters.month)) {
@@ -2171,7 +2182,7 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
   return {
     transactions: shapedTransactions,
     rules: rules ?? [],
-    summary,
+    summary: enrichedSummary,
     pagination: {
       page,
       pageSize: effectivePageSize,
@@ -2458,6 +2469,7 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
   const completed = Number(counts?.completed ?? 0)
   const autoCompleted = Number(counts?.auto_completed ?? 0)
   const noReceiptRequired = Number(counts?.no_receipt_required ?? 0)
+  const cantFind = Number(counts?.cant_find ?? 0)
   const openAICost = costError ? 0 : Number(costData ?? 0)
 
   return {
@@ -2466,8 +2478,9 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
       completed,
       autoCompleted,
       noReceiptRequired,
+      cantFind,
     },
-    needsAttentionValue: pending,
+    needsAttentionValue: pending + cantFind,
     lastImport: lastBatch ?? null,
     openAICost,
   }

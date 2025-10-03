@@ -130,6 +130,7 @@ export const receiptTransactionStatusSchema = z.enum([
   'completed',
   'auto_completed',
   'no_receipt_required',
+  'cant_find',
 ]);
 
 export const receiptClassificationSourceSchema = z.enum(['ai', 'manual', 'rule', 'import']);

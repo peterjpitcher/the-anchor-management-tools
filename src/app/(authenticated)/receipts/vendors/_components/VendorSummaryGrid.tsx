@@ -36,6 +36,7 @@ const statusLabels: Record<ReceiptVendorMonthTransaction['status'], string> = {
   completed: 'Completed',
   auto_completed: 'Auto completed',
   no_receipt_required: 'No receipt required',
+  cant_find: "Can't find",
 }
 
 const statusTone: Record<ReceiptVendorMonthTransaction['status'], string> = {
@@ -43,6 +44,7 @@ const statusTone: Record<ReceiptVendorMonthTransaction['status'], string> = {
   completed: 'bg-emerald-100 text-emerald-700',
   auto_completed: 'bg-blue-100 text-blue-700',
   no_receipt_required: 'bg-gray-200 text-gray-700',
+  cant_find: 'bg-rose-100 text-rose-700',
 }
 
 type VendorSummaryGridProps = {

@@ -58,13 +58,15 @@ const statusLabels: Record<ReceiptTransaction['status'], string> = {
   completed: 'Completed',
   auto_completed: 'Auto completed',
   no_receipt_required: 'No receipt required',
+  cant_find: "Can't find",
 }
 
-const summaryStatusTotalsKey: Record<ReceiptTransaction['status'], 'pending' | 'completed' | 'autoCompleted' | 'noReceiptRequired'> = {
+const summaryStatusTotalsKey: Record<ReceiptTransaction['status'], 'pending' | 'completed' | 'autoCompleted' | 'noReceiptRequired' | 'cantFind'> = {
   pending: 'pending',
   completed: 'completed',
   auto_completed: 'autoCompleted',
   no_receipt_required: 'noReceiptRequired',
+  cant_find: 'cantFind',
 }
 
 function formatCurrency(value: number | null) {
@@ -174,6 +176,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
       { value: 'completed', label: 'Completed' },
       { value: 'auto_completed', label: 'Auto completed' },
       { value: 'no_receipt_required', label: 'No receipt required' },
+      { value: 'cant_find', label: "Can't find" },
     ]
   ), [])
 
@@ -591,12 +594,13 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
             const previousKey = summaryStatusTotalsKey[previousTransaction.status]
             const nextKey = summaryStatusTotalsKey[updatedTransaction.status]
             if (previousKey === nextKey) return prev
+            const totals = prev.totals
             return {
               ...prev,
               totals: {
-                ...prev.totals,
-                [previousKey]: Math.max(0, prev.totals[previousKey] - 1),
-                [nextKey]: prev.totals[nextKey] + 1,
+                ...totals,
+                [previousKey]: Math.max(0, (totals[previousKey] ?? 0) - 1),
+                [nextKey]: (totals[nextKey] ?? 0) + 1,
               },
             }
           })
@@ -983,6 +987,16 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
             Skip
           </Button>
         )}
+        {transaction.status !== 'cant_find' && (
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => handleStatusUpdate(transaction.id, 'cant_find')}
+            disabled={isProcessing}
+          >
+            Can&apos;t find
+          </Button>
+        )}
         {transaction.status !== 'pending' && (
           <Button
             variant="ghost"
@@ -1005,7 +1019,9 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           ? 'bg-emerald-100 text-emerald-700'
           : transaction.status === 'auto_completed'
             ? 'bg-blue-100 text-blue-700'
-            : 'bg-gray-200 text-gray-700'
+            : transaction.status === 'cant_find'
+              ? 'bg-rose-100 text-rose-700'
+              : 'bg-gray-200 text-gray-700'
 
     return (
       <div className={`flex flex-col gap-1 ${align === 'right' ? 'items-end text-right' : ''}`}>
@@ -1028,13 +1044,14 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
 
   return (
     <div className="space-y-6">
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
           <CostSummaryCard cost={summary.openAICost} />
           <SummaryCard title="Pending" value={summary.totals.pending} tone="warning" />
           <SummaryCard title="Completed" value={summary.totals.completed} tone="success" />
           <SummaryCard title="Auto-matched" value={summary.totals.autoCompleted} tone="info" />
-        <SummaryCard title="No receipt required" value={summary.totals.noReceiptRequired} tone="neutral" />
-      </div>
+          <SummaryCard title="No receipt required" value={summary.totals.noReceiptRequired} tone="neutral" />
+          <SummaryCard title="Can't find" value={summary.totals.cantFind} tone="danger" />
+        </div>
 
       <div className="flex flex-wrap gap-2">
         <Link
@@ -1157,7 +1174,10 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
       </div>}>
         <div className="mb-4 space-y-3">
           {monthOptions.length > 0 && (
-            <div className="flex w-full flex-wrap items-center gap-2 overflow-x-auto pb-1">
+            <div
+              className="flex w-full flex-nowrap items-center gap-2 overflow-x-auto pb-1"
+              style={{ WebkitOverflowScrolling: 'touch' }}
+            >
               {monthOptions.map((monthValue) => {
                 const isActive = monthValue === initialFilters.month
                 return (
@@ -1168,7 +1188,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
                     active={isActive}
                     aria-pressed={isActive}
                     onClick={() => handleMonthSelect(monthValue)}
-                    className="whitespace-nowrap"
+                    className="whitespace-nowrap flex-shrink-0"
                   >
                     {formatMonthLabel(monthValue)}
                   </Button>
@@ -1596,7 +1616,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
 interface SummaryCardProps {
   title: string
   value: number
-  tone: 'success' | 'warning' | 'info' | 'neutral'
+  tone: 'success' | 'warning' | 'info' | 'neutral' | 'danger'
 }
 
 function SummaryCard({ title, value, tone }: SummaryCardProps) {
@@ -1605,6 +1625,7 @@ function SummaryCard({ title, value, tone }: SummaryCardProps) {
     warning: 'bg-amber-50 text-amber-700',
     info: 'bg-blue-50 text-blue-700',
     neutral: 'bg-gray-50 text-gray-700',
+    danger: 'bg-rose-50 text-rose-700',
   }
 
   return (

@@ -131,7 +131,7 @@ async function buildSummaryPdf(
   const pageSize: [number, number] = [841.89, 595.28] // A4 landscape in points
   let page = pdfDoc.addPage(pageSize)
   const { width, height } = page.getSize()
-  const margin = 48
+  const margin = 36
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica)
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
 
@@ -139,7 +139,7 @@ async function buildSummaryPdf(
 
   const logoImage = await loadLogoImage(pdfDoc)
   if (logoImage) {
-    const logoWidth = 120
+    const logoWidth = 100
     const logoHeight = (logoImage.height / logoImage.width) * logoWidth
     page.drawImage(logoImage, {
       x: margin,
@@ -147,14 +147,14 @@ async function buildSummaryPdf(
       width: logoWidth,
       height: logoHeight,
     })
-    cursorY -= logoHeight + 20
+    cursorY -= logoHeight + 16
   }
 
   const drawText = (
     text: string,
     options: { x?: number; font?: PDFFont; size?: number; color?: ReturnType<typeof rgb> }
   ) => {
-    const { x = margin, font = fontRegular, size = 12, color = rgb(0, 0, 0) } = options
+    const { x = margin, font = fontRegular, size = 9, color = rgb(0, 0, 0) } = options
     page.drawText(text, { x, y: cursorY, size, font, color })
   }
 
@@ -163,38 +163,31 @@ async function buildSummaryPdf(
       page = pdfDoc.addPage(pageSize)
       cursorY = height - margin
       drawHeaderRow()
-      cursorY -= 20
     }
   }
 
-  drawText(`Receipts Summary — Q${quarter} ${year}`, { font: fontBold, size: 18 })
-  cursorY -= 28
+  drawText(`Receipts Summary — Q${quarter} ${year}`, { font: fontBold, size: 16 })
+  cursorY -= 24
 
   const totals = transactions.reduce<Record<string, number>>((acc, tx) => {
     acc[tx.status] = (acc[tx.status] || 0) + 1
     return acc
   }, {})
 
-  const summaryLines = [
-    `Total transactions: ${transactions.length}`,
-    `Completed: ${totals['completed'] ?? 0}`,
-    `Auto-completed: ${totals['auto_completed'] ?? 0}`,
-    `No receipt required: ${totals['no_receipt_required'] ?? 0}`,
-    `Outstanding: ${totals['pending'] ?? 0}`,
-  ]
-
-  summaryLines.forEach((line) => {
-    ensureSpace(16)
-    drawText(line, { size: 12 })
-    cursorY -= 16
+  drawSummaryGrid({
+    total: transactions.length,
+    completed: totals['completed'] ?? 0,
+    autoCompleted: totals['auto_completed'] ?? 0,
+    noReceiptRequired: totals['no_receipt_required'] ?? 0,
+    cantFind: totals['cant_find'] ?? 0,
+    pending: totals['pending'] ?? 0,
   })
 
-  cursorY -= 12
+  cursorY -= 8
   drawHeaderRow()
-  cursorY -= 20
 
   if (!transactions.length) {
-    drawText('No transactions recorded for this quarter.', { size: 12 })
+    drawText('No transactions recorded for this quarter.', { size: 10 })
     const pdfBytes = await pdfDoc.save()
     return Buffer.from(pdfBytes)
   }
@@ -202,48 +195,120 @@ async function buildSummaryPdf(
   transactions.forEach((tx) => {
     const rowLines = buildRowLines(tx, fontRegular, fontBold, width - margin * 2)
     rowLines.forEach((segments) => {
-      ensureSpace(18)
+      ensureSpace(16)
       let offsetX = margin
       segments.forEach((segment, index) => {
         const font = segment.bold ? fontBold : fontRegular
-        const size = segment.size ?? 10
+        const size = segment.size ?? 9
         drawText(segment.text, { x: offsetX, font, size })
         offsetX += segment.width
       })
-      cursorY -= 14
+      cursorY -= 12
     })
 
-    cursorY -= 8
+    cursorY -= 6
   })
 
   const pdfBytes = await pdfDoc.save()
   return Buffer.from(pdfBytes)
 
+  function drawSummaryGrid(stats: {
+    total: number
+    completed: number
+    autoCompleted: number
+    noReceiptRequired: number
+    cantFind: number
+    pending: number
+  }) {
+    const cards = [
+      { label: 'Total transactions', value: stats.total, accent: rgb(0.18, 0.4, 0.54) },
+      { label: 'Completed', value: stats.completed, accent: rgb(0.07, 0.47, 0.32) },
+      { label: 'Auto-completed', value: stats.autoCompleted, accent: rgb(0.09, 0.36, 0.66) },
+      { label: 'No receipt required', value: stats.noReceiptRequired, accent: rgb(0.35, 0.35, 0.42) },
+      { label: "Can't find", value: stats.cantFind, accent: rgb(0.71, 0.22, 0.29) },
+      { label: 'Pending', value: stats.pending, accent: rgb(0.83, 0.52, 0.08) },
+    ]
+
+    const cardsPerRow = 3
+    const gap = 12
+    const cardHeight = 44
+    const cardWidth = (width - margin * 2 - gap * (cardsPerRow - 1)) / cardsPerRow
+
+    let index = 0
+    while (index < cards.length) {
+      ensureSpace(cardHeight + 8)
+      const rowY = cursorY - cardHeight
+      let offsetX = margin
+
+      for (let col = 0; col < cardsPerRow && index < cards.length; col += 1) {
+        const card = cards[index]
+        page.drawRectangle({
+          x: offsetX,
+          y: rowY,
+          width: cardWidth,
+          height: cardHeight,
+          color: rgb(0.97, 0.98, 0.99),
+          borderColor: rgb(0.82, 0.85, 0.9),
+          borderWidth: 0.75,
+        })
+
+        const labelY = rowY + cardHeight - 14
+        page.drawText(card.label.toUpperCase(), {
+          x: offsetX + 10,
+          y: labelY,
+          size: 8,
+          font: fontBold,
+          color: rgb(0.35, 0.4, 0.45),
+        })
+
+        page.drawText(String(card.value), {
+          x: offsetX + 10,
+          y: rowY + 14,
+          size: 14,
+          font: fontBold,
+          color: card.accent,
+        })
+
+        offsetX += cardWidth + gap
+        index += 1
+      }
+
+      cursorY = rowY - 12
+    }
+  }
+
   function drawHeaderRow() {
     const headers = [
-      { label: 'Date', width: 70 },
-      { label: 'Details', width: 200 },
+      { label: 'Date', width: 68 },
+      { label: 'Details', width: 190 },
       { label: 'Vendor', width: 110 },
       { label: 'Expense type', width: 120 },
       { label: 'In', width: 60 },
       { label: 'Out', width: 60 },
-      { label: 'Status', width: 60 },
-      { label: 'Marked By', width: 105 },
+      { label: 'Status', width: 70 },
+      { label: 'Marked by', width: 110 },
     ]
 
     let offsetX = margin
     headers.forEach((header) => {
-      drawText(header.label, { x: offsetX, font: fontBold, size: 10 })
+      drawText(header.label.toUpperCase(), {
+        x: offsetX,
+        font: fontBold,
+        size: 9,
+        color: rgb(0.28, 0.35, 0.42),
+      })
       offsetX += header.width
     })
 
-    const lineY = cursorY - 10
+    const lineY = cursorY - 12
     page.drawLine({
       start: { x: margin, y: lineY },
       end: { x: width - margin, y: lineY },
-      color: rgb(0.75, 0.75, 0.75),
-      thickness: 1,
+      color: rgb(0.85, 0.85, 0.85),
+      thickness: 0.75,
     })
+
+    cursorY = lineY - 8
   }
 
   function buildRowLines(
@@ -253,21 +318,21 @@ async function buildSummaryPdf(
     maxWidth: number
   ): Array<Array<{ text: string; width: number; bold?: boolean; size?: number }>> {
     const columns = [
-      { text: formatDate(tx.transaction_date), width: 70, bold: true },
-      { text: tx.details ?? '', width: 200 },
+      { text: formatDate(tx.transaction_date), width: 68, bold: true },
+      { text: tx.details ?? '', width: 190 },
       { text: tx.vendor_name ?? '', width: 110 },
       { text: tx.expense_category ?? '', width: 120 },
       { text: tx.amount_in ? formatCurrency(tx.amount_in) : '', width: 60 },
       { text: tx.amount_out ? formatCurrency(tx.amount_out) : '', width: 60 },
-      { text: friendlyStatus(tx.status), width: 60 },
+      { text: friendlyStatus(tx.status), width: 70 },
       {
         text: tx.marked_by_name || tx.marked_by_email || (tx.rule_applied_id ? 'Auto rule' : ''),
-        width: 105,
+        width: 110,
       },
     ]
 
     const columnLines = columns.map((column) =>
-      wrapText(column.text, column.bold ? bold : regular, 10, column.width)
+      wrapText(column.text, column.bold ? bold : regular, 9, column.width)
     )
 
     const totalLines = Math.max(...columnLines.map((lines) => lines.length))
@@ -302,7 +367,7 @@ async function buildSummaryPdf(
     }
 
     extraLines.forEach((line) => {
-      const wrapped = wrapText(line, regular, 10, maxWidth)
+      const wrapped = wrapText(line, regular, 9, maxWidth)
       wrapped.forEach((noteLine, idx) => {
         lines.push([
           {
@@ -381,6 +446,8 @@ function friendlyStatus(status: ReceiptTransaction['status']) {
       return 'Auto completed'
     case 'no_receipt_required':
       return 'No receipt req.'
+    case 'cant_find':
+      return "Can't find"
     default:
       return 'Pending'
   }

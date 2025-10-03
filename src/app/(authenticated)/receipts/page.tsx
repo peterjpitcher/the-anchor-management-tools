@@ -3,7 +3,7 @@ import { getReceiptWorkspaceData, type ReceiptWorkspaceFilters } from '@/app/act
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 
-const STATUS_VALUES = new Set(['pending', 'completed', 'auto_completed', 'no_receipt_required'])
+const STATUS_VALUES = new Set(['pending', 'completed', 'auto_completed', 'no_receipt_required', 'cant_find'])
 const DIRECTION_VALUES = new Set(['in', 'out'])
 const SORT_COLUMNS = new Set(['transaction_date', 'details', 'amount_in', 'amount_out'])
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/
