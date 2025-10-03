@@ -31,7 +31,8 @@ export async function middleware(request: NextRequest) {
     // path.startsWith('/loyalty') || // Loyalty removed
     path.startsWith('/booking-confirmation') || // Allow public booking confirmation
     path.startsWith('/booking-success') || // Allow public booking success page
-    path.startsWith('/table-booking') // Allow public table booking pages
+    path.startsWith('/table-booking') || // Allow public table booking pages
+    path.startsWith('/parking/guest') // Allow public parking guest confirmation pages
   ) {
     return NextResponse.next()
   }
@@ -65,6 +66,6 @@ export const config = {
      * - booking-success (public booking success pages)
      * - table-booking (public table booking pages)
      */
-    '/((?!_next/static|_next/image|favicon.ico|api|auth|privacy|booking-confirmation|booking-success|table-booking).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api|auth|privacy|booking-confirmation|booking-success|table-booking|parking/guest).*)',
   ],
 }

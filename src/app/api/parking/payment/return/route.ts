@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
 
   if (!bookingId || !paypalToken) {
-    return NextResponse.redirect(`${appUrl}/parking/bookings/${bookingId ?? ''}?payment=missing_parameters`)
+    return NextResponse.redirect(`${appUrl}/parking/guest/${bookingId ?? ''}?payment=missing_parameters`)
   }
 
   try {
@@ -19,14 +19,14 @@ export async function GET(request: NextRequest) {
     const booking = await getParkingBooking(bookingId, supabase)
 
     if (!booking) {
-      return NextResponse.redirect(`${appUrl}/parking/bookings/${bookingId}?payment=not_found`)
+      return NextResponse.redirect(`${appUrl}/parking/guest/${bookingId}?payment=not_found`)
     }
 
     await captureParkingPayment(booking, paypalToken, { client: supabase })
 
-    return NextResponse.redirect(`${appUrl}/parking/bookings/${bookingId}?payment=success`)
+    return NextResponse.redirect(`${appUrl}/parking/guest/${bookingId}?payment=success`)
   } catch (error) {
     console.error('Parking PayPal return handler error:', error)
-    return NextResponse.redirect(`${appUrl}/parking/bookings/${bookingId}?payment=failed`)
+    return NextResponse.redirect(`${appUrl}/parking/guest/${bookingId}?payment=failed`)
   }
 }
