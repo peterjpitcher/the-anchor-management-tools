@@ -26,10 +26,17 @@ const STATUS_LABELS: Record<ReceiptTransaction['status'], string> = {
   completed: 'Completed',
   auto_completed: 'Auto completed',
   no_receipt_required: 'No receipt required',
+  cant_find: "Can't find",
 }
 
 const EXPENSE_OPTIONS = receiptExpenseCategorySchema.options
-const RULE_STATUS_OPTIONS: ReceiptTransaction['status'][] = ['no_receipt_required', 'auto_completed', 'completed', 'pending']
+const RULE_STATUS_OPTIONS: ReceiptTransaction['status'][] = [
+  'no_receipt_required',
+  'auto_completed',
+  'completed',
+  'pending',
+  'cant_find',
+]
 const RULE_DIRECTION_OPTIONS: Array<{ value: 'in' | 'out' | 'both'; label: string }> = [
   { value: 'out', label: 'Money out' },
   { value: 'in', label: 'Money in' },
@@ -170,7 +177,10 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
   }, [initialData.generatedAt])
 
   const limitOptions = useMemo(() => [10, 25, 50, 100, 150, 200, 300, 500], [])
-  const statusOrder: BulkStatus[] = useMemo(() => ['pending', 'auto_completed', 'completed', 'no_receipt_required'], [])
+  const statusOrder: BulkStatus[] = useMemo(
+    () => ['pending', 'cant_find', 'auto_completed', 'completed', 'no_receipt_required'],
+    []
+  )
 
   function updateQuery(next: Record<string, string | null>) {
     const params = new URLSearchParams(searchParams.toString())
