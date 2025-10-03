@@ -26,6 +26,24 @@ export function buildPaymentReminderManagerEmail(booking: ParkingBooking, paymen
   return { subject, html, to: MANAGER_EMAIL }
 }
 
+export function buildPaymentConfirmationSms(booking: ParkingBooking) {
+  const amount = booking.override_price ?? booking.calculated_price ?? 0
+  return `Hi ${booking.customer_first_name}, thanks for your payment. Your parking from ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)} is now confirmed (£${amount.toFixed(2)}).`
+}
+
+export function buildPaymentConfirmationManagerEmail(booking: ParkingBooking) {
+  const amount = booking.override_price ?? booking.calculated_price ?? 0
+  const subject = `Parking payment received – ${booking.reference}`
+  const html = `
+    <h2>Parking booking payment confirmed</h2>
+    <p><strong>Reference:</strong> ${booking.reference}</p>
+    <p><strong>Customer:</strong> ${booking.customer_first_name} ${booking.customer_last_name ?? ''}</p>
+    <p><strong>Schedule:</strong> ${formatDateTime(booking.start_at)} – ${formatDateTime(booking.end_at)}</p>
+    <p><strong>Amount paid:</strong> £${amount.toFixed(2)}</p>
+  `
+  return { subject, html, to: MANAGER_EMAIL }
+}
+
 export function buildSessionStartSms(booking: ParkingBooking) {
   return `Hi ${booking.customer_first_name}, your parking starts today from ${formatDateTime(booking.start_at)}. Registration ${booking.vehicle_registration}. See you soon!`
 }
