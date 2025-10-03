@@ -6,6 +6,17 @@ import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 const STATUS_VALUES = new Set(['pending', 'completed', 'auto_completed', 'no_receipt_required'])
 const DIRECTION_VALUES = new Set(['in', 'out'])
 const SORT_COLUMNS = new Set(['transaction_date', 'details', 'amount_in', 'amount_out'])
+const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/
+
+function resolveMonthParam(value?: string) {
+  if (value && MONTH_PATTERN.test(value)) {
+    return value
+  }
+
+  const now = new Date()
+  const month = String(now.getUTCMonth() + 1).padStart(2, '0')
+  return `${now.getUTCFullYear()}-${month}`
+}
 
 type ReceiptsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
@@ -33,8 +44,8 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
   const rawSortDirection = typeof resolvedParams?.sortDirection === 'string' ? resolvedParams.sortDirection : undefined
   const sortDirection = rawSortDirection === 'asc' ? 'asc' : 'desc'
 
-  const pageParam = typeof resolvedParams?.page === 'string' ? Number.parseInt(resolvedParams.page, 10) : 1
-  const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1
+  const rawMonth = typeof resolvedParams?.month === 'string' ? resolvedParams.month : undefined
+  const month = resolveMonthParam(rawMonth)
 
   const filters: ReceiptWorkspaceFilters = {
     status: status !== 'all' ? status : undefined,
@@ -43,7 +54,7 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
     showOnlyOutstanding,
     missingVendorOnly: missingVendorOnly ? true : undefined,
     missingExpenseOnly: missingExpenseOnly ? true : undefined,
-    page,
+    month,
     sortBy,
     sortDirection,
   }
@@ -66,7 +77,7 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
             showOnlyOutstanding,
             missingVendorOnly,
             missingExpenseOnly,
-            page,
+            month,
             sortBy,
             sortDirection,
           }}

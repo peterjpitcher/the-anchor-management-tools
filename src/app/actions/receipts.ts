@@ -30,6 +30,7 @@ import { classifyReceiptTransaction, type ClassificationUsage } from '@/lib/open
 const RECEIPT_BUCKET = 'receipts'
 const MAX_RECEIPT_UPLOAD_SIZE = 15 * 1024 * 1024 // 15 MB safety limit
 const DEFAULT_PAGE_SIZE = 25
+const MAX_MONTH_PAGE_SIZE = 5000
 const EXPENSE_CATEGORY_OPTIONS = receiptExpenseCategorySchema.options
 const BULK_STATUS_OPTIONS = receiptTransactionStatusSchema.options
 type BulkStatus = (typeof BULK_STATUS_OPTIONS)[number]
@@ -87,6 +88,7 @@ export type ReceiptWorkspaceFilters = {
   showOnlyOutstanding?: boolean
   missingVendorOnly?: boolean
   missingExpenseOnly?: boolean
+  month?: string
   page?: number
   pageSize?: number
   sortBy?: ReceiptSortColumn
@@ -118,6 +120,7 @@ export type ReceiptWorkspaceData = {
     total: number
   }
   knownVendors: string[]
+  availableMonths: string[]
 }
 
 export type ReceiptMonthlySummaryItem = {
@@ -1970,14 +1973,38 @@ export async function deleteReceiptRule(ruleId: string) {
   return { success: true }
 }
 
+function resolveMonthRange(month?: string) {
+  if (!month) return null
+  const match = /^([0-9]{4})-([0-9]{2})$/.exec(month)
+  if (!match) return null
+
+  const year = Number.parseInt(match[1], 10)
+  const monthIndex = Number.parseInt(match[2], 10) - 1
+  if (!Number.isFinite(year) || !Number.isFinite(monthIndex) || monthIndex < 0 || monthIndex > 11) {
+    return null
+  }
+
+  const start = new Date(Date.UTC(year, monthIndex, 1))
+  const end = new Date(Date.UTC(year, monthIndex + 1, 1))
+
+  return {
+    start: start.toISOString(),
+    end: end.toISOString(),
+  }
+}
+
 export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters = {}): Promise<ReceiptWorkspaceData> {
   await checkUserPermission('receipts', 'view')
 
   const supabase = createAdminClient()
 
-  const pageSize = Math.min(filters.pageSize ?? DEFAULT_PAGE_SIZE, 100)
-  const page = Math.max(filters.page ?? 1, 1)
-  const offset = (page - 1) * pageSize
+  const monthRange = resolveMonthRange(filters.month)
+  const isMonthScoped = Boolean(monthRange)
+  const maxPageSize = isMonthScoped ? MAX_MONTH_PAGE_SIZE : 100
+  const requestedPageSize = filters.pageSize ?? (isMonthScoped ? MAX_MONTH_PAGE_SIZE : DEFAULT_PAGE_SIZE)
+  const pageSize = Math.min(requestedPageSize, maxPageSize)
+  const page = isMonthScoped ? 1 : Math.max(filters.page ?? 1, 1)
+  const offset = isMonthScoped ? 0 : (page - 1) * pageSize
 
   const sortColumn: ReceiptSortColumn = filters.sortBy ?? 'transaction_date'
   const sortDirection: 'asc' | 'desc' = filters.sortDirection === 'asc' ? 'asc' : 'desc'
@@ -2032,6 +2059,10 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
     baseQuery = baseQuery.is('expense_category', null)
   }
 
+  if (monthRange) {
+    baseQuery = baseQuery.gte('transaction_date', monthRange.start).lt('transaction_date', monthRange.end)
+  }
+
   baseQuery = baseQuery.range(offset, offset + pageSize - 1)
 
   const vendorQuery = supabase
@@ -2042,11 +2073,19 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
     .order('vendor_name', { ascending: true })
     .limit(2000)
 
+  const monthsQuery = supabase
+    .from('receipt_transactions')
+    .select('transaction_date')
+    .not('transaction_date', 'is', null)
+    .order('transaction_date', { ascending: false })
+    .limit(720)
+
   const [
     { data: transactions, count, error },
     { data: rules },
     summary,
     { data: vendorRecords, error: vendorError },
+    { data: monthRecords, error: monthError },
   ] = await Promise.all([
     baseQuery,
     supabase
@@ -2055,6 +2094,7 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
       .order('created_at', { ascending: true }),
     fetchSummary(),
     vendorQuery,
+    monthsQuery,
   ])
 
   if (error) {
@@ -2064,6 +2104,10 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
 
   if (vendorError) {
     console.error('Failed to load vendor list for receipts workspace:', vendorError)
+  }
+
+  if (monthError) {
+    console.error('Failed to load month list for receipts workspace:', monthError)
   }
 
   const shapedTransactions = (transactions ?? []).map((tx) => ({
@@ -2097,16 +2141,40 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
 
   const knownVendors = Array.from(knownVendorSet).sort((a, b) => a.localeCompare(b))
 
+  const availableMonths: string[] = []
+  const monthSeen = new Set<string>()
+
+  for (const record of monthRecords ?? []) {
+    const iso = (record as { transaction_date?: string | null }).transaction_date
+    if (!iso) continue
+    const date = new Date(iso)
+    if (Number.isNaN(date.getTime())) continue
+    const value = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
+    if (monthSeen.has(value)) continue
+    monthSeen.add(value)
+    availableMonths.push(value)
+    if (availableMonths.length >= 18) break
+  }
+
+  if (filters.month && !monthSeen.has(filters.month)) {
+    availableMonths.push(filters.month)
+  }
+
+  availableMonths.sort((a, b) => b.localeCompare(a))
+
+  const effectivePageSize = isMonthScoped ? shapedTransactions.length : pageSize
+
   return {
     transactions: shapedTransactions,
     rules: rules ?? [],
     summary,
     pagination: {
       page,
-      pageSize,
-      total: count ?? 0,
+      pageSize: effectivePageSize,
+      total: count ?? shapedTransactions.length,
     },
     knownVendors,
+    availableMonths,
   }
 }
 
