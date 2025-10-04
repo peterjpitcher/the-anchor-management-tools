@@ -1,6 +1,16 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
+function hasSupabaseSessionCookie(request: NextRequest) {
+  return request.cookies.getAll().some((cookie) => {
+    if (!cookie.value) {
+      return false
+    }
+
+    return cookie.name.startsWith('sb-') && cookie.name.includes('-auth-token')
+  })
+}
+
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname
   const hostname = request.headers.get('host') || ''
@@ -37,13 +47,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  const hasSessionCookie = request.cookies.getAll().some((cookie) => {
-    if (!cookie.value) return false
-
-    return /^sb-[a-z0-9]+-[a-z0-9]+-auth-token(\.\d+)?$/i.test(cookie.name)
-  })
-
-  if (!hasSessionCookie) {
+  if (!hasSupabaseSessionCookie(request)) {
     const redirectUrl = request.nextUrl.clone()
     redirectUrl.pathname = '/auth/login'
     const target = request.nextUrl.pathname + (request.nextUrl.search || '')

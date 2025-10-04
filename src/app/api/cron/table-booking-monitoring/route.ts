@@ -5,6 +5,7 @@ import {
   monitorBookingPatterns,
   generateDailySummary 
 } from '@/lib/monitoring/table-bookings-monitor';
+import { authorizeCronRequest } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -12,12 +13,10 @@ export const revalidate = 0;
 export async function GET(request: Request) {
   try {
     // Verify the request is from a trusted source (e.g., Vercel Cron)
-    const authHeader = request.headers.get('authorization');
-    const cronSecret = process.env.CRON_SECRET;
-    
-    // In production, require authentication
-    if (process.env.NODE_ENV === 'production' && (!cronSecret || authHeader !== `Bearer ${cronSecret}`)) {
-      console.log('Unauthorized request - invalid CRON_SECRET');
+    const authResult = authorizeCronRequest(request);
+
+    if (!authResult.authorized) {
+      console.log('Unauthorized table booking monitoring request', authResult.reason);
       return new NextResponse('Unauthorized', { status: 401 });
     }
 

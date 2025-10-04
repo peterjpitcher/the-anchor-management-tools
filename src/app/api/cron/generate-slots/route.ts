@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { authorizeCronRequest } from '@/lib/cron-auth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
   try {
-    // Verify this is a cron job or authorized request
-    const authHeader = request.headers.get('authorization');
-    const isVercelCron = authHeader === `Bearer ${process.env.CRON_SECRET}`;
-    const isDev = process.env.NODE_ENV === 'development';
-    
-    if (!isVercelCron && !isDev) {
+    const authResult = authorizeCronRequest(request);
+
+    if (!authResult.authorized) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }

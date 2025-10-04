@@ -3,6 +3,7 @@ import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
 import { getOutstandingTodos, EVENT_CHECKLIST_DEFINITIONS } from '@/lib/event-checklist'
 import { getTodayIsoDate, formatDate, formatDateFull } from '@/lib/dateUtils'
 import { sendEmail } from '@/lib/email/emailService'
+import { authorizeCronRequest } from '@/lib/cron-auth'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -22,21 +23,10 @@ interface ChecklistEventSummary {
   }[]
 }
 
-function authorizeRequest(request: Request): boolean {
-  const authHeader = request.headers.get('authorization')
-  const cronSecret = process.env.CRON_SECRET
-
-  if (process.env.NODE_ENV === 'production') {
-    if (!cronSecret) return false
-    return authHeader === `Bearer ${cronSecret}`
-  }
-
-  if (!cronSecret) return true
-  return authHeader === `Bearer ${cronSecret}`
-}
-
 export async function GET(request: Request) {
-  if (!authorizeRequest(request)) {
+  const authResult = authorizeCronRequest(request)
+
+  if (!authResult.authorized) {
     return new NextResponse('Unauthorized', { status: 401 })
   }
 

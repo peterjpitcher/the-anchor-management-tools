@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
-import { headers } from 'next/headers'
 import { sendInvoiceEmail } from '@/lib/microsoft-graph'
 import { isGraphConfigured } from '@/lib/microsoft-graph'
 import type { InvoiceWithDetails } from '@/types/invoices'
+import { authorizeCronRequest } from '@/lib/cron-auth'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60 // 1 minute max
@@ -16,13 +16,10 @@ const REMINDER_INTERVALS = {
 }
 
 export async function GET(request: Request) {
-  // In production, verify this is called by Vercel Cron
-  if (process.env.NODE_ENV === 'production') {
-    const headersList = await headers()
-    const authHeader = headersList.get('authorization')
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+  const authResult = authorizeCronRequest(request)
+
+  if (!authResult.authorized) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
