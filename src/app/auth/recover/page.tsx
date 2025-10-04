@@ -15,6 +15,9 @@ import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { ArrowLeft } from 'lucide-react'
 
+const projectRefMatch = process.env.NEXT_PUBLIC_SUPABASE_URL?.match(/https?:\/\/([^.]+)\.supabase\.co/i)
+const pkceStorageKey = projectRefMatch ? `sb-${projectRefMatch[1]}-auth-token-code-verifier` : null
+
 type RecoveryState =
   | 'verifying'
   | 'ready'
@@ -91,7 +94,7 @@ function RecoverPasswordContent() {
         })
 
         if (error) {
-          console.error('Failed to set recovery session:', error)
+          console.error('Failed to set recovery session from access token:', error)
           setErrorDetails(error.message)
           setState('expired')
           return
@@ -99,23 +102,69 @@ function RecoverPasswordContent() {
 
         const cleanUrl = new URL(window.location.href)
         cleanUrl.hash = ''
-        cleanUrl.searchParams.delete('token')
-        cleanUrl.searchParams.delete('token_hash')
-        cleanUrl.searchParams.delete('type')
         window.history.replaceState({}, document.title, cleanUrl.toString())
         setState('ready')
         return
       }
 
-      if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code)
-        if (error) {
-          console.error('Failed to exchange code for session:', error)
-          setErrorDetails(error.message)
+      if (type === 'recovery' && code) {
+        const cleanUrl = new URL(window.location.href)
+        let pkceAttempted = false
+        try {
+          const storedVerifier = pkceStorageKey ? window.localStorage.getItem(pkceStorageKey) : null
+
+          if (storedVerifier) {
+            pkceAttempted = true
+            const { error } = await supabase.auth.exchangeCodeForSession(code)
+
+            if (!error) {
+              cleanUrl.hash = ''
+              cleanUrl.searchParams.delete('code')
+              cleanUrl.searchParams.delete('token')
+              cleanUrl.searchParams.delete('token_hash')
+              cleanUrl.searchParams.delete('type')
+              window.history.replaceState({}, document.title, cleanUrl.toString())
+              setState('ready')
+              return
+            }
+
+            console.error('Failed to exchange code for session via PKCE:', error)
+
+            if (pkceStorageKey && error.message.toLowerCase().includes('code verifier')) {
+              window.localStorage.removeItem(pkceStorageKey)
+            }
+          }
+        } catch (error) {
+          console.error('Unexpected error during PKCE exchange:', error)
+        }
+
+        const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
+          type: 'recovery',
+          token_hash: code,
+        })
+
+        if (verifyError) {
+          if (!pkceAttempted && pkceStorageKey) {
+            window.localStorage.removeItem(pkceStorageKey)
+          }
+          console.error('verifyOtp recovery fallback failed:', verifyError)
+          setErrorDetails(verifyError.message)
           setState('expired')
           return
         }
 
+        if (!verifyData.session) {
+          setErrorDetails('Recovery session could not be established.')
+          setState('expired')
+          return
+        }
+
+        cleanUrl.hash = ''
+        cleanUrl.searchParams.delete('code')
+        cleanUrl.searchParams.delete('token')
+        cleanUrl.searchParams.delete('token_hash')
+        cleanUrl.searchParams.delete('type')
+        window.history.replaceState({}, document.title, cleanUrl.toString())
         setState('ready')
         return
       }
