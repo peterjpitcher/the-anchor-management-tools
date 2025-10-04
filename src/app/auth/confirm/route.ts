@@ -22,10 +22,11 @@ function decodeState(raw?: string | null) {
 }
 
 function sanitizeNext(next?: string | null) {
-  if (!next || !next.startsWith('/')) {
+  const cleaned = (next ?? '').trim()
+  if (!cleaned || !cleaned.startsWith('/')) {
     return '/auth/reset'
   }
-  return next
+  return cleaned
 }
 
 export function HEAD() {
@@ -92,9 +93,10 @@ export async function POST(request: NextRequest) {
     token_hash: state.token_hash,
   })
 
+  const safeNext = sanitizeNext(state.next)
   const redirectTarget = error
     ? new URL(`/error?code=${encodeURIComponent(error.message)}`, request.url)
-    : new URL(state.next || '/auth/reset', request.url)
+    : new URL(safeNext, request.url)
 
   const response = NextResponse.redirect(redirectTarget)
   response.cookies.set({ name: STATE_COOKIE, value: '', path: STATE_COOKIE_PATH, maxAge: 0 })
