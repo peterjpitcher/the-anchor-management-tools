@@ -150,7 +150,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
     // Validate seats is not negative
     const seatCount = seats ? parseInt(seats, 10) : null
     if (seatCount !== null && seatCount < 0) {
-      toast.error('Number of seats cannot be negative')
+      toast.error('Number of tickets cannot be negative')
       return
     }
 
@@ -161,7 +161,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
       const actualAvailable = availableCapacity + originalSeats
       
       if (seatCount > actualAvailable) {
-        toast.error(`Only ${actualAvailable} seats available for this event`)
+        toast.error(`Only ${actualAvailable} tickets available for this event`)
         return
       }
     }
@@ -302,7 +302,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
               Existing Booking Found
             </h3>
             <p className="text-sm text-gray-600 mb-4">
-              This customer already has a booking for this event with {existingBookingInfo.seats || 0} seat{existingBookingInfo.seats !== 1 ? 's' : ''}.
+              This customer already has a booking for this event with {existingBookingInfo.seats || 0} ticket{existingBookingInfo.seats !== 1 ? 's' : ''}.
               Would you like to overwrite the existing booking?
             </p>
             <div className="mt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
@@ -483,7 +483,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
           htmlFor="seats"
           className="block text-sm font-medium text-gray-900 mb-2"
         >
-          Number of Seats (Optional)
+          Number of Tickets (Optional)
         </label>
         <input
           type="number"
@@ -501,7 +501,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
         </p>
         {event.capacity && availableCapacity !== null && (
           <p className="mt-1 text-sm text-gray-600">
-            Available: {availableCapacity + (booking?.seats || 0)} of {event.capacity} seats
+            Available: {availableCapacity + (booking?.seats || 0)} of {event.capacity} tickets
           </p>
         )}
       </div>

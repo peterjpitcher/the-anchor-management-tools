@@ -199,7 +199,7 @@ export default function EventCheckInClient({ event, reviewLink }: EventCheckInCl
           <p className="text-2xl font-semibold mt-2">Hello {greetingName}!</p>
           <p className="text-base mt-3">
             {knownGuest.booking
-              ? `We have you down for ${knownGuest.booking.seats ?? 1} seat${(knownGuest.booking.seats ?? 1) > 1 ? 's' : ''}. Tap below and we’ll mark you as arrived.`
+              ? `We have you down for ${knownGuest.booking.seats ?? 1} ticket${(knownGuest.booking.seats ?? 1) > 1 ? 's' : ''}. Tap below and we’ll mark you as arrived.`
               : 'We could not see a booking, so we will pop you on the list now and mark you as arrived.'}
           </p>
         </div>

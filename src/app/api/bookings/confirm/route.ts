@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
     
     if (availableSeats < seats) {
       return NextResponse.json(
-        { error: `Only ${availableSeats} seats available` },
+        { error: `Only ${availableSeats} tickets available` },
         { status: 400 }
       );
     }

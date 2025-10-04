@@ -14,8 +14,8 @@ const bookingSchema = z.object({
   event_id: z.string().uuid('Invalid event ID'),
   customer_id: z.string().uuid('Invalid customer ID'),
   seats: z.number()
-    .min(0, 'Seats cannot be negative')
-    .max(100, 'Cannot book more than 100 seats at once'),
+    .min(0, 'Tickets cannot be negative')
+    .max(100, 'Cannot book more than 100 tickets at once'),
   notes: z.string().max(500, 'Notes too long').optional()
 })
 
@@ -166,7 +166,7 @@ export async function createBooking(formData: FormData): Promise<CreateBookingRe
       }
       
       if (availableCapacity !== null && data.seats > availableCapacity) {
-        return { error: `Only ${availableCapacity} seats available (capacity: ${event.capacity})` }
+        return { error: `Only ${availableCapacity} tickets available (capacity: ${event.capacity})` }
       }
     }
 
@@ -396,10 +396,10 @@ export async function updateBooking(id: string, formData: FormData) {
     const notes = formData.get('notes') as string || undefined
 
     if (seats < 0) {
-      return { error: 'Seats cannot be negative' }
+      return { error: 'Tickets cannot be negative' }
     }
     if (seats > 100) {
-      return { error: 'Cannot book more than 100 seats at once' }
+      return { error: 'Cannot book more than 100 tickets at once' }
     }
 
     // Get booking details
@@ -441,7 +441,7 @@ export async function updateBooking(id: string, formData: FormData) {
           const currentSeats = otherBookings.reduce((sum, b) => sum + (b.seats || 0), 0)
           if (currentSeats + seats > event.capacity) {
             const available = event.capacity - currentSeats
-            return { error: `Only ${available} seats available (capacity: ${event.capacity})` }
+            return { error: `Only ${available} tickets available (capacity: ${event.capacity})` }
           }
         }
       }

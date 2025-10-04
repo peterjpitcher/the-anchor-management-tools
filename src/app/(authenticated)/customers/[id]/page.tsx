@@ -287,10 +287,10 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
     },
     {
       key: 'seats',
-      header: 'Seats',
+      header: 'Tickets',
       cell: (booking) => (
         <Badge variant="success">
-          {booking.seats} Seats
+          {booking.seats} Tickets
         </Badge>
       ),
     },
@@ -446,7 +446,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
           <div>
             <CardTitle>Active Bookings ({activeBookings.length})</CardTitle>
             <CardDescription>
-              Total of {totalSeats} seats booked across all events.
+              Total of {totalSeats} tickets booked across all events.
             </CardDescription>
           </div>
         }
@@ -466,7 +466,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
             <div>
               <CardTitle>Reminders ({reminders.length})</CardTitle>
               <CardDescription>
-                These are events the customer has been sent a reminder for, but has not booked seats.
+                These are events the customer has been sent a reminder for, but has not booked tickets.
               </CardDescription>
             </div>
           }

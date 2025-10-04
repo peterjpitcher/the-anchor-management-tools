@@ -166,7 +166,7 @@ export default function BookingSuccessPage() {
                   <div className="flex items-center gap-3">
                     <Users className="h-5 w-5 text-gray-500" />
                     <Badge variant="primary">
-                      {booking.seats} {booking.seats === 1 ? 'seat' : 'seats'}
+                      {booking.seats} {booking.seats === 1 ? 'ticket' : 'tickets'}
                     </Badge>
                   </div>
                 </div>

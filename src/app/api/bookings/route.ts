@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
 
     if (availableSeats < seats) {
       return createErrorResponse(
-        'Not enough seats available',
+        'Not enough tickets available',
         'INSUFFICIENT_CAPACITY',
         400,
         {

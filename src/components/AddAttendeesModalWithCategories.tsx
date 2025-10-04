@@ -231,7 +231,7 @@ export function AddAttendeesModalWithCategories({
                 <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                   <p className="text-xs uppercase tracking-wide text-gray-500">Currently Booked</p>
                   <p className="mt-1 text-lg font-semibold text-gray-900">{currentBookings.length}</p>
-                  <p className="text-xs text-gray-400">{totalBookedSeats} seat{totalBookedSeats === 1 ? '' : 's'} reserved{event.capacity ? ` of ${event.capacity}` : ''}</p>
+                  <p className="text-xs text-gray-400">{totalBookedSeats} ticket{totalBookedSeats === 1 ? '' : 's'} reserved{event.capacity ? ` of ${event.capacity}` : ''}</p>
                 </div>
                 <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                   <p className="text-xs uppercase tracking-wide text-gray-500">Checked In</p>
@@ -241,7 +241,7 @@ export function AddAttendeesModalWithCategories({
                 <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                   <p className="text-xs uppercase tracking-wide text-gray-500">Selected to Add</p>
                   <p className="mt-1 text-lg font-semibold text-gray-900">{selectedCustomerIds.length}</p>
-                  <p className="text-xs text-gray-400">{remainingCapacity !== null ? `${remainingCapacity} seat${remainingCapacity === 1 ? '' : 's'} remaining` : 'Unlimited capacity'}</p>
+                  <p className="text-xs text-gray-400">{remainingCapacity !== null ? `${remainingCapacity} ticket${remainingCapacity === 1 ? '' : 's'} remaining` : 'Unlimited capacity'}</p>
                 </div>
               </div>
 

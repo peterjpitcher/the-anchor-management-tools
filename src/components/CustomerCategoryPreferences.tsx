@@ -359,7 +359,7 @@ export function CustomerCategoryPreferences({ customerId }: CustomerCategoryPref
                     ) : null}
                     {typeof summary.seats === 'number' && summary.seats > 0 && (
                       <p className="text-xs text-gray-400 mt-1">
-                        Seats: {summary.seats}
+                        Tickets: {summary.seats}
                       </p>
                     )}
                   </div>

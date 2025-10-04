@@ -525,8 +525,8 @@ export default function BulkMessagePage() {
                           onChange={(e) => setFilters({ ...filters, bookingType: e.target.value as 'all' | 'bookings_only' | 'reminders_only' })}
                         >
                           <option value="all">All Types</option>
-                          <option value="bookings_only">Bookings Only (With Seats)</option>
-                          <option value="reminders_only">Reminders Only (No Seats)</option>
+                          <option value="bookings_only">Bookings Only (With Tickets)</option>
+                          <option value="reminders_only">Reminders Only (No Tickets)</option>
                         </Select>
                       </FormGroup>
                     )}
@@ -642,7 +642,7 @@ export default function BulkMessagePage() {
                               <CalendarIcon className="h-3 w-3 mr-1" />
                               {(() => {
                                 const booking = customer.event_bookings?.find(b => b.event_id === filters.eventId)
-                                return booking?.seats ? `${booking.seats} seats` : 'Reminder'
+                                return booking?.seats ? `${booking.seats} tickets` : 'Reminder'
                               })()}
                             </Badge>
                           )}

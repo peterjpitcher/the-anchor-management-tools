@@ -38,7 +38,7 @@ export function getConstraintErrorMessage(error: PostgrestError): string {
       return 'Event date cannot be more than 1 year in the past';
     }
     if (message.includes('chk_booking_seats')) {
-      return 'Number of seats cannot be negative';
+      return 'Number of tickets cannot be negative';
     }
     if (message.includes('chk_message_direction')) {
       return 'Invalid message direction';
