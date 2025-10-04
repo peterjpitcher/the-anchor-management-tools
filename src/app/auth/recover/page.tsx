@@ -72,11 +72,16 @@ function RecoverPasswordContent() {
       const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
       const queryParams = new URLSearchParams(window.location.search)
 
-      const type = (hashParams.get('type') || queryParams.get('type') || '').toLowerCase()
+      const rawType = hashParams.get('type') || queryParams.get('type') || ''
+      const preliminaryCode = queryParams.get('code') || hashParams.get('code')
+      const rawToken = queryParams.get('token') || hashParams.get('token') || undefined
+      const preliminaryTokenHash = queryParams.get('token_hash') || hashParams.get('token_hash')
+      const normalizedType = rawType || (preliminaryCode || preliminaryTokenHash ? 'recovery' : '')
+      const type = normalizedType.toLowerCase()
       const accessToken = hashParams.get('access_token') || queryParams.get('access_token')
       const refreshToken = hashParams.get('refresh_token') || queryParams.get('refresh_token')
-      const code = queryParams.get('code') || hashParams.get('code')
-      const token = queryParams.get('token') || queryParams.get('token_hash') || hashParams.get('token')
+      const code = preliminaryCode
+      const tokenHash = preliminaryTokenHash || rawToken || undefined
       const emailFromParams = queryParams.get('email') || hashParams.get('email') || searchParams?.get('email') || undefined
       const errorDescription = hashParams.get('error_description') || queryParams.get('error_description')
 
@@ -169,12 +174,12 @@ function RecoverPasswordContent() {
         return
       }
 
-      if (type === 'recovery' && token && emailFromParams) {
-        const { data, error } = await supabase.auth.verifyOtp({
-          type: 'recovery',
-          token,
-          email: emailFromParams,
-        })
+      if (type === 'recovery' && (rawToken || tokenHash) && emailFromParams) {
+        const { data, error } = await supabase.auth.verifyOtp(
+          rawToken
+            ? { type: 'recovery', token: rawToken, email: emailFromParams }
+            : { type: 'recovery', token_hash: tokenHash!, email: emailFromParams }
+        )
 
         if (error) {
           console.error('Failed to verify recovery token:', error)
@@ -201,12 +206,43 @@ function RecoverPasswordContent() {
         return
       }
 
+      if (type === 'recovery' && tokenHash) {
+        const { data, error } = await supabase.auth.verifyOtp({
+          type: 'recovery',
+          token_hash: tokenHash,
+        })
+
+        if (error) {
+          console.error('No-email token hash verification failed:', error)
+          setErrorDetails(error.message)
+          setState('expired')
+          return
+        }
+
+        if (data?.session?.access_token && data.session.refresh_token) {
+          const { error: setError } = await supabase.auth.setSession({
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
+          })
+
+          if (setError) {
+            console.error('Failed to persist recovery session after token-hash verify:', setError)
+            setErrorDetails(setError.message)
+            setState('expired')
+            return
+          }
+        }
+
+        setState('ready')
+        return
+      }
+
       console.warn('Unsupported password recovery payload', {
         type,
         hasAccessToken: Boolean(accessToken),
         hasRefreshToken: Boolean(refreshToken),
         hasCode: Boolean(code),
-        hasToken: Boolean(token),
+        hasTokenHash: Boolean(tokenHash),
         emailProvided: Boolean(emailFromParams),
       })
       setErrorDetails('This reset link is missing required information.')
