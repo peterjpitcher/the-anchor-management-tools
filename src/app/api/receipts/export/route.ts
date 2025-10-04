@@ -177,6 +177,16 @@ async function buildSummaryPdf(
   const lineSpacing = 10
   const rowGap = 5
 
+  const columnDefs = [
+    { key: 'date', label: 'Date', width: 60 },
+    { key: 'details', label: 'Details', width: 200 },
+    { key: 'vendor', label: 'Vendor', width: 110 },
+    { key: 'expense', label: 'Expense type', width: 120 },
+    { key: 'in', label: 'In', width: 60 },
+    { key: 'out', label: 'Out', width: 60 },
+    { key: 'status', label: 'Status', width: 70 },
+  ] as const
+
   drawSummaryGrid({
     total: transactions.length,
     completed: totals['completed'] ?? 0,
@@ -285,16 +295,6 @@ async function buildSummaryPdf(
       cursorY = rowY - 12
     }
   }
-
-  const columnDefs = [
-    { key: 'date', label: 'Date', width: 60 },
-    { key: 'details', label: 'Details', width: 200 },
-    { key: 'vendor', label: 'Vendor', width: 110 },
-    { key: 'expense', label: 'Expense type', width: 120 },
-    { key: 'in', label: 'In', width: 60 },
-    { key: 'out', label: 'Out', width: 60 },
-    { key: 'status', label: 'Status', width: 70 },
-  ] as const
 
   function drawHeaderRow() {
     let offsetX = margin
