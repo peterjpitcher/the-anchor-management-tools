@@ -61,7 +61,11 @@ export async function middleware(request: NextRequest) {
   if (isVipHost(request.headers.get('host') || '')) return NextResponse.next()
   if (isPublicPath(request.nextUrl.pathname)) return NextResponse.next()
 
-  const response = NextResponse.next()
+  const response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  })
   const supabase = createMiddlewareClient({ req: request, res: response })
 
   const {
