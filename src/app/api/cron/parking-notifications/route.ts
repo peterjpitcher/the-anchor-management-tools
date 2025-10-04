@@ -14,6 +14,7 @@ import { logParkingNotification } from '@/lib/parking/repository'
 import type { ParkingBooking } from '@/types/parking'
 import { fromZonedTime, toZonedTime } from 'date-fns-tz'
 import { startOfDay, endOfDay } from 'date-fns'
+import { authorizeCronRequest } from '@/lib/cron-auth'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -21,7 +22,9 @@ export const revalidate = 0
 const LONDON_TZ = 'Europe/London'
 
 export async function GET(request: Request) {
-  if (!isAuthorised(request)) {
+  const authResult = authorizeCronRequest(request)
+
+  if (!authResult.authorized) {
     return new NextResponse('Unauthorized', { status: 401 })
   }
 
@@ -45,15 +48,6 @@ export async function GET(request: Request) {
     console.error('Parking notifications cron failed:', error)
     return NextResponse.json({ success: false, error: 'Internal error' }, { status: 500 })
   }
-}
-
-function isAuthorised(request: Request) {
-  if (process.env.NODE_ENV !== 'production') {
-    return true
-  }
-  const authHeader = request.headers.get('authorization')
-  const cronSecret = process.env.CRON_SECRET
-  return !!cronSecret && authHeader === `Bearer ${cronSecret}`
 }
 
 async function processPaymentReminders(supabase: ReturnType<typeof createAdminClient>, now: Date) {

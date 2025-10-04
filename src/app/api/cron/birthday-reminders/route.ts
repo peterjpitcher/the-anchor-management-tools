@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendBirthdayRemindersInternal } from '@/app/actions/employee-birthdays';
+import { authorizeCronRequest } from '@/lib/cron-auth';
 
 export async function GET(request: NextRequest) {
   try {
     // Verify this is coming from Vercel Cron (in production)
-    const authHeader = request.headers.get('authorization');
-    if (process.env.NODE_ENV === 'production' && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    const authResult = authorizeCronRequest(request);
+    if (!authResult.authorized) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

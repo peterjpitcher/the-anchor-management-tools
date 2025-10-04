@@ -24,7 +24,7 @@ function LoginForm() {
   const redirectParam = searchParams?.get('redirectedFrom') ?? searchParams?.get('next')
   const redirectTo = useMemo(() => {
     if (!redirectParam) {
-      return '/events'
+      return '/dashboard'
     }
 
     try {
@@ -36,7 +36,7 @@ function LoginForm() {
       // fall through to default
     }
 
-    return '/events'
+    return '/dashboard'
   }, [redirectParam])
 
   useEffect(() => {

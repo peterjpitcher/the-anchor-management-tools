@@ -1,27 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { headers } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/server'
 import { logAuditEvent } from '@/app/actions/audit'
+import { authorizeCronRequest } from '@/lib/cron-auth'
 
 export async function GET(request: NextRequest) {
   console.log('[Cron] Customer labels endpoint called')
   
   try {
     // Verify this is a Vercel cron request
-    const headersList = await headers()
-    const authHeader = headersList.get('authorization')
-    
-    // Verify this is a Vercel cron request
-    if (process.env.NODE_ENV === 'production') {
-      const cronSecret = process.env.CRON_SECRET;
-      if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-        console.error('[Cron] Authorization failed. Auth header:', authHeader?.substring(0, 30) + '...')
-        console.error('[Cron] Expected CRON_SECRET to be set');
-        return NextResponse.json(
-          { error: 'Unauthorized' },
-          { status: 401 }
-        )
-      }
+    const authResult = authorizeCronRequest(request)
+
+    if (!authResult.authorized) {
+      console.error('[Cron] Authorization failed. Missing cron credentials')
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      )
     }
 
     console.log('[Cron] Starting customer label application')

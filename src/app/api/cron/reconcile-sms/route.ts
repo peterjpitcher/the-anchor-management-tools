@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import twilio from 'twilio'
 import { mapTwilioStatus, isMessageStuck, formatErrorMessage } from '@/lib/sms-status'
+import { authorizeCronRequest } from '@/lib/cron-auth'
 
 export async function GET(request: NextRequest) {
   console.log('[CRON] SMS Reconciliation starting at', new Date().toISOString())
   
-  // Verify cron secret
-  const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const authResult = authorizeCronRequest(request)
+
+  if (!authResult.authorized) {
     console.error('[CRON] Unauthorized reconciliation attempt')
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
