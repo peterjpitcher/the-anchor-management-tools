@@ -37,7 +37,7 @@ function ResetPasswordForm() {
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/recover`,
+        redirectTo: `${window.location.origin}/auth/confirm?next=/auth/reset`,
       })
 
       if (error) throw error

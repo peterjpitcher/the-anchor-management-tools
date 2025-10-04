@@ -1,78 +1,81 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
 
-function hasSupabaseSessionCookie(request: NextRequest) {
-  return request.cookies.getAll().some((cookie) => {
-    if (!cookie.value) {
-      return false
-    }
+const PUBLIC_PATH_PREFIXES = [
+  '/_next',
+  '/static',
+  '/auth',
+  '/error',
+  '/privacy',
+  '/booking-confirmation',
+  '/booking-success',
+  '/table-booking',
+  '/parking/guest',
+  '/api',
+]
 
-    return cookie.name.startsWith('sb-') && cookie.name.includes('-auth-token')
-  })
+function isPublicPath(pathname: string) {
+  if (pathname === '/') return true
+  if (pathname.includes('.')) return true
+  return PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+}
+
+function isVipHost(hostname: string) {
+  return hostname === 'vip-club.uk' || hostname.endsWith('.vip-club.uk')
 }
 
 export async function middleware(request: NextRequest) {
-  const path = request.nextUrl.pathname
   const hostname = request.headers.get('host') || ''
-  
-  // Bypass auth for short-link host so Vercel rewrite to /api/redirect works
-  // Without this, requests like https://vip-club.uk/ABC hit middleware on 
-  // the original path ("/ABC") and get redirected to login before the rewrite
-  if (hostname.includes('vip-club.uk')) {
-    return NextResponse.next()
-  }
-  
-  // Skip middleware for:
-  // - Static assets
-  // - API routes (especially webhooks)
-  // - Auth pages
-  // - Public pages
-  // - Loyalty demo pages
-  // - Booking confirmation pages (public access for customers)
-  // - Table booking payment pages (public access for customers)
-  if (
-    path.startsWith('/_next') ||
-    path.startsWith('/static') ||
-    path.includes('.') ||
-    path.startsWith('/api') || // Allow ALL API routes without auth check
-    path.startsWith('/auth') ||
-    path.startsWith('/error') ||
-    path.startsWith('/privacy') ||
-    // path.startsWith('/loyalty') || // Loyalty removed
-    path.startsWith('/booking-confirmation') || // Allow public booking confirmation
-    path.startsWith('/booking-success') || // Allow public booking success page
-    path.startsWith('/table-booking') || // Allow public table booking pages
-    path.startsWith('/parking/guest') // Allow public parking guest confirmation pages
-  ) {
+  if (isVipHost(hostname)) {
     return NextResponse.next()
   }
 
-  if (!hasSupabaseSessionCookie(request)) {
+  if (isPublicPath(request.nextUrl.pathname)) {
+    return NextResponse.next()
+  }
+
+  const response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  })
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name) {
+          return request.cookies.get(name)?.value
+        },
+        set(name, value, options) {
+          response.cookies.set({ name, value, ...options })
+        },
+        remove(name, options) {
+          response.cookies.delete({ name, ...options })
+        },
+      },
+    }
+  )
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
     const redirectUrl = request.nextUrl.clone()
     redirectUrl.pathname = '/auth/login'
-    const target = request.nextUrl.pathname + (request.nextUrl.search || '')
-    redirectUrl.searchParams.set('redirectedFrom', target)
+    redirectUrl.searchParams.set(
+      'redirectedFrom',
+      request.nextUrl.pathname + (request.nextUrl.search || '')
+    )
     return NextResponse.redirect(redirectUrl)
   }
 
-  return NextResponse.next()
+  return response
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - api (ALL API routes should bypass auth middleware)
-     * - auth (authentication pages)
-     * - privacy (public pages)
-     * - loyalty (removed)
-     * - booking-confirmation (public booking confirmation pages)
-     * - booking-success (public booking success pages)
-     * - table-booking (public table booking pages)
-     */
-    '/((?!_next/static|_next/image|favicon.ico|api|auth|privacy|booking-confirmation|booking-success|table-booking|parking/guest).*)',
-  ],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 }
