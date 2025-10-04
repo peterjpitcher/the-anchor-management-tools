@@ -9,7 +9,7 @@ import { logger } from '@/lib/logger'
 
 const updateSeatsSchema = z.object({
   bookingId: z.string().uuid('Invalid booking ID'),
-  seats: z.number().min(0, 'Seats cannot be negative').max(100, 'Cannot book more than 100 seats')
+  seats: z.number().min(0, 'Tickets cannot be negative').max(100, 'Cannot book more than 100 tickets')
 })
 
 /**
@@ -112,7 +112,7 @@ export async function updateBookingSeats(bookingId: string, newSeats: number) {
       error: error as Error,
       metadata: { bookingId, newSeats }
     })
-    return { error: 'Failed to update booking seats' }
+    return { error: 'Failed to update tickets for this booking' }
   }
 }
 

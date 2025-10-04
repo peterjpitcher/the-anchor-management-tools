@@ -21,7 +21,7 @@ export async function getLoyalCustomers(supabase: SupabaseClient): Promise<strin
   const { data: bookings, error } = await supabase
     .from('bookings')
     .select('customer_id, event:events(date)')
-    .gt('seats', 0) // Only consider bookings with actual seats reserved
+    .gt('seats', 0) // Only consider bookings with actual tickets reserved
     .gte('event.date', toLocalIsoDate(oneMonthAgo))
     .lte('event.date', toLocalIsoDate(oneMonthAhead))
 

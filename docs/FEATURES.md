@@ -62,11 +62,11 @@ The Anchor Management Tools is a comprehensive venue management system that stre
 **Event Types Supported**:
 - Regular events (open capacity)
 - Limited capacity events
-- Reminder-only registrations (0 seats)
+- Reminder-only registrations (0 tickets)
 
 **Booking Integration**:
 - One booking per customer per event
-- Seats tracking (0 = reminder only)
+- Tickets tracking (0 = reminder only)
 - Optional booking notes
 - Direct booking from event page
 - SMS confirmation on booking
@@ -164,7 +164,7 @@ The Anchor Management Tools is a comprehensive venue management system that stre
 **Booking Confirmation** (Immediate):
 ```
 Hi [Name], your booking for [Event] on [Date] at [Time] 
-is confirmed. We've reserved [X] seat(s) for you. 
+is confirmed. We've reserved [X] ticket(s) for you. 
 Reply to this message if you need to make any changes. 
 The Anchor.
 ```
@@ -172,7 +172,7 @@ The Anchor.
 **7-Day Reminder** (All customers):
 ```
 Hi [Name], don't forget, we've got our [Event] on [Date] 
-at [Time]! If you'd like to book seats, WhatsApp/Call 
+at [Time]! If you'd like to book tickets, WhatsApp/Call 
 01753682707. The Anchor.
 ```
 
@@ -513,7 +513,7 @@ NEXT_PUBLIC_CONTACT_PHONE_NUMBER
 3. Save event
 4. From event page, click "Add Booking"
 5. Search/select customer
-6. Enter seats and notes
+6. Enter tickets and notes
 7. Save - SMS confirmation sent automatically
 
 ### Processing a Private Booking

@@ -5,7 +5,7 @@
 The Booking Initiation API allows external websites to initiate bookings for events at The Anchor. This API implements a two-step confirmation process:
 
 1. **Initiate Booking**: Submit a mobile number and event ID to start the booking process
-2. **Confirm Booking**: Customer receives an SMS with a shortened link to confirm their booking and specify the number of seats
+2. **Confirm Booking**: Customer receives an SMS with a shortened link to confirm their booking and specify the number of tickets
 
 ## Authentication
 
@@ -127,7 +127,7 @@ When a booking is initiated:
 When customers click the shortened link, they are redirected to a confirmation page where they:
 
 1. **New Customers**: Enter their first and last name
-2. **All Customers**: Select the number of seats (1-10)
+2. **All Customers**: Select the number of tickets (1-10)
 3. Click "Confirm Booking" to complete the process
 
 After confirmation:
@@ -156,7 +156,7 @@ All error responses follow this format:
 - `NOT_FOUND`: Resource not found
 - `EVENT_NOT_AVAILABLE`: Event is cancelled or not scheduled
 - `EVENT_FULL`: No available capacity
-- `INSUFFICIENT_CAPACITY`: Not enough seats for requested amount
+- `INSUFFICIENT_CAPACITY`: Not enough tickets for requested amount
 - `SMS_OPT_OUT`: Customer has opted out of SMS
 - `DATABASE_ERROR`: Database operation failed
 - `SYSTEM_ERROR`: Internal server error

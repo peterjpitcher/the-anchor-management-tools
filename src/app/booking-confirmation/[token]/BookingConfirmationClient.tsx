@@ -242,7 +242,7 @@ export default function BookingConfirmationClient({
               </Alert>
             )}
 
-            <FormGroup label="Number of Seats">
+            <FormGroup label="Number of Tickets">
               <div className="flex items-center gap-4">
                 <Users className="h-5 w-5 text-gray-500" />
                 <Select
@@ -251,7 +251,7 @@ export default function BookingConfirmationClient({
                   onChange={(e) => setSeats(Number(e.target.value))}
                   options={[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => ({
                     value: num.toString(),
-                    label: `${num} ${num === 1 ? 'seat' : 'seats'}`,
+                    label: `${num} ${num === 1 ? 'ticket' : 'tickets'}`,
                   }))}
                 />
               </div>

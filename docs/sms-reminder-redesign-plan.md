@@ -9,7 +9,7 @@
 ## Reminder Cadence
 | Flow | Trigger | Reminder Types | Send Time |
 | --- | --- | --- | --- |
-| Booking confirmation | Booking created (seats > 0) | `booking_confirmation` | Immediately (scheduled at `now`) |
+| Booking confirmation | Booking created (tickets > 0) | `booking_confirmation` | Immediately (scheduled at `now`) |
 | Booked guests follow-up | 1 month/1 week/1 day before | `booked_1_month`, `booked_1_week`, `booked_1_day` | 10:00 Europe/London |
 | Reminder-only guests | 1 month/1 week/1 day before | `reminder_invite_1_month`, `reminder_invite_1_week`, `reminder_invite_1_day` | 10:00 Europe/London |
 | Staff-triggered sends | Ad-hoc batched jobs | use same scheduler via explicit API (future step) |
@@ -31,7 +31,7 @@ Late bookings (<7 days) skip the month/week cadence; <1 day skip all but confirm
    - Confirm `booking_reminders` rows populate `event_id` & `target_phone` and no duplicates violate the new unique index.
 
 2. **Scheduler Smoke Test**
-   - Seed three bookings for a test event (60 days out, 10 days out, 2 days out) covering seats >0 and reminder-only.
+   - Seed three bookings for a test event (60 days out, 10 days out, 2 days out) covering tickets >0 and reminder-only.
    - Call `scheduleAndProcessBookingReminders` for each.
    - Inspect `booking_reminders` table; month/week entries should only exist when scheduled time is future, confirmation rows should mark as `sent`.
 

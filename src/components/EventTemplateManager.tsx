@@ -24,9 +24,9 @@ const TEMPLATE_TYPES = {
   booking_confirmation: 'Booking Confirmation',
   reminder_7_day: '7-Day Reminder',
   reminder_24_hour: '24-Hour Reminder',
-  booking_reminder_confirmation: 'Booking Reminder Confirmation (0 seats)',
-  booking_reminder_7_day: '7-Day Booking Reminder (0 seats)',
-  booking_reminder_24_hour: '24-Hour Booking Reminder (0 seats)'
+  booking_reminder_confirmation: 'Booking Reminder Confirmation (0 tickets)',
+  booking_reminder_7_day: '7-Day Booking Reminder (0 tickets)',
+  booking_reminder_24_hour: '24-Hour Booking Reminder (0 tickets)'
 }
 
 const AVAILABLE_VARIABLES = {
@@ -35,7 +35,7 @@ const AVAILABLE_VARIABLES = {
   event_name: 'Event name',
   event_date: 'Event date (formatted)',
   event_time: 'Event time',
-  seats: 'Number of seats booked',
+  seats: 'Number of tickets booked',
   venue_name: 'Venue name',
   contact_phone: 'Contact phone number'
 }

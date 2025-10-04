@@ -47,7 +47,7 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
   const rawMonth = typeof resolvedParams?.month === 'string' ? resolvedParams.month : undefined
   const month = resolveMonthParam(rawMonth)
 
-  const filters: ReceiptWorkspaceFilters = {
+  let filters: ReceiptWorkspaceFilters = {
     status: status !== 'all' ? status : undefined,
     direction: direction !== 'all' ? direction : undefined,
     search: search ? search : undefined,
@@ -59,7 +59,21 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
     sortDirection,
   }
 
-  const data = await getReceiptWorkspaceData(filters)
+  let data = await getReceiptWorkspaceData(filters)
+
+  if (
+    !rawMonth &&
+    data.transactions.length === 0 &&
+    data.availableMonths.length > 0 &&
+    !data.availableMonths.includes(month)
+  ) {
+    const fallbackMonth = data.availableMonths[0]
+    filters = {
+      ...filters,
+      month: fallbackMonth,
+    }
+    data = await getReceiptWorkspaceData(filters)
+  }
 
   return (
     <PageWrapper>
@@ -77,7 +91,7 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
             showOnlyOutstanding,
             missingVendorOnly,
             missingExpenseOnly,
-            month,
+            month: filters.month ?? month,
             sortBy,
             sortDirection,
           }}

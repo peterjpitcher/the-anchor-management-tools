@@ -237,9 +237,9 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
 
     // Add active bookings
     if (activeBookings.length > 0) {
-      text += `Attendees (${totalSeats} seats):\n`
+      text += `Attendees (${totalSeats} tickets):\n`
       activeBookings.forEach((booking, index) => {
-        text += `${index + 1}. ${booking.customer.first_name} ${booking.customer.last_name} - ${booking.seats} ${booking.seats === 1 ? 'seat' : 'seats'}\n`
+        text += `${index + 1}. ${booking.customer.first_name} ${booking.customer.last_name} - ${booking.seats} ${booking.seats === 1 ? 'ticket' : 'tickets'}\n`
       })
     } else {
       text += 'No attendees yet.\n'
@@ -363,10 +363,10 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
     },
     {
       key: 'seats',
-      header: 'Seats',
+      header: 'Tickets',
       cell: (booking) => (
         <Badge variant="success" size="sm" className="whitespace-nowrap">
-          {booking.seats} {booking.seats === 1 ? 'Seat' : 'Seats'}
+          {booking.seats} {booking.seats === 1 ? 'Ticket' : 'Tickets'}
         </Badge>
       ),
       width: 'auto',
@@ -496,7 +496,7 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
               <div className="flex items-center gap-2">
                 {type === 'booking' && (
                   <Badge variant="success" size="sm" className="whitespace-nowrap">
-                    {booking.seats} {booking.seats === 1 ? 'Seat' : 'Seats'}
+                    {booking.seats} {booking.seats === 1 ? 'Ticket' : 'Tickets'}
                   </Badge>
                 )}
                 <button
@@ -609,7 +609,7 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
                     <span className="ml-2 font-medium">{event.capacity || 'Unlimited'}</span>
                   </div>
                   <div>
-                    <span className="text-gray-500">Total Seats:</span>
+                    <span className="text-gray-500">Total Tickets:</span>
                     <span className="ml-2 font-medium">{totalSeats}</span>
                   </div>
                 </div>
@@ -623,7 +623,7 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
             <div className="space-y-6">
               <Section
                 title={`Active Bookings (${activeBookings.length})`}
-                description={`${totalSeats} seats booked${event.capacity ? ` of ${event.capacity}` : ''}`}
+                description={`${totalSeats} tickets booked${event.capacity ? ` of ${event.capacity}` : ''}`}
                 variant="gray"
               >
                 <BookingTable items={activeBookings} type="booking" />

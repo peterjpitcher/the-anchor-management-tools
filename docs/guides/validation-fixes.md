@@ -87,7 +87,7 @@ export const eventSchema = z.object({
 export const bookingSchema = z.object({
   event_id: z.string().uuid(),
   customer_id: z.string().uuid(),
-  seats: z.number().min(1, 'At least 1 seat required').max(20, 'Maximum 20 seats per booking'),
+  seats: z.number().min(1, 'At least 1 ticket required').max(20, 'Maximum 20 tickets per booking'),
 });
 
 // Helper functions
@@ -756,7 +756,7 @@ export async function createBooking(formData: FormData) {
 
     if (data.seats > availableSeats) {
       return { 
-        error: `Only ${availableSeats} seats available for this event` 
+        error: `Only ${availableSeats} tickets available for this event` 
       };
     }
 
@@ -826,11 +826,11 @@ BEGIN
   WHERE event_id = NEW.event_id
     AND id != COALESCE(NEW.id, '00000000-0000-0000-0000-000000000000');
 
-  -- Check if enough seats available
+  -- Check if enough tickets available
   v_available_seats := v_event_capacity - v_current_bookings;
   
   IF NEW.seats > v_available_seats THEN
-    RAISE EXCEPTION 'Only % seats available for this event', v_available_seats;
+    RAISE EXCEPTION 'Only % tickets available for this event', v_available_seats;
   END IF;
 
   RETURN NEW;
@@ -1169,8 +1169,8 @@ describe('Customer Schema', () => {
 
 3. **Capacity Validation**
    - [ ] Create event with 10 capacity
-   - [ ] Book 8 seats
-   - [ ] Try booking 3 more - should show "Only 2 seats available"
+   - [ ] Book 8 tickets
+   - [ ] Try booking 3 more - should show "Only 2 tickets available"
    - [ ] Try concurrent bookings
 
 4. **Form Submission**

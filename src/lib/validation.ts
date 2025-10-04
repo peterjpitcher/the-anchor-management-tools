@@ -75,7 +75,7 @@ export const eventSchema = z.object({
 export const bookingSchema = z.object({
   event_id: z.string().uuid(),
   customer_id: z.string().uuid(),
-  seats: z.number().min(1, 'At least 1 seat required').max(20, 'Maximum 20 seats per booking'),
+  seats: z.number().min(1, 'At least 1 ticket required').max(20, 'Maximum 20 tickets per booking'),
 });
 
 // Helper functions

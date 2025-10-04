@@ -33,8 +33,8 @@ export const smsTemplates = {
       day: 'numeric'
     })
     const seatCopy = params.seats > 1
-      ? `${params.seats} seats are reserved for you`
-      : 'your seat is reserved for you'
+      ? `${params.seats} tickets are reserved for you`
+      : 'your ticket is reserved for you'
     return `Hi ${params.firstName}, you're all set for ${params.eventName} on ${formattedDate} at ${params.eventTime} — ${seatCopy}. Need to tweak anything? Just reply or call ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}. The Anchor`
   },
 
@@ -66,8 +66,8 @@ export const smsTemplates = {
       day: 'numeric'
     })
     const seatsLine = params.seats > 1
-      ? `${params.seats} seats are waiting for you`
-      : 'your seat is waiting for you'
+      ? `${params.seats} tickets are waiting for you`
+      : 'your ticket is waiting for you'
     return `Hi ${params.firstName}, we're a week out from ${params.eventName} on ${formattedDate} at ${params.eventTime} — ${seatsLine}. Need more space? Reply and we'll sort it. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
   },
 
@@ -78,8 +78,8 @@ export const smsTemplates = {
     seats: number
   }) => {
     const seatsLine = params.seats > 1
-      ? `${params.seats} seats are ready`
-      : 'your seat is ready'
+      ? `${params.seats} tickets are ready`
+      : 'your ticket is ready'
     return `Hi ${params.firstName}, tomorrow's the night! ${params.eventName} starts at ${params.eventTime} and ${seatsLine}. Anything you need before then? Reply to this message or call ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}. The Anchor`
   },
 
@@ -94,7 +94,7 @@ export const smsTemplates = {
       month: 'long',
       day: 'numeric'
     })
-    return `Hi ${params.firstName}, we'd love to see you at ${params.eventName} on ${formattedDate}. Want us to save you seats? Reply with how many or call ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}. The Anchor`
+    return `Hi ${params.firstName}, we'd love to see you at ${params.eventName} on ${formattedDate}. Want us to save you tickets? Reply with how many or call ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}. The Anchor`
   },
 
   reminderInviteOneWeek: (params: {
@@ -108,7 +108,7 @@ export const smsTemplates = {
       month: 'long',
       day: 'numeric'
     })
-    return `Hi ${params.firstName}, ${params.eventName} is next week on ${formattedDate} at ${params.eventTime}. Fancy joining us? Reply with seats and we'll look after the rest. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
+    return `Hi ${params.firstName}, ${params.eventName} is next week on ${formattedDate} at ${params.eventTime}. Fancy joining us? Reply with tickets and we'll look after the rest. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
   },
 
   reminderInviteOneDay: (params: {
@@ -116,7 +116,7 @@ export const smsTemplates = {
     eventName: string
     eventTime: string
   }) => {
-    return `Hi ${params.firstName}, ${params.eventName} is TOMORROW at ${params.eventTime}. Last chance to grab seats — reply with how many you'd like and we'll keep them aside. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
+    return `Hi ${params.firstName}, ${params.eventName} is TOMORROW at ${params.eventTime}. Last chance to grab tickets — reply with how many you'd like and we'll keep them aside. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
   },
 
   // Legacy reminder - kept for backward compatibility
@@ -130,7 +130,7 @@ export const smsTemplates = {
       month: 'long',
       day: 'numeric',
     })
-    return `Hi ${params.firstName}, don't forget, we've got our ${params.eventName} on ${formattedDate} at ${params.eventTime}! Let us know if you want to book seats. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
+    return `Hi ${params.firstName}, don't forget, we've got our ${params.eventName} on ${formattedDate} at ${params.eventTime}! Let us know if you want to book tickets. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
   },
 
   // No Seats Flow - 2 weeks before
@@ -144,7 +144,7 @@ export const smsTemplates = {
       month: 'long',
       day: 'numeric',
     })
-    return `Hi ${params.firstName}, we'd love to see you at our ${params.eventName} on ${formattedDate} at ${params.eventTime}! Reply with the number of seats you'd like to book or call us on ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}. The Anchor`
+    return `Hi ${params.firstName}, we'd love to see you at our ${params.eventName} on ${formattedDate} at ${params.eventTime}! Reply with the number of tickets you'd like to book or call us on ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}. The Anchor`
   },
 
   // No Seats Flow - 1 week before
@@ -158,7 +158,7 @@ export const smsTemplates = {
       month: 'long',
       day: 'numeric',
     })
-    return `Hi ${params.firstName}, just 1 week until our ${params.eventName} on ${formattedDate} at ${params.eventTime}! Still time to book your seats - just reply with how many you need. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
+    return `Hi ${params.firstName}, just 1 week until our ${params.eventName} on ${formattedDate} at ${params.eventTime}! Still time to book your tickets - just reply with how many you need. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
   },
 
   // No Seats Flow - day before
@@ -167,7 +167,7 @@ export const smsTemplates = {
     eventName: string
     eventTime: string
   }) => {
-    return `Hi ${params.firstName}, our ${params.eventName} is TOMORROW at ${params.eventTime}! Last chance to book - reply NOW with number of seats needed or just turn up. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
+    return `Hi ${params.firstName}, our ${params.eventName} is TOMORROW at ${params.eventTime}! Last chance to book - reply NOW with number of tickets needed or just turn up. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
   },
 
   // Has Seats Flow - 1 week before
@@ -182,7 +182,7 @@ export const smsTemplates = {
       month: 'long',
       day: 'numeric',
     })
-    return `Hi ${params.firstName}, see you next week! You have ${params.seats} seats booked for our ${params.eventName} on ${formattedDate} at ${params.eventTime}. Want to bring more friends? Reply to add extra seats. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
+    return `Hi ${params.firstName}, see you next week! You have ${params.seats} tickets booked for our ${params.eventName} on ${formattedDate} at ${params.eventTime}. Want to bring more friends? Reply to add extra tickets. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
   },
 
   // Has Seats Flow - day before
@@ -192,7 +192,7 @@ export const smsTemplates = {
     eventTime: string
     seats: number
   }) => {
-    return `Hi ${params.firstName}, see you TOMORROW! You have ${params.seats} seats for our ${params.eventName} at ${params.eventTime}. Need to change numbers? Reply to this message or call ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}. The Anchor`
+    return `Hi ${params.firstName}, see you TOMORROW! You have ${params.seats} tickets for our ${params.eventName} at ${params.eventTime}. Need to change numbers? Reply to this message or call ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}. The Anchor`
   },
 
   // Legacy templates - kept for backward compatibility
@@ -203,7 +203,7 @@ export const smsTemplates = {
     seats?: number
   }) => {
     const seatInfo = params.seats
-      ? `and you have ${params.seats} seats booked`
+      ? `and you have ${params.seats} tickets booked`
       : ''
     return `Hi ${params.firstName}, just a reminder that our ${params.eventName} is tomorrow at ${params.eventTime} ${seatInfo}. See you tomorrow! The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
   },
@@ -220,7 +220,7 @@ export const smsTemplates = {
       day: 'numeric',
     })
     const seatInfo = params.seats
-      ? `and you have ${params.seats} seats booked`
+      ? `and you have ${params.seats} tickets booked`
       : ''
     return `Hi ${params.firstName}, just a reminder that our ${params.eventName} is next week on ${formattedDate} at ${params.eventTime} ${seatInfo}. See you here! The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
   },

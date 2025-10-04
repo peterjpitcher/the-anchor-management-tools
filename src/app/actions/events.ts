@@ -404,7 +404,7 @@ export async function updateEvent(id: string, formData: FormData) {
       if (bookings) {
         const totalSeats = bookings.reduce((sum, b) => sum + (b.seats || 0), 0)
         if (totalSeats > data.capacity) {
-          return { error: `Cannot reduce capacity below current bookings (${totalSeats} seats booked)` }
+          return { error: `Cannot reduce capacity below current bookings (${totalSeats} tickets booked)` }
         }
       }
     }
