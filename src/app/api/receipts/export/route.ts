@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
       const files = transaction.receipt_files ?? []
       if (!files?.length) continue
 
-      for (const file of files) {
+      for (const [index, file] of files.entries()) {
         const download = await supabase.storage.from(RECEIPT_BUCKET).download(file.storage_path)
         if (download.error || !download.data) {
           console.warn(`Failed to download receipt ${file.storage_path}:`, download.error)
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
         }
 
         const buffer = await normaliseToBuffer(download.data)
-        const name = buildReceiptFileName(transaction, file)
+        const name = buildReceiptFileName(transaction, file, index)
 
         archive.append(buffer, { name })
       }
@@ -493,19 +493,23 @@ function formatDate(value: string) {
   return new Date(value).toLocaleDateString('en-GB', { timeZone: 'UTC' })
 }
 
-function buildReceiptFileName(transaction: ReceiptTransaction, file: ReceiptFile) {
+function buildReceiptFileName(transaction: ReceiptTransaction, file: ReceiptFile, index: number) {
+  const uniqueSegment = sanitizePathSegment(file.id ?? `${transaction.id ?? 'transaction'}-${index + 1}`, `file-${index + 1}`)
+
   const baseName = file.file_name?.trim()
   if (baseName) {
-    return `receipts/${sanitizeZipFilename(baseName)}`
+    const safeBase = sanitizeZipFilename(baseName, `${uniqueSegment}.pdf`)
+    return `receipts/${uniqueSegment}_${safeBase}`
   }
 
   const amount = transaction.amount_out ?? transaction.amount_in ?? 0
   const amountLabel = amount ? amount.toFixed(2) : '0.00'
   const description = sanitizeDescriptionForFilename(transaction.details ?? '').slice(0, 80) || 'Receipt'
   const extension = file.file_name?.split('.').pop()?.toLowerCase() || 'pdf'
-  const fallback = `${transaction.transaction_date} - ${description} - ${amountLabel}.${extension}`
+  const fallback = `${description}-${amountLabel}.${extension}`
+  const safeFallback = sanitizeZipFilename(fallback, `${uniqueSegment}.pdf`)
 
-  return `receipts/${sanitizeZipFilename(fallback)}`
+  return `receipts/${uniqueSegment}_${safeFallback}`
 }
 
 async function normaliseToBuffer(data: unknown): Promise<Buffer> {
@@ -541,6 +545,18 @@ function sanitizeZipFilename(value: string, fallback = 'receipt.pdf'): string {
     .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
+
+  return cleaned || fallback
+}
+
+function sanitizePathSegment(value: string, fallback: string): string {
+  let cleaned = value
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/\.+/g, '.')
+    .trim()
+
+  cleaned = cleaned.replace(/^\.+/, '').replace(/\.+$/, '')
 
   return cleaned || fallback
 }

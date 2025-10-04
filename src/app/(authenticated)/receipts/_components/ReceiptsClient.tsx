@@ -36,7 +36,7 @@ import type {
   ReceiptExpenseCategory,
 } from '@/types/database'
 import { receiptExpenseCategorySchema } from '@/lib/validation'
-import { DocumentArrowDownIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon, PaperClipIcon, MagnifyingGlassIcon, SparklesIcon } from '@heroicons/react/24/outline'
+import { DocumentArrowDownIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon, MagnifyingGlassIcon, SparklesIcon, PencilSquareIcon } from '@heroicons/react/24/outline'
 
 interface ReceiptsClientProps {
   initialData: ReceiptWorkspaceData
@@ -138,6 +138,9 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   const [isCustomVendor, setIsCustomVendor] = useState(false)
   const [retroScope, setRetroScope] = useState<'pending' | 'all'>('all')
   const [retroRuleId, setRetroRuleId] = useState<string | null>(null)
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>(() => ({}))
+  const noteInputsRef = useRef<Record<string, HTMLInputElement | null>>({})
 
   const { rules, knownVendors, availableMonths } = initialData
   const [transactions, setTransactions] = useState(initialData.transactions)
@@ -150,6 +153,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   useEffect(() => {
     setSummary(initialData.summary)
   }, [initialData.summary])
+
   type SortColumn = NonNullable<ReceiptWorkspaceFilters['sortBy']>
   type WorkspaceTransaction = ReceiptWorkspaceData['transactions'][number]
   const currentSortBy = (initialFilters.sortBy ?? 'transaction_date') as SortColumn
@@ -554,7 +558,12 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
     startRowTransition(async () => {
       const previousTransaction = transactions.find((tx) => tx.id === transactionId)
       try {
-        const result = await markReceiptTransaction({ transactionId, status })
+        const result = await markReceiptTransaction({
+          transactionId,
+          status,
+          note: previousTransaction?.notes ?? undefined,
+          receiptRequired: previousTransaction?.receipt_required,
+        })
         if (!result || result.error || !result.transaction) {
           toast.error(result?.error ?? 'Failed to update the transaction.')
           return
@@ -587,12 +596,25 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           })
         })
 
+        setNoteDrafts((prev) => {
+          const next = { ...prev }
+          if (updatedTransaction.notes) {
+            next[transactionId] = updatedTransaction.notes
+          } else {
+            delete next[transactionId]
+          }
+          return next
+        })
+
         if (!shouldKeep) {
           delete fileInputsRef.current[transactionId]
           setEditingCell((cell) => (cell?.id === transactionId ? null : cell))
           if (classificationTargetId === transactionId) {
             setClassificationTargetId(null)
             setClassificationDraft('')
+          }
+          if (editingNoteId === transactionId) {
+            setEditingNoteId(null)
           }
         }
 
@@ -622,6 +644,188 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
         setActiveTransactionId(null)
       }
     })
+  }
+
+  function handleNoteEdit(transaction: WorkspaceTransaction) {
+    setEditingNoteId(transaction.id)
+    setNoteDrafts((prev) => ({
+      ...prev,
+      [transaction.id]: (() => {
+        if (!transaction.notes) return ''
+        const [, ...rest] = transaction.notes.split(' — ')
+        return rest.join(' — ').trim()
+      })(),
+    }))
+    requestAnimationFrame(() => {
+      const input = noteInputsRef.current[transaction.id]
+      if (input) {
+        input.focus()
+        const length = input.value.length
+        input.setSelectionRange(length, length)
+      }
+    })
+  }
+
+  function handleNoteChange(transactionId: string, value: string) {
+    setNoteDrafts((prev) => ({
+      ...prev,
+      [transactionId]: value,
+    }))
+  }
+
+  function handleNoteCancel(transactionId: string) {
+    setEditingNoteId((current) => (current === transactionId ? null : current))
+    setNoteDrafts((prev) => {
+      const { [transactionId]: _removed, ...rest } = prev
+      return rest
+    })
+  }
+
+  async function handleNoteSave(transaction: WorkspaceTransaction) {
+    const draftValue = noteDrafts[transaction.id] ?? ''
+    const trimmedValue = draftValue.trim()
+    const existingNote = transaction.notes?.trim() ?? ''
+    const timestampPrefix = new Date().toLocaleString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+    const formattedNote = trimmedValue.length ? `${timestampPrefix} — ${trimmedValue}` : ''
+
+    if (existingNote === formattedNote) {
+      setEditingNoteId(null)
+      setNoteDrafts((prev) => {
+        const next = { ...prev }
+        delete next[transaction.id]
+        return next
+      })
+      return
+    }
+
+    setActiveTransactionId(transaction.id)
+    startRowTransition(async () => {
+      try {
+        const result = await markReceiptTransaction({
+          transactionId: transaction.id,
+          status: transaction.status,
+          note: formattedNote.length ? formattedNote : undefined,
+          receiptRequired: transaction.receipt_required,
+        })
+
+        if (!result || result.error || !result.transaction) {
+          toast.error(result?.error ?? 'Failed to save note.')
+          return
+        }
+
+        const updatedTransaction = result.transaction as ReceiptTransaction
+
+        setTransactions((prev) => prev.map((tx) => {
+          if (tx.id !== transaction.id) return tx
+          return {
+            ...tx,
+            ...updatedTransaction,
+            files: tx.files,
+            autoRule: tx.autoRule,
+          }
+        }))
+
+        setNoteDrafts((prev) => {
+          const { [transaction.id]: _removed, ...rest } = prev
+          return rest
+        })
+        setEditingNoteId(null)
+        toast.success('Note saved')
+      } catch (error) {
+        console.error('Failed to save receipt note', error)
+        toast.error('Failed to save note.')
+      } finally {
+        setActiveTransactionId(null)
+      }
+    })
+  }
+
+  function renderNotesSection(transaction: WorkspaceTransaction, variant: 'table' | 'card' = 'table') {
+    const isEditing = editingNoteId === transaction.id
+    const noteDraft = noteDrafts[transaction.id] ?? transaction.notes ?? ''
+    const isProcessing = activeTransactionId === transaction.id && isRowPending
+    const displayNote = transaction.notes?.trim() ?? ''
+
+    if (isEditing) {
+      return (
+        <div className="space-y-2">
+          <input
+            ref={(element) => {
+              noteInputsRef.current[transaction.id] = element
+            }}
+            value={noteDraft}
+            onChange={(event) => handleNoteChange(transaction.id, event.target.value.replace(/\n/g, ''))}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                handleNoteSave(transaction)
+              }
+            }}
+            maxLength={500}
+            placeholder="Add a short note (optional)"
+            disabled={isProcessing}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-emerald-500"
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="xs"
+              onClick={() => handleNoteSave(transaction)}
+              disabled={isProcessing}
+            >
+              {isProcessing && <Spinner className="mr-2 h-3 w-3" />}Save note
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              onClick={() => handleNoteCancel(transaction.id)}
+              disabled={isProcessing}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )
+    }
+
+    if (displayNote) {
+      const [noteTimestamp, ...bodyParts] = displayNote.split(' — ')
+      const noteBody = bodyParts.join(' — ').trim()
+      const hasFormatted = bodyParts.length > 0 && noteTimestamp && noteBody
+      return (
+        <div className="space-y-1">
+          {hasFormatted && (
+            <p className="text-[11px] uppercase tracking-wide text-gray-500">{noteTimestamp}</p>
+          )}
+          <p className={`whitespace-pre-wrap break-words ${variant === 'card' ? 'text-[13px] text-gray-700' : 'text-sm text-gray-700'}`}>
+            {hasFormatted ? noteBody : displayNote}
+          </p>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+            <Button type="button" variant="ghost" size="xs" onClick={() => handleNoteEdit(transaction)}>
+              <PencilSquareIcon className="mr-1 h-4 w-4" /> Edit
+            </Button>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        size="xs"
+        onClick={() => handleNoteEdit(transaction)}
+      >
+        Add note
+      </Button>
+    )
   }
 
   function handleUploadClick(transactionId: string) {
@@ -1397,6 +1601,8 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
                     <div className="text-sm leading-tight text-gray-900">{renderExpenseField(transaction, 'card')}</div>
                     <span className="font-semibold uppercase tracking-wide leading-none">Receipts</span>
                     <div className="text-sm leading-tight text-gray-900">{renderReceiptsSection(transaction, 'card')}</div>
+                    <span className="font-semibold uppercase tracking-wide leading-none">Notes</span>
+                    <div className="text-sm leading-tight text-gray-900">{renderNotesSection(transaction, 'card')}</div>
                   </div>
 
                   <div className="mt-1 border-t border-gray-100 pt-1">
@@ -1465,13 +1671,14 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
                   </th>
                   <th className="px-4 py-3 w-48">Status</th>
                   <th className="px-4 py-3">Receipts</th>
+                  <th className="px-4 py-3">Notes</th>
                   <th className="px-4 py-3">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
                 {transactions.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-4 py-6 text-center text-gray-500">No transactions match your filters.</td>
+                    <td colSpan={10} className="px-4 py-6 text-center text-gray-500">No transactions match your filters.</td>
                   </tr>
                 )}
                 {transactions.map((transaction) => (
@@ -1492,6 +1699,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
                     <td className="px-4 py-3 text-right tabular-nums">{formatCurrency(transaction.amount_out)}</td>
                     <td className="px-4 py-3 min-w-[12rem]">{renderStatusSection(transaction)}</td>
                     <td className="px-4 py-3 align-top">{renderReceiptsSection(transaction)}</td>
+                    <td className="px-4 py-3 align-top">{renderNotesSection(transaction)}</td>
                     <td className="px-4 py-3 align-top">{renderActionButtons(transaction)}</td>
                   </tr>
                 ))}
