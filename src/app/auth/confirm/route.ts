@@ -23,10 +23,10 @@ function decodeState(raw?: string | null) {
 
 function sanitizeNext(next?: string | null) {
   const cleaned = (next ?? '').trim()
-  if (!cleaned || !cleaned.startsWith('/')) {
-    return '/auth/reset'
-  }
-  return cleaned
+  if (!cleaned) return '/auth/reset'
+  const collapsed = cleaned.replace(/\s+/g, '')
+  if (!collapsed.startsWith('/')) return '/auth/reset'
+  return collapsed
 }
 
 export function HEAD() {
