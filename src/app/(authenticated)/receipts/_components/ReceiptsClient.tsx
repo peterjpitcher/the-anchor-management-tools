@@ -36,7 +36,7 @@ import type {
   ReceiptExpenseCategory,
 } from '@/types/database'
 import { receiptExpenseCategorySchema } from '@/lib/validation'
-import { DocumentArrowDownIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon, MagnifyingGlassIcon, SparklesIcon } from '@heroicons/react/24/outline'
+import { DocumentArrowDownIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon, PaperClipIcon, MagnifyingGlassIcon, SparklesIcon } from '@heroicons/react/24/outline'
 
 interface ReceiptsClientProps {
   initialData: ReceiptWorkspaceData
