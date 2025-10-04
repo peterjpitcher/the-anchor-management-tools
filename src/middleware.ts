@@ -25,6 +25,18 @@ function isVipHost(hostname: string) {
   return hostname === 'vip-club.uk' || hostname.endsWith('.vip-club.uk')
 }
 
+function sanitizeRedirectTarget(url: URL) {
+  try {
+    const decodedPath = decodeURIComponent(url.pathname).trim()
+    const collapsedPath = decodedPath.replace(/\s+/g, '')
+    const finalPath = collapsedPath.startsWith('/') ? collapsedPath : '/dashboard'
+    const search = url.search ? url.search.replace(/\s+/g, '') : ''
+    return finalPath + search
+  } catch {
+    return '/dashboard'
+  }
+}
+
 export async function middleware(request: NextRequest) {
   const hostname = request.headers.get('host') || ''
   if (isVipHost(hostname)) {
@@ -46,10 +58,7 @@ export async function middleware(request: NextRequest) {
   if (!user) {
     const redirectUrl = request.nextUrl.clone()
     redirectUrl.pathname = '/auth/login'
-    redirectUrl.searchParams.set(
-      'redirectedFrom',
-      request.nextUrl.pathname + (request.nextUrl.search || '')
-    )
+    redirectUrl.searchParams.set('redirectedFrom', sanitizeRedirectTarget(request.nextUrl))
     return NextResponse.redirect(redirectUrl)
   }
 
