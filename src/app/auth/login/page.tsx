@@ -28,10 +28,10 @@ function LoginForm() {
     }
 
     try {
-      const decoded = decodeURIComponent(redirectParam)
-      if (decoded.startsWith('/')) {
-        return decoded
-      }
+      const decoded = decodeURIComponent(redirectParam).trim()
+      if (!decoded.startsWith('/')) return '/dashboard'
+      const collapsed = decoded.replace(/\s+/g, '')
+      return collapsed.startsWith('/') ? collapsed : '/dashboard'
     } catch {
       // fall through to default
     }
