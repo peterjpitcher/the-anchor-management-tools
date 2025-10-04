@@ -6,6 +6,7 @@
 - Password reset emails now send users to `/auth/recover`; ensure DNS + HTTPS is valid so Supabase treats the origin as secure.
 - Recovery flow expects the `type=recovery` fragment or a one-time `code`; both lead to an exchange before presenting the password form.
 - The page preserves an optional `redirectedFrom` path (validated to stay on-site) so users resume where they left off after resetting their password.
+- If a user reports "Link not recognised", capture the full URL they landed on and check the browser console for an `Unsupported password recovery payload` warning—this means the link was stripped of its tokens (often by email relay/safelinks) or is stale; request a fresh reset email.
 
 ## Sessions in Middleware
 - `src/middleware.ts` calls the auth helper to refresh sessions on every request.

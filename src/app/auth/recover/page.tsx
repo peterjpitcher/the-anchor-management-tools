@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Image from 'next/image'
@@ -55,16 +55,34 @@ function RecoverPasswordContent() {
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [errorDetails, setErrorDetails] = useState<string | null>(null)
+  const handledRef = useRef(false)
 
   useEffect(() => {
+    if (handledRef.current) {
+      return
+    }
+
+    handledRef.current = true
+
     async function handleRecovery() {
       const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
       const queryParams = new URLSearchParams(window.location.search)
 
-      const type = hashParams.get('type') || queryParams.get('type')
-      const accessToken = hashParams.get('access_token')
-      const refreshToken = hashParams.get('refresh_token')
-      const code = queryParams.get('code')
+      const type = (hashParams.get('type') || queryParams.get('type') || '').toLowerCase()
+      const accessToken = hashParams.get('access_token') || queryParams.get('access_token')
+      const refreshToken = hashParams.get('refresh_token') || queryParams.get('refresh_token')
+      const code = queryParams.get('code') || hashParams.get('code')
+      const token = queryParams.get('token') || queryParams.get('token_hash') || hashParams.get('token')
+      const emailFromParams = queryParams.get('email') || hashParams.get('email') || searchParams?.get('email') || undefined
+      const errorDescription = hashParams.get('error_description') || queryParams.get('error_description')
+
+      if (errorDescription) {
+        console.error('Supabase recovery error:', errorDescription)
+        setErrorDetails(errorDescription)
+        setState('expired')
+        return
+      }
 
       if (type === 'recovery' && accessToken && refreshToken) {
         const { error } = await supabase.auth.setSession({
@@ -74,13 +92,16 @@ function RecoverPasswordContent() {
 
         if (error) {
           console.error('Failed to set recovery session:', error)
+          setErrorDetails(error.message)
           setState('expired')
           return
         }
 
-        // Clean up the URL to avoid leaking tokens
         const cleanUrl = new URL(window.location.href)
         cleanUrl.hash = ''
+        cleanUrl.searchParams.delete('token')
+        cleanUrl.searchParams.delete('token_hash')
+        cleanUrl.searchParams.delete('type')
         window.history.replaceState({}, document.title, cleanUrl.toString())
         setState('ready')
         return
@@ -90,6 +111,7 @@ function RecoverPasswordContent() {
         const { error } = await supabase.auth.exchangeCodeForSession(code)
         if (error) {
           console.error('Failed to exchange code for session:', error)
+          setErrorDetails(error.message)
           setState('expired')
           return
         }
@@ -98,11 +120,52 @@ function RecoverPasswordContent() {
         return
       }
 
+      if (type === 'recovery' && token && emailFromParams) {
+        const { data, error } = await supabase.auth.verifyOtp({
+          type: 'recovery',
+          token,
+          email: emailFromParams,
+        })
+
+        if (error) {
+          console.error('Failed to verify recovery token:', error)
+          setErrorDetails(error.message)
+          setState('expired')
+          return
+        }
+
+        if (data?.session?.access_token && data.session.refresh_token) {
+          const { error: setError } = await supabase.auth.setSession({
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
+          })
+
+          if (setError) {
+            console.error('Failed to persist recovery session:', setError)
+            setErrorDetails(setError.message)
+            setState('expired')
+            return
+          }
+        }
+
+        setState('ready')
+        return
+      }
+
+      console.warn('Unsupported password recovery payload', {
+        type,
+        hasAccessToken: Boolean(accessToken),
+        hasRefreshToken: Boolean(refreshToken),
+        hasCode: Boolean(code),
+        hasToken: Boolean(token),
+        emailProvided: Boolean(emailFromParams),
+      })
+      setErrorDetails('This reset link is missing required information.')
       setState('unsupported')
     }
 
     void handleRecovery()
-  }, [supabase])
+  }, [searchParams, supabase])
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -145,7 +208,7 @@ function RecoverPasswordContent() {
       return (
         <Card className="flex flex-col items-center gap-4 py-12">
           <Spinner size="lg" />
-          <p className="text-center text-sm text-white/80">
+          <p className="text-center text-sm text-gray-600">
             Verifying your password reset link…
           </p>
         </Card>
@@ -156,9 +219,9 @@ function RecoverPasswordContent() {
       return (
         <Card className="py-12">
           <div className="space-y-4 text-center">
-            <h2 className="text-2xl font-semibold text-white">Reset link expired</h2>
-            <p className="text-sm text-white/80">
-              The password reset link is no longer valid. Please request a new reset email.
+            <h2 className="text-2xl font-semibold text-gray-900">Reset link expired</h2>
+            <p className="text-sm text-gray-700">
+              {errorDetails || 'The password reset link is no longer valid. Please request a new reset email.'}
             </p>
             <LinkButton href="/auth/reset-password" size="sm">
               Send new reset email
@@ -172,9 +235,9 @@ function RecoverPasswordContent() {
       return (
         <Card className="py-12">
           <div className="space-y-4 text-center">
-            <h2 className="text-2xl font-semibold text-white">Link not recognised</h2>
-            <p className="text-sm text-white/80">
-              Please open the most recent password reset email from The Anchor and try again.
+            <h2 className="text-2xl font-semibold text-gray-900">Link not recognised</h2>
+            <p className="text-sm text-gray-700">
+              {errorDetails || 'Please open the most recent password reset email from The Anchor and try again.'}
             </p>
             <LinkButton href="/auth/reset-password" size="sm">
               Request reset email
