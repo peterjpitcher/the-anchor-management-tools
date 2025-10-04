@@ -6,10 +6,10 @@ import { useRouter, usePathname } from 'next/navigation'
 import Image from 'next/image'
 import React, { useState, useEffect } from 'react'
 import AddNoteModal from '@/components/modals/AddNoteModal'
-import { redirect } from 'next/navigation'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { PermissionProvider } from '@/contexts/PermissionContext'
 import type { User } from '@supabase/supabase-js'
+import { signOut as signOutAction } from '@/app/actions/auth'
 
 function AuthenticatedLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -19,6 +19,7 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isSigningOut, setIsSigningOut] = useState(false)
 
   useEffect(() => {
     const {
@@ -55,7 +56,13 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
     }
   }, [supabase])
 
-  if (loading) {
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace('/auth/login')
+    }
+  }, [loading, user, router])
+
+  if (loading || !user) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-100">
         <p className="text-gray-500">Loading...</p>
@@ -63,13 +70,31 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
     )
   }
 
-  if (!user) {
-    redirect('/login')
-  }
-
   async function handleSignOut() {
-    await supabase.auth.signOut()
-    router.push('/auth/login')
+    if (isSigningOut) {
+      return
+    }
+
+    try {
+      setIsSigningOut(true)
+      const result = await signOutAction()
+
+      if (result?.error) {
+        console.error('Failed to record sign out via server action:', result.error)
+      }
+    } catch (error) {
+      console.error('Server action sign out failed:', error)
+    } finally {
+      try {
+        await supabase.auth.signOut()
+      } catch (error) {
+        console.error('Client sign out failed:', error)
+      }
+
+      router.replace('/auth/login')
+      router.refresh()
+      setIsSigningOut(false)
+    }
   }
 
   const openAddNoteModal = () => setIsAddNoteModalOpen(true)
@@ -131,6 +156,7 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
               <div className="flex flex-shrink-0 border-t border-green-600 p-4">
                 <button
                   onClick={handleSignOut}
+                  disabled={isSigningOut}
                   className="group flex w-full items-center px-2 py-2 text-sm font-medium text-gray-100 hover:bg-green-700 hover:text-white rounded-md"
                 >
                   <ArrowRightOnRectangleIcon
@@ -176,6 +202,7 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
                       handleSignOut()
                       setIsMobileMenuOpen(false)
                     }}
+                    disabled={isSigningOut}
                     className="group flex w-full items-center px-2 py-2 text-sm font-medium text-gray-100 hover:bg-green-700 hover:text-white rounded-md"
                   >
                     <ArrowRightOnRectangleIcon

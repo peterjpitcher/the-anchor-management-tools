@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import Image from 'next/image'
 import { Form, FormActions } from '@/components/ui-v2/forms/Form'
@@ -13,6 +12,7 @@ import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Container } from '@/components/ui-v2/layout/Container'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { signIn as signInAction } from '@/app/actions/auth'
 
 // LoginForm component - Client Component
 function LoginForm() {
@@ -21,8 +21,49 @@ function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
-  const redirectTo = searchParams?.get('redirectedFrom') || '/events'
-  const supabase = createClient()
+  const redirectParam = searchParams?.get('redirectedFrom') ?? searchParams?.get('next')
+  const redirectTo = useMemo(() => {
+    if (!redirectParam) {
+      return '/events'
+    }
+
+    try {
+      const decoded = decodeURIComponent(redirectParam)
+      if (decoded.startsWith('/')) {
+        return decoded
+      }
+    } catch {
+      // fall through to default
+    }
+
+    return '/events'
+  }, [redirectParam])
+
+  useEffect(() => {
+    if (!searchParams) {
+      return
+    }
+
+    const resetStatus = searchParams.get('reset')
+    const callbackError = searchParams.get('error')
+
+    const shouldCleanup = resetStatus === 'success' || callbackError === 'callback'
+
+    if (resetStatus === 'success') {
+      toast.success('Password updated. Please sign in with your new password.')
+    }
+
+    if (callbackError === 'callback') {
+      toast.error('We could not complete the sign-in flow. Please try again.')
+    }
+
+    if (shouldCleanup) {
+      const cleanUrl = new URL(window.location.href)
+      cleanUrl.searchParams.delete('reset')
+      cleanUrl.searchParams.delete('error')
+      window.history.replaceState({}, '', cleanUrl.toString())
+    }
+  }, [searchParams])
 
   // Security check: Clear URL if credentials are exposed
   useEffect(() => {
@@ -57,23 +98,22 @@ function LoginForm() {
     setIsLoading(true)
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      })
+      const result = await signInAction(email.trim(), password)
 
-      if (error) throw error
+      if (result?.error) {
+        toast.error(result.error)
+        return
+      }
 
       toast.success('Logged in successfully')
-      
-      // Use replace to prevent back button issues
+
       router.replace(redirectTo)
       router.refresh()
     } catch (error: unknown) {
       console.error('Error:', error)
       const message = error instanceof Error ? error.message : ''
-      if (message.includes('Invalid login credentials')) {
-        toast.error('Invalid email or password')
+      if (message.includes('Too many login attempts')) {
+        toast.error('Too many login attempts. Please try again later.')
       } else {
         toast.error('Failed to log in. Please try again.')
       }
