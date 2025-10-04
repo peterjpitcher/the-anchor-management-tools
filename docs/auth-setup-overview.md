@@ -30,7 +30,7 @@ This document reflects the hardened setup we now run in production. Key changes 
 `src/middleware.ts` mirrors Supabase’s official Next.js guidance. It refreshes cookies via `getUser()` and redirects unauthenticated traffic to `/auth/login`.
 
 ```ts
-import { createServerClient } from '@supabase/ssr'
+import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
@@ -49,19 +49,8 @@ export async function middleware(request: NextRequest) {
   if (isVipHost(request.headers.get('host') || '')) return NextResponse.next()
   if (isPublicPath(request.nextUrl.pathname)) return NextResponse.next()
 
-  const response = NextResponse.next({ request: { headers: request.headers } })
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get: (name) => request.cookies.get(name)?.value,
-        set: (name, value, options) => response.cookies.set({ name, value, ...options }),
-        remove: (name, options) => response.cookies.delete({ name, ...options }),
-      },
-    }
-  )
+  const response = NextResponse.next()
+  const supabase = createMiddlewareClient({ req: request, res: response })
 
   const {
     data: { user },
