@@ -1507,7 +1507,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           <p className="text-sm text-gray-500">Automatically tick off known transactions (e.g. card settlements).</p>
         </div>
         <Badge variant="secondary">{rules.length} rules</Badge>
-      </div>}>
+      </div>} className="hidden md:block">
         <div className="grid gap-4 lg:grid-cols-2">
           <Card
             variant="bordered"
