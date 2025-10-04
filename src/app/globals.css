@@ -8,19 +8,16 @@
 
 /* Add better page padding on mobile */
 @media (max-width: 640px) {
-  /* Main content area needs padding */
-  main > div:first-child {
+  /* Opt-in helpers so we don't shift every page layout */
+  .mobile-page-padding {
     padding: 0.5rem;
   }
-  
-  /* Ensure cards have proper spacing */
-  .card-mobile,
-  .bg-white.rounded-lg {
+
+  .mobile-card-margin {
     margin: 0.5rem;
   }
-  
-  /* Fix content sections */
-  section {
+
+  .mobile-section-padding {
     padding: 0.75rem;
   }
 }
@@ -74,16 +71,13 @@ nav[aria-label="Mobile navigation"],
 
 /* Fix form input edge padding */
 @media (max-width: 640px) {
-  form input:not([type="checkbox"]):not([type="radio"]),
-  form select,
-  form textarea {
+  .mobile-form-input {
     width: calc(100% - 2rem);
     margin-left: auto;
     margin-right: auto;
   }
-  
-  /* Fix form container padding */
-  form > div {
+
+  .mobile-form-container > div {
     padding-left: 1rem;
     padding-right: 1rem;
   }
