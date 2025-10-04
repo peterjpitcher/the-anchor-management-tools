@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { createClient as createSupabaseMiddlewareClient } from '@/lib/supabase/middleware'
 
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname
@@ -37,18 +38,21 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  const hasSupabaseSession = request.cookies.getAll().some((cookie) =>
-    cookie.name.startsWith('sb-') && cookie.name.endsWith('-auth-token') && cookie.value
-  )
+  const { supabase, response } = createSupabaseMiddlewareClient(request)
+  const {
+    data: { session },
+    error,
+  } = await supabase.auth.getSession()
 
-  if (!hasSupabaseSession) {
+  if (!session || error) {
     const redirectUrl = request.nextUrl.clone()
     redirectUrl.pathname = '/auth/login'
-    redirectUrl.searchParams.set('redirectedFrom', request.nextUrl.pathname)
+    const target = request.nextUrl.pathname + (request.nextUrl.search || '')
+    redirectUrl.searchParams.set('redirectedFrom', target)
     return NextResponse.redirect(redirectUrl)
   }
 
-  return NextResponse.next()
+  return response
 }
 
 export const config = {

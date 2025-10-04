@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import archiver, { type ArchiverError } from 'archiver'
 import { PassThrough } from 'stream'
-import path from 'path'
-import { promises as fs } from 'fs'
-import { PDFDocument, StandardFonts, rgb, type PDFFont } from 'pdf-lib'
+import Papa from 'papaparse'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/server'
 import { receiptQuarterExportSchema } from '@/lib/validation'
@@ -38,7 +36,7 @@ export async function GET(request: NextRequest) {
     const supabase = createAdminClient()
     const { data: transactions, error } = await supabase
       .from('receipt_transactions')
-      .select('*, receipt_files(*), receipt_rules!receipt_transactions_rule_applied_id_fkey(id, name)')
+      .select('*, receipt_files(*)')
       .gte('transaction_date', startDate)
       .lte('transaction_date', endDate)
       .order('transaction_date', { ascending: false })
@@ -50,7 +48,7 @@ export async function GET(request: NextRequest) {
     }
 
     const rows = (transactions ?? []) as ReceiptTransactionRow[]
-    const pdfBuffer = await buildSummaryPdf(rows, parsed.data.year, parsed.data.quarter)
+    const summaryCsv = await buildSummaryCsv(rows, parsed.data.year, parsed.data.quarter)
 
     const archive = archiver('zip', { zlib: { level: 9 } })
     const passthrough = new PassThrough()
@@ -74,8 +72,8 @@ export async function GET(request: NextRequest) {
       })
     })
 
-    archive.append(pdfBuffer, {
-      name: `Receipts_Q${parsed.data.quarter}_${parsed.data.year}.pdf`,
+    archive.append(summaryCsv, {
+      name: `Receipts_Q${parsed.data.quarter}_${parsed.data.year}.csv`,
     })
 
     for (const transaction of rows) {
@@ -122,337 +120,78 @@ export async function GET(request: NextRequest) {
   }
 }
 
-async function buildSummaryPdf(
+async function buildSummaryCsv(
   transactions: ReceiptTransactionRow[],
   year: number,
   quarter: number
 ): Promise<Buffer> {
-  const pdfDoc = await PDFDocument.create()
-  const pageSize: [number, number] = [841.89, 595.28] // A4 landscape in points
-  let page = pdfDoc.addPage(pageSize)
-  const { width, height } = page.getSize()
-  const margin = 36
-  const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica)
-  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
-
-  let cursorY = height - margin
-
-  const logoImage = await loadLogoImage(pdfDoc)
-  if (logoImage) {
-    const logoWidth = 100
-    const logoHeight = (logoImage.height / logoImage.width) * logoWidth
-    page.drawImage(logoImage, {
-      x: margin,
-      y: cursorY - logoHeight,
-      width: logoWidth,
-      height: logoHeight,
-    })
-    cursorY -= logoHeight + 16
-  }
-
-  const drawText = (
-    text: string,
-    options: { x?: number; font?: PDFFont; size?: number; color?: ReturnType<typeof rgb> }
-  ) => {
-    const { x = margin, font = fontRegular, size = 6, color = rgb(0, 0, 0) } = options
-    page.drawText(text, { x, y: cursorY, size, font, color })
-  }
-
-  const ensureSpace = (required: number) => {
-    if (cursorY - required < margin) {
-      page = pdfDoc.addPage(pageSize)
-      cursorY = height - margin
-      drawHeaderRow()
-    }
-  }
-
-  drawText(`Receipts Summary — Q${quarter} ${year}`, { font: fontBold, size: 16 })
-  cursorY -= 24
-
-  const totals = transactions.reduce<Record<string, number>>((acc, tx) => {
-    acc[tx.status] = (acc[tx.status] || 0) + 1
-    return acc
-  }, {})
-
-  const lineSpacing = 10
-  const rowGap = 5
-
-  const columnDefs = [
-    { key: 'date', label: 'Date', width: 60 },
-    { key: 'details', label: 'Details', width: 200 },
-    { key: 'vendor', label: 'Vendor', width: 110 },
-    { key: 'expense', label: 'Expense type', width: 120 },
-    { key: 'in', label: 'In', width: 60 },
-    { key: 'out', label: 'Out', width: 60 },
-    { key: 'status', label: 'Status', width: 70 },
-  ] as const
-
-  drawSummaryGrid({
-    total: transactions.length,
-    completed: totals['completed'] ?? 0,
-    autoCompleted: totals['auto_completed'] ?? 0,
-    noReceiptRequired: totals['no_receipt_required'] ?? 0,
-    cantFind: totals['cant_find'] ?? 0,
-    pending: totals['pending'] ?? 0,
-  })
-
-  cursorY -= 8
-  drawHeaderRow()
-
-  if (!transactions.length) {
-    drawText('No transactions recorded for this quarter.', { size: 10 })
-    const pdfBytes = await pdfDoc.save()
-    return Buffer.from(pdfBytes)
+  const statusCounts: Record<ReceiptTransaction['status'], number> = {
+    pending: 0,
+    completed: 0,
+    auto_completed: 0,
+    no_receipt_required: 0,
+    cant_find: 0,
   }
 
   transactions.forEach((tx) => {
-    const rowLines = buildRowLines(tx, fontRegular, fontBold, width - margin * 2)
-    const rowHeight = rowLines.length * lineSpacing
-    ensureSpace(rowHeight + rowGap)
-    const rowTop = cursorY
-
-    rowLines.forEach((segments) => {
-      let offsetX = margin
-      segments.forEach((segment) => {
-        const font = segment.bold ? fontBold : fontRegular
-        const size = segment.size ?? 6
-        page.drawText(segment.text, { x: offsetX + 2, y: cursorY, size, font, color: rgb(0.15, 0.17, 0.2) })
-        offsetX += segment.width
-      })
-      cursorY -= lineSpacing
-    })
-
-    const rowBottom = cursorY
-    drawRowGrid(rowTop, rowBottom)
-
-    cursorY = rowBottom - rowGap
+    statusCounts[tx.status] += 1
   })
 
-  const pdfBytes = await pdfDoc.save()
-  return Buffer.from(pdfBytes)
+  const totalIn = totalAmount(transactions, 'amount_in')
+  const totalOut = totalAmount(transactions, 'amount_out')
 
-  function drawSummaryGrid(stats: {
-    total: number
-    completed: number
-    autoCompleted: number
-    noReceiptRequired: number
-    cantFind: number
-    pending: number
-  }) {
-    const cards = [
-      { label: 'Total transactions', value: stats.total, accent: rgb(0.18, 0.4, 0.54) },
-      { label: 'Completed', value: stats.completed, accent: rgb(0.07, 0.47, 0.32) },
-      { label: 'Auto-completed', value: stats.autoCompleted, accent: rgb(0.09, 0.36, 0.66) },
-      { label: 'No receipt required', value: stats.noReceiptRequired, accent: rgb(0.35, 0.35, 0.42) },
-      { label: "Can't find", value: stats.cantFind, accent: rgb(0.71, 0.22, 0.29) },
-      { label: 'Pending', value: stats.pending, accent: rgb(0.83, 0.52, 0.08) },
+  const summaryRows: string[][] = [
+    ['Quarter', `Q${quarter} ${year}`],
+    ['Generated at', new Date().toISOString()],
+    ['Total transactions', String(transactions.length)],
+    ['Total in (GBP)', formatCurrency(totalIn)],
+    ['Total out (GBP)', formatCurrency(totalOut)],
+    ['Completed', String(statusCounts.completed)],
+    ['Auto-completed', String(statusCounts.auto_completed)],
+    ['No receipt required', String(statusCounts.no_receipt_required)],
+    ["Can't find", String(statusCounts.cant_find)],
+    ['Pending', String(statusCounts.pending)],
+    [],
+  ]
+
+  const headerRow = [
+    'Date',
+    'Details',
+    'Transaction type',
+    'Vendor',
+    'Expense category',
+    'Amount in (GBP)',
+    'Amount out (GBP)',
+    'Status',
+    'Notes',
+  ]
+
+  const dataRows = transactions.map((tx) => {
+    const amountIn = typeof tx.amount_in === 'number' ? tx.amount_in.toFixed(2) : ''
+    const amountOut = typeof tx.amount_out === 'number' ? tx.amount_out.toFixed(2) : ''
+    const notes = sanitiseMultiline(tx.notes)
+
+    return [
+      formatDate(tx.transaction_date),
+      tx.details ?? '',
+      tx.transaction_type ?? '',
+      tx.vendor_name ?? '',
+      tx.expense_category ?? '',
+      amountIn,
+      amountOut,
+      friendlyStatus(tx.status),
+      notes,
     ]
-
-    const cardsPerRow = 3
-    const gap = 12
-    const cardHeight = 40
-    const cardWidth = (width - margin * 2 - gap * (cardsPerRow - 1)) / cardsPerRow
-
-    let index = 0
-    while (index < cards.length) {
-      ensureSpace(cardHeight + 8)
-      const rowY = cursorY - cardHeight
-      let offsetX = margin
-
-      for (let col = 0; col < cardsPerRow && index < cards.length; col += 1) {
-        const card = cards[index]
-        page.drawRectangle({
-          x: offsetX,
-          y: rowY,
-          width: cardWidth,
-          height: cardHeight,
-          color: rgb(0.97, 0.98, 0.99),
-          borderColor: rgb(0.82, 0.85, 0.9),
-          borderWidth: 0.75,
-        })
-
-        const labelY = rowY + cardHeight - 14
-        page.drawText(card.label.toUpperCase(), {
-          x: offsetX + 10,
-          y: labelY,
-          size: 5,
-          font: fontBold,
-          color: rgb(0.35, 0.4, 0.45),
-        })
-
-        page.drawText(String(card.value), {
-          x: offsetX + 10,
-          y: rowY + 12,
-          size: 11,
-          font: fontBold,
-          color: card.accent,
-        })
-
-        offsetX += cardWidth + gap
-        index += 1
-      }
-
-      cursorY = rowY - 12
-    }
-  }
-
-  function drawHeaderRow() {
-    let offsetX = margin
-    columnDefs.forEach((header) => {
-      drawText(header.label.toUpperCase(), {
-        x: offsetX,
-        font: fontBold,
-        size: 6,
-        color: rgb(0.28, 0.35, 0.42),
-      })
-      offsetX += header.width
-    })
-
-    const lineY = cursorY - 10
-    page.drawLine({
-      start: { x: margin, y: lineY },
-      end: { x: width - margin, y: lineY },
-      color: rgb(0.85, 0.85, 0.85),
-      thickness: 0.75,
-    })
-
-    cursorY = lineY - 6
-  }
-
-  function drawRowGrid(rowTop: number, rowBottom: number) {
-    page.drawLine({
-      start: { x: margin, y: rowTop },
-      end: { x: width - margin, y: rowTop },
-      color: rgb(0.88, 0.88, 0.9),
-      thickness: 0.5,
-    })
-
-    page.drawLine({
-      start: { x: margin, y: rowBottom },
-      end: { x: width - margin, y: rowBottom },
-      color: rgb(0.88, 0.88, 0.9),
-      thickness: 0.5,
-    })
-
-    let offsetX = margin
-    columnDefs.forEach((column) => {
-      page.drawLine({
-        start: { x: offsetX, y: rowTop },
-        end: { x: offsetX, y: rowBottom },
-        color: rgb(0.88, 0.88, 0.9),
-        thickness: 0.5,
-      })
-      offsetX += column.width
-    })
-
-    page.drawLine({
-      start: { x: offsetX, y: rowTop },
-      end: { x: offsetX, y: rowBottom },
-      color: rgb(0.88, 0.88, 0.9),
-      thickness: 0.5,
-    })
-  }
-
-  function buildRowLines(
-    tx: ReceiptTransactionRow,
-    regular: PDFFont,
-    bold: PDFFont,
-    maxWidth: number
-  ): Array<Array<{ text: string; width: number; bold?: boolean; size?: number }>> {
-    const columns = [
-      { text: formatDate(tx.transaction_date), width: columnDefs[0].width, bold: true },
-      { text: tx.details ?? '', width: columnDefs[1].width },
-      { text: tx.vendor_name ?? '', width: columnDefs[2].width },
-      { text: tx.expense_category ?? '', width: columnDefs[3].width },
-      { text: tx.amount_in ? formatCurrency(tx.amount_in) : '', width: columnDefs[4].width },
-      { text: tx.amount_out ? formatCurrency(tx.amount_out) : '', width: columnDefs[5].width },
-      { text: friendlyStatus(tx.status), width: columnDefs[6].width },
-    ]
-
-    const columnLines = columns.map((column) =>
-      wrapText(column.text, column.bold ? bold : regular, 6, column.width)
-    )
-
-    const totalLines = Math.max(...columnLines.map((lines) => lines.length))
-    const lines: Array<Array<{ text: string; width: number; bold?: boolean }>> = []
-
-    for (let index = 0; index < totalLines; index += 1) {
-      const segments = columnLines.map((lineGroup, columnIndex) => ({
-        text: lineGroup[index] ?? '',
-        width: columns[columnIndex].width,
-        bold: Boolean(columns[columnIndex].bold),
-      }))
-      lines.push(segments)
-    }
-
-    if (tx.transaction_type) {
-      lines.push([
-        { text: '', width: columns[0].width },
-        { text: `Type: ${tx.transaction_type}`, width: columns[1].width },
-        ...columns.slice(2).map((column) => ({ text: '', width: column.width })),
-      ])
-    }
-
-    const notes = tx.notes?.trim()
-    if (notes) {
-      const wrapped = wrapText(`Notes: ${notes}`, regular, 6, columns[1].width)
-      wrapped.forEach((noteLine, idx) => {
-        lines.push([
-          { text: '', width: columns[0].width },
-          { text: idx === 0 ? noteLine : `   ${noteLine}`, width: columns[1].width },
-          ...columns.slice(2).map((column) => ({ text: '', width: column.width })),
-        ])
-      })
-    }
-
-    return lines
-  }
-
-function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
-  if (!text) return ['']
-  const words = text.split(/\s+/)
-  const lines: string[] = []
-  let currentLine: string[] = []
-  let lineWidth = 0
-
-  words.forEach((word) => {
-    const wordWidth = font.widthOfTextAtSize(`${word} `, size)
-    if (lineWidth + wordWidth > maxWidth && currentLine.length > 0) {
-      lines.push(currentLine.join(' '))
-      currentLine = [word]
-      lineWidth = wordWidth
-    } else {
-      currentLine.push(word)
-      lineWidth += wordWidth
-    }
   })
 
-  if (currentLine.length > 0) {
-    lines.push(currentLine.join(' '))
-  }
-
-  return lines.length ? lines : ['']
-}
+  const csvRows = [...summaryRows, headerRow, ...dataRows]
+  const csv = Papa.unparse(csvRows, { newline: '\n' })
+  return Buffer.from(`\ufeff${csv}`, 'utf-8')
 }
 
-async function loadLogoImage(pdfDoc: PDFDocument) {
-  const candidates = ['logo-oj.png', 'logo-oj.jpg', 'logo-oj.jpeg']
-  for (const fileName of candidates) {
-    try {
-      const logoPath = path.join(process.cwd(), 'public', fileName)
-      const logoBytes = await fs.readFile(logoPath)
-      const ext = path.extname(fileName).toLowerCase()
-      if (ext === '.png') {
-        return await pdfDoc.embedPng(logoBytes)
-      }
-      return await pdfDoc.embedJpg(logoBytes)
-    } catch (error) {
-      // Try next candidate
-      continue
-    }
-  }
-  console.warn('Receipts export: logo image unavailable')
-  return null
+function sanitiseMultiline(value: string | null): string {
+  if (!value) return ''
+  return value.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
 function deriveQuarterRange(year: number, quarter: number): QuarterRange {
@@ -480,17 +219,20 @@ function friendlyStatus(status: ReceiptTransaction['status']) {
   }
 }
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat('en-GB', {
-    style: 'currency',
-    currency: 'GBP',
-    minimumFractionDigits: 2,
-  }).format(value)
-}
-
 function formatDate(value: string) {
   if (!value) return ''
   return new Date(value).toLocaleDateString('en-GB', { timeZone: 'UTC' })
+}
+
+function formatCurrency(value: number) {
+  return value.toLocaleString('en-GB', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
+function totalAmount(transactions: ReceiptTransactionRow[], key: 'amount_in' | 'amount_out') {
+  return transactions.reduce((sum, tx) => sum + (tx[key] ?? 0), 0)
 }
 
 function buildReceiptFileName(transaction: ReceiptTransaction, file: ReceiptFile, index: number) {
