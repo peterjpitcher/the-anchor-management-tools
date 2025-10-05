@@ -88,7 +88,7 @@ export function generateContractHTML(data: ContractData): string {
   const endTime = formatTime(booking.end_time || null)
   const eventType = booking.event_type || 'To be confirmed'
   const guestCount = booking.guest_count || 'To be confirmed'
-  const depositAmount = booking.deposit_amount || 250
+  const depositAmount = booking.deposit_amount ?? 250
   const subtotal = calculateSubtotal()
   const discountAmount = calculateDiscountAmount()
   const total = calculateTotal()

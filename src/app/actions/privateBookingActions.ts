@@ -393,12 +393,14 @@ export async function createPrivateBooking(formData: FormData) {
     internal_notes: internalNotes,
   }
 
+  const depositAmount = bookingData.deposit_amount ?? 250
+
   const insertData = {
     ...cleanedBookingData,
     customer_id: customerId || null, // Include the found/created customer ID
     customer_name, // Include for backward compatibility
     balance_due_date: isDateTbd ? null : cleanedBookingData.balance_due_date ?? null,
-    deposit_amount: bookingData.deposit_amount || 250, // Default £250 if not specified
+    deposit_amount: depositAmount, // Default £250 if not specified
     created_by: user?.id,
     status: 'draft'
   }
@@ -430,9 +432,12 @@ export async function createPrivateBooking(formData: FormData) {
       month: 'long', 
       year: 'numeric' 
     })
-    
-    const smsMessage = `Hi ${bookingData.customer_first_name}, thank you for your enquiry about private hire at The Anchor on ${eventDateReadable}. To secure this date, a deposit of £${bookingData.deposit_amount || 250} is required. Reply to this message with any questions.`
-    
+
+    const formattedDeposit = depositAmount.toFixed(2)
+    const smsMessage = depositAmount > 0
+      ? `Hi ${bookingData.customer_first_name}, thank you for your enquiry about private hire at The Anchor on ${eventDateReadable}. To secure this date, a deposit of £${formattedDeposit} is required. Reply to this message with any questions.`
+      : `Hi ${bookingData.customer_first_name}, thank you for your enquiry about private hire at The Anchor on ${eventDateReadable}. We normally require a deposit to secure the date, but we've waived it for you. Reply to this message with any questions.`
+
     const smsResult = await queueAndSendPrivateBookingSms({
       booking_id: data.id,
       trigger_type: 'booking_created',
@@ -446,7 +451,7 @@ export async function createPrivateBooking(formData: FormData) {
         template: 'private_booking_created',
         first_name: bookingData.customer_first_name,
         event_date: eventDateReadable,
-        deposit_amount: bookingData.deposit_amount || 250
+        deposit_amount: depositAmount
       }
     })
     
