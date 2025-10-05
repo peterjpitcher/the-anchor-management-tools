@@ -61,12 +61,7 @@ export async function middleware(request: NextRequest) {
   if (isVipHost(request.headers.get('host') || '')) return NextResponse.next()
   if (isPublicPath(request.nextUrl.pathname)) return NextResponse.next()
 
-  const response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  })
-  const supabase = createMiddlewareClient({ req: request, res: response })
+  const { supabase, response, applyCookies } = createClient(request)
 
   const {
     data: { user },
@@ -76,10 +71,10 @@ export async function middleware(request: NextRequest) {
     const redirectUrl = request.nextUrl.clone()
     redirectUrl.pathname = '/auth/login'
     redirectUrl.searchParams.set('redirectedFrom', sanitizeRedirectTarget(request.nextUrl))
-    return NextResponse.redirect(redirectUrl)
+    return applyCookies(NextResponse.redirect(redirectUrl))
   }
 
-  return response
+  return applyCookies(response)
 }
 ```
 
