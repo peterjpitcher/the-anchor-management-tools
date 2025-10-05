@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { createRemoteJWKSet, errors, jwtVerify, type JWTPayload } from 'jose'
 import {
   SESSION_COOKIE_NAME,
   USER_COOKIE_NAME,
@@ -61,8 +60,6 @@ if (!SUPABASE_ANON_KEY) {
 
 const supabaseUrl = new URL(SUPABASE_URL)
 const supabaseAnonKey = SUPABASE_ANON_KEY as string
-const issuer = new URL('/auth/v1', supabaseUrl).toString()
-const jwks = createRemoteJWKSet(new URL('/auth/v1/certs', supabaseUrl))
 
 type StoredSession = {
   access_token?: string
@@ -81,18 +78,6 @@ type RefreshResponse = {
   expires_in?: number
   expires_at?: number
   user?: unknown
-}
-
-async function verifyAccessToken(token: string) {
-  try {
-    const { payload } = await jwtVerify(token, jwks, { issuer })
-    return { valid: true as const, payload }
-  } catch (error) {
-    if (error instanceof errors.JWTExpired) {
-      return { valid: false as const, reason: 'expired' as const }
-    }
-    return { valid: false as const, reason: 'invalid' as const }
-  }
 }
 
 async function refreshSession(refreshToken: string): Promise<RefreshResponse | null> {
@@ -152,18 +137,6 @@ function redirectToLogin(request: NextRequest, cookieNames: string[], secure: bo
   return response
 }
 
-function ensureUserObject(user: unknown, payload: JWTPayload | null) {
-  if (user && typeof user === 'object') {
-    return user
-  }
-
-  if (payload?.sub) {
-    return { id: payload.sub }
-  }
-
-  return null
-}
-
 export async function middleware(request: NextRequest) {
   const hostname = request.headers.get('host') || ''
   if (isVipHost(hostname)) {
@@ -185,16 +158,19 @@ export async function middleware(request: NextRequest) {
   const accessToken = session.access_token
   const refreshToken = typeof session.refresh_token === 'string' ? session.refresh_token : null
 
-  let verifiedPayload: JWTPayload | null = null
   let workingSession = { ...session }
   let workingUser = storedUser
   let sessionUpdated = false
 
-  const verification = await verifyAccessToken(accessToken)
+  const now = Math.floor(Date.now() / 1000)
+  const expiresAt = typeof workingSession.expires_at === 'number' ? workingSession.expires_at : null
+  const shouldRefresh =
+    !!refreshToken &&
+    expiresAt !== null &&
+    // refresh a little before expiry to avoid race conditions
+    expiresAt <= now + 60
 
-  if (verification.valid) {
-    verifiedPayload = verification.payload
-  } else if (verification.reason === 'expired' && refreshToken) {
+  if (shouldRefresh) {
     const refreshed = await refreshSession(refreshToken)
     if (refreshed) {
       workingSession = {
@@ -213,20 +189,11 @@ export async function middleware(request: NextRequest) {
         workingUser = refreshed.user
       }
 
-      const refreshedVerification = await verifyAccessToken(refreshed.access_token)
-      if (refreshedVerification.valid) {
-        verifiedPayload = refreshedVerification.payload
-        sessionUpdated = true
-      }
+      sessionUpdated = true
     }
   }
 
-  if (!verifiedPayload) {
-    return redirectToLogin(request, cookieNames, secure)
-  }
-
-  const normalizedUser = ensureUserObject(workingUser, verifiedPayload)
-  if (!normalizedUser) {
+  if (typeof workingSession.access_token !== 'string') {
     return redirectToLogin(request, cookieNames, secure)
   }
 
@@ -236,8 +203,13 @@ export async function middleware(request: NextRequest) {
     const encodedSession = encodeStoredValue(JSON.stringify(workingSession))
     setStoredValue(response, SESSION_COOKIE_NAME, encodedSession, cookieNames, secure)
 
-    const encodedUser = encodeStoredValue(JSON.stringify({ user: normalizedUser }))
-    setStoredValue(response, USER_COOKIE_NAME, encodedUser, cookieNames, secure)
+    const normalizedUser = workingSession.user ?? workingUser ?? null
+    if (normalizedUser) {
+      const encodedUser = encodeStoredValue(JSON.stringify({ user: normalizedUser }))
+      setStoredValue(response, USER_COOKIE_NAME, encodedUser, cookieNames, secure)
+    } else {
+      clearStoredValue(response, USER_COOKIE_NAME, cookieNames, secure)
+    }
   }
 
   return response
