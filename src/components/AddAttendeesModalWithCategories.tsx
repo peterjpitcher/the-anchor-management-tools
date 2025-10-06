@@ -30,6 +30,12 @@ interface EventCheckInSummary {
   }
 }
 
+const formatCustomerName = (customer: Customer) => {
+  const first = customer.first_name?.trim() ?? ''
+  const last = customer.last_name?.trim() ?? ''
+  return [first, last].filter(Boolean).join(' ')
+}
+
 interface AddAttendeesModalWithCategoriesProps {
   event: Event;
   currentBookings: BookingLike[];
@@ -113,27 +119,25 @@ export function AddAttendeesModalWithCategories({
       .filter(customer => !bookedCustomerIds.has(customer.id))
       .filter(customer => {
         const mobile = customer.mobile_number ? customer.mobile_number.toLowerCase() : ''
-        const fullName = `${customer.first_name} ${customer.last_name}`.toLowerCase()
+        const fullName = formatCustomerName(customer).toLowerCase()
         const term = searchTerm.toLowerCase()
         return fullName.includes(term) || mobile.includes(term)
       })
 
     return filtered.sort((a, b) => {
-      const aIsRecent = recentBookerIds.has(a.id)
-      const bIsRecent = recentBookerIds.has(b.id)
+      const firstNameComparison = (a.first_name ?? '').localeCompare(b.first_name ?? '', undefined, {
+        sensitivity: 'base',
+      })
 
-      if (aIsRecent && !bIsRecent) return -1
-      if (!aIsRecent && bIsRecent) return 1
+      if (firstNameComparison !== 0) {
+        return firstNameComparison
+      }
 
-      const nameA = `${a.last_name} ${a.first_name}`.toLowerCase()
-      const nameB = `${b.last_name} ${b.first_name}`.toLowerCase()
-
-      if (nameA < nameB) return -1
-      if (nameA > nameB) return 1
-
-      return 0
+      return (a.last_name ?? '').localeCompare(b.last_name ?? '', undefined, {
+        sensitivity: 'base',
+      })
     })
-  }, [allCustomers, bookedCustomerIds, searchTerm, recentBookerIds])
+  }, [allCustomers, bookedCustomerIds, searchTerm])
 
   const selectedCustomerDetails = useMemo(() => {
     if (selectedCustomerIds.length === 0 || allCustomers.length === 0) return []
@@ -377,7 +381,7 @@ export function AddAttendeesModalWithCategories({
                                     {recentBookerIds.has(customer.id) && (
                                       <StarIcon className="h-5 w-5 text-yellow-400 mr-1.5 flex-shrink-0" aria-label="Recent Booker" />
                                     )}
-                                    {customer.first_name} {customer.last_name}
+                                    {formatCustomerName(customer)}
                                   </div>
                                 )
                               },
@@ -426,7 +430,7 @@ export function AddAttendeesModalWithCategories({
                     <div key={customer.id} className="flex items-start justify-between rounded-lg bg-white px-3 py-2 shadow-sm">
                       <div>
                         <p className="text-sm font-medium text-gray-900">
-                          {customer.first_name} {customer.last_name}
+                          {formatCustomerName(customer)}
                         </p>
                         {customer.mobile_number && (
                           <p className="text-xs text-gray-500">{customer.mobile_number}</p>
@@ -439,7 +443,7 @@ export function AddAttendeesModalWithCategories({
                         type="button"
                         onClick={() => handleRemoveSelected(customer.id)}
                         className="text-gray-400 hover:text-gray-600"
-                        aria-label={`Remove ${customer.first_name} ${customer.last_name}`}
+                        aria-label={`Remove ${formatCustomerName(customer)}`}
                       >
                         <XMarkIcon className="h-4 w-4" />
                       </button>
@@ -468,7 +472,7 @@ export function AddAttendeesModalWithCategories({
                   <div key={customer.id} className="flex items-start justify-between rounded-lg bg-white px-3 py-2 shadow-sm">
                     <div>
                       <p className="text-sm font-medium text-gray-900">
-                        {customer.first_name} {customer.last_name}
+                        {formatCustomerName(customer)}
                       </p>
                       {customer.mobile_number && (
                         <p className="text-xs text-gray-500">{customer.mobile_number}</p>
@@ -478,7 +482,7 @@ export function AddAttendeesModalWithCategories({
                       type="button"
                       onClick={() => handleRemoveSelected(customer.id)}
                       className="text-gray-400 hover:text-gray-600"
-                      aria-label={`Remove ${customer.first_name} ${customer.last_name}`}
+                      aria-label={`Remove ${formatCustomerName(customer)}`}
                     >
                       <XMarkIcon className="h-4 w-4" />
                     </button>
