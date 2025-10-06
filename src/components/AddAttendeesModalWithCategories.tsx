@@ -204,6 +204,7 @@ export function AddAttendeesModalWithCategories({
   }
 
   const remainingCapacity = event.capacity ? Math.max(event.capacity - totalBookedSeats, 0) : null
+  const contentMaxHeight = 'calc(92vh - 240px)'
 
   return (
     <div className="fixed inset-0 bg-gray-500/75 flex items-center justify-center z-50 p-4">
@@ -224,9 +225,9 @@ export function AddAttendeesModalWithCategories({
           </button>
         </div>
 
-        <div className="px-6 py-4 flex-1 overflow-hidden">
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,2.1fr)_minmax(0,1fr)] h-full">
-            <div className="flex flex-col gap-4 overflow-hidden">
+        <div className="px-6 py-4 flex-1 overflow-hidden min-h-0">
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,2.1fr)_minmax(0,1fr)] h-full min-h-0">
+            <div className="flex flex-col gap-4 overflow-hidden min-h-0">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                   <p className="text-xs uppercase tracking-wide text-gray-500">Currently Booked</p>
@@ -270,8 +271,8 @@ export function AddAttendeesModalWithCategories({
                 </button>
               </div>
 
-              <div className="flex-1 overflow-hidden">
-                <div className="h-full overflow-y-auto pr-1">
+              <div className="flex-1 overflow-hidden min-h-0">
+                <div className="h-full overflow-y-auto pr-1" style={{ maxHeight: contentMaxHeight }}>
                   {activeView === 'suggested' ? (
                     <div className="space-y-4">
                       <div className="border border-gray-200 rounded-lg p-4 bg-white">
@@ -398,7 +399,10 @@ export function AddAttendeesModalWithCategories({
               </div>
             </div>
 
-            <aside className="hidden lg:flex flex-col bg-gray-50 border border-gray-200 rounded-lg p-4 overflow-y-auto">
+            <aside
+              className="hidden lg:flex flex-col bg-gray-50 border border-gray-200 rounded-lg p-4 overflow-y-auto min-h-0"
+              style={{ maxHeight: contentMaxHeight }}
+            >
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-gray-900">Selected Attendees ({selectedCustomerDetails.length})</h3>
                 {selectedCustomerDetails.length > 0 && (
