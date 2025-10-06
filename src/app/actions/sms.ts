@@ -79,9 +79,17 @@ async function ensureCustomerForPhone(
       return { customerId: existing.id, standardizedPhone }
     }
 
+    const sanitizedFirstName = fallback.firstName?.trim()
+    const sanitizedLastName = fallback.lastName?.trim()
+
+    if (!sanitizedFirstName) {
+      // If we don't genuinely know who this is, skip creating a placeholder customer.
+      return { customerId: null, standardizedPhone }
+    }
+
     const insertPayload = {
-      first_name: fallback.firstName || 'Guest',
-      last_name: fallback.lastName || '',
+      first_name: sanitizedFirstName,
+      last_name: sanitizedLastName || '',
       mobile_number: standardizedPhone,
       email: fallback.email ?? null,
       sms_opt_in: true
@@ -162,7 +170,7 @@ async function resolveCustomerIdForSms(
     : deriveNameParts(bookingRecord?.customer_name)
 
   const fallbackInfo: CustomerFallback = {
-    firstName: nameFallback?.firstName || 'Guest',
+    firstName: nameFallback?.firstName,
     lastName: nameFallback?.lastName,
     email: bookingRecord?.contact_email || bookingRecord?.customer?.email || null
   }
