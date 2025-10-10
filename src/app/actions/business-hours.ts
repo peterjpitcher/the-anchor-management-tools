@@ -220,10 +220,24 @@ export async function createSpecialHours(formData: FormData) {
       return { error: validationResult.error.errors[0].message }
     }
 
+    const payload = {
+      ...validationResult.data,
+      opens: validationResult.data.is_closed ? null : validationResult.data.opens,
+      closes: validationResult.data.is_closed ? null : validationResult.data.closes,
+      kitchen_opens:
+        validationResult.data.is_closed || validationResult.data.is_kitchen_closed
+          ? null
+          : validationResult.data.kitchen_opens,
+      kitchen_closes:
+        validationResult.data.is_closed || validationResult.data.is_kitchen_closed
+          ? null
+          : validationResult.data.kitchen_closes
+    }
+
     // Create special hours
     const { data, error } = await supabase
       .from('special_hours')
-      .insert(validationResult.data)
+      .insert(payload)
       .select()
       .single()
 
@@ -296,11 +310,25 @@ export async function updateSpecialHours(id: string, formData: FormData) {
       return { error: validationResult.error.errors[0].message }
     }
 
+    const payload = {
+      ...validationResult.data,
+      opens: validationResult.data.is_closed ? null : validationResult.data.opens,
+      closes: validationResult.data.is_closed ? null : validationResult.data.closes,
+      kitchen_opens:
+        validationResult.data.is_closed || validationResult.data.is_kitchen_closed
+          ? null
+          : validationResult.data.kitchen_opens,
+      kitchen_closes:
+        validationResult.data.is_closed || validationResult.data.is_kitchen_closed
+          ? null
+          : validationResult.data.kitchen_closes
+    }
+
     // Update special hours
     const { data, error } = await supabase
       .from('special_hours')
       .update({
-        ...validationResult.data,
+        ...payload,
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
