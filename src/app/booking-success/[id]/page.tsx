@@ -23,7 +23,7 @@ export default function BookingSuccessPage() {
     };
     customer: {
       first_name: string;
-      last_name: string;
+      last_name: string | null;
     };
   } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -77,7 +77,7 @@ export default function BookingSuccessPage() {
           };
           customers: {
             first_name: string;
-            last_name: string;
+            last_name: string | null;
           };
         };
         

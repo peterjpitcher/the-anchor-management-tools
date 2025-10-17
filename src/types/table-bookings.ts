@@ -140,7 +140,7 @@ export interface TableBookingModification {
 export interface Customer {
   id: string;
   first_name: string;
-  last_name: string;
+  last_name: string | null;
   mobile_number: string;
   email?: string;
   sms_opt_in: boolean;
@@ -192,7 +192,7 @@ export interface CreateBookingData {
   party_size: number;
   customer: {
     first_name: string;
-    last_name: string;
+    last_name: string | null;
     email?: string;
     mobile_number: string;
     sms_opt_in: boolean;

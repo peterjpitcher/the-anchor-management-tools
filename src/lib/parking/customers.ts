@@ -46,6 +46,14 @@ export async function resolveCustomerByPhone(
         .eq('id', customer.id)
     }
 
+    const lastNameTrimmed = params.lastName?.trim()
+    if (lastNameTrimmed && (!customer.last_name || customer.last_name !== lastNameTrimmed)) {
+      await supabase
+        .from('customers')
+        .update({ last_name: lastNameTrimmed })
+        .eq('id', customer.id)
+    }
+
     return {
       id: customer.id as string,
       first_name: customer.first_name as string,

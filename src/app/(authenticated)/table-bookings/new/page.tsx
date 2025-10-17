@@ -489,7 +489,6 @@ export default function NewTableBookingPage() {
                   type="text"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
-                  required
                   disabled={!!existingCustomer}
                 />
               </FormGroup>

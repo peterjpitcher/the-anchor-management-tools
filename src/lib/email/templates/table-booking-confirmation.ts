@@ -5,7 +5,7 @@ interface EmailTemplateData {
   booking: TableBooking & {
     customer?: {
       first_name: string;
-      last_name: string;
+      last_name: string | null;
       email?: string;
       mobile_number: string;
     };

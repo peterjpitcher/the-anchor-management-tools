@@ -108,7 +108,7 @@ const DEFAULT_TBD_TIME = '12:00'
 // Customer creation schema
 const CreateCustomerSchema = z.object({
   first_name: z.string().min(1),
-  last_name: z.string().min(1),
+  last_name: z.string().optional(),
   mobile_number: z.string().min(10),
   email: z.string().email().optional(),
   sms_opt_in: z.boolean().default(true),
@@ -137,6 +137,19 @@ async function findOrCreateCustomer(
         .update({ sms_opt_in: customerData.sms_opt_in })
         .eq('id', existingCustomer.id);
     }
+    if (customerData.last_name && customerData.last_name !== existingCustomer.last_name) {
+      await supabase
+        .from('customers')
+        .update({ last_name: customerData.last_name })
+        .eq('id', existingCustomer.id);
+    }
+    const normalizedEmail = customerData.email ? customerData.email.toLowerCase() : undefined
+    if (normalizedEmail && normalizedEmail !== existingCustomer.email) {
+      await supabase
+        .from('customers')
+        .update({ email: normalizedEmail })
+        .eq('id', existingCustomer.id);
+    }
     return existingCustomer;
   }
   
@@ -144,8 +157,11 @@ async function findOrCreateCustomer(
   const { data: newCustomer, error } = await supabase
     .from('customers')
     .insert({
-      ...customerData,
+      first_name: customerData.first_name,
+      last_name: customerData.last_name ?? null,
       mobile_number: standardizedPhone,
+      email: customerData.email ? customerData.email.toLowerCase() : null,
+      sms_opt_in: customerData.sms_opt_in,
     })
     .select()
     .single();
@@ -358,10 +374,10 @@ export async function createPrivateBooking(formData: FormData) {
   if (!customerId && bookingData.customer_first_name && bookingData.contact_phone) {
     try {
       const customerData = {
-        first_name: bookingData.customer_first_name,
-        last_name: bookingData.customer_last_name || '',
-        mobile_number: bookingData.contact_phone,
-        email: bookingData.contact_email,
+        first_name: bookingData.customer_first_name.trim(),
+        last_name: bookingData.customer_last_name?.trim() || undefined,
+        mobile_number: bookingData.contact_phone.trim(),
+        email: bookingData.contact_email?.trim() || undefined,
         sms_opt_in: true, // Default to true for private bookings
       }
       

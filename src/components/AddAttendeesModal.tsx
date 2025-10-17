@@ -77,9 +77,8 @@ export function AddAttendeesModal({
     const filtered = allCustomers
       .filter(customer => !bookedCustomerIds.has(customer.id))
       .filter(customer => {
-        // Ensure mobile_number is not null before calling toLowerCase()
         const mobile = customer.mobile_number ? customer.mobile_number.toLowerCase() : ''
-        const fullName = `${customer.first_name} ${customer.last_name}`.toLowerCase()
+        const fullName = [customer.first_name, customer.last_name ?? ''].filter(Boolean).join(' ').toLowerCase()
         const term = searchTerm.toLowerCase()
         return fullName.includes(term) || mobile.includes(term)
       })
@@ -93,8 +92,8 @@ export function AddAttendeesModal({
       if (!aIsRecent && bIsRecent) return 1;  // b comes first
 
       // If both are recent or neither are, sort by name (last_name, then first_name)
-      const nameA = `${a.last_name} ${a.first_name}`.toLowerCase();
-      const nameB = `${b.last_name} ${b.first_name}`.toLowerCase();
+      const nameA = `${(a.last_name ?? '').toLowerCase()} ${a.first_name.toLowerCase()}`.trim();
+      const nameB = `${(b.last_name ?? '').toLowerCase()} ${b.first_name.toLowerCase()}`.trim();
 
       if (nameA < nameB) return -1;
       if (nameA > nameB) return 1;
@@ -208,7 +207,7 @@ export function AddAttendeesModal({
                         {recentBookerIds.has(customer.id) && (
                           <StarIcon className="h-5 w-5 text-yellow-400 mr-1.5 flex-shrink-0" aria-label="Recent Booker" />
                         )}
-                        {customer.first_name} {customer.last_name}
+                        {[customer.first_name, customer.last_name ?? ''].filter(Boolean).join(' ')}
                       </div>
                     )
                   },

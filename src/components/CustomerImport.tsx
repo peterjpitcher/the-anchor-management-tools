@@ -13,6 +13,7 @@ interface CustomerImportProps {
 interface ParsedCustomer {
   first_name: string
   last_name?: string
+  email?: string
   mobile_number: string
   isValid: boolean
   isDuplicate?: boolean
@@ -25,8 +26,8 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
   const [isImporting, setIsImporting] = useState(false)
 
   const downloadTemplate = () => {
-    const headers = ['first_name', 'last_name', 'mobile_number']
-    const sampleData = ['John', 'Doe', '07123456789']
+    const headers = ['first_name', 'last_name', 'email', 'mobile_number']
+    const sampleData = ['John', 'Doe', 'john@example.com', '07123456789']
     const csvContent = [
       headers.join(','),
       sampleData.join(',')
@@ -88,11 +89,20 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
       }
     }
 
+    const email = customer.email?.trim() ?? ''
+    if (email) {
+      const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!emailPattern.test(email.toLowerCase())) {
+        errors.push('Invalid email address')
+      }
+    }
+
     return {
       errors,
       customer: {
         first_name: customer.first_name?.trim() ?? '',
         last_name: customer.last_name?.trim(),
+        email: email ? email.toLowerCase() : undefined,
         mobile_number: formattedNumber,
         isValid: errors.length === 0,
         isDuplicate,
@@ -134,6 +144,7 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
         headers.forEach((header, index) => {
           if (header === 'first_name') customerObj.first_name = values[index]
           if (header === 'last_name') customerObj.last_name = values[index]
+          if (header === 'email') customerObj.email = values[index]
           if (header === 'mobile_number') customerObj.mobile_number = values[index]
         })
         fileCustomers.push(customerObj)
@@ -165,9 +176,10 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
     }
 
     try {
-      const customersToImport = validCustomers.map(({ first_name, last_name, mobile_number }) => ({
+      const customersToImport = validCustomers.map(({ first_name, last_name, email, mobile_number }) => ({
         first_name,
         last_name: last_name || '',
+        email: email || undefined,
         mobile_number,
       }))
       onImportComplete(customersToImport)
@@ -234,6 +246,7 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
               columns={[
                 { key: 'first_name', header: 'First Name', cell: (c: ParsedCustomer) => <span className="text-sm text-gray-900">{c.first_name}</span> },
                 { key: 'last_name', header: 'Last Name', cell: (c: ParsedCustomer) => <span className="text-sm text-gray-900">{c.last_name || '-'}</span> },
+                { key: 'email', header: 'Email', cell: (c: ParsedCustomer) => <span className="text-sm text-gray-900">{c.email || '-'}</span> },
                 { key: 'mobile_number', header: 'Mobile Number', cell: (c: ParsedCustomer) => <span className="text-sm text-gray-900">{c.mobile_number}</span> },
                 { key: 'status', header: 'Status', cell: (c: ParsedCustomer) => (
                   c.isValid ? (
@@ -249,6 +262,7 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
                 <div className={`${c.isDuplicate ? 'bg-yellow-50' : !c.isValid ? 'bg-red-50' : ''} p-3` }>
                   <div className="font-medium text-sm">{c.first_name} {c.last_name || '-'}</div>
                   <div className="text-sm text-gray-600">{c.mobile_number}</div>
+                  {c.email && <div className="text-sm text-gray-500">{c.email}</div>}
                   <div className="mt-2">
                     {c.isValid ? (
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Valid</span>

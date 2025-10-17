@@ -26,6 +26,7 @@ const SELECT_FIELDS = `
   customer_full_name,
   customer_mobile,
   contact_phone,
+  event_type,
   event_date,
   start_time,
   status,
@@ -57,6 +58,7 @@ type BookingRow = {
   customer_full_name?: string | null
   customer_mobile?: string | null
   contact_phone?: string | null
+  event_type?: string | null
   guest_count?: number | string | null
   total_amount?: number | string | null
   calculated_total?: number | string | null
@@ -112,6 +114,8 @@ export async function fetchPrivateBookings(options: FetchOptions) {
   const trimmedSearch = search.trim()
   const escapedSearch = trimmedSearch ? escapeLikeValue(trimmedSearch) : ''
 
+  const excludeCancelledForUpcoming = status === 'all' && dateFilter === 'upcoming'
+
   const buildSelectQuery = (withCount = false) => {
     let builder = supabase
       .from(VIEW_NAME)
@@ -119,6 +123,8 @@ export async function fetchPrivateBookings(options: FetchOptions) {
 
     if (status !== 'all') {
       builder = builder.eq('status', status)
+    } else if (excludeCancelledForUpcoming) {
+      builder = builder.neq('status', 'cancelled')
     }
 
     if (trimmedSearch) {
@@ -133,6 +139,8 @@ export async function fetchPrivateBookings(options: FetchOptions) {
 
     if (status !== 'all') {
       builder = builder.eq('status', status)
+    } else if (excludeCancelledForUpcoming) {
+      builder = builder.neq('status', 'cancelled')
     }
 
     if (trimmedSearch) {

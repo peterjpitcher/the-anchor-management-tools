@@ -36,6 +36,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
   const [newCustomer, setNewCustomer] = useState({
     firstName: '',
     lastName: '',
+    email: '',
     mobileNumber: ''
   })
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerWithLoyalty | null>(
@@ -146,11 +147,15 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
 
     const searchTermLower = searchTerm.toLowerCase()
     const searchTermDigits = searchTerm.replace(/\D/g, '') // Remove non-digits for phone number search
-    const filtered = allCustomers.filter(customer => 
-      customer.first_name.toLowerCase().includes(searchTermLower) ||
-      customer.last_name.toLowerCase().includes(searchTermLower) ||
-      customer.mobile_number.replace(/\D/g, '').includes(searchTermDigits)
-    )
+    const filtered = allCustomers.filter(customer => {
+      const lastName = customer.last_name?.toLowerCase() ?? ''
+      const mobileDigits = customer.mobile_number?.replace(/\D/g, '') ?? ''
+      return (
+        customer.first_name.toLowerCase().includes(searchTermLower) ||
+        lastName.includes(searchTermLower) ||
+        mobileDigits.includes(searchTermDigits)
+      )
+    })
     setCustomers(filtered)
   }, [searchTerm, allCustomers])
 
@@ -194,8 +199,13 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
 
       // Create new customer if needed
       if (showNewCustomerForm && !customerId) {
-        if (!newCustomer.firstName || !newCustomer.lastName || !newCustomer.mobileNumber) {
-          toast.error('Please fill in all customer details')
+        const trimmedFirstName = newCustomer.firstName.trim()
+        const trimmedLastName = newCustomer.lastName.trim()
+        const trimmedEmail = newCustomer.email.trim()
+        const trimmedMobile = newCustomer.mobileNumber.trim()
+
+        if (!trimmedFirstName || !trimmedMobile) {
+          toast.error('Please provide at least a first name and mobile number')
           setIsSubmitting(false)
           return
         }
@@ -204,9 +214,12 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
         const formData = new FormData()
         formData.append('event_id', event.id)
         formData.append('create_customer', 'true')
-        formData.append('customer_first_name', newCustomer.firstName)
-        formData.append('customer_last_name', newCustomer.lastName)
-        formData.append('customer_mobile_number', newCustomer.mobileNumber)
+        formData.append('customer_first_name', trimmedFirstName)
+        formData.append('customer_last_name', trimmedLastName)
+        formData.append('customer_mobile_number', trimmedMobile)
+        if (trimmedEmail) {
+          formData.append('customer_email', trimmedEmail)
+        }
         formData.append('seats', seatCount?.toString() || '0')
         formData.append('notes', notes || '')
         if (overwrite) {
@@ -256,7 +269,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
           setShowOverwriteConfirm(false)
           setExistingBookingInfo(null)
           setShowNewCustomerForm(false)
-          setNewCustomer({ firstName: '', lastName: '', mobileNumber: '' })
+          setNewCustomer({ firstName: '', lastName: '', email: '', mobileNumber: '' })
           // Reload available customers
           await loadCustomers()
         } else {
@@ -504,21 +517,34 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
                     required={showNewCustomerForm}
                   />
                 </div>
-                <div>
-                  <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">
-                    Last Name
-                  </label>
-                  <input
-                    type="text"
-                    id="lastName"
-                    name="lastName"
-                    value={newCustomer.lastName}
-                    onChange={(e) => setNewCustomer(prev => ({ ...prev, lastName: e.target.value }))}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[48px] sm:min-h-[44px]"
-                    required={showNewCustomerForm}
-                  />
-                </div>
+              <div>
+                <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">
+                  Last Name
+                </label>
+                <input
+                  type="text"
+                  id="lastName"
+                  name="lastName"
+                  value={newCustomer.lastName}
+                  onChange={(e) => setNewCustomer(prev => ({ ...prev, lastName: e.target.value }))}
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[48px] sm:min-h-[44px]"
+                />
               </div>
+              <div className="sm:col-span-2">
+                <label htmlFor="emailAddress" className="block text-sm font-medium text-gray-700">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  id="emailAddress"
+                  name="emailAddress"
+                  value={newCustomer.email}
+                  onChange={(e) => setNewCustomer(prev => ({ ...prev, email: e.target.value }))}
+                  placeholder="name@example.com"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[48px] sm:min-h-[44px]"
+                />
+              </div>
+            </div>
               <div>
                 <label htmlFor="mobileNumber" className="block text-sm font-medium text-gray-700">
                   Mobile Number
@@ -539,7 +565,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
                   type="button"
                   onClick={() => {
                     setShowNewCustomerForm(false)
-                    setNewCustomer({ firstName: '', lastName: '', mobileNumber: '' })
+                    setNewCustomer({ firstName: '', lastName: '', email: '', mobileNumber: '' })
                   }}
                   className="text-sm text-gray-600 hover:text-gray-800"
                 >

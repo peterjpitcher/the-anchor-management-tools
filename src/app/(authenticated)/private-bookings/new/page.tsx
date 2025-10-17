@@ -28,7 +28,7 @@ import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 interface Customer {
   id: string
   first_name: string
-  last_name: string
+  last_name: string | null
   mobile_number: string | null
   email: string | null
 }
@@ -48,7 +48,7 @@ export default function NewPrivateBookingPage() {
   useEffect(() => {
     if (selectedCustomer) {
       setCustomerFirstName(selectedCustomer.first_name)
-      setCustomerLastName(selectedCustomer.last_name)
+      setCustomerLastName(selectedCustomer.last_name ?? '')
       setContactPhone(selectedCustomer.mobile_number || '')
       setContactEmail(selectedCustomer.email || '')
     }

@@ -343,7 +343,9 @@ export class JobQueue {
         try {
           // Personalize the message for this customer
           let personalizedMessage = message
-          personalizedMessage = personalizedMessage.replace(/{{customer_name}}/g, `${customer.first_name} ${customer.last_name}`)
+          const customerLastName = customer.last_name ?? ''
+          const customerFullName = [customer.first_name, customerLastName].filter(Boolean).join(' ')
+          personalizedMessage = personalizedMessage.replace(/{{customer_name}}/g, customerFullName)
           personalizedMessage = personalizedMessage.replace(/{{first_name}}/g, customer.first_name)
           personalizedMessage = personalizedMessage.replace(/{{last_name}}/g, customer.last_name || '')
           personalizedMessage = personalizedMessage.replace(/{{venue_name}}/g, 'The Anchor')

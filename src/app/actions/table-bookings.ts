@@ -46,7 +46,7 @@ const CreateTableBookingSchema = z.object({
 
 const CreateCustomerSchema = z.object({
   first_name: z.string().min(1),
-  last_name: z.string().min(1),
+  last_name: z.string().optional(),
   mobile_number: z.string().min(10),
   email: z.string().email().optional(),
   sms_opt_in: z.boolean().default(true),
@@ -221,6 +221,7 @@ async function findOrCreateCustomer(
 ) {
   const standardizedPhone = formatPhoneForStorage(customerData.mobile_number);
   const phoneVariants = generatePhoneVariants(standardizedPhone);
+  const normalizedEmail = customerData.email ? customerData.email.toLowerCase() : undefined;
 
   const { data: existingCustomer } = await supabase
     .from('customers')
@@ -243,8 +244,12 @@ async function findOrCreateCustomer(
       updates.mobile_e164 = standardizedPhone;
     }
 
-    if (customerData.email && customerData.email !== existingCustomer.email) {
-      updates.email = customerData.email;
+    if (customerData.last_name && customerData.last_name !== existingCustomer.last_name) {
+      updates.last_name = customerData.last_name;
+    }
+
+    if (normalizedEmail && normalizedEmail !== existingCustomer.email) {
+      updates.email = normalizedEmail;
     }
 
     if (Object.keys(updates).length > 0) {
@@ -261,14 +266,14 @@ async function findOrCreateCustomer(
 
   const insertPayload: Record<string, unknown> = {
     first_name: customerData.first_name,
-    last_name: customerData.last_name,
+    last_name: customerData.last_name ?? null,
     mobile_number: standardizedPhone,
     mobile_e164: standardizedPhone,
     sms_opt_in: customerData.sms_opt_in,
   };
 
-  if (customerData.email) {
-    insertPayload.email = customerData.email;
+  if (normalizedEmail) {
+    insertPayload.email = normalizedEmail;
   }
 
   const { data: newCustomer, error } = await supabase
@@ -355,14 +360,18 @@ export async function createTableBooking(formData: FormData) {
     // If no customer_id, try to find or create customer
     let customerId = bookingData.customer_id;
     if (!customerId && formData.get('customer_first_name')) {
+      const rawFirstName = (formData.get('customer_first_name') as string | null)?.trim() || '';
+      const rawLastName = (formData.get('customer_last_name') as string | null)?.trim() || '';
+      const rawMobile = (formData.get('customer_mobile_number') as string | null)?.trim() || '';
+      const rawEmail = (formData.get('customer_email') as string | null)?.trim() || '';
       const customerData = CreateCustomerSchema.parse({
-        first_name: formData.get('customer_first_name'),
-        last_name: formData.get('customer_last_name'),
-        mobile_number: formData.get('customer_mobile_number'),
-        email: formData.get('customer_email') || undefined,
+        first_name: rawFirstName,
+        last_name: rawLastName || undefined,
+        mobile_number: rawMobile,
+        email: rawEmail || undefined,
         sms_opt_in: formData.get('customer_sms_opt_in') === 'true',
       });
-      
+
       const customer = await findOrCreateCustomer(adminSupabase, customerData);
       customerId = customer.id;
     }

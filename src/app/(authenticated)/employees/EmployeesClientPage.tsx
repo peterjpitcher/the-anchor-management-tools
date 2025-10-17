@@ -264,6 +264,15 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
                   )
                 },
                 {
+                  key: 'date_of_birth',
+                  header: 'Birthday',
+                  cell: (employee: Employee) => (
+                    <div className="text-sm text-gray-900">
+                      {employee.date_of_birth ? formatDate(employee.date_of_birth) : 'N/A'}
+                    </div>
+                  )
+                },
+                {
                   key: 'employment_start_date',
                   header: 'Start Date',
                   cell: (employee: Employee) => (

@@ -215,16 +215,15 @@ export default function BookingConfirmationClient({
                       required
                     />
                   </FormGroup>
-                  <FormGroup label="Last Name" required>
-                    <Input
-                      type="text"
-                      id="last_name"
-                      value={customerDetails.last_name}
-                      onChange={(e) => setCustomerDetails((prev) => ({ ...prev, last_name: e.target.value }))}
-                      required
-                    />
-                  </FormGroup>
-                </div>
+                <FormGroup label="Last Name">
+                  <Input
+                    type="text"
+                    id="last_name"
+                    value={customerDetails.last_name}
+                    onChange={(e) => setCustomerDetails((prev) => ({ ...prev, last_name: e.target.value }))}
+                  />
+                </FormGroup>
+              </div>
                 <p className="text-sm text-gray-600">
                   Phone Number: {formatPhoneForDisplay(pendingBooking.mobile_number)}
                 </p>
@@ -234,7 +233,7 @@ export default function BookingConfirmationClient({
             {!needsCustomerDetails && pendingBooking.customer && (
               <Alert variant="info">
                 <p className="text-sm">
-                  Booking for: <span className="font-semibold">{pendingBooking.customer.first_name} {pendingBooking.customer.last_name}</span>
+                  Booking for: <span className="font-semibold">{[pendingBooking.customer.first_name, pendingBooking.customer.last_name ?? ''].filter(Boolean).join(' ')}</span>
                 </p>
                 <p className="text-sm mt-1">
                   Phone: {formatPhoneForDisplay(pendingBooking.mobile_number)}

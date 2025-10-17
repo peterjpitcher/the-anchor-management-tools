@@ -73,15 +73,18 @@ export default function CustomersPage() {
   // Memoize query configuration to prevent unnecessary re-renders
   const queryConfig = useMemo(() => ({
     select: '*',
-    orderBy: { column: 'first_name', ascending: true }
-  }), [])
+    orderBy: { column: 'first_name', ascending: true },
+    filters: showDeactivated
+      ? [{ column: 'sms_opt_in', operator: 'eq' as const, value: false }]
+      : []
+  }), [showDeactivated])
 
   const [customPageSize, setCustomPageSize] = useState(50)
   
   const paginationOptions = useMemo(() => ({
     pageSize: customPageSize === 1000 ? 10000 : customPageSize, // Use a very large number for "All"
     searchTerm: searchTerm,
-    searchColumns: ['first_name', 'last_name', 'mobile_number']
+    searchColumns: ['first_name', 'last_name', 'mobile_number', 'email']
   }), [customPageSize, searchTerm])
 
   // Use pagination hook with search
@@ -100,6 +103,10 @@ export default function CustomersPage() {
     queryConfig,
     paginationOptions
   )
+
+  useEffect(() => {
+    setPage(1)
+  }, [setPage, showDeactivated])
 
   // Loyalty removed: no special loading
 
@@ -203,7 +210,11 @@ export default function CustomersPage() {
 
   // Process customers with loyalty status and apply filter
   const customersWithLoyalty = useMemo(() => {
-    return customers.filter(c => showDeactivated ? c.sms_opt_in === false : c.sms_opt_in !== false)
+    if (!customers) return []
+    if (showDeactivated) {
+      return customers
+    }
+    return customers.filter(c => c.sms_opt_in !== false)
   }, [customers, showDeactivated])
 
   // Calculate loyal customer IDs for badge counts
@@ -221,6 +232,9 @@ export default function CustomersPage() {
       formData.append('first_name', customerData.first_name)
       formData.append('last_name', customerData.last_name ?? '')
       formData.append('mobile_number', customerData.mobile_number ?? '')
+      if (customerData.email) {
+        formData.append('email', customerData.email)
+      }
       formData.append('sms_opt_in', 'on')
 
       const result = await createCustomerAction(formData)
@@ -253,6 +267,9 @@ export default function CustomersPage() {
       formData.append('first_name', customerData.first_name)
       formData.append('last_name', customerData.last_name ?? '')
       formData.append('mobile_number', customerData.mobile_number ?? '')
+      if (customerData.email) {
+        formData.append('email', customerData.email)
+      }
       formData.append('sms_opt_in', 'on')
 
       const result = await updateCustomerAction(editingCustomer.id, formData)
@@ -304,7 +321,8 @@ export default function CustomersPage() {
         customersData.map((c) => ({
           first_name: c.first_name,
           last_name: c.last_name ?? '',
-          mobile_number: c.mobile_number ?? ''
+          mobile_number: c.mobile_number ?? '',
+          email: c.email ?? undefined
         }))
       )
 
@@ -394,6 +412,11 @@ export default function CustomersPage() {
             </a>
           ) : (
             '-'
+          )}
+          {customer.email && (
+            <div className="text-sm text-gray-500">
+              {customer.email}
+            </div>
           )}
           {customer.mobile_number && customer.sms_opt_in === false && (
             <Badge 
@@ -667,6 +690,11 @@ export default function CustomersPage() {
                             'No mobile'
                           )}
                         </p>
+                        {customer.email && (
+                          <p className="text-xs sm:text-sm text-gray-500">
+                            {customer.email}
+                          </p>
+                        )}
                         {customer.mobile_number && customer.sms_opt_in === false && (
                           <Badge 
                             variant="error" 
