@@ -148,10 +148,13 @@ export default function InvoicesClient({
       invoices.filter((invoice) => {
         if (!searchTerm) return true
         const search = searchTerm.toLowerCase()
+        const invoiceNumber = invoice.invoice_number ? invoice.invoice_number.toLowerCase() : ''
+        const vendorName = invoice.vendor?.name ? invoice.vendor.name.toLowerCase() : ''
+        const reference = invoice.reference ? invoice.reference.toLowerCase() : ''
         return (
-          invoice.invoice_number.toLowerCase().includes(search) ||
-          invoice.vendor?.name.toLowerCase().includes(search) ||
-          invoice.reference?.toLowerCase().includes(search)
+          invoiceNumber.includes(search) ||
+          vendorName.includes(search) ||
+          reference.includes(search)
         )
       }),
     [invoices, searchTerm]

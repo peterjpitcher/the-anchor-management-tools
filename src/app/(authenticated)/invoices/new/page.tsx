@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createInvoice, getLineItemCatalog } from '@/app/actions/invoices'
 import { getVendors } from '@/app/actions/vendors'
@@ -49,6 +49,8 @@ export default function NewInvoicePage() {
   const [notes, setNotes] = useState('')
   const [internalNotes, setInternalNotes] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [isCatalogOpen, setIsCatalogOpen] = useState(false)
+  const catalogDropdownRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (permissionsLoading) {
@@ -106,6 +108,21 @@ export default function NewInvoicePage() {
       setError(err instanceof Error ? err.message : 'Failed to load data')
     }
   }
+
+  useEffect(() => {
+    if (!isCatalogOpen) {
+      return
+    }
+
+    function handleClickOutside(event: MouseEvent) {
+      if (catalogDropdownRef.current && !catalogDropdownRef.current.contains(event.target as Node)) {
+        setIsCatalogOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isCatalogOpen])
 
   function addLineItem() {
     const newItem: LineItem = {
@@ -325,27 +342,36 @@ export default function NewInvoicePage() {
             <h2 className="text-lg font-semibold">Line Items</h2>
             <div className="flex flex-wrap gap-2">
               {catalogItems.length > 0 && (
-                <details className="relative">
-                  <summary className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-md cursor-pointer text-sm">
+                <div className="relative" ref={catalogDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsCatalogOpen((prev) => !prev)}
+                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-sm"
+                  >
                     Add from Catalog
-                  </summary>
-                  <div className="absolute right-0 sm:right-0 left-0 sm:left-auto mt-2 w-full sm:w-96 bg-white rounded-lg shadow-lg border p-4 z-10 max-h-64 sm:max-h-96 overflow-y-auto">
-                    {catalogItems.map(item => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => addFromCatalog(item)}
-                        className="w-full text-left p-3 hover:bg-gray-50 rounded-md border-b last:border-b-0"
-                      >
-                        <div className="font-medium">{item.name}</div>
-                        <div className="text-sm text-gray-600">{item.description}</div>
-                        <div className="text-sm mt-1">
-                          £{item.default_price.toFixed(2)} • VAT {item.default_vat_rate}%
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </details>
+                  </button>
+                  {isCatalogOpen && (
+                    <div className="absolute left-0 right-0 sm:left-auto sm:right-0 mt-2 w-full sm:w-96 bg-white rounded-lg shadow-lg border p-4 z-20 max-h-64 sm:max-h-96 overflow-y-auto">
+                      {catalogItems.map(item => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            addFromCatalog(item)
+                            setIsCatalogOpen(false)
+                          }}
+                          className="w-full text-left p-3 hover:bg-gray-50 rounded-md border-b last:border-b-0"
+                        >
+                          <div className="font-medium">{item.name}</div>
+                          <div className="text-sm text-gray-600">{item.description}</div>
+                          <div className="text-sm mt-1">
+                            £{item.default_price.toFixed(2)} • VAT {item.default_vat_rate}%
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
               <Button type="button" onClick={addLineItem} leftIcon={<PlusCircle className="h-4 w-4" />} size="sm">
                 <span className="hidden sm:inline">Add Line Item</span>
