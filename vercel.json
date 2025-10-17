@@ -41,6 +41,10 @@
       "schedule": "0 2 * * 1"
     },
     {
+      "path": "/api/cron/auto-send-invoices",
+      "schedule": "0 7 * * *"
+    },
+    {
       "path": "/api/cron/reconcile-sms",
       "schedule": "0 * * * *"
     }
