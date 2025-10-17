@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
-import { CalendarIcon, UsersIcon, PlusIcon, ChatBubbleLeftIcon, CurrencyPoundIcon, TruckIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, UsersIcon, ChatBubbleLeftIcon, CurrencyPoundIcon, TruckIcon } from '@heroicons/react/24/outline'
 import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { Card, CardTitle } from '@/components/ui-v2/layout/Card'
@@ -923,50 +923,6 @@ export default async function DashboardPage() {
                 />
               </Card>
 
-              <Card header={<CardTitle>Quick Actions</CardTitle>}>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  <Link href="/events/new">
-                    <Card interactive className="text-center" padding="sm">
-                      <CalendarIcon className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-gray-400 mb-1 sm:mb-2" />
-                      <p className="text-xs sm:text-sm font-medium text-gray-900">New Event</p>
-                    </Card>
-                  </Link>
-                  <Link href="/customers">
-                    <Card interactive className="text-center" padding="sm">
-                      <UsersIcon className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-gray-400 mb-1 sm:mb-2" />
-                      <p className="text-xs sm:text-sm font-medium text-gray-900">Customers</p>
-                    </Card>
-                  </Link>
-                  <Link href="/messages">
-                    <Card interactive className="text-center relative" padding="sm">
-                      <div className="relative inline-block">
-                        <ChatBubbleLeftIcon className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-gray-400 mb-1 sm:mb-2" />
-                        {snapshot.messages.permitted && snapshot.messages.unread > 0 && (
-                          <Badge
-                            variant="error"
-                            size="sm"
-                            dot
-                            className="absolute -top-1 -right-1"
-                          />
-                        )}
-                      </div>
-                      <p className="text-xs sm:text-sm font-medium text-gray-900">Messages</p>
-                    </Card>
-                  </Link>
-                  <Link href="/private-bookings/new">
-                    <Card interactive className="text-center" padding="sm">
-                      <PlusIcon className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-gray-400 mb-1 sm:mb-2" />
-                      <p className="text-xs sm:text-sm font-medium text-gray-900">Private Booking</p>
-                    </Card>
-                  </Link>
-                  <Link href="/parking">
-                    <Card interactive className="text-center" padding="sm">
-                      <TruckIcon className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-gray-400 mb-1 sm:mb-2" />
-                      <p className="text-xs sm:text-sm font-medium text-gray-900">Parking</p>
-                    </Card>
-                  </Link>
-                </div>
-              </Card>
             </div>
           </div>
         </div>
