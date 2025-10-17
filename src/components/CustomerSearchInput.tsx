@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 interface Customer {
   id: string
   first_name: string
-  last_name: string
+  last_name: string | null
   mobile_number: string | null
   email: string | null
 }
@@ -41,7 +41,8 @@ export default function CustomerSearchInput({
 
     if (data && !error) {
       setSelectedCustomer(data)
-      setSearchTerm(`${data.first_name} ${data.last_name}`)
+      const name = [data.first_name, data.last_name ?? ''].filter(Boolean).join(' ')
+      setSearchTerm(name)
     }
   }, [supabase])
 
@@ -135,7 +136,8 @@ export default function CustomerSearchInput({
 
   const handleCustomerSelect = (customer: Customer) => {
     setSelectedCustomer(customer)
-    setSearchTerm(`${customer.first_name} ${customer.last_name}`)
+    const name = [customer.first_name, customer.last_name ?? ''].filter(Boolean).join(' ')
+    setSearchTerm(name)
     setShowDropdown(false)
     onCustomerSelect(customer)
   }
@@ -186,7 +188,7 @@ export default function CustomerSearchInput({
           <div className="flex items-start justify-between">
             <div className="min-w-0 flex-1">
               <p className="font-medium text-gray-900 text-sm sm:text-base">
-                {selectedCustomer.first_name} {selectedCustomer.last_name}
+                {[selectedCustomer.first_name, selectedCustomer.last_name ?? ''].filter(Boolean).join(' ')}
               </p>
               {selectedCustomer.mobile_number && (
                 <p className="text-xs sm:text-sm text-gray-600 flex items-center mt-1">
@@ -216,7 +218,7 @@ export default function CustomerSearchInput({
                 <UserIcon className="h-5 w-5 text-gray-400 mr-3 flex-shrink-0" />
                 <div className="flex-1">
                   <p className="text-sm sm:text-base font-medium text-gray-900">
-                    {customer.first_name} {customer.last_name}
+                    {[customer.first_name, customer.last_name ?? ''].filter(Boolean).join(' ')}
                   </p>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-xs sm:text-sm text-gray-500 mt-0.5">
                     {customer.mobile_number && (

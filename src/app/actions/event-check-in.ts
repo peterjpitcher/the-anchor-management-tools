@@ -245,12 +245,12 @@ async function upsertCustomerForCheckIn(
     return { customerId, firstName: existing.first_name, lastName: existing.last_name }
   }
 
-  if (!firstName || !lastName) {
-    return { error: 'First name and last name are required for new guests' }
+  if (!firstName) {
+    return { error: 'First name is required for new guests' }
   }
 
   const cleanFirst = sanitizeName(firstName)
-  const cleanLast = sanitizeName(lastName)
+  const cleanLast = lastName ? sanitizeName(lastName) : null
 
   const payload = {
     first_name: cleanFirst,

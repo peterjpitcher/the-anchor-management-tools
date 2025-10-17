@@ -47,11 +47,14 @@ export async function createBooking(formData: FormData): Promise<CreateBookingRe
 
     // Check if we need to create a new customer
     if (formData.get('create_customer') === 'true') {
-      const firstName = formData.get('customer_first_name') as string
-      const lastName = formData.get('customer_last_name') as string
-      const mobileNumber = formData.get('customer_mobile_number') as string
+      const firstName = (formData.get('customer_first_name') as string | null)?.trim() || ''
+      const lastNameInput = (formData.get('customer_last_name') as string | null)?.trim() || ''
+      const emailInput = (formData.get('customer_email') as string | null)?.trim() || ''
+      const mobileNumber = (formData.get('customer_mobile_number') as string | null)?.trim() || ''
+      const normalizedLastName = lastNameInput.length > 0 ? lastNameInput : null
+      const normalizedEmail = emailInput.length > 0 ? emailInput.toLowerCase() : null
 
-      if (!firstName || !lastName || !mobileNumber) {
+      if (!firstName || !mobileNumber) {
         return { error: 'Customer details are required' }
       }
 
@@ -66,21 +69,34 @@ export async function createBooking(formData: FormData): Promise<CreateBookingRe
       // Check if customer already exists with this phone number
       const { data: existingCustomer } = await supabase
         .from('customers')
-        .select('id')
+        .select('id, email, last_name')
         .eq('mobile_number', formattedPhone)
         .single()
 
       if (existingCustomer) {
         customerId = existingCustomer.id
+        if (normalizedEmail && normalizedEmail !== (existingCustomer.email as string | null)) {
+          await supabase
+            .from('customers')
+            .update({ email: normalizedEmail })
+            .eq('id', existingCustomer.id)
+        }
+        if (normalizedLastName && normalizedLastName !== (existingCustomer.last_name as string | null)) {
+          await supabase
+            .from('customers')
+            .update({ last_name: normalizedLastName })
+            .eq('id', existingCustomer.id)
+        }
       } else {
         // Create new customer
         const { data: newCustomer, error: customerError } = await supabase
           .from('customers')
           .insert({
             first_name: firstName,
-            last_name: lastName,
+            last_name: normalizedLastName,
             mobile_number: formattedPhone,
-            sms_opt_in: true
+            sms_opt_in: true,
+            email: normalizedEmail
           })
           .select()
           .single()
@@ -102,8 +118,9 @@ export async function createBooking(formData: FormData): Promise<CreateBookingRe
           operation_status: 'success',
           additional_info: {
             firstName,
-            lastName,
+            lastName: normalizedLastName,
             mobileNumber: formattedPhone,
+            email: normalizedEmail,
             createdDuringBooking: true
           }
         })
@@ -173,7 +190,7 @@ export async function createBooking(formData: FormData): Promise<CreateBookingRe
     // Get customer details for audit log
     const { data: customer } = await supabase
       .from('customers')
-      .select('first_name, last_name')
+      .select('first_name, last_name, email')
       .eq('id', data.customer_id)
       .single()
 
@@ -243,7 +260,7 @@ export async function createBooking(formData: FormData): Promise<CreateBookingRe
         eventId: event.id,
         eventName: event.name,
         customerId: data.customer_id,
-        customerName: customer ? `${customer.first_name} ${customer.last_name}` : 'Unknown',
+        customerName: customer ? [customer.first_name, (customer as { last_name?: string | null }).last_name ?? ''].filter(Boolean).join(' ') : 'Unknown',
         seats: data.seats,
         overwrote: existingBooking && rawData.overwrite
       }

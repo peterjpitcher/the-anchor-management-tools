@@ -12,6 +12,7 @@ interface CustomerFormProps {
 export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps) {
   const [firstName, setFirstName] = useState(customer?.first_name ?? '')
   const [lastName, setLastName] = useState(customer?.last_name ?? '')
+  const [email, setEmail] = useState(customer?.email ?? '')
   const [mobileNumber, setMobileNumber] = useState(customer?.mobile_number ?? '')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -41,10 +42,14 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
     e.preventDefault()
     setIsSubmitting(true)
     try {
+      const trimmedFirstName = firstName.trim()
+      const trimmedLastName = lastName.trim()
+      const trimmedEmail = email.trim()
       const formattedNumber = formatPhoneNumber(mobileNumber)
       await onSubmit({
-        first_name: firstName,
-        last_name: lastName,
+        first_name: trimmedFirstName,
+        last_name: trimmedLastName === '' ? null : trimmedLastName,
+        email: trimmedEmail === '' ? null : trimmedEmail.toLowerCase(),
         mobile_number: formattedNumber,
       })
     } finally {
@@ -78,6 +83,27 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
 
         <div>
           <label
+            htmlFor="email"
+            className="block text-sm font-medium text-gray-700 mb-2"
+          >
+            Email
+          </label>
+          <div className="mt-1">
+            <input
+              type="email"
+              id="email"
+              name="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+              placeholder="name@example.com"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label
             htmlFor="last_name"
             className="block text-sm font-medium text-gray-700 mb-2"
           >
@@ -91,7 +117,6 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
               autoComplete="family-name"
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
-              required
               className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
             />
           </div>

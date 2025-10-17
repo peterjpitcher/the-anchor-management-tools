@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { logAuditEvent } from './audit'
-import { customerSchema, formatPhoneForStorage } from '@/lib/validation'
+import { customerSchema, formatPhoneForStorage, optionalEmailSchema } from '@/lib/validation'
 import { getConstraintErrorMessage, isPostgrestError } from '@/lib/dbErrorHandler'
 import { checkUserPermission } from './rbac'
 
@@ -54,6 +54,12 @@ export async function createCustomer(formData: FormData) {
       }
     }
 
+    const payload = {
+      ...data,
+      last_name: data.last_name ?? null,
+      email: data.email ?? null
+    }
+
     // Check for duplicate phone number
     const { data: existing } = await supabase
       .from('customers')
@@ -68,7 +74,7 @@ export async function createCustomer(formData: FormData) {
     // Create customer
     const { data: customer, error } = await supabase
       .from('customers')
-      .insert(data)
+      .insert(payload)
       .select()
       .single()
 
@@ -130,7 +136,6 @@ export async function updateCustomer(id: string, formData: FormData) {
     }
 
     const data = validationResult.data
-
     if (data.email) {
       data.email = data.email.toLowerCase();
     }
@@ -142,6 +147,12 @@ export async function updateCustomer(id: string, formData: FormData) {
       } catch (error) {
         return { error: 'Invalid UK phone number format' }
       }
+    }
+
+    const payload = {
+      ...data,
+      last_name: data.last_name ?? null,
+      email: data.email ?? null
     }
 
     // Check for duplicate phone number (excluding current customer)
@@ -159,7 +170,7 @@ export async function updateCustomer(id: string, formData: FormData) {
     // Update customer
     const { data: customer, error } = await supabase
       .from('customers')
-      .update(data)
+      .update(payload)
       .eq('id', id)
       .select()
       .single()
@@ -250,6 +261,7 @@ interface ImportCustomerInput {
   first_name: string
   last_name?: string
   mobile_number: string
+  email?: string
 }
 
 export async function importCustomers(entries: ImportCustomerInput[]) {
@@ -272,6 +284,7 @@ export async function importCustomers(entries: ImportCustomerInput[]) {
     const preparedCustomers: Array<{
       first_name: string
       last_name: string | null
+      email: string | null
       mobile_number: string
       sms_opt_in: boolean
     }> = []
@@ -306,9 +319,20 @@ export async function importCustomers(entries: ImportCustomerInput[]) {
       }
 
       seenPhones.add(formattedPhone)
+      const emailInput = (entry.email || '').trim()
+      let normalizedEmail: string | null = null
+      if (emailInput) {
+        const emailResult = optionalEmailSchema.safeParse(emailInput.toLowerCase())
+        if (!emailResult.success || !emailResult.data) {
+          invalidCount++
+          continue
+        }
+        normalizedEmail = emailResult.data
+      }
       preparedCustomers.push({
         first_name: firstName,
         last_name: entry.last_name ? entry.last_name.trim() || null : null,
+        email: normalizedEmail,
         mobile_number: formattedPhone,
         sms_opt_in: true,
       })
@@ -346,12 +370,16 @@ export async function importCustomers(entries: ImportCustomerInput[]) {
       return true
     })
 
-    let insertedCustomers: Array<{ id: string; first_name: string; last_name: string | null; mobile_number: string }> = []
+    let insertedCustomers: Array<{ id: string; first_name: string; last_name: string | null; email: string | null; mobile_number: string }> = []
     if (customersToInsert.length > 0) {
+      const insertPayload = customersToInsert.map((customer) => ({
+        ...customer,
+        email: customer.email,
+      }))
       const { data: inserted, error: insertError } = await supabase
         .from('customers')
-        .insert(customersToInsert)
-        .select('id, first_name, last_name, mobile_number')
+        .insert(insertPayload)
+        .select('id, first_name, last_name, email, mobile_number')
 
       if (insertError) {
         console.error('Customer import insertion error:', insertError)

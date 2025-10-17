@@ -144,17 +144,21 @@ export async function POST(request: NextRequest) {
         .single();
         
       let customer = existingCustomer;
+      const providedEmail = validatedData.customer.email?.trim() ? validatedData.customer.email.trim().toLowerCase() : null;
+      const providedLastName = validatedData.customer.last_name?.trim() || null;
       
       if (!customer) {
-        // Remove email from customer data since the column doesn't exist
-        const { email, ...customerDataWithoutEmail } = validatedData.customer;
-        
+        const insertPayload = {
+          first_name: validatedData.customer.first_name,
+          last_name: providedLastName,
+          email: providedEmail,
+          mobile_number: standardizedPhone,
+          sms_opt_in: validatedData.customer.sms_opt_in,
+        };
+
         const { data: newCustomer, error: customerError } = await supabase
           .from('customers')
-          .insert({
-            ...customerDataWithoutEmail,
-            mobile_number: standardizedPhone,
-          })
+          .insert(insertPayload)
           .select()
           .single();
           
@@ -173,6 +177,21 @@ export async function POST(request: NextRequest) {
         }
         
         customer = newCustomer;
+      } else if (customer && (providedEmail || providedLastName)) {
+        const updates: Record<string, unknown> = {};
+        if (providedEmail && providedEmail !== customer.email) {
+          updates.email = providedEmail;
+        }
+        if (providedLastName && providedLastName !== customer.last_name) {
+          updates.last_name = providedLastName;
+        }
+        if (Object.keys(updates).length > 0) {
+          await supabase
+            .from('customers')
+            .update(updates)
+            .eq('id', customer.id);
+          customer = { ...customer, ...updates };
+        }
       }
 
       // Validate booking against policy

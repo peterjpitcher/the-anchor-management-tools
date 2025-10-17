@@ -1,11 +1,11 @@
 import { redirect } from 'next/navigation'
 import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
-import { buildEventChecklist, EVENT_CHECKLIST_TOTAL_TASKS } from '@/lib/event-checklist'
+import { buildEventChecklist, EVENT_CHECKLIST_TOTAL_TASKS, ChecklistTodoItem } from '@/lib/event-checklist'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import { checkUserPermission } from '@/app/actions/rbac'
 import EventsClient from './EventsClient'
 
-async function getEvents() {
+async function getEvents(): Promise<{ events: any[]; todos: ChecklistTodoItem[] }> {
   const supabase = getSupabaseAdminClient()
   
   const { data: events, error } = await supabase
@@ -20,7 +20,7 @@ async function getEvents() {
   
   if (error) {
     console.error('Error fetching events:', error)
-    return []
+    return { events: [], todos: [] }
   }
   
   const eventIds = events?.map(event => event.id).filter(Boolean) as string[]
@@ -46,53 +46,92 @@ async function getEvents() {
 
   const todayIso = getTodayIsoDate()
 
+  if (!events) {
+    return { events: [], todos: [] }
+  }
+
   type BookingSeat = { seats: number | null }
-  return events.map(event => ({
-    ...event,
-    booked_seats: event.bookings?.reduce((sum: number, booking: BookingSeat) => sum + (booking.seats || 0), 0) || 0,
-    bookings: undefined,
-    checklist: (() => {
-      if (!event.date) {
-        return {
+  const todos: ChecklistTodoItem[] = []
+
+  const eventsWithChecklist = events.map(event => {
+    const bookedSeats = event.bookings?.reduce((sum: number, booking: BookingSeat) => sum + (booking.seats || 0), 0) || 0
+
+    if (!event.date) {
+      return {
+        ...event,
+        booked_seats: bookedSeats,
+        bookings: undefined,
+        checklist: {
           completed: 0,
           total: EVENT_CHECKLIST_TOTAL_TASKS,
           overdueCount: 0,
           dueTodayCount: 0,
-          nextTask: null
+          nextTask: null,
+          outstanding: []
         }
       }
-      const statuses = statusMap.get(event.id) ?? []
-      const checklist = buildEventChecklist(
-        { id: event.id, name: event.name, date: event.date },
-        statuses.map(status => ({
-          event_id: event.id,
-          task_key: status.task_key,
-          completed_at: status.completed_at
-        })),
-        todayIso
-      )
+    }
 
-      const outstanding = checklist
-        .filter(item => !item.completed)
-        .sort((a, b) => {
-          if (a.dueDate === b.dueDate) {
-            return a.order - b.order
-          }
-          return a.dueDate.localeCompare(b.dueDate)
-        })
+    const statuses = statusMap.get(event.id) ?? []
+    const checklist = buildEventChecklist(
+      { id: event.id, name: event.name, date: event.date },
+      statuses.map(status => ({
+        event_id: event.id,
+        task_key: status.task_key,
+        completed_at: status.completed_at
+      })),
+      todayIso
+    )
 
-      const overdueCount = outstanding.filter(item => item.status === 'overdue').length
-      const dueTodayCount = outstanding.filter(item => item.status === 'due_today').length
+    const outstanding = checklist
+      .filter(item => !item.completed)
+      .sort((a, b) => {
+        if (a.dueDate === b.dueDate) {
+          return a.order - b.order
+        }
+        return a.dueDate.localeCompare(b.dueDate)
+      })
 
-      return {
+    outstanding.forEach(item => {
+      todos.push({
+        ...item,
+        eventName: event.name ?? 'Untitled event',
+        eventDate: event.date
+      })
+    })
+
+    const overdueCount = outstanding.filter(item => item.status === 'overdue').length
+    const dueTodayCount = outstanding.filter(item => item.status === 'due_today').length
+
+    return {
+      ...event,
+      booked_seats: bookedSeats,
+      bookings: undefined,
+      checklist: {
         completed: checklist.filter(item => item.completed).length,
         total: EVENT_CHECKLIST_TOTAL_TASKS,
         overdueCount,
         dueTodayCount,
-        nextTask: outstanding[0] || null
+        nextTask: outstanding[0] || null,
+        outstanding
       }
-    })()
-  }))
+    }
+  })
+
+  todos.sort((a, b) => {
+    if (a.dueDate === b.dueDate) {
+      if (a.eventDate === b.eventDate) {
+        return a.order - b.order
+      }
+      return (a.eventDate ?? '').localeCompare(b.eventDate ?? '')
+    }
+    return a.dueDate.localeCompare(b.dueDate)
+  })
+
+  return {
+    events: eventsWithChecklist,
+    todos
+  }
 }
 
 export default async function EventsPage() {
@@ -101,7 +140,7 @@ export default async function EventsPage() {
     redirect('/unauthorized')
   }
 
-  const events = await getEvents()
+  const { events, todos } = await getEvents()
   
-  return <EventsClient events={events} />
+  return <EventsClient events={events} todos={todos} />
 }
