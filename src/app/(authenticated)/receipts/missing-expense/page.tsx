@@ -3,6 +3,8 @@ import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { Card } from '@/components/ui-v2/layout/Card'
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
+import { checkUserPermission } from '@/app/actions/rbac'
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('en-GB', {
@@ -20,6 +22,11 @@ function formatDate(value?: string | null) {
 export const runtime = 'nodejs'
 
 export default async function ReceiptsMissingExpensePage() {
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    redirect('/unauthorized')
+  }
+
   const summary = await getReceiptMissingExpenseSummary()
   const totalTransactions = summary.reduce((sum, item) => sum + item.transactionCount, 0)
   const totalOutgoing = summary.reduce((sum, item) => sum + item.totalOutgoing, 0)

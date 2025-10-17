@@ -15,6 +15,7 @@ import { ProgressBar } from '@/components/ui-v2/feedback/ProgressBar'
 import { Accordion } from '@/components/ui-v2/display/Accordion'
 import { formatDate, getTodayIsoDate } from '@/lib/dateUtils'
 import type { EventChecklistItem } from '@/lib/event-checklist'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 interface EventCategory {
   id: string
@@ -44,6 +45,8 @@ interface EventsClientProps {
 }
 
 export default function EventsClient({ events }: EventsClientProps) {
+  const { hasPermission } = usePermissions()
+  const canManageEvents = hasPermission('events', 'manage')
   const today = getTodayIsoDate()
   
   const pastEvents = events.filter(e => e.date < today)
@@ -63,12 +66,16 @@ export default function EventsClient({ events }: EventsClientProps) {
             <NavLink href="/events/todo">
               Checklist Todo
             </NavLink>
-            <NavLink href="/settings/event-categories">
-              Manage Categories
-            </NavLink>
-            <NavLink href="/events/new">
-              Create Event
-            </NavLink>
+            {canManageEvents && (
+              <>
+                <NavLink href="/settings/event-categories">
+                  Manage Categories
+                </NavLink>
+                <NavLink href="/events/new">
+                  Create Event
+                </NavLink>
+              </>
+            )}
           </NavGroup>
         }
       />
@@ -80,11 +87,11 @@ export default function EventsClient({ events }: EventsClientProps) {
           <EmptyState icon={<CalendarIcon />}
             title="No upcoming events"
             description="Get started by creating a new event."
-            action={
+            action={canManageEvents ? (
               <LinkButton href="/events/new" variant="primary" size="sm">
                 New Event
               </LinkButton>
-            }
+            ) : undefined}
           />
         ) : (
           <DataTable
@@ -220,10 +227,12 @@ export default function EventsClient({ events }: EventsClientProps) {
                     <LinkButton href={`/events/${event.id}`} variant="secondary" size="sm">
                       View
                     </LinkButton>
-                    <LinkButton href={`/events/${event.id}/edit`} variant="secondary" size="sm">
-                      <PencilSquareIcon className="h-4 w-4 mr-1" />
-                      Edit
-                    </LinkButton>
+                    {canManageEvents && (
+                      <LinkButton href={`/events/${event.id}/edit`} variant="secondary" size="sm">
+                        <PencilSquareIcon className="h-4 w-4 mr-1" />
+                        Edit
+                      </LinkButton>
+                    )}
                   </div>
                 ),
               },
@@ -273,10 +282,12 @@ export default function EventsClient({ events }: EventsClientProps) {
                           <LinkButton href={`/events/${event.id}`} variant="secondary" size="sm">
                             View
                           </LinkButton>
-                          <LinkButton href={`/events/${event.id}/edit`} variant="secondary" size="sm">
-                            <PencilSquareIcon className="h-4 w-4 mr-1" />
-                            Edit
-                          </LinkButton>
+                          {canManageEvents && (
+                            <LinkButton href={`/events/${event.id}/edit`} variant="secondary" size="sm">
+                              <PencilSquareIcon className="h-4 w-4 mr-1" />
+                              Edit
+                            </LinkButton>
+                          )}
                         </div>
                       ),
                     },

@@ -12,9 +12,11 @@ import toast from 'react-hot-toast';
 import { generateApiKey } from './actions';
 import { format } from 'date-fns';
 import type { ApiKey } from '@/types/api';
+import { Alert } from '@/components/ui-v2/feedback/Alert';
 
 interface ApiKeysManagerProps {
   initialKeys: ApiKey[];
+  canManage: boolean;
 }
 
 const PERMISSION_OPTIONS = [
@@ -26,7 +28,7 @@ const PERMISSION_OPTIONS = [
   { value: '*', label: 'All Permissions' },
 ];
 
-export default function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
+export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManagerProps) {
   const [keys, setKeys] = useState(initialKeys);
   const [showKey, setShowKey] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -40,6 +42,11 @@ export default function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
 
   const handleCreateKey = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canManage) {
+      toast.error('You do not have permission to create API keys');
+      return;
+    }
+
     setIsCreating(true);
     try {
       const result = await generateApiKey(newKeyData);
@@ -85,15 +92,23 @@ export default function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
 
   return (
     <div className="space-y-6">
+      {!canManage && (
+        <Alert
+          variant="info"
+          title="Read-only access"
+          description="You can review existing API keys, but creating or revoking keys requires the settings manage permission."
+        />
+      )}
+
       {/* Create Button */}
-      {!showCreateForm && (
+      {canManage && !showCreateForm && (
         <Button onClick={() => setShowCreateForm(true)} leftIcon={<PlusIcon className="h-4 w-4" />}>
           Create API Key
         </Button>
       )}
 
       {/* Create Form */}
-      {showCreateForm && (
+      {canManage && showCreateForm && (
         <Card variant="default" padding="md">
           <h3 className="text-lg font-semibold mb-4">Create New API Key</h3>
           <form onSubmit={handleCreateKey} className="space-y-4">
@@ -172,7 +187,7 @@ export default function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
       )}
 
       {/* Show newly created key */}
-      {showKey && (
+      {showKey && canManage && (
         <Card variant="default" padding="sm" className="bg-yellow-50 border-yellow-200">
           <h3 className="font-semibold text-yellow-900 mb-2">New API Key Created</h3>
           <p className="text-sm text-yellow-800 mb-3">

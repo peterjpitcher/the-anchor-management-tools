@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -15,6 +16,7 @@ import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { Plus, Edit2, Trash2, Package } from 'lucide-react'
 import { getLineItemCatalog, createCatalogItem, updateCatalogItem, deleteCatalogItem } from '@/app/actions/invoices'
 import type { LineItemCatalogItem } from '@/types/invoices'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 interface CatalogFormData {
   name: string
@@ -24,6 +26,12 @@ interface CatalogFormData {
 }
 
 export default function LineItemCatalogPage() {
+  const router = useRouter()
+  const { hasPermission, loading: permissionsLoading } = usePermissions()
+  const canView = hasPermission('invoices', 'view')
+  const canManage = hasPermission('invoices', 'manage')
+  const isReadOnly = canView && !canManage
+
   const [items, setItems] = useState<LineItemCatalogItem[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -38,13 +46,26 @@ export default function LineItemCatalogPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (permissionsLoading) {
+      return
+    }
+
+    if (!canView) {
+      router.replace('/unauthorized')
+      return
+    }
+
     loadCatalogItems()
-  }, [])
+  }, [permissionsLoading, canView, router])
 
   async function loadCatalogItems() {
+    if (!canView) {
+      return
+    }
+
     try {
       const result = await getLineItemCatalog()
-      
+
       if (result.error || !result.items) {
         throw new Error(result.error || 'Failed to load catalog items')
       }
@@ -58,6 +79,11 @@ export default function LineItemCatalogPage() {
   }
 
   function openForm(item?: LineItemCatalogItem) {
+    if (!canManage) {
+      setError('You do not have permission to manage catalog items')
+      return
+    }
+
     if (item) {
       setEditingItem(item)
       setFormData({
@@ -93,6 +119,10 @@ export default function LineItemCatalogPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!canManage) {
+      setError('You do not have permission to manage catalog items')
+      return
+    }
     setFormLoading(true)
     setError(null)
 
@@ -122,6 +152,11 @@ export default function LineItemCatalogPage() {
   }
 
   async function handleDelete(item: LineItemCatalogItem) {
+    if (!canManage) {
+      setError('You do not have permission to manage catalog items')
+      return
+    }
+
     if (!confirm(`Are you sure you want to delete "${item.name}"?`)) {
       return
     }
@@ -139,7 +174,7 @@ export default function LineItemCatalogPage() {
     }
   }
 
-  if (loading) {
+  if (permissionsLoading || loading) {
     return (
       <PageWrapper>
         <PageHeader 
@@ -156,6 +191,10 @@ export default function LineItemCatalogPage() {
     )
   }
 
+  if (!canView) {
+    return null
+  }
+
   return (
     <PageWrapper>
       <PageHeader
@@ -163,12 +202,24 @@ export default function LineItemCatalogPage() {
         subtitle="Manage reusable line items for invoices and quotes"
         backButton={{ label: 'Back to Invoices', href: '/invoices' }}
         actions={
-          <Button onClick={() => openForm()} leftIcon={<Plus className="h-4 w-4" />}>
+          <Button
+            onClick={() => openForm()}
+            leftIcon={<Plus className="h-4 w-4" />}
+            disabled={!canManage}
+            title={!canManage ? 'You need invoice manage permission to add catalog items.' : undefined}
+          >
             Add Item
           </Button>
         }
       />
       <PageContent>
+      {isReadOnly && (
+        <Alert
+          variant="info"
+          description="You have read-only access to the catalog. Create, edit, and delete actions are disabled."
+          className="mb-6"
+        />
+      )}
       {error && (
         <Alert variant="error" description={error} className="mb-6" />
       )}
@@ -178,9 +229,11 @@ export default function LineItemCatalogPage() {
           title="No catalog items found"
           description="Add common line items for quick reuse."
           action={
-            <Button onClick={() => openForm()} leftIcon={<Plus className="h-4 w-4" />}>
-              Add Your First Item
-            </Button>
+            canManage ? (
+              <Button onClick={() => openForm()} leftIcon={<Plus className="h-4 w-4" />}>
+                Add Your First Item
+              </Button>
+            ) : undefined
           }
         />
       ) : (
@@ -195,10 +248,26 @@ export default function LineItemCatalogPage() {
               { key: 'vat', header: 'VAT Rate', align: 'right', cell: (i: LineItemCatalogItem) => <>{i.default_vat_rate}%</> },
               { key: 'actions', header: 'Actions', align: 'right', cell: (i: LineItemCatalogItem) => (
                 <div className="flex justify-end gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => openForm(i)} aria-label="Edit item" iconOnly>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => openForm(i)}
+                    aria-label="Edit item"
+                    iconOnly
+                    disabled={!canManage}
+                    title={!canManage ? 'You need invoice manage permission to edit catalog items.' : undefined}
+                  >
                     <Edit2 className="h-4 w-4" />
                   </Button>
-                  <Button variant="danger" size="sm" onClick={() => handleDelete(i)} aria-label="Delete item" iconOnly>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => handleDelete(i)}
+                    aria-label="Delete item"
+                    iconOnly
+                    disabled={!canManage}
+                    title={!canManage ? 'You need invoice manage permission to delete catalog items.' : undefined}
+                  >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
@@ -213,10 +282,26 @@ export default function LineItemCatalogPage() {
                     {i.description && <div className="text-sm text-gray-600 mt-1 truncate">{i.description}</div>}
                   </div>
                   <div className="flex gap-2 ml-4">
-                    <Button variant="secondary" size="sm" onClick={() => openForm(i)} aria-label="Edit item" iconOnly>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => openForm(i)}
+                      aria-label="Edit item"
+                      iconOnly
+                      disabled={!canManage}
+                      title={!canManage ? 'You need invoice manage permission to edit catalog items.' : undefined}
+                    >
                       <Edit2 className="h-4 w-4" />
                     </Button>
-                    <Button variant="danger" size="sm" onClick={() => handleDelete(i)} aria-label="Delete item" iconOnly>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => handleDelete(i)}
+                      aria-label="Delete item"
+                      iconOnly
+                      disabled={!canManage}
+                      title={!canManage ? 'You need invoice manage permission to delete catalog items.' : undefined}
+                    >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
@@ -250,7 +335,7 @@ export default function LineItemCatalogPage() {
             <Button
               type="submit"
               form="catalog-form"
-              disabled={formLoading}
+              disabled={formLoading || !canManage}
               loading={formLoading}
             >
               {editingItem ? 'Save Changes' : 'Add Item'}

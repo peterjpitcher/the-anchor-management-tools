@@ -13,11 +13,13 @@ import { Select } from '@/components/ui-v2/forms/Select'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { PlusCircle, Trash2 } from 'lucide-react'
 import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 import type { InvoiceVendor } from '@/types/invoices'
 import type { LineItemCatalogItem, InvoiceLineItemInput } from '@/types/invoices'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 type CreateInvoiceActionResult = Awaited<ReturnType<typeof createInvoice>>
 
@@ -33,6 +35,8 @@ interface LineItem {
 
 export default function NewInvoicePage() {
   const router = useRouter()
+  const { hasPermission, loading: permissionsLoading } = usePermissions()
+  const canCreate = hasPermission('invoices', 'create')
   const [loading, setLoading] = useState(false)
   const [vendors, setVendors] = useState<InvoiceVendor[]>([])
   const [catalogItems, setCatalogItems] = useState<LineItemCatalogItem[]>([])
@@ -47,8 +51,17 @@ export default function NewInvoicePage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (permissionsLoading) {
+      return
+    }
+
+    if (!canCreate) {
+      router.replace('/unauthorized')
+      return
+    }
+
     loadData()
-  }, [])
+  }, [permissionsLoading, canCreate, router])
 
   useEffect(() => {
     if (!invoiceDate || !vendors.length || !vendorId) {
@@ -69,6 +82,10 @@ export default function NewInvoicePage() {
   }, [invoiceDate, vendorId, vendors])
 
   async function loadData() {
+    if (!canCreate) {
+      return
+    }
+
     try {
       const [vendorsResult, catalogResult] = await Promise.all([
         getVendors(),
@@ -162,6 +179,10 @@ export default function NewInvoicePage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!canCreate) {
+      toast.error('You do not have permission to create invoices')
+      return
+    }
     if (!vendorId || lineItems.length === 0) {
       setError('Please select a vendor and add at least one line item')
       return
@@ -207,6 +228,27 @@ export default function NewInvoicePage() {
       toast.error(err instanceof Error ? err.message : 'Failed to create invoice')
       setLoading(false)
     }
+  }
+
+  if (permissionsLoading) {
+    return (
+      <PageWrapper>
+        <PageHeader
+          title="New Invoice"
+          subtitle="Create a new invoice"
+          backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center h-64">
+            <Spinner size="lg" />
+          </div>
+        </PageContent>
+      </PageWrapper>
+    )
+  }
+
+  if (!canCreate) {
+    return null
   }
 
   const totals = calculateInvoiceTotal()
@@ -487,7 +529,7 @@ export default function NewInvoicePage() {
             </Button>
             <Button
               type="submit"
-              disabled={loading || lineItems.length === 0}
+              disabled={loading || lineItems.length === 0 || !canCreate}
               loading={loading}
               className="w-full sm:w-auto"
             >

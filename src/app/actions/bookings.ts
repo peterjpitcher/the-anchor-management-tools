@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { logAuditEvent } from './audit'
-import { scheduleAndProcessBookingReminders } from './event-sms-scheduler'
+import { scheduleAndProcessBookingReminders, cancelBookingReminders } from './event-sms-scheduler'
 import { withRetry } from '@/lib/supabase-retry'
 import { getEventAvailableCapacity, invalidateEventCache } from '@/lib/events'
 import { formatPhoneForStorage } from '@/lib/validation'
@@ -80,7 +80,7 @@ export async function createBooking(formData: FormData): Promise<CreateBookingRe
             first_name: firstName,
             last_name: lastName,
             mobile_number: formattedPhone,
-            sms_consent: true
+            sms_opt_in: true
           })
           .select()
           .single()
@@ -506,6 +506,13 @@ export async function deleteBooking(id: string) {
         customers?: { first_name: string; last_name: string };
       } | null }
 
+    if (booking) {
+      const cancelResult = await cancelBookingReminders(id)
+      if (cancelResult && 'error' in cancelResult && cancelResult.error) {
+        console.error('Failed to cancel booking reminders during deletion', cancelResult.error)
+      }
+    }
+
     // Delete booking
     const { error } = await supabase
       .from('bookings')
@@ -538,7 +545,15 @@ export async function deleteBooking(id: string) {
       })
     }
 
-    revalidatePath(`/events/${booking?.event_id}`)
+    if (booking?.event_id) {
+      await invalidateEventCache(booking.event_id)
+      revalidatePath(`/events/${booking.event_id}`)
+    }
+    if (booking?.customer_id) {
+      revalidatePath(`/customers/${booking.customer_id}`)
+    }
+    revalidatePath('/events')
+
     return { success: true }
   } catch (error) {
     console.error('Unexpected error deleting booking:', error)

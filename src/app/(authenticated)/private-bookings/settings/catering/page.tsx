@@ -1,4 +1,3 @@
-import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import type { CateringPackage } from '@/types/private-bookings'
 import { 
@@ -6,7 +5,7 @@ import {
   SparklesIcon,
   CheckIcon
 } from '@heroicons/react/24/outline'
-import { createCateringPackage, updateCateringPackage, deleteCateringPackage } from '@/app/actions/privateBookingActions'
+import { createCateringPackage, updateCateringPackage, deleteCateringPackage, getCateringPackagesForManagement } from '@/app/actions/privateBookingActions'
 import { CateringPackageDeleteButton } from '@/components/CateringPackageDeleteButton'
 import { Page } from '@/components/ui-v2/layout/Page'
 import { Card } from '@/components/ui-v2/layout/Card'
@@ -19,6 +18,7 @@ import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { checkUserPermission } from '@/app/actions/rbac'
 
 async function handleCreatePackage(formData: FormData) {
   'use server'
@@ -35,7 +35,10 @@ async function handleCreatePackage(formData: FormData) {
   })
   
   if (result.error) {
-    console.error('Error creating package:', result.error)
+    if (result.error === 'Insufficient permissions' || result.error === 'Not authenticated') {
+      redirect('/unauthorized')
+    }
+    throw new Error(result.error)
   }
 }
 
@@ -55,7 +58,10 @@ async function handleUpdatePackage(formData: FormData) {
   })
   
   if (result.error) {
-    console.error('Error updating package:', result.error)
+    if (result.error === 'Insufficient permissions' || result.error === 'Not authenticated') {
+      redirect('/unauthorized')
+    }
+    throw new Error(result.error)
   }
 }
 
@@ -66,39 +72,27 @@ async function handleDeletePackage(formData: FormData) {
   const result = await deleteCateringPackage(packageId)
   
   if (result.error) {
-    console.error('Error deleting package:', result.error)
+    if (result.error === 'Insufficient permissions' || result.error === 'Not authenticated') {
+      redirect('/unauthorized')
+    }
+    throw new Error(result.error)
   }
 }
 
 export default async function CateringPackagesPage() {
-  const supabase = await createClient()
-  
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    redirect('/login')
-  }
+  const canManageCatering = await checkUserPermission('private_bookings', 'manage_catering')
 
-  // Check permissions
-  const { data: hasPermission } = await supabase.rpc('user_has_permission', {
-    p_user_id: user.id,
-    p_module_name: 'private_bookings',
-    p_action: 'manage_catering'
-  })
-
-  if (!hasPermission) {
+  if (!canManageCatering) {
     redirect('/unauthorized')
   }
 
-  // Fetch catering packages
-  const { data: packages, error } = await supabase
-    .from('catering_packages')
-    .select('*')
-    .order('package_type', { ascending: true })
-    .order('cost_per_head', { ascending: true })
+  const packagesResult = await getCateringPackagesForManagement()
 
-  if (error) {
-    console.error('Error fetching catering packages:', error)
+  if ('error' in packagesResult) {
+    throw new Error(packagesResult.error)
   }
+
+  const packages = packagesResult.data ?? []
 
   // Group packages by type
   const packagesByType = packages?.reduce((acc, pkg) => {

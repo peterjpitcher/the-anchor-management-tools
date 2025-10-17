@@ -9,9 +9,10 @@ import { getActiveParkingRate, insertParkingBooking, getParkingBooking, updatePa
 import { checkParkingCapacity } from '@/lib/parking/capacity'
 import { createParkingPaymentOrder } from '@/lib/parking/payments'
 import { revalidatePath } from 'next/cache'
-import type { ParkingBooking } from '@/types/parking'
+import type { ParkingBooking, ParkingBookingStatus, ParkingPaymentStatus } from '@/types/parking'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { resolveCustomerByPhone } from '@/lib/parking/customers'
+import type { ParkingRateConfig } from '@/lib/parking/pricing'
 
 const CreateParkingBookingSchema = z.object({
   customer_first_name: z.string().min(1, 'First name is required'),
@@ -204,6 +205,133 @@ export async function createParkingBooking(formData: FormData) {
       return { error: String((error as Record<string, unknown>).message) }
     }
     return { error: JSON.stringify(error) || 'Failed to create parking booking' }
+  }
+}
+
+function escapeLikePattern(input: string) {
+  return input.replace(/[%_\\]/g, '\\$&')
+}
+
+export async function listParkingBookings(options?: {
+  status?: ParkingBookingStatus | 'all'
+  paymentStatus?: ParkingPaymentStatus | 'all'
+  search?: string
+  limit?: number
+}) {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return { error: 'Authentication required' }
+    }
+
+    const canView = await checkUserPermission('parking', 'view', user.id)
+    if (!canView) {
+      return { error: 'You do not have permission to view parking bookings' }
+    }
+
+    const limit = options?.limit && options.limit > 0 ? options.limit : 200
+
+    let query = supabase
+      .from('parking_bookings')
+      .select('*')
+      .order('start_at', { ascending: false })
+      .limit(limit)
+
+    if (options?.status && options.status !== 'all') {
+      query = query.eq('status', options.status)
+    }
+
+    if (options?.paymentStatus && options.paymentStatus !== 'all') {
+      query = query.eq('payment_status', options.paymentStatus)
+    }
+
+    if (options?.search) {
+      const trimmed = options.search.trim()
+      if (trimmed.length > 0) {
+        const pattern = escapeLikePattern(trimmed)
+        query = query.or(
+          `reference.ilike.%${pattern}%,customer_first_name.ilike.%${pattern}%,customer_last_name.ilike.%${pattern}%`,
+        )
+      }
+    }
+
+    const { data, error } = await query
+
+    if (error) {
+      console.error('Error fetching parking bookings:', error)
+      return { error: 'Failed to load parking bookings' }
+    }
+
+    return { success: true, data: (data || []) as ParkingBooking[] }
+  } catch (error) {
+    console.error('Unexpected error listing parking bookings', error)
+    return { error: 'An unexpected error occurred' }
+  }
+}
+
+export async function getParkingBookingNotifications(bookingId: string) {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return { error: 'Authentication required' }
+    }
+
+    const canView = await checkUserPermission('parking', 'view', user.id)
+    if (!canView) {
+      return { error: 'You do not have permission to view parking bookings' }
+    }
+
+    const { data, error } = await supabase
+      .from('parking_booking_notifications')
+      .select('*')
+      .eq('booking_id', bookingId)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Error loading parking notifications:', error)
+      return { error: 'Failed to load notifications' }
+    }
+
+    return { success: true, data: data || [] }
+  } catch (error) {
+    console.error('Unexpected error loading parking notifications', error)
+    return { error: 'An unexpected error occurred' }
+  }
+}
+
+export async function getParkingRateConfig(): Promise<{ success: true; data: ParkingRateConfig } | { error: string }> {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return { error: 'Authentication required' }
+    }
+
+    const canManage = await checkUserPermission('parking', 'manage', user.id)
+    if (!canManage) {
+      return { error: 'You do not have permission to manage parking bookings' }
+    }
+
+    const adminClient = createAdminClient()
+    const rateRecord = await getActiveParkingRate(adminClient)
+
+    if (!rateRecord) {
+      return { error: 'Parking rates have not been configured' }
+    }
+
+    const config: ParkingRateConfig = {
+      hourlyRate: Number(rateRecord.hourly_rate) || 0,
+      dailyRate: Number(rateRecord.daily_rate) || 0,
+      weeklyRate: Number(rateRecord.weekly_rate) || 0,
+      monthlyRate: Number(rateRecord.monthly_rate) || 0
+    }
+
+    return { success: true, data: config }
+  } catch (error) {
+    console.error('Failed to load parking rate configuration', error)
+    return { error: 'Failed to load parking rate configuration' }
   }
 }
 

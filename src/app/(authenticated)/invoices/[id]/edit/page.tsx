@@ -17,10 +17,13 @@ import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Plus, Trash2, Save, Package } from 'lucide-react'
 import type { InvoiceVendor, InvoiceWithDetails, LineItemCatalogItem, InvoiceLineItemInput } from '@/types/invoices'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 export default function EditInvoicePage() {
   const params = useParams()
   const router = useRouter()
+  const { hasPermission, loading: permissionsLoading } = usePermissions()
+  const canEditInvoice = hasPermission('invoices', 'edit')
   const rawInvoiceId = params?.id
   const invoiceId = Array.isArray(rawInvoiceId) ? rawInvoiceId[0] : rawInvoiceId ?? null
 
@@ -48,7 +51,7 @@ export default function EditInvoicePage() {
   const [lineItems, setLineItems] = useState<InvoiceLineItemInput[]>([])
 
   const loadData = useCallback(async () => {
-    if (!invoiceId) {
+    if (!invoiceId || !canEditInvoice) {
       return
     }
 
@@ -100,11 +103,20 @@ export default function EditInvoicePage() {
     } finally {
       setLoading(false)
     }
-  }, [invoiceId])
+  }, [invoiceId, canEditInvoice])
 
   useEffect(() => {
+    if (permissionsLoading) {
+      return
+    }
+
+    if (!canEditInvoice) {
+      router.replace('/unauthorized')
+      return
+    }
+
     loadData()
-  }, [loadData])
+  }, [permissionsLoading, canEditInvoice, loadData, router])
 
   function addLineItem() {
     setLineItems([...lineItems, {
@@ -155,6 +167,10 @@ export default function EditInvoicePage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!canEditInvoice) {
+      toast.error('You do not have permission to edit invoices')
+      return
+    }
 
     if (lineItems.length === 0) {
       setError('Please add at least one line item')
@@ -195,7 +211,7 @@ export default function EditInvoicePage() {
     }
   }
 
-  if (loading) {
+  if (permissionsLoading || loading) {
     return (
       <PageWrapper>
         <PageHeader 
@@ -209,6 +225,10 @@ export default function EditInvoicePage() {
         </PageContent>
       </PageWrapper>
     )
+  }
+
+  if (!permissionsLoading && !canEditInvoice) {
+    return null
   }
 
   if (error && !invoice) {
@@ -481,7 +501,7 @@ export default function EditInvoicePage() {
           >
             Cancel
           </Button>
-          <Button type="submit" disabled={submitting} loading={submitting} leftIcon={!submitting && <Save className="h-4 w-4" />}>
+          <Button type="submit" disabled={submitting || !canEditInvoice} loading={submitting} leftIcon={!submitting && <Save className="h-4 w-4" />}>
             {submitting ? 'Saving...' : 'Save Changes'}
           </Button>
         </div>

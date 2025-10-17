@@ -1,17 +1,25 @@
-import { getAllRoles, getAllPermissions } from '@/app/actions/rbac';
+import { getAllRoles, getAllPermissions, checkUserPermission } from '@/app/actions/rbac';
 import RoleList from './components/RoleList';
-// New UI components
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
 import { Card } from '@/components/ui-v2/layout/Card';
-// import { Button } from '@/components/ui-v2/forms/Button';
 import { NavLink } from '@/components/ui-v2/navigation/NavLink';
 import { NavGroup } from '@/components/ui-v2/navigation/NavGroup';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
+import { redirect } from 'next/navigation';
 
 export default async function RolesPage() {
+  const [canViewRoles, canManage] = await Promise.all([
+    checkUserPermission('roles', 'view'),
+    checkUserPermission('roles', 'manage'),
+  ]);
+
+  if (!canViewRoles) {
+    redirect('/unauthorized');
+  }
+
   const [rolesResult, permissionsResult] = await Promise.all([
     getAllRoles(),
-    getAllPermissions()
+    getAllPermissions(),
   ]);
 
   if (rolesResult.error || permissionsResult.error) {
@@ -48,14 +56,16 @@ export default async function RolesPage() {
           href: "/settings"
         }}
         actions={
-          <NavGroup>
-            <NavLink href="/roles/new">
-              New Role
-            </NavLink>
-          </NavGroup>
+          canManage ? (
+            <NavGroup>
+              <NavLink href="/roles/new">
+                New Role
+              </NavLink>
+            </NavGroup>
+          ) : undefined
         }
       />
-      <RoleList roles={roles} permissions={permissions} />
+      <RoleList roles={roles} permissions={permissions} canManage={!!canManage} />
     </div>
   );
 }

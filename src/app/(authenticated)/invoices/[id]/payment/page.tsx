@@ -17,10 +17,13 @@ import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Save } from 'lucide-react'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import type { InvoiceWithDetails, PaymentMethod } from '@/types/invoices'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 export default function RecordPaymentPage() {
   const params = useParams()
   const router = useRouter()
+  const { hasPermission, loading: permissionsLoading } = usePermissions()
+  const canEdit = hasPermission('invoices', 'edit')
   const [invoice, setInvoice] = useState<InvoiceWithDetails | null>(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -42,6 +45,15 @@ export default function RecordPaymentPage() {
     if (!invoiceId) {
       setError('Invoice not found')
       setLoading(false)
+      return
+    }
+
+    if (permissionsLoading) {
+      return
+    }
+
+    if (!canEdit) {
+      router.replace('/unauthorized')
       return
     }
 
@@ -68,12 +80,16 @@ export default function RecordPaymentPage() {
     }
     
     loadInvoice()
-  }, [invoiceId])
+  }, [invoiceId, permissionsLoading, canEdit, router])
 
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!invoice || submitting) return
+    if (!canEdit) {
+      toast.error('You do not have permission to record payments')
+      return
+    }
 
     const paymentAmount = parseFloat(amount)
     const outstanding = invoice.total_amount - invoice.paid_amount
@@ -114,7 +130,7 @@ export default function RecordPaymentPage() {
     }
   }
 
-  if (loading) {
+  if (permissionsLoading || loading) {
     return (
       <PageWrapper>
         <PageHeader 
@@ -128,6 +144,10 @@ export default function RecordPaymentPage() {
         </PageContent>
       </PageWrapper>
     )
+  }
+
+  if (!permissionsLoading && !canEdit) {
+    return null
   }
 
   if (!invoice) {
@@ -255,7 +275,12 @@ export default function RecordPaymentPage() {
           </Button>
           <Button
             type="submit"
-            disabled={submitting || parseFloat(amount) <= 0 || parseFloat(amount) > outstanding}
+            disabled={
+              submitting ||
+              !canEdit ||
+              parseFloat(amount) <= 0 ||
+              parseFloat(amount) > outstanding
+            }
             loading={submitting}
             leftIcon={<Save className="h-4 w-4" />}
           >

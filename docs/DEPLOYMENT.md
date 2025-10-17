@@ -30,7 +30,7 @@ The Anchor Management Tools uses a modern serverless architecture:
 
 ### Infrastructure Requirements
 
-- Node.js 18.17 or later
+- Node.js 20.x (LTS)
 - npm 9.6.7 or later
 - Git for version control
 - Accounts for: Vercel, Supabase, Twilio, GitHub
@@ -738,4 +738,4 @@ VACUUM ANALYZE;
 
 ---
 
-For detailed feature documentation, see the `/docs` directory. For development guidelines, refer to `CLAUDE.md`.
+For detailed feature documentation, see the `/docs` directory. For development guidelines, refer to `docs/CONTRIBUTING.md`.

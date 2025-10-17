@@ -10,7 +10,11 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 
-export function SpecialHoursManager() {
+interface SpecialHoursManagerProps {
+  canManage: boolean
+}
+
+export function SpecialHoursManager({ canManage }: SpecialHoursManagerProps) {
   const [specialHours, setSpecialHours] = useState<SpecialHours[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -56,6 +60,11 @@ export function SpecialHoursManager() {
   }
 
   const handleEdit = (hours: SpecialHours) => {
+    if (!canManage) {
+      toast.error('You do not have permission to edit special hours.')
+      return
+    }
+
     setFormData({
       date: hours.date,
       opens: hours.opens || '',
@@ -71,6 +80,11 @@ export function SpecialHoursManager() {
   }
 
   const handleDelete = async (id: string) => {
+    if (!canManage) {
+      toast.error('You do not have permission to delete special hours.')
+      return
+    }
+
     if (!confirm('Are you sure you want to delete these special hours?')) {
       return
     }
@@ -85,6 +99,10 @@ export function SpecialHoursManager() {
   }
 
   const handleDateChange = async (date: string) => {
+    if (!canManage) {
+      return
+    }
+
     setFormData(prev => ({ ...prev, date }))
     
     // Get day of week from date (0 = Sunday, 6 = Saturday)
@@ -110,6 +128,11 @@ export function SpecialHoursManager() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!canManage) {
+      toast.error('You do not have permission to manage special hours.')
+      return
+    }
     
     const formDataToSend = new FormData()
     Object.entries(formData).forEach(([key, value]) => {
@@ -137,7 +160,11 @@ export function SpecialHoursManager() {
     <div className="space-y-4">
       {!showForm && (
         <div className="flex justify-end">
-          <Button onClick={() => setShowForm(true)} leftIcon={<PlusIcon className="h-5 w-5" />}>
+          <Button
+            onClick={() => setShowForm(true)}
+            leftIcon={<PlusIcon className="h-5 w-5" />}
+            disabled={!canManage}
+          >
             Add Special Hours
           </Button>
         </div>
@@ -156,6 +183,7 @@ export function SpecialHoursManager() {
                   required
                   value={formData.date}
                   onChange={(e) => handleDateChange(e.target.value)}
+                  disabled={!canManage}
                   fullWidth
                 />
               </div>
@@ -165,12 +193,13 @@ export function SpecialHoursManager() {
                   label="Closed all day"
                   checked={formData.is_closed}
                   onChange={(e) => setFormData({ ...formData, is_closed: e.target.checked })}
+                  disabled={!canManage}
                 />
                 <Checkbox
                   label="Kitchen closed"
                   checked={formData.is_kitchen_closed}
                   onChange={(e) => setFormData({ ...formData, is_kitchen_closed: e.target.checked })}
-                  disabled={formData.is_closed}
+                  disabled={!canManage || formData.is_closed}
                 />
               </div>
 
@@ -182,7 +211,7 @@ export function SpecialHoursManager() {
                   type="time"
                   value={formData.opens}
                   onChange={(e) => setFormData({ ...formData, opens: e.target.value })}
-                  disabled={formData.is_closed}
+                  disabled={!canManage || formData.is_closed}
                   fullWidth
                 />
               </div>
@@ -195,7 +224,7 @@ export function SpecialHoursManager() {
                   type="time"
                   value={formData.closes}
                   onChange={(e) => setFormData({ ...formData, closes: e.target.value })}
-                  disabled={formData.is_closed}
+                  disabled={!canManage || formData.is_closed}
                   fullWidth
                 />
               </div>
@@ -208,7 +237,7 @@ export function SpecialHoursManager() {
                   type="time"
                   value={formData.kitchen_opens}
                   onChange={(e) => setFormData({ ...formData, kitchen_opens: e.target.value })}
-                  disabled={formData.is_closed || formData.is_kitchen_closed}
+                  disabled={!canManage || formData.is_closed || formData.is_kitchen_closed}
                   fullWidth
                 />
               </div>
@@ -221,7 +250,7 @@ export function SpecialHoursManager() {
                   type="time"
                   value={formData.kitchen_closes}
                   onChange={(e) => setFormData({ ...formData, kitchen_closes: e.target.value })}
-                  disabled={formData.is_closed || formData.is_kitchen_closed}
+                  disabled={!canManage || formData.is_closed || formData.is_kitchen_closed}
                   fullWidth
                 />
               </div>
@@ -235,6 +264,7 @@ export function SpecialHoursManager() {
                   value={formData.note}
                   onChange={(e) => setFormData({ ...formData, note: e.target.value })}
                   placeholder="e.g., Christmas Day, Bank Holiday"
+                  disabled={!canManage}
                   fullWidth
                 />
               </div>
@@ -244,7 +274,7 @@ export function SpecialHoursManager() {
               <Button type="button" variant="secondary" onClick={resetForm}>
                 Cancel
               </Button>
-              <Button type="submit">
+              <Button type="submit" disabled={!canManage}>
                 {editingId ? 'Update' : 'Add'} Special Hours
               </Button>
             </div>
@@ -302,6 +332,7 @@ export function SpecialHoursManager() {
                     onClick={() => handleEdit(hours)}
                     variant="secondary"
                     title="Edit"
+                    disabled={!canManage}
                   >
                     <PencilIcon className="h-5 w-5" />
                   </IconButton>
@@ -310,6 +341,7 @@ export function SpecialHoursManager() {
                     variant="secondary"
                     className="text-red-600 hover:text-red-900"
                     title="Delete"
+                    disabled={!canManage}
                   >
                     <TrashIcon className="h-5 w-5" />
                   </IconButton>

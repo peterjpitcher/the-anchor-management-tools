@@ -1,43 +1,44 @@
-import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import PrivateBookingsClient from './PrivateBookingsClient'
+import { fetchPrivateBookings } from '@/app/actions/private-bookings-dashboard'
+import { checkUserPermission } from '@/app/actions/rbac'
 
 export default async function PrivateBookingsPage() {
-  const supabase = await createClient()
-  
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    redirect('/login')
-  }
+  const [canView, canCreate, canDelete] = await Promise.all([
+    checkUserPermission('private_bookings', 'view'),
+    checkUserPermission('private_bookings', 'create'),
+    checkUserPermission('private_bookings', 'delete')
+  ])
 
-  // Check permissions
-  const { data: hasViewPermission } = await supabase.rpc('user_has_permission', {
-    p_user_id: user.id,
-    p_module_name: 'private_bookings',
-    p_action: 'view'
-  })
-
-  if (!hasViewPermission) {
+  if (!canView) {
     redirect('/unauthorized')
   }
 
-  const { data: hasCreatePermission } = await supabase.rpc('user_has_permission', {
-    p_user_id: user.id,
-    p_module_name: 'private_bookings',
-    p_action: 'create'
-  })
-
-  const { data: hasDeletePermission } = await supabase.rpc('user_has_permission', {
-    p_user_id: user.id,
-    p_module_name: 'private_bookings',
-    p_action: 'delete'
-  })
-
   const permissions = {
-    hasCreatePermission: hasCreatePermission || false,
-    hasDeletePermission: hasDeletePermission || false
+    hasCreatePermission: canCreate,
+    hasDeletePermission: canDelete
   }
 
-  // Pass permissions to client component - no data fetching here!
-  return <PrivateBookingsClient permissions={permissions} />
+  const initialResult = await fetchPrivateBookings({
+    status: 'all',
+    dateFilter: 'upcoming',
+    page: 1
+  })
+
+  if (!initialResult || 'error' in initialResult) {
+    const errorMessage = initialResult?.error ?? 'Failed to load private bookings.'
+    if (errorMessage === 'Authentication required') {
+      redirect('/login')
+    }
+    throw new Error(errorMessage)
+  }
+
+  return (
+    <PrivateBookingsClient
+      permissions={permissions}
+      initialBookings={initialResult.data}
+      initialTotalCount={initialResult.totalCount}
+      pageSize={20}
+    />
+  )
 }

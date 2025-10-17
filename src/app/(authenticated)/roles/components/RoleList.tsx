@@ -8,9 +8,10 @@ import RolePermissionsModal from './RolePermissionsModal';
 interface RoleListProps {
   roles: Role[];
   permissions: Permission[];
+  canManage: boolean;
 }
 
-export default function RoleList({ roles, permissions }: RoleListProps) {
+export default function RoleList({ roles, permissions, canManage }: RoleListProps) {
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [isPermissionsModalOpen, setIsPermissionsModalOpen] = useState(false);
 
@@ -26,6 +27,7 @@ export default function RoleList({ roles, permissions }: RoleListProps) {
           <RoleCard
             key={role.id}
             role={role}
+            canManage={canManage}
             onEditPermissions={() => handleEditPermissions(role)}
           />
         ))}
@@ -40,6 +42,7 @@ export default function RoleList({ roles, permissions }: RoleListProps) {
           }}
           role={selectedRole}
           allPermissions={permissions}
+          canManage={canManage}
         />
       )}
     </>

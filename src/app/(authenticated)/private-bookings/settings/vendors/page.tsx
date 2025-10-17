@@ -1,4 +1,3 @@
-import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { 
   PlusIcon, 
@@ -6,7 +5,7 @@ import {
   CheckIcon,
   StarIcon
 } from '@heroicons/react/24/outline'
-import { createVendor, updateVendor, deleteVendor } from '@/app/actions/privateBookingActions'
+import { createVendor, updateVendor, deleteVendor, getVendorsForManagement } from '@/app/actions/privateBookingActions'
 import { VendorDeleteButton } from '@/components/VendorDeleteButton'
 import type { InvoiceVendor } from '@/types/invoices'
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
@@ -19,6 +18,7 @@ import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { checkUserPermission } from '@/app/actions/rbac'
 
 async function handleCreateVendor(formData: FormData) {
   'use server'
@@ -37,7 +37,10 @@ async function handleCreateVendor(formData: FormData) {
   })
   
   if (result.error) {
-    console.error('Error creating vendor:', result.error)
+    if (result.error === 'Insufficient permissions' || result.error === 'Not authenticated') {
+      redirect('/unauthorized')
+    }
+    throw new Error(result.error)
   }
 }
 
@@ -59,7 +62,10 @@ async function handleUpdateVendor(formData: FormData) {
   })
   
   if (result.error) {
-    console.error('Error updating vendor:', result.error)
+    if (result.error === 'Insufficient permissions' || result.error === 'Not authenticated') {
+      redirect('/unauthorized')
+    }
+    throw new Error(result.error)
   }
 }
 
@@ -70,48 +76,33 @@ async function handleDeleteVendor(formData: FormData) {
   const result = await deleteVendor(vendorId)
   
   if (result.error) {
-    console.error('Error deleting vendor:', result.error)
+    if (result.error === 'Insufficient permissions' || result.error === 'Not authenticated') {
+      redirect('/unauthorized')
+    }
+    throw new Error(result.error)
   }
 }
 
 export default async function VendorsPage() {
-  const supabase = await createClient()
-  
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    redirect('/login')
-  }
+  const canManageVendors = await checkUserPermission('private_bookings', 'manage_vendors')
 
-  // Check permissions
-  const { data: hasPermission } = await supabase.rpc('user_has_permission', {
-    p_user_id: user.id,
-    p_module_name: 'private_bookings',
-    p_action: 'manage_vendors'
-  })
-
-  if (!hasPermission) {
+  if (!canManageVendors) {
     redirect('/unauthorized')
   }
 
-  // Fetch vendors
-  const { data: vendors, error } = await supabase
-    .from('vendors')
-    .select('*')
-    .order('service_type', { ascending: true })
-    .order('preferred', { ascending: false })
-    .order('name', { ascending: true })
-
-  if (error) {
-    console.error('Error fetching vendors:', error)
+  const vendorsResult = await getVendorsForManagement()
+  if ('error' in vendorsResult) {
+    throw new Error(vendorsResult.error)
   }
 
-  // Group vendors by type
-  const vendorsByType = vendors?.reduce((acc, vendor) => {
+  const vendors = vendorsResult.data ?? []
+
+  const vendorsByType = vendors.reduce((acc, vendor) => {
     const type = vendor.service_type
     if (!acc[type]) acc[type] = []
     acc[type].push(vendor)
     return acc
-  }, {} as Record<string, typeof vendors>) || {}
+  }, {} as Record<string, typeof vendors>)
 
   const vendorTypes = [
     'dj',

@@ -1,10 +1,10 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
-import { checkUserPermission } from '@/app/actions/rbac'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { logAuditEvent } from './audit'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import type { User as SupabaseUser } from '@supabase/supabase-js'
 
 // Validation schemas
 const CustomerLabelSchema = z.object({
@@ -20,6 +20,41 @@ const AssignLabelSchema = z.object({
   label_id: z.string().uuid(),
   notes: z.string().optional()
 })
+
+type CustomerPermissionAction = 'view' | 'edit' | 'manage'
+
+type CustomerPermissionResult =
+  | { user: SupabaseUser; admin: ReturnType<typeof createAdminClient> }
+  | { error: string }
+
+async function requireCustomerPermission(action: CustomerPermissionAction): Promise<CustomerPermissionResult> {
+  const supabase = await createClient()
+  const {
+    data: { user }
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'Not authenticated' }
+  }
+
+  const admin = createAdminClient()
+  const { data, error } = await admin.rpc('user_has_permission', {
+    p_user_id: user.id,
+    p_module_name: 'customers',
+    p_action: action
+  })
+
+  if (error) {
+    console.error('Customer permission check failed:', error)
+    return { error: 'Failed to verify permissions' }
+  }
+
+  if (data !== true) {
+    return { error: 'Insufficient permissions' }
+  }
+
+  return { user, admin }
+}
 
 export interface CustomerLabel {
   id: string
@@ -45,22 +80,21 @@ export interface CustomerLabelAssignment {
 
 export async function getCustomerLabels(): Promise<{ data?: CustomerLabel[], error?: string }> {
   try {
-    const supabase = await createClient()
-    
-    // Check permissions
-    const hasPermission = await checkUserPermission('customers', 'view')
-    if (!hasPermission) {
-      return { error: 'You do not have permission to view customer labels' }
+    const permission = await requireCustomerPermission('view')
+    if ('error' in permission) {
+      return { error: permission.error }
     }
 
-    const { data, error } = await supabase
+    const { admin } = permission
+
+    const { data, error } = await admin
       .from('customer_labels')
       .select('*')
       .order('name')
 
     if (error) throw error
 
-    return { data }
+    return { data: (data || []) as CustomerLabel[] }
   } catch (error) {
     console.error('Error fetching customer labels:', error)
     return { error: 'Failed to fetch customer labels' }
@@ -71,24 +105,17 @@ export async function createCustomerLabel(
   labelData: Omit<CustomerLabel, 'id' | 'created_at' | 'updated_at'>
 ): Promise<{ data?: CustomerLabel, error?: string }> {
   try {
-    const supabase = await createClient()
-    
-    // Get current user
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return { error: 'Not authenticated' }
+    const permission = await requireCustomerPermission('manage')
+    if ('error' in permission) {
+      return { error: permission.error }
     }
-    
-    // Check permissions
-    const hasPermission = await checkUserPermission('customers', 'manage')
-    if (!hasPermission) {
-      return { error: 'You do not have permission to manage customer labels' }
-    }
+
+    const { user, admin } = permission
 
     // Validate data
     const validatedData = CustomerLabelSchema.parse(labelData)
 
-    const { data, error } = await supabase
+    const { data, error } = await admin
       .from('customer_labels')
       .insert(validatedData)
       .select()
@@ -99,7 +126,7 @@ export async function createCustomerLabel(
     // Log audit event
     await logAuditEvent({
       user_id: user.id,
-      user_email: user.email!,
+      ...(user.email && { user_email: user.email }),
       operation_type: 'create',
       resource_type: 'customer_label',
       resource_id: data.id,
@@ -120,36 +147,47 @@ export async function updateCustomerLabel(
   labelData: Partial<Omit<CustomerLabel, 'id' | 'created_at' | 'updated_at'>>
 ): Promise<{ success?: boolean, error?: string }> {
   try {
-    const supabase = await createClient()
-    
-    // Get current user
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return { error: 'Not authenticated' }
-    }
-    
-    // Check permissions
-    const hasPermission = await checkUserPermission('customers', 'manage')
-    if (!hasPermission) {
-      return { error: 'You do not have permission to manage customer labels' }
+    const permission = await requireCustomerPermission('manage')
+    if ('error' in permission) {
+      return { error: permission.error }
     }
 
-    const { error } = await supabase
+    const { user, admin } = permission
+
+    const { data: existing, error: fetchError } = await admin
+      .from('customer_labels')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle()
+
+    if (fetchError) {
+      console.error('Error loading customer label before update:', fetchError)
+      return { error: 'Failed to load customer label' }
+    }
+
+    if (!existing) {
+      return { error: 'Customer label not found' }
+    }
+
+    const { data, error } = await admin
       .from('customer_labels')
       .update(labelData)
       .eq('id', id)
+      .select()
+      .single()
 
     if (error) throw error
 
     // Log audit event
     await logAuditEvent({
       user_id: user.id,
-      user_email: user.email!,
+      ...(user.email && { user_email: user.email }),
       operation_type: 'update',
       resource_type: 'customer_label',
       resource_id: id,
       operation_status: 'success',
-      new_values: labelData
+      old_values: existing,
+      new_values: data
     })
 
     revalidatePath('/customers')
@@ -162,28 +200,29 @@ export async function updateCustomerLabel(
 
 export async function deleteCustomerLabel(id: string): Promise<{ success?: boolean, error?: string }> {
   try {
-    const supabase = await createClient()
-    
-    // Get current user
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return { error: 'Not authenticated' }
-    }
-    
-    // Check permissions
-    const hasPermission = await checkUserPermission('customers', 'manage')
-    if (!hasPermission) {
-      return { error: 'You do not have permission to manage customer labels' }
+    const permission = await requireCustomerPermission('manage')
+    if ('error' in permission) {
+      return { error: permission.error }
     }
 
-    // Get label info for audit
-    const { data: label } = await supabase
+    const { user, admin } = permission
+
+    const { data: label, error: fetchError } = await admin
       .from('customer_labels')
-      .select('name')
+      .select('*')
       .eq('id', id)
-      .single()
+      .maybeSingle()
 
-    const { error } = await supabase
+    if (fetchError) {
+      console.error('Error loading customer label before delete:', fetchError)
+      return { error: 'Failed to load customer label' }
+    }
+
+    if (!label) {
+      return { error: 'Customer label not found' }
+    }
+
+    const { error } = await admin
       .from('customer_labels')
       .delete()
       .eq('id', id)
@@ -193,12 +232,12 @@ export async function deleteCustomerLabel(id: string): Promise<{ success?: boole
     // Log audit event
     await logAuditEvent({
       user_id: user.id,
-      user_email: user.email!,
+      ...(user.email && { user_email: user.email }),
       operation_type: 'delete',
       resource_type: 'customer_label',
       resource_id: id,
       operation_status: 'success',
-      old_values: { name: label?.name }
+      old_values: { name: label.name }
     })
 
     revalidatePath('/customers')
@@ -213,21 +252,16 @@ export async function assignLabelToCustomer(
   data: z.infer<typeof AssignLabelSchema>
 ): Promise<{ success?: boolean, error?: string }> {
   try {
-    const supabase = await createClient()
-    
-    // Check permissions
-    const hasPermission = await checkUserPermission('customers', 'edit')
-    if (!hasPermission) {
-      return { error: 'You do not have permission to assign labels to customers' }
+    const permission = await requireCustomerPermission('edit')
+    if ('error' in permission) {
+      return { error: permission.error }
     }
 
-    // Validate data
+    const { user, admin } = permission
+
     const validatedData = AssignLabelSchema.parse(data)
 
-    // Get current user
-    const { data: { user } } = await supabase.auth.getUser()
-
-    const { error } = await supabase
+    const { error } = await admin
       .from('customer_label_assignments')
       .insert({
         ...validatedData,
@@ -244,8 +278,8 @@ export async function assignLabelToCustomer(
 
     // Log audit event
     await logAuditEvent({
-      user_id: user!.id,
-      user_email: user!.email!,
+      user_id: user.id,
+      ...(user.email && { user_email: user.email }),
       operation_type: 'assign_label',
       resource_type: 'customer',
       resource_id: validatedData.customer_id,
@@ -267,21 +301,14 @@ export async function removeLabelFromCustomer(
   labelId: string
 ): Promise<{ success?: boolean, error?: string }> {
   try {
-    const supabase = await createClient()
-    
-    // Get current user
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return { error: 'Not authenticated' }
-    }
-    
-    // Check permissions
-    const hasPermission = await checkUserPermission('customers', 'edit')
-    if (!hasPermission) {
-      return { error: 'You do not have permission to remove labels from customers' }
+    const permission = await requireCustomerPermission('edit')
+    if ('error' in permission) {
+      return { error: permission.error }
     }
 
-    const { error } = await supabase
+    const { user, admin } = permission
+
+    const { error } = await admin
       .from('customer_label_assignments')
       .delete()
       .eq('customer_id', customerId)
@@ -289,10 +316,9 @@ export async function removeLabelFromCustomer(
 
     if (error) throw error
 
-    // Log audit event
     await logAuditEvent({
       user_id: user.id,
-      user_email: user.email!,
+      ...(user.email && { user_email: user.email }),
       operation_type: 'remove_label',
       resource_type: 'customer',
       resource_id: customerId,
@@ -313,15 +339,14 @@ export async function getCustomerLabelAssignments(
   customerId: string
 ): Promise<{ data?: CustomerLabelAssignment[], error?: string }> {
   try {
-    const supabase = await createClient()
-    
-    // Check permissions
-    const hasPermission = await checkUserPermission('customers', 'view')
-    if (!hasPermission) {
-      return { error: 'You do not have permission to view customer labels' }
+    const permission = await requireCustomerPermission('view')
+    if ('error' in permission) {
+      return { error: permission.error }
     }
 
-    const { data, error } = await supabase
+    const { admin } = permission
+
+    const { data, error } = await admin
       .from('customer_label_assignments')
       .select(`
         *,
@@ -332,7 +357,7 @@ export async function getCustomerLabelAssignments(
 
     if (error) throw error
 
-    return { data }
+    return { data: (data || []) as CustomerLabelAssignment[] }
   } catch (error) {
     console.error('Error fetching customer label assignments:', error)
     return { error: 'Failed to fetch customer labels' }
@@ -344,23 +369,15 @@ export async function applyLabelsRetroactively(): Promise<{
   error?: string 
 }> {
   try {
-    const supabase = await createClient()
-    
-    // Get current user
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return { error: 'Not authenticated' }
-    }
-    
-    // Check permissions - only managers can run retrospective labeling
-    const hasPermission = await checkUserPermission('customers', 'manage')
-    if (!hasPermission) {
-      return { error: 'You do not have permission to apply labels retroactively' }
+    const permission = await requireCustomerPermission('manage')
+    if ('error' in permission) {
+      return { error: permission.error }
     }
 
-    // First, backfill any missing customer category stats
+    const { user, admin } = permission
+
     console.log('Backfilling customer category stats...')
-    const { data: backfillData, error: backfillError } = await supabase
+    const { data: backfillData, error: backfillError } = await admin
       .rpc('backfill_customer_category_stats')
     
     if (backfillError) {
@@ -371,7 +388,7 @@ export async function applyLabelsRetroactively(): Promise<{
     }
 
     // Call the RPC function
-    const { data, error } = await supabase
+    const { data, error } = await admin
       .rpc('apply_customer_labels_retroactively')
 
     if (error) throw error
@@ -379,7 +396,7 @@ export async function applyLabelsRetroactively(): Promise<{
     // Log audit event
     await logAuditEvent({
       user_id: user.id,
-      user_email: user.email!,
+      ...(user.email && { user_email: user.email }),
       operation_type: 'apply_labels_retroactively',
       resource_type: 'customer_labels',
       resource_id: 'bulk',
@@ -403,16 +420,12 @@ export async function bulkAssignLabel(
   customerIds: string[]
 ): Promise<{ success?: boolean, error?: string }> {
   try {
-    const supabase = await createClient()
-    
-    // Check permissions
-    const hasPermission = await checkUserPermission('customers', 'edit')
-    if (!hasPermission) {
-      return { error: 'You do not have permission to assign labels to customers' }
+    const permission = await requireCustomerPermission('edit')
+    if ('error' in permission) {
+      return { error: permission.error }
     }
 
-    // Get current user
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user, admin } = permission
 
     // Prepare bulk insert data
     const assignments = customerIds.map(customerId => ({
@@ -424,7 +437,7 @@ export async function bulkAssignLabel(
     }))
 
     // Insert with conflict handling
-    const { error } = await supabase
+    const { error } = await admin
       .from('customer_label_assignments')
       .upsert(assignments, { onConflict: 'customer_id,label_id' })
 
@@ -432,8 +445,8 @@ export async function bulkAssignLabel(
 
     // Log audit event
     await logAuditEvent({
-      user_id: user!.id,
-      user_email: user!.email!,
+      user_id: user.id,
+      ...(user.email && { user_email: user.email }),
       operation_type: 'bulk_assign_label',
       resource_type: 'customer_labels',
       resource_id: labelId,

@@ -7,7 +7,7 @@
  * Handles loading states, error states, and breadcrumbs.
  */
 
-import { ReactNode } from 'react'
+import { HTMLAttributes, ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { Container } from './Container'
 import { Spinner } from '../feedback/Spinner'
@@ -15,13 +15,15 @@ import { Alert } from '../feedback/Alert'
 import { ErrorBoundary } from '../utility/ErrorBoundary'
 import type { BaseComponentProps } from '../types'
 
+type PageRootProps = Omit<HTMLAttributes<HTMLDivElement>, 'title'>
+
 export interface BreadcrumbItem {
   label: string
   href?: string
   onClick?: () => void
 }
 
-export interface PageProps extends BaseComponentProps {
+export interface PageProps extends BaseComponentProps, PageRootProps {
   /**
    * Page title - displayed in the header
    */
@@ -36,6 +38,17 @@ export interface PageProps extends BaseComponentProps {
    * Action buttons/links to display in the header
    */
   actions?: ReactNode
+
+  /**
+   * Primary action displayed next to other header actions.
+   * Useful for prominent affordances like a back button or create action.
+   */
+  primaryAction?: ReactNode
+
+  /**
+   * Back button control displayed alongside the title.
+   */
+  backButton?: ReactNode
   
   /**
    * Breadcrumb navigation items
@@ -79,6 +92,8 @@ export function Page({
   title,
   description,
   actions,
+  primaryAction,
+  backButton,
   breadcrumbs,
   loading = false,
   error = null,
@@ -88,7 +103,7 @@ export function Page({
   header,
   className,
   children,
-  ...props
+  ...restProps
 }: PageProps) {
   // Error state
   if (error) {
@@ -121,7 +136,7 @@ export function Page({
           'min-h-screen bg-gray-50',
           className
         )}
-        {...props}
+        {...restProps}
       >
         {/* Header Section */}
         {(header || title || breadcrumbs) && (
@@ -174,8 +189,13 @@ export function Page({
               {/* Custom header or default header */}
               {header || (
                 <div className="py-6">
-                  <div className="md:flex md:items-center md:justify-between">
+                  <div className="md:flex md:items-center md:justify-between md:gap-4">
                     <div className="flex-1 min-w-0">
+                      {backButton && (
+                        <div className="mb-4 md:mb-2">
+                          {backButton}
+                        </div>
+                      )}
                       <h1 className="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">
                         {title}
                       </h1>
@@ -185,8 +205,9 @@ export function Page({
                         </p>
                       )}
                     </div>
-                    {actions && (
-                      <div className="mt-4 flex md:mt-0 md:ml-4 space-x-3">
+                    {(primaryAction || actions) && (
+                      <div className="mt-4 flex md:mt-0 md:ml-4 flex-wrap gap-3">
+                        {primaryAction}
                         {actions}
                       </div>
                     )}

@@ -19,10 +19,15 @@ import { Download, Mail, Edit, Trash2, Copy, CheckCircle, XCircle, Clock } from 
 import { EmailInvoiceModal } from '@/components/EmailInvoiceModal'
 import { ChasePaymentModal } from '@/components/ChasePaymentModal'
 import type { InvoiceWithDetails, InvoiceStatus } from '@/types/invoices'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 export default function InvoiceDetailPage() {
   const params = useParams()
   const router = useRouter()
+  const { hasPermission, loading: permissionsLoading } = usePermissions()
+  const canView = hasPermission('invoices', 'view')
+  const canEdit = hasPermission('invoices', 'edit')
+  const canDelete = hasPermission('invoices', 'delete')
   const [invoice, setInvoice] = useState<InvoiceWithDetails | null>(null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
@@ -31,6 +36,7 @@ export default function InvoiceDetailPage() {
   const [showChaseModal, setShowChaseModal] = useState(false)
   const [emailConfigured, setEmailConfigured] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const readOnly = !canEdit && !canDelete
 
   const rawInvoiceId = params?.id
   const invoiceId = Array.isArray(rawInvoiceId) ? rawInvoiceId[0] : rawInvoiceId ?? null
@@ -39,6 +45,15 @@ export default function InvoiceDetailPage() {
     if (!invoiceId) {
       setError('Invoice not found')
       setLoading(false)
+      return
+    }
+
+    if (permissionsLoading) {
+      return
+    }
+
+    if (!canView) {
+      router.replace('/unauthorized')
       return
     }
 
@@ -59,10 +74,10 @@ export default function InvoiceDetailPage() {
         setLoading(false)
       }
     }
-    
+
     loadInvoice()
     checkEmailConfig()
-  }, [invoiceId])
+  }, [invoiceId, permissionsLoading, canView, router])
 
   async function checkEmailConfig() {
     try {
@@ -78,6 +93,10 @@ export default function InvoiceDetailPage() {
 
   async function handleStatusChange(newStatus: InvoiceStatus) {
     if (!invoice || actionLoading) return
+    if (!canEdit) {
+      setError('You do not have permission to update invoices')
+      return
+    }
 
     setActionLoading(true)
     setError(null)
@@ -107,6 +126,10 @@ export default function InvoiceDetailPage() {
 
   async function handleDelete() {
     if (!invoice || actionLoading) return
+    if (!canDelete) {
+      toast.error('You do not have permission to delete invoices')
+      return
+    }
 
     setActionLoading(true)
     setError(null)
@@ -151,7 +174,7 @@ export default function InvoiceDetailPage() {
     }
   }
 
-  if (loading) {
+  if (permissionsLoading || loading) {
     return (
       <PageWrapper>
         <PageHeader 
@@ -165,6 +188,10 @@ export default function InvoiceDetailPage() {
         </PageContent>
       </PageWrapper>
     )
+  }
+
+  if (!permissionsLoading && !canView) {
+    return null
   }
 
   if (error || !invoice) {
@@ -209,11 +236,11 @@ export default function InvoiceDetailPage() {
         }}
         actions={
           <div className="flex flex-wrap gap-2">
-            {invoice.status === 'draft' && (
+            {invoice.status === 'draft' && canEdit && (
               <>
                 <Button
                   onClick={() => handleStatusChange('sent')}
-                  disabled={actionLoading}
+                  disabled={actionLoading || !canEdit}
                   loading={actionLoading}
                   variant="ghost"
                   size="sm"
@@ -236,10 +263,10 @@ export default function InvoiceDetailPage() {
               </>
             )}
             
-            {invoice.status === 'sent' && (
+            {invoice.status === 'sent' && canEdit && (
               <Button
                 onClick={() => handleStatusChange('paid')}
-                disabled={actionLoading}
+                disabled={actionLoading || !canEdit}
                 loading={actionLoading}
                 variant="ghost"
                 size="sm"
@@ -251,12 +278,12 @@ export default function InvoiceDetailPage() {
               </Button>
             )}
 
-            {emailConfigured && (
+            {emailConfigured && canEdit && (
               <>
                 <Button
                   variant="ghost"
                   onClick={() => setShowEmailModal(true)}
-                  disabled={actionLoading}
+                  disabled={actionLoading || !canEdit}
                   size="sm"
                   className="text-white hover:text-white/80 hover:bg-white/10"
                   leftIcon={<Mail className="h-4 w-4" />}
@@ -269,7 +296,7 @@ export default function InvoiceDetailPage() {
                   <Button
                     variant="ghost"
                     onClick={() => setShowChaseModal(true)}
-                    disabled={actionLoading}
+                    disabled={actionLoading || !canEdit}
                     size="sm"
                     leftIcon={<Clock className="h-4 w-4" />}
                     className="text-white hover:text-white/80 hover:bg-white/10"
@@ -293,7 +320,7 @@ export default function InvoiceDetailPage() {
               <span className="sm:hidden">PDF</span>
             </Button>
 
-            {invoice.status === 'draft' && (
+            {invoice.status === 'draft' && canDelete && (
               <Button
                 variant="ghost"
                 onClick={() => setShowDeleteConfirm(true)}
@@ -325,6 +352,13 @@ export default function InvoiceDetailPage() {
 
       {error && (
         <Alert variant="error" description={error} className="mb-6" />
+      )}
+      {!error && readOnly && (
+        <Alert
+          variant="info"
+          description="You have read-only access to invoices. Edit, delete, and payment actions are disabled for your role."
+          className="mb-6"
+        />
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
@@ -504,6 +538,12 @@ export default function InvoiceDetailPage() {
                 <Button
                   fullWidth
                   onClick={() => router.push(`/invoices/${invoice.id}/payment`)}
+                  disabled={!canEdit}
+                  title={
+                    !canEdit
+                      ? 'You need invoice edit permission to record payments.'
+                      : undefined
+                  }
                 >
                   Record Payment
                 </Button>
@@ -552,7 +592,7 @@ export default function InvoiceDetailPage() {
                 Copy Link
               </Button>
               
-              {invoice.status !== 'void' && invoice.status !== 'written_off' && (
+              {invoice.status !== 'void' && invoice.status !== 'written_off' && canEdit && (
                 <Button
                   variant="secondary"
                   fullWidth
@@ -568,7 +608,7 @@ export default function InvoiceDetailPage() {
         </div>
       </div>
 
-      {invoice && (
+      {invoice && canEdit && (
         <>
           <EmailInvoiceModal
             invoice={invoice}

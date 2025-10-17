@@ -4,10 +4,17 @@ import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
 import Link from 'next/link'
 import VendorSummaryGrid from './_components/VendorSummaryGrid'
+import { redirect } from 'next/navigation'
+import { checkUserPermission } from '@/app/actions/rbac'
 
 export const runtime = 'nodejs'
 
 export default async function ReceiptsVendorsPage() {
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    redirect('/unauthorized')
+  }
+
   const vendors = await getReceiptVendorSummary(12)
 
   return (

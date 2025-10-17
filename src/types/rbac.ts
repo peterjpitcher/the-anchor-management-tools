@@ -47,6 +47,7 @@ export type ModuleName =
   | 'loyalty'
   | 'quotes'
   | 'parking'
+  | 'short_links'
 ;
 
 export type ActionType = 

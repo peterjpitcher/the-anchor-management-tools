@@ -37,6 +37,7 @@ import type {
 } from '@/types/database'
 import { receiptExpenseCategorySchema } from '@/lib/validation'
 import { DocumentArrowDownIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon, MagnifyingGlassIcon, SparklesIcon, PencilSquareIcon } from '@heroicons/react/24/outline'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 interface ReceiptsClientProps {
   initialData: ReceiptWorkspaceData
@@ -119,6 +120,9 @@ function buildReceiptName(details: string, amount: number | null) {
 export default function ReceiptsClient({ initialData, initialFilters }: ReceiptsClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { hasPermission } = usePermissions()
+  const canManageReceipts = hasPermission('receipts', 'manage')
+  const managePermissionMessage = 'You do not have permission to manage receipts.'
   const [statementFile, setStatementFile] = useState<File | null>(null)
   const [activeTransactionId, setActiveTransactionId] = useState<string | null>(null)
   const [activeRuleId, setActiveRuleId] = useState<string | null>(null)
@@ -257,6 +261,10 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   }
 
   function handleClassificationStart(transaction: WorkspaceTransaction, field: 'vendor' | 'expense') {
+    if (!canManageReceipts) {
+      toast.error(managePermissionMessage)
+      return
+    }
     setEditingCell({ id: transaction.id, field })
     if (field === 'vendor') {
       const vendorValue = transaction.vendor_name?.trim() ?? ''
@@ -342,6 +350,10 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   }
 
   function handleClassificationSave(transaction: WorkspaceTransaction, field: 'vendor' | 'expense') {
+    if (!canManageReceipts) {
+      toast.error(managePermissionMessage)
+      return
+    }
     const draftValue = classificationDraft.trim()
     setClassificationTargetId(transaction.id)
     startClassificationTransition(async () => {
@@ -394,6 +406,10 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   }
 
   function handleRetroRun(ruleId: string, scope: 'pending' | 'all') {
+    if (!canManageReceipts) {
+      toast.error(managePermissionMessage)
+      return
+    }
     console.log('[retro-ui] handleRetroRun click', { ruleId, scope })
     setRetroRuleId(ruleId)
     startRetroTransition(async () => {
@@ -442,7 +458,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           iterations += 1
 
           if (step.done) {
-            await finalizeReceiptRuleRetroRun({
+            const finalizeResult = await finalizeReceiptRuleRetroRun({
               ruleId,
               scope,
               reviewed: totals.reviewed,
@@ -452,11 +468,14 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
               vendorIntended: totals.vendorIntended,
               expenseIntended: totals.expenseIntended,
             })
-
-            const scopeLabel = scope === 'all' ? 'transactions' : 'pending transactions'
-            toast.success(
-              `Rule processed ${totals.matched} / ${totals.reviewed} ${scopeLabel} · ${totals.statusAutoUpdated} status updates · ${totals.classificationUpdated} classifications · vendor intents ${totals.vendorIntended} · expense intents ${totals.expenseIntended}`
-            )
+            if (finalizeResult && 'error' in finalizeResult && finalizeResult.error) {
+              toast.error(finalizeResult.error)
+            } else {
+              const scopeLabel = scope === 'all' ? 'transactions' : 'pending transactions'
+              toast.success(
+                `Rule processed ${totals.matched} / ${totals.reviewed} ${scopeLabel} · ${totals.statusAutoUpdated} status updates · ${totals.classificationUpdated} classifications · vendor intents ${totals.vendorIntended} · expense intents ${totals.expenseIntended}`
+              )
+            }
 
             if (lastSamples.length) {
               console.groupCollapsed(
@@ -492,6 +511,10 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
 
   async function handleStatementSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!canManageReceipts) {
+      toast.error(managePermissionMessage)
+      return
+    }
     if (!statementFile) {
       toast.error('Please choose a CSV bank statement to upload.')
       return
@@ -554,6 +577,10 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   }
 
   async function handleStatusUpdate(transactionId: string, status: ReceiptTransaction['status']) {
+    if (!canManageReceipts) {
+      toast.error(managePermissionMessage)
+      return
+    }
     setActiveTransactionId(transactionId)
     startRowTransition(async () => {
       const previousTransaction = transactions.find((tx) => tx.id === transactionId)
@@ -647,6 +674,10 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   }
 
   function handleNoteEdit(transaction: WorkspaceTransaction) {
+    if (!canManageReceipts) {
+      toast.error(managePermissionMessage)
+      return
+    }
     setEditingNoteId(transaction.id)
     setNoteDrafts((prev) => ({
       ...prev,
@@ -682,6 +713,10 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   }
 
   async function handleNoteSave(transaction: WorkspaceTransaction) {
+    if (!canManageReceipts) {
+      toast.error(managePermissionMessage)
+      return
+    }
     const draftValue = noteDrafts[transaction.id] ?? ''
     const trimmedValue = draftValue.trim()
     const existingNote = transaction.notes?.trim() ?? ''
@@ -772,25 +807,25 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
             disabled={isProcessing}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-emerald-500"
           />
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              size="xs"
-              onClick={() => handleNoteSave(transaction)}
-              disabled={isProcessing}
-            >
-              {isProcessing && <Spinner className="mr-2 h-3 w-3" />}Save note
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="xs"
-              onClick={() => handleNoteCancel(transaction.id)}
-              disabled={isProcessing}
-            >
-              Cancel
-            </Button>
-          </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="xs"
+            onClick={() => handleNoteSave(transaction)}
+            disabled={isProcessing || !canManageReceipts}
+          >
+            {isProcessing && <Spinner className="mr-2 h-3 w-3" />}Save note
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            onClick={() => handleNoteCancel(transaction.id)}
+            disabled={isProcessing || !canManageReceipts}
+          >
+            Cancel
+          </Button>
+        </div>
         </div>
       )
     }
@@ -808,7 +843,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
             {hasFormatted ? noteBody : displayNote}
           </p>
           <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-            <Button type="button" variant="ghost" size="xs" onClick={() => handleNoteEdit(transaction)}>
+            <Button type="button" variant="ghost" size="xs" onClick={() => handleNoteEdit(transaction)} disabled={!canManageReceipts}>
               <PencilSquareIcon className="mr-1 h-4 w-4" /> Edit
             </Button>
           </div>
@@ -822,6 +857,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
         variant="ghost"
         size="xs"
         onClick={() => handleNoteEdit(transaction)}
+        disabled={!canManageReceipts}
       >
         Add note
       </Button>
@@ -829,6 +865,10 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   }
 
   function handleUploadClick(transactionId: string) {
+    if (!canManageReceipts) {
+      toast.error(managePermissionMessage)
+      return
+    }
     const input = fileInputsRef.current[transactionId]
     if (input) {
       input.click()
@@ -836,6 +876,11 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   }
 
   async function handleReceiptUpload(transactionId: string, event: ChangeEvent<HTMLInputElement>) {
+    if (!canManageReceipts) {
+      toast.error(managePermissionMessage)
+      event.target.value = ''
+      return
+    }
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
@@ -868,6 +913,10 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   }
 
   async function handleReceiptDelete(fileId: string, transactionId: string) {
+    if (!canManageReceipts) {
+      toast.error(managePermissionMessage)
+      return
+    }
     setActiveTransactionId(transactionId)
     startRowTransition(async () => {
       const result = await deleteReceiptFile(fileId)
@@ -883,6 +932,10 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   }
 
   async function handleRuleToggle(rule: ReceiptRule) {
+    if (!canManageReceipts) {
+      toast.error(managePermissionMessage)
+      return
+    }
     setActiveRuleId(rule.id)
     startRuleTransition(async () => {
       const result = await toggleReceiptRule(rule.id, !rule.is_active)
@@ -898,6 +951,10 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   }
 
   async function handleRuleDelete(ruleId: string) {
+    if (!canManageReceipts) {
+      toast.error(managePermissionMessage)
+      return
+    }
     if (!confirm('Delete this rule?')) return
     setActiveRuleId(ruleId)
     startRuleTransition(async () => {
@@ -915,6 +972,10 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
 
   async function handleRuleSubmit(event: FormEvent<HTMLFormElement>, ruleId?: string) {
     event.preventDefault()
+    if (!canManageReceipts) {
+      toast.error(managePermissionMessage)
+      return
+    }
     const formElement = event.currentTarget
     const formData = new FormData(formElement)
 
@@ -1019,16 +1080,16 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
             </Select>
           )}
           <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => handleClassificationSave(transaction, 'vendor')}
-              disabled={isClassificationLoading}
-            >
-              {isClassificationLoading && <Spinner className="mr-2 h-3 w-3" />}Save
-            </Button>
-            <Button type="button" variant="ghost" size="sm" onClick={handleClassificationCancel}>
-              Cancel
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => handleClassificationSave(transaction, 'vendor')}
+            disabled={isClassificationLoading || !canManageReceipts}
+          >
+            {isClassificationLoading && <Spinner className="mr-2 h-3 w-3" />}Save
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={handleClassificationCancel}>
+            Cancel
             </Button>
           </div>
         </div>
@@ -1041,6 +1102,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           type="button"
           className={`inline-flex max-w-[140px] items-center truncate text-[13px] leading-tight px-0 py-0 h-auto min-h-0 bg-transparent ${transaction.vendor_name ? 'font-medium text-gray-900 hover:text-emerald-600' : 'text-gray-400 hover:text-emerald-600'}`}
           onClick={() => handleClassificationStart(transaction, 'vendor')}
+          disabled={!canManageReceipts}
           title={transaction.vendor_name ?? undefined}
           style={{ minHeight: 'auto', padding: 0 }}
         >
@@ -1055,6 +1117,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           type="button"
           className={`text-left text-sm ${transaction.vendor_name ? 'font-medium text-gray-900 hover:text-emerald-600' : 'text-gray-400 hover:text-emerald-600'}`}
           onClick={() => handleClassificationStart(transaction, 'vendor')}
+          disabled={!canManageReceipts}
         >
           {transaction.vendor_name ?? 'Add vendor'}
         </button>
@@ -1081,7 +1144,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           <Select
             value={classificationDraft}
             onChange={(event) => setClassificationDraft(event.target.value)}
-            disabled={isClassificationLoading}
+            disabled={isClassificationLoading || !canManageReceipts}
           >
             <option value="">Leave unset</option>
             {expenseCategoryOptions.map((option) => (
@@ -1093,7 +1156,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
               type="button"
               size="sm"
               onClick={() => handleClassificationSave(transaction, 'expense')}
-              disabled={isClassificationLoading}
+              disabled={isClassificationLoading || !canManageReceipts}
             >
               {isClassificationLoading && <Spinner className="mr-2 h-3 w-3" />}Save
             </Button>
@@ -1111,6 +1174,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           type="button"
           className={`inline-flex max-w-[160px] items-center truncate text-[13px] leading-tight px-0 py-0 h-auto min-h-0 bg-transparent ${transaction.expense_category ? 'font-medium text-gray-900 hover:text-emerald-600' : 'text-gray-400 hover:text-emerald-600'}`}
           onClick={() => handleClassificationStart(transaction, 'expense')}
+          disabled={!canManageReceipts}
           title={transaction.expense_category ?? undefined}
           style={{ minHeight: 'auto', padding: 0 }}
         >
@@ -1125,6 +1189,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           type="button"
           className={`text-left text-sm ${transaction.expense_category ? 'font-medium text-gray-900 hover:text-emerald-600' : 'text-gray-400 hover:text-emerald-600'}`}
           onClick={() => handleClassificationStart(transaction, 'expense')}
+          disabled={!canManageReceipts}
         >
           {transaction.expense_category ?? 'Add expense type'}
         </button>
@@ -1175,9 +1240,9 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
                   </span>
                   <button
                     type="button"
-                    className="text-[11px] text-rose-500 transition hover:text-rose-600"
+                    className="text-[11px] text-rose-500 transition hover:text-rose-600 disabled:opacity-60 disabled:cursor-not-allowed"
                     onClick={() => handleReceiptDelete(file.id, transaction.id)}
-                    disabled={isProcessing}
+                    disabled={isProcessing || !canManageReceipts}
                   >
                     Remove
                   </button>
@@ -1254,7 +1319,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           size="xs"
           className={buttonClasses}
           onClick={() => handleUploadClick(transaction.id)}
-          disabled={isProcessing}
+          disabled={isProcessing || !canManageReceipts}
         >
           Upload
         </Button>
@@ -1264,44 +1329,44 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
             size="xs"
             className={buttonClasses}
             onClick={() => handleStatusUpdate(transaction.id, 'completed')}
-            disabled={isProcessing}
+            disabled={isProcessing || !canManageReceipts}
           >
             Done
           </Button>
         )}
         {transaction.status !== 'no_receipt_required' && (
-          <Button
-            variant="secondary"
-            size="xs"
-            className={buttonClasses}
-            onClick={() => handleStatusUpdate(transaction.id, 'no_receipt_required')}
-            disabled={isProcessing}
-          >
-            Skip
-          </Button>
-        )}
-        {transaction.status !== 'cant_find' && (
-          <Button
-            variant="secondary"
-            size="xs"
-            className={`${buttonClasses} border border-rose-200 text-rose-700 hover:bg-rose-50`}
-            onClick={() => handleStatusUpdate(transaction.id, 'cant_find')}
-            disabled={isProcessing}
-          >
-            Can&apos;t find
-          </Button>
-        )}
-        {transaction.status !== 'pending' && (
-          <Button
-            variant="ghost"
-            size="xs"
-            className={buttonClasses}
-            onClick={() => handleStatusUpdate(transaction.id, 'pending')}
-            disabled={isProcessing}
-          >
-            Reopen
-          </Button>
-        )}
+        <Button
+          variant="secondary"
+          size="xs"
+          className={buttonClasses}
+          onClick={() => handleStatusUpdate(transaction.id, 'no_receipt_required')}
+          disabled={isProcessing || !canManageReceipts}
+        >
+          Skip
+        </Button>
+      )}
+      {transaction.status !== 'cant_find' && (
+        <Button
+          variant="secondary"
+          size="xs"
+          className={`${buttonClasses} border border-rose-200 text-rose-700 hover:bg-rose-50`}
+          onClick={() => handleStatusUpdate(transaction.id, 'cant_find')}
+          disabled={isProcessing || !canManageReceipts}
+        >
+          Can&apos;t find
+        </Button>
+      )}
+      {transaction.status !== 'pending' && (
+        <Button
+          variant="ghost"
+          size="xs"
+          className={buttonClasses}
+          onClick={() => handleStatusUpdate(transaction.id, 'pending')}
+          disabled={isProcessing || !canManageReceipts}
+        >
+          Reopen
+        </Button>
+      )}
       </div>
     )
   }
@@ -1394,38 +1459,47 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
       </div>
 
       <div className="hidden md:grid md:gap-4 lg:grid-cols-5">
-        <Card className="lg:col-span-3" header={<div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">Upload bank statement</h2>
-            <p className="text-sm text-gray-500">Import CSV statements and auto-match recurring items.</p>
-          </div>
-        </div>}>
-          <form onSubmit={handleStatementSubmit} className="space-y-4">
+        {canManageReceipts ? (
+          <Card className="lg:col-span-3" header={<div className="flex items-center justify-between">
             <div>
-              <Input
-                type="file"
-                accept=".csv"
-                onChange={(event) => setStatementFile(event.target.files?.[0] ?? null)}
-              />
-              {statementFile && (
-                <p className="mt-2 text-sm text-gray-500">{statementFile.name}</p>
-              )}
+              <h2 className="text-lg font-semibold text-gray-900">Upload bank statement</h2>
+              <p className="text-sm text-gray-500">Import CSV statements and auto-match recurring items.</p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={isStatementPending}>
+          </div>}>
+            <form onSubmit={handleStatementSubmit} className="space-y-4">
+              <div>
+                <Input
+                  type="file"
+                  accept=".csv"
+                  onChange={(event) => setStatementFile(event.target.files?.[0] ?? null)}
+                />
+                {statementFile && (
+                  <p className="mt-2 text-sm text-gray-500">{statementFile.name}</p>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+              <Button type="submit" disabled={isStatementPending || !canManageReceipts}>
                 {isStatementPending && <Spinner className="mr-2 h-4 w-4" />}Upload statement
               </Button>
-              <Button type="button" variant="secondary" onClick={() => setStatementFile(null)} disabled={!statementFile || isStatementPending}>
+              <Button type="button" variant="secondary" onClick={() => setStatementFile(null)} disabled={!statementFile || isStatementPending || !canManageReceipts}>
                 Clear selection
               </Button>
+              </div>
+              {summary.lastImport && (
+                <p className="text-sm text-gray-500">
+                  Last upload: {formatDate(summary.lastImport.uploaded_at)} · {summary.lastImport.original_filename}
+                </p>
+              )}
+            </form>
+          </Card>
+        ) : (
+          <Card className="lg:col-span-3">
+            <div className="space-y-2">
+              <h2 className="text-lg font-semibold text-gray-900">Upload bank statement</h2>
+              <p className="text-sm text-gray-500">You have view-only access. Ask a receipts manager to upload statements.</p>
             </div>
-            {summary.lastImport && (
-              <p className="text-sm text-gray-500">
-                Last upload: {formatDate(summary.lastImport.uploaded_at)} · {summary.lastImport.original_filename}
-              </p>
-            )}
-          </form>
-        </Card>
+          </Card>
+        )}
 
         <Card className="lg:col-span-2" header={<div className="flex items-center justify-between">
           <div>
@@ -1809,7 +1883,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
                   <option key={option} value={option}>{option}</option>
                 ))}
               </Select>
-              <Button type="submit" disabled={isRulePending && activeRuleId === 'new'}>
+              <Button type="submit" disabled={!canManageReceipts || (isRulePending && activeRuleId === 'new')}>
                 {isRulePending && activeRuleId === 'new' && <Spinner className="mr-2 h-4 w-4" />}Create rule
               </Button>
             </form>
@@ -1833,7 +1907,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
                       variant="secondary"
                       size="sm"
                       onClick={() => setEditingRuleId((current) => current === rule.id ? null : rule.id)}
-                      disabled={isRulePending && activeRuleId === rule.id}
+                      disabled={isRulePending && activeRuleId === rule.id || !canManageReceipts}
                     >
                       Edit
                     </Button>
@@ -1841,7 +1915,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
                       variant="ghost"
                       size="sm"
                       onClick={() => handleRetroRun(rule.id, 'all')}
-                      disabled={!rule.is_active || isRetroPending}
+                      disabled={!rule.is_active || isRetroPending || !canManageReceipts}
                       title={rule.is_active ? 'Run this rule across all historical transactions' : 'Enable the rule before running it'}
                       className="flex items-center gap-1"
                     >
@@ -1858,7 +1932,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
                       variant={rule.is_active ? 'success' : 'ghost'}
                       size="sm"
                       onClick={() => handleRuleToggle(rule)}
-                      disabled={isRulePending && activeRuleId === rule.id}
+                      disabled={isRulePending && activeRuleId === rule.id || !canManageReceipts}
                     >
                       {isRulePending && activeRuleId === rule.id ? <Spinner className="h-4 w-4" /> : rule.is_active ? 'Disable' : 'Enable'}
                     </Button>
@@ -1866,7 +1940,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
                       variant="ghost"
                       size="sm"
                       onClick={() => handleRuleDelete(rule.id)}
-                      disabled={isRulePending && activeRuleId === rule.id}
+                      disabled={isRulePending && activeRuleId === rule.id || !canManageReceipts}
                     >
                       Delete
                     </Button>

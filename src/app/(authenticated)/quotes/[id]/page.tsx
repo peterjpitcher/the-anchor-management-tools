@@ -20,8 +20,14 @@ import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 
 import { BackButton } from '@/components/ui-v2/navigation/BackButton';
+import { usePermissions } from '@/contexts/PermissionContext'
 export default function QuoteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
+  const { hasPermission, loading: permissionsLoading } = usePermissions()
+  const canView = hasPermission('invoices', 'view')
+  const canEdit = hasPermission('invoices', 'edit')
+  const canDelete = hasPermission('invoices', 'delete')
+  const canCreate = hasPermission('invoices', 'create')
   const [quote, setQuote] = useState<QuoteWithDetails | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -40,11 +46,20 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
   }, [params])
 
   useEffect(() => {
-    async function loadQuote() {
-      if (!quoteId) return
-      
+    const id = quoteId
+
+    if (!id || permissionsLoading) {
+      return
+    }
+
+    if (!canView) {
+      router.replace('/unauthorized')
+      return
+    }
+
+    async function loadQuote(currentId: string) {
       try {
-        const result = await getQuote(quoteId)
+        const result = await getQuote(currentId)
         if (result.error || !result.quote) {
           throw new Error(result.error || 'Failed to load quote')
         }
@@ -55,12 +70,12 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
         setLoading(false)
       }
     }
-    
-    if (quoteId) {
-      loadQuote()
-      checkEmailConfig()
+
+    void loadQuote(id)
+    if (canEdit) {
+      void checkEmailConfig()
     }
-  }, [quoteId])
+  }, [quoteId, permissionsLoading, canView, canEdit, router])
 
   async function checkEmailConfig() {
     try {
@@ -74,10 +89,12 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
   }
 
   async function loadQuote() {
-    if (!quoteId) return
+    const id = quoteId
+
+    if (!id || !canView) return
     
     try {
-      const result = await getQuote(quoteId)
+      const result = await getQuote(id)
       if (result.error || !result.quote) {
         throw new Error(result.error || 'Failed to load quote')
       }
@@ -92,7 +109,11 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
 
   async function handleStatusChange(newStatus: QuoteStatus) {
     if (!quote) return
-    
+    if (!canEdit) {
+      toast.error('You do not have permission to update quotes')
+      return
+    }
+
     setProcessing(true)
     setError(null)
 
@@ -119,7 +140,11 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
 
   async function handleConvertToInvoice() {
     if (!quote) return
-    
+    if (!canCreate) {
+      toast.error('You do not have permission to convert quotes')
+      return
+    }
+
     if (quote.status !== 'accepted') {
       setError('Only accepted quotes can be converted to invoices')
       return
@@ -148,6 +173,10 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
 
   async function handleDelete() {
     if (!quote || processing) return
+    if (!canDelete) {
+      toast.error('You do not have permission to delete quotes')
+      return
+    }
 
     setProcessing(true)
     setError(null)
@@ -192,6 +221,20 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
   }
 
   // calculateLineTotal was unused; removed to satisfy lint
+
+  if (permissionsLoading) {
+    return (
+      <Page title="Loading...">
+        <div className="flex items-center justify-center h-64">
+          <Spinner size="lg" />
+        </div>
+      </Page>
+    )
+  }
+
+  if (!canView) {
+    return null
+  }
 
   if (loading) {
     return (
@@ -255,9 +298,10 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
             <>
               <Button
                 onClick={() => handleStatusChange('sent')}
-                disabled={processing}
+                disabled={processing || !canEdit}
                 leftIcon={<Mail className="h-4 w-4" />}
                 className="text-sm sm:text-base"
+                title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
               >
                 <span className="hidden sm:inline">Mark as Sent</span>
                 <span className="sm:hidden">Send</span>
@@ -265,9 +309,10 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               <Button
                 variant="secondary"
                 onClick={() => router.push(`/quotes/${quote.id}/edit`)}
-                disabled={processing}
+                disabled={processing || !canEdit}
                 leftIcon={<Edit className="h-4 w-4" />}
                 className="text-sm sm:text-base"
+                title={!canEdit ? 'You need invoice edit permission to edit quotes.' : undefined}
               >
                 <span>Edit</span>
               </Button>
@@ -278,10 +323,11 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
             <>
               <Button
                 onClick={() => handleStatusChange('accepted')}
-                disabled={processing}
+                disabled={processing || !canEdit}
                 variant="success"
                 leftIcon={<CheckCircle className="h-4 w-4" />}
                 className="text-sm sm:text-base"
+                title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
               >
                 <span className="hidden sm:inline">Mark as Accepted</span>
                 <span className="sm:hidden">Accept</span>
@@ -289,9 +335,10 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               <Button
                 variant="danger"
                 onClick={() => handleStatusChange('rejected')}
-                disabled={processing}
+                disabled={processing || !canEdit}
                 leftIcon={<XCircle className="h-4 w-4" />}
                 className="text-sm sm:text-base"
+                title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
               >
                 <span className="hidden sm:inline">Mark as Rejected</span>
                 <span className="sm:hidden">Reject</span>
@@ -301,9 +348,10 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
           
           {quote.status === 'accepted' && !quote.converted_to_invoice_id && (
             <Button onClick={handleConvertToInvoice}
-              disabled={processing}
+              disabled={processing || !canCreate}
               leftIcon={<FileText className="h-4 w-4" />}
               className="text-sm sm:text-base"
+              title={!canCreate ? 'You need invoice create permission to convert quotes.' : undefined}
             >
               <span className="hidden sm:inline">Convert to Invoice</span>
               <span className="sm:hidden">Convert</span>
@@ -314,9 +362,10 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
             <Button
               variant="secondary"
               onClick={() => setShowEmailModal(true)}
-              disabled={processing}
+              disabled={processing || !canEdit}
               leftIcon={<Mail className="h-4 w-4" />}
               className="text-sm sm:text-base"
+              title={!canEdit ? 'You need invoice edit permission to email quotes.' : undefined}
             >
               <span className="hidden sm:inline">Send Email</span>
               <span className="sm:hidden">Email</span>
@@ -338,9 +387,10 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
             <Button
               variant="danger"
               onClick={() => setShowDeleteDialog(true)}
-              disabled={processing}
+              disabled={processing || !canDelete}
               leftIcon={<Trash2 className="h-4 w-4" />}
               className="text-sm sm:text-base"
+              title={!canDelete ? 'You need invoice delete permission to delete quotes.' : undefined}
             >
               <span>Delete</span>
             </Button>

@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { checkUserPermission } from './rbac'
 import { revalidatePath } from 'next/cache'
 import { ensureReplyInstruction } from '@/lib/sms/support'
+import { recordOutboundSmsMessage } from '@/lib/sms/logging'
 
 export async function getUnreadMessageCounts() {
   const canView = await checkUserPermission('messages', 'view')
@@ -152,37 +153,20 @@ export async function sendSmsReply(customerId: string, message: string) {
     
     const twilioMessage = await client.messages.create(messageParams)
 
-    // Calculate segments and cost
-    const messageLength = messageWithSupport.length
-    const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153)
-    const costUsd = segments * 0.04 // Approximate UK SMS cost per segment
-
     const resolvedFromNumber = twilioMessage.from || fromNumber || ''
     
-    // Save the message to database with proper status mapping
-    const { error: saveError } = await supabase
-      .from('messages')
-      .insert({
-        customer_id: customerId,
-        direction: 'outbound',
-        message_sid: twilioMessage.sid,
-        twilio_message_sid: twilioMessage.sid,
-        body: messageWithSupport,
-        status: mapTwilioStatus(twilioMessage.status),
-        twilio_status: twilioMessage.status,
-        from_number: resolvedFromNumber,
-        to_number: customer.mobile_number,
-        message_type: 'sms',
-        segments: segments,
-        cost_usd: costUsd,
-        created_at: new Date().toISOString(),
-        sent_at: twilioMessage.status === 'sent' ? new Date().toISOString() : null,
-        read_at: new Date().toISOString() // Mark outbound as read
-      })
-    
-    if (saveError) {
-      console.error('Failed to save outbound message:', saveError)
-    }
+    await recordOutboundSmsMessage({
+      supabase,
+      customerId,
+      to: customer.mobile_number,
+      body: messageWithSupport,
+      sid: twilioMessage.sid,
+      fromNumber: resolvedFromNumber,
+      status: mapTwilioStatus(twilioMessage.status),
+      twilioStatus: twilioMessage.status,
+      sentAt: twilioMessage.status === 'sent' ? new Date().toISOString() : null,
+      readAt: new Date().toISOString()
+    })
     
     return { 
       success: true, 

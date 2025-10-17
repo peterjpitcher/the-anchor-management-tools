@@ -1,11 +1,12 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { logAuditEvent } from '@/app/actions/audit'
 import type { EventCategory, CategoryFormData, CategoryRegular, CrossCategorySuggestion, CategoryRecentCheckIn } from '@/types/event-categories'
 import { toLocalIsoDate } from '@/lib/dateUtils'
+import type { User as SupabaseUser } from '@supabase/supabase-js'
 
 // Helper function to format time to HH:MM
 function formatTimeToHHMM(time: string | undefined | null): string | undefined | null {
@@ -118,11 +119,49 @@ const categorySchema = z.object({
   })).optional()
 })
 
+type EventsManagePermissionResult =
+  | { error: string }
+  | { user: SupabaseUser; admin: ReturnType<typeof createAdminClient> }
+
+async function requireEventsManagePermission(): Promise<EventsManagePermissionResult> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'Not authenticated' }
+  }
+
+  const admin = createAdminClient()
+  const { data, error } = await admin.rpc('user_has_permission', {
+    p_user_id: user.id,
+    p_module_name: 'events',
+    p_action: 'manage',
+  })
+
+  if (error) {
+    console.error('Event category permission check failed:', error)
+    return { error: 'Failed to verify permissions' }
+  }
+
+  if (data !== true) {
+    return { error: 'Insufficient permissions' }
+  }
+
+  return { user, admin }
+}
+
 export async function getEventCategories(): Promise<{ data?: EventCategory[], error?: string }> {
   try {
-    const supabase = await createClient()
-    
-    const { data, error } = await supabase
+    const permission = await requireEventsManagePermission()
+    if ('error' in permission) {
+      return { error: permission.error }
+    }
+
+    const { admin } = permission
+
+    const { data, error } = await admin
       .from('event_categories')
       .select('*')
       .order('sort_order', { ascending: true })
@@ -130,7 +169,7 @@ export async function getEventCategories(): Promise<{ data?: EventCategory[], er
 
     if (error) throw error
 
-    return { data }
+    return { data: (data || []) as EventCategory[] }
   } catch (error) {
     console.error('Error fetching event categories:', error)
     return { error: 'Failed to fetch event categories' }
@@ -159,15 +198,13 @@ export async function getActiveEventCategories(): Promise<{ data?: EventCategory
 
 export async function createEventCategory(formData: CategoryFormData) {
   try {
-    const supabase = await createClient()
-    
-    // Get the authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return { error: 'Unauthorized' }
+    const permission = await requireEventsManagePermission()
+    if ('error' in permission) {
+      return { error: permission.error }
     }
 
-    // Validate input
+    const { user, admin } = permission
+
     const validationResult = categorySchema.safeParse(formData)
     if (!validationResult.success) {
       return { error: validationResult.error.errors[0].message }
@@ -175,21 +212,18 @@ export async function createEventCategory(formData: CategoryFormData) {
 
     const data = validationResult.data
 
-    // Get the next sort order
-    const { data: maxSortOrder } = await supabase
+    const { data: maxSortOrder } = await admin
       .from('event_categories')
       .select('sort_order')
       .order('sort_order', { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
 
     const nextSortOrder = (maxSortOrder?.sort_order || 0) + 1
 
-    // Generate slug if not provided
     const slug = data.slug || data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
 
-    // Create category
-    const { data: category, error } = await supabase
+    const { data: category, error } = await admin
       .from('event_categories')
       .insert({
         ...data,
@@ -197,7 +231,7 @@ export async function createEventCategory(formData: CategoryFormData) {
         sort_order: nextSortOrder,
         default_price: data.default_price ?? 0,
         default_is_free: data.default_is_free ?? true,
-        default_event_status: data.default_event_status || 'scheduled'
+        default_event_status: data.default_event_status || 'scheduled',
       })
       .select()
       .single()
@@ -207,16 +241,15 @@ export async function createEventCategory(formData: CategoryFormData) {
       return { error: 'Failed to create event category' }
     }
 
-    // Log audit event
     await logAuditEvent({
       user_id: user.id,
-      user_email: user.email!,
+      ...(user.email && { user_email: user.email }),
       operation_type: 'create',
       resource_type: 'event',
       resource_id: category.id,
       operation_status: 'success',
       new_values: category,
-      additional_info: { type: 'event_category' }
+      additional_info: { type: 'event_category' },
     })
 
     revalidatePath('/settings/event-categories')
@@ -229,15 +262,13 @@ export async function createEventCategory(formData: CategoryFormData) {
 
 export async function updateEventCategory(id: string, formData: CategoryFormData) {
   try {
-    const supabase = await createClient()
-    
-    // Get the authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return { error: 'Unauthorized' }
+    const permission = await requireEventsManagePermission()
+    if ('error' in permission) {
+      return { error: permission.error }
     }
 
-    // Validate input
+    const { user, admin } = permission
+
     const validationResult = categorySchema.safeParse(formData)
     if (!validationResult.success) {
       return { error: validationResult.error.errors[0].message }
@@ -245,25 +276,31 @@ export async function updateEventCategory(id: string, formData: CategoryFormData
 
     const data = validationResult.data
 
-    // Get old values for audit
-    const { data: oldCategory } = await supabase
+    const { data: oldCategory, error: loadError } = await admin
       .from('event_categories')
       .select('*')
       .eq('id', id)
-      .single()
+      .maybeSingle()
 
-    // Generate slug if not provided
+    if (loadError) {
+      console.error('Error loading event category before update:', loadError)
+      return { error: 'Failed to load event category' }
+    }
+
+    if (!oldCategory) {
+      return { error: 'Event category not found' }
+    }
+
     const slug = data.slug || data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
 
-    // Update category
-    const { data: category, error } = await supabase
+    const { data: category, error } = await admin
       .from('event_categories')
       .update({
         ...data,
         slug,
-        default_price: data.default_price ?? oldCategory?.default_price ?? 0,
-        default_is_free: data.default_is_free ?? oldCategory?.default_is_free ?? true,
-        default_event_status: data.default_event_status || oldCategory?.default_event_status || 'scheduled'
+        default_price: data.default_price ?? oldCategory.default_price ?? 0,
+        default_is_free: data.default_is_free ?? oldCategory.default_is_free ?? true,
+        default_event_status: data.default_event_status || oldCategory.default_event_status || 'scheduled',
       })
       .eq('id', id)
       .select()
@@ -274,17 +311,16 @@ export async function updateEventCategory(id: string, formData: CategoryFormData
       return { error: 'Failed to update event category' }
     }
 
-    // Log audit event
     await logAuditEvent({
       user_id: user.id,
-      user_email: user.email!,
+      ...(user.email && { user_email: user.email }),
       operation_type: 'update',
       resource_type: 'event',
       resource_id: id,
       operation_status: 'success',
       old_values: oldCategory,
       new_values: category,
-      additional_info: { type: 'event_category' }
+      additional_info: { type: 'event_category' },
     })
 
     revalidatePath('/settings/event-categories')
@@ -297,52 +333,61 @@ export async function updateEventCategory(id: string, formData: CategoryFormData
 
 export async function deleteEventCategory(id: string) {
   try {
-    const supabase = await createClient()
-    
-    // Get the authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return { error: 'Unauthorized' }
+    const permission = await requireEventsManagePermission()
+    if ('error' in permission) {
+      return { error: permission.error }
     }
 
-    // Check if category is in use
-    const { count } = await supabase
+    const { user, admin } = permission
+
+    const { count, error: usageError } = await admin
       .from('events')
       .select('*', { count: 'exact', head: true })
       .eq('category_id', id)
 
-    if (count && count > 0) {
+    if (usageError) {
+      console.error('Error checking event category usage:', usageError)
+      return { error: 'Failed to validate event category usage' }
+    }
+
+    if (typeof count === 'number' && count > 0) {
       return { error: 'Cannot delete category that is assigned to events' }
     }
 
-    // Get category details for audit log
-    const { data: category } = await supabase
+    const { data: category, error: loadError } = await admin
       .from('event_categories')
       .select('*')
       .eq('id', id)
-      .single()
+      .maybeSingle()
 
-    // Delete category
-    const { error } = await supabase
+    if (loadError) {
+      console.error('Error loading event category before delete:', loadError)
+      return { error: 'Failed to load event category' }
+    }
+
+    if (!category) {
+      return { error: 'Event category not found' }
+    }
+
+    const { error } = await admin
       .from('event_categories')
       .delete()
       .eq('id', id)
-
+    
     if (error) {
       console.error('Category deletion error:', error)
       return { error: 'Failed to delete event category' }
     }
 
-    // Log audit event
     await logAuditEvent({
       user_id: user.id,
-      user_email: user.email!,
+      ...(user.email && { user_email: user.email }),
       operation_type: 'delete',
       resource_type: 'event',
       resource_id: id,
       operation_status: 'success',
       old_values: category,
-      additional_info: { type: 'event_category' }
+      additional_info: { type: 'event_category' },
     })
 
     revalidatePath('/settings/event-categories')
@@ -583,15 +628,14 @@ export async function getCrossCategorySuggestions(
 
 export async function categorizeHistoricalEvents() {
   try {
-    const supabase = await createClient()
-    
-    // Check if user is admin
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return { error: 'Unauthorized' }
+    const permission = await requireEventsManagePermission()
+    if ('error' in permission) {
+      return { error: permission.error }
     }
 
-    const { data: count, error } = await supabase.rpc('categorize_historical_events')
+    const { user, admin } = permission
+
+    const { data: count, error } = await admin.rpc('categorize_historical_events')
 
     if (error) {
       console.error('RPC error:', error)
@@ -603,7 +647,7 @@ export async function categorizeHistoricalEvents() {
     // Log audit event
     await logAuditEvent({
       user_id: user.id,
-      user_email: user.email!,
+      ...(user.email && { user_email: user.email }),
       operation_type: 'update',
       resource_type: 'event',
       resource_id: 'historical_categorization',
@@ -620,15 +664,14 @@ export async function categorizeHistoricalEvents() {
 
 export async function rebuildCustomerCategoryStats() {
   try {
-    const supabase = await createClient()
-    
-    // Check if user is admin
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return { error: 'Unauthorized' }
+    const permission = await requireEventsManagePermission()
+    if ('error' in permission) {
+      return { error: permission.error }
     }
 
-    const { data: count, error } = await supabase.rpc('rebuild_customer_category_stats')
+    const { user, admin } = permission
+
+    const { data: count, error } = await admin.rpc('rebuild_customer_category_stats')
 
     if (error) {
       console.error('RPC error:', error)
@@ -640,7 +683,7 @@ export async function rebuildCustomerCategoryStats() {
     // Log audit event
     await logAuditEvent({
       user_id: user.id,
-      user_email: user.email!,
+      ...(user.email && { user_email: user.email }),
       operation_type: 'update',
       resource_type: 'customer',
       resource_id: 'rebuild_stats',

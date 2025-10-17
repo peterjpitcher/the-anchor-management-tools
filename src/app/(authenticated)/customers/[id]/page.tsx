@@ -25,6 +25,7 @@ import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { CustomerLabelSelector } from '@/components/CustomerLabelSelector'
 import { usePermissions } from '@/contexts/PermissionContext'
+import { deleteBooking as deleteBookingAction } from '@/app/actions/bookings'
 
 type BookingWithEvent = Omit<Booking, 'event'> & {
   event: Pick<Event, 'id' | 'name' | 'date' | 'time' | 'capacity' | 'created_at' | 'slug'>
@@ -38,6 +39,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   const router = useRouter()
   const searchParams = useSearchParams()
   const { hasPermission } = usePermissions()
+  const canManageEvents = hasPermission('events', 'manage')
 
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [bookings, setBookings] = useState<BookingWithEvent[]>([])
@@ -187,75 +189,90 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
     router.push(`${window.location.pathname}?${newParams.toString()}`)
   }
 
-  const handleUpdateBooking = async (data: Omit<Booking, 'id' | 'created_at'>) => {
+  const openAddBookingModal = () => {
+    if (!canManageEvents) {
+      toast.error('You do not have permission to manage bookings.')
+      return
+    }
+    setEventForNewBooking(undefined)
+    setIsAddingBooking(true)
+  }
+
+  const startEditBooking = (booking: BookingWithEvent) => {
+    if (!canManageEvents) {
+      toast.error('You do not have permission to manage bookings.')
+      return
+    }
+    setEditingBooking(booking)
+    setIsAddingBooking(false)
+  }
+
+  const handleUpdateBooking = async (_data: Omit<Booking, 'id' | 'created_at'>, context?: { keepOpen?: boolean }) => {
     if (!editingBooking) return
+    if (!canManageEvents) {
+      toast.error('You do not have permission to manage bookings.')
+      return
+    }
 
-    const { error } = await (supabase as any)
-      .from('bookings')
-      .update({
-        customer_id: data.customer_id,
-        event_id: data.event_id,
-        seats: data.seats,
-        notes: data.notes
-      })
-      .eq('id', editingBooking.id)
-
-    if (error) {
-      toast.error(`Failed to update booking: ${error.message}`)
-    } else {
-      toast.success('Booking updated successfully!')
+    try {
       const returnTo = searchParams?.get('return_to')
       if (returnTo) {
         router.push(returnTo)
-      } else {
-        closeModal()
-        await loadData() // Refresh data
+        return
       }
+
+      if (!context?.keepOpen) {
+        closeModal()
+      }
+
+      await loadData()
+    } catch (error) {
+      console.error('Error refreshing booking after update:', error)
+      toast.error('Failed to refresh booking details')
     }
   }
 
-  const handleAddBooking = async (data: Omit<Booking, 'id' | 'created_at'>) => {
-    const { data: newBooking, error } = await (supabase as any).from('bookings').insert({
-      customer_id: data.customer_id,
-      event_id: data.event_id,
-      seats: data.seats,
-      notes: data.notes
-    }).select().single()
+  const handleAddBooking = async (_data: Omit<Booking, 'id' | 'created_at'>, context?: { keepOpen?: boolean }) => {
+    if (!canManageEvents) {
+      toast.error('You do not have permission to manage bookings.')
+      return
+    }
 
-    if (error) {
-      toast.error(`Failed to add booking: ${error.message}`)
-    } else {
-      toast.success('Booking added successfully!')
-      
-      // Send SMS confirmation immediately
-      if (newBooking?.id) {
-        import('@/app/actions/event-sms-scheduler').then(({ scheduleAndProcessBookingReminders }) => {
-          scheduleAndProcessBookingReminders(newBooking.id).catch((error) => {
-            console.error('Failed to trigger booking reminders:', error)
-            toast.error('SMS notification could not be sent')
-          })
-        })
-      }
-      
+    try {
       const returnTo = searchParams?.get('return_to')
       if (returnTo) {
         router.push(returnTo)
-      } else {
-        closeModal()
-        await loadData() // Refresh data
+        return
       }
+
+      if (!context?.keepOpen) {
+        closeModal()
+      }
+
+      await loadData()
+    } catch (error) {
+      console.error('Error refreshing bookings after creation:', error)
+      toast.error('Failed to refresh bookings')
     }
   }
 
   const handleDeleteBooking = async (bookingId: string) => {
-    if (window.confirm('Are you sure you want to delete this booking?')) {
-      const { error } = await supabase.from('bookings').delete().eq('id', bookingId)
-      if (error) {
-        toast.error(`Failed to delete booking: ${error.message}`)
-      } else {
-        toast.success('Booking deleted.')
-        setBookings(bookings.filter(b => b.id !== bookingId))
+    if (!canManageEvents) {
+      toast.error('You do not have permission to manage bookings.')
+      return
+    }
+    if (!window.confirm('Are you sure you want to delete this booking?')) return
+
+    try {
+      const result = await deleteBookingAction(bookingId)
+      if ('error' in result && result.error) {
+        throw new Error(result.error)
       }
+      toast.success('Booking deleted.')
+      await loadData()
+    } catch (error) {
+      console.error('Error deleting booking:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to delete booking')
     }
   }
 
@@ -266,7 +283,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   const totalSeats = activeBookings.reduce((sum, booking) => sum + (booking.seats ?? 0), 0)
 
   // Define columns for booking table
-  const bookingColumns: Column<BookingWithEvent>[] = [
+  const baseBookingColumns: Column<BookingWithEvent>[] = [
     {
       key: 'event',
       header: 'Event',
@@ -294,30 +311,36 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
         </Badge>
       ),
     },
-    {
-      key: 'actions',
-      header: '',
-      align: 'right',
-      cell: (booking) => (
-        <div className="flex justify-end space-x-2">
-          <button
-            onClick={() => setEditingBooking(booking)}
-            className="text-blue-600 hover:text-blue-700"
-          >
-            <PencilIcon className="h-5 w-5" />
-            <span className="sr-only">Edit</span>
-          </button>
-          <button
-            onClick={() => handleDeleteBooking(booking.id)}
-            className="text-red-600 hover:text-red-900"
-          >
-            <TrashIcon className="h-5 w-5" />
-            <span className="sr-only">Delete</span>
-          </button>
-        </div>
-      ),
-    },
   ]
+
+  const bookingColumns: Column<BookingWithEvent>[] = canManageEvents
+    ? [
+        ...baseBookingColumns,
+        {
+          key: 'actions',
+          header: '',
+          align: 'right',
+          cell: (booking) => (
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => startEditBooking(booking)}
+                className="text-blue-600 hover:text-blue-700"
+              >
+                <PencilIcon className="h-5 w-5" />
+                <span className="sr-only">Edit</span>
+              </button>
+              <button
+                onClick={() => handleDeleteBooking(booking.id)}
+                className="text-red-600 hover:text-red-900"
+              >
+                <TrashIcon className="h-5 w-5" />
+                <span className="sr-only">Delete</span>
+              </button>
+            </div>
+          ),
+        },
+      ]
+    : baseBookingColumns
 
   // Define columns for reminder table (without seats)
   const reminderColumns: Column<BookingWithEvent>[] = bookingColumns.filter(col => col.key !== 'seats')
@@ -345,9 +368,11 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
         backButton={{ label: "Back to Customers", href: "/customers" }}
         actions={
           <NavGroup>
-            <NavLink onClick={() => setIsAddingBooking(true)}>
-              Add Booking
-            </NavLink>
+            {canManageEvents && (
+              <NavLink onClick={openAddBookingModal}>
+                Add Booking
+              </NavLink>
+            )}
           </NavGroup>
         }
       />

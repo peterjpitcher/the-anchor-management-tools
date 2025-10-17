@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { useRouter } from 'next/navigation'
 import { 
   UserCircleIcon, 
@@ -25,6 +24,15 @@ import { Skeleton } from '@/components/ui-v2/feedback/Skeleton'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { getTodayIsoDate } from '@/lib/dateUtils'
+import { useSupabase } from '@/components/providers/SupabaseProvider'
+import {
+  loadProfile,
+  updateProfile as updateProfileAction,
+  toggleNotification as toggleNotificationAction,
+  exportProfileData,
+  requestAccountDeletion as requestAccountDeletionAction,
+  uploadAvatar,
+} from '@/app/actions/profile'
 
 interface Profile {
   id: string
@@ -47,74 +55,40 @@ export default function ProfilePage() {
   const [fullName, setFullName] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
-  const loadProfile = useCallback(async () => {
+  const fetchProfile = useCallback(async () => {
+    setLoading(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        router.push('/auth/login')
+      const result = await loadProfile()
+      if (!result || 'error' in result) {
+        toast.error(result?.error || 'Failed to load profile')
+        setProfile(null)
         return
       }
 
-      // First check if profile exists
-      const { data: fetchedProfile, error: fetchError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single()
-
-      let existingProfile = fetchedProfile
-      
-      if (fetchError && fetchError.code === 'PGRST116') {
-        // Profile doesn't exist, create it
-        const { data: newProfile, error: createError } = await (supabase as any)
-          .from('profiles')
-          .insert({
-            id: user.id,
-            email: user.email,
-            full_name: user.user_metadata?.full_name || '',
-            sms_notifications: true,
-            email_notifications: true
-          })
-          .select()
-          .single()
-
-        if (createError) throw createError
-        existingProfile = newProfile
-      } else if (fetchError) {
-        throw fetchError
-      }
-
-      setProfile(existingProfile)
-      setFullName((existingProfile as unknown as { full_name?: string })?.full_name || '')
-    } catch (error) {
-      console.error('Error loading profile:', error)
-      toast.error('Failed to load profile')
+      const record = result.profile as Profile
+      setProfile(record)
+      setFullName(record.full_name ?? '')
     } finally {
       setLoading(false)
     }
-  }, [supabase, router])
+  }, [])
 
   useEffect(() => {
-    loadProfile()
-  }, [loadProfile])
+    void fetchProfile()
+  }, [fetchProfile])
 
-  async function updateProfile() {
+  async function handleUpdateProfile() {
     if (!profile) return
 
     try {
       setSaving(true)
-      const { error } = await (supabase as any)
-        .from('profiles')
-        .update({
-          full_name: fullName,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', profile.id)
-
-      if (error) throw error
-
+      const result = await updateProfileAction({ fullName })
+      if (!result || 'error' in result) {
+        toast.error(result?.error || 'Failed to update profile')
+        return
+      }
       toast.success('Profile updated successfully')
-      await loadProfile()
+      await fetchProfile()
     } catch (error) {
       console.error('Error updating profile:', error)
       toast.error('Failed to update profile')
@@ -123,7 +97,7 @@ export default function ProfilePage() {
     }
   }
 
-  async function uploadAvatar(event: React.ChangeEvent<HTMLInputElement>) {
+  async function handleUploadAvatar(event: React.ChangeEvent<HTMLInputElement>) {
     try {
       setUploading(true)
 
@@ -132,30 +106,17 @@ export default function ProfilePage() {
       }
 
       const file = event.target.files[0]
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${profile?.id}.${fileExt}`
-      const filePath = `avatars/${fileName}`
+      const formData = new FormData()
+      formData.append('avatar', file)
 
-      // Upload to Supabase Storage
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, file, { upsert: true })
-
-      if (uploadError) throw uploadError
-
-      // Update profile with avatar URL
-      const { error: updateError } = await (supabase as any)
-        .from('profiles')
-        .update({ 
-          avatar_url: filePath,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', profile?.id)
-
-      if (updateError) throw updateError
+      const result = await uploadAvatar(formData)
+      if (!result || 'error' in result) {
+        toast.error(result?.error || 'Failed to upload avatar')
+        return
+      }
 
       toast.success('Avatar uploaded successfully')
-      await loadProfile()
+      await fetchProfile()
     } catch (error) {
       console.error('Error uploading avatar:', error)
       toast.error('Failed to upload avatar')
@@ -168,22 +129,21 @@ export default function ProfilePage() {
     if (!profile) return
 
     try {
-      const update = type === 'sms' 
-        ? { sms_notifications: !profile.sms_notifications }
-        : { email_notifications: !profile.email_notifications }
+      const field = type === 'sms' ? 'sms_notifications' : 'email_notifications'
+      const updatedValue = type === 'sms' ? !profile.sms_notifications : !profile.email_notifications
 
-      const { error } = await (supabase as any)
-        .from('profiles')
-        .update({
-          ...update,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', profile.id)
+      const result = await toggleNotificationAction({
+        field,
+        value: updatedValue,
+      })
 
-      if (error) throw error
+      if (!result || 'error' in result) {
+        toast.error(result?.error || 'Failed to update notification preferences')
+        return
+      }
 
-      toast.success(`${type === 'sms' ? 'SMS' : 'Email'} notifications ${update[`${type}_notifications`] ? 'enabled' : 'disabled'}`)
-      await loadProfile()
+      toast.success(`${type === 'sms' ? 'SMS' : 'Email'} notifications ${updatedValue ? 'enabled' : 'disabled'}`)
+      await fetchProfile()
     } catch (error) {
       console.error('Error updating notifications:', error)
       toast.error('Failed to update notification preferences')
@@ -192,30 +152,17 @@ export default function ProfilePage() {
 
   async function exportData() {
     try {
-      // Fetch all user data
-      const { data: bookings } = await supabase
-        .from('bookings')
-        .select('*, event:events(*)')
-        .eq('customer_id', profile?.id || '')
-
-      const { data: messages } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('customer_id', profile?.id || '')
-
-      const userData = {
-        profile,
-        bookings,
-        messages,
-        exportDate: new Date().toISOString()
+      const result = await exportProfileData()
+      if (!result || 'error' in result) {
+        toast.error(result?.error || 'Failed to export data')
+        return
       }
 
-      // Create and download JSON file
-      const blob = new Blob([JSON.stringify(userData, null, 2)], { type: 'application/json' })
+      const blob = new Blob([result.content], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `profile-data-${getTodayIsoDate()}.json`
+      a.download = result.filename || `profile-data-${getTodayIsoDate()}.json`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -230,18 +177,11 @@ export default function ProfilePage() {
 
   async function requestAccountDeletion() {
     try {
-      // Log the deletion request
-      const { error } = await (supabase as any)
-        .from('audit_logs')
-        .insert({
-          user_id: profile?.id,
-          entity_type: 'profile',
-          entity_id: profile?.id,
-          action: 'delete_request',
-          details: { reason: 'User requested account deletion' }
-        })
-
-      if (error) throw error
+      const result = await requestAccountDeletionAction()
+      if (!result || 'error' in result) {
+        toast.error(result?.error || 'Failed to submit deletion request')
+        return
+      }
 
       toast.success('Account deletion request submitted. We will contact you within 48 hours.')
       setShowDeleteConfirm(false)
@@ -326,7 +266,7 @@ export default function ProfilePage() {
                       type="file"
                       accept="image/*"
                       className="sr-only"
-                      onChange={uploadAvatar}
+                      onChange={handleUploadAvatar}
                       disabled={uploading}
                     />
                   </label>
@@ -369,7 +309,7 @@ export default function ProfilePage() {
 
                 <div className="flex justify-end">
                   <Button
-                    onClick={updateProfile}
+                    onClick={handleUpdateProfile}
                     disabled={saving}
                     loading={saving}
                     variant="primary"

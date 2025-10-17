@@ -1,4 +1,3 @@
-import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { 
   PlusIcon, 
@@ -6,7 +5,7 @@ import {
   CheckIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline'
-import { createVenueSpace, updateVenueSpace, deleteVenueSpace } from '@/app/actions/privateBookingActions'
+import { createVenueSpace, updateVenueSpace, deleteVenueSpace, getVenueSpacesForManagement } from '@/app/actions/privateBookingActions'
 import { VenueSpaceDeleteButton } from '@/components/VenueSpaceDeleteButton'
 import { formatDateFull } from '@/lib/dateUtils'
 import { Page } from '@/components/ui-v2/layout/Page'
@@ -20,6 +19,7 @@ import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { checkUserPermission } from '@/app/actions/rbac'
 
 async function handleCreateSpace(formData: FormData) {
   'use server'
@@ -33,7 +33,10 @@ async function handleCreateSpace(formData: FormData) {
   })
   
   if (result.error) {
-    console.error('Error creating space:', result.error)
+    if (result.error === 'Insufficient permissions' || result.error === 'Not authenticated') {
+      redirect('/unauthorized')
+    }
+    throw new Error(result.error)
   }
 }
 
@@ -50,7 +53,10 @@ async function handleUpdateSpace(formData: FormData) {
   })
   
   if (result.error) {
-    console.error('Error updating space:', result.error)
+    if (result.error === 'Insufficient permissions' || result.error === 'Not authenticated') {
+      redirect('/unauthorized')
+    }
+    throw new Error(result.error)
   }
 }
 
@@ -61,38 +67,27 @@ async function handleDeleteSpace(formData: FormData) {
   const result = await deleteVenueSpace(spaceId)
   
   if (result.error) {
-    console.error('Error deleting space:', result.error)
+    if (result.error === 'Insufficient permissions' || result.error === 'Not authenticated') {
+      redirect('/unauthorized')
+    }
+    throw new Error(result.error)
   }
 }
 
 export default async function VenueSpacesPage() {
-  const supabase = await createClient()
-  
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    redirect('/login')
-  }
+  const canManageSpaces = await checkUserPermission('private_bookings', 'manage_spaces')
 
-  // Check permissions
-  const { data: hasPermission } = await supabase.rpc('user_has_permission', {
-    p_user_id: user.id,
-    p_module_name: 'private_bookings',
-    p_action: 'manage_spaces'
-  })
-
-  if (!hasPermission) {
+  if (!canManageSpaces) {
     redirect('/unauthorized')
   }
 
-  // Fetch venue spaces
-  const { data: spaces, error } = await supabase
-    .from('venue_spaces')
-    .select('*')
-    .order('name')
+  const spacesResult = await getVenueSpacesForManagement()
 
-  if (error) {
-    console.error('Error fetching venue spaces:', error)
+  if ('error' in spacesResult) {
+    throw new Error(spacesResult.error)
   }
+
+  const spaces = spacesResult.data ?? []
 
   const statusOptions = [
     { value: 'true', label: 'Active' },

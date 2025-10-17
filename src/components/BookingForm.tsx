@@ -1,9 +1,12 @@
 import type { Booking, Event, Customer } from '@/types/database'
-import { useState, useEffect, useCallback } from 'react'
+import { Fragment, useState, useEffect, useCallback } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import toast from 'react-hot-toast'
 import { MagnifyingGlassIcon, UserPlusIcon } from '@heroicons/react/24/outline'
+import { Combobox, Transition } from '@headlessui/react'
+import { CheckIcon, ChevronUpDownIcon } from '@heroicons/react/20/solid'
 import { formatDate } from '@/lib/dateUtils'
+import { cn } from '@/lib/utils'
 import { CustomerWithLoyalty, getLoyalCustomers, sortCustomersByLoyalty } from '@/lib/customerUtils'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { createBooking } from '@/app/actions/bookings'
@@ -12,7 +15,7 @@ interface BookingFormProps {
   booking?: Booking
   event: Event
   customer?: Customer
-  onSubmit: (data: Omit<Booking, 'id' | 'created_at'>) => Promise<void>
+  onSubmit: (data: Omit<Booking, 'id' | 'created_at'>, context?: { keepOpen?: boolean }) => Promise<void>
   onCancel: () => void
 }
 
@@ -35,6 +38,11 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
     lastName: '',
     mobileNumber: ''
   })
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerWithLoyalty | null>(
+    booking?.customer_id && preselectedCustomer
+      ? { ...preselectedCustomer, isLoyal: false }
+      : null
+  )
 
   // Calculate available capacity
   const calculateAvailableCapacity = useCallback(async () => {
@@ -62,8 +70,10 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
 
   const loadCustomers = useCallback(async () => {
     if (preselectedCustomer) {
-      setCustomers([{ ...preselectedCustomer, isLoyal: false }])
-      setAllCustomers([{ ...preselectedCustomer, isLoyal: false }])
+      const initial = { ...preselectedCustomer, isLoyal: false }
+      setCustomers([initial])
+      setAllCustomers([initial])
+      setSelectedCustomer(initial)
       setIsLoading(false)
       return
     }
@@ -144,6 +154,18 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
     setCustomers(filtered)
   }, [searchTerm, allCustomers])
 
+  useEffect(() => {
+    if (!customerId) {
+      setSelectedCustomer(null)
+      return
+    }
+
+    const current = allCustomers.find((customer) => customer.id === customerId)
+    if (current) {
+      setSelectedCustomer(current)
+    }
+  }, [allCustomers, customerId])
+
   const handleSubmit = async (e: React.FormEvent, addAnother: boolean = false, overwrite: boolean = false) => {
     e.preventDefault()
 
@@ -207,7 +229,22 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
           }
         }
 
-        // Success!
+        if (!('success' in result) || !result.success || !('data' in result) || !result.data) {
+          toast.error('Failed to create booking')
+          setIsSubmitting(false)
+          return
+        }
+
+        await onSubmit(
+          {
+            customer_id: result.data.customer_id,
+            event_id: result.data.event_id,
+            seats: result.data.seats,
+            notes: result.data.notes,
+          },
+          { keepOpen: addAnother }
+        )
+
         toast.success(overwrite ? 'Booking updated successfully' : 'Booking created successfully with new customer')
         
         if (addAnother) {
@@ -254,18 +291,23 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
         }
       }
 
-      // Success!
-      toast.success(overwrite ? 'Booking updated successfully' : 'Booking created successfully')
-      
-      // If updating an existing booking (from the event page), use the onSubmit callback
-      if (booking) {
-        await onSubmit({
-          customer_id: customerId,
-          event_id: event.id,
-          seats: seatCount,
-          notes: notes || null,
-        })
+      if (!('success' in result) || !result.success || !('data' in result) || !result.data) {
+        toast.error('Failed to create booking')
+        setIsSubmitting(false)
+        return
       }
+
+      await onSubmit(
+        {
+          customer_id: result.data.customer_id,
+          event_id: result.data.event_id,
+          seats: result.data.seats,
+          notes: result.data.notes,
+        },
+        { keepOpen: addAnother }
+      )
+
+      toast.success(overwrite ? 'Booking updated successfully' : 'Booking created successfully')
 
       if (addAnother) {
         // Reset form for next booking
@@ -342,70 +384,101 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
 
       {!preselectedCustomer && (
         <>
-          <div className="space-y-2">
-            <label
-              htmlFor="search"
-              className="block text-sm font-medium text-gray-900 mb-2"
-            >
-              Search Customer
-            </label>
-            <div className="relative">
-              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
-              </div>
-              <input
-                type="text"
-                id="search"
-                name="search"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 pl-10 text-base sm:text-sm text-gray-900 placeholder-gray-500 focus:border-green-500 focus:ring-green-500 min-h-[48px] sm:min-h-[44px]"
-                placeholder="Search by name or mobile number"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-          </div>
-
           {!showNewCustomerForm && (
-            <div>
+            <div className="space-y-2">
               <label
-                htmlFor="customer"
+                htmlFor="customer-search"
                 className="block text-sm font-medium text-gray-900 mb-2"
               >
-                Select Customer
+                Search Customer
               </label>
-              <select
-                id="customer"
-                name="customer"
-                className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 focus:border-green-500 focus:ring-green-500 min-h-[48px] sm:min-h-[44px] bg-white"
-                value={customerId}
-                onChange={(e) => setCustomerId(e.target.value)}
-                required={!showNewCustomerForm}
+              <Combobox
+                value={selectedCustomer}
+                onChange={(customer) => {
+                  setSelectedCustomer(customer)
+                  setCustomerId(customer?.id ?? '')
+                  setShowNewCustomerForm(false)
+                  setSearchTerm('')
+                }}
               >
-                <option value="">Select a customer</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.first_name} {c.last_name} ({c.mobile_number}) {c.isLoyal ? '★' : ''}
-                  </option>
-                ))}
-              </select>
-              {customers.length === 0 && searchTerm && (
-                <p className="mt-2 text-sm text-gray-500">
-                  No customers found matching your search.
-                </p>
-              )}
-              {customers.length === 0 && !searchTerm && (
-                <p className="mt-2 text-sm text-red-600">
-                  No available customers. Either all customers are already booked for this event,
-                  or no customers exist in the system.
-                </p>
-              )}
+                <div className="relative">
+                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                    <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
+                  </div>
+                  <Combobox.Input
+                    id="customer-search"
+                    className="w-full rounded-lg border border-gray-300 bg-white py-3 sm:py-2 pl-10 pr-12 text-base sm:text-sm text-gray-900 placeholder-gray-500 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 min-h-[48px] sm:min-h-[44px]"
+                    displayValue={(customer: CustomerWithLoyalty | null) => (customer ? `${customer.first_name} ${customer.last_name ?? ''} (${customer.mobile_number})` : '')}
+                    onChange={(event) => {
+                      const value = event.target.value
+                      setSearchTerm(value)
+                      setSelectedCustomer(null)
+                      setCustomerId('')
+                    }}
+                    placeholder="Search by name or mobile number"
+                  />
+                  <Combobox.Button className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400">
+                    <ChevronUpDownIcon className="h-5 w-5" aria-hidden="true" />
+                  </Combobox.Button>
+                </div>
+                <Transition
+                  as={Fragment}
+                  leave="transition ease-in duration-100"
+                  leaveFrom="opacity-100"
+                  leaveTo="opacity-0"
+                >
+                  <Combobox.Options className="absolute left-0 z-50 mt-2 max-h-60 w-full overflow-auto rounded-lg bg-white py-2 shadow-lg ring-1 ring-black/10 focus:outline-none">
+                    {customers.length === 0 ? (
+                      <div className="px-4 py-2 text-sm text-gray-500">
+                        {searchTerm
+                          ? 'No customers found. Try a different search or create a new customer.'
+                          : 'No available customers. Either all customers are already booked or none exist yet.'}
+                      </div>
+                    ) : (
+                      customers.map((customer) => (
+                        <Combobox.Option
+                          key={customer.id}
+                          value={customer}
+                          className={({ active }) =>
+                            cn(
+                              'flex cursor-pointer items-center justify-between px-4 py-2 text-sm',
+                              active ? 'bg-green-500 text-white' : 'text-gray-900'
+                            )
+                          }
+                        >
+                          {({ active, selected }) => (
+                            <>
+                              <div className="flex flex-col">
+                                <span className={cn('font-medium', selected && !active && 'text-green-600')}>
+                                  {customer.first_name} {customer.last_name ?? ''}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  {customer.mobile_number} {customer.isLoyal ? '• Loyal customer' : ''}
+                                </span>
+                              </div>
+                              {selected && (
+                                <CheckIcon className={cn('h-4 w-4', active ? 'text-white' : 'text-green-600')} aria-hidden="true" />
+                              )}
+                            </>
+                          )}
+                        </Combobox.Option>
+                      ))
+                    )}
+                  </Combobox.Options>
+                </Transition>
+              </Combobox>
             </div>
           )}
           
           {!showNewCustomerForm && (
             <button
               type="button"
-              onClick={() => setShowNewCustomerForm(true)}
+              onClick={() => {
+                setShowNewCustomerForm(true)
+                setSelectedCustomer(null)
+                setCustomerId('')
+                setSearchTerm('')
+              }}
               className="mt-2 inline-flex items-center text-sm text-blue-600 hover:text-blue-800"
             >
               <UserPlusIcon className="h-4 w-4 mr-1" />

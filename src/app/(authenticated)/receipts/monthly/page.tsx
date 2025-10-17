@@ -3,6 +3,8 @@ import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
 import { Card } from '@/components/ui-v2/layout/Card'
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
+import { checkUserPermission } from '@/app/actions/rbac'
 
 export const runtime = 'nodejs'
 
@@ -16,6 +18,11 @@ function formatMonthLabel(isoDate: string) {
 }
 
 export default async function ReceiptsMonthlyPage() {
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    redirect('/unauthorized')
+  }
+
   const summary = await getMonthlyReceiptSummary(12)
 
   const totalIncome = summary.reduce((sum, row) => sum + row.totalIncome, 0)

@@ -1,11 +1,11 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
-import { checkUserPermission } from './rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import type { BusinessHours, SpecialHours } from '@/types/business-hours'
+import type { User as SupabaseUser } from '@supabase/supabase-js'
 
 // Helper to validate time format
 const timeSchema = z.preprocess(
@@ -48,18 +48,56 @@ const specialHoursSchema = z.object({
   )
 })
 
+type SettingsManagePermissionResult =
+  | { error: string }
+  | { user: SupabaseUser; admin: ReturnType<typeof createAdminClient> }
+
+async function requireSettingsManagePermission(): Promise<SettingsManagePermissionResult> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'Not authenticated' }
+  }
+
+  const admin = createAdminClient()
+  const { data, error } = await admin.rpc('user_has_permission', {
+    p_user_id: user.id,
+    p_module_name: 'settings',
+    p_action: 'manage',
+  })
+
+  if (error) {
+    console.error('Settings manage permission check failed:', error)
+    return { error: 'Failed to verify permissions' }
+  }
+
+  if (data !== true) {
+    return { error: 'Insufficient permissions to manage business hours' }
+  }
+
+  return { user, admin }
+}
+
 export async function getBusinessHours(): Promise<{ data?: BusinessHours[], error?: string }> {
   try {
-    const supabase = await createClient()
-    
-    const { data, error } = await supabase
+    const permission = await requireSettingsManagePermission()
+    if ('error' in permission) {
+      return { error: permission.error }
+    }
+
+    const { admin } = permission
+
+    const { data, error } = await admin
       .from('business_hours')
       .select('*')
       .order('day_of_week', { ascending: true })
 
     if (error) throw error
 
-    return { data }
+    return { data: (data || []) as BusinessHours[] }
   } catch (error) {
     console.error('Error fetching business hours:', error)
     return { error: 'Failed to fetch business hours' }
@@ -87,21 +125,13 @@ export async function getBusinessHoursByDay(dayOfWeek: number): Promise<{ data?:
 
 export async function updateBusinessHours(formData: FormData) {
   try {
-    // Check permission
-    const hasPermission = await checkUserPermission('settings', 'manage')
-    if (!hasPermission) {
-      return { error: 'Insufficient permissions to manage business hours' }
+    const permission = await requireSettingsManagePermission()
+    if ('error' in permission) {
+      return { error: permission.error }
     }
 
-    const supabase = await createClient()
-    
-    // Get authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return { error: 'Unauthorized' }
-    }
+    const { user, admin } = permission
 
-    // Parse form data for all days
     const updates = []
     for (let dayOfWeek = 0; dayOfWeek <= 6; dayOfWeek++) {
       const dayData = {
@@ -110,48 +140,49 @@ export async function updateBusinessHours(formData: FormData) {
         closes: formData.get(`closes_${dayOfWeek}`) as string || '',
         kitchen_opens: formData.get(`kitchen_opens_${dayOfWeek}`) as string || '',
         kitchen_closes: formData.get(`kitchen_closes_${dayOfWeek}`) as string || '',
-        is_closed: formData.get(`is_closed_${dayOfWeek}`) === 'true'
+        is_closed: formData.get(`is_closed_${dayOfWeek}`) === 'true',
       }
 
-      // Validate
       const validationResult = businessHoursSchema.safeParse(dayData)
       if (!validationResult.success) {
-        console.error(`Validation error for ${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dayOfWeek]}:`, validationResult.error.errors)
-        console.error('Day data:', dayData)
-        return { error: `Invalid data for ${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dayOfWeek]}: ${validationResult.error.errors[0]?.message || 'Unknown error'}` }
+        return {
+          error: `Invalid data for ${
+            ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dayOfWeek]
+          }: ${validationResult.error.errors[0]?.message || 'Unknown error'}`,
+        }
       }
 
       updates.push(validationResult.data)
     }
 
-    // Update all days in a single batch operation
-    const updatedData = updates.map(update => ({
+    const updatedData = updates.map((update) => ({
       ...update,
-      updated_at: new Date().toISOString()
+      opens: update.is_closed ? null : update.opens,
+      closes: update.is_closed ? null : update.closes,
+      kitchen_opens: update.is_closed ? null : update.kitchen_opens,
+      kitchen_closes: update.is_closed ? null : update.kitchen_closes,
+      updated_at: new Date().toISOString(),
     }))
 
-    const { error } = await supabase
+    const { error } = await admin
       .from('business_hours')
-      .upsert(updatedData, {
-        onConflict: 'day_of_week'
-      })
+      .upsert(updatedData, { onConflict: 'day_of_week' })
 
     if (error) throw error
 
-    // Log audit event
     await logAuditEvent({
       user_id: user.id,
-      user_email: user.email!,
+      ...(user.email && { user_email: user.email }),
       operation_type: 'update',
       resource_type: 'settings',
       resource_id: 'business_hours',
       operation_status: 'success',
-      new_values: { updated_days: updates.length }
+      new_values: { updated_days: updates.length },
     })
 
     revalidatePath('/settings/business-hours')
     revalidatePath('/api/business/hours')
-    
+
     return { success: true }
   } catch (error) {
     console.error('Error updating business hours:', error)
@@ -161,9 +192,14 @@ export async function updateBusinessHours(formData: FormData) {
 
 export async function getSpecialHours(startDate?: string, endDate?: string): Promise<{ data?: SpecialHours[], error?: string }> {
   try {
-    const supabase = await createClient()
-    
-    let query = supabase
+    const permission = await requireSettingsManagePermission()
+    if ('error' in permission) {
+      return { error: permission.error }
+    }
+
+    const { admin } = permission
+
+    let query = admin
       .from('special_hours')
       .select('*')
       .order('date', { ascending: true })
@@ -188,19 +224,12 @@ export async function getSpecialHours(startDate?: string, endDate?: string): Pro
 
 export async function createSpecialHours(formData: FormData) {
   try {
-    // Check permission
-    const hasPermission = await checkUserPermission('settings', 'manage')
-    if (!hasPermission) {
-      return { error: 'Insufficient permissions to manage special hours' }
+    const permission = await requireSettingsManagePermission()
+    if ('error' in permission) {
+      return { error: permission.error }
     }
 
-    const supabase = await createClient()
-    
-    // Get authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return { error: 'Unauthorized' }
-    }
+    const { user, admin } = permission
 
     // Parse form data
     const rawData = {
@@ -235,7 +264,7 @@ export async function createSpecialHours(formData: FormData) {
     }
 
     // Create special hours
-    const { data, error } = await supabase
+    const { data, error } = await admin
       .from('special_hours')
       .insert(payload)
       .select()
@@ -251,7 +280,7 @@ export async function createSpecialHours(formData: FormData) {
     // Log audit event
     await logAuditEvent({
       user_id: user.id,
-      user_email: user.email!,
+      ...(user.email && { user_email: user.email }),
       operation_type: 'create',
       resource_type: 'settings',
       resource_id: 'special_hours',
@@ -271,26 +300,23 @@ export async function createSpecialHours(formData: FormData) {
 
 export async function updateSpecialHours(id: string, formData: FormData) {
   try {
-    // Check permission
-    const hasPermission = await checkUserPermission('settings', 'manage')
-    if (!hasPermission) {
-      return { error: 'Insufficient permissions to manage special hours' }
+    const permission = await requireSettingsManagePermission()
+    if ('error' in permission) {
+      return { error: permission.error }
     }
 
-    const supabase = await createClient()
-    
-    // Get authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return { error: 'Unauthorized' }
-    }
+    const { user, admin } = permission
 
-    // Get old values for audit
-    const { data: oldData } = await supabase
+    const { data: oldData, error: loadError } = await admin
       .from('special_hours')
       .select('*')
       .eq('id', id)
       .single()
+
+    if (loadError) {
+      console.error('Error loading special hours before update:', loadError)
+      return { error: 'Failed to load special hours' }
+    }
 
     // Parse form data
     const rawData = {
@@ -325,7 +351,7 @@ export async function updateSpecialHours(id: string, formData: FormData) {
     }
 
     // Update special hours
-    const { data, error } = await supabase
+    const { data, error } = await admin
       .from('special_hours')
       .update({
         ...payload,
@@ -345,7 +371,7 @@ export async function updateSpecialHours(id: string, formData: FormData) {
     // Log audit event
     await logAuditEvent({
       user_id: user.id,
-      user_email: user.email!,
+      ...(user.email && { user_email: user.email }),
       operation_type: 'update',
       resource_type: 'settings',
       resource_id: 'special_hours',
@@ -366,29 +392,26 @@ export async function updateSpecialHours(id: string, formData: FormData) {
 
 export async function deleteSpecialHours(id: string) {
   try {
-    // Check permission
-    const hasPermission = await checkUserPermission('settings', 'manage')
-    if (!hasPermission) {
-      return { error: 'Insufficient permissions to manage special hours' }
+    const permission = await requireSettingsManagePermission()
+    if ('error' in permission) {
+      return { error: permission.error }
     }
 
-    const supabase = await createClient()
-    
-    // Get authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return { error: 'Unauthorized' }
-    }
+    const { user, admin } = permission
 
-    // Get data for audit
-    const { data: oldData } = await supabase
+    const { data: oldData, error: loadError } = await admin
       .from('special_hours')
       .select('*')
       .eq('id', id)
       .single()
 
+    if (loadError) {
+      console.error('Error loading special hours before delete:', loadError)
+      return { error: 'Failed to load special hours' }
+    }
+
     // Delete special hours
-    const { error } = await supabase
+    const { error } = await admin
       .from('special_hours')
       .delete()
       .eq('id', id)
@@ -398,7 +421,7 @@ export async function deleteSpecialHours(id: string) {
     // Log audit event
     await logAuditEvent({
       user_id: user.id,
-      user_email: user.email!,
+      ...(user.email && { user_email: user.email }),
       operation_type: 'delete',
       resource_type: 'settings',
       resource_id: 'special_hours',

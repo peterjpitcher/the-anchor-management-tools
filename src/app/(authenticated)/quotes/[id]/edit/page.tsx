@@ -20,8 +20,12 @@ import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 
 import { BackButton } from '@/components/ui-v2/navigation/BackButton';
+import { usePermissions } from '@/contexts/PermissionContext'
 export default function EditQuotePage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
+  const { hasPermission, loading: permissionsLoading } = usePermissions()
+  const canView = hasPermission('invoices', 'view')
+  const canEdit = hasPermission('invoices', 'edit')
   const [quote, setQuote] = useState<QuoteWithDetails | null>(null)
   const [vendors, setVendors] = useState<InvoiceVendor[]>([])
   const [loading, setLoading] = useState(true)
@@ -48,13 +52,23 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
   }, [params])
 
   useEffect(() => {
-    async function loadData() {
-      if (!quoteId) return
-      
+    const id = quoteId
+
+    if (!id || permissionsLoading) {
+      return
+    }
+
+    if (!canEdit) {
+      router.replace('/unauthorized')
+      return
+    }
+
+    async function loadData(currentId: string) {
+      setLoading(true)
       try {
         const [vendorsResult, quoteResult] = await Promise.all([
           getVendors(),
-          getQuote(quoteId)
+          getQuote(currentId)
         ])
 
         if (vendorsResult.error || !vendorsResult.vendors) {
@@ -108,11 +122,9 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
         setLoading(false)
       }
     }
-    
-    if (quoteId) {
-      loadData()
-    }
-  }, [quoteId])
+
+    void loadData(id)
+  }, [quoteId, permissionsLoading, canEdit, router])
 
 
   function addLineItem() {
@@ -177,6 +189,11 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     
+    if (!canEdit) {
+      toast.error('You do not have permission to update quotes')
+      return
+    }
+    
     if (!quote || !quoteId) return
     
     if (!selectedVendor) {
@@ -230,6 +247,20 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
   }
 
   const { subtotal, quoteDiscountAmount, totalVat, total } = calculateTotals()
+
+  if (permissionsLoading) {
+    return (
+      <Page title="Loading...">
+        <div className="flex items-center justify-center h-64">
+          <Spinner size="lg" />
+        </div>
+      </Page>
+    )
+  }
+
+  if (!canEdit) {
+    return null
+  }
 
   if (loading) {
     return (
@@ -494,6 +525,8 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
           <Button
             type="submit"
             loading={submitting}
+            disabled={submitting || !canEdit}
+            title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
             className="flex-1"
           >
             Update Quote

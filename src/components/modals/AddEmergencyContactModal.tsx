@@ -8,6 +8,7 @@ interface AddEmergencyContactModalProps {
   employeeId: string;
   isOpen: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
 }
 
 function SubmitButton() {
@@ -27,14 +28,16 @@ export default function AddEmergencyContactModal({
   employeeId,
   isOpen,
   onClose,
+  onSuccess,
 }: AddEmergencyContactModalProps) {
   const [state, formAction] = useActionState(addEmergencyContact, null);
 
   useEffect(() => {
     if (state?.type === 'success') {
+      onSuccess?.();
       onClose();
     }
-  }, [state, onClose]);
+  }, [state, onClose, onSuccess]);
 
   if (!isOpen) {
     return null;

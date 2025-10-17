@@ -45,7 +45,7 @@ async function checkJobTables() {
   
   console.log('\n');
   
-  // Check if jobs table exists (mentioned in CLAUDE.md)
+  // Check if jobs table exists (documented in docs/CONTRIBUTING.md)
   const { data: jobsData, error: jobsError } = await supabase
     .from('jobs')
     .select('*')

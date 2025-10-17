@@ -4,14 +4,16 @@ import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import type { 
+import type {
   PrivateBookingWithDetails,
   BookingStatus
 } from '@/types/private-bookings'
+import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { syncCalendarEvent, deleteCalendarEvent, isCalendarConfigured } from '@/lib/google-calendar'
 import { queueAndSendPrivateBookingSms } from './private-booking-sms'
 import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils'
 import { toLocalIsoDate, formatTime12Hour } from '@/lib/dateUtils'
+import { logAuditEvent } from './audit'
 
 // Helper function to format time to HH:MM
 function formatTimeToHHMM(time: string | undefined): string | undefined {
@@ -59,6 +61,46 @@ const privateBookingSchema = z.object({
   balance_due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').optional().or(z.literal('')),
   status: z.enum(['draft', 'confirmed', 'completed', 'cancelled']).optional()
 })
+
+type PrivateBookingsManageAction =
+  | 'manage_catering'
+  | 'manage_spaces'
+  | 'manage_vendors'
+
+type PrivateBookingsPermissionResult =
+  | { error: string }
+  | { user: SupabaseUser; admin: ReturnType<typeof createAdminClient> }
+
+async function requirePrivateBookingsPermission(
+  action: PrivateBookingsManageAction
+): Promise<PrivateBookingsPermissionResult> {
+  const supabase = await createClient()
+  const {
+    data: { user }
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'Not authenticated' }
+  }
+
+  const admin = createAdminClient()
+  const { data, error } = await admin.rpc('user_has_permission', {
+    p_user_id: user.id,
+    p_module_name: 'private_bookings',
+    p_action: action
+  })
+
+  if (error) {
+    console.error('Permission check failed:', error)
+    return { error: 'Failed to verify permissions' }
+  }
+
+  if (data !== true) {
+    return { error: 'Insufficient permissions' }
+  }
+
+  return { user, admin }
+}
 
 const DATE_TBD_NOTE = 'Event date/time to be confirmed'
 const DEFAULT_TBD_TIME = '12:00'
@@ -1019,6 +1061,27 @@ export async function getVenueSpaces(activeOnly = true) {
   return { data }
 }
 
+export async function getVenueSpacesForManagement() {
+  const permission = await requirePrivateBookingsPermission('manage_spaces')
+  if ('error' in permission) {
+    return { error: permission.error }
+  }
+
+  const { admin } = permission
+
+  const { data, error } = await admin
+    .from('venue_spaces')
+    .select('*')
+    .order('name', { ascending: true })
+
+  if (error) {
+    console.error('Error fetching venue spaces for management:', error)
+    return { error: error.message || 'An error occurred' }
+  }
+
+  return { data }
+}
+
 // Get catering packages
 export async function getCateringPackages(activeOnly = true) {
   const supabase = await createClient()
@@ -1041,6 +1104,28 @@ export async function getCateringPackages(activeOnly = true) {
 
   if (error) {
     console.error('Error fetching catering packages:', error)
+    return { error: error.message || 'An error occurred' }
+  }
+
+  return { data }
+}
+
+export async function getCateringPackagesForManagement() {
+  const permission = await requirePrivateBookingsPermission('manage_catering')
+  if ('error' in permission) {
+    return { error: permission.error }
+  }
+
+  const { admin } = permission
+
+  const { data, error } = await admin
+    .from('catering_packages')
+    .select('*')
+    .order('package_type', { ascending: true })
+    .order('name', { ascending: true })
+
+  if (error) {
+    console.error('Error fetching catering packages for management:', error)
     return { error: error.message || 'An error occurred' }
   }
 
@@ -1084,6 +1169,33 @@ export async function getVendors(serviceType?: string, activeOnly = true) {
       typical_rate_normalized: normalizedRate,
     }
   })
+
+  return { data: normalizedData }
+}
+
+export async function getVendorsForManagement() {
+  const permission = await requirePrivateBookingsPermission('manage_vendors')
+  if ('error' in permission) {
+    return { error: permission.error }
+  }
+
+  const { admin } = permission
+
+  const { data, error } = await admin
+    .from('vendors')
+    .select('*')
+    .order('preferred', { ascending: false })
+    .order('name', { ascending: true })
+
+  if (error) {
+    console.error('Error fetching vendors for management:', error)
+    return { error: error.message || 'An error occurred' }
+  }
+
+  const normalizedData = (data || []).map(vendor => ({
+    ...vendor,
+    typical_rate_normalized: sanitizeMoneyString(vendor.typical_rate)
+  }))
 
   return { data: normalizedData }
 }
@@ -1537,12 +1649,12 @@ export async function createVenueSpace(data: {
   description?: string | null
   is_active: boolean
 }) {
-  const supabase = await createClient()
-
-  const canManageSpaces = await checkUserPermission('private_bookings', 'manage_spaces')
-  if (!canManageSpaces) {
-    return { error: 'You do not have permission to manage venue spaces' }
+  const permission = await requirePrivateBookingsPermission('manage_spaces')
+  if ('error' in permission) {
+    return { error: permission.error }
   }
+
+  const { user, admin } = permission
 
   // Map to correct database columns
   const dbData = {
@@ -1556,13 +1668,33 @@ export async function createVenueSpace(data: {
     display_order: 0 // Default value
   }
   
-  const { error } = await supabase
+  const { data: inserted, error } = await admin
     .from('venue_spaces')
     .insert(dbData)
+    .select()
+    .single()
   
   if (error) {
     console.error('Error creating venue space:', error)
     return { error: error.message || 'Failed to create venue space' }
+  }
+
+  if (inserted) {
+    await logAuditEvent({
+      user_id: user.id,
+      ...(user.email && { user_email: user.email }),
+      operation_type: 'create',
+      resource_type: 'venue_space',
+      resource_id: inserted.id,
+      operation_status: 'success',
+      new_values: {
+        name: inserted.name,
+        capacity_seated: inserted.capacity_seated,
+        rate_per_hour: inserted.rate_per_hour,
+        description: inserted.description,
+        active: inserted.active
+      }
+    })
   }
   
   revalidatePath('/private-bookings/settings/spaces')
@@ -1576,11 +1708,26 @@ export async function updateVenueSpace(id: string, data: {
   description?: string | null
   is_active: boolean
 }) {
-  const supabase = await createClient()
+  const permission = await requirePrivateBookingsPermission('manage_spaces')
+  if ('error' in permission) {
+    return { error: permission.error }
+  }
 
-  const canManageSpaces = await checkUserPermission('private_bookings', 'manage_spaces')
-  if (!canManageSpaces) {
-    return { error: 'You do not have permission to manage venue spaces' }
+  const { user, admin } = permission
+
+  const { data: existing, error: fetchError } = await admin
+    .from('venue_spaces')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (fetchError) {
+    console.error('Error loading venue space before update:', fetchError)
+    return { error: 'Failed to load venue space' }
+  }
+
+  if (!existing) {
+    return { error: 'Venue space not found' }
   }
 
   // Map to correct database columns
@@ -1592,14 +1739,41 @@ export async function updateVenueSpace(id: string, data: {
     active: data.is_active
   }
   
-  const { error } = await supabase
+  const { data: updated, error } = await admin
     .from('venue_spaces')
     .update(dbData)
     .eq('id', id)
+    .select()
+    .single()
   
   if (error) {
     console.error('Error updating venue space:', error)
     return { error: error.message || 'Failed to update venue space' }
+  }
+
+  if (updated) {
+    await logAuditEvent({
+      user_id: user.id,
+      ...(user.email && { user_email: user.email }),
+      operation_type: 'update',
+      resource_type: 'venue_space',
+      resource_id: id,
+      operation_status: 'success',
+      old_values: {
+        name: existing.name,
+        capacity_seated: existing.capacity_seated,
+        rate_per_hour: existing.rate_per_hour,
+        description: existing.description,
+        active: existing.active
+      },
+      new_values: {
+        name: updated.name,
+        capacity_seated: updated.capacity_seated,
+        rate_per_hour: updated.rate_per_hour,
+        description: updated.description,
+        active: updated.active
+      }
+    })
   }
   
   revalidatePath('/private-bookings/settings/spaces')
@@ -1607,14 +1781,29 @@ export async function updateVenueSpace(id: string, data: {
 }
 
 export async function deleteVenueSpace(id: string) {
-  const supabase = await createClient()
-
-  const canManageSpaces = await checkUserPermission('private_bookings', 'manage_spaces')
-  if (!canManageSpaces) {
-    return { error: 'You do not have permission to manage venue spaces' }
+  const permission = await requirePrivateBookingsPermission('manage_spaces')
+  if ('error' in permission) {
+    return { error: permission.error }
   }
 
-  const { error } = await supabase
+  const { user, admin } = permission
+
+  const { data: existing, error: fetchError } = await admin
+    .from('venue_spaces')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (fetchError) {
+    console.error('Error loading venue space before delete:', fetchError)
+    return { error: 'Failed to load venue space' }
+  }
+
+  if (!existing) {
+    return { error: 'Venue space not found' }
+  }
+
+  const { error } = await admin
     .from('venue_spaces')
     .delete()
     .eq('id', id)
@@ -1623,6 +1812,22 @@ export async function deleteVenueSpace(id: string) {
     console.error('Error deleting venue space:', error)
     return { error: error.message || 'Failed to delete venue space' }
   }
+
+  await logAuditEvent({
+    user_id: user.id,
+    ...(user.email && { user_email: user.email }),
+    operation_type: 'delete',
+    resource_type: 'venue_space',
+    resource_id: id,
+    operation_status: 'success',
+    old_values: {
+      name: existing.name,
+      capacity_seated: existing.capacity_seated,
+      rate_per_hour: existing.rate_per_hour,
+      description: existing.description,
+      active: existing.active
+    }
+  })
   
   revalidatePath('/private-bookings/settings/spaces')
   return { success: true }
@@ -1639,12 +1844,12 @@ export async function createCateringPackage(data: {
   includes?: string | null
   is_active: boolean
 }) {
-  const supabase = await createClient()
-
-  const canManageCatering = await checkUserPermission('private_bookings', 'manage_catering')
-  if (!canManageCatering) {
-    return { error: 'You do not have permission to manage catering packages' }
+  const permission = await requirePrivateBookingsPermission('manage_catering')
+  if ('error' in permission) {
+    return { error: permission.error }
   }
+
+  const { user, admin } = permission
 
   // Map to correct database columns
   const dbData = {
@@ -1659,13 +1864,36 @@ export async function createCateringPackage(data: {
     display_order: 0 // Default value
   }
   
-  const { error } = await supabase
+  const { data: inserted, error } = await admin
     .from('catering_packages')
     .insert(dbData)
+    .select()
+    .single()
   
   if (error) {
     console.error('Error creating catering package:', error)
     return { error: error.message || 'Failed to create catering package' }
+  }
+
+  if (inserted) {
+    await logAuditEvent({
+      user_id: user.id,
+      ...(user.email && { user_email: user.email }),
+      operation_type: 'create',
+      resource_type: 'catering_package',
+      resource_id: inserted.id,
+      operation_status: 'success',
+      new_values: {
+        name: inserted.name,
+        package_type: inserted.package_type,
+        cost_per_head: inserted.cost_per_head,
+        pricing_model: inserted.pricing_model,
+        minimum_guests: inserted.minimum_guests,
+        description: inserted.description,
+        dietary_notes: inserted.dietary_notes,
+        active: inserted.active
+      }
+    })
   }
   
   revalidatePath('/private-bookings/settings/catering')
@@ -1682,11 +1910,26 @@ export async function updateCateringPackage(id: string, data: {
   includes?: string | null
   is_active: boolean
 }) {
-  const supabase = await createClient()
+  const permission = await requirePrivateBookingsPermission('manage_catering')
+  if ('error' in permission) {
+    return { error: permission.error }
+  }
 
-  const canManageCatering = await checkUserPermission('private_bookings', 'manage_catering')
-  if (!canManageCatering) {
-    return { error: 'You do not have permission to manage catering packages' }
+  const { user, admin } = permission
+
+  const { data: existing, error: fetchError } = await admin
+    .from('catering_packages')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (fetchError) {
+    console.error('Error loading catering package before update:', fetchError)
+    return { error: 'Failed to load catering package' }
+  }
+
+  if (!existing) {
+    return { error: 'Catering package not found' }
   }
 
   // Map to correct database columns
@@ -1701,14 +1944,47 @@ export async function updateCateringPackage(id: string, data: {
     active: data.is_active
   }
   
-  const { error } = await supabase
+  const { data: updated, error } = await admin
     .from('catering_packages')
     .update(dbData)
     .eq('id', id)
+    .select()
+    .single()
   
   if (error) {
     console.error('Error updating catering package:', error)
     return { error: error.message || 'Failed to update catering package' }
+  }
+
+  if (updated) {
+    await logAuditEvent({
+      user_id: user.id,
+      ...(user.email && { user_email: user.email }),
+      operation_type: 'update',
+      resource_type: 'catering_package',
+      resource_id: id,
+      operation_status: 'success',
+      old_values: {
+        name: existing.name,
+        package_type: existing.package_type,
+        cost_per_head: existing.cost_per_head,
+        pricing_model: existing.pricing_model,
+        minimum_guests: existing.minimum_guests,
+        description: existing.description,
+        dietary_notes: existing.dietary_notes,
+        active: existing.active
+      },
+      new_values: {
+        name: updated.name,
+        package_type: updated.package_type,
+        cost_per_head: updated.cost_per_head,
+        pricing_model: updated.pricing_model,
+        minimum_guests: updated.minimum_guests,
+        description: updated.description,
+        dietary_notes: updated.dietary_notes,
+        active: updated.active
+      }
+    })
   }
   
   revalidatePath('/private-bookings/settings/catering')
@@ -1716,14 +1992,29 @@ export async function updateCateringPackage(id: string, data: {
 }
 
 export async function deleteCateringPackage(id: string) {
-  const supabase = await createClient()
-
-  const canManageCatering = await checkUserPermission('private_bookings', 'manage_catering')
-  if (!canManageCatering) {
-    return { error: 'You do not have permission to manage catering packages' }
+  const permission = await requirePrivateBookingsPermission('manage_catering')
+  if ('error' in permission) {
+    return { error: permission.error }
   }
 
-  const { error } = await supabase
+  const { user, admin } = permission
+
+  const { data: existing, error: fetchError } = await admin
+    .from('catering_packages')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (fetchError) {
+    console.error('Error loading catering package before delete:', fetchError)
+    return { error: 'Failed to load catering package' }
+  }
+
+  if (!existing) {
+    return { error: 'Catering package not found' }
+  }
+
+  const { error } = await admin
     .from('catering_packages')
     .delete()
     .eq('id', id)
@@ -1732,6 +2023,25 @@ export async function deleteCateringPackage(id: string) {
     console.error('Error deleting catering package:', error)
     return { error: error.message || 'Failed to delete catering package' }
   }
+
+  await logAuditEvent({
+    user_id: user.id,
+    ...(user.email && { user_email: user.email }),
+    operation_type: 'delete',
+    resource_type: 'catering_package',
+    resource_id: id,
+    operation_status: 'success',
+    old_values: {
+      name: existing.name,
+      package_type: existing.package_type,
+      cost_per_head: existing.cost_per_head,
+      pricing_model: existing.pricing_model,
+      minimum_guests: existing.minimum_guests,
+      description: existing.description,
+      dietary_notes: existing.dietary_notes,
+      active: existing.active
+    }
+  })
   
   revalidatePath('/private-bookings/settings/catering')
   return { success: true }
@@ -1998,12 +2308,12 @@ export async function createVendor(data: {
   is_preferred: boolean
   is_active: boolean
 }) {
-  const supabase = await createClient()
-
-  const canManageVendors = await checkUserPermission('private_bookings', 'manage_vendors')
-  if (!canManageVendors) {
-    return { error: 'You do not have permission to manage vendors' }
+  const permission = await requirePrivateBookingsPermission('manage_vendors')
+  if ('error' in permission) {
+    return { error: permission.error }
   }
+
+  const { user, admin } = permission
 
   if (!ALLOWED_VENDOR_TYPES.includes(data.vendor_type as (typeof ALLOWED_VENDOR_TYPES)[number])) {
     return { error: 'Invalid vendor type provided' }
@@ -2026,13 +2336,37 @@ export async function createVendor(data: {
     active: data.is_active
   }
   
-  const { error } = await supabase
+  const { data: inserted, error } = await admin
     .from('vendors')
     .insert(dbData)
+    .select()
+    .single()
   
   if (error) {
     console.error('Error creating vendor:', error)
     return { error: error.message || 'Failed to create vendor' }
+  }
+
+  if (inserted) {
+    await logAuditEvent({
+      user_id: user.id,
+      ...(user.email && { user_email: user.email }),
+      operation_type: 'create',
+      resource_type: 'vendor',
+      resource_id: inserted.id,
+      operation_status: 'success',
+      new_values: {
+        name: inserted.name,
+        service_type: inserted.service_type,
+        contact_name: inserted.contact_name,
+        contact_phone: inserted.contact_phone,
+        contact_email: inserted.contact_email,
+        website: inserted.website,
+        typical_rate: inserted.typical_rate,
+        preferred: inserted.preferred,
+        active: inserted.active
+      }
+    })
   }
   
   revalidatePath('/private-bookings/settings/vendors')
@@ -2051,12 +2385,12 @@ export async function updateVendor(id: string, data: {
   is_preferred: boolean
   is_active: boolean
 }) {
-  const supabase = await createClient()
-
-  const canManageVendors = await checkUserPermission('private_bookings', 'manage_vendors')
-  if (!canManageVendors) {
-    return { error: 'You do not have permission to manage vendors' }
+  const permission = await requirePrivateBookingsPermission('manage_vendors')
+  if ('error' in permission) {
+    return { error: permission.error }
   }
+
+  const { user, admin } = permission
 
   if (!ALLOWED_VENDOR_TYPES.includes(data.vendor_type as (typeof ALLOWED_VENDOR_TYPES)[number])) {
     return { error: 'Invalid vendor type provided' }
@@ -2064,6 +2398,21 @@ export async function updateVendor(id: string, data: {
 
   const formattedPhone = data.phone ? formatPhoneForStorage(data.phone) : null
   const typicalRate = sanitizeMoneyString(data.typical_rate) ?? null
+
+  const { data: existing, error: fetchError } = await admin
+    .from('vendors')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (fetchError) {
+    console.error('Error loading vendor before update:', fetchError)
+    return { error: 'Failed to load vendor' }
+  }
+
+  if (!existing) {
+    return { error: 'Vendor not found' }
+  }
 
   // Map to correct database columns
   const dbData = {
@@ -2079,14 +2428,49 @@ export async function updateVendor(id: string, data: {
     active: data.is_active
   }
   
-  const { error } = await supabase
+  const { data: updated, error } = await admin
     .from('vendors')
     .update(dbData)
     .eq('id', id)
+    .select()
+    .single()
   
   if (error) {
     console.error('Error updating vendor:', error)
     return { error: error.message || 'Failed to update vendor' }
+  }
+
+  if (updated) {
+    await logAuditEvent({
+      user_id: user.id,
+      ...(user.email && { user_email: user.email }),
+      operation_type: 'update',
+      resource_type: 'vendor',
+      resource_id: id,
+      operation_status: 'success',
+      old_values: {
+        name: existing.name,
+        service_type: existing.service_type,
+        contact_name: existing.contact_name,
+        contact_phone: existing.contact_phone,
+        contact_email: existing.contact_email,
+        website: existing.website,
+        typical_rate: existing.typical_rate,
+        preferred: existing.preferred,
+        active: existing.active
+      },
+      new_values: {
+        name: updated.name,
+        service_type: updated.service_type,
+        contact_name: updated.contact_name,
+        contact_phone: updated.contact_phone,
+        contact_email: updated.contact_email,
+        website: updated.website,
+        typical_rate: updated.typical_rate,
+        preferred: updated.preferred,
+        active: updated.active
+      }
+    })
   }
   
   revalidatePath('/private-bookings/settings/vendors')
@@ -2094,14 +2478,29 @@ export async function updateVendor(id: string, data: {
 }
 
 export async function deleteVendor(id: string) {
-  const supabase = await createClient()
-
-  const canManageVendors = await checkUserPermission('private_bookings', 'manage_vendors')
-  if (!canManageVendors) {
-    return { error: 'You do not have permission to manage vendors' }
+  const permission = await requirePrivateBookingsPermission('manage_vendors')
+  if ('error' in permission) {
+    return { error: permission.error }
   }
 
-  const { error } = await supabase
+  const { user, admin } = permission
+
+  const { data: existing, error: fetchError } = await admin
+    .from('vendors')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (fetchError) {
+    console.error('Error loading vendor before delete:', fetchError)
+    return { error: 'Failed to load vendor' }
+  }
+
+  if (!existing) {
+    return { error: 'Vendor not found' }
+  }
+
+  const { error } = await admin
     .from('vendors')
     .delete()
     .eq('id', id)
@@ -2110,6 +2509,26 @@ export async function deleteVendor(id: string) {
     console.error('Error deleting vendor:', error)
     return { error: error.message || 'Failed to delete vendor' }
   }
+
+  await logAuditEvent({
+    user_id: user.id,
+    ...(user.email && { user_email: user.email }),
+    operation_type: 'delete',
+    resource_type: 'vendor',
+    resource_id: id,
+    operation_status: 'success',
+    old_values: {
+      name: existing.name,
+      service_type: existing.service_type,
+      contact_name: existing.contact_name,
+      contact_phone: existing.contact_phone,
+      contact_email: existing.contact_email,
+      website: existing.website,
+      typical_rate: existing.typical_rate,
+      preferred: existing.preferred,
+      active: existing.active
+    }
+  })
   
   revalidatePath('/private-bookings/settings/vendors')
   return { success: true }
