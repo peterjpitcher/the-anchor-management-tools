@@ -950,7 +950,10 @@ export async function runReceiptRuleRetroactivelyStep({
   chunkSize?: number
 }): Promise<RetroStepResult> {
   const startedAt = Date.now()
-  await checkUserPermission('receipts', 'manage')
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { success: false, error: 'Insufficient permissions' }
+  }
 
   const supabase = createAdminClient()
 
@@ -1061,7 +1064,10 @@ export async function finalizeReceiptRuleRetroRun(input: {
   vendorIntended: number
   expenseIntended: number
 }) {
-  await checkUserPermission('receipts', 'manage')
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
 
   await logAuditEvent({
     operation_type: 'retro_run',
@@ -1276,7 +1282,10 @@ function buildRuleSuggestion(
   }
 }
 export async function importReceiptStatement(formData: FormData) {
-  await checkUserPermission('receipts', 'manage')
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
 
   const file = formData.get('statement')
   const parsedFile = fileSchema.safeParse(file)
@@ -1405,7 +1414,10 @@ export async function markReceiptTransaction(input: {
   note?: string
   receiptRequired?: boolean
 }) {
-  await checkUserPermission('receipts', 'manage')
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
 
   const validation = receiptMarkSchema.safeParse({
     transaction_id: input.transactionId,
@@ -1496,7 +1508,10 @@ export async function updateReceiptClassification(input: {
   vendorName?: string | null
   expenseCategory?: ReceiptExpenseCategory | null
 }) {
-  await checkUserPermission('receipts', 'manage')
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
 
   const hasVendorField = Object.prototype.hasOwnProperty.call(input, 'vendorName')
   const hasExpenseField = Object.prototype.hasOwnProperty.call(input, 'expenseCategory')
@@ -1621,7 +1636,10 @@ export async function updateReceiptClassification(input: {
 }
 
 export async function uploadReceiptForTransaction(formData: FormData) {
-  await checkUserPermission('receipts', 'manage')
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
 
   const transactionId = formData.get('transactionId')
   if (typeof transactionId !== 'string' || !transactionId) {
@@ -1738,7 +1756,10 @@ export async function uploadReceiptForTransaction(formData: FormData) {
 }
 
 export async function deleteReceiptFile(fileId: string) {
-  await checkUserPermission('receipts', 'manage')
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
 
   const supabase = createAdminClient()
   const { user_id } = await getCurrentUser()
@@ -1817,7 +1838,10 @@ type RuleMutationResult =
   | { error: string }
 
 export async function createReceiptRule(formData: FormData): Promise<RuleMutationResult> {
-  await checkUserPermission('receipts', 'manage')
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
 
   const rawVendor = formData.get('set_vendor_name')
   const rawExpense = formData.get('set_expense_category')
@@ -1874,7 +1898,10 @@ export async function createReceiptRule(formData: FormData): Promise<RuleMutatio
 }
 
 export async function updateReceiptRule(ruleId: string, formData: FormData): Promise<RuleMutationResult> {
-  await checkUserPermission('receipts', 'manage')
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
 
   const rawVendor = formData.get('set_vendor_name')
   const rawExpense = formData.get('set_expense_category')
@@ -1930,7 +1957,10 @@ export async function updateReceiptRule(ruleId: string, formData: FormData): Pro
 }
 
 export async function toggleReceiptRule(ruleId: string, isActive: boolean) {
-  await checkUserPermission('receipts', 'manage')
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
 
   const supabase = createAdminClient()
   const { data: updated, error } = await supabase
@@ -1962,7 +1992,10 @@ export async function toggleReceiptRule(ruleId: string, isActive: boolean) {
 }
 
 export async function deleteReceiptRule(ruleId: string) {
-  await checkUserPermission('receipts', 'manage')
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
 
   const supabase = createAdminClient()
   const { error } = await supabase
@@ -2007,7 +2040,10 @@ function resolveMonthRange(month?: string) {
 }
 
 export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters = {}): Promise<ReceiptWorkspaceData> {
-  await checkUserPermission('receipts', 'view')
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    throw new Error('Insufficient permissions')
+  }
 
   const supabase = createAdminClient()
 
@@ -2201,7 +2237,10 @@ export async function getReceiptBulkReviewData(options: {
   statuses?: BulkStatus[]
   onlyUnclassified?: boolean
 } = {}): Promise<ReceiptBulkReviewData> {
-  await checkUserPermission('receipts', 'manage')
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    throw new Error('Insufficient permissions')
+  }
 
   const parsed = bulkGroupQuerySchema.safeParse(options ?? {})
   if (!parsed.success) {
@@ -2271,7 +2310,10 @@ export async function applyReceiptGroupClassification(input: {
   expenseCategory?: ReceiptExpenseCategory | null
   statuses?: BulkStatus[]
 }) {
-  await checkUserPermission('receipts', 'manage')
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
 
   const vendorProvided = Object.prototype.hasOwnProperty.call(input, 'vendorName')
   const expenseProvided = Object.prototype.hasOwnProperty.call(input, 'expenseCategory')
@@ -2413,7 +2455,10 @@ export async function createReceiptRuleFromGroup(input: {
   vendorName?: string | null
   expenseCategory?: ReceiptExpenseCategory | null
 }) {
-  await checkUserPermission('receipts', 'manage')
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
 
   const parsed = groupRuleInputSchema.safeParse(input)
   if (!parsed.success) {
@@ -2545,7 +2590,7 @@ export async function runReceiptRuleRetroactively(
     totalRecords = step.total
 
     if (step.done) {
-      await finalizeReceiptRuleRetroRun({
+      const finalizeResult = await finalizeReceiptRuleRetroRun({
         ruleId,
         scope,
         reviewed: totals.reviewed,
@@ -2555,6 +2600,10 @@ export async function runReceiptRuleRetroactively(
         vendorIntended: totals.vendorIntended,
         expenseIntended: totals.expenseIntended,
       })
+
+      if (finalizeResult && 'error' in finalizeResult && finalizeResult.error) {
+        return { error: finalizeResult.error }
+      }
 
       return {
         success: true,
@@ -2607,7 +2656,10 @@ function toOptionalNumber(input: FormDataEntryValue | null): number | undefined 
 }
 
 export async function getReceiptSignedUrl(fileId: string) {
-  await checkUserPermission('receipts', 'view')
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    return { error: 'Insufficient permissions' }
+  }
   const supabase = createAdminClient()
 
   const { data: receipt, error } = await supabase
@@ -2659,7 +2711,10 @@ function parseTopList(input: unknown): Array<{ label: string; amount: number }> 
 }
 
 export async function getMonthlyReceiptSummary(limit = 12): Promise<ReceiptMonthlySummaryItem[]> {
-  await checkUserPermission('receipts', 'view')
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    throw new Error('Insufficient permissions')
+  }
 
   const supabase = createAdminClient()
   const { data, error } = await supabase.rpc('get_receipt_monthly_summary', {
@@ -2683,7 +2738,10 @@ export async function getMonthlyReceiptSummary(limit = 12): Promise<ReceiptMonth
 }
 
 export async function getReceiptVendorSummary(monthWindow = 12): Promise<ReceiptVendorSummary[]> {
-  await checkUserPermission('receipts', 'view')
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    throw new Error('Insufficient permissions')
+  }
 
   const supabase = createAdminClient()
   const { data, error } = await supabase.rpc('get_receipt_vendor_trends', {
@@ -2762,7 +2820,10 @@ export async function getReceiptVendorMonthTransactions(input: {
   vendorLabel: string
   monthStart: string
 }): Promise<{ transactions: ReceiptVendorMonthTransaction[]; error?: string }> {
-  await checkUserPermission('receipts', 'view')
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    return { transactions: [], error: 'Insufficient permissions' }
+  }
 
   const normalizedVendor = normalizeVendorInput(input.vendorLabel)
   if (!normalizedVendor) {
@@ -2811,7 +2872,10 @@ export async function getReceiptVendorMonthTransactions(input: {
 }
 
 export async function getReceiptMissingExpenseSummary(): Promise<ReceiptMissingExpenseSummaryItem[]> {
-  await checkUserPermission('receipts', 'view')
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    throw new Error('Insufficient permissions')
+  }
 
   const supabase = createAdminClient()
 

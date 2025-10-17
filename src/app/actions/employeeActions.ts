@@ -385,26 +385,30 @@ export async function addEmployeeNote(prevState: NoteFormState, formData: FormDa
     }
     
     const supabase = getSupabaseAdminClient();
+    const userInfo = await getCurrentUser();
+
+    const notePayload = {
+        ...result.data,
+        created_by_user_id: result.data.created_by_user_id ?? userInfo.user_id ?? null
+    };
     
-    const { data: newNote, error } = await supabase.from('employee_notes').insert(result.data).select().single();
+    const { data: newNote, error } = await supabase.from('employee_notes').insert(notePayload).select().single();
 
     if (error) return { type: 'error', message: `Database error: ${error.message}` };
 
-    // Audit log
-    const userInfo = await getCurrentUser();
     await logAuditEvent({
         ...(userInfo.user_id && { user_id: userInfo.user_id }),
         ...(userInfo.user_email && { user_email: userInfo.user_email }),
         operation_type: 'add_note',
         resource_type: 'employee',
-        resource_id: result.data.employee_id,
+        resource_id: notePayload.employee_id,
         operation_status: 'success',
         additional_info: {
-            note_preview: result.data.note_text.substring(0, 100)
+            note_preview: notePayload.note_text.substring(0, 100)
         }
     });
 
-    revalidatePath(`/employees/${result.data.employee_id}`);
+    revalidatePath(`/employees/${notePayload.employee_id}`);
     return { type: 'success', message: 'Note added successfully.' };
 }
 

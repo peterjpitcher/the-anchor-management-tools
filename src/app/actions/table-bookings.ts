@@ -11,6 +11,8 @@ import { sendBookingConfirmationEmail, sendBookingCancellationEmail } from './ta
 import { sendSameDayBookingAlertIfNeeded, TableBookingNotificationRecord } from '@/lib/table-bookings/managerNotifications';
 import { formatDateWithTimeForSms } from '@/lib/dateUtils';
 import { ensureReplyInstruction } from '@/lib/sms/support';
+import { startOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addMonths, format as formatDate } from 'date-fns';
+import type { TableBooking } from '@/types/table-bookings';
 
 // Helper function to format time from 24hr to 12hr format
 function formatTime12Hour(time24: string): string {
@@ -61,6 +63,156 @@ const UpdateTableBookingSchema = z.object({
   tables_assigned: z.any().optional(),
   internal_notes: z.string().optional(),
 });
+
+type DashboardViewMode = 'day' | 'week' | 'month' | 'next-month';
+
+type DashboardStats = {
+  todayBookings: number;
+  weekBookings: number;
+  monthBookings: number;
+  pendingPayments: number;
+};
+
+type DashboardResult = {
+  bookings: TableBooking[];
+  stats: DashboardStats;
+};
+
+const BOOKINGS_STATUSES = ['confirmed', 'pending_payment'];
+
+function toSafeDate(dateString: string | undefined): Date {
+  const parsed = dateString ? new Date(dateString) : new Date();
+  if (Number.isNaN(parsed.getTime())) {
+    return new Date();
+  }
+  return parsed;
+}
+
+function formatDateOnly(date: Date) {
+  return formatDate(date, 'yyyy-MM-dd');
+}
+
+export async function getTableBookingsDashboardData(params: {
+  viewMode: DashboardViewMode;
+  selectedDate: string;
+}): Promise<{ success: true; data: DashboardResult } | { error: string }> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { error: 'Authentication required' };
+    }
+
+    const canView = await checkUserPermission('table_bookings', 'view', user.id);
+    if (!canView) {
+      return { error: 'You do not have permission to view table bookings' };
+    }
+
+    const referenceDate = toSafeDate(params.selectedDate);
+    const viewMode = params.viewMode;
+
+    let bookingsQuery = supabase
+      .from('table_bookings')
+      .select(
+        `
+        *,
+        customer:customers(*),
+        table_booking_items(*),
+        table_booking_payments(*)
+      `,
+      )
+      .in('status', BOOKINGS_STATUSES)
+      .order('booking_date', { ascending: true })
+      .order('booking_time', { ascending: true });
+
+    if (viewMode === 'day') {
+      const day = formatDateOnly(referenceDate);
+      bookingsQuery = bookingsQuery.eq('booking_date', day);
+    } else if (viewMode === 'week') {
+      const weekStart = startOfWeek(referenceDate, { weekStartsOn: 1 });
+      const weekEnd = endOfWeek(referenceDate, { weekStartsOn: 1 });
+      bookingsQuery = bookingsQuery
+        .gte('booking_date', formatDateOnly(weekStart))
+        .lte('booking_date', formatDateOnly(weekEnd));
+    } else if (viewMode === 'month') {
+      const now = new Date();
+      const monthStart = startOfMonth(now);
+      const monthEnd = endOfMonth(now);
+      bookingsQuery = bookingsQuery
+        .gte('booking_date', formatDateOnly(monthStart))
+        .lte('booking_date', formatDateOnly(monthEnd));
+    } else if (viewMode === 'next-month') {
+      const nextMonth = addMonths(new Date(), 1);
+      const monthStart = startOfMonth(nextMonth);
+      const monthEnd = endOfMonth(nextMonth);
+      bookingsQuery = bookingsQuery
+        .gte('booking_date', formatDateOnly(monthStart))
+        .lte('booking_date', formatDateOnly(monthEnd));
+    }
+
+    const [{ data: bookings, error: bookingsError }, todayCount, weekCount, monthCount, pendingCount] = await Promise.all([
+      bookingsQuery,
+      supabase
+        .from('table_bookings')
+        .select('id', { count: 'exact', head: true })
+        .eq('booking_date', formatDateOnly(startOfDay(new Date())))
+        .in('status', BOOKINGS_STATUSES),
+      (() => {
+        const now = new Date();
+        const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+        const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
+        return supabase
+          .from('table_bookings')
+          .select('id', { count: 'exact', head: true })
+          .gte('booking_date', formatDateOnly(weekStart))
+          .lte('booking_date', formatDateOnly(weekEnd))
+          .in('status', BOOKINGS_STATUSES);
+      })(),
+      (() => {
+        const now = new Date();
+        const monthStart = startOfMonth(now);
+        const monthEnd = endOfMonth(now);
+        return supabase
+          .from('table_bookings')
+          .select('id', { count: 'exact', head: true })
+          .gte('booking_date', formatDateOnly(monthStart))
+          .lte('booking_date', formatDateOnly(monthEnd))
+          .in('status', BOOKINGS_STATUSES);
+      })(),
+      supabase
+        .from('table_bookings')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'pending_payment')
+        .gte('booking_date', formatDateOnly(startOfDay(new Date()))),
+    ]);
+
+    if (bookingsError) {
+      console.error('Error fetching table bookings for dashboard:', bookingsError);
+      return { error: 'Failed to load bookings' };
+    }
+
+    const stats: DashboardStats = {
+      todayBookings: todayCount.count || 0,
+      weekBookings: weekCount.count || 0,
+      monthBookings: monthCount.count || 0,
+      pendingPayments: pendingCount.count || 0,
+    };
+
+    return {
+      success: true,
+      data: {
+        bookings: (bookings || []) as TableBooking[],
+        stats,
+      },
+    };
+  } catch (error) {
+    console.error('Unexpected error loading table bookings dashboard data', error);
+    return { error: 'Failed to load dashboard data' };
+  }
+}
 
 // Helper function to find or create customer
 async function findOrCreateCustomer(

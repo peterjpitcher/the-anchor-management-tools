@@ -1,42 +1,135 @@
 'use server'
 
-import { createAdminClient } from '@/lib/supabase/server';
-import { revalidatePath } from 'next/cache';
-import { checkUserPermission } from './rbac';
+import { createAdminClient, createClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'
+import { checkUserPermission } from './rbac'
+import { logAuditEvent } from './audit'
 
 export async function toggleCustomerSmsOptIn(customerId: string, optIn: boolean) {
-  // Check permission
-  const hasPermission = await checkUserPermission('customers', 'edit');
-  if (!hasPermission) {
-    return { error: 'Insufficient permissions' };
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'Not authenticated' }
   }
 
-  const supabase = createAdminClient();
+  const admin = createAdminClient()
+  const { data: permissionGranted, error: permissionError } = await admin.rpc(
+    'user_has_permission',
+    {
+      p_user_id: user.id,
+      p_module_name: 'customers',
+      p_action: 'edit',
+    },
+  )
 
-  const updateData: any = {
-    sms_opt_in: optIn
-  };
+  const auditBase = {
+    user_id: user.id,
+    ...(user.email && { user_email: user.email }),
+    resource_type: 'customer_sms',
+    resource_id: customerId,
+  } as const
 
-  // If reactivating SMS, reset failure counts
+  if (permissionError) {
+    console.error('Failed to verify customer SMS permissions:', permissionError)
+    await logAuditEvent({
+      ...auditBase,
+      operation_type: 'update',
+      operation_status: 'failure',
+      error_message: 'Failed to verify permissions',
+    })
+    return { error: 'Failed to verify permissions' }
+  }
+
+  if (permissionGranted !== true) {
+    await logAuditEvent({
+      ...auditBase,
+      operation_type: 'update',
+      operation_status: 'failure',
+      error_message: 'Insufficient permissions',
+    })
+    return { error: 'Insufficient permissions' }
+  }
+
+  const { data: customer, error: fetchError } = await admin
+    .from('customers')
+    .select(
+      'id, sms_opt_in, sms_delivery_failures, sms_deactivated_at, sms_deactivation_reason',
+    )
+    .eq('id', customerId)
+    .maybeSingle()
+
+  if (fetchError) {
+    console.error('Failed to load customer before SMS update:', fetchError)
+    await logAuditEvent({
+      ...auditBase,
+      operation_type: 'update',
+      operation_status: 'failure',
+      error_message: 'Failed to load customer',
+    })
+    return { error: 'Failed to load customer' }
+  }
+
+  if (!customer) {
+    await logAuditEvent({
+      ...auditBase,
+      operation_type: 'update',
+      operation_status: 'failure',
+      error_message: 'Customer not found',
+    })
+    return { error: 'Customer not found' }
+  }
+
+  const updateData: Record<string, any> = {
+    sms_opt_in: optIn,
+  }
+
   if (optIn) {
-    updateData.sms_delivery_failures = 0;
-    updateData.sms_deactivated_at = null;
-    updateData.sms_deactivation_reason = null;
+    updateData.sms_delivery_failures = 0
+    updateData.sms_deactivated_at = null
+    updateData.sms_deactivation_reason = null
   }
 
-  const { error } = await supabase
+  const { error: updateError } = await admin
     .from('customers')
     .update(updateData)
-    .eq('id', customerId);
+    .eq('id', customerId)
 
-  if (error) {
-    console.error('Failed to update customer SMS opt-in:', error);
-    return { error: error.message };
+  if (updateError) {
+    console.error('Failed to update customer SMS opt-in:', updateError)
+    await logAuditEvent({
+      ...auditBase,
+      operation_type: 'update',
+      operation_status: 'failure',
+      error_message: updateError.message,
+    })
+    return { error: 'Failed to update customer SMS preferences' }
   }
 
-  revalidatePath('/customers');
-  revalidatePath(`/customers/${customerId}`);
-  return { success: true };
+  await logAuditEvent({
+    ...auditBase,
+    operation_type: 'update',
+    operation_status: 'success',
+    old_values: {
+      sms_opt_in: customer.sms_opt_in,
+      sms_delivery_failures: customer.sms_delivery_failures,
+      sms_deactivated_at: customer.sms_deactivated_at,
+      sms_deactivation_reason: customer.sms_deactivation_reason,
+    },
+    new_values: {
+      sms_opt_in: optIn,
+      sms_delivery_failures: updateData.sms_delivery_failures ?? customer.sms_delivery_failures,
+      sms_deactivated_at: updateData.sms_deactivated_at ?? customer.sms_deactivated_at,
+      sms_deactivation_reason:
+        updateData.sms_deactivation_reason ?? customer.sms_deactivation_reason,
+    },
+  })
+
+  revalidatePath('/customers')
+  revalidatePath(`/customers/${customerId}`)
+  return { success: true }
 }
 
 export async function getCustomerSmsStats(customerId: string) {
@@ -111,8 +204,12 @@ export async function getCustomerMessages(customerId: string) {
 }
 
 export async function getDeliveryFailureReport() {
-  const hasPermission = await checkUserPermission('customers', 'view');
-  if (!hasPermission) {
+  const [canViewSmsHealth, canViewCustomers] = await Promise.all([
+    checkUserPermission('sms_health', 'view'),
+    checkUserPermission('customers', 'view'),
+  ]);
+
+  if (!canViewSmsHealth || !canViewCustomers) {
     return { error: 'Insufficient permissions' };
   }
 
@@ -133,8 +230,12 @@ export async function getDeliveryFailureReport() {
 }
 
 export async function getSmsDeliveryStats() {
-  const hasPermission = await checkUserPermission('customers', 'view');
-  if (!hasPermission) {
+  const [canViewSmsHealth, canViewCustomers] = await Promise.all([
+    checkUserPermission('sms_health', 'view'),
+    checkUserPermission('customers', 'view'),
+  ]);
+
+  if (!canViewSmsHealth || !canViewCustomers) {
     return { error: 'Insufficient permissions' };
   }
 

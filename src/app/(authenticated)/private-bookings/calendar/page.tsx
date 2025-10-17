@@ -1,45 +1,21 @@
-import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import CalendarView from '@/components/private-bookings/CalendarView'
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { checkUserPermission } from '@/app/actions/rbac'
+import { fetchPrivateBookingsForCalendar } from '@/app/actions/private-bookings-dashboard'
 
 export default async function PrivateBookingsCalendarPage() {
-  const supabase = await createClient()
-  
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    redirect('/login')
-  }
+  const canView = await checkUserPermission('private_bookings', 'view')
 
-  // Check permissions
-  const { data: hasViewPermission } = await supabase.rpc('user_has_permission', {
-    p_user_id: user.id,
-    p_module_name: 'private_bookings',
-    p_action: 'view'
-  })
-
-  if (!hasViewPermission) {
+  if (!canView) {
     redirect('/unauthorized')
   }
 
-  // Fetch all bookings for the calendar
-  const { data: bookings, error } = await supabase
-    .from('private_bookings')
-    .select(`
-      id,
-      customer_name,
-      event_date,
-      start_time,
-      end_time,
-      status,
-      event_type,
-      guest_count
-    `)
-    .order('event_date', { ascending: true })
+  const result = await fetchPrivateBookingsForCalendar()
 
-  if (error) {
-    console.error('Error fetching bookings:', error)
+  if ('error' in result) {
+    throw new Error(result.error)
   }
 
   return (
@@ -53,7 +29,7 @@ export default async function PrivateBookingsCalendarPage() {
         }}
       />
       <PageContent>
-        <CalendarView bookings={bookings || []} />
+        <CalendarView bookings={result.data} />
       </PageContent>
     </PageWrapper>
   )

@@ -16,6 +16,7 @@ import { Edit2, Trash2, Play, Pause, FileText, Calendar, Clock } from 'lucide-re
 import { toLocalIsoDate } from '@/lib/dateUtils'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import type { RecurringInvoiceWithDetails } from '@/types/invoices'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 type GenerateInvoiceActionResult = Awaited<ReturnType<typeof generateInvoiceFromRecurring>>
 
@@ -24,6 +25,12 @@ export default function RecurringInvoiceDetailPage() {
   const params = useParams()
   const rawId = params?.id
   const recurringInvoiceId = Array.isArray(rawId) ? rawId[0] : rawId ?? null
+  const { hasPermission, loading: permissionsLoading } = usePermissions()
+  const canView = hasPermission('invoices', 'view')
+  const canCreate = hasPermission('invoices', 'create')
+  const canEdit = hasPermission('invoices', 'edit')
+  const canDelete = hasPermission('invoices', 'delete')
+  const isReadOnly = canView && !canCreate && !canEdit && !canDelete
   
   const [recurringInvoice, setRecurringInvoice] = useState<RecurringInvoiceWithDetails | null>(null)
   const [loading, setLoading] = useState(true)
@@ -38,8 +45,17 @@ export default function RecurringInvoiceDetailPage() {
       return
     }
 
+    if (permissionsLoading) {
+      return
+    }
+
+    if (!canView) {
+      router.replace('/unauthorized')
+      return
+    }
+
     loadRecurringInvoice(recurringInvoiceId)
-  }, [recurringInvoiceId])
+  }, [recurringInvoiceId, permissionsLoading, canView, router])
 
   async function loadRecurringInvoice(targetId: string | null = recurringInvoiceId) {
     if (!targetId) {
@@ -47,6 +63,12 @@ export default function RecurringInvoiceDetailPage() {
       setLoading(false)
       return
     }
+
+    if (!canView) {
+      return
+    }
+
+    setLoading(true)
 
     try {
       const result = await getRecurringInvoice(targetId)
@@ -65,7 +87,11 @@ export default function RecurringInvoiceDetailPage() {
 
   async function handleToggleStatus() {
     if (!recurringInvoice) return
-    
+    if (!canEdit) {
+      toast.error('You do not have permission to update recurring invoices')
+      return
+    }
+
     setActionLoading(true)
     try {
       if (!recurringInvoiceId) {
@@ -91,6 +117,11 @@ export default function RecurringInvoiceDetailPage() {
   }
 
   async function handleGenerateNow() {
+    if (!canCreate) {
+      toast.error('You do not have permission to generate invoices')
+      return
+    }
+
     setActionLoading(true)
     try {
       if (!recurringInvoiceId) {
@@ -117,6 +148,11 @@ export default function RecurringInvoiceDetailPage() {
   }
 
   async function handleDelete() {
+    if (!canDelete) {
+      toast.error('You do not have permission to delete recurring invoices')
+      return
+    }
+
     setActionLoading(true)
     try {
       if (!recurringInvoiceId) {
@@ -206,7 +242,7 @@ export default function RecurringInvoiceDetailPage() {
     return toLocalIsoDate(nextDate)
   }
 
-  if (loading) {
+  if (permissionsLoading || loading) {
     return (
       <PageWrapper>
         <PageHeader 
@@ -221,6 +257,10 @@ export default function RecurringInvoiceDetailPage() {
         </PageContent>
       </PageWrapper>
     )
+  }
+
+  if (!canView) {
+    return null
   }
 
   if (error || !recurringInvoice) {
@@ -268,6 +308,8 @@ export default function RecurringInvoiceDetailPage() {
               variant="secondary"
               onClick={() => router.push(`/invoices/recurring/${recurringInvoice.id}/edit`)}
               leftIcon={<Edit2 className="h-4 w-4" />}
+              disabled={!canEdit}
+              title={!canEdit ? 'You need invoice edit permission to update recurring invoices.' : undefined}
             >
               Edit
             </Button>
@@ -276,6 +318,8 @@ export default function RecurringInvoiceDetailPage() {
               onClick={handleToggleStatus}
               loading={actionLoading}
               leftIcon={recurringInvoice.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              disabled={actionLoading || !canEdit}
+              title={!canEdit ? 'You need invoice edit permission to change status.' : undefined}
             >
               {recurringInvoice.is_active ? 'Deactivate' : 'Activate'}
             </Button>
@@ -283,7 +327,14 @@ export default function RecurringInvoiceDetailPage() {
               variant="primary"
               onClick={handleGenerateNow}
               loading={actionLoading}
-              disabled={!recurringInvoice.is_active}
+              disabled={!recurringInvoice.is_active || actionLoading || !canCreate}
+              title={
+                !canCreate
+                  ? 'You need invoice create permission to generate invoices.'
+                  : !recurringInvoice.is_active
+                    ? 'Activate this template before generating.'
+                    : undefined
+              }
               leftIcon={<FileText className="h-4 w-4" />}
             >
               Generate Now
@@ -292,6 +343,13 @@ export default function RecurringInvoiceDetailPage() {
         }
       />
       <PageContent>
+        {isReadOnly && (
+          <Alert
+            variant="info"
+            description="You have read-only access to this recurring invoice. Management actions are disabled."
+            className="mb-6"
+          />
+        )}
         <div className="space-y-6">
           <Card title="Template Information">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -486,6 +544,8 @@ export default function RecurringInvoiceDetailPage() {
                 variant="danger"
                 onClick={() => setShowDeleteDialog(true)}
                 leftIcon={<Trash2 className="h-4 w-4" />}
+                disabled={!canDelete}
+                title={!canDelete ? 'You need invoice delete permission to remove recurring invoices.' : undefined}
               >
                 Delete Template
               </Button>

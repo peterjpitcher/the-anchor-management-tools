@@ -20,9 +20,11 @@ import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { Dropdown } from '@/components/ui-v2/navigation/Dropdown'
 import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 
 import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 import { getTodayIsoDate, getLocalIsoDateDaysAhead } from '@/lib/dateUtils'
+import { usePermissions } from '@/contexts/PermissionContext'
 interface LineItem {
   id: string
   catalog_item_id?: string
@@ -35,6 +37,8 @@ interface LineItem {
 
 export default function NewQuotePage() {
   const router = useRouter()
+  const { hasPermission, loading: permissionsLoading } = usePermissions()
+  const canCreate = hasPermission('invoices', 'create')
   const [loading, setLoading] = useState(false)
   const [vendors, setVendors] = useState<InvoiceVendor[]>([])
   const [catalogItems, setCatalogItems] = useState<LineItemCatalogItem[]>([])
@@ -49,10 +53,24 @@ export default function NewQuotePage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    loadData()
-  }, [])
+    if (permissionsLoading) {
+      return
+    }
+
+    if (!canCreate) {
+      router.replace('/unauthorized')
+      return
+    }
+
+    void loadData()
+  }, [permissionsLoading, canCreate, router])
 
   async function loadData() {
+    if (!canCreate) {
+      return
+    }
+
+    setLoading(true)
     try {
       const [vendorResult, catalogResult] = await Promise.all([
         getVendors(),
@@ -71,7 +89,23 @@ export default function NewQuotePage() {
       setCatalogItems(catalogResult.items)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data')
+    } finally {
+      setLoading(false)
     }
+  }
+
+  if (permissionsLoading) {
+    return (
+      <Page title="Loading...">
+        <div className="flex items-center justify-center h-64">
+          <Spinner size="lg" />
+        </div>
+      </Page>
+    )
+  }
+
+  if (!canCreate) {
+    return null
   }
 
   function addLineItem() {
@@ -188,6 +222,38 @@ export default function NewQuotePage() {
       toast.error('Failed to create quote')
       setLoading(false)
     }
+  }
+
+  if (permissionsLoading) {
+    return (
+      <Page
+        title="New Quote"
+        description="Create a new quote"
+        actions={<BackButton label="Back to Quotes" onBack={() => router.push('/quotes')} />}
+      >
+        <div className="flex items-center justify-center h-64">
+          <Spinner size="lg" />
+        </div>
+      </Page>
+    )
+  }
+
+  if (!canCreate) {
+    return null
+  }
+
+  if (loading) {
+    return (
+      <Page
+        title="New Quote"
+        description="Create a new quote"
+        actions={<BackButton label="Back to Quotes" onBack={() => router.push('/quotes')} />}
+      >
+        <div className="flex items-center justify-center h-64">
+          <Spinner size="lg" />
+        </div>
+      </Page>
+    )
   }
 
   const totals = calculateQuoteTotal()

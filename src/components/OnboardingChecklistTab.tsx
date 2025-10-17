@@ -1,12 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { updateOnboardingChecklist, getOnboardingProgress } from '@/app/actions/employeeActions'
 import { CheckCircle2, Circle, Loader2 } from 'lucide-react'
 
 interface OnboardingChecklistTabProps {
   employeeId: string
+  canEdit: boolean
 }
 
 interface ChecklistItem {
@@ -16,8 +16,7 @@ interface ChecklistItem {
   date?: string | null
 }
 
-export default function OnboardingChecklistTab({ employeeId }: OnboardingChecklistTabProps) {
-  const supabase = useSupabase()
+export default function OnboardingChecklistTab({ employeeId, canEdit }: OnboardingChecklistTabProps) {
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState<string | null>(null)
   const [progress, setProgress] = useState<{
@@ -41,6 +40,10 @@ export default function OnboardingChecklistTab({ employeeId }: OnboardingCheckli
   }
 
   async function handleToggle(field: string, currentValue: boolean) {
+    if (!canEdit) {
+      return
+    }
+
     setUpdating(field)
     
     const result = await updateOnboardingChecklist(employeeId, field, !currentValue)
@@ -127,7 +130,7 @@ export default function OnboardingChecklistTab({ employeeId }: OnboardingCheckli
                 <div className="flex items-start">
                   <button
                     onClick={() => handleToggle(item.field, item.completed)}
-                    disabled={isUpdating}
+                    disabled={isUpdating || !canEdit}
                     className="flex-shrink-0 mt-0.5"
                   >
                     {isUpdating ? (

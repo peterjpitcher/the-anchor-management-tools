@@ -33,6 +33,8 @@ import { DataTable, Column } from '@/components/ui-v2/display/DataTable'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { formatPhoneForDisplay } from '@/lib/validation'
 import { Section } from '@/components/ui-v2/layout/Section'
+import { usePermissions } from '@/contexts/PermissionContext'
+import { deleteBooking } from '@/app/actions/bookings'
 type BookingWithCustomer = Omit<Booking, 'customer'> & {
   customer: Pick<Customer, 'first_name' | 'last_name' | 'id'>
 }
@@ -54,6 +56,8 @@ export const dynamic = 'force-dynamic'
 export default function EventViewPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   const params = use(paramsPromise)
   const supabase = useSupabase()
+  const { hasPermission } = usePermissions()
+  const canManageEvents = hasPermission('events', 'manage')
   const [event, setEvent] = useState<Event | null>(null)
   const [bookings, setBookings] = useState<BookingWithCustomer[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -139,6 +143,10 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
   }, [loadEventData])
 
   const handleRegenerateMarketingLinks = useCallback(async () => {
+    if (!canManageEvents) {
+      toast.error('You do not have permission to refresh marketing links.')
+      return
+    }
     if (!event) return
 
     try {
@@ -162,16 +170,22 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
     } finally {
       setMarketingLoading(false)
     }
-  }, [event])
+  }, [canManageEvents, event])
 
-  const handleCreateBooking = async (_data: Omit<Booking, 'id' | 'created_at'>) => {
+  const handleCreateBooking = async (_data: Omit<Booking, 'id' | 'created_at'>, context?: { keepOpen?: boolean }) => {
     // The BookingForm now handles all the logic including duplicate checking
     // This function is called after successful creation/update
-    setShowBookingForm(false)
     await loadEventData() // Refresh data
+    if (!context?.keepOpen) {
+      setShowBookingForm(false)
+    }
   }
 
   const handleAddMultipleAttendees = async (customerIds: string[]): Promise<void> => {
+    if (!canManageEvents) {
+      toast.error('You do not have permission to add attendees.')
+      return
+    }
     if (!event) {
       toast.error('Event details not loaded.')
       return
@@ -212,17 +226,23 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
   }
 
   const handleDeleteBooking = async (bookingId: string) => {
+    if (!canManageEvents) {
+      toast.error('You do not have permission to delete bookings.')
+      return
+    }
     if (!window.confirm('Are you sure you want to delete this booking?')) return
 
     try {
-      const { error } = await supabase.from('bookings').delete().eq('id', bookingId)
-      if (error) throw error
+      const result = await deleteBooking(bookingId)
+      if (result && 'error' in result && result.error) {
+        throw new Error(result.error)
+      }
       toast.success('Booking deleted successfully')
-      setBookings(bookings.filter(b => b.id !== bookingId)) // Optimistic update
+      await loadEventData()
     } catch (error) {
       console.error('Error deleting booking:', error)
-      toast.error('Failed to delete booking')
-      await loadEventData() // Re-fetch on error
+      toast.error(error instanceof Error ? error.message : 'Failed to delete booking')
+      await loadEventData()
     }
   }
 
@@ -272,6 +292,10 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
   }
 
   const handleDownloadReservationPosters = async () => {
+    if (!canManageEvents) {
+      toast.error('You do not have permission to download reservation posters.')
+      return
+    }
     if (!event) return
     
     if (activeBookings.length === 0) {
@@ -337,7 +361,7 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
   const totalCheckIns = checkIns.length
 
   // Define columns for bookings table
-  const bookingColumns: Column<BookingWithCustomer>[] = [
+  const baseBookingColumns: Column<BookingWithCustomer>[] = [
     {
       key: 'customer',
       header: 'Customer',
@@ -370,24 +394,31 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
         </Badge>
       ),
       width: 'auto',
-    },
-    {
-      key: 'actions',
-      header: '',
-      cell: (booking) => (
-        <button
-          onClick={() => handleDeleteBooking(booking.id)}
+    }
+  ]
+
+  const bookingActionsColumn: Column<BookingWithCustomer> | null = canManageEvents
+    ? {
+        key: 'actions',
+        header: '',
+        cell: (booking) => (
+          <button
+            onClick={() => handleDeleteBooking(booking.id)}
           className="text-red-600 hover:text-red-900"
           title="Delete Booking"
         >
           <TrashIcon className="h-5 w-5" />
           <span className="sr-only">Delete Booking</span>
         </button>
-      ),
-      align: 'right',
-      width: 'auto',
-    },
-  ]
+        ),
+        align: 'right',
+        width: 'auto',
+      }
+    : null
+
+  const bookingColumns: Column<BookingWithCustomer>[] = bookingActionsColumn
+    ? [...baseBookingColumns, bookingActionsColumn]
+    : baseBookingColumns
 
   // Columns for reminders (no seats column)
   const reminderColumns: Column<BookingWithCustomer>[] = bookingColumns.filter(
@@ -499,13 +530,15 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
                     {booking.seats} {booking.seats === 1 ? 'Ticket' : 'Tickets'}
                   </Badge>
                 )}
-                <button
-                  onClick={() => handleDeleteBooking(booking.id)}
-                  className="text-red-500 p-1 rounded-full hover:bg-gray-100"
-                  title="Delete Booking"
-                >
-                  <TrashIcon className="h-4 w-4" />
-                </button>
+                {canManageEvents && (
+                  <button
+                    onClick={() => handleDeleteBooking(booking.id)}
+                    className="text-red-500 p-1 rounded-full hover:bg-gray-100"
+                    title="Delete Booking"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             </div>
             <p className="text-sm text-gray-500">Booked on: {formatDate(booking.created_at)}</p>
@@ -532,33 +565,39 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
         actions={
           event && !isLoading && (
             <NavGroup>
-              <NavLink href={`/events/${event.id}/edit`}>
-                Edit Event
-              </NavLink>
+              {canManageEvents && (
+                <NavLink href={`/events/${event.id}/edit`}>
+                  Edit Event
+                </NavLink>
+              )}
               <NavLink onClick={handleCopyAttendeeList}>
                 Copy List
               </NavLink>
-              <NavLink 
-                onClick={handleDownloadReservationPosters}
-                className={activeBookings.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}
-              >
-                Download Posters
-              </NavLink>
-              <NavLink onClick={() => setShowAddAttendeesModal(true)}>
-                Add Attendees
-              </NavLink>
-              <NavLink onClick={() => setShowBookingForm(true)}>
-                New Booking
-              </NavLink>
-              <NavLink href={`/events/${event.id}/check-in`}>
-                Launch Check-in
-              </NavLink>
+              {canManageEvents && (
+                <>
+                  <NavLink 
+                    onClick={handleDownloadReservationPosters}
+                    className={activeBookings.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}
+                  >
+                    Download Posters
+                  </NavLink>
+                  <NavLink onClick={() => setShowAddAttendeesModal(true)}>
+                    Add Attendees
+                  </NavLink>
+                  <NavLink onClick={() => setShowBookingForm(true)}>
+                    New Booking
+                  </NavLink>
+                  <NavLink href={`/events/${event.id}/check-in`}>
+                    Launch Check-in
+                  </NavLink>
+                </>
+              )}
             </NavGroup>
           )
         }
       />
       <PageContent>
-        {showBookingForm && event && (
+        {showBookingForm && event && canManageEvents && (
           <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
               <BookingForm event={event} onSubmit={handleCreateBooking} onCancel={() => setShowBookingForm(false)} />
@@ -566,7 +605,7 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
           </div>
         )}
 
-        {showAddAttendeesModal && event && (
+        {showAddAttendeesModal && event && canManageEvents && (
           <AddAttendeesModalWithCategories
             event={event}
             currentBookings={bookings}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { getVendors, createVendor, updateVendor, deleteVendor } from '@/app/actions/vendors'
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
@@ -17,6 +18,7 @@ import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { Plus, Edit2, Trash2, Users } from 'lucide-react'
 import { getVendorContacts, createVendorContact, updateVendorContact, deleteVendorContact } from '@/app/actions/vendor-contacts'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 function PrimaryContactCell({ vendor }: { vendor: InvoiceVendor }) {
   const supabase = useSupabase()
@@ -75,6 +77,14 @@ interface VendorFormData {
 }
 
 export default function VendorsPage() {
+  const router = useRouter()
+  const { hasPermission, loading: permissionsLoading } = usePermissions()
+  const canView = hasPermission('invoices', 'view')
+  const canCreate = hasPermission('invoices', 'create')
+  const canEdit = hasPermission('invoices', 'edit')
+  const canDelete = hasPermission('invoices', 'delete')
+  const isReadOnly = canView && !canCreate && !canEdit && !canDelete
+
   const [vendors, setVendors] = useState<InvoiceVendor[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -96,10 +106,24 @@ export default function VendorsPage() {
   const [contactSaving, setContactSaving] = useState(false)
 
   useEffect(() => {
+    if (permissionsLoading) {
+      return
+    }
+
+    if (!canView) {
+      router.replace('/unauthorized')
+      return
+    }
+
     loadVendors()
-  }, [])
+  }, [permissionsLoading, canView, router])
 
   async function loadVendors() {
+    if (!canView) {
+      return
+    }
+
+    setLoading(true)
     try {
       const result = await getVendors()
       
@@ -140,6 +164,10 @@ export default function VendorsPage() {
   async function saveContact(e: React.FormEvent) {
     e.preventDefault()
     if (!contactsModalVendor) return
+    if (!canEdit) {
+      setError('You do not have permission to manage vendor contacts')
+      return
+    }
     setContactSaving(true)
     setError(null)
     try {
@@ -164,6 +192,10 @@ export default function VendorsPage() {
   }
 
   async function removeContact(id: string) {
+    if (!canEdit) {
+      setError('You do not have permission to manage vendor contacts')
+      return
+    }
     try {
       const fd = new FormData()
       fd.append('id', id)
@@ -179,6 +211,16 @@ export default function VendorsPage() {
   }
 
   function openForm(vendor?: InvoiceVendor) {
+    if (vendor) {
+      if (!canEdit) {
+        setError('You do not have permission to edit vendors')
+        return
+      }
+    } else if (!canCreate) {
+      setError('You do not have permission to create vendors')
+      return
+    }
+
     if (vendor) {
       setEditingVendor(vendor)
       setFormData({
@@ -212,6 +254,15 @@ export default function VendorsPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (editingVendor) {
+      if (!canEdit) {
+        setError('You do not have permission to edit vendors')
+        return
+      }
+    } else if (!canCreate) {
+      setError('You do not have permission to create vendors')
+      return
+    }
     setFormLoading(true)
     setError(null)
 
@@ -246,6 +297,11 @@ export default function VendorsPage() {
   }
 
   async function handleDelete(vendor: InvoiceVendor) {
+    if (!canDelete) {
+      setError('You do not have permission to delete vendors')
+      return
+    }
+
     if (!confirm(`Are you sure you want to delete ${vendor.name}? This action cannot be undone.`)) {
       return
     }
@@ -266,7 +322,7 @@ export default function VendorsPage() {
     }
   }
 
-  if (loading) {
+  if (permissionsLoading || loading) {
     return (
       <PageWrapper>
         <PageHeader 
@@ -286,6 +342,10 @@ export default function VendorsPage() {
     )
   }
 
+  if (!canView) {
+    return null
+  }
+
   return (
     <PageWrapper>
       <PageHeader
@@ -293,12 +353,24 @@ export default function VendorsPage() {
         subtitle="Manage your invoice vendors"
         backButton={{ label: 'Back to Invoices', href: '/invoices' }}
         actions={
-          <Button onClick={() => openForm()} leftIcon={<Plus className="h-4 w-4" />}>
+          <Button
+            onClick={() => openForm()}
+            leftIcon={<Plus className="h-4 w-4" />}
+            disabled={!canCreate}
+            title={!canCreate ? 'You need invoice create permission to add vendors.' : undefined}
+          >
             Add Vendor
           </Button>
         }
       />
       <PageContent>
+      {isReadOnly && (
+        <Alert
+          variant="info"
+          description="You have read-only access to vendors. Create, edit, delete, and contact management actions are disabled."
+          className="mb-6"
+        />
+      )}
       {error && (
         <Alert variant="error" description={error} className="mb-6" />
       )}
@@ -308,9 +380,11 @@ export default function VendorsPage() {
           title="No vendors found"
           description="Add your first vendor to get started."
           action={
-            <Button onClick={() => openForm()} leftIcon={<Plus className="h-4 w-4" />}>
-              Add Your First Vendor
-            </Button>
+            canCreate ? (
+              <Button onClick={() => openForm()} leftIcon={<Plus className="h-4 w-4" />}>
+                Add Your First Vendor
+              </Button>
+            ) : undefined
           }
         />
       ) : (
@@ -332,13 +406,34 @@ export default function VendorsPage() {
               { key: 'terms', header: 'Payment Terms', cell: (v: InvoiceVendor) => <span className="text-sm">{v.payment_terms} days</span> },
               { key: 'actions', header: 'Actions', align: 'right', cell: (v: InvoiceVendor) => (
                 <div className="flex justify-end gap-2">
-                  <Button size="sm" onClick={() => openContacts(v)} aria-label="Manage contacts" leftIcon={<Users className="h-4 w-4" />}>
+                  <Button
+                    size="sm"
+                    onClick={() => openContacts(v)}
+                    aria-label="Manage contacts"
+                    leftIcon={<Users className="h-4 w-4" />}
+                  >
                     Contacts
                   </Button>
-                  <Button size="sm" variant="secondary" onClick={() => openForm(v)} aria-label="Edit vendor" iconOnly>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => openForm(v)}
+                    aria-label="Edit vendor"
+                    iconOnly
+                    disabled={!canEdit}
+                    title={!canEdit ? 'You need invoice edit permission to update vendors.' : undefined}
+                  >
                     <Edit2 className="h-4 w-4" />
                   </Button>
-                  <Button size="sm" variant="danger" onClick={() => handleDelete(v)} aria-label="Delete vendor" iconOnly>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    onClick={() => handleDelete(v)}
+                    aria-label="Delete vendor"
+                    iconOnly
+                    disabled={!canDelete}
+                    title={!canDelete ? 'You need invoice delete permission to remove vendors.' : undefined}
+                  >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
@@ -357,10 +452,26 @@ export default function VendorsPage() {
                 <div className="flex justify-between items-center text-sm">
                   <div>Terms: {v.payment_terms} days</div>
                   <div className="flex gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => openForm(v)} aria-label="Edit vendor" iconOnly>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => openForm(v)}
+                      aria-label="Edit vendor"
+                      iconOnly
+                      disabled={!canEdit}
+                      title={!canEdit ? 'You need invoice edit permission to update vendors.' : undefined}
+                    >
                       <Edit2 className="h-4 w-4" />
                     </Button>
-                    <Button size="sm" variant="danger" onClick={() => handleDelete(v)} aria-label="Delete vendor" iconOnly>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      onClick={() => handleDelete(v)}
+                      aria-label="Delete vendor"
+                      iconOnly
+                      disabled={!canDelete}
+                      title={!canDelete ? 'You need invoice delete permission to remove vendors.' : undefined}
+                    >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
@@ -389,7 +500,10 @@ export default function VendorsPage() {
             <Button
               type="submit"
               form="vendor-form"
-              disabled={formLoading}
+              disabled={
+                formLoading ||
+                (editingVendor ? !canEdit : !canCreate)
+              }
               loading={formLoading}
             >
               {editingVendor ? 'Update' : 'Create'} Vendor
@@ -499,28 +613,71 @@ export default function VendorsPage() {
                     <div className="text-sm text-gray-700 break-all">{c.email}</div>
                   </div>
                   <div className="flex gap-2 shrink-0">
-                    <Button size="sm" variant="secondary" onClick={() => setContactForm({ id: c.id, name: c.name || '', email: c.email || '', is_primary: c.is_primary })}>Edit</Button>
-                    <Button size="sm" variant="danger" onClick={() => removeContact(c.id)}>Delete</Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setContactForm({ id: c.id, name: c.name || '', email: c.email || '', is_primary: c.is_primary })}
+                      disabled={!canEdit}
+                      title={!canEdit ? 'You need invoice edit permission to modify contacts.' : undefined}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      onClick={() => removeContact(c.id)}
+                      disabled={!canEdit}
+                      title={!canEdit ? 'You need invoice edit permission to modify contacts.' : undefined}
+                    >
+                      Delete
+                    </Button>
                   </div>
                 </div>
               ))}
             </div>
 
+            {!canEdit && (
+              <Alert
+                variant="info"
+                description="You have read-only access to contacts. Editing and adding contacts is disabled."
+              />
+            )}
             <form onSubmit={saveContact} className="space-y-3">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <FormGroup label="Name">
-                  <Input value={contactForm.name} onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })} />
+                  <Input
+                    value={contactForm.name}
+                    onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+                    disabled={!canEdit}
+                  />
                 </FormGroup>
                 <FormGroup label="Email" required>
-                  <Input type="email" required value={contactForm.email} onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })} />
+                  <Input
+                    type="email"
+                    required
+                    value={contactForm.email}
+                    onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+                    disabled={!canEdit}
+                  />
                 </FormGroup>
                 <label className="inline-flex items-center gap-2 md:col-span-2 text-sm">
-                  <input type="checkbox" checked={contactForm.is_primary} onChange={(e) => setContactForm({ ...contactForm, is_primary: e.target.checked })} />
+                  <input
+                    type="checkbox"
+                    checked={contactForm.is_primary}
+                    onChange={(e) => setContactForm({ ...contactForm, is_primary: e.target.checked })}
+                    disabled={!canEdit}
+                  />
                   Set as primary contact
                 </label>
               </div>
               <div className="flex justify-end">
-                <Button type="submit" loading={contactSaving}>{contactForm.id ? 'Update Contact' : 'Add Contact'}</Button>
+                <Button
+                  type="submit"
+                  loading={contactSaving}
+                  disabled={!canEdit || contactSaving}
+                >
+                  {contactForm.id ? 'Update Contact' : 'Add Contact'}
+                </Button>
               </div>
             </form>
           </div>

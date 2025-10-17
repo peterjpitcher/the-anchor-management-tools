@@ -1,10 +1,11 @@
 'use server'
 
-import { createClient } from '@supabase/supabase-js'
 import { logAuditEvent } from '@/app/actions/audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import type { Employee } from '@/types/database'
 import { getTodayIsoDate } from '@/lib/dateUtils'
+import { checkUserPermission } from './rbac'
+import { createClient } from '@supabase/supabase-js'
 
 function getSupabaseAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -24,6 +25,11 @@ interface ExportOptions {
 }
 
 export async function exportEmployees(options: ExportOptions): Promise<{ data?: string; error?: string; filename?: string }> {
+  const hasPermission = await checkUserPermission('employees', 'export')
+  if (!hasPermission) {
+    return { error: 'You do not have permission to export employees.' }
+  }
+
   const supabase = getSupabaseAdminClient()
   if (!supabase) {
     return { error: 'Database connection failed' }

@@ -2,6 +2,8 @@ import ReceiptBulkReviewClient from '@/app/(authenticated)/receipts/_components/
 import { getReceiptBulkReviewData } from '@/app/actions/receipts'
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { redirect } from 'next/navigation'
+import { checkUserPermission } from '@/app/actions/rbac'
 import { receiptTransactionStatusSchema } from '@/lib/validation'
 import type { ReceiptTransaction } from '@/types/database'
 
@@ -14,6 +16,11 @@ type PageProps = {
 }
 
 export default async function ReceiptsBulkPage({ searchParams }: PageProps) {
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    redirect('/unauthorized')
+  }
+
   const resolvedParams = searchParams ? await searchParams : {}
 
   const limitParam = typeof resolvedParams?.limit === 'string' ? Number.parseInt(resolvedParams.limit, 10) : NaN

@@ -143,6 +143,10 @@ Set `CRON_SECRET` in deployment environments to the shared secret used by your s
 - `jobs` - Background job queue
 - `rbac_roles/rbac_permissions` - Access control
 
+## 📚 Documentation
+
+The full documentation set lives in `docs/`. Start with [docs/README.md](docs/README.md) for the index of architecture, security, operations, and API guides.
+
 ## 🛠️ Maintenance
 
 ### Database Migrations
@@ -167,10 +171,6 @@ Clear stuck jobs:
 ```bash
 tsx scripts/sms-tools/clear-stuck-jobs.ts
 ```
-
-## 📝 Documentation
-
-For detailed development guidelines and patterns, see [CLAUDE.md](./CLAUDE.md)
 
 ## 🌐 Deployment
 

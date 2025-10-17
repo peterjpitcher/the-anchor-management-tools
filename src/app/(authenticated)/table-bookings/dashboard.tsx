@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useSupabase } from '@/components/providers/SupabaseProvider';
+import { useState, useEffect, useCallback } from 'react';
 import { usePermissions } from '@/contexts/PermissionContext';
-import { format, startOfDay, addDays, startOfWeek, endOfWeek, addWeeks, startOfMonth, endOfMonth, addMonths } from 'date-fns';
+import { format, addDays, startOfWeek, endOfWeek, addWeeks, startOfMonth, endOfMonth, addMonths } from 'date-fns';
 import Link from 'next/link';
 import {
   CalendarIcon,
@@ -30,6 +29,7 @@ import { Badge } from '@/components/ui-v2/display/Badge';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 import { EmptyState } from '@/components/ui-v2/display/EmptyState';
+import { getTableBookingsDashboardData } from '@/app/actions/table-bookings';
 
 interface DashboardStats {
   todayBookings: number;
@@ -38,18 +38,19 @@ interface DashboardStats {
   pendingPayments: number;
 }
 
+const DEFAULT_STATS: DashboardStats = {
+  todayBookings: 0,
+  weekBookings: 0,
+  monthBookings: 0,
+  pendingPayments: 0,
+};
+
 export default function TableBookingsDashboard() {
-  const supabase = useSupabase();
   const { hasPermission } = usePermissions();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month' | 'next-month'>('week');
   const [bookings, setBookings] = useState<TableBooking[]>([]);
-  const [stats, setStats] = useState<DashboardStats>({
-    todayBookings: 0,
-    weekBookings: 0,
-    monthBookings: 0,
-    pendingPayments: 0,
-  });
+  const [stats, setStats] = useState<DashboardStats>(DEFAULT_STATS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,123 +59,44 @@ export default function TableBookingsDashboard() {
   const canEdit = hasPermission('table_bookings', 'edit');
   const canManage = hasPermission('table_bookings', 'manage');
 
-  useEffect(() => {
-    if (canView) {
-      loadDashboardData();
+  const loadDashboardData = useCallback(async () => {
+    if (!canView) {
+      return;
     }
-  }, [selectedDate, viewMode, canView]);
 
-  async function loadDashboardData() {
     try {
       setLoading(true);
       setError(null);
 
-      let query = supabase
-        .from('table_bookings')
-        .select(`
-          *,
-          customer:customers(*),
-          table_booking_items(*),
-          table_booking_payments(*)
-        `)
-        .in('status', ['confirmed', 'pending_payment']); // Exclude cancelled bookings
+      const result = await getTableBookingsDashboardData({
+        viewMode,
+        selectedDate: selectedDate.toISOString(),
+      });
 
-      // Apply date filter based on view mode
-      if (viewMode === 'day') {
-        query = query.eq('booking_date', format(selectedDate, 'yyyy-MM-dd'));
-      } else if (viewMode === 'week') {
-        // Week view - get current week (starting Monday)
-        const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
-        const weekEnd = endOfWeek(selectedDate, { weekStartsOn: 1 });
-        query = query
-          .gte('booking_date', format(weekStart, 'yyyy-MM-dd'))
-          .lte('booking_date', format(weekEnd, 'yyyy-MM-dd'));
-      } else if (viewMode === 'month') {
-        // This month view
-        const monthStart = startOfMonth(new Date());
-        const monthEnd = endOfMonth(new Date());
-        query = query
-          .gte('booking_date', format(monthStart, 'yyyy-MM-dd'))
-          .lte('booking_date', format(monthEnd, 'yyyy-MM-dd'));
-      } else if (viewMode === 'next-month') {
-        // Next month view
-        const nextMonth = addMonths(new Date(), 1);
-        const monthStart = startOfMonth(nextMonth);
-        const monthEnd = endOfMonth(nextMonth);
-        query = query
-          .gte('booking_date', format(monthStart, 'yyyy-MM-dd'))
-          .lte('booking_date', format(monthEnd, 'yyyy-MM-dd'));
+      if (!result || 'error' in result) {
+        setBookings([]);
+        setStats(DEFAULT_STATS);
+        setError(result?.error || 'Failed to load dashboard data');
+        return;
       }
 
-      const { data: todayBookings, error: bookingsError } = await query
-        .order('booking_date', { ascending: true })
-        .order('booking_time', { ascending: true });
-      
-      if (bookingsError) {
-        throw bookingsError;
-      }
-
-      setBookings(todayBookings || []);
-
-      // Calculate stats
-      const now = new Date();
-      const todayStart = startOfDay(now);
-      const weekStart = startOfWeek(now, { weekStartsOn: 1 });
-      const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
-      const monthStart = startOfMonth(now);
-      const monthEnd = endOfMonth(now);
-
-      const todayStr = format(todayStart, 'yyyy-MM-dd');
-      const weekStartStr = format(weekStart, 'yyyy-MM-dd');
-      const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
-      const monthStartStr = format(monthStart, 'yyyy-MM-dd');
-      const monthEndStr = format(monthEnd, 'yyyy-MM-dd');
-
-      const [todayCountRes, weekCountRes, monthCountRes, pendingCountRes] = await Promise.all([
-        supabase
-          .from('table_bookings')
-          .select('id', { count: 'exact', head: true })
-          .eq('booking_date', todayStr)
-          .in('status', ['confirmed', 'pending_payment']),
-        supabase
-          .from('table_bookings')
-          .select('id', { count: 'exact', head: true })
-          .gte('booking_date', weekStartStr)
-          .lte('booking_date', weekEndStr)
-          .in('status', ['confirmed', 'pending_payment']),
-        supabase
-          .from('table_bookings')
-          .select('id', { count: 'exact', head: true })
-          .gte('booking_date', monthStartStr)
-          .lte('booking_date', monthEndStr)
-          .in('status', ['confirmed', 'pending_payment']),
-        supabase
-          .from('table_bookings')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'pending_payment')
-          .gte('booking_date', todayStr)
-      ]);
-
-      if (todayCountRes.error) throw todayCountRes.error;
-      if (weekCountRes.error) throw weekCountRes.error;
-      if (monthCountRes.error) throw monthCountRes.error;
-      if (pendingCountRes.error) throw pendingCountRes.error;
-
-      const stats: DashboardStats = {
-        todayBookings: todayCountRes.count ?? 0,
-        weekBookings: weekCountRes.count ?? 0,
-        monthBookings: monthCountRes.count ?? 0,
-        pendingPayments: pendingCountRes.count ?? 0,
-      };
-
-      setStats(stats);
-    } catch (err: any) {
-      console.error('Error loading dashboard:', err);
-      setError(err.message);
+      setBookings(result.data.bookings);
+      setStats(result.data.stats);
+    } catch (err) {
+      console.error('Error loading table bookings dashboard:', err);
+      setBookings([]);
+      setStats(DEFAULT_STATS);
+      setError('Failed to load dashboard data');
     } finally {
       setLoading(false);
     }
-  }
+  }, [canView, viewMode, selectedDate]);
+
+  useEffect(() => {
+    if (canView) {
+      void loadDashboardData();
+    }
+  }, [canView, loadDashboardData]);
 
   // Format time from HH:mm:ss to 12-hour format (e.g., 7:30pm, 8am)
   const formatBookingTime = (timeStr: string) => {
@@ -403,9 +325,10 @@ export default function TableBookingsDashboard() {
           </div>
           
           <Button
-            onClick={loadDashboardData}
+            onClick={() => void loadDashboardData()}
             variant="secondary"
             size="sm"
+            disabled={loading}
           >
             <ArrowPathIcon className="h-5 w-5" />
           </Button>

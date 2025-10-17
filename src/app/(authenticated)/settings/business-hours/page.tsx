@@ -1,29 +1,34 @@
-'use client'
-
 import { Suspense } from 'react'
+import { redirect } from 'next/navigation'
 import { BusinessHoursManager } from './BusinessHoursManager'
 import { SpecialHoursManager } from './SpecialHoursManager'
-// New UI components
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Skeleton } from '@/components/ui-v2/feedback/Skeleton'
-export default function BusinessHoursPage() {
-  
+import { checkUserPermission } from '@/app/actions/rbac'
+
+export default async function BusinessHoursPage() {
+  const canManage = await checkUserPermission('settings', 'manage')
+
+  if (!canManage) {
+    redirect('/unauthorized')
+  }
+
   return (
     <div>
       <PageHeader
         title="Business Hours"
         subtitle="Manage your regular opening hours and special dates"
         backButton={{
-          label: "Back to Settings",
-          href: "/settings"
+          label: 'Back to Settings',
+          href: '/settings',
         }}
       />
       <Section title="Regular Hours">
         <Card>
           <Suspense fallback={<Skeleton className="h-64" />}>
-            <BusinessHoursManager />
+            <BusinessHoursManager canManage={canManage} />
           </Suspense>
         </Card>
       </Section>
@@ -31,7 +36,7 @@ export default function BusinessHoursPage() {
       <Section title="Special Hours & Holidays">
         <Card>
           <Suspense fallback={<Skeleton className="h-64" />}>
-            <SpecialHoursManager />
+            <SpecialHoursManager canManage={canManage} />
           </Suspense>
         </Card>
       </Section>

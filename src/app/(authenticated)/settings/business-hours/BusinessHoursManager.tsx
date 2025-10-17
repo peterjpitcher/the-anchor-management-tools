@@ -10,7 +10,11 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import toast from 'react-hot-toast'
 
-export function BusinessHoursManager() {
+interface BusinessHoursManagerProps {
+  canManage: boolean
+}
+
+export function BusinessHoursManager({ canManage }: BusinessHoursManagerProps) {
   const [hours, setHours] = useState<BusinessHours[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -30,6 +34,8 @@ export function BusinessHoursManager() {
   }
 
   const handleTimeChange = (dayOfWeek: number, field: keyof BusinessHours, value: string | boolean) => {
+    if (!canManage) return
+
     setHours(prevHours => 
       prevHours.map(h => 
         h.day_of_week === dayOfWeek 
@@ -41,6 +47,12 @@ export function BusinessHoursManager() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!canManage) {
+      toast.error('You do not have permission to update business hours.')
+      return
+    }
+
     setIsSaving(true)
 
     const formData = new FormData()
@@ -82,43 +94,100 @@ export function BusinessHoursManager() {
         columns={[
           { key: 'day', header: 'Day', cell: (h: any) => <span className="text-sm font-medium text-gray-900">{DAY_NAMES[h.day_of_week]}</span> },
           { key: 'closed', header: 'Closed', cell: (h: any) => (
-            <Checkbox checked={h.is_closed} onChange={(e) => handleTimeChange(h.day_of_week, 'is_closed', e.target.checked)} />
+            <Checkbox
+              checked={h.is_closed}
+              onChange={(e) => handleTimeChange(h.day_of_week, 'is_closed', e.target.checked)}
+              disabled={!canManage}
+            />
           ) },
           { key: 'opens', header: 'Opens', cell: (h: any) => (
-            <Input type="time" value={h.opens || ''} onChange={(e) => handleTimeChange(h.day_of_week, 'opens', e.target.value)} disabled={h.is_closed} fullWidth />
+            <Input
+              type="time"
+              value={h.opens || ''}
+              onChange={(e) => handleTimeChange(h.day_of_week, 'opens', e.target.value)}
+              disabled={!canManage || h.is_closed}
+              fullWidth
+            />
           ) },
           { key: 'closes', header: 'Closes', cell: (h: any) => (
-            <Input type="time" value={h.closes || ''} onChange={(e) => handleTimeChange(h.day_of_week, 'closes', e.target.value)} disabled={h.is_closed} fullWidth />
+            <Input
+              type="time"
+              value={h.closes || ''}
+              onChange={(e) => handleTimeChange(h.day_of_week, 'closes', e.target.value)}
+              disabled={!canManage || h.is_closed}
+              fullWidth
+            />
           ) },
           { key: 'kopens', header: 'Kitchen Opens', cell: (h: any) => (
-            <Input type="time" value={h.kitchen_opens || ''} onChange={(e) => handleTimeChange(h.day_of_week, 'kitchen_opens', e.target.value)} disabled={h.is_closed} fullWidth />
+            <Input
+              type="time"
+              value={h.kitchen_opens || ''}
+              onChange={(e) => handleTimeChange(h.day_of_week, 'kitchen_opens', e.target.value)}
+              disabled={!canManage || h.is_closed}
+              fullWidth
+            />
           ) },
           { key: 'kcloses', header: 'Kitchen Closes', cell: (h: any) => (
-            <Input type="time" value={h.kitchen_closes || ''} onChange={(e) => handleTimeChange(h.day_of_week, 'kitchen_closes', e.target.value)} disabled={h.is_closed} fullWidth />
+            <Input
+              type="time"
+              value={h.kitchen_closes || ''}
+              onChange={(e) => handleTimeChange(h.day_of_week, 'kitchen_closes', e.target.value)}
+              disabled={!canManage || h.is_closed}
+              fullWidth
+            />
           ) },
         ]}
         renderMobileCard={(h: any) => (
           <Card variant="bordered" padding="sm">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-gray-900">{DAY_NAMES[h.day_of_week]}</h3>
-              <Checkbox label="Closed" checked={h.is_closed} onChange={(e) => handleTimeChange(h.day_of_week, 'is_closed', e.target.checked)} />
+              <Checkbox
+                label="Closed"
+                checked={h.is_closed}
+                onChange={(e) => handleTimeChange(h.day_of_week, 'is_closed', e.target.checked)}
+                disabled={!canManage}
+              />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs text-gray-600 mb-1">Opens</label>
-                <Input type="time" value={h.opens || ''} onChange={(e) => handleTimeChange(h.day_of_week, 'opens', e.target.value)} disabled={h.is_closed} fullWidth />
+                <Input
+                  type="time"
+                  value={h.opens || ''}
+                  onChange={(e) => handleTimeChange(h.day_of_week, 'opens', e.target.value)}
+                  disabled={!canManage || h.is_closed}
+                  fullWidth
+                />
               </div>
               <div>
                 <label className="block text-xs text-gray-600 mb-1">Closes</label>
-                <Input type="time" value={h.closes || ''} onChange={(e) => handleTimeChange(h.day_of_week, 'closes', e.target.value)} disabled={h.is_closed} fullWidth />
+                <Input
+                  type="time"
+                  value={h.closes || ''}
+                  onChange={(e) => handleTimeChange(h.day_of_week, 'closes', e.target.value)}
+                  disabled={!canManage || h.is_closed}
+                  fullWidth
+                />
               </div>
               <div>
                 <label className="block text-xs text-gray-600 mb-1">Kitchen Opens</label>
-                <Input type="time" value={h.kitchen_opens || ''} onChange={(e) => handleTimeChange(h.day_of_week, 'kitchen_opens', e.target.value)} disabled={h.is_closed} fullWidth />
+                <Input
+                  type="time"
+                  value={h.kitchen_opens || ''}
+                  onChange={(e) => handleTimeChange(h.day_of_week, 'kitchen_opens', e.target.value)}
+                  disabled={!canManage || h.is_closed}
+                  fullWidth
+                />
               </div>
               <div>
                 <label className="block text-xs text-gray-600 mb-1">Kitchen Closes</label>
-                <Input type="time" value={h.kitchen_closes || ''} onChange={(e) => handleTimeChange(h.day_of_week, 'kitchen_closes', e.target.value)} disabled={h.is_closed} fullWidth />
+                <Input
+                  type="time"
+                  value={h.kitchen_closes || ''}
+                  onChange={(e) => handleTimeChange(h.day_of_week, 'kitchen_closes', e.target.value)}
+                  disabled={!canManage || h.is_closed}
+                  fullWidth
+                />
               </div>
             </div>
           </Card>
@@ -126,7 +195,7 @@ export function BusinessHoursManager() {
       />
 
       <div className="flex justify-end pt-4">
-        <Button type="submit" loading={isSaving} fullWidth={false}>
+        <Button type="submit" loading={isSaving} fullWidth={false} disabled={!canManage || isSaving}>
           {isSaving ? 'Saving...' : 'Save Changes'}
         </Button>
       </div>

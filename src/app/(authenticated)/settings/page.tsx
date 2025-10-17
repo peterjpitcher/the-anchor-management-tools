@@ -1,8 +1,6 @@
 import Link from 'next/link';
 import { 
   TagIcon, 
-  ChatBubbleLeftRightIcon,
-  ChevronRightIcon,
   ShieldCheckIcon,
   DocumentTextIcon,
   UserCircleIcon,
@@ -13,8 +11,6 @@ import {
   CpuChipIcon,
   CommandLineIcon,
   ClockIcon,
-  PlayIcon,
-  SparklesIcon,
   LinkIcon
 } from '@heroicons/react/24/outline';
 import { checkUserPermission } from '@/app/actions/rbac';
@@ -79,13 +75,6 @@ const settingsSections = [
     permission: { module: 'customers', action: 'manage' },
   },
   {
-    name: 'Loyalty Program',
-    description: 'Configure The Anchor VIP Club loyalty program settings',
-    href: '/settings/loyalty',
-    icon: SparklesIcon,
-    permission: { module: 'settings', action: 'manage' },
-  },
-  {
     name: 'Message Templates',
     description: 'Manage SMS message templates and customize content',
     href: '/settings/message-templates',
@@ -101,27 +90,6 @@ const settingsSections = [
   },
   // Monitoring Section
   {
-    name: 'SMS Delivery Statistics',
-    description: 'Monitor SMS delivery performance and manage customer messaging',
-    href: '/settings/sms-delivery',
-    icon: ChatBubbleLeftRightIcon,
-    permission: { module: 'sms_health', action: 'view' },
-  },
-  {
-    name: 'SMS Health Dashboard',
-    description: 'Advanced delivery tracking with automatic deactivation management',
-    href: '/settings/sms-health',
-    icon: ShieldCheckIcon,
-    permission: { module: 'sms_health', action: 'view' },
-  },
-  {
-    name: 'Twilio Messages Monitor',
-    description: 'View actual messages from Twilio and compare with database records',
-    href: '/settings/twilio-messages',
-    icon: ChatBubbleLeftRightIcon,
-    permission: { module: 'messages', action: 'view' },
-  },
-  {
     name: 'Audit Logs',
     description: 'View system audit logs for security and compliance',
     href: '/settings/audit-logs',
@@ -133,13 +101,6 @@ const settingsSections = [
     description: 'Monitor and manage background job processing',
     href: '/settings/background-jobs',
     icon: CpuChipIcon,
-    permission: { module: 'settings', action: 'manage' },
-  },
-  {
-    name: 'Calendar Test',
-    description: 'Test Google Calendar integration and debug connection issues',
-    href: '/settings/calendar-test',
-    icon: CalendarDaysIcon,
     permission: { module: 'settings', action: 'manage' },
   },
   {
@@ -162,13 +123,6 @@ const settingsSections = [
     href: '/short-links',
     icon: LinkIcon,
     permission: null, // Allow all authenticated users
-  },
-  {
-    name: 'Cron Job Testing',
-    description: 'Manually trigger cron jobs for testing purposes',
-    href: '/settings/cron-test',
-    icon: PlayIcon,
-    permission: { module: 'settings', action: 'manage' },
   },
   {
     name: 'GDPR & Privacy',

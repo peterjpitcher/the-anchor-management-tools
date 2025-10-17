@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { generateInvoiceHTML } from '@/lib/invoice-template'
+import { logAuditEvent } from '@/app/actions/audit'
 import JSZip from 'jszip'
 
 export async function GET(request: NextRequest) {
@@ -134,7 +135,7 @@ Note: Open HTML files in a browser and use Print > Save as PDF for PDF versions.
     const zipContent = await zip.generateAsync({ type: 'arraybuffer' })
 
     // Log export
-    await supabase.from('audit_logs').insert({
+    await logAuditEvent({
       user_id: user.id,
       operation_type: 'export',
       resource_type: 'invoices',
@@ -143,9 +144,8 @@ Note: Open HTML files in a browser and use Print > Save as PDF for PDF versions.
         start_date: startDate,
         end_date: endDate,
         export_type: exportType,
-        invoice_badge: invoices.length,
-        ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip')
-      }
+        invoice_count: invoices.length,
+      },
     })
 
     // Return ZIP file

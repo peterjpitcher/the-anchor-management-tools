@@ -482,10 +482,11 @@ Events use the RBAC system with the following permissions:
 - `events.manage` - Full administrative access
 
 **Database Security**:
-As of migration `20250621_fix_events_table_rls.sql`:
-- RLS is enabled on the events table
-- Access is revoked from the `anon` role
-- Only authenticated users with appropriate permissions can access events
+- The events table has RLS enabled and access revoked from the `anon` role.
+- Authenticated users require explicit role permissions to read or mutate records.
+- Policies live in the Supabase migrations (`supabase/migrations/`); review them before altering event access.
+
+Only authenticated users with appropriate permissions can access events.
 
 ### Implementing Public Event Access (Future Enhancement)
 
@@ -536,7 +537,29 @@ Create a public API endpoint for event data:
 
 This is the intended behavior for a management system where all data should be protected.
 
+## Authentication Hardening Checklist
+
+These controls are live in production and must remain in place when modifying auth flows:
+
+- **Password recovery**: Supabase redirect whitelist includes `/auth/recover`. The recovery page handles both `type=recovery` fragments and one-time codes, preserves `redirectedFrom`, and validates that users land back on first-party routes. If users report “link not recognised”, confirm the token survived email relay.
+- **Session refresh**: `src/middleware.ts` refreshes Supabase sessions on every request. Unexpected logouts generally point to revoked refresh tokens or cookies stripped by the browser.
+- **Audit logging**: Login and logout go through server actions that raise `login`, `login_failed`, and `logout` audit events. Maintain these hooks when refactoring auth screens.
+- **Rate limiting**: Authentication endpoints use a 5 attempts/minute per-IP cap through the shared rate limiter. Adjustments should go through `src/lib/rate-limit.ts`.
+- **QA checklist**: Smoke test login, failure states, password reset, and logout on both desktop and mobile after auth changes.
+- **Monitoring**: Supabase auth logs plus audit tables should be reviewed for bursts of password reset failures or unusual login patterns. Consider adding Playwright coverage when credentials are available in CI.
+
+## GDPR & Privacy Compliance
+
+The Anchor is subject to GDPR. Keep these practices in mind when shipping changes:
+
+- **Privacy policy**: The `/privacy` route must remain up to date with contact details, lawful bases, and data usage. Update it whenever data collection changes.
+- **Data subject rights**: Support access, rectification, erasure, portability, and objection. When implementing new features, document how users can exercise each right or which team handles the request.
+- **Consent tracking**: Marketing SMS/e-mail requires explicit consent with timestamps. The SMS reminder pipeline stores opt-in status and should not send marketing messages without it.
+- **Retention**: Follow current retention guidance—customer bookings retained for seven years for tax, audit logs retained for at least ninety days, marketing consent until withdrawn. Capture any deviation in release notes.
+- **Breach response**: Ensure there is a documented escalation path for incidents; log actions in the audit table and notify stakeholders within the legal time frame.
+- **Third parties**: Maintain data processing agreements with Twilio, Supabase, Microsoft, and any other processors. Document integrations in the deployment guide.
+
 ---
 
-*Last Updated: July 2025*
-*Version: 1.0*
+*Last Updated: October 2025*
+*Version: 1.1*

@@ -13,9 +13,13 @@ import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Download, Calendar } from 'lucide-react'
 import { toLocalIsoDate } from '@/lib/dateUtils'
+import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 export default function InvoiceExportPage() {
   const router = useRouter()
+  const { hasPermission, loading: permissionsLoading } = usePermissions()
+  const canExport = hasPermission('invoices', 'export')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [exportType, setExportType] = useState<'all' | 'paid' | 'unpaid'>('all')
@@ -33,7 +37,22 @@ export default function InvoiceExportPage() {
     setEndDate(toLocalIsoDate(quarterEnd))
   }, [])
 
+  useEffect(() => {
+    if (permissionsLoading) {
+      return
+    }
+
+    if (!canExport) {
+      router.replace('/unauthorized')
+    }
+  }, [permissionsLoading, canExport, router])
+
   async function handleExport() {
+    if (!canExport) {
+      toast.error('You do not have permission to export invoices')
+      return
+    }
+
     if (!startDate || !endDate) {
       setError('Please select both start and end dates')
       return
@@ -98,6 +117,27 @@ export default function InvoiceExportPage() {
     
     setStartDate(toLocalIsoDate(quarterStart))
     setEndDate(toLocalIsoDate(quarterEnd))
+  }
+
+  if (permissionsLoading) {
+    return (
+      <PageWrapper>
+        <PageHeader
+          title="Export Invoices"
+          subtitle="Export invoices as a ZIP file containing individual PDFs"
+          backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+        />
+        <PageContent>
+          <div className="flex items-center justify-center h-64">
+            <Spinner size="lg" />
+          </div>
+        </PageContent>
+      </PageWrapper>
+    )
+  }
+
+  if (!canExport) {
+    return null
   }
 
   return (
@@ -213,8 +253,9 @@ export default function InvoiceExportPage() {
           >
             Cancel
           </Button>
-          <Button onClick={handleExport}
-            disabled={loading || !startDate || !endDate}
+          <Button
+            onClick={handleExport}
+            disabled={loading || !startDate || !endDate || !canExport}
             loading={loading}
             leftIcon={<Download className="h-4 w-4" />}
           >

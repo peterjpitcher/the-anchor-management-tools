@@ -20,6 +20,7 @@ import {
 } from '@/app/actions/receipts'
 import { receiptExpenseCategorySchema, receiptTransactionStatusSchema } from '@/lib/validation'
 import type { ReceiptExpenseCategory, ReceiptTransaction } from '@/types/database'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 const STATUS_LABELS: Record<ReceiptTransaction['status'], string> = {
   pending: 'Pending',
@@ -88,6 +89,9 @@ function defaultRuleDirection(totalIn: number, totalOut: number): 'in' | 'out' |
 export default function ReceiptBulkReviewClient({ initialData, initialFilters }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { hasPermission } = usePermissions()
+  const canManageReceipts = hasPermission('receipts', 'manage')
+  const managePermissionMessage = 'You do not have permission to manage receipts.'
   const [isApplying, startApply] = useTransition()
   const [isCreatingRule, startCreateRule] = useTransition()
   const [isRunningRetro, startRunRetro] = useTransition()
@@ -222,6 +226,10 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
   const statusesLabel = initialFilters.statuses.map((status) => STATUS_LABELS[status]).join(', ')
 
   const handleApplyGroup = (details: string) => {
+    if (!canManageReceipts) {
+      toast.error(managePermissionMessage)
+      return
+    }
     const vendorEnabled = applyVendor[details]
     const expenseEnabled = applyExpense[details]
     if (!vendorEnabled && !expenseEnabled) {
@@ -288,6 +296,10 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
   }
 
   const handleCreateRule = (details: string) => {
+    if (!canManageReceipts) {
+      toast.error(managePermissionMessage)
+      return
+    }
     const draft = ruleDrafts[details]
     if (!draft) return
 
@@ -331,6 +343,10 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
   }
 
   const handleRunRetro = (details: string) => {
+    if (!canManageReceipts) {
+      toast.error(managePermissionMessage)
+      return
+    }
     const rule = createdRules[details]
     if (!rule) return
     console.log('[retro-ui] bulk handleRunRetro', { ruleId: rule.id, details })
@@ -383,7 +399,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
           iterations += 1
 
           if (step.done) {
-            await finalizeReceiptRuleRetroRun({
+            const finalizeResult = await finalizeReceiptRuleRetroRun({
               ruleId: rule.id,
               scope,
               reviewed: totals.reviewed,
@@ -393,10 +409,13 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
               vendorIntended: totals.vendorIntended,
               expenseIntended: totals.expenseIntended,
             })
-
-            toast.success(
-              `Rule reviewed ${totals.matched}/${totals.reviewed} transactions · ${totals.statusAutoUpdated} status updates · ${totals.classificationUpdated} classifications · vendor intents ${totals.vendorIntended} · expense intents ${totals.expenseIntended}`
-            )
+            if (finalizeResult && 'error' in finalizeResult && finalizeResult.error) {
+              toast.error(finalizeResult.error)
+            } else {
+              toast.success(
+                `Rule reviewed ${totals.matched}/${totals.reviewed} transactions · ${totals.statusAutoUpdated} status updates · ${totals.classificationUpdated} classifications · vendor intents ${totals.vendorIntended} · expense intents ${totals.expenseIntended}`
+              )
+            }
 
             if (lastSamples.length) {
               console.groupCollapsed(`Bulk rule analysis (${lastSamples.length} sample transactions)`)
@@ -534,11 +553,12 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                         <Checkbox
                           checked={applyVendor[group.details] ?? false}
                           onChange={(event) => setApplyVendor((prev) => ({ ...prev, [group.details]: event.target.checked }))}
+                          disabled={!canManageReceipts}
                         />
                         <Input
                           value={vendorValue}
                           onChange={(event) => setVendorDrafts((prev) => ({ ...prev, [group.details]: event.target.value }))}
-                          disabled={!applyVendor[group.details]}
+                          disabled={!applyVendor[group.details] || !canManageReceipts}
                           placeholder="Suggested vendor"
                         />
                       </div>
@@ -552,11 +572,12 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                         <Checkbox
                           checked={applyExpense[group.details] ?? false}
                           onChange={(event) => setApplyExpense((prev) => ({ ...prev, [group.details]: event.target.checked }))}
+                          disabled={!canManageReceipts}
                         />
                         <Select
                           value={expenseValue}
                           onChange={(event) => setExpenseDrafts((prev) => ({ ...prev, [group.details]: event.target.value }))}
-                          disabled={!applyExpense[group.details]}
+                          disabled={!applyExpense[group.details] || !canManageReceipts}
                         >
                           <option value="">Leave unset</option>
                           {EXPENSE_OPTIONS.map((option) => (
@@ -596,7 +617,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                   <div className="flex flex-wrap items-center gap-3">
                     <Button
                       onClick={() => handleApplyGroup(group.details)}
-                      disabled={isApplyingGroup}
+                      disabled={isApplyingGroup || !canManageReceipts}
                     >
                       {isApplyingGroup && <Spinner className="mr-2 h-4 w-4" />}Apply classification
                     </Button>
@@ -604,7 +625,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                       type="button"
                       variant="secondary"
                       onClick={() => handleResetGroup(group.details)}
-                      disabled={isApplyingGroup}
+                      disabled={isApplyingGroup || !canManageReceipts}
                     >
                       Reset to suggestion
                     </Button>
@@ -612,6 +633,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                       type="button"
                       variant="ghost"
                       onClick={() => setActiveRuleGroup((current) => current === group.details ? null : group.details)}
+                      disabled={!canManageReceipts}
                     >
                       Configure rule
                     </Button>
@@ -623,7 +645,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                         type="button"
                         variant="secondary"
                         onClick={() => handleRunRetro(group.details)}
-                        disabled={isRetroPending}
+                        disabled={isRetroPending || !canManageReceipts}
                       >
                         {isRetroPending && <Spinner className="mr-2 h-4 w-4" />}Run rule retro
                       </Button>
@@ -733,7 +755,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                           type="button"
                           variant="secondary"
                           onClick={() => handleCreateRule(group.details)}
-                          disabled={isCreatingForGroup}
+                          disabled={isCreatingForGroup || !canManageReceipts}
                         >
                           {isCreatingForGroup && <Spinner className="mr-2 h-4 w-4" />}Save rule
                         </Button>

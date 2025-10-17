@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import type { Message } from '@/types/database'
 import { getMessages, markAllMessagesAsRead } from '@/app/actions/messagesActions'
 import { formatDistanceToNow } from 'date-fns'
 // New UI components
@@ -14,15 +13,25 @@ import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Skeleton } from '@/components/ui-v2/feedback/Skeleton'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { SimpleList } from '@/components/ui-v2/display/List'
+import { usePermissions } from '@/contexts/PermissionContext'
+
+type ConversationMessage = {
+  id: string;
+  customer_id: string;
+  body: string | null;
+  direction: string;
+  created_at: string;
+  read_at: string | null;
+}
 
 interface Conversation {
   customer: {
     id: string;
-    first_name: string;
-    last_name: string;
-    mobile_number: string;
+    first_name: string | null;
+    last_name: string | null;
+    mobile_number: string | null;
   };
-  messages: Message[];
+  messages: ConversationMessage[];
   unreadCount: number;
   lastMessageAt: string;
 }
@@ -31,9 +40,15 @@ export default function MessagesPage() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
   const [totalUnreadCount, setTotalUnreadCount] = useState(0)
+  const { hasPermission } = usePermissions()
+  const canManage = hasPermission('messages', 'manage')
 
-  const loadMessages = useCallback(async () => {
+  const loadMessages = useCallback(async (withLoader = false) => {
     try {
+      if (withLoader) {
+        setLoading(true)
+      }
+
       const result = await getMessages()
       
       if ('error' in result) {
@@ -49,27 +64,34 @@ export default function MessagesPage() {
       console.error('Error loading messages:', error)
       toast.error('Failed to load messages')
     } finally {
-      setLoading(false)
+      if (withLoader) {
+        setLoading(false)
+      }
     }
   }, [])
 
   useEffect(() => {
-    loadMessages()
+    void loadMessages(true)
 
-    // Set up periodic refresh every 5 seconds
+    // Set up periodic refresh every 15 seconds
     const interval = setInterval(() => {
-      loadMessages()
-    }, 5000)
+      void loadMessages()
+    }, 15000)
 
     return () => clearInterval(interval)
   }, [loadMessages])
 
   const handleMarkAllAsRead = async () => {
+    if (!canManage) {
+      toast.error('You do not have permission to mark messages as read')
+      return
+    }
     try {
       await markAllMessagesAsRead()
       toast.success('All messages marked as read')
-      await loadMessages() // Refresh the list
-    } catch {
+      await loadMessages()
+    } catch (error) {
+      console.error('Failed to mark messages as read', error)
       toast.error('Failed to mark messages as read')
     }
   }
@@ -108,7 +130,7 @@ export default function MessagesPage() {
             <NavLink href="/messages/bulk">
               Send Bulk Message
             </NavLink>
-            {totalUnreadCount > 0 && (
+            {canManage && totalUnreadCount > 0 && (
               <NavLink onClick={handleMarkAllAsRead}>
                 Mark all as read
               </NavLink>
@@ -127,30 +149,44 @@ export default function MessagesPage() {
         ) : (
           <Card>
             <SimpleList
-              items={conversations.map((conversation) => ({
-                id: conversation.customer.id,
-                href: `/customers/${conversation.customer.id}`,
-                title: `${conversation.customer.first_name} ${conversation.customer.last_name}`,
-                subtitle: conversation.customer.mobile_number,
-                meta: (
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                    {conversation.messages.filter((m) => m.direction === 'inbound' && !m.read_at).length > 0 && (
-                      <Badge variant="info" size="sm" className="self-start">
-                        {conversation.messages.filter((m) => m.direction === 'inbound' && !m.read_at).length} unread
-                      </Badge>
-                    )}
-                    <div className="text-left sm:text-right">
-                      <p className="text-sm text-gray-500 whitespace-nowrap">
-                        {formatDistanceToNow(new Date(conversation.lastMessageAt), { addSuffix: true })}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {conversation.messages.length} message{conversation.messages.length !== 1 ? 's' : ''}
-                      </p>
+              items={conversations.map((conversation) => {
+                const unreadCount = conversation.messages.filter(
+                  (m) => m.direction === 'inbound' && !m.read_at,
+                ).length
+
+                const fullName = [conversation.customer.first_name, conversation.customer.last_name]
+                  .filter(Boolean)
+                  .join(' ')
+                  .trim()
+
+                const subtitle = conversation.customer.mobile_number || 'No phone number on record'
+
+                return {
+                  id: conversation.customer.id,
+                  href: `/customers/${conversation.customer.id}`,
+                  title: fullName || subtitle,
+                  subtitle,
+                  meta: (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                      {unreadCount > 0 && (
+                        <Badge variant="info" size="sm" className="self-start">
+                          {unreadCount} unread
+                        </Badge>
+                      )}
+                      <div className="text-left sm:text-right">
+                        <p className="text-sm text-gray-500 whitespace-nowrap">
+                          {formatDistanceToNow(new Date(conversation.lastMessageAt), { addSuffix: true })}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {conversation.messages.length} message
+                          {conversation.messages.length !== 1 ? 's' : ''}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                ),
-                className: conversation.messages.filter((m) => m.direction === 'inbound' && !m.read_at).length > 0 ? "bg-blue-50" : "",
-              }))}
+                  ),
+                  className: unreadCount > 0 ? 'bg-blue-50' : '',
+                }
+              })}
             />
           </Card>
         )}

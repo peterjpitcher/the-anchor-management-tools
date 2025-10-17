@@ -11,6 +11,7 @@ import {
   buildSessionStartSms,
 } from '@/lib/parking/notifications'
 import { logParkingNotification } from '@/lib/parking/repository'
+import { recordOutboundSmsMessage } from '@/lib/sms/logging'
 import type { ParkingBooking } from '@/types/parking'
 import { fromZonedTime, toZonedTime } from 'date-fns-tz'
 import { startOfDay, endOfDay } from 'date-fns'
@@ -82,13 +83,29 @@ async function processPaymentReminders(supabase: ReturnType<typeof createAdminCl
 
     const smsResult = await sendSMS(booking.customer_mobile, smsWithReply)
 
+    let messageId: string | null = null
+    if (smsResult.success && smsResult.sid && booking.customer_id) {
+      messageId = await recordOutboundSmsMessage({
+        supabase,
+        customerId: booking.customer_id,
+        to: booking.customer_mobile,
+        body: smsWithReply,
+        sid: smsResult.sid,
+        metadata: {
+          parking_booking_id: booking.id,
+          event_type: 'payment_overdue'
+        }
+      })
+    }
+
     await logParkingNotification({
       booking_id: booking.id,
       channel: 'sms',
       event_type: 'payment_overdue',
       status: smsResult.success ? 'sent' : 'failed',
       sent_at: smsResult.success ? new Date().toISOString() : null,
-      payload: { sms: smsWithReply }
+      message_sid: smsResult.success && smsResult.sid ? smsResult.sid : null,
+      payload: { sms: smsWithReply, message_id: messageId }
     }, supabase)
 
     if (!smsResult.success) {
@@ -158,13 +175,30 @@ async function processStartNotifications(supabase: ReturnType<typeof createAdmin
     )
 
     const smsResult = await sendSMS(booking.customer_mobile, smsBody)
+
+    let messageId: string | null = null
+    if (smsResult.success && smsResult.sid && booking.customer_id) {
+      messageId = await recordOutboundSmsMessage({
+        supabase,
+        customerId: booking.customer_id,
+        to: booking.customer_mobile,
+        body: smsBody,
+        sid: smsResult.sid,
+        metadata: {
+          parking_booking_id: booking.id,
+          event_type: 'session_start'
+        }
+      })
+    }
+
     await logParkingNotification({
       booking_id: booking.id,
       channel: 'sms',
       event_type: 'session_start',
       status: smsResult.success ? 'sent' : 'failed',
       sent_at: smsResult.success ? new Date().toISOString() : null,
-      payload: { sms: smsBody }
+      message_sid: smsResult.success && smsResult.sid ? smsResult.sid : null,
+      payload: { sms: smsBody, message_id: messageId }
     }, supabase)
 
     const managerEmail = buildSessionManagerEmail(booking, 'start')
@@ -227,13 +261,30 @@ async function processEndNotifications(supabase: ReturnType<typeof createAdminCl
     )
 
     const smsResult = await sendSMS(booking.customer_mobile, smsBody)
+
+    let messageId: string | null = null
+    if (smsResult.success && smsResult.sid && booking.customer_id) {
+      messageId = await recordOutboundSmsMessage({
+        supabase,
+        customerId: booking.customer_id,
+        to: booking.customer_mobile,
+        body: smsBody,
+        sid: smsResult.sid,
+        metadata: {
+          parking_booking_id: booking.id,
+          event_type: 'session_end'
+        }
+      })
+    }
+
     await logParkingNotification({
       booking_id: booking.id,
       channel: 'sms',
       event_type: 'session_end',
       status: smsResult.success ? 'sent' : 'failed',
       sent_at: smsResult.success ? new Date().toISOString() : null,
-      payload: { sms: smsBody }
+      message_sid: smsResult.success && smsResult.sid ? smsResult.sid : null,
+      payload: { sms: smsBody, message_id: messageId }
     }, supabase)
 
     const managerEmail = buildSessionManagerEmail(booking, 'end')

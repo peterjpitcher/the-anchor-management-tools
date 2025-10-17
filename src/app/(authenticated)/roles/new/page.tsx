@@ -1,9 +1,15 @@
-import { createRole } from '@/app/actions/rbac';
+import { createRole, checkUserPermission } from '@/app/actions/rbac';
 import RoleForm from '../components/RoleForm';
 import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
+import { redirect } from 'next/navigation';
 
-export default function NewRolePage() {
+export default async function NewRolePage() {
+  const canManage = await checkUserPermission('roles', 'manage');
+  if (!canManage) {
+    redirect('/unauthorized');
+  }
+
   return (
     <PageWrapper>
       <PageHeader

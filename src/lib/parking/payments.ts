@@ -6,6 +6,7 @@ import { logger } from '@/lib/logger'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { sendSMS } from '@/lib/twilio'
 import { ensureReplyInstruction } from '@/lib/sms/support'
+import { recordOutboundSmsMessage } from '@/lib/sms/logging'
 import { sendEmail } from '@/lib/email/emailService'
 import {
   buildPaymentConfirmationSms,
@@ -217,13 +218,29 @@ async function sendConfirmationNotifications(booking: ParkingBooking, supabase: 
       const smsBody = ensureReplyInstruction(buildPaymentConfirmationSms(booking), replyNumber)
       const smsResult = await sendSMS(booking.customer_mobile, smsBody)
 
+      let messageId: string | null = null
+      if (smsResult.success && smsResult.sid && booking.customer_id) {
+        messageId = await recordOutboundSmsMessage({
+          supabase,
+          customerId: booking.customer_id,
+          to: booking.customer_mobile,
+          body: smsBody,
+          sid: smsResult.sid,
+          metadata: {
+            parking_booking_id: booking.id,
+            event_type: 'payment_confirmation'
+          }
+        })
+      }
+
       await logParkingNotification({
         booking_id: booking.id,
         channel: 'sms',
         event_type: 'payment_confirmation',
         status: smsResult.success ? 'sent' : 'failed',
         sent_at: smsResult.success ? new Date().toISOString() : null,
-        payload: { sms: smsBody }
+        message_sid: smsResult.success && smsResult.sid ? smsResult.sid : null,
+        payload: { sms: smsBody, message_id: messageId }
       }, supabase)
 
       if (!smsResult.success) {

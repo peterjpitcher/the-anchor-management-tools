@@ -1,6 +1,8 @@
+import { redirect } from 'next/navigation'
 import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
 import { buildEventChecklist, EVENT_CHECKLIST_TOTAL_TASKS } from '@/lib/event-checklist'
 import { getTodayIsoDate } from '@/lib/dateUtils'
+import { checkUserPermission } from '@/app/actions/rbac'
 import EventsClient from './EventsClient'
 
 async function getEvents() {
@@ -94,6 +96,11 @@ async function getEvents() {
 }
 
 export default async function EventsPage() {
+  const canViewEvents = await checkUserPermission('events', 'view')
+  if (!canViewEvents) {
+    redirect('/unauthorized')
+  }
+
   const events = await getEvents()
   
   return <EventsClient events={events} />

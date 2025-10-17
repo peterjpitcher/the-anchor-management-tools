@@ -11,12 +11,12 @@ import type { CustomerWithLoyalty } from '@/lib/customerUtils'
 import Link from 'next/link'
 import { getUnreadMessageCounts } from '@/app/actions/messageActions'
 import { ChatBubbleLeftIcon } from '@heroicons/react/24/solid'
-import { getConstraintErrorMessage, isPostgrestError } from '@/lib/dbErrorHandler'
 import { usePagination } from '@/hooks/usePagination'
 import { CustomerLabelDisplay } from '@/components/CustomerLabelDisplay'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { getBulkCustomerLabels } from '@/app/actions/customer-labels-bulk'
 import type { CustomerLabelAssignment } from '@/app/actions/customer-labels'
+import { createCustomer as createCustomerAction, updateCustomer as updateCustomerAction, deleteCustomer as deleteCustomerAction, importCustomers as importCustomersAction } from '@/app/actions/customers'
 // Loyalty removed
 // New UI components
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
@@ -48,6 +48,7 @@ interface CustomerCategoryStats {
 export default function CustomersPage() {
   const supabase = useSupabase()
   const { hasPermission } = usePermissions()
+  const canManageCustomers = hasPermission('customers', 'manage')
   const [searchInput, setSearchInput] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -211,17 +212,24 @@ export default function CustomersPage() {
   async function handleCreateCustomer(
     customerData: Omit<Customer, 'id' | 'created_at'>
   ) {
+    if (!canManageCustomers) {
+      toast.error('You do not have permission to manage customers.')
+      return
+    }
     try {
-      const { error } = await (supabase as any).from('customers').insert([{
-        first_name: customerData.first_name,
-        last_name: customerData.last_name,
-        mobile_number: customerData.mobile_number
-      }])
-      if (error) {
-        const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Failed to create customer';
-        toast.error(message)
+      const formData = new FormData()
+      formData.append('first_name', customerData.first_name)
+      formData.append('last_name', customerData.last_name ?? '')
+      formData.append('mobile_number', customerData.mobile_number ?? '')
+      formData.append('sms_opt_in', 'on')
+
+      const result = await createCustomerAction(formData)
+
+      if ('error' in result && result.error) {
+        toast.error(typeof result.error === 'string' ? result.error : 'Failed to create customer')
         return
       }
+
       toast.success('Customer created successfully')
       setShowForm(false)
       await loadCustomers()
@@ -235,23 +243,25 @@ export default function CustomersPage() {
     customerData: Omit<Customer, 'id' | 'created_at'>
   ) {
     if (!editingCustomer) return
+    if (!canManageCustomers) {
+      toast.error('You do not have permission to manage customers.')
+      return
+    }
 
     try {
-      const updatePayload: import('@/types/database').Database['public']['Tables']['customers']['Update'] = {
-        first_name: customerData.first_name,
-        last_name: customerData.last_name,
-        mobile_number: customerData.mobile_number,
-      }
-      const { error } = await (supabase as any)
-        .from('customers')
-        .update(updatePayload)
-        .eq('id', editingCustomer.id)
+      const formData = new FormData()
+      formData.append('first_name', customerData.first_name)
+      formData.append('last_name', customerData.last_name ?? '')
+      formData.append('mobile_number', customerData.mobile_number ?? '')
+      formData.append('sms_opt_in', 'on')
 
-      if (error) {
-        const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Failed to update customer';
-        toast.error(message)
+      const result = await updateCustomerAction(editingCustomer.id, formData)
+
+      if ('error' in result && result.error) {
+        toast.error(typeof result.error === 'string' ? result.error : 'Failed to update customer')
         return
       }
+
       toast.success('Customer updated successfully')
       setEditingCustomer(null)
       setShowForm(false)
@@ -263,44 +273,195 @@ export default function CustomersPage() {
   }
 
   async function handleDeleteCustomer(customer: Customer) {
+    if (!canManageCustomers) {
+      toast.error('You do not have permission to manage customers.')
+      return
+    }
     const confirmMessage =
       'Are you sure you want to delete this customer? This will also delete all their bookings.'
     if (!window.confirm(confirmMessage)) return
 
     try {
-      const { error } = await supabase
-        .from('customers')
-        .delete()
-        .eq('id', customer.id)
-      if (error) throw error
+      const result = await deleteCustomerAction(customer.id)
+      if ('error' in result && result.error) {
+        throw new Error(result.error)
+      }
       toast.success('Customer deleted successfully')
       await loadCustomers()
     } catch (error) {
       console.error('Error deleting customer:', error)
-      toast.error('Failed to delete customer')
+      toast.error(error instanceof Error ? error.message : 'Failed to delete customer')
     }
   }
 
   async function handleImportCustomers(customersData: Omit<Customer, 'id' | 'created_at'>[]) {
+    if (!canManageCustomers) {
+      toast.error('You do not have permission to manage customers.')
+      return
+    }
     try {
-      const inserts: import('@/types/database').Database['public']['Tables']['customers']['Insert'][] = customersData.map((c) => ({
-        first_name: c.first_name,
-        last_name: c.last_name,
-        mobile_number: c.mobile_number,
-      }))
-      const { error } = await (supabase as any).from('customers').insert(inserts)
-      if (error) {
-        const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Failed to import customers';
+      const result = await importCustomersAction(
+        customersData.map((c) => ({
+          first_name: c.first_name,
+          last_name: c.last_name ?? '',
+          mobile_number: c.mobile_number ?? ''
+        }))
+      )
+
+      if ('error' in result && result.error) {
+        const message = typeof result.error === 'string' ? result.error : 'Failed to import customers'
         toast.error(message)
         return
       }
-      toast.success('Customers imported successfully')
+
+      if (!('success' in result) || !result.success) {
+        toast.error('Failed to import customers')
+        return
+      }
+
+      const skippedTotal = (result.skippedInvalid ?? 0) + (result.skippedDuplicateInFile ?? 0) + (result.skippedExisting ?? 0)
+      let successMessage = `Imported ${result.created ?? 0} customers`
+      if (skippedTotal > 0) {
+        successMessage += ` (${skippedTotal} skipped)`
+      }
+
+      toast.success(successMessage)
       setShowImport(false)
       await loadCustomers()
     } catch (error) {
       console.error('Error importing customers:', error)
       toast.error('Failed to import customers')
     }
+  }
+
+  const openCreateCustomer = () => {
+    if (!canManageCustomers) {
+      toast.error('You do not have permission to manage customers.')
+      return
+    }
+    setEditingCustomer(null)
+    setShowForm(true)
+  }
+
+  const openImportCustomers = () => {
+    if (!canManageCustomers) {
+      toast.error('You do not have permission to manage customers.')
+      return
+    }
+    setShowImport(true)
+  }
+
+  const startEditCustomer = (customer: CustomerWithLoyalty) => {
+    if (!canManageCustomers) {
+      toast.error('You do not have permission to manage customers.')
+      return
+    }
+    setEditingCustomer(customer)
+    setShowForm(true)
+  }
+
+  const desktopColumns = [
+    {
+      key: 'name',
+      header: 'Name',
+      cell: (customer: CustomerWithLoyalty) => (
+        <div className="space-y-2">
+          <div className="flex items-center">
+            <div className="font-medium text-gray-900">
+              <Link href={`/customers/${customer.id}`} className="text-blue-600 hover:text-blue-700">
+                <CustomerName customer={customer} />
+              </Link>
+              {unreadCounts[customer.id] > 0 && (
+                <Badge variant="primary" size="sm" className="ml-2">
+                  <ChatBubbleLeftIcon className="h-3 w-3 mr-1" />
+                  {unreadCounts[customer.id]}
+                </Badge>
+              )}
+            </div>
+          </div>
+          <CustomerLabelDisplay assignments={customerLabels[customer.id] || []} />
+        </div>
+      )
+    },
+    {
+      key: 'mobile',
+      header: 'Mobile',
+      cell: (customer: CustomerWithLoyalty) => (
+        <div className="space-y-1">
+          {customer.mobile_number ? (
+            <a href={`tel:${customer.mobile_number}`} className="text-blue-600 hover:text-blue-700">
+              {customer.mobile_number}
+            </a>
+          ) : (
+            '-'
+          )}
+          {customer.mobile_number && customer.sms_opt_in === false && (
+            <Badge 
+              variant="error" 
+              size="sm"
+              icon={<XCircleIcon className="h-3 w-3" />}
+            >
+              SMS Deactivated
+            </Badge>
+          )}
+        </div>
+      )
+    },
+    {
+      key: 'event_preferences',
+      header: 'Event Preferences',
+      cell: (customer: CustomerWithLoyalty) => {
+        if (customerPreferences[customer.id] && customerPreferences[customer.id].length > 0) {
+          return (
+            <BadgeGroup>
+              {customerPreferences[customer.id].slice(0, 3).map((pref) => (
+                <Badge
+                  key={pref.category_id}
+                  variant="success"
+                  size="sm"
+                  title={`Attended ${pref.times_attended} times`}
+                >
+                  {pref.event_categories.name}
+                  {pref.times_attended > 1 && (
+                    <span className="ml-1">×{pref.times_attended}</span>
+                  )}
+                </Badge>
+              ))}
+              {customerPreferences[customer.id].length > 3 && (
+                <span className="text-xs text-gray-500">
+                  +{customerPreferences[customer.id].length - 3} more
+                </span>
+              )}
+            </BadgeGroup>
+          )
+        }
+        return <span className="text-gray-400">No preferences yet</span>
+      }
+    }
+  ]
+
+  if (canManageCustomers) {
+    desktopColumns.push({
+      key: 'actions',
+      header: '',
+      cell: (customer: CustomerWithLoyalty) => (
+        <div className="flex items-center justify-end space-x-2">
+          <IconButton
+            onClick={() => startEditCustomer(customer)}
+            aria-label="Edit customer"
+          >
+            <PencilIcon className="h-4 w-4" />
+          </IconButton>
+          <IconButton
+            variant="danger"
+            onClick={() => handleDeleteCustomer(customer)}
+            aria-label="Delete customer"
+          >
+            <TrashIcon className="h-4 w-4" />
+          </IconButton>
+        </div>
+      )
+    })
   }
 
   if (showForm || editingCustomer) {
@@ -353,17 +514,19 @@ export default function CustomersPage() {
         backButton={{ label: "Back to Dashboard", href: "/dashboard" }}
         actions={
           <NavGroup>
-            {hasPermission('customers', 'manage') && (
-              <NavLink href="/settings/customer-labels">
-                Manage Labels
-              </NavLink>
+            {canManageCustomers && (
+              <>
+                <NavLink href="/settings/customer-labels">
+                  Manage Labels
+                </NavLink>
+                <NavLink onClick={openImportCustomers}>
+                  Import
+                </NavLink>
+                <NavLink onClick={openCreateCustomer}>
+                  Add Customer
+                </NavLink>
+              </>
             )}
-            <NavLink onClick={() => setShowImport(true)}>
-              Import
-            </NavLink>
-            <NavLink onClick={() => setShowForm(true)}>
-              Add Customer
-            </NavLink>
           </NavGroup>
         }
       />
@@ -434,12 +597,12 @@ export default function CustomersPage() {
           <EmptyState
             title="No customers found"
             description="Adjust your search or add a new customer."
-            action={
-              <Button onClick={() => setShowForm(true)}>
+            action={canManageCustomers ? (
+              <Button onClick={openCreateCustomer}>
                 <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
                 Add Customer
               </Button>
-            }
+            ) : undefined}
           />
         </Card>
       ) : (
@@ -450,110 +613,7 @@ export default function CustomersPage() {
               <DataTable
                 data={customersWithLoyalty}
                 getRowKey={(customer) => customer.id}
-                columns={[
-                  {
-                    key: 'name',
-                    header: 'Name',
-                    cell: (customer) => (
-                      <div className="space-y-2">
-                        <div className="flex items-center">
-                          <div className="font-medium text-gray-900">
-                            <Link href={`/customers/${customer.id}`} className="text-blue-600 hover:text-blue-700">
-                              <CustomerName customer={customer} />
-                            </Link>
-                            {unreadCounts[customer.id] > 0 && (
-                              <Badge variant="primary" size="sm" className="ml-2">
-                                <ChatBubbleLeftIcon className="h-3 w-3 mr-1" />
-                                {unreadCounts[customer.id]}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                        <CustomerLabelDisplay assignments={customerLabels[customer.id] || []} />
-                      </div>
-                    ),
-                  },
-                  {
-                    key: 'mobile',
-                    header: 'Mobile',
-                    cell: (customer) => (
-                      <div className="space-y-1">
-                        {customer.mobile_number ? (
-                          <a href={`tel:${customer.mobile_number}`} className="text-blue-600 hover:text-blue-700">
-                            {customer.mobile_number}
-                          </a>
-                        ) : (
-                          '-'
-                        )}
-                        {customer.mobile_number && customer.sms_opt_in === false && (
-                          <Badge 
-                            variant="error" 
-                            size="sm"
-                            icon={<XCircleIcon className="h-3 w-3" />}
-                          >
-                            SMS Deactivated
-                          </Badge>
-                        )}
-                      </div>
-                    ),
-                  },
-                  // Loyalty column removed
-                  {
-                    key: 'event_preferences',
-                    header: 'Event Preferences',
-                    cell: (customer) => {
-                      if (customerPreferences[customer.id] && customerPreferences[customer.id].length > 0) {
-                        return (
-                          <BadgeGroup>
-                            {customerPreferences[customer.id].slice(0, 3).map((pref) => (
-                              <Badge
-                                key={pref.category_id}
-                                variant="success"
-                                size="sm"
-                                title={`Attended ${pref.times_attended} times`}
-                              >
-                                {pref.event_categories.name}
-                                {pref.times_attended > 1 && (
-                                  <span className="ml-1">×{pref.times_attended}</span>
-                                )}
-                              </Badge>
-                            ))}
-                            {customerPreferences[customer.id].length > 3 && (
-                              <span className="text-xs text-gray-500">
-                                +{customerPreferences[customer.id].length - 3} more
-                              </span>
-                            )}
-                          </BadgeGroup>
-                        );
-                      }
-                      return <span className="text-gray-400">No preferences yet</span>;
-                    },
-                  },
-                  {
-                    key: 'actions',
-                    header: '',
-                    cell: (customer) => (
-                      <div className="flex items-center justify-end space-x-2">
-                        <IconButton
-                          onClick={() => {
-                            setEditingCustomer(customer);
-                            setShowForm(true);
-                          }}
-                          aria-label="Edit customer"
-                        >
-                          <PencilIcon className="h-4 w-4" />
-                        </IconButton>
-                        <IconButton
-                          variant="danger"
-                          onClick={() => handleDeleteCustomer(customer)}
-                          aria-label="Delete customer"
-                        >
-                          <TrashIcon className="h-4 w-4" />
-                        </IconButton>
-                      </div>
-                    ),
-                  },
-                ]}
+                columns={desktopColumns}
               />
             </Card>
           </div>
@@ -577,24 +637,23 @@ export default function CustomersPage() {
                         )}
                       </div>
                     </Link>
-                    <div className="ml-2 flex-shrink-0 flex space-x-2">
-                      <IconButton
-                        onClick={() => {
-                          setEditingCustomer(customer)
-                          setShowForm(true)
-                        }}
-                        aria-label="Edit customer"
-                      >
-                        <PencilIcon className="h-4 w-4" />
-                      </IconButton>
-                      <IconButton
-                        variant="danger"
-                        onClick={() => handleDeleteCustomer(customer)}
-                        aria-label="Delete customer"
-                      >
-                        <TrashIcon className="h-4 w-4" />
-                      </IconButton>
-                    </div>
+                    {canManageCustomers && (
+                      <div className="ml-2 flex-shrink-0 flex space-x-2">
+                        <IconButton
+                          onClick={() => startEditCustomer(customer)}
+                          aria-label="Edit customer"
+                        >
+                          <PencilIcon className="h-4 w-4" />
+                        </IconButton>
+                        <IconButton
+                          variant="danger"
+                          onClick={() => handleDeleteCustomer(customer)}
+                          aria-label="Delete customer"
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </IconButton>
+                      </div>
+                    )}
                   </div>
                   <div className="mt-2 sm:flex sm:justify-between">
                     <div className="sm:flex space-y-1">

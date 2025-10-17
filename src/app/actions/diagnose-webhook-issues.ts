@@ -1,20 +1,19 @@
 'use server'
 
-import { createClient } from '@supabase/supabase-js'
-
-function getSupabaseAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    throw new Error('Missing Supabase environment variables')
-  }
-
-  return createClient(supabaseUrl, supabaseServiceRoleKey)
-}
+import { createAdminClient } from '@/lib/supabase/server'
+import { checkUserPermission } from '@/app/actions/rbac'
 
 export async function diagnoseWebhookIssues() {
-  const supabase = getSupabaseAdminClient()
+  const canManage = await checkUserPermission('settings', 'manage')
+  if (!canManage) {
+    return {
+      error: 'You do not have permission to run webhook diagnostics',
+      issues: [],
+      recommendations: [],
+    }
+  }
+
+  const supabase = createAdminClient()
   const report: any = {
     timestamp: new Date().toISOString(),
     issues: [],

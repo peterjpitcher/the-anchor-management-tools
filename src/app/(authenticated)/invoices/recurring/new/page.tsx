@@ -19,9 +19,12 @@ import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Plus, Trash2, Package } from 'lucide-react'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import type { InvoiceVendor, InvoiceLineItemInput, RecurringFrequency, LineItemCatalogItem } from '@/types/invoices'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 export default function NewRecurringInvoicePage() {
   const router = useRouter()
+  const { hasPermission, loading: permissionsLoading } = usePermissions()
+  const canCreate = hasPermission('invoices', 'create')
   const [vendors, setVendors] = useState<InvoiceVendor[]>([])
   const [catalogItems, setCatalogItems] = useState<LineItemCatalogItem[]>([])
   const [submitting, setSubmitting] = useState(false)
@@ -52,7 +55,17 @@ export default function NewRecurringInvoicePage() {
   ])
 
   useEffect(() => {
+    if (permissionsLoading) {
+      return
+    }
+
+    if (!canCreate) {
+      router.replace('/unauthorized')
+      return
+    }
+
     async function loadData() {
+      setLoading(true)
       try {
         const [vendorResult, catalogResult] = await Promise.all([
           getVendors(),
@@ -71,8 +84,9 @@ export default function NewRecurringInvoicePage() {
         setLoading(false)
       }
     }
+
     loadData()
-  }, [])
+  }, [permissionsLoading, canCreate, router])
 
   function addLineItem() {
     setLineItems([...lineItems, {
@@ -135,6 +149,10 @@ export default function NewRecurringInvoicePage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    if (!canCreate) {
+      toast.error('You do not have permission to create recurring invoices')
+      return
+    }
     setSubmitting(true)
 
     try {
@@ -165,11 +183,12 @@ export default function NewRecurringInvoicePage() {
     }
   }
 
-  if (loading) {
+  if (permissionsLoading || loading) {
     return (
       <PageWrapper>
         <PageHeader 
-          title="Loading..."
+          title="New Recurring Invoice"
+          subtitle="Set up automated invoice generation"
           backButton={{ label: 'Back to Invoices', href: '/invoices' }}
         />
         <PageContent>
@@ -179,6 +198,10 @@ export default function NewRecurringInvoicePage() {
         </PageContent>
       </PageWrapper>
     )
+  }
+
+  if (!canCreate) {
+    return null
   }
 
   const { subtotal, invoiceDiscountAmount, totalVat, total } = calculateTotals()
@@ -485,7 +508,7 @@ export default function NewRecurringInvoicePage() {
           </Button>
           <Button
             type="submit"
-            disabled={submitting || !vendorId || lineItems.length === 0}
+            disabled={submitting || !vendorId || lineItems.length === 0 || !canCreate}
             loading={submitting}
           >
             {submitting ? 'Creating...' : 'Create Recurring Invoice'}

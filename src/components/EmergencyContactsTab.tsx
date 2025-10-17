@@ -1,81 +1,53 @@
-'use client';
+'use client'
 
-import { useState, useEffect, useTransition } from 'react';
-import type { EmployeeEmergencyContact } from '@/types/database';
-import { useSupabase } from '@/components/providers/SupabaseProvider';
-import { Button } from '@/components/ui-v2/forms/Button';
-import AddEmergencyContactModal from '@/components/modals/AddEmergencyContactModal';
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import type { EmployeeEmergencyContact } from '@/types/database'
+import { Button } from '@/components/ui-v2/forms/Button'
+import AddEmergencyContactModal from '@/components/modals/AddEmergencyContactModal'
 
 interface EmergencyContactsTabProps {
-  employeeId: string;
+  employeeId: string
+  contacts: EmployeeEmergencyContact[]
+  canEdit: boolean
 }
 
-export default function EmergencyContactsTab({ employeeId }: EmergencyContactsTabProps) {
-  const supabase = useSupabase();
-  const [contacts, setContacts] = useState<EmployeeEmergencyContact[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [, startTransition] = useTransition();
+export default function EmergencyContactsTab({
+  employeeId,
+  contacts,
+  canEdit
+}: EmergencyContactsTabProps) {
+  const router = useRouter()
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
-  async function getEmergencyContacts(employeeId: string): Promise<EmployeeEmergencyContact[]> {
-    const { data, error } = await supabase
-      .from('employee_emergency_contacts')
-      .select('*')
-      .eq('employee_id', employeeId)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching emergency contacts:', error);
-      return [];
-    }
-    return data || [];
-  }
-
-  const fetchContacts = async () => {
-    setLoading(true);
-    const fetchedContacts = await getEmergencyContacts(employeeId);
-    setContacts(fetchedContacts);
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    fetchContacts();
-  }, [employeeId]);
-  
-  const handleModalClose = () => {
-    setIsModalOpen(false);
-    // Refresh the list after the modal is closed
-    startTransition(() => {
-      fetchContacts();
-    });
-  }
-
-  if (loading) {
-    return <div>Loading emergency contacts...</div>;
+  const handleSuccess = () => {
+    setIsModalOpen(false)
+    router.refresh()
   }
 
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
         <div>
-            <h3 className="text-lg font-medium text-gray-900">Emergency Contacts</h3>
-            <p className="mt-1 text-sm text-gray-600">
-                A list of emergency contacts for this employee.
-            </p>
+          <h3 className="text-lg font-medium text-gray-900">Emergency Contacts</h3>
+          <p className="mt-1 text-sm text-gray-600">A list of emergency contacts for this employee.</p>
         </div>
-        <Button onClick={() => setIsModalOpen(true)}>
-          Add Contact
-        </Button>
+        {canEdit && (
+          <Button onClick={() => setIsModalOpen(true)}>
+            Add Contact
+          </Button>
+        )}
       </div>
-      
-      <AddEmergencyContactModal 
+
+      <AddEmergencyContactModal
         employeeId={employeeId}
         isOpen={isModalOpen}
-        onClose={handleModalClose}
+        onClose={() => setIsModalOpen(false)}
+        onSuccess={handleSuccess}
       />
 
       {contacts.length === 0 ? (
-        <p>No emergency contacts found.</p>
+        <p className="text-sm text-gray-500">No emergency contacts found.</p>
       ) : (
         <ul className="divide-y divide-gray-200">
           {contacts.map((contact) => (
@@ -86,9 +58,13 @@ export default function EmergencyContactsTab({ employeeId }: EmergencyContactsTa
                     <h3 className="text-sm font-medium">{contact.name}</h3>
                     <div className="flex items-center space-x-2">
                       {contact.priority && contact.priority !== 'Other' && (
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                          contact.priority === 'Primary' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
-                        }`}>
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                            contact.priority === 'Primary'
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-blue-100 text-blue-800'
+                          }`}
+                        >
                           {contact.priority}
                         </span>
                       )}
@@ -104,5 +80,5 @@ export default function EmergencyContactsTab({ employeeId }: EmergencyContactsTa
         </ul>
       )}
     </div>
-  );
+  )
 }

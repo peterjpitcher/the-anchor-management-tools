@@ -630,10 +630,10 @@ NEXT_PUBLIC_CONTACT_PHONE_NUMBER
 
 ## Support & Resources
 
-- **Technical Documentation**: `/docs` directory
-- **API Documentation**: `/docs/API.md`
-- **Database Schema**: `/docs/DATABASE.md`
-- **Security Guidelines**: `/docs/SECURITY.md`
-- **Development Guide**: `/CLAUDE.md`
+- **Documentation index**: `docs/README.md`
+- **API docs**: `docs/guides/api/API_README.md`
+- **Security guidelines**: `docs/SECURITY.md`
+- **Developer workflow**: `docs/CONTRIBUTING.md`
+- **Database schema**: review migrations in `supabase/migrations/`
 
-For additional support, contact the development team or refer to the comprehensive documentation in the project repository.
+For additional support, contact the development team or refer to the comprehensive documentation in the repository.

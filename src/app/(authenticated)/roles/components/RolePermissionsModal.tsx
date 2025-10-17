@@ -12,10 +12,11 @@ import { Card } from '@/components/ui-v2/layout/Card';
 import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 
 interface RolePermissionsModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  role: Role;
-  allPermissions: Permission[];
+  isOpen: boolean
+  onClose: () => void
+  role: Role
+  allPermissions: Permission[]
+  canManage: boolean
 }
 
 interface GroupedPermissions {
@@ -26,7 +27,8 @@ export default function RolePermissionsModal({
   isOpen,
   onClose,
   role,
-  allPermissions
+  allPermissions,
+  canManage,
 }: RolePermissionsModalProps) {
   const [selectedPermissions, setSelectedPermissions] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -50,6 +52,11 @@ export default function RolePermissionsModal({
   }, [isOpen, loadRolePermissions]);
 
   const handleSave = async () => {
+    if (!canManage || role.is_system) {
+      toast.error('You do not have permission to update this role.');
+      return;
+    }
+
     setSaving(true);
     const result = await assignPermissionsToRole(role.id, Array.from(selectedPermissions));
     
@@ -64,6 +71,8 @@ export default function RolePermissionsModal({
   };
 
   const togglePermission = (permissionId: string) => {
+    if (!canManage || role.is_system) return;
+
     const newSelected = new Set(selectedPermissions);
     if (newSelected.has(permissionId)) {
       newSelected.delete(permissionId);
@@ -74,6 +83,8 @@ export default function RolePermissionsModal({
   };
 
   const toggleModule = (modulePermissions: Permission[]) => {
+    if (!canManage || role.is_system) return;
+
     const modulePermissionIds = modulePermissions.map(p => p.id);
     const allSelected = modulePermissionIds.every(id => selectedPermissions.has(id));
     
@@ -112,7 +123,7 @@ export default function RolePermissionsModal({
           <Button
             onClick={handleSave}
             variant="primary"
-            disabled={saving || loading || role.is_system}
+            disabled={saving || loading || role.is_system || !canManage}
             loading={saving}
           >
             Save Permissions
@@ -136,6 +147,7 @@ export default function RolePermissionsModal({
                   onClick={() => toggleModule(permissions)}
                   variant="link"
                   size="sm"
+                  disabled={!canManage || role.is_system}
                 >
                   {permissions.every(p => selectedPermissions.has(p.id))
                     ? 'Deselect all'
@@ -148,7 +160,7 @@ export default function RolePermissionsModal({
                     key={permission.id}
                     checked={selectedPermissions.has(permission.id)}
                     onChange={() => togglePermission(permission.id)}
-                    disabled={role.is_system}
+                    disabled={role.is_system || !canManage}
                     label={permission.description || permission.action}
                   />
                 ))}
@@ -158,9 +170,11 @@ export default function RolePermissionsModal({
         </div>
       )}
       
-      {role.is_system && (
+      {(role.is_system || !canManage) && (
         <p className="mt-4 text-sm text-gray-500 text-center">
-          System roles cannot be modified
+          {role.is_system
+            ? 'System roles cannot be modified.'
+            : 'You do not have permission to change role permissions.'}
         </p>
       )}
     </Modal>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { 
   ChevronLeftIcon, 
@@ -9,6 +9,8 @@ import {
 } from '@heroicons/react/24/outline'
 import type { BookingStatus } from '@/types/private-bookings'
 import { formatTime12Hour } from '@/lib/dateUtils'
+import { Select } from '@/components/ui-v2/forms/Select'
+import { Button } from '@/components/ui-v2/forms/Button'
 
 interface CalendarBooking {
   id: string
@@ -36,6 +38,8 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [viewMode, setViewMode] = useState<'calendar' | 'agenda'>('calendar')
   const [isMobile, setIsMobile] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<BookingStatus | 'all'>('all')
+  const [timeFilter, setTimeFilter] = useState<'all' | 'upcoming' | 'past'>('all')
   
   useEffect(() => {
     const checkMobile = () => {
@@ -70,14 +74,40 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
   }
   
   // Group bookings by date
-  const bookingsByDate = bookings.reduce((acc, booking) => {
-    const date = booking.event_date
-    if (!acc[date]) {
-      acc[date] = []
-    }
-    acc[date].push(booking)
-    return acc
-  }, {} as Record<string, CalendarBooking[]>)
+  const filteredBookings = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    return bookings.filter((booking) => {
+      if (statusFilter !== 'all' && booking.status !== statusFilter) {
+        return false
+      }
+
+      if (timeFilter === 'all') {
+        return true
+      }
+
+      const bookingDate = new Date(booking.event_date)
+      bookingDate.setHours(0, 0, 0, 0)
+
+      if (timeFilter === 'upcoming') {
+        return bookingDate >= today
+      }
+
+      return bookingDate < today
+    })
+  }, [bookings, statusFilter, timeFilter])
+
+  const bookingsByDate = useMemo(() => {
+    return filteredBookings.reduce((acc, booking) => {
+      const date = booking.event_date
+      if (!acc[date]) {
+        acc[date] = []
+      }
+      acc[date].push(booking)
+      return acc
+    }, {} as Record<string, CalendarBooking[]>)
+  }, [filteredBookings])
   
   const navigateMonth = (direction: 'prev' | 'next') => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + (direction === 'next' ? 1 : -1), 1))
@@ -101,11 +131,16 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
   }
 
   // Get bookings for current month in agenda view
-  const monthBookings = bookings.filter(booking => {
+  const monthBookings = filteredBookings.filter(booking => {
     const bookingDate = new Date(booking.event_date)
     return bookingDate.getMonth() === currentDate.getMonth() && 
            bookingDate.getFullYear() === currentDate.getFullYear()
   }).sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime())
+
+  const handleResetFilters = () => {
+    setStatusFilter('all')
+    setTimeFilter('all')
+  }
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -155,6 +190,38 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                 <ChevronRightIcon className="h-5 w-5" />
               </button>
             </div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Status</label>
+            <Select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as BookingStatus | 'all')}
+            >
+              <option value="all">All statuses</option>
+              <option value="draft">Draft</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+            </Select>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Date range</label>
+            <Select
+              value={timeFilter}
+              onChange={(event) => setTimeFilter(event.target.value as 'all' | 'upcoming' | 'past')}
+            >
+              <option value="all">All dates</option>
+              <option value="upcoming">Upcoming</option>
+              <option value="past">Past</option>
+            </Select>
+          </div>
+          <div className="flex items-end">
+            <Button onClick={handleResetFilters} variant="secondary" size="sm" className="w-full sm:w-auto">
+              Reset filters
+            </Button>
           </div>
         </div>
       </div>

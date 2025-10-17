@@ -8,6 +8,7 @@ import { sendSMS } from '@/lib/twilio'
 import { logger } from '@/lib/logger'
 import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils'
 import { ensureReplyInstruction } from '@/lib/sms/support'
+import { recordOutboundSmsMessage } from '@/lib/sms/logging'
 
 interface TwilioMessageCreateParams {
   to: string
@@ -82,14 +83,22 @@ async function ensureCustomerForPhone(
     const sanitizedFirstName = fallback.firstName?.trim()
     const sanitizedLastName = fallback.lastName?.trim()
 
-    if (!sanitizedFirstName) {
-      // If we don't genuinely know who this is, skip creating a placeholder customer.
-      return { customerId: null, standardizedPhone }
+    const fallbackFirstName = sanitizedFirstName && sanitizedFirstName.length > 0
+      ? sanitizedFirstName
+      : 'Unknown'
+
+    let fallbackLastName = sanitizedLastName && sanitizedLastName.length > 0
+      ? sanitizedLastName
+      : null
+
+    if (!fallbackLastName) {
+      const digits = standardizedPhone.replace(/\D/g, '')
+      fallbackLastName = digits.length >= 4 ? digits.slice(-4) : 'Contact'
     }
 
     const insertPayload = {
-      first_name: sanitizedFirstName,
-      last_name: sanitizedLastName || '',
+      first_name: fallbackFirstName,
+      last_name: fallbackLastName,
       mobile_number: standardizedPhone,
       email: fallback.email ?? null,
       sms_opt_in: true
@@ -238,34 +247,19 @@ export async function sendOTPMessage(params: { phoneNumber: string; message: str
     if (customerId) {
       try {
         const supabase = createAdminClient()
-        const messageLength = message.length
-        const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153)
-        const costUsd = segments * 0.04
-
-        const { error: logError } = await supabase
-          .from('messages')
-          .insert({
-            customer_id: customerId,
-            direction: 'outbound',
-            message_sid: twilioMessage.sid,
-            twilio_message_sid: twilioMessage.sid,
-            body: message,
-            status: twilioMessage.status || 'queued',
-            twilio_status: twilioMessage.status || 'queued',
-            from_number: twilioMessage.from || process.env.TWILIO_PHONE_NUMBER || '',
-            to_number: twilioMessage.to,
-            message_type: 'sms',
-            segments,
-            cost_usd: costUsd,
-            read_at: new Date().toISOString(),
-            metadata: {
-              context: 'otp'
-            }
-          })
-
-        if (logError) {
-          console.error('Failed to log OTP SMS message:', logError)
-        }
+        await recordOutboundSmsMessage({
+          supabase,
+          customerId,
+          to: twilioMessage.to,
+          body: message,
+          sid: twilioMessage.sid,
+          fromNumber: twilioMessage.from,
+          twilioStatus: twilioMessage.status || 'queued',
+          status: twilioMessage.status || 'queued',
+          metadata: {
+            context: 'otp'
+          }
+        })
       } catch (error) {
         console.error('Error recording OTP SMS message:', error)
       }
@@ -330,41 +324,16 @@ export async function sendSms(params: { to: string; body: string; bookingId?: st
 
     const twilioMessage = await twilioClientInstance.messages.create(messageParams)
 
-    const messageLength = messageBody.length
-    const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153)
-    const costUsd = segments * 0.04
-
-    let messageRecordId: string | null = null
-
-    try {
-      const { data: messageRecord, error: insertError } = await supabase
-        .from('messages')
-        .insert({
-          customer_id: customerId,
-          direction: 'outbound',
-          message_sid: twilioMessage.sid,
-          twilio_message_sid: twilioMessage.sid,
-          body: messageBody,
-          status: twilioMessage.status || 'queued',
-          twilio_status: twilioMessage.status || 'queued',
-          from_number: twilioMessage.from || process.env.TWILIO_PHONE_NUMBER || '',
-          to_number: twilioMessage.to,
-          message_type: 'sms',
-          segments,
-          cost_usd: costUsd,
-          read_at: new Date().toISOString()
-        })
-        .select('id')
-        .single()
-
-      if (insertError) {
-        console.error('Failed to log SMS message:', insertError)
-      } else {
-        messageRecordId = messageRecord?.id ?? null
-      }
-    } catch (loggingError) {
-      console.error('Failed to persist SMS log:', loggingError)
-    }
+    const messageRecordId = await recordOutboundSmsMessage({
+      supabase,
+      customerId,
+      to: twilioMessage.to,
+      body: messageBody,
+      sid: twilioMessage.sid,
+      fromNumber: twilioMessage.from,
+      twilioStatus: twilioMessage.status || 'queued',
+      status: twilioMessage.status || 'queued'
+    })
 
     return {
       success: true,
@@ -424,13 +393,8 @@ export async function sendBulkSMSAsync(customerIds: string[], message: string) {
 
     const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
     const messageWithSupportTemplate = ensureReplyInstruction(message, supportPhone)
-    const messageLength = messageWithSupportTemplate.length
-    const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153)
-    const costUsd = segments * 0.04
-
     const results: Array<{ customerId: string; success: boolean; messageSid?: string; error?: string }> = []
     const errors: Array<{ customerId: string; error: string }> = []
-    const messagesToInsert: Array<Record<string, unknown>> = []
 
     for (const customer of validCustomers) {
       try {
@@ -445,21 +409,15 @@ export async function sendBulkSMSAsync(customerIds: string[], message: string) {
           continue
         }
 
-        messagesToInsert.push({
-          customer_id: customer.id,
-          direction: 'outbound' as const,
-          message_sid: sendResult.sid,
-          twilio_message_sid: sendResult.sid,
+        await recordOutboundSmsMessage({
+          supabase,
+          customerId: customer.id,
+          to: customer.mobile_number!,
           body: messageWithSupport,
-          status: 'sent' as const,
-          twilio_status: 'queued' as const,
-          from_number: process.env.TWILIO_PHONE_NUMBER || '',
-          to_number: customer.mobile_number,
-          message_type: 'sms' as const,
-          segments,
-          cost_usd: costUsd,
-          read_at: new Date().toISOString(),
-          metadata: { bulk_sms: true }
+          sid: sendResult.sid,
+          metadata: { bulk_sms: true },
+          status: 'sent',
+          twilioStatus: 'queued'
         })
 
         results.push({
@@ -475,19 +433,6 @@ export async function sendBulkSMSAsync(customerIds: string[], message: string) {
         errors.push({
           customerId: customer.id,
           error: sendError instanceof Error ? sendError.message : 'Failed to send message'
-        })
-      }
-    }
-
-    if (messagesToInsert.length > 0) {
-      const { error: insertError } = await supabase
-        .from('messages')
-        .insert(messagesToInsert)
-
-      if (insertError) {
-        logger.error('Error recording bulk SMS messages', {
-          error: insertError,
-          metadata: { count: messagesToInsert.length }
         })
       }
     }

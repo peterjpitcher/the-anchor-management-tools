@@ -15,8 +15,12 @@ import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 
 import { BackButton } from '@/components/ui-v2/navigation/BackButton';
+import { usePermissions } from '@/contexts/PermissionContext'
 export default function ConvertQuotePage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
+  const { hasPermission, loading: permissionsLoading } = usePermissions()
+  const canView = hasPermission('invoices', 'view')
+  const canCreate = hasPermission('invoices', 'create')
   const [quote, setQuote] = useState<QuoteWithDetails | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -32,11 +36,21 @@ export default function ConvertQuotePage({ params }: { params: Promise<{ id: str
   }, [params])
 
   useEffect(() => {
-    async function loadQuote() {
-      if (!quoteId) return
-      
+    const id = quoteId
+
+    if (!id || permissionsLoading) {
+      return
+    }
+
+    if (!canView) {
+      router.replace('/unauthorized')
+      return
+    }
+
+    async function loadQuote(currentId: string) {
+      setLoading(true)
       try {
-        const result = await getQuote(quoteId)
+        const result = await getQuote(currentId)
         if (result.error || !result.quote) {
           throw new Error(result.error || 'Failed to load quote')
         }
@@ -57,14 +71,23 @@ export default function ConvertQuotePage({ params }: { params: Promise<{ id: str
       }
     }
     
-    if (quoteId) {
-      loadQuote()
+    void loadQuote(id)
+  }, [quoteId, permissionsLoading, canView, router])
+
+  useEffect(() => {
+    if (!permissionsLoading && canView && !canCreate) {
+      router.replace('/unauthorized')
     }
-  }, [quoteId])
+  }, [permissionsLoading, canView, canCreate, router])
 
 
   async function handleConvert() {
     if (!quoteId) return
+
+    if (!canCreate) {
+      toast.error('You do not have permission to convert quotes')
+      return
+    }
     
     setConverting(true)
     setError(null)
@@ -84,6 +107,20 @@ export default function ConvertQuotePage({ params }: { params: Promise<{ id: str
       toast.error('Failed to convert quote to invoice')
       setConverting(false)
     }
+  }
+
+  if (permissionsLoading) {
+    return (
+      <Page title="Loading...">
+        <div className="flex items-center justify-center h-64">
+          <Spinner size="lg" />
+        </div>
+      </Page>
+    )
+  }
+
+  if (!canCreate) {
+    return null
   }
 
   if (loading) {
@@ -171,6 +208,8 @@ export default function ConvertQuotePage({ params }: { params: Promise<{ id: str
         <Button
           onClick={handleConvert}
           loading={converting}
+          disabled={converting || !canCreate}
+          title={!canCreate ? 'You need invoice create permission to convert quotes.' : undefined}
           className="flex-1"
         >
           Convert to Invoice

@@ -2,6 +2,8 @@ import ReceiptsClient from './_components/ReceiptsClient'
 import { getReceiptWorkspaceData, type ReceiptWorkspaceFilters } from '@/app/actions/receipts'
 import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
 import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { redirect } from 'next/navigation'
+import { checkUserPermission } from '@/app/actions/rbac'
 
 const STATUS_VALUES = new Set(['pending', 'completed', 'auto_completed', 'no_receipt_required', 'cant_find'])
 const DIRECTION_VALUES = new Set(['in', 'out'])
@@ -23,6 +25,11 @@ type ReceiptsPageProps = {
 }
 
 export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) {
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    redirect('/unauthorized')
+  }
+
   const resolvedParams = searchParams ? await searchParams : {}
 
   const rawStatus = typeof resolvedParams?.status === 'string' ? resolvedParams.status : undefined

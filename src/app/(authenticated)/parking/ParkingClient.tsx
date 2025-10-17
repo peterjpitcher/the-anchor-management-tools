@@ -17,18 +17,23 @@ import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { Toggle } from '@/components/ui-v2/forms/Toggle'
-import { useSupabase } from '@/components/providers/SupabaseProvider'
 import type {
   ParkingBooking,
   ParkingBookingStatus,
   ParkingNotificationRecord,
   ParkingPaymentStatus,
-  ParkingRate,
-  ParkingPricingBreakdownLine,
   ParkingPricingResult
 } from '@/types/parking'
 import { calculateParkingPricing } from '@/lib/parking/pricing'
-import { createParkingBooking, generateParkingPaymentLink, markParkingBookingPaid, updateParkingBookingStatus } from '@/app/actions/parking'
+import {
+  createParkingBooking,
+  generateParkingPaymentLink,
+  markParkingBookingPaid,
+  updateParkingBookingStatus,
+  listParkingBookings,
+  getParkingBookingNotifications,
+  getParkingRateConfig
+} from '@/app/actions/parking'
 import type { ParkingRateConfig } from '@/lib/parking/pricing'
 
 interface ParkingPermissions {
@@ -97,7 +102,6 @@ const initialFormState = {
 }
 
 export default function ParkingClient({ permissions }: Props) {
-  const supabase = useSupabase()
   const [bookings, setBookings] = useState<ParkingBooking[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [selectedBooking, setSelectedBooking] = useState<ParkingBooking | null>(null)
@@ -120,35 +124,21 @@ export default function ParkingClient({ permissions }: Props) {
   }, [statusFilter, paymentFilter, search])
 
   useEffect(() => {
-    const loadRates = async () => {
-      const { data, error } = await supabase
-        .from('parking_rates')
-        .select('*')
-        .order('effective_from', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+    if (!permissions.canManage) return
 
-      if (error) {
-        console.error('Failed to load parking rates', error)
-        toast.error('Unable to load parking rates')
+    const loadRates = async () => {
+      const result = await getParkingRateConfig()
+      if (!result || 'error' in result) {
+        toast.error(result?.error || 'Unable to load parking rates')
         setActiveRates(null)
         return
       }
-
-      if (data) {
-        const rate = data as ParkingRate
-        setActiveRates({
-          hourlyRate: Number(rate.hourly_rate) || 0,
-          dailyRate: Number(rate.daily_rate) || 0,
-          weeklyRate: Number(rate.weekly_rate) || 0,
-          monthlyRate: Number(rate.monthly_rate) || 0
-        })
-      }
+      setActiveRates(result.data)
     }
 
     void loadRates()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [permissions.canManage])
 
   useEffect(() => {
     if (!activeRates || !createForm.start_at || !createForm.end_at) {
@@ -174,30 +164,19 @@ export default function ParkingClient({ permissions }: Props) {
     setLoading(true)
     let records: ParkingBooking[] = []
     try {
-      let query = supabase
-        .from('parking_bookings')
-        .select('*')
-        .order('start_at', { ascending: false })
-        .limit(200)
+      const result = await listParkingBookings({
+        status: statusFilter === 'all' ? undefined : statusFilter,
+        paymentStatus: paymentFilter === 'all' ? undefined : paymentFilter,
+        search: search || undefined
+      })
 
-      if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter)
-      }
-      if (paymentFilter !== 'all') {
-        query = query.eq('payment_status', paymentFilter)
-      }
-      if (search) {
-        query = query.or(`reference.ilike.%${search}%,customer_first_name.ilike.%${search}%,customer_last_name.ilike.%${search}%`)
-      }
-
-      const { data, error } = await query
-      if (error) {
-        console.error('Failed to load parking bookings', error)
-        toast.error('Failed to load parking bookings')
+      if (!result || 'error' in result) {
+        toast.error(result?.error || 'Failed to load parking bookings')
         setBookings([])
         return []
       }
-      records = (data || []) as ParkingBooking[]
+
+      records = result.data
       setBookings(records)
     } finally {
       setLoading(false)
@@ -351,19 +330,14 @@ export default function ParkingClient({ permissions }: Props) {
   const loadNotifications = async (bookingId: string) => {
     setLoadingNotifications(true)
     try {
-      const { data, error } = await supabase
-        .from('parking_booking_notifications')
-        .select('*')
-        .eq('booking_id', bookingId)
-        .order('created_at', { ascending: false })
-
-      if (error) {
-        console.error('Failed to load parking notifications', error)
+      const result = await getParkingBookingNotifications(bookingId)
+      if (!result || 'error' in result) {
+        toast.error(result?.error || 'Failed to load notifications')
         setNotifications([])
         return
       }
 
-      setNotifications((data || []) as ParkingNotificationRecord[])
+      setNotifications(result.data as ParkingNotificationRecord[])
     } finally {
       setLoadingNotifications(false)
     }

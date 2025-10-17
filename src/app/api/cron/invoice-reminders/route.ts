@@ -75,7 +75,9 @@ export async function GET(request: Request) {
     // Process each overdue invoice
     for (const invoice of overdueInvoices || []) {
       results.processed++
-      
+      let internalReminderSent = false
+      let customerReminderSent = false
+
       try {
         const dueDate = new Date(invoice.due_date)
         const daysOverdue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24))
@@ -137,34 +139,51 @@ ${invoice.vendor?.email ? 'Customer reminder has been sent.' : 'No vendor email 
 View invoice: ${process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'}/invoices/${invoice.id}
             `.trim()
 
-            // Create a simple invoice object for internal notification
-            const internalInvoice = {
-              ...invoice,
-              invoice_number: `REMINDER: ${invoice.invoice_number}`
+            const { data: existingInternalReminder, error: internalCheckError } = await supabase
+              .from('invoice_email_logs')
+              .select('id')
+              .eq('invoice_id', invoice.id)
+              .eq('status', 'sent')
+              .eq('subject', internalSubject)
+              .maybeSingle()
+
+            if (internalCheckError) {
+              console.error('[Cron] Error checking existing internal reminder logs:', internalCheckError)
             }
 
-            const internalResult = await sendInvoiceEmail(
-              internalInvoice as InvoiceWithDetails,
-              internalEmail,
-              internalSubject,
-              internalBody
-            )
+            if (existingInternalReminder) {
+              console.log(`[Cron] Internal reminder already sent for invoice ${invoice.invoice_number} (${reminderType}); skipping duplicate`)
+            } else {
+              // Create a simple invoice object for internal notification
+              const internalInvoice = {
+                ...invoice,
+                invoice_number: `REMINDER: ${invoice.invoice_number}`
+              }
 
-            if (internalResult.success) {
-              console.log(`[Cron] Internal reminder sent for invoice ${invoice.invoice_number}`)
-              results.internal_notifications++
+              const internalResult = await sendInvoiceEmail(
+                internalInvoice as InvoiceWithDetails,
+                internalEmail,
+                internalSubject,
+                internalBody
+              )
 
-              // Log internal notification
-              await supabase
-                .from('invoice_email_logs')
-                .insert({
-                  invoice_id: invoice.id,
-                  sent_to: internalEmail,
-                  sent_by: 'system',
-                  subject: internalSubject,
-                  body: `Internal ${reminderType} - ${daysOverdue} days overdue`,
-                  status: 'sent'
-                })
+              if (internalResult.success) {
+                console.log(`[Cron] Internal reminder sent for invoice ${invoice.invoice_number}`)
+                results.internal_notifications++
+                internalReminderSent = true
+
+                // Log internal notification
+                await supabase
+                  .from('invoice_email_logs')
+                  .insert({
+                    invoice_id: invoice.id,
+                    sent_to: internalEmail,
+                    sent_by: 'system',
+                    subject: internalSubject,
+                    body: `Internal ${reminderType} - ${daysOverdue} days overdue`,
+                    status: 'sent'
+                  })
+              }
             }
           } catch (error) {
             console.error(`[Cron] Error sending internal reminder:`, error)
@@ -203,49 +222,66 @@ Best regards,
 Orange Jelly Limited
 `
 
-            // Support multiple recipients — first as To, others as CC
-            const raw = String(invoice.vendor.email)
-            const recipients = raw.split(/[;,]/).map(s => s.trim()).filter(Boolean)
-            const toAddress = recipients[0] || raw
-            const ccAddresses = (recipients[0] ? recipients.slice(1) : []).filter(Boolean)
+            const { data: existingCustomerReminder, error: customerCheckError } = await supabase
+              .from('invoice_email_logs')
+              .select('id')
+              .eq('invoice_id', invoice.id)
+              .eq('status', 'sent')
+              .eq('subject', customerSubject)
+              .maybeSingle()
 
-            const customerResult = await sendInvoiceEmail(
-              invoice as InvoiceWithDetails,
-              toAddress,
-              customerSubject,
-              customerBody,
-              ccAddresses
-            )
+            if (customerCheckError) {
+              console.error('[Cron] Error checking existing customer reminder logs:', customerCheckError)
+            }
 
-            if (customerResult.success) {
-              console.log(`[Cron] Customer reminder sent for invoice ${invoice.invoice_number}`)
-              results.reminders_sent++
+            if (existingCustomerReminder) {
+              console.log(`[Cron] Customer reminder already sent for invoice ${invoice.invoice_number} (${reminderType}); skipping duplicate`)
+            } else {
+              // Support multiple recipients — first as To, others as CC
+              const raw = String(invoice.vendor.email)
+              const recipients = raw.split(/[;,]/).map(s => s.trim()).filter(Boolean)
+              const toAddress = recipients[0] || raw
+              const ccAddresses = (recipients[0] ? recipients.slice(1) : []).filter(Boolean)
 
-              // Log To and CC
-              await supabase
-                .from('invoice_email_logs')
-                .insert({
-                  invoice_id: invoice.id,
-                  sent_to: toAddress,
-                  sent_by: 'system',
-                  subject: customerSubject,
-                  body: `${reminderType} - ${daysOverdue} days overdue`,
-                  status: 'sent'
-                })
-              for (const cc of ccAddresses) {
+              const customerResult = await sendInvoiceEmail(
+                invoice as InvoiceWithDetails,
+                toAddress,
+                customerSubject,
+                customerBody,
+                ccAddresses
+              )
+
+              if (customerResult.success) {
+                console.log(`[Cron] Customer reminder sent for invoice ${invoice.invoice_number}`)
+                results.reminders_sent++
+                customerReminderSent = true
+
+                // Log To and CC
                 await supabase
                   .from('invoice_email_logs')
                   .insert({
                     invoice_id: invoice.id,
-                    sent_to: cc,
+                    sent_to: toAddress,
                     sent_by: 'system',
                     subject: customerSubject,
                     body: `${reminderType} - ${daysOverdue} days overdue`,
                     status: 'sent'
                   })
+                for (const cc of ccAddresses) {
+                  await supabase
+                    .from('invoice_email_logs')
+                    .insert({
+                      invoice_id: invoice.id,
+                      sent_to: cc,
+                      sent_by: 'system',
+                      subject: customerSubject,
+                      body: `${reminderType} - ${daysOverdue} days overdue`,
+                      status: 'sent'
+                    })
+                }
+              } else {
+                console.error(`[Cron] Failed to send customer reminder for invoice ${invoice.invoice_number}:`, customerResult.error)
               }
-            } else {
-              console.error(`[Cron] Failed to send customer reminder for invoice ${invoice.invoice_number}:`, customerResult.error)
             }
           } catch (error) {
             console.error(`[Cron] Error sending customer reminder:`, error)
@@ -272,8 +308,8 @@ Orange Jelly Limited
               days_overdue: daysOverdue,
               invoice_number: invoice.invoice_number,
               vendor: invoice.vendor?.name,
-              internal_notification: results.internal_notifications > 0,
-              customer_reminder: invoice.vendor?.email ? true : false
+              internal_notification: internalReminderSent,
+              customer_reminder: customerReminderSent
             }
           })
 

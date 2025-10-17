@@ -14,21 +14,44 @@ import { toast } from '@/components/ui-v2/feedback/Toast'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { Plus, Calendar, Trash2, Edit, Play, Pause } from 'lucide-react'
 import type { RecurringInvoiceWithDetails } from '@/types/invoices'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 type GenerateInvoiceActionResult = Awaited<ReturnType<typeof generateInvoiceFromRecurring>>
 
 export default function RecurringInvoicesPage() {
   const router = useRouter()
+  const { hasPermission, loading: permissionsLoading } = usePermissions()
+  const canView = hasPermission('invoices', 'view')
+  const canCreate = hasPermission('invoices', 'create')
+  const canEdit = hasPermission('invoices', 'edit')
+  const canDelete = hasPermission('invoices', 'delete')
+  const isReadOnly = canView && !canCreate && !canEdit && !canDelete
+
   const [recurringInvoices, setRecurringInvoices] = useState<RecurringInvoiceWithDetails[]>([])
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
 
   useEffect(() => {
+    if (permissionsLoading) {
+      return
+    }
+
+    if (!canView) {
+      router.replace('/unauthorized')
+      return
+    }
+
     loadRecurringInvoices()
-  }, [])
+  }, [permissionsLoading, canView, router])
 
   async function loadRecurringInvoices() {
+    if (!canView) {
+      return
+    }
+
+    setLoading(true)
     try {
       const result = await getRecurringInvoices()
       if (result.recurringInvoices) {
@@ -42,6 +65,11 @@ export default function RecurringInvoicesPage() {
   }
 
   async function handleDelete(id: string) {
+    if (!canDelete) {
+      toast.error('You do not have permission to delete recurring invoices')
+      return
+    }
+
     setProcessing(id)
     try {
       const formData = new FormData()
@@ -64,6 +92,11 @@ export default function RecurringInvoicesPage() {
   }
 
   async function handleGenerateNow(id: string) {
+    if (!canCreate) {
+      toast.error('You do not have permission to generate invoices')
+      return
+    }
+
     if (!confirm('Generate invoice now? This will create a new invoice immediately.')) {
       return
     }
@@ -89,6 +122,11 @@ export default function RecurringInvoicesPage() {
   }
 
   async function handleToggleStatus(id: string, currentStatus: boolean) {
+    if (!canEdit) {
+      toast.error('You do not have permission to update recurring invoices')
+      return
+    }
+
     const action = currentStatus ? 'deactivate' : 'activate'
     if (!confirm(`Are you sure you want to ${action} this recurring invoice?`)) {
       return
@@ -137,7 +175,7 @@ export default function RecurringInvoicesPage() {
     }
   }
 
-  if (loading) {
+  if (permissionsLoading || loading) {
     return (
       <PageWrapper>
         <PageHeader 
@@ -153,6 +191,10 @@ export default function RecurringInvoicesPage() {
     )
   }
 
+  if (!canView) {
+    return null
+  }
+
   return (
     <PageWrapper>
       <PageHeader
@@ -165,20 +207,31 @@ export default function RecurringInvoicesPage() {
           <Button
             onClick={() => router.push('/invoices/recurring/new')}
             leftIcon={<Plus className="h-4 w-4" />}
+            disabled={!canCreate}
+            title={!canCreate ? 'You need invoice create permission to add recurring invoices.' : undefined}
           >
             New Recurring Invoice
           </Button>
         }
       />
       <PageContent>
+        {isReadOnly && (
+          <Alert
+            variant="info"
+            description="You have read-only access to recurring invoices; creation and management actions are disabled."
+            className="mb-6"
+          />
+        )}
         {recurringInvoices.length === 0 ? (
         <EmptyState icon="calendar"
           title="No recurring invoices"
           description="Create recurring invoices to automate your billing"
           action={
-            <Button onClick={() => router.push('/invoices/recurring/new')}>
-              Create First Recurring Invoice
-            </Button>
+            canCreate ? (
+              <Button onClick={() => router.push('/invoices/recurring/new')}>
+                Create First Recurring Invoice
+              </Button>
+            ) : undefined
           }
         />
       ) : (
@@ -242,9 +295,15 @@ export default function RecurringInvoicesPage() {
                       variant="secondary"
                       size="sm"
                       onClick={() => handleToggleStatus(r.id, r.is_active)}
-                      disabled={processing === r.id}
+                      disabled={processing === r.id || !canEdit}
                       loading={processing === r.id}
-                      title={r.is_active ? 'Deactivate recurring invoice' : 'Activate recurring invoice'}
+                      title={
+                        !canEdit
+                          ? 'You need invoice edit permission to change status.'
+                          : r.is_active
+                            ? 'Deactivate recurring invoice'
+                            : 'Activate recurring invoice'
+                      }
                       iconOnly
                     >
                       {r.is_active ? (
@@ -257,9 +316,15 @@ export default function RecurringInvoicesPage() {
                       variant="secondary"
                       size="sm"
                       onClick={() => handleGenerateNow(r.id)}
-                      disabled={processing === r.id || !r.is_active}
+                      disabled={processing === r.id || !r.is_active || !canCreate}
                       loading={processing === r.id}
-                      title="Generate invoice now"
+                      title={
+                        !canCreate
+                          ? 'You need invoice create permission to generate invoices.'
+                          : !r.is_active
+                            ? 'Activate the schedule before generating.'
+                            : 'Generate invoice now'
+                      }
                       iconOnly
                     >
                       <Calendar className="h-4 w-4" />
@@ -278,8 +343,13 @@ export default function RecurringInvoicesPage() {
                       variant="danger"
                       size="sm"
                       onClick={() => setShowDeleteConfirm(r.id)}
-                      disabled={processing === r.id}
+                      disabled={processing === r.id || !canDelete}
                       loading={processing === r.id}
+                      title={
+                        !canDelete
+                          ? 'You need invoice delete permission to remove recurring invoices.'
+                          : undefined
+                      }
                       iconOnly
                     >
                       <Trash2 className="h-4 w-4" />

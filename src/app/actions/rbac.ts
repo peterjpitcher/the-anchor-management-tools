@@ -3,7 +3,9 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 import type { Role, Permission, UserPermission, ModuleName, ActionType } from '@/types/rbac';
+import { logAuditEvent } from './audit';
 
 // Role validation schemas
 const roleSchema = z.object({
@@ -15,6 +17,102 @@ const roleSchema = z.object({
     .max(500, 'Description too long')
     .optional()
 })
+
+type PermissionCheckResult =
+  | { error: string }
+  | { user: SupabaseUser; admin: ReturnType<typeof createAdminClient> }
+
+type UserSummary = Pick<SupabaseUser, 'id' | 'email' | 'created_at' | 'last_sign_in_at'>;
+
+function normalizeRequiredTimestamp(value: unknown): string {
+  if (typeof value === 'string' && value) {
+    return value;
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (typeof value === 'number') {
+    return new Date(value).toISOString();
+  }
+
+  return new Date().toISOString();
+}
+
+function normalizeOptionalTimestamp(value: unknown): string | null {
+  if (!value) {
+    return null;
+  }
+
+  if (typeof value === 'string' && value) {
+    return value;
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (typeof value === 'number') {
+    return new Date(value).toISOString();
+  }
+
+  return null;
+}
+
+function normalizeUserRecord(record: unknown): UserSummary | null {
+  if (!record || typeof record !== 'object') {
+    return null;
+  }
+
+  const candidate = record as Record<string, any>;
+  if (!candidate.id) {
+    return null;
+  }
+
+  return {
+    id: String(candidate.id),
+    email:
+      typeof candidate.email === 'string' || candidate.email === null
+        ? candidate.email
+        : candidate.email
+          ? String(candidate.email)
+          : null,
+    created_at: normalizeRequiredTimestamp(candidate.created_at),
+    last_sign_in_at: normalizeOptionalTimestamp(candidate.last_sign_in_at) ?? undefined,
+  };
+}
+
+function isUserSummary(record: UserSummary | null): record is UserSummary {
+  return record !== null;
+}
+
+async function requirePermission(moduleName: ModuleName, action: ActionType): Promise<PermissionCheckResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: 'Not authenticated' };
+  }
+
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc('user_has_permission', {
+    p_user_id: user.id,
+    p_module_name: moduleName,
+    p_action: action,
+  });
+
+  if (error) {
+    console.error('Permission check failed:', error);
+    return { error: 'Failed to verify permissions' };
+  }
+
+  if (data !== true) {
+    return { error: 'Insufficient permissions' };
+  }
+
+  return { user, admin };
+}
 
 export async function getUserPermissions(userId?: string) {
   const supabase = await createClient();
@@ -64,84 +162,107 @@ export async function checkUserPermission(
 
 export async function getUserRoles(userId?: string) {
   const supabase = await createClient();
-  
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: 'Not authenticated' };
-  
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: 'Not authenticated' };
+  }
+
   const targetUserId = userId || user.id;
-  
-  const { data, error } = await supabase
-    .rpc('get_user_roles', { p_user_id: targetUserId });
-  
+
+  if (targetUserId !== user.id) {
+    const permission = await requirePermission('users', 'manage_roles');
+    if ('error' in permission) {
+      return { error: permission.error };
+    }
+
+    const { admin } = permission;
+
+    const { data, error } = await admin
+      .from('user_roles')
+      .select('role_id')
+      .eq('user_id', targetUserId);
+
+    if (error) {
+      console.error('Error fetching user roles for target user:', error);
+      return { error: 'Failed to fetch roles' };
+    }
+
+    return { success: true, data: data || [] };
+  }
+
+  const { data, error } = await supabase.rpc('get_user_roles', {
+    p_user_id: targetUserId,
+  });
+
   if (error) {
     console.error('Error fetching user roles:', error);
     return { error: 'Failed to fetch roles' };
   }
-  
-  return { success: true, data };
+
+  return { success: true, data: data || [] };
 }
 
 export async function getAllRoles() {
-  const supabase = await createClient();
-  
-  const hasPermission = await checkUserPermission('roles', 'view');
-  if (!hasPermission) {
-    return { error: 'Insufficient permissions' };
+  const permission = await requirePermission('roles', 'view');
+  if ('error' in permission) {
+    return { error: permission.error };
   }
-  
-  const { data, error } = await supabase
-    .from('roles')
-    .select('*')
-    .order('name');
-  
+
+  const { admin } = permission;
+
+  const { data, error } = await admin.from('roles').select('*').order('name');
+
   if (error) {
     console.error('Error fetching roles:', error);
     return { error: 'Failed to fetch roles' };
   }
-  
-  return { success: true, data: data as Role[] };
+
+  return { success: true, data: (data || []) as Role[] };
 }
 
 export async function getAllPermissions() {
-  const supabase = await createClient();
-  
-  const hasPermission = await checkUserPermission('roles', 'view');
-  if (!hasPermission) {
-    return { error: 'Insufficient permissions' };
+  const permission = await requirePermission('roles', 'view');
+  if ('error' in permission) {
+    return { error: permission.error };
   }
-  
-  const { data, error } = await supabase
+
+  const { admin } = permission;
+
+  const { data, error } = await admin
     .from('permissions')
     .select('*')
     .order('module_name, action');
-  
+
   if (error) {
     console.error('Error fetching permissions:', error);
     return { error: 'Failed to fetch permissions' };
   }
-  
-  return { success: true, data: data as Permission[] };
+
+  return { success: true, data: (data || []) as Permission[] };
 }
 
 export async function getRolePermissions(roleId: string) {
-  const supabase = await createClient();
-  
-  const hasPermission = await checkUserPermission('roles', 'view');
-  if (!hasPermission) {
-    return { error: 'Insufficient permissions' };
+  const permission = await requirePermission('roles', 'view');
+  if ('error' in permission) {
+    return { error: permission.error };
   }
-  
-  const { data, error } = await supabase
+
+  const { admin } = permission;
+
+  const { data, error } = await admin
     .from('role_permissions')
     .select('*, permissions(*)')
     .eq('role_id', roleId);
-  
+
   if (error) {
     console.error('Error fetching role permissions:', error);
     return { error: 'Failed to fetch role permissions' };
   }
-  
-  return { success: true, data };
+
+  return { success: true, data: data || [] };
 }
 
 export async function createRole(prevState: unknown, formData: FormData) {
@@ -149,13 +270,13 @@ export async function createRole(prevState: unknown, formData: FormData) {
     return { error: 'No form data provided' };
   }
 
-  const supabase = await createClient();
-  
-  const hasPermission = await checkUserPermission('roles', 'manage');
-  if (!hasPermission) {
-    return { error: 'Insufficient permissions' };
+  const permission = await requirePermission('roles', 'manage');
+  if ('error' in permission) {
+    return { error: permission.error };
   }
-  
+
+  const { user, admin } = permission;
+
   // Parse and validate form data
   const rawData = {
     name: formData.get('name') as string,
@@ -168,30 +289,43 @@ export async function createRole(prevState: unknown, formData: FormData) {
   }
 
   const { name, description } = validationResult.data
-  
-  const { data, error } = await supabase
+
+  const { data, error } = await admin
     .from('roles')
-    .insert([{ name, description }])
+    .insert([{ name, description: description ?? null }])
     .select()
     .single();
-  
+
   if (error) {
     console.error('Error creating role:', error);
     return { error: 'Failed to create role' };
   }
-  
+
+  await logAuditEvent({
+    user_id: user.id,
+    ...(user.email && { user_email: user.email }),
+    operation_type: 'create',
+    resource_type: 'role',
+    resource_id: data.id,
+    operation_status: 'success',
+    new_values: {
+      name: data.name,
+      description: data.description,
+    },
+  });
+
   revalidatePath('/roles');
   return { success: true, data };
 }
 
 export async function updateRole(prevState: unknown, formData: FormData) {
-  const supabase = await createClient();
-  
-  const hasPermission = await checkUserPermission('roles', 'manage');
-  if (!hasPermission) {
-    return { error: 'Insufficient permissions' };
+  const permission = await requirePermission('roles', 'manage');
+  if ('error' in permission) {
+    return { error: permission.error };
   }
-  
+
+  const { user, admin } = permission;
+
   const roleId = formData.get('roleId') as string;
   
   if (!roleId) {
@@ -210,59 +344,128 @@ export async function updateRole(prevState: unknown, formData: FormData) {
   }
 
   const { name, description } = validationResult.data
-  
-  const { error } = await supabase
+
+  const { data: existing, error: fetchError } = await admin
     .from('roles')
-    .update({ name, description })
+    .select('*')
     .eq('id', roleId)
-    .eq('is_system', false); // Prevent updating system roles
-  
+    .maybeSingle();
+
+  if (fetchError) {
+    console.error('Error loading role before update:', fetchError);
+    return { error: 'Failed to load role' };
+  }
+
+  if (!existing) {
+    return { error: 'Role not found' };
+  }
+
+  if (existing.is_system) {
+    return { error: 'System roles cannot be modified' };
+  }
+
+  const { data: updated, error } = await admin
+    .from('roles')
+    .update({ name, description: description ?? null })
+    .eq('id', roleId)
+    .select()
+    .single();
+
   if (error) {
     console.error('Error updating role:', error);
     return { error: 'Failed to update role' };
   }
-  
+
+  await logAuditEvent({
+    user_id: user.id,
+    ...(user.email && { user_email: user.email }),
+    operation_type: 'update',
+    resource_type: 'role',
+    resource_id: roleId,
+    operation_status: 'success',
+    old_values: {
+      name: existing.name,
+      description: existing.description,
+    },
+    new_values: {
+      name: updated?.name,
+      description: updated?.description,
+    },
+  });
+
   revalidatePath('/roles');
   return { success: true };
 }
 
 export async function deleteRole(roleId: string) {
-  const supabase = await createClient();
-  
-  const hasPermission = await checkUserPermission('roles', 'manage');
-  if (!hasPermission) {
-    return { error: 'Insufficient permissions' };
+  const permission = await requirePermission('roles', 'manage');
+  if ('error' in permission) {
+    return { error: permission.error };
   }
-  
-  const { error } = await supabase
+
+  const { user, admin } = permission;
+
+  const { data: existing, error: fetchError } = await admin
     .from('roles')
-    .delete()
+    .select('*')
     .eq('id', roleId)
-    .eq('is_system', false); // Prevent deleting system roles
-  
+    .maybeSingle();
+
+  if (fetchError) {
+    console.error('Error loading role before delete:', fetchError);
+    return { error: 'Failed to load role' };
+  }
+
+  if (!existing) {
+    return { error: 'Role not found' };
+  }
+
+  if (existing.is_system) {
+    return { error: 'System roles cannot be deleted' };
+  }
+
+  const { error } = await admin.from('roles').delete().eq('id', roleId);
+
   if (error) {
     console.error('Error deleting role:', error);
     return { error: 'Failed to delete role' };
   }
-  
+
+  await logAuditEvent({
+    user_id: user.id,
+    ...(user.email && { user_email: user.email }),
+    operation_type: 'delete',
+    resource_type: 'role',
+    resource_id: roleId,
+    operation_status: 'success',
+    old_values: {
+      name: existing.name,
+      description: existing.description,
+    },
+  });
+
   revalidatePath('/roles');
   return { success: true };
 }
 
 export async function assignPermissionsToRole(roleId: string, permissionIds: string[]) {
-  const supabase = await createClient();
-  
-  const hasPermission = await checkUserPermission('roles', 'manage');
-  if (!hasPermission) {
-    return { error: 'Insufficient permissions' };
+  const permission = await requirePermission('roles', 'manage');
+  if ('error' in permission) {
+    return { error: permission.error };
   }
-  
-  // First, remove all existing permissions for this role
-  const { error: deleteError } = await supabase
+
+  const { user, admin } = permission;
+
+  const { data: existing } = await admin
+    .from('role_permissions')
+    .select('permission_id')
+    .eq('role_id', roleId);
+
+  const { error: deleteError } = await admin
     .from('role_permissions')
     .delete()
     .eq('role_id', roleId);
-  
+
   if (deleteError) {
     console.error('Error removing permissions:', deleteError);
     return { error: 'Failed to update permissions' };
@@ -275,7 +478,7 @@ export async function assignPermissionsToRole(roleId: string, permissionIds: str
       permission_id: permissionId
     }));
     
-    const { error: insertError } = await supabase
+    const { error: insertError } = await admin
       .from('role_permissions')
       .insert(rolePermissions);
     
@@ -284,28 +487,44 @@ export async function assignPermissionsToRole(roleId: string, permissionIds: str
       return { error: 'Failed to assign permissions' };
     }
   }
+
+  await logAuditEvent({
+    user_id: user.id,
+    ...(user.email && { user_email: user.email }),
+    operation_type: 'update',
+    resource_type: 'role_permissions',
+    resource_id: roleId,
+    operation_status: 'success',
+    old_values: {
+      permission_ids: (existing || []).map((item) => item.permission_id),
+    },
+    new_values: {
+      permission_ids: permissionIds,
+    },
+  });
   
   revalidatePath('/roles');
   return { success: true };
 }
 
 export async function assignRolesToUser(userId: string, roleIds: string[]) {
-  const supabase = await createClient();
-  
-  const hasPermission = await checkUserPermission('users', 'manage_roles');
-  if (!hasPermission) {
-    return { error: 'Insufficient permissions' };
+  const permission = await requirePermission('users', 'manage_roles');
+  if ('error' in permission) {
+    return { error: permission.error };
   }
-  
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: 'Not authenticated' };
-  
-  // First, remove all existing roles for this user
-  const { error: deleteError } = await supabase
+
+  const { user, admin } = permission;
+
+  const { data: existing } = await admin
+    .from('user_roles')
+    .select('role_id')
+    .eq('user_id', userId);
+
+  const { error: deleteError } = await admin
     .from('user_roles')
     .delete()
     .eq('user_id', userId);
-  
+
   if (deleteError) {
     console.error('Error removing user roles:', deleteError);
     return { error: 'Failed to update user roles' };
@@ -319,7 +538,7 @@ export async function assignRolesToUser(userId: string, roleIds: string[]) {
       assigned_by: user.id
     }));
     
-    const { error: insertError } = await supabase
+    const { error: insertError } = await admin
       .from('user_roles')
       .insert(userRoles);
     
@@ -328,71 +547,92 @@ export async function assignRolesToUser(userId: string, roleIds: string[]) {
       return { error: 'Failed to assign roles' };
     }
   }
+
+  await logAuditEvent({
+    user_id: user.id,
+    ...(user.email && { user_email: user.email }),
+    operation_type: 'update',
+    resource_type: 'user_roles',
+    resource_id: userId,
+    operation_status: 'success',
+    old_values: {
+      role_ids: (existing || []).map((record) => record.role_id),
+    },
+    new_values: {
+      role_ids: roleIds,
+    },
+  });
   
   revalidatePath('/users');
   return { success: true };
 }
 
 export async function getAllUsers() {
-  const supabase = await createClient();
-  
-  const hasPermission = await checkUserPermission('users', 'view');
-  if (!hasPermission) {
-    return { error: 'Insufficient permissions' };
+  const permission = await requirePermission('users', 'view');
+  if ('error' in permission) {
+    return { error: permission.error };
   }
-  
+
+  const { admin, user: actingUser } = permission;
+
   try {
-    // First, try the RPC function if it exists
-    const { data: users, error: rpcError } = await supabase
-      .rpc('get_users_for_admin');
-    
-    // If the secure function fails, try the view
+    const { data: rpcData, error: rpcError } = await admin.rpc('get_users_for_admin');
     if (rpcError) {
-      const { data: viewData, error: viewError } = await supabase
-        .from('admin_users_view')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (!viewError && viewData) {
-        return { success: true, data: viewData };
+      console.warn('RPC get_users_for_admin failed, falling back to view:', rpcError);
+    }
+
+    if (Array.isArray(rpcData)) {
+      const normalizedRpc = rpcData.map(normalizeUserRecord).filter(isUserSummary);
+      if (normalizedRpc.length > 0) {
+        return {
+          success: true,
+          data: normalizedRpc,
+        };
       }
     }
-    
-    if (rpcError && !users) {
-      // If RPC fails, try admin client as fallback
-      const adminClient = createAdminClient();
-      const { data: authData, error: authError } = await adminClient.auth.admin.listUsers();
-      
-      if (authError) {
-        console.error('Failed to fetch users:', authError);
-        // As a last resort, return the current user only
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          return {
-            success: true,
-            data: [{
-              id: user.id,
-              email: user.email || '',
-              created_at: user.created_at || new Date().toISOString(),
-              last_sign_in_at: user.last_sign_in_at || null
-            }]
-          };
-        }
-        return { error: 'Unable to fetch users. Please run the user access migration.' };
+
+    const { data: viewData, error: viewError } = await admin
+      .from('admin_users_view')
+      .select('id, email, created_at, last_sign_in_at')
+      .order('created_at', { ascending: false });
+
+    if (viewError) {
+      console.warn('admin_users_view query failed, falling back to auth.admin.listUsers:', viewError);
+    } else if (Array.isArray(viewData)) {
+      const normalizedView = viewData.map(normalizeUserRecord).filter(isUserSummary);
+      if (normalizedView.length > 0) {
+        return {
+          success: true,
+          data: normalizedView,
+        };
       }
-      
-      // Transform admin API data
-      const users = authData.users.map(user => ({
-        id: user.id,
-        email: user.email || '',
-        created_at: user.created_at,
-        last_sign_in_at: user.last_sign_in_at
-      }));
-      
-      return { success: true, data: users };
     }
-    
-    return { success: true, data: users || [] };
+
+    const { data: authData, error: authError } = await admin.auth.admin.listUsers();
+    if (authError) {
+      console.error('Auth admin listUsers failed:', authError);
+      const fallbackUser = normalizeUserRecord(actingUser);
+      if (fallbackUser) {
+        return { success: true, data: [fallbackUser] };
+      }
+      return { error: 'Unable to fetch users. Please run the user access migration.' };
+    }
+
+    if (!authData || !Array.isArray(authData.users)) {
+      console.error('Auth admin listUsers returned no data.');
+      const fallbackUser = normalizeUserRecord(actingUser);
+      if (fallbackUser) {
+        return { success: true, data: [fallbackUser] };
+      }
+      return { error: 'Failed to fetch users' };
+    }
+
+    const normalizedAuth = authData.users.map(normalizeUserRecord).filter(isUserSummary);
+
+    // Preserve deterministic ordering (newest first) to match original UI expectations.
+    normalizedAuth.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+
+    return { success: true, data: normalizedAuth };
   } catch (error) {
     console.error('Error fetching users:', error);
     return { error: 'Failed to fetch users' };

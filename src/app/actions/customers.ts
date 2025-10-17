@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { logAuditEvent } from './audit'
 import { customerSchema, formatPhoneForStorage } from '@/lib/validation'
 import { getConstraintErrorMessage, isPostgrestError } from '@/lib/dbErrorHandler'
+import { checkUserPermission } from './rbac'
 
 export async function createCustomer(formData: FormData) {
   try {
@@ -15,6 +16,13 @@ export async function createCustomer(formData: FormData) {
     if (authError || !user) {
       return { error: 'Unauthorized' }
     }
+
+    const canManage = await checkUserPermission('customers', 'manage', user.id)
+    if (!canManage) {
+      return { error: 'Insufficient permissions' }
+    }
+
+
 
     // Parse and validate form data
     const emailInput = formData.get('email')
@@ -99,6 +107,11 @@ export async function updateCustomer(id: string, formData: FormData) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
       return { error: 'Unauthorized' }
+    }
+
+    const canManage = await checkUserPermission('customers', 'manage', user.id)
+    if (!canManage) {
+      return { error: 'Insufficient permissions' }
     }
 
     // Parse and validate form data
@@ -189,6 +202,11 @@ export async function deleteCustomer(id: string) {
       return { error: 'Unauthorized' }
     }
 
+    const canManage = await checkUserPermission('customers', 'manage', user.id)
+    if (!canManage) {
+      return { error: 'Insufficient permissions' }
+    }
+
     // Get customer details for audit log
     const { data: customer } = await supabase
       .from('customers')
@@ -228,6 +246,164 @@ export async function deleteCustomer(id: string) {
   }
 }
 
+interface ImportCustomerInput {
+  first_name: string
+  last_name?: string
+  mobile_number: string
+}
+
+export async function importCustomers(entries: ImportCustomerInput[]) {
+  try {
+    if (!entries || entries.length === 0) {
+      return { error: 'No customers provided' }
+    }
+
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return { error: 'Unauthorized' }
+    }
+
+    const canManage = await checkUserPermission('customers', 'manage', user.id)
+    if (!canManage) {
+      return { error: 'Insufficient permissions' }
+    }
+
+    const preparedCustomers: Array<{
+      first_name: string
+      last_name: string | null
+      mobile_number: string
+      sms_opt_in: boolean
+    }> = []
+    const seenPhones = new Set<string>()
+    let invalidCount = 0
+    let duplicateInFileCount = 0
+
+    for (const entry of entries) {
+      const firstName = (entry.first_name || '').trim()
+      if (!firstName) {
+        invalidCount++
+        continue
+      }
+
+      const rawPhone = (entry.mobile_number || '').trim()
+      if (!rawPhone) {
+        invalidCount++
+        continue
+      }
+
+      let formattedPhone: string
+      try {
+        formattedPhone = formatPhoneForStorage(rawPhone)
+      } catch {
+        invalidCount++
+        continue
+      }
+
+      if (seenPhones.has(formattedPhone)) {
+        duplicateInFileCount++
+        continue
+      }
+
+      seenPhones.add(formattedPhone)
+      preparedCustomers.push({
+        first_name: firstName,
+        last_name: entry.last_name ? entry.last_name.trim() || null : null,
+        mobile_number: formattedPhone,
+        sms_opt_in: true,
+      })
+    }
+
+    if (preparedCustomers.length === 0) {
+      return {
+        error: 'No valid customers to import',
+        skippedInvalid: invalidCount,
+        skippedDuplicates: duplicateInFileCount,
+      }
+    }
+
+    let existingSet = new Set<string>()
+    if (seenPhones.size > 0) {
+      const { data: existing, error: existingError } = await supabase
+        .from('customers')
+        .select('mobile_number')
+        .in('mobile_number', Array.from(seenPhones))
+
+      if (existingError) {
+        console.error('Failed to check existing customers during import:', existingError)
+        return { error: 'Failed to verify existing customers' }
+      }
+
+      existingSet = new Set((existing || []).map((row: { mobile_number: string }) => row.mobile_number))
+    }
+
+    let skippedExistingCount = 0
+    const customersToInsert = preparedCustomers.filter((customer) => {
+      if (existingSet.has(customer.mobile_number)) {
+        skippedExistingCount++
+        return false
+      }
+      return true
+    })
+
+    let insertedCustomers: Array<{ id: string; first_name: string; last_name: string | null; mobile_number: string }> = []
+    if (customersToInsert.length > 0) {
+      const { data: inserted, error: insertError } = await supabase
+        .from('customers')
+        .insert(customersToInsert)
+        .select('id, first_name, last_name, mobile_number')
+
+      if (insertError) {
+        console.error('Customer import insertion error:', insertError)
+        return { error: 'Failed to import customers' }
+      }
+
+      insertedCustomers = inserted || []
+
+      for (const customer of insertedCustomers) {
+        await logAuditEvent({
+          user_id: user.id,
+          user_email: user.email,
+          operation_type: 'create',
+          resource_type: 'customer',
+          resource_id: customer.id,
+          operation_status: 'success',
+          new_values: customer,
+          additional_info: { imported: true }
+        })
+      }
+    }
+
+    await logAuditEvent({
+      user_id: user.id,
+      user_email: user.email,
+      operation_type: 'bulk_create',
+      resource_type: 'customer',
+      operation_status: 'success',
+      additional_info: {
+        total_received: entries.length,
+        created: insertedCustomers.length,
+        skipped_invalid: invalidCount,
+        skipped_duplicate_in_file: duplicateInFileCount,
+        skipped_existing: skippedExistingCount
+      }
+    })
+
+    revalidatePath('/customers')
+
+    return {
+      success: true,
+      created: insertedCustomers.length,
+      skippedInvalid: invalidCount,
+      skippedDuplicateInFile: duplicateInFileCount,
+      skippedExisting: skippedExistingCount
+    }
+  } catch (error) {
+    console.error('Unexpected error importing customers:', error)
+    return { error: 'An unexpected error occurred' }
+  }
+}
+
 export async function deleteTestCustomers() {
   try {
     const supabase = await createClient()
@@ -236,6 +412,11 @@ export async function deleteTestCustomers() {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
       return { error: 'Unauthorized' }
+    }
+
+    const canManage = await checkUserPermission('customers', 'manage', user.id)
+    if (!canManage) {
+      return { error: 'Insufficient permissions' }
     }
 
     // Find all customers with 'test' in first or last name (case-insensitive)

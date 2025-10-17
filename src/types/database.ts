@@ -332,6 +332,7 @@ export interface EmployeeEmergencyContact {
 export interface EmployeeRightToWork {
   employee_id: string; // UUID, Primary Key, Foreign Key to Employee
   document_type: 'List A' | 'List B';
+  document_reference?: string | null;
   document_details?: string | null;
   verification_date: string; // Date
   document_expiry_date?: string | null; // Date
