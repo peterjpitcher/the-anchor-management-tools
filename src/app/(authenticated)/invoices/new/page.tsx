@@ -283,7 +283,7 @@ export default function NewInvoicePage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
-        <Card className="p-6">
+        <Card className="p-6 overflow-visible">
           <h2 className="text-lg font-semibold mb-4">Invoice Details</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -351,7 +351,7 @@ export default function NewInvoicePage() {
                     Add from Catalog
                   </button>
                   {isCatalogOpen && (
-                    <div className="absolute left-0 right-0 sm:left-auto sm:right-0 mt-2 w-full sm:w-96 bg-white rounded-lg shadow-lg border p-4 z-20 max-h-64 sm:max-h-96 overflow-y-auto">
+                    <div className="absolute left-0 right-0 sm:left-auto sm:right-0 mt-2 w-full sm:w-96 bg-white rounded-lg shadow-lg border p-4 z-30 max-h-72 sm:max-h-96 overflow-y-auto">
                       {catalogItems.map(item => (
                         <button
                           key={item.id}
@@ -360,11 +360,13 @@ export default function NewInvoicePage() {
                             addFromCatalog(item)
                             setIsCatalogOpen(false)
                           }}
-                          className="w-full text-left p-3 hover:bg-gray-50 rounded-md border-b last:border-b-0"
+                          className="w-full text-left p-3 hover:bg-gray-50 rounded-md border-b last:border-b-0 focus:outline-none focus:bg-gray-100"
                         >
-                          <div className="font-medium">{item.name}</div>
-                          <div className="text-sm text-gray-600">{item.description}</div>
-                          <div className="text-sm mt-1">
+                          <div className="font-medium text-gray-900">{item.name}</div>
+                          {item.description && (
+                            <div className="text-sm text-gray-600 mt-0.5 line-clamp-2">{item.description}</div>
+                          )}
+                          <div className="text-xs text-gray-400 mt-2">
                             £{item.default_price.toFixed(2)} • VAT {item.default_vat_rate}%
                           </div>
                         </button>
