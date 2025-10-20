@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Select } from '@/components/ui-v2/forms/Select'
@@ -13,7 +12,6 @@ import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Download, Calendar } from 'lucide-react'
 import { toLocalIsoDate } from '@/lib/dateUtils'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { usePermissions } from '@/contexts/PermissionContext'
 
 export default function InvoiceExportPage() {
@@ -121,18 +119,13 @@ export default function InvoiceExportPage() {
 
   if (permissionsLoading) {
     return (
-      <PageWrapper>
-        <PageHeader
-          title="Export Invoices"
-          subtitle="Export invoices as a ZIP file containing individual PDFs"
-          backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-        />
-        <PageContent>
-          <div className="flex items-center justify-center h-64">
-            <Spinner size="lg" />
-          </div>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="Export Invoices"
+        subtitle="Export invoices as a ZIP file containing individual PDFs"
+        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+        loading
+        loadingLabel="Checking export permissions..."
+      />
     )
   }
 
@@ -141,130 +134,127 @@ export default function InvoiceExportPage() {
   }
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Export Invoices"
-        subtitle="Export invoices as a ZIP file containing individual PDFs"
-        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-      />
-      <PageContent>
-        <div className="space-y-6">
-          {error && (
-            <Alert variant="error" description={error} />
-          )}
+    <PageLayout
+      title="Export Invoices"
+      subtitle="Export invoices as a ZIP file containing individual PDFs"
+      backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+    >
+      <div className="space-y-6">
+        {error && (
+          <Alert variant="error" description={error} />
+        )}
 
-          <Card>
-        <h2 className="text-lg font-semibold mb-4">Export Options</h2>
-        
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">Quick Select</label>
-            <div className="flex gap-2 flex-wrap">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => setQuarterDates(0)}
-                leftIcon={<Calendar className="h-4 w-4" />}
-              >
-                Current Quarter
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => setQuarterDates(-1)}
-                leftIcon={<Calendar className="h-4 w-4" />}
-              >
-                Last Quarter
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  const now = new Date()
-                  const yearStart = new Date(now.getFullYear(), 0, 1)
-                  const yearEnd = new Date(now.getFullYear(), 11, 31)
-                  setStartDate(toLocalIsoDate(yearStart))
-                  setEndDate(toLocalIsoDate(yearEnd))
-                }}
-                leftIcon={<Calendar className="h-4 w-4" />}
-              >
-                Current Year
-              </Button>
+        <Card>
+          <h2 className="mb-4 text-lg font-semibold">Export Options</h2>
+
+          <div className="space-y-4">
+            <div>
+              <label className="mb-2 block text-sm font-medium">Quick Select</label>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setQuarterDates(0)}
+                  leftIcon={<Calendar className="h-4 w-4" />}
+                >
+                  Current Quarter
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setQuarterDates(-1)}
+                  leftIcon={<Calendar className="h-4 w-4" />}
+                >
+                  Last Quarter
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    const now = new Date()
+                    const yearStart = new Date(now.getFullYear(), 0, 1)
+                    const yearEnd = new Date(now.getFullYear(), 11, 31)
+                    setStartDate(toLocalIsoDate(yearStart))
+                    setEndDate(toLocalIsoDate(yearEnd))
+                  }}
+                  leftIcon={<Calendar className="h-4 w-4" />}
+                >
+                  Current Year
+                </Button>
+              </div>
             </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  Start Date <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  End Date <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+
+            <FormGroup label="Invoice Status">
+              <Select
+                value={exportType}
+                onChange={(e) => setExportType(e.target.value as typeof exportType)}
+              >
+                <option value="all">All Invoices</option>
+                <option value="paid">Paid Only</option>
+                <option value="unpaid">Unpaid Only</option>
+              </Select>
+            </FormGroup>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Start Date <span className="text-red-500">*</span>
-              </label>
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                End Date <span className="text-red-500">*</span>
-              </label>
-              <Input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                required
-              />
-            </div>
+          <div className="mt-6 rounded-lg bg-blue-50 p-4">
+            <h3 className="mb-2 font-medium text-blue-900">What&apos;s included:</h3>
+            <ul className="space-y-1 text-sm text-blue-800">
+              <li>• Individual PDF for each invoice</li>
+              <li>• Invoice summary CSV file</li>
+              <li>• Organized by invoice number</li>
+              <li>• Ready for accountant submission</li>
+            </ul>
           </div>
 
-          <FormGroup label="Invoice Status">
-            <Select
-              value={exportType}
-              onChange={(e) => setExportType(e.target.value as typeof exportType)}
+          <div className="mt-6 flex justify-end gap-4">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => router.push('/invoices')}
+              disabled={loading}
             >
-              <option value="all">All Invoices</option>
-              <option value="paid">Paid Only</option>
-              <option value="unpaid">Unpaid Only</option>
-            </Select>
-          </FormGroup>
-        </div>
-
-        <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-          <h3 className="font-medium text-blue-900 mb-2">What&apos;s included:</h3>
-          <ul className="text-sm text-blue-800 space-y-1">
-            <li>• Individual PDF for each invoice</li>
-            <li>• Invoice summary CSV file</li>
-            <li>• Organized by invoice number</li>
-            <li>• Ready for accountant submission</li>
-          </ul>
-        </div>
-
-        <div className="flex justify-end gap-4 mt-6">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => router.push('/invoices')}
-            disabled={loading}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleExport}
-            disabled={loading || !startDate || !endDate || !canExport}
-            loading={loading}
-            leftIcon={<Download className="h-4 w-4" />}
-          >
-            Export Invoices
-          </Button>
-        </div>
-      </Card>
-        </div>
-      </PageContent>
-    </PageWrapper>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleExport}
+              disabled={loading || !startDate || !endDate || !canExport}
+              loading={loading}
+              leftIcon={<Download className="h-4 w-4" />}
+            >
+              Export Invoices
+            </Button>
+          </div>
+        </Card>
+      </div>
+    </PageLayout>
   )
 }

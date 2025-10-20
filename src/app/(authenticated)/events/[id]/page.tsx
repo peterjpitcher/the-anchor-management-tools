@@ -22,12 +22,10 @@ import { EventMarketingLinksCard } from '@/components/EventMarketingLinksCard'
 import { getEventMarketingLinks, regenerateEventMarketingLinks, type EventMarketingLink } from '@/app/actions/event-marketing-links'
 
 // ui-v2 imports
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 // Removed unused Button and LinkButton imports
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
+import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { DataTable, Column } from '@/components/ui-v2/display/DataTable'
 import { toast } from '@/components/ui-v2/feedback/Toast'
@@ -342,23 +340,73 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
     }
   }
 
-  if (!event && !isLoading) return (
-    <PageWrapper>
-      <PageHeader 
-        title="Event Not Found" 
+  if (!event && !isLoading) {
+    return (
+      <PageLayout
+        title="Event Not Found"
         subtitle="The requested event could not be found."
         backButton={{
-          label: "Back to Events",
-          href: "/events"
+          label: 'Back to Events',
+          href: '/events',
         }}
       />
-    </PageWrapper>
-  )
+    )
+  }
 
   const activeBookings = bookings.filter(booking => booking.seats && booking.seats > 0)
   const reminders = bookings.filter(booking => !booking.seats || booking.seats === 0)
   const totalSeats = activeBookings.reduce((sum, booking) => sum + (booking.seats ?? 0), 0)
   const totalCheckIns = checkIns.length
+
+  const navItems: HeaderNavItem[] | undefined = (() => {
+    if (!event || isLoading) {
+      return undefined
+    }
+
+    const items: HeaderNavItem[] = []
+
+    if (canManageEvents) {
+      items.push({
+        label: 'Edit Event',
+        href: `/events/${event.id}/edit`,
+        active: false,
+      })
+    }
+
+    items.push({
+      label: 'Copy List',
+      onClick: handleCopyAttendeeList,
+      active: false,
+    })
+
+    if (canManageEvents) {
+      items.push(
+        {
+          label: 'Download Posters',
+          onClick: handleDownloadReservationPosters,
+          disabled: activeBookings.length === 0,
+          active: false,
+        },
+        {
+          label: 'Add Attendees',
+          onClick: () => setShowAddAttendeesModal(true),
+          active: false,
+        },
+        {
+          label: 'New Booking',
+          onClick: () => setShowBookingForm(true),
+          active: false,
+        },
+        {
+          label: 'Launch Check-in',
+          href: `/events/${event.id}/check-in`,
+          active: false,
+        },
+      )
+    }
+
+    return items
+  })()
 
   // Define columns for bookings table
   const baseBookingColumns: Column<BookingWithCustomer>[] = [
@@ -554,113 +602,81 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
   )
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title={event?.name || 'Loading...'}
-        subtitle={event ? `${formatDate(event.date)} at ${event.time}` : ''}
-        backButton={{
-          label: "Back to Events",
-          href: "/events"
-        }}
-        actions={
-          event && !isLoading && (
-            <NavGroup>
-              {canManageEvents && (
-                <NavLink href={`/events/${event.id}/edit`}>
-                  Edit Event
-                </NavLink>
-              )}
-              <NavLink onClick={handleCopyAttendeeList}>
-                Copy List
-              </NavLink>
-              {canManageEvents && (
-                <>
-                  <NavLink 
-                    onClick={handleDownloadReservationPosters}
-                    className={activeBookings.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}
-                  >
-                    Download Posters
-                  </NavLink>
-                  <NavLink onClick={() => setShowAddAttendeesModal(true)}>
-                    Add Attendees
-                  </NavLink>
-                  <NavLink onClick={() => setShowBookingForm(true)}>
-                    New Booking
-                  </NavLink>
-                  <NavLink href={`/events/${event.id}/check-in`}>
-                    Launch Check-in
-                  </NavLink>
-                </>
-              )}
-            </NavGroup>
-          )
-        }
-      />
-      <PageContent>
-        {showBookingForm && event && canManageEvents && (
-          <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
-              <BookingForm event={event} onSubmit={handleCreateBooking} onCancel={() => setShowBookingForm(false)} />
-            </div>
+    <PageLayout
+      title={event?.name || 'Loading...'}
+      subtitle={event ? `${formatDate(event.date)} at ${event.time}` : ''}
+      backButton={{
+        label: 'Back to Events',
+        href: '/events',
+      }}
+      navItems={navItems}
+    >
+      {showBookingForm && event && canManageEvents && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
+            <BookingForm event={event} onSubmit={handleCreateBooking} onCancel={() => setShowBookingForm(false)} />
           </div>
-        )}
+        </div>
+      )}
 
-        {showAddAttendeesModal && event && canManageEvents && (
-          <AddAttendeesModalWithCategories
-            event={event}
-            currentBookings={bookings}
-            checkIns={checkIns}
-            onClose={() => setShowAddAttendeesModal(false)}
-            onAddAttendees={handleAddMultipleAttendees}
-          />
-        )}
+      {showAddAttendeesModal && event && canManageEvents && (
+        <AddAttendeesModalWithCategories
+          event={event}
+          currentBookings={bookings}
+          checkIns={checkIns}
+          onClose={() => setShowAddAttendeesModal(false)}
+          onAddAttendees={handleAddMultipleAttendees}
+        />
+      )}
 
-        {event && (
-          <Card padding="lg">
-            <div className="flex items-start space-x-4">
-              {event.hero_image_url && (
-                <div className="flex-shrink-0">
-                  <img 
-                    src={event.hero_image_url} 
-                    alt={event.name}
-                    className="h-24 w-24 rounded-lg object-cover border border-gray-200"
-                  />
-                </div>
-              )}
-              <div className="flex-1">
-                {event.category && (
-                  <Badge
-                    size="sm"
-                    style={{ 
-                      backgroundColor: event.category.color + '20',
-                      color: event.category.color 
-                    }}
-                  >
-                    {event.category.name}
-                  </Badge>
-                )}
-                {event.short_description && (
-                  <p className="mt-2 text-base text-gray-600">{event.short_description}</p>
-                )}
-                <div className="mt-4 grid grid-cols-2 gap-4">
-                  <div>
-                    <span className="text-gray-500">Capacity:</span>
-                    <span className="ml-2 font-medium">{event.capacity || 'Unlimited'}</span>
+      {event && (
+        <div className="space-y-6">
+          <section id="overview">
+            <Card padding="lg">
+              <div className="flex items-start space-x-4">
+                {event.hero_image_url && (
+                  <div className="flex-shrink-0">
+                    <img
+                      src={event.hero_image_url}
+                      alt={event.name}
+                      className="h-24 w-24 rounded-lg object-cover border border-gray-200"
+                    />
                   </div>
-                  <div>
-                    <span className="text-gray-500">Total Tickets:</span>
-                    <span className="ml-2 font-medium">{totalSeats}</span>
+                )}
+                <div className="flex-1">
+                  {event.category && (
+                    <Badge
+                      size="sm"
+                      style={{
+                        backgroundColor: event.category.color + '20',
+                        color: event.category.color,
+                      }}
+                    >
+                      {event.category.name}
+                    </Badge>
+                  )}
+                  {event.short_description && (
+                    <p className="mt-2 text-base text-gray-600">{event.short_description}</p>
+                  )}
+                  <div className="mt-4 grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-gray-500">Capacity:</span>
+                      <span className="ml-2 font-medium">{event.capacity || 'Unlimited'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Total Tickets:</span>
+                      <span className="ml-2 font-medium">{totalSeats}</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </Card>
-        )}
+            </Card>
+          </section>
 
-        {event && (
           <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
             <div className="space-y-6">
               <Section
+                id="bookings"
                 title={`Active Bookings (${activeBookings.length})`}
                 description={`${totalSeats} tickets booked${event.capacity ? ` of ${event.capacity}` : ''}`}
                 variant="gray"
@@ -669,6 +685,7 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
               </Section>
 
               <Section
+                id="reminders"
                 title={`Reminders (${reminders.length})`}
                 variant="gray"
               >
@@ -676,6 +693,7 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
               </Section>
 
               <Section
+                id="check-ins"
                 title={`Checked-in Guests (${totalCheckIns})`}
                 description="Everyone who has arrived and been welcomed tonight."
                 variant="gray"
@@ -683,21 +701,22 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
                 <CheckInTable items={checkIns} />
               </Section>
 
-              <EventMarketingLinksCard
-                links={marketingLinks}
-                loading={marketingLoading}
-                error={marketingError}
-                onRegenerate={handleRegenerateMarketingLinks}
-              />
+              <section id="marketing">
+                <EventMarketingLinksCard
+                  links={marketingLinks}
+                  loading={marketingLoading}
+                  error={marketingError}
+                  onRegenerate={handleRegenerateMarketingLinks}
+                />
+              </section>
             </div>
 
-            <div className="space-y-6">
+            <section id="checklist" className="space-y-6">
               <EventChecklistCard eventId={event.id} eventName={event.name} />
-            </div>
+            </section>
           </div>
-        )}
-
-      </PageContent>
-    </PageWrapper>
+        </div>
+      )}
+    </PageLayout>
   )
-} 
+}

@@ -12,8 +12,7 @@ import {
   TrashIcon
 } from '@heroicons/react/24/outline'
 // New UI components
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -25,6 +24,7 @@ import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { Tabs } from '@/components/ui-v2/navigation/Tabs'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
+import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 
 interface QueuedMessage {
   id: string
@@ -245,6 +245,43 @@ export default function SMSQueueStatusPage() {
     }
   }
 
+  const navItems: HeaderNavItem[] = [
+    { label: 'Overview', href: '#overview' },
+    { label: 'Queue', href: '#queue' },
+    { label: 'Info', href: '#info' },
+  ]
+
+  const headerActions = (
+    <div className="flex flex-wrap gap-2">
+      <Button
+        onClick={handleRefresh}
+        variant="secondary"
+        size="sm"
+        disabled={refreshing || loading}
+      >
+        {refreshing ? (
+          <>
+            <ArrowPathIcon className="h-4 w-4 mr-2 animate-spin" />
+            Refreshing...
+          </>
+        ) : (
+          <>
+            <ArrowPathIcon className="h-4 w-4 mr-2" />
+            Refresh
+          </>
+        )}
+      </Button>
+      <Button
+        onClick={clearOldMessages}
+        variant="danger"
+        size="sm"
+      >
+        <TrashIcon className="h-4 w-4 mr-2" />
+        Clear Old Messages
+      </Button>
+    </div>
+  )
+
   const normalizedStatus = useCallback((status: string) => (status || '').toLowerCase(), [])
 
   const getStatusIcon = (status: string) => {
@@ -316,120 +353,89 @@ export default function SMSQueueStatusPage() {
 
   if (loading) {
     return (
-      <PageWrapper>
-        <PageHeader
-          title="SMS Queue Status"
-          subtitle="Monitor and manage SMS message queue"
-          backButton={{ label: "Back to Messages", href: "/messages" }}
-        />
-        <PageContent>
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <Spinner size="lg" />
-              <p className="mt-4 text-gray-600">Loading SMS queue data...</p>
-            </div>
+      <PageLayout
+        title="SMS Queue Status"
+        subtitle="Monitor and manage SMS message queue"
+        backButton={{ label: 'Back to Messages', href: '/messages' }}
+        navItems={navItems}
+        headerActions={headerActions}
+      >
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <Spinner size="lg" />
+            <p className="mt-4 text-gray-600">Loading SMS queue data...</p>
           </div>
-        </PageContent>
-      </PageWrapper>
+        </div>
+      </PageLayout>
     )
   }
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="SMS Queue Status"
-        subtitle="Monitor and manage SMS message queue"
-        backButton={{ label: "Back to Messages", href: "/messages" }}
-        actions={
-          <div className="flex gap-2">
-            <Button
-              onClick={handleRefresh}
-              variant="secondary"
-              size="sm"
-              disabled={refreshing}
-            >
-              {refreshing ? (
-                <>
-                  <ArrowPathIcon className="h-4 w-4 mr-2 animate-spin" />
-                  Refreshing...
-                </>
-              ) : (
-                <>
-                  <ArrowPathIcon className="h-4 w-4 mr-2" />
-                  Refresh
-                </>
+    <PageLayout
+      title="SMS Queue Status"
+      subtitle="Monitor and manage SMS message queue"
+      backButton={{ label: 'Back to Messages', href: '/messages' }}
+      navItems={navItems}
+      headerActions={headerActions}
+    >
+      <div className="space-y-6">
+        <section id="overview" className="space-y-4">
+          <Card>
+            <StatGroup>
+              <Stat 
+                label="Queued" 
+                value={stats.totalQueued} 
+                color={stats.totalQueued > 0 ? "warning" : "default"} 
+              />
+              <Stat 
+                label="Pending" 
+                value={stats.totalPending} 
+                color={stats.totalPending > 0 ? "warning" : "default"} 
+              />
+              <Stat 
+                label="Sending" 
+                value={stats.totalSending} 
+                color={stats.totalSending > 0 ? "info" : "default"} 
+              />
+              <Stat 
+                label="Failed" 
+                value={stats.totalFailed} 
+                color={stats.totalFailed > 0 ? "error" : "default"} 
+              />
+              <Stat 
+                label="Delivered" 
+                value={stats.totalDelivered} 
+                color="success" 
+              />
+              <Stat 
+                label="Pending Jobs" 
+                value={stats.totalJobs} 
+                color={stats.totalJobs > 0 ? "warning" : "default"} 
+              />
+            </StatGroup>
+            <div className="mt-4 text-sm text-gray-500">
+              Last synced {lastSyncedAt ? formatDistanceToNow(new Date(lastSyncedAt), { addSuffix: true }) : 'just now'}
+              {stats.oldestMessage && (
+                <span className="ml-4">
+                  Oldest queued message {formatDistanceToNow(new Date(stats.oldestMessage), { addSuffix: true })}
+                </span>
               )}
-            </Button>
-            <Button
-              onClick={clearOldMessages}
-              variant="danger"
-              size="sm"
-            >
-              <TrashIcon className="h-4 w-4 mr-2" />
-              Clear Old Messages
-            </Button>
-          </div>
-        }
-      />
-      
-      <PageContent>
-        {/* Stats Overview */}
-        <Card>
-          <StatGroup>
-            <Stat 
-              label="Queued" 
-              value={stats.totalQueued} 
-              color={stats.totalQueued > 0 ? "warning" : "default"} 
-            />
-            <Stat 
-              label="Pending" 
-              value={stats.totalPending} 
-              color={stats.totalPending > 0 ? "warning" : "default"} 
-            />
-            <Stat 
-              label="Sending" 
-              value={stats.totalSending} 
-              color={stats.totalSending > 0 ? "info" : "default"} 
-            />
-            <Stat 
-              label="Failed" 
-              value={stats.totalFailed} 
-              color={stats.totalFailed > 0 ? "error" : "default"} 
-            />
-            <Stat 
-              label="Delivered" 
-              value={stats.totalDelivered} 
-              color="success" 
-            />
-            <Stat 
-              label="Pending Jobs" 
-              value={stats.totalJobs} 
-              color={stats.totalJobs > 0 ? "warning" : "default"} 
-            />
-          </StatGroup>
-          <div className="mt-4 text-sm text-gray-500">
-            Last synced {lastSyncedAt ? formatDistanceToNow(new Date(lastSyncedAt), { addSuffix: true }) : 'just now'}
-            {stats.oldestMessage && (
-              <span className="ml-4">
-                Oldest queued message {formatDistanceToNow(new Date(stats.oldestMessage), { addSuffix: true })}
-              </span>
-            )}
-          </div>
-        </Card>
-
-        {/* Alert for stuck messages */}
-        {stats.oldestMessage && (
-          <Alert variant="warning">
-            <ExclamationTriangleIcon className="h-5 w-5" />
-            <div>
-              <strong>Stuck Messages Detected</strong>
-              <p>
-                You have messages in the queue. The oldest message has been waiting{' '}
-                {formatDistanceToNow(new Date(stats.oldestMessage), { addSuffix: false })}.
-              </p>
             </div>
-          </Alert>
-        )}
+          </Card>
+
+          {stats.oldestMessage && (
+            <Alert variant="warning">
+              <ExclamationTriangleIcon className="h-5 w-5" />
+              <div>
+                <strong>Stuck Messages Detected</strong>
+                <p>
+                  You have messages in the queue. The oldest message has been waiting{' '}
+                  {formatDistanceToNow(new Date(stats.oldestMessage), { addSuffix: false })}.
+                </p>
+              </div>
+            </Alert>
+          )}
+        </section>
 
         {/* Tabs for different views */}
         <Card>
@@ -447,7 +453,7 @@ export default function SMSQueueStatusPage() {
         </Card>
 
         {/* Message/Job List */}
-        <Section title={activeTab === 'jobs' ? 'SMS Jobs' : 'Messages'}>
+        <Section id="queue" title={activeTab === 'jobs' ? 'SMS Jobs' : 'Messages'}>
           <Card>
             {activeTab === 'jobs' ? (
               // Jobs view
@@ -581,7 +587,7 @@ export default function SMSQueueStatusPage() {
         </Section>
 
         {/* Information Section */}
-        <Section title="Queue Information">
+        <Section id="info" title="Queue Information">
           <Card>
             <div className="space-y-4 text-sm text-gray-600">
               <div>
@@ -620,7 +626,7 @@ export default function SMSQueueStatusPage() {
             </div>
           </Card>
         </Section>
-      </PageContent>
-    </PageWrapper>
+      </div>
+    </PageLayout>
   )
 }

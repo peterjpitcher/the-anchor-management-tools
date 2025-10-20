@@ -5,13 +5,9 @@ import { useRouter } from 'next/navigation'
 import { getInvoices, getInvoiceSummary } from '@/app/actions/invoices'
 import { Plus, Download, FileText, Calendar } from 'lucide-react'
 import type { InvoiceWithDetails, InvoiceStatus } from '@/types/invoices'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Button } from '@/components/ui-v2/forms/Button'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { Stat } from '@/components/ui-v2/display/Stat'
 import { Select } from '@/components/ui-v2/forms/Select'
 import { Input } from '@/components/ui-v2/forms/Input'
@@ -20,6 +16,7 @@ import { Badge } from '@/components/ui-v2/display/Badge'
 import { DataTable, type Column } from '@/components/ui-v2/display/DataTable'
 import { MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import { usePermissions } from '@/contexts/PermissionContext'
+import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 
 type InvoiceSummary = {
   total_outstanding: number
@@ -253,232 +250,226 @@ export default function InvoicesClient({
     []
   )
 
-  const navLinks = useMemo(() => {
-    const links: React.ReactNode[] = []
+  const navItems = useMemo<HeaderNavItem[]>(() => {
+    const items: HeaderNavItem[] = []
 
     if (resolvedPermissions.canManageCatalog) {
-      links.push(<NavLink key="catalog" href="/invoices/catalog">Catalog</NavLink>)
+      items.push({ label: 'Catalog', href: '/invoices/catalog' })
     }
 
     if (canManageVendors) {
-      links.push(<NavLink key="vendors" href="/invoices/vendors">Vendors</NavLink>)
+      items.push({ label: 'Vendors', href: '/invoices/vendors' })
     }
 
     if (canAccessRecurring) {
-      links.push(<NavLink key="recurring" href="/invoices/recurring">Recurring</NavLink>)
+      items.push({ label: 'Recurring', href: '/invoices/recurring' })
     }
 
     if (resolvedPermissions.canExport) {
-      links.push(<NavLink key="export" href="/invoices/export">Export</NavLink>)
+      items.push({ label: 'Export', href: '/invoices/export' })
     }
 
     if (resolvedPermissions.canCreate) {
-      links.push(<NavLink key="new" href="/invoices/new">New Invoice</NavLink>)
+      items.push({ label: 'New Invoice', href: '/invoices/new' })
     }
 
-    return links
+    return items
   }, [resolvedPermissions, canManageVendors, canAccessRecurring])
 
   const showLoadingState = loading && filteredInvoices.length === 0
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Invoices"
-        subtitle="Manage invoices and payments"
-        backButton={{ label: 'Back to Dashboard', href: '/' }}
-        actions={navLinks.length > 0 ? <NavGroup>{navLinks}</NavGroup> : undefined}
-      />
-      <PageContent>
-        {showLoadingState ? (
-          <div className="flex items-center justify-center h-64">
-            <Spinner size="lg" />
-          </div>
-        ) : (
-          <>
-            {error && <Alert variant="error" description={error} className="mb-6" />}
-            {isReadOnly && (
-              <Alert
-                variant="info"
-                description="You have read-only access to invoices. Creation, export, and recurring tools are disabled for your role."
-                className="mb-6"
-              />
-            )}
+    <PageLayout
+      title="Invoices"
+      subtitle="Manage invoices and payments"
+      backButton={{ label: 'Back to Dashboard', href: '/' }}
+      navItems={navItems.length > 0 ? navItems : undefined}
+      loading={showLoadingState}
+      loadingLabel="Loading invoices..."
+    >
+      <div className="space-y-6">
+        {error && (
+          <Alert
+            variant="error"
+            title="We couldn’t refresh everything"
+            description={error}
+          />
+        )}
+        {isReadOnly && (
+          <Alert
+            variant="info"
+            description="You have read-only access to invoices. Creation, export, and recurring tools are disabled for your role."
+          />
+        )}
 
-            <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-              <Stat
-                label="Outstanding"
-                value={`£${summary.total_outstanding.toFixed(2)}`}
-                description="Awaiting payment"
-                icon={<FileText />}
-              />
-              <Stat
-                label="Overdue"
-                value={`£${summary.total_overdue.toFixed(2)}`}
-                description="Past due date"
-                icon={<FileText />}
-              />
-              <Stat
-                label="This Month"
-                value={`£${summary.total_this_month.toFixed(2)}`}
-                description="Collected"
-                icon={<FileText />}
-              />
-              <Stat
-                label="Drafts"
-                value={summary.count_draft.toString()}
-                description="Unsent invoices"
-                icon={<FileText />}
-              />
+        <div className="hidden gap-4 sm:grid sm:grid-cols-2 lg:grid-cols-4">
+          <Stat
+            label="Outstanding"
+            value={`£${summary.total_outstanding.toFixed(2)}`}
+            description="Awaiting payment"
+            icon={<FileText />}
+          />
+          <Stat
+            label="Overdue"
+            value={`£${summary.total_overdue.toFixed(2)}`}
+            description="Past due date"
+            icon={<FileText />}
+          />
+          <Stat
+            label="This Month"
+            value={`£${summary.total_this_month.toFixed(2)}`}
+            description="Collected"
+            icon={<FileText />}
+          />
+          <Stat
+            label="Drafts"
+            value={summary.count_draft.toString()}
+            description="Unsent invoices"
+            icon={<FileText />}
+          />
+        </div>
+
+        <Card>
+          <div className="border-b p-4">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                  className="w-full sm:w-auto"
+                  fullWidth={false}
+                >
+                  <option value="unpaid">Unpaid</option>
+                  <option value="all">All Invoices</option>
+                  <option value="draft">Draft</option>
+                  <option value="sent">Sent</option>
+                  <option value="partially_paid">Partially Paid</option>
+                  <option value="paid">Paid</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="void">Void</option>
+                  <option value="written_off">Written Off</option>
+                </Select>
+
+                <Input
+                  type="text"
+                  placeholder="Search invoices..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  leftIcon={<MagnifyingGlassIcon />}
+                  className="hidden w-full flex-1 sm:block sm:w-auto"
+                  fullWidth={false}
+                />
+              </div>
+
+              <div className="flex gap-2 sm:hidden">
+                {resolvedPermissions.canExport && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => router.push('/invoices/export')}
+                    className="flex-1"
+                  >
+                    <Download className="mr-1 h-4 w-4" />
+                    Export
+                  </Button>
+                )}
+                {canAccessRecurring && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => router.push('/invoices/recurring')}
+                    className="flex-1"
+                  >
+                    <Calendar className="mr-1 h-4 w-4" />
+                    Recurring
+                  </Button>
+                )}
+              </div>
             </div>
+          </div>
 
-            <Card>
-              <div className="p-4 border-b">
-                <div className="flex flex-col gap-4">
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <Select
-                      value={statusFilter}
-                      onChange={(e) =>
-                        setStatusFilter(e.target.value as StatusFilter)
-                      }
-                      className="w-full sm:w-auto"
-                      fullWidth={false}
-                    >
-                      <option value="unpaid">Unpaid</option>
-                      <option value="all">All Invoices</option>
-                      <option value="draft">Draft</option>
-                      <option value="sent">Sent</option>
-                      <option value="partially_paid">Partially Paid</option>
-                      <option value="paid">Paid</option>
-                      <option value="overdue">Overdue</option>
-                      <option value="void">Void</option>
-                      <option value="written_off">Written Off</option>
-                    </Select>
+          <DataTable
+            data={filteredInvoices}
+            columns={columns}
+            getRowKey={(invoice) => invoice.id}
+            onRowClick={(invoice) => router.push(`/invoices/${invoice.id}`)}
+            clickableRows
+            emptyMessage={
+              searchTerm ? 'No invoices match your search.' : 'No invoices found.'
+            }
+            emptyAction={
+              !searchTerm && resolvedPermissions.canCreate ? (
+                <Button onClick={() => router.push('/invoices/new')}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Your First Invoice
+                </Button>
+              ) : undefined
+            }
+            renderMobileCard={(invoice) => {
+            const isOverdue = invoice.status === 'overdue'
+            const isPaid = invoice.status === 'paid'
 
-                    <Input
-                      type="text"
-                      placeholder="Search invoices..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      leftIcon={<MagnifyingGlassIcon />}
-                      className="hidden sm:block w-full sm:w-auto flex-1"
-                      fullWidth={false}
-                    />
-                  </div>
-
-                  <div className="flex gap-2 sm:hidden">
-                    {resolvedPermissions.canExport && (
-                      <Button
-                        variant="secondary"
-                        onClick={() => router.push('/invoices/export')}
-                        className="flex-1"
-                      >
-                        <Download className="h-4 w-4 mr-1" />
-                        Export
-                      </Button>
+            return (
+              <Card className="cursor-pointer p-4 transition-shadow hover:shadow-md">
+                <div className="mb-3 flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-900">
+                      {invoice.invoice_number}
+                    </div>
+                    <div className="mt-1 text-sm text-gray-600">
+                      {invoice.vendor?.name || 'No vendor'}
+                    </div>
+                    {invoice.reference && (
+                      <div className="mt-1 text-xs text-gray-500">
+                        Ref: {invoice.reference}
+                      </div>
                     )}
-                    {canAccessRecurring && (
-                      <Button
-                        variant="secondary"
-                        onClick={() => router.push('/invoices/recurring')}
-                        className="flex-1"
+                  </div>
+                  <Badge variant={getStatusBadgeVariant(invoice.status)} size="sm">
+                    {invoice.status.charAt(0).toUpperCase() +
+                      invoice.status.slice(1).replace('_', ' ')}
+                  </Badge>
+                </div>
+
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Invoice Date:</span>
+                    <span className="font-medium">
+                      {new Date(invoice.invoice_date).toLocaleDateString('en-GB')}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Due Date:</span>
+                    <span className={`font-medium ${isOverdue ? 'text-red-600' : ''}`}>
+                      {new Date(invoice.due_date).toLocaleDateString('en-GB')}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex items-center justify-between border-t pt-3">
+                  <div>
+                    <div className="text-xs text-gray-500">Total Amount</div>
+                    <div className="text-lg font-semibold">
+                      £{invoice.total_amount.toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-gray-500">Balance</div>
+                    {isPaid ? (
+                      <div className="font-semibold text-green-600">Paid</div>
+                    ) : (
+                      <div
+                        className={`font-semibold ${isOverdue ? 'text-red-600' : ''}`}
                       >
-                        <Calendar className="h-4 w-4 mr-1" />
-                        Recurring
-                      </Button>
+                        £{(invoice.total_amount - invoice.paid_amount).toFixed(2)}
+                      </div>
                     )}
                   </div>
                 </div>
-              </div>
-
-              <DataTable
-                data={filteredInvoices}
-                columns={columns}
-                getRowKey={(invoice) => invoice.id}
-                onRowClick={(invoice) => router.push(`/invoices/${invoice.id}`)}
-                clickableRows
-                emptyMessage={
-                  searchTerm ? 'No invoices match your search.' : 'No invoices found.'
-                }
-                emptyAction={
-                  !searchTerm && resolvedPermissions.canCreate ? (
-                    <Button onClick={() => router.push('/invoices/new')}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Create Your First Invoice
-                    </Button>
-                  ) : undefined
-                }
-                renderMobileCard={(invoice) => {
-                  const isOverdue = invoice.status === 'overdue'
-                  const isPaid = invoice.status === 'paid'
-
-                  return (
-                    <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer">
-                      <div className="flex justify-between items-start mb-3">
-                        <div className="flex-1">
-                          <div className="font-semibold text-gray-900">
-                            {invoice.invoice_number}
-                          </div>
-                          <div className="text-sm text-gray-600 mt-1">
-                            {invoice.vendor?.name || 'No vendor'}
-                          </div>
-                          {invoice.reference && (
-                            <div className="text-xs text-gray-500 mt-1">
-                              Ref: {invoice.reference}
-                            </div>
-                          )}
-                        </div>
-                        <Badge variant={getStatusBadgeVariant(invoice.status)} size="sm">
-                          {invoice.status.charAt(0).toUpperCase() +
-                            invoice.status.slice(1).replace('_', ' ')}
-                        </Badge>
-                      </div>
-
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Invoice Date:</span>
-                          <span className="font-medium">
-                            {new Date(invoice.invoice_date).toLocaleDateString('en-GB')}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Due Date:</span>
-                          <span className={`font-medium ${isOverdue ? 'text-red-600' : ''}`}>
-                            {new Date(invoice.due_date).toLocaleDateString('en-GB')}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="mt-3 pt-3 border-t flex justify-between items-center">
-                        <div>
-                          <div className="text-xs text-gray-500">Total Amount</div>
-                          <div className="font-semibold text-lg">
-                            £{invoice.total_amount.toFixed(2)}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-xs text-gray-500">Balance</div>
-                          {isPaid ? (
-                            <div className="font-semibold text-green-600">Paid</div>
-                          ) : (
-                            <div
-                              className={`font-semibold ${
-                                isOverdue ? 'text-red-600' : ''
-                              }`}
-                            >
-                              £{(invoice.total_amount - invoice.paid_amount).toFixed(2)}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </Card>
-                  )
-                }}
-              />
-            </Card>
-          </>
-        )}
-      </PageContent>
-    </PageWrapper>
+              </Card>
+            )
+          }}
+          />
+        </Card>
+      </div>
+    </PageLayout>
   )
 }

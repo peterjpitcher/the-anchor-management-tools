@@ -11,8 +11,7 @@ import { generatePhoneVariants } from '@/lib/utils';
 import Link from 'next/link';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 // New UI components
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { Button } from '@/components/ui-v2/forms/Button';
@@ -318,43 +317,39 @@ export default function NewTableBookingPage() {
 
   if (!canCreate) {
     return (
-      <PageWrapper>
-        <PageHeader 
-          title="New Table Booking"
-          subtitle="Create a new restaurant table reservation"
-          backButton={{
-            label: "Back to Table Bookings",
-            href: "/table-bookings"
-          }}
-        />
-        <PageContent>
-          <Card>
-            <Alert variant="error" 
-              title="Access Denied" 
-              description="You do not have permission to create bookings." 
-            />
-          </Card>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="New Table Booking"
+        subtitle="Create a new restaurant table reservation"
+        backButton={{
+          label: 'Back to Table Bookings',
+          href: '/table-bookings',
+        }}
+      >
+        <Card>
+          <Alert
+            variant="error"
+            title="Access Denied"
+            description="You do not have permission to create bookings."
+          />
+        </Card>
+      </PageLayout>
     );
   }
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="New Table Booking"
-        subtitle="Create a new restaurant table reservation"
-        backButton={{
-          label: "Back to Table Bookings",
-          href: "/table-bookings"
-        }}
-      />
-      <PageContent>
-        {error && (
-          <Alert variant="error" title="Error" description={error} />
-        )}
+    <PageLayout
+      title="New Table Booking"
+      subtitle="Create a new restaurant table reservation"
+      backButton={{
+        label: 'Back to Table Bookings',
+        href: '/table-bookings',
+      }}
+    >
+      {error && (
+        <Alert variant="error" title="Error" description={error} />
+      )}
 
-        <Form onSubmit={handleSubmit} className="space-y-6">
+      <Form onSubmit={handleSubmit} className="space-y-6">
         {/* Booking Type */}
         <Card>
           <FormGroup label="Booking Type">
@@ -650,7 +645,6 @@ export default function NewTableBookingPage() {
           </LinkButton>
         </div>
       </Form>
-      </PageContent>
-    </PageWrapper>
+    </PageLayout>
   );
 }

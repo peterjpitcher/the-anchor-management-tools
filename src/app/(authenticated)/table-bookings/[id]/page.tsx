@@ -18,18 +18,18 @@ import {
   UserGroupIcon,
   CurrencyPoundIcon,
   DocumentTextIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  TrashIcon
 } from '@heroicons/react/24/outline';
 import { TableBooking, TableBookingItem, TableBookingPayment } from '@/types/table-bookings';
-import { cancelTableBooking, markBookingNoShow, markBookingCompleted } from '@/app/actions/table-bookings';
+import { cancelTableBooking, markBookingNoShow, markBookingCompleted, deleteTableBooking } from '@/app/actions/table-bookings';
 import { processBookingRefund, getRefundEligibility } from '@/app/actions/table-booking-refunds';
 import { queueBookingReminderSMS, queuePaymentRequestSMS } from '@/app/actions/table-booking-sms';
 import { getCustomerMessages } from '@/app/actions/customerSmsActions';
 import { markMessagesAsRead } from '@/app/actions/messageActions';
 import { Message } from '@/types/database';
 import { MessageThread } from '@/components/MessageThread';
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { Button } from '@/components/ui-v2/forms/Button';
@@ -63,6 +63,7 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
   const canView = hasPermission('table_bookings', 'view');
   const canEdit = hasPermission('table_bookings', 'edit');
   const canManage = hasPermission('table_bookings', 'manage');
+  const canDelete = hasPermission('table_bookings', 'delete');
   const canSendMessages = hasPermission('messages', 'send');
 
   const loadMessageThread = useCallback(async (customerId: string) => {
@@ -210,6 +211,32 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
     }
   }
 
+  async function handleDelete() {
+    if (!booking) return;
+
+    const confirmDelete = window.confirm('This will permanently delete this booking. This action cannot be undone. Continue?');
+    if (!confirmDelete) {
+      return;
+    }
+
+    try {
+      setProcessing(true);
+      const result = await deleteTableBooking(booking.id);
+
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success('Booking deleted');
+        router.push('/table-bookings');
+      }
+    } catch (err: any) {
+      console.error('Failed to delete booking:', err);
+      toast.error(err.message || 'Failed to delete booking');
+    } finally {
+      setProcessing(false);
+    }
+  }
+
   async function handleComplete() {
     if (!booking) return;
 
@@ -301,42 +328,43 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
 
   if (!canView) {
     return (
-      <PageWrapper>
-        <PageHeader 
-          title="Access Denied"
-          backButton={{
-            label: "Back to Table Bookings",
-            onBack: () => router.push('/table-bookings')
-          }}
-        />
-        <PageContent>
-          <Alert variant="error" description="You do not have permission to view booking details." />
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="Access Denied"
+        backButton={{
+          label: 'Back to Table Bookings',
+          onBack: () => router.push('/table-bookings'),
+        }}
+      >
+        <Alert variant="error" description="You do not have permission to view booking details." />
+      </PageLayout>
     );
   }
 
   if (loading) {
     return (
-      <PageWrapper>
-        <PageHeader title="Loading..." />
-        <PageContent>
-          <div className="flex items-center justify-center h-64">
-            <Spinner size="lg" />
-          </div>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="Loading..."
+        loading
+        loadingLabel="Loading booking..."
+        backButton={{
+          label: 'Back to Table Bookings',
+          href: '/table-bookings',
+        }}
+      />
     );
   }
 
   if (error || !booking) {
     return (
-      <PageWrapper>
-        <PageHeader title="Error" />
-        <PageContent>
-          <Alert variant="error" description={error || 'Booking not found'} />
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="Booking Error"
+        backButton={{
+          label: 'Back to Table Bookings',
+          href: '/table-bookings',
+        }}
+        error={error || 'Booking not found'}
+        onRetry={loadBooking}
+      />
     );
   }
 
@@ -345,16 +373,14 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
   const isPast = bookingDateTime < new Date();
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title={`Booking ${booking.booking_reference}`}
-        subtitle={`Created ${format(new Date(booking.created_at), 'dd/MM/yyyy HH:mm')} • Source: ${booking.source}`}
-        breadcrumbs={[
-          { label: 'Table Bookings', href: '/table-bookings' },
-          { label: booking.booking_reference, href: '' }
-        ]}
-      />
-      <PageContent>
+    <PageLayout
+      title={`Booking ${booking.booking_reference}`}
+      subtitle={`Created ${format(new Date(booking.created_at), 'dd/MM/yyyy HH:mm')} • Source: ${booking.source}`}
+      breadcrumbs={[
+        { label: 'Table Bookings', href: '/table-bookings' },
+        { label: booking.booking_reference, href: '' },
+      ]}
+    >
         <Card>
         {/* Header */}
         <div className="p-6 border-b">
@@ -693,6 +719,18 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
                     )}
                   </div>
                 )}
+
+                {canDelete && ['pending_payment', 'cancelled'].includes(booking.status) && (
+                  <Button
+                    onClick={handleDelete}
+                    loading={processing}
+                    variant="danger"
+                    leftIcon={<TrashIcon className="h-4 w-4" />}
+                    fullWidth
+                  >
+                    Delete Booking
+                  </Button>
+                )}
               </div>
             </Card>
 
@@ -774,7 +812,6 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
           )}
         </Form>
       </Modal>
-      </PageContent>
-    </PageWrapper>
+    </PageLayout>
   );
 }

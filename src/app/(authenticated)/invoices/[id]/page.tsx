@@ -4,14 +4,12 @@ import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getInvoice, updateInvoiceStatus, deleteInvoice } from '@/app/actions/invoices'
 import { getEmailConfigStatus } from '@/app/actions/email'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 // Removed unused Section, DataTable, Column imports
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
@@ -176,17 +174,12 @@ export default function InvoiceDetailPage() {
 
   if (permissionsLoading || loading) {
     return (
-      <PageWrapper>
-        <PageHeader 
-          title="Loading..."
-          backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-        />
-        <PageContent>
-          <div className="flex items-center justify-center h-64">
-            <Spinner size="lg" />
-          </div>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="Loading invoice"
+        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+        loading
+        loadingLabel="Fetching invoice..."
+      />
     )
   }
 
@@ -196,15 +189,12 @@ export default function InvoiceDetailPage() {
 
   if (error || !invoice) {
     return (
-      <PageWrapper>
-        <PageHeader 
-          title="Invoice Not Found"
-          backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-        />
-        <PageContent>
-          <Alert variant="error" description={error || 'Invoice not found'} className="mb-6" />
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="Invoice Not Found"
+        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+        error={error || 'Invoice not found'}
+        onRetry={invoiceId ? () => router.refresh() : undefined}
+      />
     )
   }
 
@@ -225,120 +215,120 @@ export default function InvoiceDetailPage() {
     return acc + (itemAfterInvoiceDiscount * (item.vat_rate / 100))
   }, 0) || 0
 
-  return (
-    <PageWrapper>
-      <PageHeader
-        title={`Invoice ${invoice.invoice_number}`}
-        subtitle={invoice.vendor?.name}
-        backButton={{
-          label: "Back to Invoices",
-          href: "/invoices"
-        }}
-        actions={
-          <div className="flex flex-wrap gap-2">
-            {invoice.status === 'draft' && canEdit && (
-              <>
-                <Button
-                  onClick={() => handleStatusChange('sent')}
-                  disabled={actionLoading || !canEdit}
-                  loading={actionLoading}
-                  variant="ghost"
-                  size="sm"
-                  className="text-white hover:text-white/80 hover:bg-white/10"
-                  leftIcon={<Mail className="h-4 w-4" />}
-                >
-                  <span className="hidden sm:inline">Mark as Sent</span>
-                  <span className="sm:hidden">Send</span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => router.push(`/invoices/${invoice.id}/edit`)}
-                  disabled={actionLoading}
-                  size="sm"
-                  className="text-white hover:text-white/80 hover:bg-white/10"
-                  leftIcon={<Edit className="h-4 w-4" />}
-                >
-                  Edit
-                </Button>
-              </>
-            )}
-            
-            {invoice.status === 'sent' && canEdit && (
-              <Button
-                onClick={() => handleStatusChange('paid')}
-                disabled={actionLoading || !canEdit}
-                loading={actionLoading}
-                variant="ghost"
-                size="sm"
-                className="text-white hover:text-white/80 hover:bg-white/10"
-                leftIcon={<CheckCircle className="h-4 w-4" />}
-              >
-                <span className="hidden sm:inline">Mark as Paid</span>
-                <span className="sm:hidden">Paid</span>
-              </Button>
-            )}
+  const headerActions = (
+    <div className="flex flex-wrap gap-2">
+      {invoice.status === 'draft' && canEdit && (
+        <>
+          <Button
+            onClick={() => handleStatusChange('sent')}
+            disabled={actionLoading || !canEdit}
+            loading={actionLoading}
+            variant="ghost"
+            size="sm"
+            className="text-white hover:text-white/80 hover:bg-white/10"
+            leftIcon={<Mail className="h-4 w-4" />}
+          >
+            <span className="hidden sm:inline">Mark as Sent</span>
+            <span className="sm:hidden">Send</span>
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => router.push(`/invoices/${invoice.id}/edit`)}
+            disabled={actionLoading}
+            size="sm"
+            className="text-white hover:text-white/80 hover:bg-white/10"
+            leftIcon={<Edit className="h-4 w-4" />}
+          >
+            Edit
+          </Button>
+        </>
+      )}
 
-            {emailConfigured && canEdit && (
-              <>
-                <Button
-                  variant="ghost"
-                  onClick={() => setShowEmailModal(true)}
-                  disabled={actionLoading || !canEdit}
-                  size="sm"
-                  className="text-white hover:text-white/80 hover:bg-white/10"
-                  leftIcon={<Mail className="h-4 w-4" />}
-                >
-                  <span className="hidden sm:inline">Send Email</span>
-                  <span className="sm:hidden">Email</span>
-                </Button>
-                {(invoice.status === 'overdue' || 
-                  (invoice.status === 'sent' && new Date(invoice.due_date) < new Date())) && (
-                  <Button
-                    variant="ghost"
-                    onClick={() => setShowChaseModal(true)}
-                    disabled={actionLoading || !canEdit}
-                    size="sm"
-                    leftIcon={<Clock className="h-4 w-4" />}
-                    className="text-white hover:text-white/80 hover:bg-white/10"
-                  >
-                    <span className="hidden sm:inline">Chase Payment</span>
-                    <span className="sm:hidden">Chase</span>
-                  </Button>
-                )}
-              </>
-            )}
+      {invoice.status === 'sent' && canEdit && (
+        <Button
+          onClick={() => handleStatusChange('paid')}
+          disabled={actionLoading || !canEdit}
+          loading={actionLoading}
+          variant="ghost"
+          size="sm"
+          className="text-white hover:text-white/80 hover:bg-white/10"
+          leftIcon={<CheckCircle className="h-4 w-4" />}
+        >
+          <span className="hidden sm:inline">Mark as Paid</span>
+          <span className="sm:hidden">Paid</span>
+        </Button>
+      )}
 
+      {emailConfigured && canEdit && (
+        <>
+          <Button
+            variant="ghost"
+            onClick={() => setShowEmailModal(true)}
+            disabled={actionLoading || !canEdit}
+            size="sm"
+            className="text-white hover:text-white/80 hover:bg-white/10"
+            leftIcon={<Mail className="h-4 w-4" />}
+          >
+            <span className="hidden sm:inline">Send Email</span>
+            <span className="sm:hidden">Email</span>
+          </Button>
+          {(invoice.status === 'overdue' ||
+            (invoice.status === 'sent' && new Date(invoice.due_date) < new Date())) && (
             <Button
               variant="ghost"
-              onClick={() => window.open(`/api/invoices/${invoice.id}/pdf`, '_blank')}
-              disabled={actionLoading}
+              onClick={() => setShowChaseModal(true)}
+              disabled={actionLoading || !canEdit}
               size="sm"
+              leftIcon={<Clock className="h-4 w-4" />}
               className="text-white hover:text-white/80 hover:bg-white/10"
-              leftIcon={<Download className="h-4 w-4" />}
             >
-              <span className="hidden sm:inline">Download PDF</span>
-              <span className="sm:hidden">PDF</span>
+              <span className="hidden sm:inline">Chase Payment</span>
+              <span className="sm:hidden">Chase</span>
             </Button>
+          )}
+        </>
+      )}
 
-            {invoice.status === 'draft' && canDelete && (
-              <Button
-                variant="ghost"
-                onClick={() => setShowDeleteConfirm(true)}
-                disabled={actionLoading}
-                loading={actionLoading}
-                size="sm"
-                className="text-white hover:text-white/80 hover:bg-white/10"
-                leftIcon={<Trash2 className="h-4 w-4" />}
-              >
-                Delete
-              </Button>
-            )}
-          </div>
-        }
-      />
-      <PageContent>
-        <div className="mb-6">
-          <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+      <Button
+        variant="ghost"
+        onClick={() => window.open(`/api/invoices/${invoice.id}/pdf`, '_blank')}
+        disabled={actionLoading}
+        size="sm"
+        className="text-white hover:text-white/80 hover:bg-white/10"
+        leftIcon={<Download className="h-4 w-4" />}
+      >
+        <span className="hidden sm:inline">Download PDF</span>
+        <span className="sm:hidden">PDF</span>
+      </Button>
+
+      {invoice.status === 'draft' && canDelete && (
+        <Button
+          variant="ghost"
+          onClick={() => setShowDeleteConfirm(true)}
+          disabled={actionLoading}
+          loading={actionLoading}
+          size="sm"
+          className="text-white hover:text-white/80 hover:bg-white/10"
+          leftIcon={<Trash2 className="h-4 w-4" />}
+        >
+          Delete
+        </Button>
+      )}
+    </div>
+  )
+
+  return (
+    <PageLayout
+      title={`Invoice ${invoice.invoice_number}`}
+      subtitle={invoice.vendor?.name}
+      backButton={{
+        label: 'Back to Invoices',
+        href: '/invoices',
+      }}
+      headerActions={headerActions}
+    >
+      <div className="mb-6">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
           <Badge variant={getStatusBadgeVariant(invoice.status)} icon={getStatusIcon(invoice.status)}>
             {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1).replace('_', ' ')}
           </Badge>
@@ -614,25 +604,23 @@ export default function InvoiceDetailPage() {
             invoice={invoice}
             isOpen={showEmailModal}
             onClose={() => setShowEmailModal(false)}
-      onSuccess={async () => {
-        // Reload invoice to get updated status
-        const result = await getInvoice(invoice.id)
-        if (result.invoice) {
-          setInvoice(result.invoice)
-        }
-      }}
+            onSuccess={async () => {
+              const result = await getInvoice(invoice.id)
+              if (result.invoice) {
+                setInvoice(result.invoice)
+              }
+            }}
           />
           <ChasePaymentModal
             invoice={invoice}
             isOpen={showChaseModal}
             onClose={() => setShowChaseModal(false)}
-      onSuccess={async () => {
-        // Reload invoice to get updated status
-        const result = await getInvoice(invoice.id)
-        if (result.invoice) {
-          setInvoice(result.invoice)
-        }
-      }}
+            onSuccess={async () => {
+              const result = await getInvoice(invoice.id)
+              if (result.invoice) {
+                setInvoice(result.invoice)
+              }
+            }}
           />
         </>
       )}
@@ -645,7 +633,6 @@ export default function InvoiceDetailPage() {
         confirmText="Delete"
         confirmVariant="danger"
       />
-      </PageContent>
-    </PageWrapper>
+    </PageLayout>
   )
 }

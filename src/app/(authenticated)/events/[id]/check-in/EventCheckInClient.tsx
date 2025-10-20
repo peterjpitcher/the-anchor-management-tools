@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { formatDate } from '@/lib/dateUtils'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
@@ -323,32 +324,35 @@ export default function EventCheckInClient({ event, reviewLink }: EventCheckInCl
     </div>
   )
 
+  const subtitleParts = [eventDate, event.time].filter(Boolean)
+  const headerSubtitle = subtitleParts.length > 0 ? subtitleParts.join(' · ') : undefined
+  const headerTitle = event.name || 'Event Check-In'
+
   return (
-    <div className="space-y-6">
-      <div className="rounded-[32px] bg-white/95 shadow-2xl px-6 py-6 sm:px-8 sm:py-8 text-gray-900">
-        <header className="flex flex-wrap items-center justify-between gap-3 pb-4">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-wide text-emerald-600">Now checking in</p>
-            <h2 className="text-3xl sm:text-4xl font-semibold text-gray-900 mt-2">{event.name}</h2>
-            <p className="text-sm text-gray-600 mt-1">
-              {eventDate} · {event.time}
-            </p>
+    <PageLayout title={headerTitle} subtitle={headerSubtitle}>
+      <div className="space-y-6">
+        <div className="rounded-[32px] bg-white/95 px-6 py-6 text-gray-900 shadow-2xl sm:px-8 sm:py-8">
+          <header className="flex flex-wrap items-center justify-between gap-3 pb-4">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-wide text-emerald-600">Now checking in</p>
+              <h2 className="mt-2 text-3xl font-semibold text-gray-900 sm:text-4xl">{event.name}</h2>
+              {headerSubtitle && <p className="mt-1 text-sm text-gray-600">{headerSubtitle}</p>}
+            </div>
+          </header>
+
+          <div className="mt-4 space-y-5">
+            {error && <Alert variant="error" title="Unable to continue" description={error} />}
+
+            {step === 'lookup' && renderLookupForm()}
+            {step === 'known' && renderKnownGuest()}
+            {step === 'unknown' && renderUnknownGuest()}
+            {step === 'already' && renderAlreadyCheckedIn()}
+            {step === 'success' && renderSuccess()}
           </div>
-        </header>
-
-        <div className="mt-4 space-y-5">
-          {error && <Alert variant="error" title="Unable to continue" description={error} />}
-
-          {step === 'lookup' && renderLookupForm()}
-          {step === 'known' && renderKnownGuest()}
-          {step === 'unknown' && renderUnknownGuest()}
-          {step === 'already' && renderAlreadyCheckedIn()}
-          {step === 'success' && renderSuccess()}
         </div>
-      </div>
 
-      <p className="text-center text-sm text-emerald-100/80">
-      </p>
-    </div>
+        <p className="text-center text-sm text-emerald-100/80" />
+      </div>
+    </PageLayout>
   )
 }

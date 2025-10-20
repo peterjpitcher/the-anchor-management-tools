@@ -71,13 +71,12 @@ import type {
   PrivateBookingItem,
 } from "@/types/private-bookings";
 // New UI components
-import { PageHeader } from "@/components/ui-v2/layout/PageHeader";
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
+import { PageLayout } from "@/components/ui-v2/layout/PageLayout";
 import { Card } from "@/components/ui-v2/layout/Card";
 import { Section } from "@/components/ui-v2/layout/Section";
 import { Button } from "@/components/ui-v2/forms/Button";
-import { NavLink } from "@/components/ui-v2/navigation/NavLink";
-import { NavGroup } from "@/components/ui-v2/navigation/NavGroup";
+import { LinkButton } from "@/components/ui-v2/navigation/LinkButton";
+import type { HeaderNavItem } from "@/components/ui-v2/navigation/HeaderNav";
 import { Input } from "@/components/ui-v2/forms/Input";
 import { Select } from "@/components/ui-v2/forms/Select";
 import { Textarea } from "@/components/ui-v2/forms/Textarea";
@@ -126,7 +125,7 @@ const statusConfig: Record<
 
 interface PrivateBookingDetailClientProps {
   bookingId: string;
-  initialBooking: PrivateBookingWithDetails;
+  initialBooking: PrivateBookingWithDetails | null;
   permissions: {
     canEdit: boolean;
     canDelete: boolean;
@@ -136,6 +135,7 @@ interface PrivateBookingDetailClientProps {
     canManageCatering: boolean;
     canManageVendors: boolean;
   };
+  initialError?: string | null;
 }
 
 const toNumber = (value: unknown, fallback = 0): number => {
@@ -1247,15 +1247,17 @@ function EditItemModal({
 export default function PrivateBookingDetailClient({
   bookingId,
   initialBooking,
-  permissions
+  permissions,
+  initialError,
 }: PrivateBookingDetailClientProps) {
   const router = useRouter();
-  const [booking, setBooking] = useState<PrivateBookingWithDetails | null>(
-    () => normalizeBooking(initialBooking),
+  const [booking, setBooking] = useState<PrivateBookingWithDetails | null>(() =>
+    initialBooking ? normalizeBooking(initialBooking) : null,
   );
-  const [items, setItems] = useState<PrivateBookingItem[]>(
-    () => (initialBooking.items || []).map(normalizeItem),
+  const [items, setItems] = useState<PrivateBookingItem[]>(() =>
+    (initialBooking?.items || []).map(normalizeItem),
   );
+  const [pageError, setPageError] = useState<string | null>(initialError ?? null);
   const [isReordering, setIsReordering] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showDepositModal, setShowDepositModal] = useState(false);
@@ -1275,10 +1277,19 @@ export default function PrivateBookingDetailClient({
   );
 
   useEffect(() => {
+    if (!initialBooking) {
+      setBooking(null);
+      setItems([]);
+      return;
+    }
     const normalized = normalizeBooking(initialBooking);
     setBooking(normalized);
     setItems(normalized.items || []);
   }, [initialBooking]);
+
+  useEffect(() => {
+    setPageError(initialError ?? null);
+  }, [initialError]);
 
   const {
     canEdit,
@@ -1290,18 +1301,53 @@ export default function PrivateBookingDetailClient({
     canManageVendors
   } = permissions;
 
-  const loadBooking = useCallback(async (id: string) => {
-    setLoading(true);
-    const result = await getPrivateBooking(id)
-    if (result.data) {
-      const normalized = normalizeBooking(result.data)
-      setBooking(normalized)
-      setItems(normalized.items || [])
-    } else if (result.error) {
-      router.push('/private-bookings')
-    }
-    setLoading(false)
-  }, [router]);
+  const navItems: HeaderNavItem[] = [
+    { label: "Overview", href: "#event-details" },
+    { label: "Items", href: "#booking-items" },
+    { label: "Notes", href: "#notes-requirements" },
+    { label: "Actions", href: "#quick-actions" },
+    { label: "Info", href: "#booking-info" },
+  ];
+
+  const headerActions = canEdit
+    ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={() => setShowStatusModal(true)}>
+            Change Status
+          </Button>
+          <LinkButton href={`/private-bookings/${bookingId}/edit`} variant="primary" size="sm">
+            Edit Details
+          </LinkButton>
+        </div>
+      )
+    : undefined;
+
+  const loadBooking = useCallback(
+    async (id: string) => {
+      setLoading(true);
+      try {
+        const result = await getPrivateBooking(id);
+        if (result.data) {
+          const normalized = normalizeBooking(result.data);
+          setBooking(normalized);
+          setItems(normalized.items || []);
+          setPageError(null);
+        } else if (result.error) {
+          if (result.error.toLowerCase().includes('permission')) {
+            router.push('/unauthorized');
+            return;
+          }
+          toast.error(result.error);
+          setPageError(result.error);
+          setBooking(null);
+          setItems([]);
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [router],
+  );
 
   useEffect(() => {
     if (!bookingId) {
@@ -1427,28 +1473,33 @@ export default function PrivateBookingDetailClient({
     return subtotal;
   };
 
-  if (loading || !booking) {
+  if (loading) {
     return (
-      <PageWrapper>
-        <PageHeader
-          title="Loading..."
-          backButton={{
-            label: "Back to Private Bookings",
-            onBack: () => router.push('/private-bookings')
-          }}
-        />
-        <PageContent>
-          <div className="space-y-6">
-            <Card>
-              <Skeleton className="h-32" />
-            </Card>
-            <Card>
-              <Skeleton className="h-64" />
-            </Card>
-          </div>
-        </PageContent>
-      </PageWrapper>
-    );
+      <PageLayout
+        title="Private Booking"
+        subtitle="Loading booking details"
+        backButton={{
+          label: "Back to Private Bookings",
+          href: "/private-bookings",
+        }}
+        loading
+        loadingLabel="Loading booking..."
+      />
+    )
+  }
+
+  if (!booking) {
+    return (
+      <PageLayout
+        title="Private Booking"
+        subtitle={pageError ? undefined : "Booking not found"}
+        backButton={{
+          label: "Back to Private Bookings",
+          href: "/private-bookings",
+        }}
+        error={pageError ?? "We couldn't find that booking."}
+      />
+    )
   }
 
   const isDateTbd = booking.internal_notes?.includes(DATE_TBD_NOTE) ?? false;
@@ -1463,49 +1514,39 @@ export default function PrivateBookingDetailClient({
   // StatusIcon is defined inline where needed above; remove duplicate unused const here
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title={booking.customer_full_name || booking.customer_name}
-        breadcrumbs={[
-          { label: "Private Bookings", href: "/private-bookings" },
-          { label: booking.customer_full_name || booking.customer_name, href: "" },
-        ]}
-        actions={
-          <NavGroup>
-            {canEdit && (
-              <NavLink onClick={() => setShowStatusModal(true)}>
-                Change Status
-              </NavLink>
-            )}
-            {canEdit && (
-              <NavLink href={`/private-bookings/${bookingId}/edit`}>
-                Edit Details
-              </NavLink>
-            )}
-            {/* Temporarily commented out - missing handleCancelBooking function 
-            {(booking.status === 'draft' || booking.status === 'confirmed') && (
-              <NavLink onClick={handleCancelBooking}>
-                {cancelling ? 'Cancelling...' : 'Cancel Booking'}
-              </NavLink>
-            )} */}
-          </NavGroup>
-        }
-      />
-      <PageContent>
-        {isDateTbd && (
-          <Alert
-            variant="warning"
-            title="Event date and time still to be confirmed"
-            className="mb-6"
-          >
-            Keep this booking in draft until the customer confirms the event details.
-          </Alert>
-        )}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Main Content - Left 2/3 */}
+    <PageLayout
+      title={booking.customer_full_name || booking.customer_name}
+      subtitle={booking.event_type ?? undefined}
+      breadcrumbs={[
+        { label: "Private Bookings", href: "/private-bookings" },
+        { label: booking.customer_full_name || booking.customer_name, href: "" },
+      ]}
+      backButton={{ label: "Back to Private Bookings", href: "/private-bookings" }}
+      navItems={navItems}
+      headerActions={headerActions}
+    >
+      {pageError && (
+        <Alert
+          variant="error"
+          title="We couldn’t refresh the booking"
+          description={pageError}
+          className="mb-6"
+        />
+      )}
+
+      {isDateTbd && (
+        <Alert
+          variant="warning"
+          title="Event date and time still to be confirmed"
+          className="mb-6"
+        >
+          Keep this booking in draft until the customer confirms the event details.
+        </Alert>
+      )}
+
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
-          {/* Event Details Card */}
-          <Section title="Event Details">
+          <Section id="event-details" title="Event Details">
             <Card>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
@@ -1639,6 +1680,7 @@ export default function PrivateBookingDetailClient({
 
           {/* Booking Items Card */}
           <Section
+            id="booking-items"
             title="Booking Items"
             actions={
               canEdit ? (
@@ -1701,7 +1743,7 @@ export default function PrivateBookingDetailClient({
             booking.internal_notes ||
             booking.special_requirements ||
             booking.accessibility_needs) && (
-            <Section title="Notes & Requirements">
+            <Section id="notes-requirements" title="Notes & Requirements">
               <Card>
                 <div className="space-y-4">
                   {booking.customer_requests && (
@@ -1930,7 +1972,7 @@ export default function PrivateBookingDetailClient({
           </Section>
 
           {/* Quick Actions Card */}
-          <Section title="Quick Actions">
+          <Section id="quick-actions" title="Quick Actions">
             <Card>
               <div className="space-y-3">
                 {canSendSms && (
@@ -1972,7 +2014,7 @@ export default function PrivateBookingDetailClient({
           </Section>
 
           {/* Booking Info Card */}
-          <Section title="Booking Information">
+          <Section id="booking-info" title="Booking Information">
             <Card>
               <div className="space-y-3">
                 <div>
@@ -2089,7 +2131,6 @@ export default function PrivateBookingDetailClient({
           onSuccess={refreshBooking}
         />
       )}
-      </PageContent>
-    </PageWrapper>
+    </PageLayout>
   );
 }

@@ -2,12 +2,9 @@ import { notFound, redirect } from 'next/navigation'
 import { formatDate } from '@/lib/dateUtils'
 import { calculateLengthOfService } from '@/lib/employeeUtils'
 import { StatusBadge } from '@/components/ui-v2/display/Badge'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Tabs } from '@/components/ui-v2/navigation/Tabs'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import DeleteEmployeeButton from '@/components/DeleteEmployeeButton'
@@ -23,6 +20,8 @@ import OnboardingChecklistTab from '@/components/OnboardingChecklistTab'
 import { EmployeeAuditTrail } from '@/components/EmployeeAuditTrail'
 import { EmployeeRecentChanges } from '@/components/EmployeeRecentChanges'
 import { getEmployeeDetailData } from '@/app/actions/employeeDetails'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 
 export const dynamic = 'force-dynamic'
 
@@ -171,32 +170,41 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     }
   ]
 
-  return (
-    <PageWrapper>
-      <PageHeader
-        title={`${employee.first_name} ${employee.last_name}`}
-        subtitle={employee.job_title}
-        backButton={{ label: 'Back to Employees', href: '/employees' }}
-        actions={
-          <NavGroup>
-            {permissions.canEdit && (
-              <NavLink href={`/employees/${employee.employee_id}/edit`}>
-                Edit Employee
-              </NavLink>
-            )}
-            {permissions.canDelete && (
-              <DeleteEmployeeButton
-                employeeId={employee.employee_id}
-                employeeName={`${employee.first_name} ${employee.last_name}`}
-              />
-            )}
-          </NavGroup>
-        }
-      />
+  const navItems: HeaderNavItem[] = [
+    { label: 'Overview', href: '#overview' },
+    { label: 'Details', href: '#details' },
+    { label: 'Notes', href: '#notes' },
+    { label: 'Documents', href: '#documents' },
+    { label: 'Audit Trail', href: '#audit' },
+  ]
 
-      <PageContent>
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className="space-y-6 lg:col-span-2">
+  const headerActions = (
+    <div className="flex flex-wrap items-center gap-2">
+      {permissions.canEdit && (
+        <LinkButton href={`/employees/${employee.employee_id}/edit`} size="sm" variant="primary">
+          Edit Employee
+        </LinkButton>
+      )}
+      {permissions.canDelete && (
+        <DeleteEmployeeButton
+          employeeId={employee.employee_id}
+          employeeName={`${employee.first_name} ${employee.last_name}`}
+        />
+      )}
+    </div>
+  )
+
+  return (
+    <PageLayout
+      title={`${employee.first_name} ${employee.last_name}`}
+      subtitle={employee.job_title}
+      backButton={{ label: 'Back to Employees', href: '/employees' }}
+      navItems={navItems}
+      headerActions={headerActions}
+    >
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <section id="overview">
             <Card>
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                 <div>
@@ -221,55 +229,61 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
                 </StatusBadge>
               </div>
             </Card>
+          </section>
 
+          <section id="details">
             <Card>
               <Tabs items={tabs} />
             </Card>
+          </section>
 
-            <Section
-              title="Notes"
-              description="Track key updates and conversations related to this employee."
-              actions={
-                permissions.canEdit ? (
-                  <AddEmployeeNoteForm employeeId={employee.employee_id} />
-                ) : null
-              }
-            >
-              <EmployeeNotesList notes={notes} />
-            </Section>
+          <Section
+            id="notes"
+            title="Notes"
+            description="Track key updates and conversations related to this employee."
+            actions={
+              permissions.canEdit ? (
+                <AddEmployeeNoteForm employeeId={employee.employee_id} />
+              ) : null
+            }
+          >
+            <EmployeeNotesList notes={notes} />
+          </Section>
 
-            <Section
-              title="Documents"
-              description={
-                permissions.canViewDocuments
-                  ? 'Manage employee documents and files.'
-                  : 'You do not have permission to view employee documents.'
-              }
-              actions={
-                permissions.canUploadDocuments ? (
-                  <AddEmployeeAttachmentForm
-                    employeeId={employee.employee_id}
-                    categories={attachmentCategories}
-                  />
-                ) : null
-              }
-            >
-              {permissions.canViewDocuments ? (
-                <EmployeeAttachmentsList
+          <Section
+            id="documents"
+            title="Documents"
+            description={
+              permissions.canViewDocuments
+                ? 'Manage employee documents and files.'
+                : 'You do not have permission to view employee documents.'
+            }
+            actions={
+              permissions.canUploadDocuments ? (
+                <AddEmployeeAttachmentForm
                   employeeId={employee.employee_id}
-                  attachments={attachments}
-                  categoryLookup={attachmentCategoryMap}
-                  canDelete={permissions.canDeleteDocuments}
+                  categories={attachmentCategories}
                 />
-              ) : (
-                <div className="text-sm text-gray-500">
-                  Document visibility requires `employees:view_documents`.
-                </div>
-              )}
-            </Section>
-          </div>
+              ) : null
+            }
+          >
+            {permissions.canViewDocuments ? (
+              <EmployeeAttachmentsList
+                employeeId={employee.employee_id}
+                attachments={attachments}
+                categoryLookup={attachmentCategoryMap}
+                canDelete={permissions.canDeleteDocuments}
+              />
+            ) : (
+              <div className="text-sm text-gray-500">
+                Document visibility requires `employees:view_documents`.
+              </div>
+            )}
+          </Section>
+        </div>
 
-          <div className="space-y-6">
+        <div className="space-y-6">
+          <section id="audit">
             <Card>
               <EmployeeAuditTrail
                 employeeId={employee.employee_id}
@@ -278,13 +292,13 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
                 canViewAudit={permissions.canView}
               />
             </Card>
+          </section>
 
-            <Card>
-              <EmployeeRecentChanges employeeId={employee.employee_id} />
-            </Card>
-          </div>
+          <Card>
+            <EmployeeRecentChanges employeeId={employee.employee_id} />
+          </Card>
         </div>
-      </PageContent>
-    </PageWrapper>
+      </div>
+    </PageLayout>
   )
 }

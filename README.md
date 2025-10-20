@@ -181,3 +181,13 @@ Production URL: https://management.orangejelly.co.uk
 ---
 
 © 2024 The Anchor Management Tools
+
+## 🧭 Layout Migration Status
+
+We are standardising on the new `PageLayout` + `HeaderNav` shell (`src/components/ui-v2/layout/PageLayout.tsx`, `src/components/ui-v2/navigation/HeaderNav.tsx`). Newly migrated examples:
+
+- `src/app/(authenticated)/settings/page.tsx`
+- `src/app/(authenticated)/events/EventsClient.tsx`
+- `src/app/(authenticated)/customers/page.tsx`
+
+Pages still using the legacy `PageWrapper`/`Page` should follow these as references when refactoring.

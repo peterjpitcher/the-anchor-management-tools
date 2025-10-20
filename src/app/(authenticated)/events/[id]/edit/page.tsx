@@ -8,11 +8,9 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { use } from 'react'
 // New UI components
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { toast } from '@/components/ui-v2/feedback/Toast'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 interface PageProps {
   params: Promise<{ id: string }>
 }
@@ -93,46 +91,35 @@ export default function EditEventPage({ params }: PageProps) {
 
   if (loading || !event) {
     return (
-      <PageWrapper>
-        <PageHeader 
-          title="Edit Event"
-          backButton={{
-            label: "Back to Event",
-            onBack: () => router.back()
-          }}
-        />
-        <PageContent>
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <Spinner size="lg" />
-              <p className="mt-4 text-gray-600">Loading event...</p>
-            </div>
-          </div>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="Edit Event"
+        backButton={{
+          label: 'Back to Event',
+          onBack: () => router.back(),
+        }}
+        loading
+        loadingLabel="Loading event..."
+      />
     )
   }
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Edit Event"
-        subtitle={`Update the details for ${event.name}`}
-        backButton={{
-          label: "Back to Event",
-          href: `/events/${event.id}`
-        }}
-      />
-      <PageContent>
-        <Card>
-          <EventFormGrouped 
-            event={event}
-            categories={categories as any}
-            onSubmit={handleSubmit} 
-            onCancel={handleCancel} 
-          />
-        </Card>
-      </PageContent>
-    </PageWrapper>
+    <PageLayout
+      title="Edit Event"
+      subtitle={`Update the details for ${event.name}`}
+      backButton={{
+        label: 'Back to Event',
+        href: `/events/${event.id}`,
+      }}
+    >
+      <Card>
+        <EventFormGrouped
+          event={event}
+          categories={categories as any}
+          onSubmit={handleSubmit}
+          onCancel={handleCancel}
+        />
+      </Card>
+    </PageLayout>
   )
 }

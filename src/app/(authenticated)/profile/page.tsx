@@ -11,7 +11,7 @@ import {
   ArrowDownTrayIcon
 } from '@heroicons/react/24/outline'
 // New UI components
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -193,42 +193,34 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <Page title="My Profile">
-        <div className="space-y-6">
-          <Card>
-            <Skeleton className="h-48" />
-          </Card>
-          <Card>
-            <Skeleton className="h-32" />
-          </Card>
-          <Card>
-            <Skeleton className="h-32" />
-          </Card>
-        </div>
-      </Page>
+      <PageLayout
+        title="My Profile"
+        subtitle="Manage your account details"
+        backButton={{ label: 'Back to Dashboard', href: '/dashboard' }}
+        loading
+        loadingLabel="Loading profile..."
+      />
     )
   }
 
   if (!profile) {
     return (
-      <Page title="My Profile">
-        <Card>
-          <EmptyState
-            title="Profile not found"
-            description="We couldn't load your profile information."
-            action={
-              <Button onClick={loadProfile}>
-                Try Again
-              </Button>
-            }
-          />
-        </Card>
-      </Page>
+      <PageLayout
+        title="My Profile"
+        subtitle="We couldn't load your profile information."
+        backButton={{ label: 'Back to Dashboard', href: '/dashboard' }}
+        error="Profile not found"
+      />
     )
   }
 
   return (
-    <Page title="My Profile">
+    <PageLayout
+      title="My Profile"
+      subtitle="Manage your account details"
+      backButton={{ label: 'Back to Dashboard', href: '/dashboard' }}
+    >
+      <div className="space-y-6">
       {/* Delete confirmation dialog */}
       <ConfirmDialog
         open={showDeleteConfirm}
@@ -398,6 +390,7 @@ export default function ProfilePage() {
             </div>
           </Card>
         </Section>
-      </Page>
+      </div>
+    </PageLayout>
   )
 }

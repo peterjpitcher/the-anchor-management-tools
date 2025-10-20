@@ -3,11 +3,9 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getRecurringInvoices, deleteRecurringInvoice, generateInvoiceFromRecurring, toggleRecurringInvoiceStatus } from '@/app/actions/recurring-invoices'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Button } from '@/components/ui-v2/forms/Button'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { toast } from '@/components/ui-v2/feedback/Toast'
@@ -177,17 +175,12 @@ export default function RecurringInvoicesPage() {
 
   if (permissionsLoading || loading) {
     return (
-      <PageWrapper>
-        <PageHeader 
-          title="Recurring Invoices"
-          backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-        />
-        <PageContent>
-          <div className="flex items-center justify-center h-64">
-            <Spinner size="lg" />
-          </div>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="Recurring Invoices"
+        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+        loading
+        loadingLabel="Loading recurring schedules..."
+      />
     )
   }
 
@@ -196,50 +189,48 @@ export default function RecurringInvoicesPage() {
   }
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Recurring Invoices"
-        subtitle="Manage automated invoice generation"
-        breadcrumbs={[
-          { label: 'Invoices', href: '/invoices' }
-        ]}
-        actions={
-          <Button
-            onClick={() => router.push('/invoices/recurring/new')}
-            leftIcon={<Plus className="h-4 w-4" />}
-            disabled={!canCreate}
-            title={!canCreate ? 'You need invoice create permission to add recurring invoices.' : undefined}
-          >
-            New Recurring Invoice
-          </Button>
-        }
-      />
-      <PageContent>
+    <PageLayout
+      title="Recurring Invoices"
+      subtitle="Manage automated invoice generation"
+      breadcrumbs={[{ label: 'Invoices', href: '/invoices' }]}
+      headerActions={
+        <Button
+          onClick={() => router.push('/invoices/recurring/new')}
+          leftIcon={<Plus className="h-4 w-4" />}
+          disabled={!canCreate}
+          title={!canCreate ? 'You need invoice create permission to add recurring invoices.' : undefined}
+        >
+          New Recurring Invoice
+        </Button>
+      }
+    >
+      <div className="space-y-6">
         {isReadOnly && (
           <Alert
             variant="info"
             description="You have read-only access to recurring invoices; creation and management actions are disabled."
-            className="mb-6"
           />
         )}
+
         {recurringInvoices.length === 0 ? (
-        <EmptyState icon="calendar"
-          title="No recurring invoices"
-          description="Create recurring invoices to automate your billing"
-          action={
-            canCreate ? (
-              <Button onClick={() => router.push('/invoices/recurring/new')}>
-                Create First Recurring Invoice
-              </Button>
-            ) : undefined
-          }
-        />
-      ) : (
-        <Card>
-          <DataTable
-            data={recurringInvoices}
-            getRowKey={(r) => r.id}
-            columns={[
+          <EmptyState
+            icon={<Calendar className="h-12 w-12" />}
+            title="No recurring invoices"
+            description="Create recurring invoices to automate your billing"
+            action={
+              canCreate ? (
+                <Button onClick={() => router.push('/invoices/recurring/new')} leftIcon={<Plus className="h-4 w-4" />}>
+                  Create schedule
+                </Button>
+              ) : undefined
+            }
+          />
+        ) : (
+          <Card>
+            <DataTable
+              data={recurringInvoices}
+              getRowKey={(r) => r.id}
+              columns={[
               {
                 key: 'vendor',
                 header: 'Vendor',
@@ -358,21 +349,21 @@ export default function RecurringInvoicesPage() {
                 )
               },
             ]}
-            emptyMessage="No recurring invoices"
-          />
-        </Card>
-      )}
-      
-      <ConfirmDialog
-        open={showDeleteConfirm !== null}
-        onClose={() => setShowDeleteConfirm(null)}
-        onConfirm={() => showDeleteConfirm && handleDelete(showDeleteConfirm)}
-        title="Delete Recurring Invoice"
-        message="Are you sure you want to delete this recurring invoice? This action cannot be undone."
-        confirmText="Delete"
-        confirmVariant="danger"
-      />
-      </PageContent>
-    </PageWrapper>
+              emptyMessage="No recurring invoices"
+            />
+          </Card>
+        )}
+
+        <ConfirmDialog
+          open={showDeleteConfirm !== null}
+          onClose={() => setShowDeleteConfirm(null)}
+          onConfirm={() => showDeleteConfirm && handleDelete(showDeleteConfirm)}
+          title="Delete Recurring Invoice"
+          message="Are you sure you want to delete this recurring invoice? This action cannot be undone."
+          confirmText="Delete"
+          confirmVariant="danger"
+        />
+      </div>
+    </PageLayout>
   )
 }

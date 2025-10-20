@@ -4,19 +4,15 @@ import { useRouter } from 'next/navigation';
 import { usePermissions } from '@/contexts/PermissionContext';
 import Link from 'next/link';
 import { 
-  ArrowLeftIcon, 
   CogIcon, 
   TableCellsIcon, 
   ClockIcon, 
   DocumentTextIcon,
   CalendarDaysIcon 
 } from '@heroicons/react/24/outline';
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card } from '@/components/ui-v2/layout/Card';
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
-import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 
 export default function TableBookingSettingsPage() {
   const { hasPermission } = usePermissions();
@@ -25,38 +21,33 @@ export default function TableBookingSettingsPage() {
 
   if (!canManage) {
     return (
-      <PageWrapper>
-        <PageHeader 
-          title="Table Booking Settings"
-          subtitle="Configure and manage table booking system settings"
-          backButton={{
-            label: "Back to Table Bookings",
-            href: "/table-bookings"
-          }}
-        />
-        <PageContent>
-          <Card>
-            <Alert variant="error">
-              You do not have permission to manage table booking settings.
-            </Alert>
-          </Card>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="Table Booking Settings"
+        subtitle="Configure and manage table booking system settings"
+        backButton={{
+          label: 'Back to Table Bookings',
+          href: '/table-bookings',
+        }}
+      >
+        <Card>
+          <Alert variant="error">
+            You do not have permission to manage table booking settings.
+          </Alert>
+        </Card>
+      </PageLayout>
     );
   }
 
   return (
-    <PageWrapper>
-      <PageHeader 
-        title="Table Booking Settings"
-        subtitle="Configure and manage table booking system settings"
-        backButton={{
-          label: "Back to Table Bookings",
-          href: "/table-bookings"
-        }}
-      />
-      <PageContent>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <PageLayout
+      title="Table Booking Settings"
+      subtitle="Configure and manage table booking system settings"
+      backButton={{
+        label: 'Back to Table Bookings',
+        href: '/table-bookings',
+      }}
+    >
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
         {/* Table Configuration */}
         <Link href="/table-bookings/settings/tables">
           <Card interactive>
@@ -147,7 +138,6 @@ export default function TableBookingSettingsPage() {
           </Card>
         </Link>
       </div>
-      </PageContent>
-    </PageWrapper>
+    </PageLayout>
   );
 }

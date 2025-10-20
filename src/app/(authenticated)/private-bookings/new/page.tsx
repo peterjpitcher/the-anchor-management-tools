@@ -12,8 +12,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { createPrivateBooking } from '@/app/actions/privateBookingActions'
 import CustomerSearchInput from '@/components/CustomerSearchInput'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -94,18 +93,14 @@ export default function NewPrivateBookingPage() {
   const maxDate = toLocalIsoDate(oneYearFromNow)
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="New Private Booking"
-        subtitle="Create a new venue hire booking"
-        backButton={{
-          label: "Back to Private Bookings",
-          onBack: () => router.push('/private-bookings')
-        }}
-      />
-      <PageContent>
+    <PageLayout
+      title="New Private Booking"
+      subtitle="Create a new venue hire booking"
+      backButton={{ label: 'Back to Private Bookings', onBack: () => router.push('/private-bookings') }}
+    >
+      <div className="space-y-6">
         <Card>
-        <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
           {dateTbd && <input type="hidden" name="date_tbd" value="true" />}
           {/* Customer Information */}
           <Section 
@@ -440,7 +435,7 @@ export default function NewPrivateBookingPage() {
           </div>
         </form>
       </Card>
-      </PageContent>
-    </PageWrapper>
+      </div>
+    </PageLayout>
   )
 }

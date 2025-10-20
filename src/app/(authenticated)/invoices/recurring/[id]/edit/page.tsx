@@ -5,8 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { getRecurringInvoice, updateRecurringInvoice } from '@/app/actions/recurring-invoices'
 import { getVendors } from '@/app/actions/vendors'
 import { getLineItemCatalog } from '@/app/actions/invoices'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
@@ -14,7 +13,6 @@ import { Select } from '@/components/ui-v2/forms/Select'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Plus, Trash2 } from 'lucide-react'
 import type { InvoiceVendor, InvoiceLineItemInput, RecurringFrequency, LineItemCatalogItem, RecurringInvoiceWithDetails } from '@/types/invoices'
@@ -209,48 +207,39 @@ export default function EditRecurringInvoicePage() {
 
   if (loading) {
     return (
-      <PageWrapper>
-        <PageHeader 
-          title="Edit Recurring Invoice"
-          subtitle="Update recurring invoice template"
-          backButton={{ label: 'Back to Recurring Invoices', href: '/invoices/recurring' }}
-        />
-        <PageContent>
-          <div className="flex items-center justify-center h-64">
-            <Spinner size="lg" />
-          </div>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="Edit Recurring Invoice"
+        subtitle="Update recurring invoice template"
+        backButton={{ label: 'Back to Recurring Invoices', href: '/invoices/recurring' }}
+        loading
+        loadingLabel="Loading recurring invoice..."
+      />
     )
   }
 
   if (error && !recurringInvoice) {
     return (
-      <PageWrapper>
-        <PageHeader 
-          title="Edit Recurring Invoice"
-          subtitle="Update recurring invoice template"
-          backButton={{ label: 'Back to Recurring Invoices', href: '/invoices/recurring' }}
-        />
-        <PageContent>
-          <Alert variant="error" description={error} />
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="Edit Recurring Invoice"
+        subtitle="Update recurring invoice template"
+        backButton={{ label: 'Back to Recurring Invoices', href: '/invoices/recurring' }}
+        error={error}
+      />
     )
   }
 
   const totals = calculateTotals()
 
   return (
-    <PageWrapper>
-      <PageHeader 
-        title="Edit Recurring Invoice"
-        subtitle="Update recurring invoice template"
-        backButton={{ label: 'Back to Recurring Invoices', href: '/invoices/recurring' }}
-      />
-      <PageContent>
+    <PageLayout
+      title="Edit Recurring Invoice"
+      subtitle="Update recurring invoice template"
+      backButton={{ label: 'Back to Recurring Invoices', href: '/invoices/recurring' }}
+    >
+      <div className="space-y-6">
+        {error && <Alert variant="error" description={error} />}
+
         <form onSubmit={handleSubmit} className="space-y-6">
-          {error && <Alert variant="error" description={error} />}
 
           <Card title="Template Details">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -521,7 +510,7 @@ export default function EditRecurringInvoicePage() {
             </Button>
           </div>
         </form>
-      </PageContent>
-    </PageWrapper>
+      </div>
+    </PageLayout>
   )
 }

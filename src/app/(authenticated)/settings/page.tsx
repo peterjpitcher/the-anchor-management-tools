@@ -1,6 +1,5 @@
-import Link from 'next/link';
-import { 
-  TagIcon, 
+import {
+  TagIcon,
   ShieldCheckIcon,
   DocumentTextIcon,
   UserCircleIcon,
@@ -16,11 +15,9 @@ import {
 import { checkUserPermission } from '@/app/actions/rbac';
 import type { ModuleName, ActionType } from '@/types/rbac';
 // New UI components
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
-import { Card } from '@/components/ui-v2/layout/Card';
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Section } from '@/components/ui-v2/layout/Section';
-import { List, SimpleList } from '@/components/ui-v2/display/List';
+import { SimpleList } from '@/components/ui-v2/display/List';
 
 const settingsSections = [
   // User Management Section
@@ -153,70 +150,70 @@ export default async function SettingsPage() {
     }
   }
 
-  // Group sections by category
-  const userManagementSections = visibleSections.filter(s => 
-    s.href === '/profile' || s.href === '/users' || s.href === '/roles'
-  );
-  const systemSettingsSections = visibleSections.filter(s => 
-    s.href.includes('/settings/') && !s.name.includes('SMS') && !s.name.includes('Audit') && !s.name.includes('API Keys') && !s.name.includes('Twilio') && !s.name.includes('Cron')
-  );
-  const monitoringSections = visibleSections.filter(s => 
-    s.name.includes('SMS') || s.name.includes('Audit') || s.name.includes('API Keys') || s.name.includes('Twilio') || s.name.includes('Cron')
-  );
+  // Group sections by category for rendering and navigation
+  const sectionGroups = [
+    {
+      id: 'user-management',
+      label: 'User Management',
+      items: visibleSections.filter(
+        (section) =>
+          section.href === '/profile' || section.href === '/users' || section.href === '/roles'
+      ),
+    },
+    {
+      id: 'system-settings',
+      label: 'System Settings',
+      items: visibleSections.filter(
+        (section) =>
+          section.href.includes('/settings/') &&
+          !section.name.includes('SMS') &&
+          !section.name.includes('Audit') &&
+          !section.name.includes('API Keys') &&
+          !section.name.includes('Twilio') &&
+          !section.name.includes('Cron')
+      ),
+    },
+    {
+      id: 'monitoring',
+      label: 'Monitoring & Logs',
+      items: visibleSections.filter(
+        (section) =>
+          section.name.includes('SMS') ||
+          section.name.includes('Audit') ||
+          section.name.includes('API Keys') ||
+          section.name.includes('Twilio') ||
+          section.name.includes('Cron')
+      ),
+    },
+  ].filter((group) => group.items.length > 0);
+
+  const navItems = sectionGroups.map((group) => ({
+    label: group.label,
+    href: `#${group.id}`,
+  }));
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Settings"
-        subtitle="Manage application settings and configurations"
-        backButton={{ label: "Back to Dashboard", href: "/dashboard" }}
-      />
-      <PageContent>
-        {userManagementSections.length > 0 && (
-          <Section title="User Management">
+    <PageLayout
+      title="Settings"
+      subtitle="Manage application settings and configurations"
+      backButton={{ label: 'Back to Dashboard', href: '/dashboard' }}
+      navItems={navItems}
+    >
+      <div className="space-y-6">
+        {sectionGroups.map((group) => (
+          <Section key={group.id} id={group.id} title={group.label}>
             <SimpleList
-              items={userManagementSections.map((section) => ({
+              items={group.items.map((section) => ({
                 id: section.href,
                 href: section.href,
                 title: section.name,
                 subtitle: section.description,
                 icon: <section.icon className="h-5 w-5 text-gray-400" />,
-                // SimpleList automatically adds chevron for items with href
               }))}
             />
           </Section>
-        )}
-
-        {systemSettingsSections.length > 0 && (
-          <Section title="System Settings">
-            <SimpleList
-              items={systemSettingsSections.map((section) => ({
-                id: section.href,
-                href: section.href,
-                title: section.name,
-                subtitle: section.description,
-                icon: <section.icon className="h-5 w-5 text-gray-400" />,
-                // SimpleList automatically adds chevron for items with href
-              }))}
-            />
-          </Section>
-        )}
-
-        {monitoringSections.length > 0 && (
-          <Section title="Monitoring & Logs">
-            <SimpleList
-              items={monitoringSections.map((section) => ({
-                id: section.href,
-                href: section.href,
-                title: section.name,
-                subtitle: section.description,
-                icon: <section.icon className="h-5 w-5 text-gray-400" />,
-                // SimpleList automatically adds chevron for items with href
-              }))}
-            />
-          </Section>
-        )}
-      </PageContent>
-    </PageWrapper>
+        ))}
+      </div>
+    </PageLayout>
   );
 }

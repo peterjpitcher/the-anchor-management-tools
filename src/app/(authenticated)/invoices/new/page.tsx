@@ -4,8 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createInvoice, getLineItemCatalog } from '@/app/actions/invoices'
 import { getVendors } from '@/app/actions/vendors'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Input } from '@/components/ui-v2/forms/Input'
@@ -13,7 +12,6 @@ import { Select } from '@/components/ui-v2/forms/Select'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { PlusCircle, Trash2 } from 'lucide-react'
 import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
@@ -249,18 +247,13 @@ export default function NewInvoicePage() {
 
   if (permissionsLoading) {
     return (
-      <PageWrapper>
-        <PageHeader
-          title="New Invoice"
-          subtitle="Create a new invoice"
-          backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-        />
-        <PageContent>
-          <div className="flex items-center justify-center h-64">
-            <Spinner size="lg" />
-          </div>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="New Invoice"
+        subtitle="Create a new invoice"
+        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+        loading
+        loadingLabel="Checking permissions..."
+      />
     )
   }
 
@@ -271,18 +264,16 @@ export default function NewInvoicePage() {
   const totals = calculateInvoiceTotal()
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="New Invoice"
-        subtitle="Create a new invoice"
-        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-      />
-      <PageContent>
-        {error && (
-          <Alert variant="error" description={error} className="mb-6" />
-        )}
+    <PageLayout
+      title="New Invoice"
+      subtitle="Create a new invoice"
+      backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+    >
+      {error && (
+        <Alert variant="error" description={error} className="mb-6" />
+      )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-6">
         <Card className="p-6 overflow-visible">
           <h2 className="text-lg font-semibold mb-4">Invoice Details</h2>
           
@@ -545,7 +536,7 @@ export default function NewInvoicePage() {
           </div>
         </Card>
 
-        <div className="sticky bottom-0 bg-white border-t -mx-6 px-6 py-4 sm:relative sm:mx-0 sm:px-0 sm:py-0 sm:border-0">
+        <div className="sticky bottom-0 -mx-6 border-t bg-white px-6 py-4 sm:relative sm:mx-0 sm:border-0 sm:px-0 sm:py-0">
           <div className="flex flex-col sm:flex-row sm:justify-end gap-3">
             <Button
               type="button"
@@ -566,7 +557,6 @@ export default function NewInvoicePage() {
           </div>
         </div>
       </form>
-      </PageContent>
-    </PageWrapper>
+    </PageLayout>
   )
 }

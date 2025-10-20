@@ -1,6 +1,5 @@
 import { getReceiptMissingExpenseSummary } from '@/app/actions/receipts'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
@@ -33,66 +32,63 @@ export default async function ReceiptsMissingExpensePage() {
   const totalIncoming = summary.reduce((sum, item) => sum + item.totalIncoming, 0)
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Transactions needing expense category"
-        subtitle="Vendors with receipts that still require an expense category."
-        backButton={{ label: 'Back to receipts', href: '/receipts' }}
-      />
-      <PageContent>
-        <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <SummaryCard label="Transactions without expense" value={totalTransactions} tone="warning" />
-            <SummaryCard label="Uncategorised outgoing" value={formatCurrency(totalOutgoing)} tone="spend" />
-            <SummaryCard label="Uncategorised incoming" value={formatCurrency(totalIncoming)} tone="income" />
-          </div>
+    <PageLayout
+      title="Transactions needing expense category"
+      subtitle="Vendors with receipts that still require an expense category."
+      backButton={{ label: 'Back to receipts', href: '/receipts' }}
+    >
+      <div className="space-y-6">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <SummaryCard label="Transactions without expense" value={totalTransactions} tone="warning" />
+          <SummaryCard label="Uncategorised outgoing" value={formatCurrency(totalOutgoing)} tone="spend" />
+          <SummaryCard label="Uncategorised incoming" value={formatCurrency(totalIncoming)} tone="income" />
+        </div>
 
-          <Card>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+        <Card>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 text-sm">
+              <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                <tr>
+                  <th className="px-4 py-3">Vendor</th>
+                  <th className="px-4 py-3 text-right">Transactions</th>
+                  <th className="px-4 py-3 text-right">Total out</th>
+                  <th className="px-4 py-3 text-right">Total in</th>
+                  <th className="px-4 py-3">Latest activity</th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 text-gray-700">
+                {summary.length === 0 ? (
                   <tr>
-                    <th className="px-4 py-3">Vendor</th>
-                    <th className="px-4 py-3 text-right">Transactions</th>
-                    <th className="px-4 py-3 text-right">Total out</th>
-                    <th className="px-4 py-3 text-right">Total in</th>
-                    <th className="px-4 py-3">Latest activity</th>
-                    <th className="px-4 py-3" />
+                    <td className="px-4 py-6 text-center text-sm text-gray-500" colSpan={6}>
+                      All transactions have an expense category assigned.
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-gray-700">
-                  {summary.length === 0 ? (
-                    <tr>
-                      <td className="px-4 py-6 text-center text-sm text-gray-500" colSpan={6}>
-                        All transactions have an expense category assigned.
+                ) : (
+                  summary.map((item) => (
+                    <tr key={item.vendorLabel}>
+                      <td className="px-4 py-3 font-medium text-gray-900">{item.vendorLabel}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{item.transactionCount}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-rose-700">{formatCurrency(item.totalOutgoing)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-emerald-700">{formatCurrency(item.totalIncoming)}</td>
+                      <td className="px-4 py-3 text-gray-600">{formatDate(item.latestTransaction)}</td>
+                      <td className="px-4 py-3 text-right text-sm">
+                        <Link
+                          href={`/receipts?needsExpense=1${item.vendorLabel !== 'Unassigned vendor' ? `&search=${encodeURIComponent(item.vendorLabel)}` : ''}`}
+                          className="text-emerald-600 hover:text-emerald-700"
+                        >
+                          Review
+                        </Link>
                       </td>
                     </tr>
-                  ) : (
-                    summary.map((item) => (
-                      <tr key={item.vendorLabel}>
-                        <td className="px-4 py-3 font-medium text-gray-900">{item.vendorLabel}</td>
-                        <td className="px-4 py-3 text-right tabular-nums">{item.transactionCount}</td>
-                        <td className="px-4 py-3 text-right tabular-nums text-rose-700">{formatCurrency(item.totalOutgoing)}</td>
-                        <td className="px-4 py-3 text-right tabular-nums text-emerald-700">{formatCurrency(item.totalIncoming)}</td>
-                        <td className="px-4 py-3 text-gray-600">{formatDate(item.latestTransaction)}</td>
-                        <td className="px-4 py-3 text-right text-sm">
-                          <Link
-                            href={`/receipts?needsExpense=1${item.vendorLabel !== 'Unassigned vendor' ? `&search=${encodeURIComponent(item.vendorLabel)}` : ''}`}
-                            className="text-emerald-600 hover:text-emerald-700"
-                          >
-                            Review
-                          </Link>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </div>
-      </PageContent>
-    </PageWrapper>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
+    </PageLayout>
   )
 }
 

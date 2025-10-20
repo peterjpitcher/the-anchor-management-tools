@@ -7,8 +7,7 @@ import { enqueueBulkSMSJob } from '@/app/actions/job-queue'
 import { getActiveEventCategories } from '@/app/actions/event-categories'
 import { formatDate } from '@/lib/dateUtils'
 // New UI components
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -33,6 +32,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { EventCategory } from '@/types/event-categories'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 
 interface Customer {
   id: string
@@ -96,6 +96,19 @@ export default function BulkMessagePage() {
     categoryId: '',
     categoryAttendance: 'all'
   })
+
+  const selectionSummary = `${selectedCustomers.size} of ${filteredCustomers.length} customers selected`
+  const navItems: HeaderNavItem[] = [
+    { label: 'Filters', href: '#filters' },
+    { label: 'Select', href: '#select-recipients' },
+    { label: 'Compose', href: '#compose' },
+    { label: 'Queue Status', href: '/messages/queue' },
+  ]
+  const headerActions = (
+    <div className="text-sm text-white/80">
+      {selectionSummary}
+    </div>
+  )
 
   const loadData = useCallback(async () => {
     try {
@@ -381,42 +394,41 @@ export default function BulkMessagePage() {
 
   if (loading) {
     return (
-      <PageWrapper>
-        <PageHeader
-          title="Bulk Message"
-          backButton={{ label: "Back to Messages", href: "/messages" }}
-        />
-        <PageContent>
-          <div className="flex items-center justify-center h-64">
-            <Spinner size="lg" />
-          </div>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="Bulk Message"
+        backButton={{ label: 'Back to Messages', href: '/messages' }}
+        navItems={navItems}
+        headerActions={headerActions}
+        breadcrumbs={[
+          { label: 'Messages', href: '/messages' },
+          { label: 'Bulk Message', href: '/messages/bulk' },
+        ]}
+      >
+        <div className="flex items-center justify-center h-64">
+          <Spinner size="lg" />
+        </div>
+      </PageLayout>
     )
   }
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Bulk Message"
-        subtitle={`Send a message to multiple customers at once`}
-        backButton={{ label: "Back to Messages", href: "/messages" }}
-        breadcrumbs={[
-          { label: 'Messages', href: '/messages' },
-          { label: 'Bulk Message', href: '/messages/bulk' }
-        ]}
-        actions={
-          <div className="text-sm text-gray-600">
-            {selectedCustomers.size} of {filteredCustomers.length} customers selected
-          </div>
-        }
-      />
-      <PageContent>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <PageLayout
+      title="Bulk Message"
+      subtitle="Send a message to multiple customers at once"
+      backButton={{ label: 'Back to Messages', href: '/messages' }}
+      breadcrumbs={[
+        { label: 'Messages', href: '/messages' },
+        { label: 'Bulk Message', href: '/messages/bulk' },
+      ]}
+      navItems={navItems}
+      headerActions={headerActions}
+    >
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Filters and Customer List */}
         <div className="lg:col-span-2 space-y-6">
           {/* Filters */}
           <Section 
+            id="filters"
             title="Filters"
             icon={<FunnelIcon className="h-5 w-5" />}
           >
@@ -553,6 +565,7 @@ export default function BulkMessagePage() {
 
           {/* Customer List */}
           <Section 
+            id="select-recipients"
             title={`Select Recipients (${filteredCustomers.length} customers)`}
             icon={<UserGroupIcon className="h-5 w-5" />}
             actions={
@@ -663,7 +676,7 @@ export default function BulkMessagePage() {
 
         {/* Message Composition */}
         <div className="space-y-6">
-          <Section title="Recipients">
+          <Section id="recipients" title="Recipients">
             <Card>
               <div className="space-y-3">
                 <div className="text-sm text-gray-700">
@@ -690,7 +703,7 @@ export default function BulkMessagePage() {
             </Card>
           </Section>
 
-          <Section title="Compose Message">
+          <Section id="compose" title="Compose Message">
             <Card>
               <div className="space-y-4">
                 <FormGroup 
@@ -753,7 +766,6 @@ export default function BulkMessagePage() {
           </Section>
         </div>
       </div>
-      </PageContent>
-    </PageWrapper>
+    </PageLayout>
   )
 }

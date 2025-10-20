@@ -8,7 +8,7 @@ import {
 import { createVenueSpace, updateVenueSpace, deleteVenueSpace, getVenueSpacesForManagement } from '@/app/actions/privateBookingActions'
 import { VenueSpaceDeleteButton } from '@/components/VenueSpaceDeleteButton'
 import { formatDateFull } from '@/lib/dateUtils'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -95,18 +95,19 @@ export default async function VenueSpacesPage() {
   ]
 
   return (
-    <Page
+    <PageLayout
       title="Venue Spaces"
-      description="Manage available spaces for private hire"
-      actions={
-        <div className="flex items-center space-x-3">
-          <LinkButton href="/private-bookings/settings" variant="secondary">Back to Settings</LinkButton>
-          <LinkButton href="/private-bookings" variant="secondary">Back</LinkButton>
-        </div>
+      subtitle="Manage available spaces for private hire"
+      backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
+      headerActions={
+        <LinkButton href="/private-bookings/settings" variant="secondary">
+          Settings Home
+        </LinkButton>
       }
     >
-      {/* Add New Space Form */}
-      <Card>
+      <div className="space-y-6">
+        {/* Add New Space Form */}
+        <Card>
         <Section 
           title="Add New Space"
           icon={<PlusIcon className="h-5 w-5 text-blue-600" />}
@@ -281,6 +282,7 @@ export default async function VenueSpacesPage() {
           )}
         </Section>
       </Card>
-    </Page>
+      </div>
+    </PageLayout>
   )
 }

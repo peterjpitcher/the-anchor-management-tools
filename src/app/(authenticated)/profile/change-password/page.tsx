@@ -4,13 +4,11 @@ import { useState } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
-import Link from 'next/link'
-import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
-import { Page } from '@/components/ui-v2/layout/Page'
 import { Section } from '@/components/ui-v2/layout/Section'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 
 export default function ChangePasswordPage() {
@@ -53,26 +51,15 @@ export default function ChangePasswordPage() {
   }
 
   return (
-    <Page
+    <PageLayout
       title="Change Password"
-      description="Update your account password"
-      breadcrumbs={[
-        { label: 'Profile', href: '/profile' },
-        { label: 'Change Password' }
-      ]}
-      actions={
-        <Link
-          href="/profile"
-          className="inline-flex items-center text-blue-600 hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 rounded"
-        >
-          <ArrowLeftIcon className="h-4 w-4 mr-1" />
-          Back to Profile
-        </Link>
-      }
+      subtitle="Update your account password"
+      backButton={{ label: 'Back to Profile', href: '/profile' }}
     >
-      <Section>
-        <Card>
-          <form onSubmit={handleChangePassword} className="space-y-6">
+      <div className="space-y-6">
+        <Section>
+          <Card>
+            <form onSubmit={handleChangePassword} className="space-y-6">
             <FormGroup 
               label="New Password" 
               required
@@ -122,6 +109,7 @@ export default function ChangePasswordPage() {
           </form>
         </Card>
       </Section>
-    </Page>
+      </div>
+    </PageLayout>
   )
 }

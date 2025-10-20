@@ -11,13 +11,11 @@ import {
   MagnifyingGlassIcon
 } from '@heroicons/react/24/outline'
 import { toast } from '@/components/ui-v2/feedback/Toast'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Select } from '@/components/ui-v2/forms/Select'
 import { Badge } from '@/components/ui-v2/display/Badge'
@@ -260,6 +258,21 @@ export default function PrivateBookingsClient({
   }
 
   const loading = isPending
+  const headerActions = (
+    <div className="flex flex-wrap items-center gap-2">
+      <LinkButton href="/private-bookings/sms-queue" variant="secondary" size="sm">
+        SMS Queue
+      </LinkButton>
+      <LinkButton href="/private-bookings/calendar" variant="secondary" size="sm">
+        Calendar View
+      </LinkButton>
+      {permissions.hasCreatePermission && (
+        <LinkButton href="/private-bookings/new" variant="primary" size="sm">
+          Add Booking
+        </LinkButton>
+      )}
+    </div>
+  )
 
   useEffect(() => {
     const trimmed = debouncedSearch.trim()
@@ -271,32 +284,16 @@ export default function PrivateBookingsClient({
   }, [debouncedSearch, searchTerm, fetchWithState])
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Private Bookings"
-        subtitle="Manage private venue bookings and events"
-        backButton={{
-          label: 'Back to Dashboard',
-          href: '/'
-        }}
-        actions={
-          <NavGroup>
-            <NavLink href="/private-bookings/sms-queue">
-              SMS Queue
-            </NavLink>
-            <NavLink href="/private-bookings/calendar">
-              Calendar View
-            </NavLink>
-            {permissions.hasCreatePermission && (
-              <NavLink href="/private-bookings/new">
-                Add Booking
-              </NavLink>
-            )}
-          </NavGroup>
-        }
-      />
-
-      <PageContent>
+    <PageLayout
+      title="Private Bookings"
+      subtitle="Manage private venue bookings and events"
+      backButton={{
+        label: 'Back to Dashboard',
+        href: '/',
+      }}
+      headerActions={headerActions}
+    >
+      <div className="space-y-6">
         <Card className="hidden sm:block">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <FormGroup label="Search">
@@ -620,7 +617,7 @@ export default function PrivateBookingsClient({
             <span>Preferred Vendors</span>
           </Button>
         </div>
-      </PageContent>
-    </PageWrapper>
+      </div>
+    </PageLayout>
   )
 }

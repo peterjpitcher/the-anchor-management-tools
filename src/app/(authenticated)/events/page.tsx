@@ -5,8 +5,9 @@ import { getTodayIsoDate } from '@/lib/dateUtils'
 import { checkUserPermission } from '@/app/actions/rbac'
 import EventsClient from './EventsClient'
 
-async function getEvents(): Promise<{ events: any[]; todos: ChecklistTodoItem[] }> {
+async function getEvents(): Promise<{ events: any[]; todos: ChecklistTodoItem[]; error?: string }> {
   const supabase = getSupabaseAdminClient()
+  const errors: string[] = []
   
   const { data: events, error } = await supabase
     .from('events')
@@ -20,10 +21,11 @@ async function getEvents(): Promise<{ events: any[]; todos: ChecklistTodoItem[] 
   
   if (error) {
     console.error('Error fetching events:', error)
-    return { events: [], todos: [] }
+    errors.push('We were unable to load events. Please try again.')
   }
   
-  const eventIds = events?.map(event => event.id).filter(Boolean) as string[]
+  const safeEvents = events ?? []
+  const eventIds = safeEvents.map(event => event.id).filter(Boolean) as string[]
   let statusMap = new Map<string, { task_key: string; completed_at: string | null }[]>()
 
   if (eventIds.length > 0) {
@@ -34,6 +36,7 @@ async function getEvents(): Promise<{ events: any[]; todos: ChecklistTodoItem[] 
 
     if (checklistError) {
       console.error('Error loading event checklist statuses:', checklistError)
+      errors.push('Event checklist information may be out of date.')
     } else if (checklistStatuses) {
       statusMap = checklistStatuses.reduce((map, status) => {
         const list = map.get(status.event_id) ?? []
@@ -47,13 +50,13 @@ async function getEvents(): Promise<{ events: any[]; todos: ChecklistTodoItem[] 
   const todayIso = getTodayIsoDate()
 
   if (!events) {
-    return { events: [], todos: [] }
+    return { events: [], todos: [], error: errors.join(' ') || 'No events found.' }
   }
 
   type BookingSeat = { seats: number | null }
   const todos: ChecklistTodoItem[] = []
 
-  const eventsWithChecklist = events.map(event => {
+  const eventsWithChecklist = safeEvents.map(event => {
     const bookedSeats = event.bookings?.reduce((sum: number, booking: BookingSeat) => sum + (booking.seats || 0), 0) || 0
 
     if (!event.date) {
@@ -130,7 +133,8 @@ async function getEvents(): Promise<{ events: any[]; todos: ChecklistTodoItem[] 
 
   return {
     events: eventsWithChecklist,
-    todos
+    todos,
+    error: errors.length > 0 ? errors.join(' ') : undefined,
   }
 }
 
@@ -140,7 +144,7 @@ export default async function EventsPage() {
     redirect('/unauthorized')
   }
 
-  const { events, todos } = await getEvents()
+  const { events, todos, error } = await getEvents()
   
-  return <EventsClient events={events} todos={todos} />
+  return <EventsClient events={events} todos={todos} initialError={error} />
 }

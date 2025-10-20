@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react'
 import type { AuditLog } from '@/types/database'
 import { listAuditLogs } from '@/app/actions/auditLogs'
 import { formatDate } from '@/lib/dateUtils'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
@@ -15,10 +15,9 @@ import { Badge } from '@/components/ui-v2/display/Badge'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
-import { BackButton } from '@/components/ui-v2/navigation/BackButton'
-import { useRouter } from 'next/navigation'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Pagination } from '@/components/ui-v2/navigation/Pagination'
+import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 
 type FiltersState = {
   operationType: string
@@ -105,7 +104,6 @@ export default function AuditLogsClient({
   initialFilters,
   initialError,
 }: AuditLogsClientProps) {
-  const router = useRouter()
   const [logs, setLogs] = useState<AuditLog[]>(initialLogs)
   const [totalCount, setTotalCount] = useState(initialTotalCount)
   const [page, setPage] = useState(initialPage)
@@ -174,21 +172,28 @@ export default function AuditLogsClient({
     { label: 'Audit Logs' },
   ]
 
-  return (
-    <Page
-      title="Audit Logs"
-      description="View system activity and security events"
-      breadcrumbs={breadcrumbs}
-      actions={<BackButton label="Back to Settings" onBack={() => router.push('/settings')} />}
-    >
-      {error && <Alert variant="error" title="Error" description={error} className="mb-4" />}
+  const navItems: HeaderNavItem[] = [
+    { label: 'Filters', href: '#filters' },
+    { label: 'Logs', href: '#logs' },
+  ]
 
-      <Section title="Filters">
-        <Card>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            <FormGroup label="Operation">
-              <Select
-                value={filters.operationType}
+  return (
+    <PageLayout
+      title="Audit Logs"
+      subtitle="View system activity and security events"
+      breadcrumbs={breadcrumbs}
+      backButton={{ label: 'Back to Settings', href: '/settings' }}
+      navItems={navItems}
+    >
+      <div className="space-y-6">
+        {error && <Alert variant="error" title="Error" description={error} />}
+
+        <Section id="filters" title="Filters">
+          <Card>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+              <FormGroup label="Operation">
+                <Select
+                  value={filters.operationType}
                 onChange={(event) => handleFilterChange({ operationType: event.target.value })}
                 disabled={isRefreshing}
               >
@@ -250,16 +255,16 @@ export default function AuditLogsClient({
             <Button variant="secondary" onClick={handleClearFilters} disabled={isRefreshing}>
               Clear Filters
             </Button>
-          </div>
-        </Card>
-      </Section>
-
-      <Section title="Audit Log Entries">
-        <Card>
-          {isRefreshing ? (
-            <div className="flex items-center justify-center py-8">
-              <Spinner size="lg" />
             </div>
+          </Card>
+        </Section>
+
+        <Section id="logs" title="Audit Log Entries">
+          <Card>
+            {isRefreshing ? (
+              <div className="flex items-center justify-center py-8">
+                <Spinner size="lg" />
+              </div>
           ) : logs.length === 0 ? (
             <EmptyState
               title="No audit logs found"
@@ -354,76 +359,77 @@ export default function AuditLogsClient({
                 },
               ]}
             />
-          )}
-        </Card>
-      </Section>
+            )}
+          </Card>
+        </Section>
 
-      {expandedLog && (() => {
-        const log = logs.find((entry) => entry.id === expandedLog)
-        if (!log) {
-          return null
-        }
+        {expandedLog && (() => {
+          const log = logs.find((entry) => entry.id === expandedLog)
+          if (!log) {
+            return null
+          }
 
-        return (
-          <Section title="Log Details">
-            <Card>
-              <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
-                <div>
-                  <dt className="text-sm font-medium text-gray-500">Log ID</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{log.id}</dd>
-                </div>
-                <div>
-                  <dt className="text-sm font-medium text-gray-500">Timestamp</dt>
-                  <dd className="mt-1 text-sm text-gray-900">
-                    {new Date(log.created_at).toLocaleString()}
-                  </dd>
-                </div>
-                {log.old_values && (
-                  <div className="sm:col-span-2">
-                    <dt className="text-sm font-medium text-gray-500">Old Values</dt>
+          return (
+            <Section title="Log Details">
+              <Card>
+                <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
+                  <div>
+                    <dt className="text-sm font-medium text-gray-500">Log ID</dt>
+                    <dd className="mt-1 text-sm text-gray-900">{log.id}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm font-medium text-gray-500">Timestamp</dt>
                     <dd className="mt-1 text-sm text-gray-900">
-                      <pre className="bg-gray-100 p-2 rounded overflow-x-auto text-xs sm:text-sm max-w-full">
-                        {JSON.stringify(log.old_values, null, 2)}
-                      </pre>
+                      {new Date(log.created_at).toLocaleString()}
                     </dd>
                   </div>
-                )}
-                {log.new_values && (
-                  <div className="sm:col-span-2">
-                    <dt className="text-sm font-medium text-gray-500">New Values</dt>
-                    <dd className="mt-1 text-sm text-gray-900">
-                      <pre className="bg-gray-100 p-2 rounded overflow-x-auto text-xs sm:text-sm max-w-full">
-                        {JSON.stringify(log.new_values, null, 2)}
-                      </pre>
-                    </dd>
-                  </div>
-                )}
-                {log.additional_info && (
-                  <div className="sm:col-span-2">
-                    <dt className="text-sm font-medium text-gray-500">Additional Info</dt>
-                    <dd className="mt-1 text-sm text-gray-900">
-                      <pre className="bg-gray-100 p-2 rounded overflow-x-auto text-xs sm:text-sm max-w-full">
-                        {JSON.stringify(log.additional_info, null, 2)}
-                      </pre>
-                    </dd>
-                  </div>
-                )}
-              </dl>
-            </Card>
-          </Section>
-        )
-      })()}
+                  {log.old_values && (
+                    <div className="sm:col-span-2">
+                      <dt className="text-sm font-medium text-gray-500">Old Values</dt>
+                      <dd className="mt-1 text-sm text-gray-900">
+                        <pre className="bg-gray-100 p-2 rounded overflow-x-auto text-xs sm:text-sm max-w-full">
+                          {JSON.stringify(log.old_values, null, 2)}
+                        </pre>
+                      </dd>
+                    </div>
+                  )}
+                  {log.new_values && (
+                    <div className="sm:col-span-2">
+                      <dt className="text-sm font-medium text-gray-500">New Values</dt>
+                      <dd className="mt-1 text-sm text-gray-900">
+                        <pre className="bg-gray-100 p-2 rounded overflow-x-auto text-xs sm:text-sm max-w-full">
+                          {JSON.stringify(log.new_values, null, 2)}
+                        </pre>
+                      </dd>
+                    </div>
+                  )}
+                  {log.additional_info && (
+                    <div className="sm:col-span-2">
+                      <dt className="text-sm font-medium text-gray-500">Additional Info</dt>
+                      <dd className="mt-1 text-sm text-gray-900">
+                        <pre className="bg-gray-100 p-2 rounded overflow-x-auto text-xs sm:text-sm max-w-full">
+                          {JSON.stringify(log.additional_info, null, 2)}
+                        </pre>
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+              </Card>
+            </Section>
+          )
+        })()}
 
-      {totalPages > 1 && (
-        <Pagination
-          currentPage={page}
-          totalPages={totalPages}
-          totalItems={totalCount}
-          itemsPerPage={pageSize}
-          onPageChange={handlePageChange}
-          position="end"
-        />
-      )}
-    </Page>
+        {totalPages > 1 && (
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            totalItems={totalCount}
+            itemsPerPage={pageSize}
+            onPageChange={handlePageChange}
+            position="end"
+          />
+        )}
+      </div>
+    </PageLayout>
   )
 }

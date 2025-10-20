@@ -13,8 +13,8 @@ import {
 } from '@heroicons/react/24/outline'
 import { approveSms, rejectSms, sendApprovedSms } from '@/app/actions/privateBookingActions'
 import { formatDateFull, formatDateTime12Hour } from '@/lib/dateUtils'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
@@ -115,17 +115,20 @@ export default async function SmsQueuePage() {
   }
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="SMS Queue"
-        subtitle="Review and approve SMS messages for private bookings"
-        backButton={{
-          label: "Back to Private Bookings",
-          href: "/private-bookings"
-        }}
-      />
-      <PageContent>
-        {/* Pending Messages */}
+    <PageLayout
+      title="SMS Queue"
+      subtitle="Review and approve SMS messages for private bookings"
+      backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
+      headerActions={
+        <div className="flex flex-wrap items-center gap-2">
+          <LinkButton href="/private-bookings/settings" variant="secondary">
+            Settings Home
+          </LinkButton>
+        </div>
+      }
+    >
+      <div className="space-y-6">
+      {/* Pending Messages */}
       <Section 
         title="Pending Approval"
         icon={<ClockIcon className="h-6 w-6 text-amber-600" />}
@@ -334,7 +337,7 @@ export default async function SmsQueuePage() {
           </ul>
         </div>
       </Alert>
-      </PageContent>
-    </PageWrapper>
+      </div>
+    </PageLayout>
   )
 }

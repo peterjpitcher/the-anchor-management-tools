@@ -17,8 +17,7 @@ import {
 import { TableBooking } from '@/types/table-bookings';
 import { format } from 'date-fns';
 // New UI components
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { Button } from '@/components/ui-v2/forms/Button';
@@ -113,36 +112,28 @@ export default function TableBookingSearchPage() {
 
   if (!canView) {
     return (
-      <PageWrapper>
-        <PageHeader 
-          title="Search Table Bookings"
-          subtitle="Find bookings by name, phone, or reference"
-          backButton={{
-            label: "Back to Table Bookings",
-            href: "/table-bookings"
-          }}
-        />
-        <PageContent>
-          <Card>
-            <Alert variant="error" title="Access Denied" description="You do not have permission to search bookings." />
-          </Card>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="Search Table Bookings"
+        subtitle="Find bookings by name, phone, or reference"
+        backButton={{ label: "Back to Table Bookings", href: "/table-bookings" }}
+      >
+        <Card>
+          <Alert variant="error" title="Access Denied" description="You do not have permission to search bookings." />
+        </Card>
+      </PageLayout>
     );
   }
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Search Table Bookings"
-        subtitle="Find bookings by name, phone, or reference"
-        backButton={{
-          label: "Back to Table Bookings",
-          href: "/table-bookings"
-        }}
-      />
-      <PageContent>
-        <Card>
+    <PageLayout
+      title="Search Table Bookings"
+      subtitle="Find bookings by name, phone, or reference"
+      backButton={{
+        label: "Back to Table Bookings",
+        href: "/table-bookings"
+      }}
+    >
+      <Card>
         <Form onSubmit={handleSearch}>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <FormGroup label="Search by">
@@ -269,7 +260,6 @@ export default function TableBookingSearchPage() {
           </Card>
         </Section>
       )}
-      </PageContent>
-    </PageWrapper>
+    </PageLayout>
   );
 }

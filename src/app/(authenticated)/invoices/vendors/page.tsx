@@ -3,8 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getVendors, createVendor, updateVendor, deleteVendor } from '@/app/actions/vendors'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
 import { Input } from '@/components/ui-v2/forms/Input'
@@ -12,7 +11,6 @@ import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { Plus, Edit2, Trash2, Users } from 'lucide-react'
@@ -324,21 +322,13 @@ export default function VendorsPage() {
 
   if (permissionsLoading || loading) {
     return (
-      <PageWrapper>
-        <PageHeader 
-          title="Vendors"
-          subtitle="Manage your invoice vendors"
-          backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-        />
-        <PageContent>
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <Spinner size="lg" />
-              <p className="mt-4 text-gray-600">Loading vendors...</p>
-            </div>
-          </div>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="Vendors"
+        subtitle="Manage your invoice vendors"
+        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+        loading
+        loadingLabel="Loading vendors..."
+      />
     )
   }
 
@@ -347,23 +337,22 @@ export default function VendorsPage() {
   }
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Vendors"
-        subtitle="Manage your invoice vendors"
-        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-        actions={
-          <Button
-            onClick={() => openForm()}
-            leftIcon={<Plus className="h-4 w-4" />}
-            disabled={!canCreate}
-            title={!canCreate ? 'You need invoice create permission to add vendors.' : undefined}
-          >
-            Add Vendor
-          </Button>
-        }
-      />
-      <PageContent>
+    <PageLayout
+      title="Vendors"
+      subtitle="Manage your invoice vendors"
+      backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+      headerActions={
+        <Button
+          onClick={() => openForm()}
+          leftIcon={<Plus className="h-4 w-4" />}
+          disabled={!canCreate}
+          title={!canCreate ? 'You need invoice create permission to add vendors.' : undefined}
+        >
+          Add Vendor
+        </Button>
+      }
+    >
+      <div className="space-y-6">
       {isReadOnly && (
         <Alert
           variant="info"
@@ -481,6 +470,8 @@ export default function VendorsPage() {
           />
         </Card>
       )}
+
+      </div>
 
       <Modal
         open={showForm}
@@ -683,7 +674,6 @@ export default function VendorsPage() {
           </div>
         )}
       </Modal>
-      </PageContent>
-    </PageWrapper>
+    </PageLayout>
   )
 }

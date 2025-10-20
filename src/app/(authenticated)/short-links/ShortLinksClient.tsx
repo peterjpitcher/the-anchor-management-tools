@@ -12,14 +12,11 @@ import {
   ComputerDesktopIcon,
   GlobeAltIcon
 } from '@heroicons/react/24/outline'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Button, IconButton } from '@/components/ui-v2/forms/Button'
 import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Select } from '@/components/ui-v2/forms/Select'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
@@ -369,39 +366,44 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
     }
   }
 
-  return (
-    <PageWrapper>
-      <PageHeader
-        title="Short Links"
-        subtitle="Create and manage vip-club.uk short links"
-        backButton={{
-          label: 'Back to Settings',
-          href: '/settings'
+  const headerActions = (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => {
+          setShowVolumeChart(true)
+          loadVolumeData(volumePeriod)
         }}
-        actions={
-          <NavGroup>
-            <NavLink
-              onClick={() => {
-                setShowVolumeChart(true)
-                loadVolumeData(volumePeriod)
-              }}
-            >
-              View Volume Chart
-            </NavLink>
-            {canManage && (
-              <NavLink
-                onClick={() => {
-                  setShowCreateModal(true)
-                }}
-              >
-                Create Short Link
-              </NavLink>
-            )}
-          </NavGroup>
-        }
-      />
-      <PageContent>
-        <Section>
+      >
+        View Volume Chart
+      </Button>
+      {canManage && (
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={() => {
+            setShowCreateModal(true)
+          }}
+        >
+          Create Short Link
+        </Button>
+      )}
+    </div>
+  )
+
+  return (
+    <PageLayout
+      title="Short Links"
+      subtitle="Create and manage vip-club.uk short links"
+      backButton={{
+        label: 'Back to Settings',
+        href: '/settings'
+      }}
+      headerActions={headerActions}
+    >
+      <div className="space-y-6">
+        <Card id="links" variant="bordered">
           <DataTable
             data={links}
             getRowKey={(link) => link.id}
@@ -565,9 +567,10 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
               </Card>
             )}
           />
-        </Section>
+        </Card>
+      </div>
 
-        <Modal
+      <Modal
           open={showCreateModal}
           onClose={() => {
             setShowCreateModal(false)
@@ -933,7 +936,6 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
             )}
           </div>
         </Modal>
-      </PageContent>
-    </PageWrapper>
+    </PageLayout>
   )
 }
