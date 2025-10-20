@@ -176,7 +176,7 @@ export default function TableBookingPaymentPage(props: { params: Promise<{ refer
             alt="The Anchor"
             width={150}
             height={75}
-            className="object-contain"
+            className="object-contain h-auto w-auto max-w-[150px]"
             priority
           />
         </div>

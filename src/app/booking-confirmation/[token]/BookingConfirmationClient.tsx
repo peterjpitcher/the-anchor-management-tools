@@ -290,7 +290,7 @@ function Header() {
           alt="The Anchor"
           width={60}
           height={60}
-          className="mr-3"
+          className="mr-3 h-auto w-auto"
         />
         <h1 className="text-2xl font-bold text-white">The Anchor</h1>
       </div>

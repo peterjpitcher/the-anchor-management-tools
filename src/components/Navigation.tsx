@@ -4,10 +4,10 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, BuildingOfficeIcon, DocumentTextIcon, StarIcon, LinkIcon, QueueListIcon, ReceiptRefundIcon, TruckIcon } from '@heroicons/react/24/outline'
 import { useEffect, useState, useMemo } from 'react'
-import { getUnreadMessageCount } from '@/app/actions/messagesActions'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import type { ModuleName, ActionType } from '@/types/rbac'
+import { useUnreadMessageCount } from '@/hooks/useUnreadMessageCount'
 
 type NavigationItemWithPermission = {
   name: string;
@@ -50,31 +50,9 @@ interface NavigationProps {
 
 export function Navigation({ onQuickAddNoteClick, onNavigate }: NavigationProps) {
   const pathname = usePathname() ?? '/'
-  const [unreadCount, setUnreadCount] = useState(0)
   const [isMobile, setIsMobile] = useState(false)
   const { hasPermission, loading: permissionsLoading } = usePermissions()
-
-  useEffect(() => {
-    // Load unread count on mount
-    async function loadUnreadCount() {
-      try {
-        const result = await getUnreadMessageCount()
-        setUnreadCount(result?.badge ?? 0)
-      } catch (error) {
-        console.error('Failed to fetch unread message count:', error)
-        setUnreadCount(0)
-      }
-    }
-    
-    loadUnreadCount()
-    
-    // Refresh every 30 seconds
-    const interval = setInterval(() => {
-      loadUnreadCount()
-    }, 30000)
-    
-    return () => clearInterval(interval)
-  }, [])
+  const unreadCount = useUnreadMessageCount()
 
   useEffect(() => {
     // Check if mobile on mount and window resize
