@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from 'react'
 import type { AttachmentCategory } from '@/app/actions/attachmentCategories'
 import { createAttachmentCategory, deleteAttachmentCategory, listAttachmentCategories, updateAttachmentCategory } from '@/app/actions/attachmentCategories'
 import { PlusIcon, TrashIcon, PencilIcon } from '@heroicons/react/24/outline'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Form } from '@/components/ui-v2/forms/Form'
@@ -13,8 +13,6 @@ import { Button } from '@/components/ui-v2/forms/Button'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
-import { BackButton } from '@/components/ui-v2/navigation/BackButton'
-import { useRouter } from 'next/navigation'
 
 type CategoriesClientProps = {
   initialCategories: AttachmentCategory[]
@@ -23,7 +21,6 @@ type CategoriesClientProps = {
 }
 
 export default function CategoriesClient({ initialCategories, canManage, initialError }: CategoriesClientProps) {
-  const router = useRouter()
   const [categories, setCategories] = useState(initialCategories)
   const [error, setError] = useState<string | null>(initialError)
   const [newCategoryName, setNewCategoryName] = useState('')
@@ -117,134 +114,137 @@ export default function CategoriesClient({ initialCategories, canManage, initial
   }
 
   return (
-    <Page
+    <PageLayout
       title="Attachment Categories"
       breadcrumbs={[
         { label: 'Settings', href: '/settings' },
         { label: 'Categories' },
       ]}
-      actions={<BackButton label="Back to Settings" onBack={() => router.push('/settings')} />}
+      backButton={{ label: 'Back to Settings', href: '/settings' }}
     >
-      <p className="text-sm text-gray-700 mb-6">Manage categories for employee attachment files.</p>
+      <div className="space-y-6">
+        <p className="text-sm text-gray-700">
+          Manage categories for employee attachment files.
+        </p>
 
-      {error && (
-        <Alert variant="error" title="Error" description={error} className="mb-6" />
-      )}
+        {error && (
+          <Alert variant="error" title="Error" description={error} />
+        )}
 
-      {!canManage && (
-        <Alert
-          variant="info"
-          description="You have read-only access to attachment categories."
-          className="mb-6"
-        />
-      )}
+        {!canManage && (
+          <Alert
+            variant="info"
+            description="You have read-only access to attachment categories."
+          />
+        )}
 
-      <Section title="Add New Category">
-        <Card>
-          <Form onSubmit={handleAddCategory}>
-            <div className="flex gap-2">
-              <Input
-                type="text"
-                value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
-                placeholder="New category name"
-                className="flex-1"
-                disabled={!canManage || isMutating}
+        <Section title="Add New Category">
+          <Card>
+            <Form onSubmit={handleAddCategory}>
+              <div className="flex gap-2">
+                <Input
+                  type="text"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  placeholder="New category name"
+                  className="flex-1"
+                  disabled={!canManage || isMutating}
+                />
+                <Button
+                  type="submit"
+                  leftIcon={<PlusIcon className="h-4 w-4" />}
+                  disabled={!canManage || isMutating}
+                >
+                  Add Category
+                </Button>
+              </div>
+            </Form>
+          </Card>
+        </Section>
+
+        <Section title="Categories">
+          <Card>
+            {isRefreshing ? (
+              <div className="flex items-center justify-center py-8">
+                <Spinner />
+              </div>
+            ) : sortedCategories.length === 0 ? (
+              <EmptyState
+                title="No categories defined"
+                description="Add your first category above to get started."
               />
-              <Button
-                type="submit"
-                leftIcon={<PlusIcon className="h-4 w-4" />}
-                disabled={!canManage || isMutating}
-              >
-                Add Category
-              </Button>
-            </div>
-          </Form>
-        </Card>
-      </Section>
-
-      <Section title="Categories">
-        <Card>
-          {isRefreshing ? (
-            <div className="flex items-center justify-center py-8">
-              <Spinner />
-            </div>
-          ) : sortedCategories.length === 0 ? (
-            <EmptyState
-              title="No categories defined"
-              description="Add your first category above to get started."
-            />
-          ) : (
-            <div className="divide-y divide-gray-200">
-              {sortedCategories.map((category) => (
-                <div key={category.category_id} className="px-4 py-4">
-                  {editingId === category.category_id ? (
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="text"
-                        value={editingName}
-                        onChange={(e) => setEditingName(e.target.value)}
-                        className="flex-1"
-                        autoFocus
-                      />
-                      <Button
-                        onClick={() => handleUpdateCategory(category.category_id)}
-                        variant="primary"
-                        size="sm"
-                        disabled={isMutating}
-                      >
-                        Save
-                      </Button>
-                      <Button
-                        onClick={() => {
-                          setEditingId(null)
-                          setEditingName('')
-                        }}
-                        variant="secondary"
-                        size="sm"
-                        disabled={isMutating}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <p className="font-medium">{category.category_name}</p>
-                        <p className="text-xs text-gray-500">
-                          Updated {new Date(category.updated_at).toLocaleString('en-GB')}
-                        </p>
+            ) : (
+              <div className="divide-y divide-gray-200">
+                {sortedCategories.map((category) => (
+                  <div key={category.category_id} className="px-4 py-4">
+                    {editingId === category.category_id ? (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="text"
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          className="flex-1"
+                          autoFocus
+                        />
+                        <Button
+                          onClick={() => handleUpdateCategory(category.category_id)}
+                          variant="primary"
+                          size="sm"
+                          disabled={isMutating}
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            setEditingId(null)
+                            setEditingName('')
+                          }}
+                          variant="secondary"
+                          size="sm"
+                          disabled={isMutating}
+                        >
+                          Cancel
+                        </Button>
                       </div>
-                      {canManage && (
-                        <div className="flex gap-2">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            leftIcon={<PencilIcon className="h-4 w-4" />}
-                            onClick={() => handleStartEdit(category.category_id, category.category_name)}
-                            disabled={isMutating}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            leftIcon={<TrashIcon className="h-4 w-4" />}
-                            onClick={() => handleDeleteCategory(category.category_id, category.category_name)}
-                            disabled={isMutating}
-                          >
-                            Delete
-                          </Button>
+                    ) : (
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="font-medium">{category.category_name}</p>
+                          <p className="text-xs text-gray-500">
+                            Updated {new Date(category.updated_at).toLocaleString('en-GB')}
+                          </p>
                         </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      </Section>
-    </Page>
+                        {canManage && (
+                          <div className="flex gap-2">
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              leftIcon={<PencilIcon className="h-4 w-4" />}
+                              onClick={() => handleStartEdit(category.category_id, category.category_name)}
+                              disabled={isMutating}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              leftIcon={<TrashIcon className="h-4 w-4" />}
+                              onClick={() => handleDeleteCategory(category.category_id, category.category_name)}
+                              disabled={isMutating}
+                            >
+                              Delete
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </Section>
+      </div>
+    </PageLayout>
   )
 }

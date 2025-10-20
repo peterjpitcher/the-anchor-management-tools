@@ -1,6 +1,5 @@
 'use client'
 
-import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { usePermissions } from '@/contexts/PermissionContext';
@@ -8,19 +7,16 @@ import { format, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek } f
 import { ChartBarIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 
 // UI v2 Components
-import { Page } from '@/components/ui-v2/layout/Page';
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
 import { Button } from '@/components/ui-v2/forms/Button';
 import { Input } from '@/components/ui-v2/forms/Input';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
-import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 import { Stat } from '@/components/ui-v2/display/Stat';
 import { DataTable } from '@/components/ui-v2/display/DataTable';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { TabNav } from '@/components/ui-v2/navigation/TabNav';
-import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 
 interface ReportData {
   totalBookings: number;
@@ -46,7 +42,6 @@ interface ReportData {
 }
 
 export default function TableBookingReportsPage() {
-  const router = useRouter();
   const supabase = useSupabase();
   const { hasPermission } = usePermissions();
   const [reportData, setReportData] = useState<ReportData | null>(null);
@@ -238,33 +233,33 @@ export default function TableBookingReportsPage() {
     URL.revokeObjectURL(url);
   }
 
+  const layoutProps = {
+    title: 'Table Booking Reports',
+    subtitle: 'Analytics and insights for table bookings',
+    backButton: { label: 'Back to Table Bookings', href: '/table-bookings' },
+  };
+
   if (!canView) {
     return (
-      <Page title="Table Booking Reports">
-        <Alert variant="error">
-          You do not have permission to view reports.
-        </Alert>
-      </Page>
+      <PageLayout {...layoutProps}>
+        <Alert variant="error" description="You do not have permission to view reports." />
+      </PageLayout>
     );
   }
 
   if (loading) {
     return (
-      <Page title="Table Booking Reports">
-        <div className="flex items-center justify-center min-h-[400px]">
-          <Spinner size="lg" />
-        </div>
-      </Page>
+      <PageLayout {...layoutProps} loading loadingLabel="Loading table booking reports...">
+        {null}
+      </PageLayout>
     );
   }
 
   if (error) {
     return (
-      <Page title="Table Booking Reports">
-        <Alert variant="error">
-          Error loading report: {error}
-        </Alert>
-      </Page>
+      <PageLayout {...layoutProps}>
+        <Alert variant="error" description={`Error loading report: ${error}`} />
+      </PageLayout>
     );
   }
 
@@ -294,22 +289,24 @@ export default function TableBookingReportsPage() {
     },
   ];
 
-  return (
-    <Page 
-      title="Table Booking Reports"
-      description="Analytics and insights for table bookings"
-      actions={
-        <Button onClick={downloadReport}
-          leftIcon={<ArrowDownTrayIcon className="h-5 w-5" />}
-        >
-          Download CSV
-        </Button>
-      }
+  const headerActions = (
+    <Button
+      onClick={downloadReport}
+      leftIcon={<ArrowDownTrayIcon className="h-5 w-5" />}
+      disabled={!reportData}
     >
-      <BackButton label="Back to Table Bookings" onBack={() => router.push('/table-bookings')} />
+      Download CSV
+    </Button>
+  );
 
-      {/* Date Range Selector */}
-      <Card className="mt-6">
+  return (
+    <PageLayout
+      {...layoutProps}
+      headerActions={headerActions}
+    >
+      <div className="space-y-6">
+        {/* Date Range Selector */}
+        <Card>
         <TabNav
           tabs={tabs}
           onChange={(id) => handleDateRangeChange(id as 'month' | 'week' | 'custom')}
@@ -336,9 +333,9 @@ export default function TableBookingReportsPage() {
       </Card>
 
       {reportData && (
-        <>
+        <div className="space-y-6">
           {/* Key Metrics */}
-          <Section title="Key Metrics" className="mt-8">
+          <Section title="Key Metrics">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <Stat
                 label="Total Bookings"
@@ -405,7 +402,7 @@ export default function TableBookingReportsPage() {
           </div>
 
           {/* Bookings by Day */}
-          <Section title="Bookings by Day of Week" className="mt-8">
+          <Section title="Bookings by Day of Week">
             <Card>
               <div className="grid grid-cols-7 gap-4">
                 {Object.entries(reportData.bookingsByDay).map(([day, count]) => (
@@ -419,7 +416,7 @@ export default function TableBookingReportsPage() {
           </Section>
 
           {/* Bookings by Hour */}
-          <Section title="Bookings by Hour" className="mt-8">
+          <Section title="Bookings by Hour">
             <Card>
               <div className="space-y-2">
                 {Object.entries(reportData.bookingsByHour)
@@ -443,7 +440,7 @@ export default function TableBookingReportsPage() {
           </Section>
 
           {/* Top Customers */}
-          <Section title="Top Customers" className="mt-8">
+          <Section title="Top Customers">
             <Card>
               <DataTable
                 data={reportData.topCustomers}
@@ -452,8 +449,9 @@ export default function TableBookingReportsPage() {
               />
             </Card>
           </Section>
-        </>
+        </div>
       )}
-    </Page>
+      </div>
+    </PageLayout>
   );
 }

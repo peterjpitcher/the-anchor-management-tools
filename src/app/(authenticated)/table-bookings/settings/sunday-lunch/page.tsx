@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { usePermissions } from '@/contexts/PermissionContext';
 import { 
@@ -11,10 +10,9 @@ import {
 } from '@heroicons/react/24/outline';
 
 // UI v2 Components
-import { Page } from '@/components/ui-v2/layout/Page';
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
 import { Button } from '@/components/ui-v2/forms/Button';
 import { Input } from '@/components/ui-v2/forms/Input';
 import { Select } from '@/components/ui-v2/forms/Select';
@@ -22,14 +20,12 @@ import { Textarea } from '@/components/ui-v2/forms/Textarea';
 import { Checkbox } from '@/components/ui-v2/forms/Checkbox';
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
-import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 import { DataTable } from '@/components/ui-v2/display/DataTable';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { Modal } from '@/components/ui-v2/overlay/Modal';
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog';
 import { toast } from '@/components/ui-v2/feedback/Toast';
 
-import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 interface SundayLunchMenuItem {
   id: string;
   name: string;
@@ -43,7 +39,6 @@ interface SundayLunchMenuItem {
 }
 
 export default function SundayLunchMenuPage() {
-  const router = useRouter();
   const supabase = useSupabase();
   const { hasPermission } = usePermissions();
   const [loading, setLoading] = useState(true);
@@ -184,23 +179,25 @@ export default function SundayLunchMenuPage() {
     }
   }
 
+  const layoutProps = {
+    title: 'Sunday Lunch Menu Configuration',
+    subtitle: 'Manage Sunday lunch menu items and pricing',
+    backButton: { label: 'Back to Settings', href: '/table-bookings/settings' },
+  };
+
   if (!canManage) {
     return (
-      <Page title="Sunday Lunch Menu Configuration">
-        <Alert variant="error">
-          You do not have permission to manage the Sunday lunch menu.
-        </Alert>
-      </Page>
+      <PageLayout {...layoutProps}>
+        <Alert variant="error" description="You do not have permission to manage the Sunday lunch menu." />
+      </PageLayout>
     );
   }
 
   if (loading) {
     return (
-      <Page title="Sunday Lunch Menu Configuration">
-        <div className="flex items-center justify-center min-h-[400px]">
-          <Spinner size="lg" />
-        </div>
-      </Page>
+      <PageLayout {...layoutProps} loading loadingLabel="Loading Sunday lunch menu...">
+        {null}
+      </PageLayout>
     );
   }
 
@@ -309,78 +306,76 @@ export default function SundayLunchMenuPage() {
     }
   ];
 
-  return (
-    <Page 
-      title="Sunday Lunch Menu Configuration"
-      description="Manage Sunday lunch menu items and pricing"
-      actions={
-        <Button
-          onClick={() => {
-            setEditingItem(null);
-            setFormData({
-              name: '',
-              description: '',
-              price: 15.49,
-              category: 'main',
-              is_active: true,
-              allergens: '',
-              dietary_info: ''
-            });
-            setShowAddModal(true);
-          }}
-          leftIcon={<PlusIcon className="h-5 w-5" />}
-        >
-          Add Menu Item
-        </Button>
-      }
+  const headerActions = (
+    <Button
+      onClick={() => {
+        setEditingItem(null);
+        setFormData({
+          name: '',
+          description: '',
+          price: 15.49,
+          category: 'main',
+          is_active: true,
+          allergens: '',
+          dietary_info: ''
+        });
+        setShowAddModal(true);
+      }}
+      leftIcon={<PlusIcon className="h-5 w-5" />}
     >
-      <BackButton label="Back to Settings" onBack={() => router.push('/table-bookings/settings')} />
+      Add Menu Item
+    </Button>
+  );
 
-      {error && (
-        <Alert variant="error" className="mt-4">
-          {error}
+  return (
+    <PageLayout
+      {...layoutProps}
+      headerActions={headerActions}
+    >
+      <div className="space-y-6">
+        {error && (
+          <Alert variant="error" description={error} />
+        )}
+
+        {/* Main Courses */}
+        <Section title="Main Courses">
+          <Card>
+            <DataTable
+              data={mainCourses}
+              columns={mainCourseColumns}
+              getRowKey={(item) => item.id}
+              emptyMessage="No main courses configured"
+            />
+          </Card>
+        </Section>
+
+        {/* Sides */}
+        <Section title="Sides">
+          <Card>
+            <DataTable
+              data={sides}
+              columns={sideColumns}
+              getRowKey={(item) => item.id}
+              emptyMessage="No sides configured"
+            />
+          </Card>
+        </Section>
+
+        {/* Notes */}
+        <Alert variant="info">
+          <h3 className="mb-2 font-medium">Sunday Lunch Configuration Notes:</h3>
+          <ul className="space-y-1 text-sm">
+            <li>• Main courses are individually priced (typically £9.99 - £15.99)</li>
+            <li>• Each main course includes herb & garlic roast potatoes, seasonal vegetables, Yorkshire pudding and gravy</li>
+            <li>• Sides with price £0 are included with main courses</li>
+            <li>• Sides with a price (e.g., Cauliflower cheese £3.99) are optional extras</li>
+            <li>• Vegetarian gravy available on request</li>
+            <li>• Pre-orders must be placed at the bar by 1pm on Saturday</li>
+            <li>• Sunday dinners are made from scratch and to order</li>
+            <li>• Allergen and dietary information is displayed to customers during booking</li>
+          </ul>
         </Alert>
-      )}
-
-      {/* Main Courses */}
-      <Section title="Main Courses" className="mt-6">
-        <Card>
-          <DataTable
-            data={mainCourses}
-            columns={mainCourseColumns}
-            getRowKey={(item) => item.id}
-            emptyMessage="No main courses configured"
-          />
-        </Card>
-      </Section>
-
-      {/* Sides */}
-      <Section title="Sides" className="mt-8">
-        <Card>
-          <DataTable
-            data={sides}
-            columns={sideColumns}
-            getRowKey={(item) => item.id}
-            emptyMessage="No sides configured"
-          />
-        </Card>
-      </Section>
-
-
-      {/* Notes */}
-      <Alert variant="info" className="mt-8">
-        <h3 className="font-medium mb-2">Sunday Lunch Configuration Notes:</h3>
-        <ul className="text-sm space-y-1">
-          <li>• Main courses are individually priced (typically £9.99 - £15.99)</li>
-          <li>• Each main course includes herb & garlic roast potatoes, seasonal vegetables, Yorkshire pudding and gravy</li>
-          <li>• Sides with price £0 are included with main courses</li>
-          <li>• Sides with a price (e.g., Cauliflower cheese £3.99) are optional extras</li>
-          <li>• Vegetarian gravy available on request</li>
-          <li>• Pre-orders must be placed at the bar by 1pm on Saturday</li>
-          <li>• Sunday dinners are made from scratch and to order</li>
-          <li>• Allergen and dietary information is displayed to customers during booking</li>
-        </ul>
-      </Alert>
+      </div>
 
       {/* Add/Edit Modal */}
       <Modal
@@ -486,6 +481,6 @@ export default function SundayLunchMenuPage() {
         cancelText="Cancel"
         type="danger"
       />
-    </Page>
+    </PageLayout>
   );
 }

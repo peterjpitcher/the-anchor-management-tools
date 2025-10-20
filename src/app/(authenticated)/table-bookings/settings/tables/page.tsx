@@ -1,11 +1,8 @@
 'use client'
 
-import { useRouter } from 'next/navigation';
-
 import { useState, useEffect } from 'react';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { usePermissions } from '@/contexts/PermissionContext';
-import Link from 'next/link';
 import { PlusIcon, PencilIcon, TrashIcon, TableCellsIcon } from '@heroicons/react/24/outline';
 import { 
   getTables, 
@@ -19,25 +16,21 @@ import {
 import { TableConfiguration, TableCombination } from '@/types/table-bookings';
 
 // UI v2 Components
-import { Page } from '@/components/ui-v2/layout/Page';
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
 import { Button } from '@/components/ui-v2/forms/Button';
 import { Input } from '@/components/ui-v2/forms/Input';
 import { Checkbox } from '@/components/ui-v2/forms/Checkbox';
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
-import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 import { EmptyState } from '@/components/ui-v2/display/EmptyState';
 import { Modal } from '@/components/ui-v2/overlay/Modal';
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { toast } from '@/components/ui-v2/feedback/Toast';
 
-import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 export default function TableConfigurationPage() {
-  const router = useRouter();
   const supabase = useSupabase();
   const { hasPermission } = usePermissions();
   const [tables, setTables] = useState<TableConfiguration[]>([]);
@@ -231,49 +224,49 @@ export default function TableConfigurationPage() {
     }
   }
 
+  const layoutProps = {
+    title: 'Table Configuration',
+    subtitle: 'Manage restaurant tables, capacities, and combinations',
+    backButton: { label: 'Back to Settings', href: '/table-bookings/settings' },
+  };
+
   if (!canManage) {
     return (
-      <Page title="Table Configuration">
-        <Alert variant="error">
-          You do not have permission to manage table configuration.
-        </Alert>
-      </Page>
+      <PageLayout {...layoutProps}>
+        <Alert variant="error" description="You do not have permission to manage table configuration." />
+      </PageLayout>
     );
   }
 
   if (loading) {
     return (
-      <Page title="Table Configuration">
-        <div className="flex items-center justify-center min-h-[400px]">
-          <Spinner size="lg" />
-        </div>
-      </Page>
+      <PageLayout {...layoutProps} loading loadingLabel="Loading table configuration...">
+        {null}
+      </PageLayout>
     );
   }
 
-  return (
-    <Page 
-      title="Table Configuration"
-      description="Manage restaurant tables, capacities, and combinations"
-      actions={
-        <Button
-          onClick={() => setShowAddTable(true)}
-          leftIcon={<PlusIcon className="h-5 w-5" />}
-        >
-          Add Table
-        </Button>
-      }
+  const headerActions = (
+    <Button
+      onClick={() => setShowAddTable(true)}
+      leftIcon={<PlusIcon className="h-5 w-5" />}
     >
-      <BackButton label="Back to Settings" onBack={() => router.push('/table-bookings/settings')} />
+      Add Table
+    </Button>
+  );
 
-      {error && (
-        <Alert variant="error" className="mt-4">
-          {error}
-        </Alert>
-      )}
+  return (
+    <PageLayout
+      {...layoutProps}
+      headerActions={headerActions}
+    >
+      <div className="space-y-6">
+        {error && (
+          <Alert variant="error" description={error} />
+        )}
 
-      {/* Tables Section */}
-      <Section title="Restaurant Tables" className="mt-6">
+        {/* Tables Section */}
+        <Section title="Restaurant Tables">
         <Card>
           {tables.length === 0 ? (
             <EmptyState icon={<TableCellsIcon className="h-12 w-12" />}
@@ -338,12 +331,11 @@ export default function TableConfigurationPage() {
             </div>
           )}
         </Card>
-      </Section>
+        </Section>
 
-      {/* Table Combinations Section */}
-      <Section 
+        {/* Table Combinations Section */}
+        <Section 
         title="Table Combinations" 
-        className="mt-8"
         actions={
           <Button
             variant="secondary"
@@ -385,7 +377,8 @@ export default function TableConfigurationPage() {
             </div>
           )}
         </Card>
-      </Section>
+        </Section>
+      </div>
 
       {/* Add Table Modal */}
       <Modal
@@ -601,6 +594,6 @@ export default function TableConfigurationPage() {
         cancelText="Cancel"
         type="danger"
       />
-    </Page>
+    </PageLayout>
   );
 }

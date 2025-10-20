@@ -1,6 +1,6 @@
 import { getAllRoles, checkUserPermission, getAllUsers } from '@/app/actions/rbac';
 import UserList from './components/UserList';
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { EmptyState } from '@/components/ui-v2/display/EmptyState';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
@@ -24,17 +24,18 @@ export default async function UsersPage() {
       : Promise.resolve<{ success: true; data: Role[] }>({ success: true, data: [] }),
   ]);
 
+  const layoutProps = {
+    title: 'User Management',
+    subtitle: 'Manage user roles and permissions',
+    backButton: {
+      label: 'Back to Settings',
+      href: '/settings',
+    },
+  };
+
   if (usersResult.error) {
     return (
-      <div>
-        <PageHeader
-          title="User Management"
-          subtitle="Manage user roles and permissions"
-          backButton={{
-            label: 'Back to Settings',
-            href: '/settings',
-          }}
-        />
+      <PageLayout {...layoutProps}>
         <Card>
           <Alert
             variant="error"
@@ -42,7 +43,7 @@ export default async function UsersPage() {
             description={usersResult.error || 'Failed to load users'}
           />
         </Card>
-      </div>
+      </PageLayout>
     );
   }
 
@@ -61,38 +62,32 @@ export default async function UsersPage() {
   const canManageRolesInUi = canManageRoles && !rolesError;
 
   return (
-    <div>
-      <PageHeader
-        title="User Management"
-        subtitle="Manage user roles and permissions"
-        backButton={{
-          label: 'Back to Settings',
-          href: '/settings',
-        }}
-      />
-      {!canManageRolesInUi && (
-        <Card className="mb-4">
-          <Alert
-            variant={rolesError ? 'warning' : 'info'}
-            title={rolesError ? 'Role management temporarily unavailable' : 'Read-only access'}
-            description={
-              rolesError
-                ? rolesError
-                : 'You can view users but need the users:manage_roles permission to change assignments.'
-            }
-          />
-        </Card>
-      )}
-      {users.length === 0 ? (
-        <Card>
-          <EmptyState
-            title="No users found"
-            description="Start by inviting users to your application"
-          />
-        </Card>
-      ) : (
-        <UserList users={users} roles={roles} canManageRoles={canManageRolesInUi} />
-      )}
-    </div>
+    <PageLayout {...layoutProps}>
+      <div className="space-y-4">
+        {!canManageRolesInUi && (
+          <Card>
+            <Alert
+              variant={rolesError ? 'warning' : 'info'}
+              title={rolesError ? 'Role management temporarily unavailable' : 'Read-only access'}
+              description={
+                rolesError
+                  ? rolesError
+                  : 'You can view users but need the users:manage_roles permission to change assignments.'
+              }
+            />
+          </Card>
+        )}
+        {users.length === 0 ? (
+          <Card>
+            <EmptyState
+              title="No users found"
+              description="Start by inviting users to your application"
+            />
+          </Card>
+        ) : (
+          <UserList users={users} roles={roles} canManageRoles={canManageRolesInUi} />
+        )}
+      </div>
+    </PageLayout>
   );
 }

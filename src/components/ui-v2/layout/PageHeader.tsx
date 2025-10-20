@@ -18,10 +18,11 @@ interface PageHeaderProps {
   actions?: React.ReactNode;
   breadcrumbs?: Array<{
     label: string;
-    href: string;
+    href?: string;
   }>;
   className?: string;
   onMenuClick?: () => void;
+  headerActions?: React.ReactNode;
 }
 
 export function PageHeader({ 
@@ -31,7 +32,8 @@ export function PageHeader({
   actions,
   breadcrumbs,
   className = '',
-  onMenuClick
+  onMenuClick,
+  headerActions
 }: PageHeaderProps) {
   const router = useRouter();
   const [unreadCount, setUnreadCount] = useState(0);
@@ -117,14 +119,17 @@ export function PageHeader({
               )}
             </div>
             
-            {backButton && (
-              <div className="flex-shrink-0">
-                <BackButton 
-                  label={backButton.label}
-                  onBack={backButton.onBack || (backButton.href ? () => router.push(backButton.href!) : undefined)}
-                  variant="ghost"
-                  className="text-white hover:text-white/80 hover:bg-white/10"
-                />
+            {(headerActions || backButton) && (
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {headerActions}
+                {backButton && (
+                  <BackButton 
+                    label={backButton.label}
+                    onBack={backButton.onBack || (backButton.href ? () => router.push(backButton.href!) : undefined)}
+                    variant="ghost"
+                    className="text-white hover:text-white/80 hover:bg-white/10"
+                  />
+                )}
               </div>
             )}
           </div>

@@ -1,7 +1,5 @@
 'use client'
 
-import { useRouter } from 'next/navigation';
-
 import { useState, useEffect } from 'react';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { usePermissions } from '@/contexts/PermissionContext';
@@ -10,22 +8,17 @@ import { getBookingPolicies, updateBookingPolicy } from '@/app/actions/table-con
 import { BookingPolicy } from '@/types/table-bookings';
 
 // UI v2 Components
-import { Page } from '@/components/ui-v2/layout/Page';
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card } from '@/components/ui-v2/layout/Card';
-import { Section } from '@/components/ui-v2/layout/Section';
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
 import { Button } from '@/components/ui-v2/forms/Button';
 import { Input } from '@/components/ui-v2/forms/Input';
 import { Select } from '@/components/ui-v2/forms/Select';
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
-import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 import { Modal } from '@/components/ui-v2/overlay/Modal';
 import { toast } from '@/components/ui-v2/feedback/Toast';
 
-import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 export default function BookingPoliciesPage() {
-  const router = useRouter();
   const supabase = useSupabase();
   const { hasPermission } = usePermissions();
   const [policies, setPolicies] = useState<BookingPolicy[]>([]);
@@ -139,29 +132,30 @@ export default function BookingPoliciesPage() {
     return policies.find(p => p.booking_type === type);
   }
 
+  const layoutProps = {
+    title: 'Booking Policies',
+    subtitle: 'Configure refund policies and booking rules',
+    backButton: { label: 'Back to Settings', href: '/table-bookings/settings' },
+  };
+
   if (!canManage) {
     return (
-      <Page title="Booking Policies">
-        <Alert variant="error">
-          You do not have permission to manage booking policies.
-        </Alert>
-      </Page>
+      <PageLayout {...layoutProps}>
+        <Alert variant="error" description="You do not have permission to manage booking policies." />
+      </PageLayout>
     );
   }
 
   if (loading) {
     return (
-      <Page title="Booking Policies">
-        <div className="flex items-center justify-center min-h-[400px]">
-          <Spinner size="lg" />
-        </div>
-      </Page>
+      <PageLayout {...layoutProps} loading loadingLabel="Loading booking policies...">
+        {null}
+      </PageLayout>
     );
   }
 
   const PolicyCard = ({ type, title }: { type: 'regular' | 'sunday_lunch', title: string }) => {
     const policy = getPolicyForType(type);
-  const router = useRouter();
     if (!policy) return null;
 
     return (
@@ -220,21 +214,16 @@ export default function BookingPoliciesPage() {
   };
 
   return (
-    <Page 
-      title="Booking Policies"
-      description="Configure refund policies and booking rules"
-    >
-      <BackButton label="Back to Settings" onBack={() => router.push('/table-bookings/settings')} />
+    <PageLayout {...layoutProps}>
+      <div className="space-y-6">
+        {error && (
+          <Alert variant="error" description={error} />
+        )}
 
-      {error && (
-        <Alert variant="error" className="mt-4">
-          {error}
-        </Alert>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-        <PolicyCard type="regular" title="Regular Bookings" />
-        <PolicyCard type="sunday_lunch" title="Sunday Lunch Bookings" />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <PolicyCard type="regular" title="Regular Bookings" />
+          <PolicyCard type="sunday_lunch" title="Sunday Lunch Bookings" />
+        </div>
       </div>
 
       {/* Edit Policy Modal */}
@@ -310,8 +299,8 @@ export default function BookingPoliciesPage() {
             />
           </FormGroup>
 
-          <FormGroup 
-            label={editingType === 'sunday_lunch' ? 'Order Cutoff (hours before)' : 'Minimum Advance Hours'} 
+          <FormGroup
+            label={editingType === 'sunday_lunch' ? 'Order Cutoff (hours before)' : 'Minimum Advance Hours'}
             required
             help={editingType === 'sunday_lunch' ? 'Hours before Sunday lunch when orders must be placed' : 'Minimum hours in advance a booking can be made'}
           >
@@ -357,6 +346,6 @@ export default function BookingPoliciesPage() {
           </div>
         </form>
       </Modal>
-    </Page>
+    </PageLayout>
   );
 }

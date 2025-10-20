@@ -7,8 +7,7 @@ import { notFound } from 'next/navigation'
 import { getPrivateBooking, updatePrivateBooking } from '@/app/actions/privateBookingActions'
 import type { PrivateBookingWithDetails } from '@/types/private-bookings'
 import CustomerSearchInput from '@/components/CustomerSearchInput'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -20,6 +19,7 @@ import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
+import { formatDateFull } from '@/lib/dateUtils'
 type FormState = { error: string } | { success: boolean } | null
 
 const DATE_TBD_NOTE = 'Event date/time to be confirmed'
@@ -164,55 +164,63 @@ export default function EditPrivateBookingPage({
 
   if (loading) {
     return (
-      <PageWrapper>
-        <PageHeader
-          title="Edit Private Booking"
-          backButton={{
-            label: "Back to Booking",
-            onBack: () => router.back()
-          }}
-        />
-        <PageContent>
-          <div className="flex items-center justify-center p-8">
-            <Spinner size="lg" />
-          </div>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="Edit Private Booking"
+        subtitle="Loading booking details..."
+        backButton={{ label: 'Back to Booking', href: `/private-bookings/${id}` }}
+        loading
+        loadingLabel="Loading booking..."
+      />
     )
   }
 
   if (error || !booking) {
     return (
-      <PageWrapper>
-        <PageHeader title="Edit Private Booking" />
-        <PageContent>
-          <Alert variant="error">
-            {error || 'Booking not found'}
-          </Alert>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="Edit Private Booking"
+        subtitle="Something went wrong"
+        backButton={{ label: 'Back to Booking', href: `/private-bookings/${id}` }}
+        error={error || 'Booking not found'}
+      />
     )
   }
+  const customerLabel = booking
+    ? booking.customer_name || `${booking.customer_first_name || ''} ${booking.customer_last_name || ''}`.trim() || 'Unknown'
+    : 'Unknown'
+
+  const subtitle = `${customerLabel} - ${booking && booking.event_date ? formatDateFull(booking.event_date) : 'Date TBD'}`
+
+  const headerActions = (
+    <div className="flex flex-wrap items-center gap-2">
+      <LinkButton href={`/private-bookings/${id}`} variant="secondary">
+        View Booking
+      </LinkButton>
+      <LinkButton href={`/private-bookings/${id}/items`} variant="secondary">
+        Manage Items
+      </LinkButton>
+      <LinkButton href={`/private-bookings/${id}/messages`} variant="secondary">
+        View Messages
+      </LinkButton>
+    </div>
+  )
+
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Edit Private Booking"
-        actions={
-          <LinkButton href={`/private-bookings/${id}`} variant="secondary">
-            Back
-          </LinkButton>
-        }
-      />
-      <PageContent>
+    <PageLayout
+      title="Edit Private Booking"
+      subtitle={subtitle}
+      backButton={{ label: 'Back to Booking', href: `/private-bookings/${id}` }}
+      headerActions={headerActions}
+    >
+      <div className="space-y-6">
         <Card>
-        {state && 'error' in state && (
-          <Alert variant="error" className="mb-6">
-            {state.error}
-          </Alert>
-        )}
+          {state && 'error' in state && (
+            <Alert variant="error" className="mb-6">
+              {state.error}
+            </Alert>
+          )}
 
-        <form action={formAction} className="space-y-6">
+          <form action={formAction} className="space-y-6">
           {dateTbd && <input type="hidden" name="date_tbd" value="true" />}
           {/* Customer Information */}
           <Section title="Customer Information">
@@ -480,7 +488,7 @@ export default function EditPrivateBookingPage({
           </div>
         </form>
       </Card>
-      </PageContent>
-    </PageWrapper>
+      </div>
+    </PageLayout>
   )
 }

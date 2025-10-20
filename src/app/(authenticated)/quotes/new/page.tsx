@@ -8,7 +8,7 @@ import { getLineItemCatalog } from '@/app/actions/invoices'
 import { PlusCircle, Trash2 } from 'lucide-react'
 import type { InvoiceVendor, InvoiceLineItemInput, LineItemCatalogItem } from '@/types/invoices'
 // UI v2 components
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -20,9 +20,7 @@ import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { Dropdown } from '@/components/ui-v2/navigation/Dropdown'
 import { toast } from '@/components/ui-v2/feedback/Toast'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 
-import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 import { getTodayIsoDate, getLocalIsoDateDaysAhead } from '@/lib/dateUtils'
 import { usePermissions } from '@/contexts/PermissionContext'
 interface LineItem {
@@ -96,11 +94,13 @@ export default function NewQuotePage() {
 
   if (permissionsLoading) {
     return (
-      <Page title="Loading...">
-        <div className="flex items-center justify-center h-64">
-          <Spinner size="lg" />
-        </div>
-      </Page>
+      <PageLayout
+        title="New Quote"
+        subtitle="Loading quote resources..."
+        backButton={{ label: 'Back to Quotes', href: '/quotes' }}
+        loading
+        loadingLabel="Loading..."
+      />
     )
   }
 
@@ -224,47 +224,28 @@ export default function NewQuotePage() {
     }
   }
 
-  if (permissionsLoading) {
-    return (
-      <Page
-        title="New Quote"
-        description="Create a new quote"
-        actions={<BackButton label="Back to Quotes" onBack={() => router.push('/quotes')} />}
-      >
-        <div className="flex items-center justify-center h-64">
-          <Spinner size="lg" />
-        </div>
-      </Page>
-    )
-  }
-
   if (!canCreate) {
     return null
   }
 
+  const layoutProps = {
+    title: 'New Quote',
+    subtitle: 'Create a new quote',
+    backButton: { label: 'Back to Quotes', href: '/quotes' },
+  }
+
   if (loading) {
     return (
-      <Page
-        title="New Quote"
-        description="Create a new quote"
-        actions={<BackButton label="Back to Quotes" onBack={() => router.push('/quotes')} />}
-      >
-        <div className="flex items-center justify-center h-64">
-          <Spinner size="lg" />
-        </div>
-      </Page>
+      <PageLayout {...layoutProps} loading loadingLabel="Preparing quote...">
+        {null}
+      </PageLayout>
     )
   }
 
   const totals = calculateQuoteTotal()
 
   return (
-    <Page
-      title="New Quote"
-      description="Create a new quote"
-    
-      actions={<BackButton label="Back to Quotes" onBack={() => router.push('/quotes')} />}
-    >
+    <PageLayout {...layoutProps}>
       {error && (
         <Alert variant="error" title="Error" description={error} />
       )}
@@ -535,6 +516,6 @@ export default function NewQuotePage() {
           </Button>
         </div>
       </form>
-    </Page>
+    </PageLayout>
   )
 }

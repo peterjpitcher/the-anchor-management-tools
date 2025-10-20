@@ -8,18 +8,16 @@ import { FileText, Download, Mail, CheckCircle, XCircle, Edit, Copy, Trash2, Clo
 import { EmailQuoteModal } from '@/components/EmailQuoteModal'
 import type { QuoteWithDetails, QuoteStatus } from '@/types/invoices'
 // UI v2 components
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 
-import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 import { usePermissions } from '@/contexts/PermissionContext'
 export default function QuoteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
@@ -222,13 +220,17 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
 
   // calculateLineTotal was unused; removed to satisfy lint
 
-  if (permissionsLoading) {
+  const layoutProps = {
+    title: quote ? `Quote ${quote.quote_number}` : 'Quote',
+    subtitle: quote?.reference ? `Reference: ${quote.reference}` : undefined,
+    backButton: { label: 'Back to Quotes', href: '/quotes' },
+  }
+
+  if (permissionsLoading || loading) {
     return (
-      <Page title="Loading...">
-        <div className="flex items-center justify-center h-64">
-          <Spinner size="lg" />
-        </div>
-      </Page>
+      <PageLayout {...layoutProps} loading loadingLabel="Loading quote...">
+        {null}
+      </PageLayout>
     )
   }
 
@@ -236,34 +238,26 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
     return null
   }
 
-  if (loading) {
+  if (error && !quote) {
     return (
-      <Page title="Loading...">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <Spinner size="lg" />
-            <p className="mt-4 text-gray-600">Loading quote...</p>
-          </div>
-        </div>
-      </Page>
+      <PageLayout {...layoutProps}>
+        <Alert variant="error" title="Error loading quote" description={error} />
+      </PageLayout>
     )
   }
 
   if (!quote) {
     return (
-      <Page title="Quote Not Found">
+      <PageLayout {...layoutProps}>
         <Card>
-          <div className="text-center py-8">
-            <p className="text-red-600 mb-4">Quote not found</p>
-            <Button
-              variant="secondary"
-              onClick={() => router.push('/quotes')}
-            >
-              <BackButton label="Back to Quotes" onBack={() => router.push('/quotes')} />
+          <div className="py-8 text-center">
+            <p className="mb-4 text-red-600">Quote not found</p>
+            <Button variant="secondary" onClick={() => router.push('/quotes')}>
+              Back to Quotes
             </Button>
           </div>
         </Card>
-      </Page>
+      </PageLayout>
     )
   }
 
@@ -288,116 +282,114 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
     return acc + (itemAfterQuoteDiscount * (item.vat_rate / 100))
   }, 0) || 0
 
-  return (
-    <Page
-      title={`Quote ${quote.quote_number}`}
-      description={quote.reference ? `Reference: ${quote.reference}` : undefined}
-      actions={
-        <div className="flex flex-wrap gap-2">
-          {quote.status === 'draft' && (
-            <>
-              <Button
-                onClick={() => handleStatusChange('sent')}
-                disabled={processing || !canEdit}
-                leftIcon={<Mail className="h-4 w-4" />}
-                className="text-sm sm:text-base"
-                title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
-              >
-                <span className="hidden sm:inline">Mark as Sent</span>
-                <span className="sm:hidden">Send</span>
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => router.push(`/quotes/${quote.id}/edit`)}
-                disabled={processing || !canEdit}
-                leftIcon={<Edit className="h-4 w-4" />}
-                className="text-sm sm:text-base"
-                title={!canEdit ? 'You need invoice edit permission to edit quotes.' : undefined}
-              >
-                <span>Edit</span>
-              </Button>
-            </>
-          )}
-          
-          {quote.status === 'sent' && !isExpired && (
-            <>
-              <Button
-                onClick={() => handleStatusChange('accepted')}
-                disabled={processing || !canEdit}
-                variant="success"
-                leftIcon={<CheckCircle className="h-4 w-4" />}
-                className="text-sm sm:text-base"
-                title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
-              >
-                <span className="hidden sm:inline">Mark as Accepted</span>
-                <span className="sm:hidden">Accept</span>
-              </Button>
-              <Button
-                variant="danger"
-                onClick={() => handleStatusChange('rejected')}
-                disabled={processing || !canEdit}
-                leftIcon={<XCircle className="h-4 w-4" />}
-                className="text-sm sm:text-base"
-                title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
-              >
-                <span className="hidden sm:inline">Mark as Rejected</span>
-                <span className="sm:hidden">Reject</span>
-              </Button>
-            </>
-          )}
-          
-          {quote.status === 'accepted' && !quote.converted_to_invoice_id && (
-            <Button onClick={handleConvertToInvoice}
-              disabled={processing || !canCreate}
-              leftIcon={<FileText className="h-4 w-4" />}
-              className="text-sm sm:text-base"
-              title={!canCreate ? 'You need invoice create permission to convert quotes.' : undefined}
-            >
-              <span className="hidden sm:inline">Convert to Invoice</span>
-              <span className="sm:hidden">Convert</span>
-            </Button>
-          )}
-
-          {emailConfigured && (
-            <Button
-              variant="secondary"
-              onClick={() => setShowEmailModal(true)}
-              disabled={processing || !canEdit}
-              leftIcon={<Mail className="h-4 w-4" />}
-              className="text-sm sm:text-base"
-              title={!canEdit ? 'You need invoice edit permission to email quotes.' : undefined}
-            >
-              <span className="hidden sm:inline">Send Email</span>
-              <span className="sm:hidden">Email</span>
-            </Button>
-          )}
-          
+  const headerActions = (
+    <div className="flex flex-wrap gap-2">
+      {quote.status === 'draft' && (
+        <>
+          <Button
+            onClick={() => handleStatusChange('sent')}
+            disabled={processing || !canEdit}
+            leftIcon={<Mail className="h-4 w-4" />}
+            className="text-sm sm:text-base"
+            title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
+          >
+            <span className="hidden sm:inline">Mark as Sent</span>
+            <span className="sm:hidden">Send</span>
+          </Button>
           <Button
             variant="secondary"
-            onClick={() => window.open(`/api/quotes/${quote.id}/pdf`, '_blank')}
-            disabled={processing}
-            leftIcon={<Download className="h-4 w-4" />}
+            onClick={() => router.push(`/quotes/${quote.id}/edit`)}
+            disabled={processing || !canEdit}
+            leftIcon={<Edit className="h-4 w-4" />}
             className="text-sm sm:text-base"
+            title={!canEdit ? 'You need invoice edit permission to edit quotes.' : undefined}
           >
-            <span className="hidden sm:inline">Download PDF</span>
-            <span className="sm:hidden">PDF</span>
+            <span>Edit</span>
           </Button>
+        </>
+      )}
+      
+      {quote.status === 'sent' && !isExpired && (
+        <>
+          <Button
+            onClick={() => handleStatusChange('accepted')}
+            disabled={processing || !canEdit}
+            variant="success"
+            leftIcon={<CheckCircle className="h-4 w-4" />}
+            className="text-sm sm:text-base"
+            title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
+          >
+            <span className="hidden sm:inline">Mark as Accepted</span>
+            <span className="sm:hidden">Accept</span>
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => handleStatusChange('rejected')}
+            disabled={processing || !canEdit}
+            leftIcon={<XCircle className="h-4 w-4" />}
+            className="text-sm sm:text-base"
+            title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
+          >
+            <span className="hidden sm:inline">Mark as Rejected</span>
+            <span className="sm:hidden">Reject</span>
+          </Button>
+        </>
+      )}
+      
+      {quote.status === 'accepted' && !quote.converted_to_invoice_id && (
+        <Button onClick={handleConvertToInvoice}
+          disabled={processing || !canCreate}
+          leftIcon={<FileText className="h-4 w-4" />}
+          className="text-sm sm:text-base"
+          title={!canCreate ? 'You need invoice create permission to convert quotes.' : undefined}
+        >
+          <span className="hidden sm:inline">Convert to Invoice</span>
+          <span className="sm:hidden">Convert</span>
+        </Button>
+      )}
 
-          {quote.status === 'draft' && (
-            <Button
-              variant="danger"
-              onClick={() => setShowDeleteDialog(true)}
-              disabled={processing || !canDelete}
-              leftIcon={<Trash2 className="h-4 w-4" />}
-              className="text-sm sm:text-base"
-              title={!canDelete ? 'You need invoice delete permission to delete quotes.' : undefined}
-            >
-              <span>Delete</span>
-            </Button>
-          )}
-        </div>
-      }
-    >
+      {emailConfigured && (
+        <Button
+          variant="secondary"
+          onClick={() => setShowEmailModal(true)}
+          disabled={processing || !canEdit}
+          leftIcon={<Mail className="h-4 w-4" />}
+          className="text-sm sm:text-base"
+          title={!canEdit ? 'You need invoice edit permission to email quotes.' : undefined}
+        >
+          <span className="hidden sm:inline">Send Email</span>
+          <span className="sm:hidden">Email</span>
+        </Button>
+      )}
+      
+      <Button
+        variant="secondary"
+        onClick={() => window.open(`/api/quotes/${quote.id}/pdf`, '_blank')}
+        disabled={processing}
+        leftIcon={<Download className="h-4 w-4" />}
+        className="text-sm sm:text-base"
+      >
+        <span className="hidden sm:inline">Download PDF</span>
+        <span className="sm:hidden">PDF</span>
+      </Button>
+
+      {quote.status === 'draft' && (
+        <Button
+          variant="danger"
+          onClick={() => setShowDeleteDialog(true)}
+          disabled={processing || !canDelete}
+          leftIcon={<Trash2 className="h-4 w-4" />}
+          className="text-sm sm:text-base"
+          title={!canDelete ? 'You need invoice delete permission to delete quotes.' : undefined}
+        >
+          <span>Delete</span>
+        </Button>
+      )}
+    </div>
+  )
+
+  return (
+    <PageLayout {...layoutProps} headerActions={headerActions}>
       <div className="mb-2">
         <Badge variant={getStatusVariant(quote.status)}>
           {getStatusIcon(quote.status)}
@@ -647,6 +639,6 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
           />
         </>
       )}
-    </Page>
+    </PageLayout>
   )
 }

@@ -1,26 +1,21 @@
 'use client'
 
 import { useState } from 'react'
-import { 
-  ShieldCheckIcon, 
-  ArrowDownTrayIcon, 
-  TrashIcon
+import {
+  ArrowDownTrayIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline'
 import { exportUserData, deleteUserData } from '@/app/actions/gdpr'
 import toast from 'react-hot-toast'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui-v2/layout/Card'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 
-import { BackButton } from '@/components/ui-v2/navigation/BackButton';
-import { useRouter } from 'next/navigation';
 export default function GDPRSettingsPage() {
-  
-  const router = useRouter();
-const [isExporting, setIsExporting] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteEmail, setDeleteEmail] = useState('')
   const [isDeleting, setIsDeleting] = useState(false)
@@ -83,18 +78,18 @@ const [isExporting, setIsExporting] = useState(false)
     }
   }
 
-  return (
-    <Page
-      title="GDPR & Privacy Settings"
-      description="Manage your personal data in compliance with GDPR regulations"
-      breadcrumbs={[
-        { label: 'Settings', href: '/settings' },
-        { label: 'GDPR & Privacy' }
-      ]}
-    
-      actions={<BackButton label="Back to Settings" onBack={() => router.push('/settings')} />}
-    >
+  const breadcrumbs = [
+    { label: 'Settings', href: '/settings' },
+    { label: 'GDPR & Privacy' },
+  ]
 
+  return (
+    <PageLayout
+      title="GDPR & Privacy Settings"
+      subtitle="Manage your personal data in compliance with GDPR regulations"
+      breadcrumbs={breadcrumbs}
+      backButton={{ label: 'Back to Settings', href: '/settings' }}
+    >
       <Section className="space-y-6">
         {/* Data Export Card */}
         <Card>
@@ -144,7 +139,7 @@ const [isExporting, setIsExporting] = useState(false)
               <Alert
                 variant="error"
                 title="Confirm Data Deletion"
-                
+                description="This will permanently delete all your data. To confirm, please enter your email address."
               >
                 <div className="mt-4 space-y-4">
                   <Input
@@ -175,8 +170,7 @@ const [isExporting, setIsExporting] = useState(false)
                     </Button>
                   </div>
                 </div>
-              
-            This will permanently delete all your data. To confirm, please enter your email address:</Alert>
+              </Alert>
             )}
           </div>
         </Card>
@@ -208,6 +202,6 @@ const [isExporting, setIsExporting] = useState(false)
           </div>
         </Card>
       </Section>
-    </Page>
+    </PageLayout>
   )
 }
