@@ -1,7 +1,5 @@
 'use client'
 
-import { useRouter } from 'next/navigation';
-
 import { useState, useEffect } from 'react';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { usePermissions } from '@/contexts/PermissionContext';
@@ -10,23 +8,19 @@ import { getSMSTemplates, updateSMSTemplate, testSMSTemplate } from '@/app/actio
 import { TableBookingSMSTemplate } from '@/types/table-bookings';
 
 // UI v2 Components
-import { Page } from '@/components/ui-v2/layout/Page';
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
 import { Button } from '@/components/ui-v2/forms/Button';
 import { Input } from '@/components/ui-v2/forms/Input';
 import { Textarea } from '@/components/ui-v2/forms/Textarea';
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
-import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { Modal } from '@/components/ui-v2/overlay/Modal';
 import { toast } from '@/components/ui-v2/feedback/Toast';
 
-import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 export default function SMSTemplatesPage() {
-  const router = useRouter();
   const supabase = useSupabase();
   const { hasPermission } = usePermissions();
   const [templates, setTemplates] = useState<TableBookingSMSTemplate[]>([]);
@@ -201,130 +195,127 @@ export default function SMSTemplatesPage() {
     return variables[templateKey] || '';
   }
 
+  const layoutProps = {
+    title: 'SMS Templates',
+    subtitle: 'Customize SMS messages for table bookings and reminders',
+    backButton: { label: 'Back to Settings', href: '/table-bookings/settings' },
+  };
+
   if (!canManage) {
     return (
-      <Page title="SMS Templates">
-        <Alert variant="error">
-          You do not have permission to manage SMS templates.
-        </Alert>
-      </Page>
+      <PageLayout {...layoutProps}>
+        <Alert variant="error" description="You do not have permission to manage SMS templates." />
+      </PageLayout>
     );
   }
 
   if (loading) {
     return (
-      <Page title="SMS Templates">
-        <div className="flex items-center justify-center min-h-[400px]">
-          <Spinner size="lg" />
-        </div>
-      </Page>
+      <PageLayout {...layoutProps} loading loadingLabel="Loading SMS templates...">
+        {null}
+      </PageLayout>
     );
   }
 
   return (
-    <Page 
-      title="SMS Templates"
-      description="Customize SMS messages for table bookings and reminders"
-    >
-      <BackButton label="Back to Settings" onBack={() => router.push('/table-bookings/settings')} />
+    <PageLayout {...layoutProps}>
+      <div className="space-y-6">
+        {error && (
+          <Alert variant="error" description={error} />
+        )}
 
-      {error && (
-        <Alert variant="error" className="mt-4">
-          {error}
-        </Alert>
-      )}
-
-      {testResult && (
-        <Alert variant={testResult.success ? 'success' : 'error'} className="mt-4">
-          {testResult.message}
-          {testResult.preview && (
-            <div className="mt-2 p-2 bg-white rounded border">
-              <p className="text-sm font-mono">{testResult.preview}</p>
-            </div>
-          )}
-        </Alert>
-      )}
-
-      <Alert variant="info" className="mt-4">
-        <h3 className="font-medium mb-2">Template Variables</h3>
-        <p className="text-sm">
-          The <code className="px-1 py-0.5 bg-gray-100 rounded">{'{{date}}'}</code> variable will display as the full
-          date format: &quot;Sunday, March 10&quot; (day name, month name, day number)
-        </p>
-      </Alert>
-
-      <Card className="mt-6">
-        <div className="p-4 border-b">
-          <div className="flex items-start gap-3">
-            <DevicePhoneMobileIcon className="h-5 w-5 text-blue-600 mt-0.5" />
-            <div className="flex-1">
-              <FormGroup label="Test Phone Number" help="Enter your phone number to test SMS templates">
-                <Input
-                  type="tel"
-                  value={testPhone}
-                  onChange={(e) => setTestPhone(e.target.value)}
-                  placeholder="07700900000"
-                />
-              </FormGroup>
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      <Section title="SMS Templates" className="mt-8">
-        <Card>
-          <div className="divide-y">
-            {templates.map((template) => (
-              <div key={template.id} className="p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 className="font-medium text-lg">
-                      {getTemplateDisplayName(template)}
-                    </h3>
-                    <p className="text-sm text-gray-600 mt-1">
-                      Available variables: {getAvailableVariables(template.template_key)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => handleTestTemplate(template.id)}
-                      disabled={!testPhone || testingTemplate === template.id}
-                      loading={testingTemplate === template.id}
-                      leftIcon={<DevicePhoneMobileIcon className="h-4 w-4" />}
-                    >
-                      Test
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => {
-                        setEditingTemplate(template);
-                        setTemplateText(template.template_text);
-                      }}
-                      leftIcon={<PencilIcon className="h-4 w-4" />}
-                    >
-                      Edit
-                    </Button>
-                  </div>
-                </div>
-                <Card variant="bordered">
-                  <p className="text-sm font-mono whitespace-pre-wrap">{template.template_text}</p>
-                  <div className="flex items-center justify-between mt-2">
-                    <p className="text-xs text-gray-500">
-                      {template.template_text.length} characters
-                    </p>
-                    <Badge variant={template.is_active ? 'success' : 'warning'}>
-                      {template.is_active ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </div>
-                </Card>
+        {testResult && (
+          <Alert variant={testResult.success ? 'success' : 'error'}>
+            {testResult.message}
+            {testResult.preview && (
+              <div className="mt-2 rounded border bg-white p-2">
+                <p className="font-mono text-sm">{testResult.preview}</p>
               </div>
-            ))}
+            )}
+          </Alert>
+        )}
+
+        <Alert variant="info">
+          <h3 className="mb-2 font-medium">Template Variables</h3>
+          <p className="text-sm">
+            The <code className="rounded bg-gray-100 px-1 py-0.5">{'{{date}}'}</code> variable will display as the full
+            date format: &quot;Sunday, March 10&quot; (day name, month name, day number)
+          </p>
+        </Alert>
+
+        <Card>
+          <div className="border-b p-4">
+            <div className="flex items-start gap-3">
+              <DevicePhoneMobileIcon className="mt-0.5 h-5 w-5 text-blue-600" />
+              <div className="flex-1">
+                <FormGroup label="Test Phone Number" help="Enter your phone number to test SMS templates">
+                  <Input
+                    type="tel"
+                    value={testPhone}
+                    onChange={(e) => setTestPhone(e.target.value)}
+                    placeholder="07700900000"
+                  />
+                </FormGroup>
+              </div>
+            </div>
           </div>
         </Card>
-      </Section>
+
+        <Section title="SMS Templates">
+          <Card>
+            <div className="divide-y">
+              {templates.map((template) => (
+                <div key={template.id} className="p-6">
+                  <div className="mb-4 flex items-start justify-between">
+                    <div>
+                      <h3 className="text-lg font-medium">
+                        {getTemplateDisplayName(template)}
+                      </h3>
+                      <p className="mt-1 text-sm text-gray-600">
+                        Available variables: {getAvailableVariables(template.template_key)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => handleTestTemplate(template.id)}
+                        disabled={!testPhone || testingTemplate === template.id}
+                        loading={testingTemplate === template.id}
+                        leftIcon={<DevicePhoneMobileIcon className="h-4 w-4" />}
+                      >
+                        Test
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          setEditingTemplate(template);
+                          setTemplateText(template.template_text);
+                        }}
+                        leftIcon={<PencilIcon className="h-4 w-4" />}
+                      >
+                        Edit
+                      </Button>
+                    </div>
+                  </div>
+                  <Card variant="bordered">
+                    <p className="whitespace-pre-wrap font-mono text-sm">{template.template_text}</p>
+                    <div className="mt-2 flex items-center justify-between">
+                      <p className="text-xs text-gray-500">
+                        {template.template_text.length} characters
+                      </p>
+                      <Badge variant={template.is_active ? 'success' : 'warning'}>
+                        {template.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </div>
+                  </Card>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </Section>
+      </div>
 
       {/* Edit Template Modal */}
       <Modal
@@ -338,8 +329,8 @@ export default function SMSTemplatesPage() {
       >
         {editingTemplate && (
           <form onSubmit={handleUpdateTemplate} className="space-y-4">
-            <FormGroup 
-              label="Template Text" 
+            <FormGroup
+              label="Template Text"
               help={`Available: ${getAvailableVariables(editingTemplate.template_key)}`}
               required
             >
@@ -351,7 +342,7 @@ export default function SMSTemplatesPage() {
                 maxLength={500}
                 className="font-mono text-sm"
               />
-              <div className="flex justify-end text-xs text-gray-600 mt-1">
+              <div className="mt-1 flex justify-end text-xs text-gray-600">
                 <span>{templateText.length}/500 characters</span>
               </div>
             </FormGroup>
@@ -384,6 +375,6 @@ export default function SMSTemplatesPage() {
           </form>
         )}
       </Modal>
-    </Page>
+    </PageLayout>
   );
 }

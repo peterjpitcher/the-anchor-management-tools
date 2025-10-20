@@ -3,17 +3,19 @@
 import { useCallback, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { CheckCircleIcon } from '@heroicons/react/24/outline'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { DataTable, type Column } from '@/components/ui-v2/display/DataTable'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { formatDate } from '@/lib/dateUtils'
 import type { ChecklistTodoItem } from '@/lib/event-checklist'
 import { getChecklistTodos, toggleEventChecklistTask } from '@/app/actions/event-checklist'
+import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 interface TodoClientProps {
   initialItems: ChecklistTodoItem[]
@@ -25,12 +27,21 @@ export default function TodoClient({ initialItems, initialError }: TodoClientPro
   const [error, setError] = useState<string | undefined>(initialError)
   const [updatingKey, setUpdatingKey] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const { hasPermission } = usePermissions()
+  const canManageEvents = hasPermission('events', 'manage')
 
   const stats = useMemo(() => {
     const overdue = items.filter(item => item.status === 'overdue').length
     const dueToday = items.filter(item => item.status === 'due_today').length
     return { overdue, dueToday }
   }, [items])
+
+  const navItems = ([
+    { label: 'Overview', href: '/events' },
+    { label: 'Checklist Todo', href: '/events/todo' },
+    canManageEvents ? { label: 'Manage Categories', href: '/settings/event-categories' } : null,
+    canManageEvents ? { label: 'Create Event', href: '/events/new' } : null,
+  ] as Array<HeaderNavItem | null>).filter((item): item is HeaderNavItem => Boolean(item))
 
   const sortedItems = useMemo(() => {
     return [...items].sort((a, b) => {
@@ -134,47 +145,51 @@ export default function TodoClient({ initialItems, initialError }: TodoClientPro
   ]
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Event Checklist Todo"
-        subtitle="Tasks due across upcoming events"
-        backButton={{
-          label: 'Back to Events',
-          href: '/events'
-        }}
-        actions={
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={handleRefresh}
-            loading={refreshing}
-          >
-            Refresh
-          </Button>
-        }
-      />
-      <PageContent>
+    <PageLayout
+      title="Event Checklist Todo"
+      subtitle="Tasks due across upcoming events"
+      backButton={{
+        label: 'Back to Events',
+        href: '/events',
+      }}
+      navItems={navItems}
+      headerActions={
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={handleRefresh}
+          loading={refreshing}
+        >
+          Refresh
+        </Button>
+      }
+    >
+      <div className="space-y-6">
+        {error && (
+          <Alert
+            variant="error"
+            title="Checklist data may be out of date"
+            description={error}
+          />
+        )}
+
         <Card>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="rounded-lg border border-gray-200 p-4">
               <p className="text-sm text-gray-500">Overdue</p>
               <p className="mt-2 text-2xl font-semibold text-gray-900">{stats.overdue}</p>
-              <p className="text-xs text-gray-500 mt-2">Past due checklist items</p>
+              <p className="mt-2 text-xs text-gray-500">Past due checklist items</p>
             </div>
             <div className="rounded-lg border border-gray-200 p-4">
               <p className="text-sm text-gray-500">Due today</p>
               <p className="mt-2 text-2xl font-semibold text-gray-900">{stats.dueToday}</p>
-              <p className="text-xs text-gray-500 mt-2">Tasks that need attention today</p>
+              <p className="mt-2 text-xs text-gray-500">Tasks that need attention today</p>
             </div>
           </div>
         </Card>
 
-        <Card className="mt-6">
-          {error ? (
-            <div className="rounded-md bg-red-50 p-4 text-sm text-red-700">
-              {error}
-            </div>
-          ) : sortedItems.length === 0 ? (
+        <Card>
+          {sortedItems.length === 0 ? (
             <EmptyState
               icon={<CheckCircleIcon className="h-12 w-12 text-green-500" />}
               title="Nothing on your list"
@@ -189,7 +204,7 @@ export default function TodoClient({ initialItems, initialError }: TodoClientPro
             />
           )}
         </Card>
-      </PageContent>
-    </PageWrapper>
+      </div>
+    </PageLayout>
   )
 }

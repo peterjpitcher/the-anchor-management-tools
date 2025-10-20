@@ -11,16 +11,15 @@ import {
 } from '@heroicons/react/24/outline';
 import { format, getMonth, addDays } from 'date-fns';
 // New UI components
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card } from '@/components/ui-v2/layout/Card';
-import { NavLink } from '@/components/ui-v2/navigation/NavLink';
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup';
+import { Button } from '@/components/ui-v2/forms/Button';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { toast } from '@/components/ui-v2/feedback/Toast';
 import { EmptyState } from '@/components/ui-v2/display/EmptyState';
 import { Skeleton } from '@/components/ui-v2/feedback/Skeleton';
+import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav';
 
 interface EmployeeBirthday {
   employee_id: string;
@@ -134,39 +133,36 @@ export default function EmployeeBirthdaysPage() {
 
   if (!hasPermission('employees', 'view')) {
     return (
-      <PageWrapper>
-        <PageHeader title="Employee Birthdays" />
-        <PageContent>
-          <Card>
-            <div className="text-center py-12">
-              <p className="text-gray-500">You don&apos;t have permission to view this page.</p>
-            </div>
-          </Card>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout title="Employee Birthdays" navItems={[]}>
+        <Card>
+          <div className="text-center py-12">
+            <p className="text-gray-500">You don&apos;t have permission to view this page.</p>
+          </div>
+        </Card>
+      </PageLayout>
     );
   }
 
+  const navItems: HeaderNavItem[] = [
+    { label: 'Overview', href: '#overview' },
+    { label: 'Birthdays', href: '#birthdays' },
+  ];
+
+  const headerActions = hasPermission('employees', 'manage') ? (
+    <Button type="button" onClick={handleSendReminders} variant="primary" size="sm" loading={sending}>
+      {sending ? 'Sending…' : 'Send Weekly Reminders'}
+    </Button>
+  ) : undefined;
+
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Employee Birthdays"
-        subtitle="All employee birthdays throughout the year"
-        backButton={{
-          label: 'Back to Employees',
-          href: '/employees'
-        }}
-        actions={
-          hasPermission('employees', 'manage') && (
-            <NavGroup>
-              <NavLink onClick={handleSendReminders}>
-                {sending ? 'Sending...' : 'Send Weekly Reminders'}
-              </NavLink>
-            </NavGroup>
-          )
-        }
-      />
-      <PageContent>
+    <PageLayout
+      title="Employee Birthdays"
+      subtitle="All employee birthdays throughout the year"
+      backButton={{ label: 'Back to Employees', href: '/employees' }}
+      navItems={navItems}
+      headerActions={headerActions}
+    >
+      <section id="overview" className="space-y-4">
         <Alert variant="info" icon={<ExclamationTriangleIcon className="h-4 w-4 sm:h-5 sm:w-5" />}>
           <div>
             <h3 className="text-xs sm:text-sm font-medium">Automatic Birthday Reminders</h3>
@@ -175,7 +171,9 @@ export default function EmployeeBirthdaysPage() {
             </p>
           </div>
         </Alert>
+      </section>
 
+      <section id="birthdays">
         {loading ? (
           <Card>
             <div className="space-y-4">
@@ -204,50 +202,48 @@ export default function EmployeeBirthdaysPage() {
                   </h2>
                 </div>
                 <ul className="divide-y divide-gray-200">
-                  {monthBirthdays.map((birthday) => {
-                    return (
-                      <li key={birthday.employee_id} className="px-3 sm:px-4 py-3 sm:py-4 hover:bg-gray-50">
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
-                          <div className="flex-1">
-                            <div className="flex items-center">
-                              <Link
-                                href={`/employees/${birthday.employee_id}`}
-                                className="text-sm font-medium text-blue-600 hover:text-blue-700 truncate"
-                              >
-                                {birthday.first_name} {birthday.last_name}
-                              </Link>
-                              {birthday.days_until_birthday === 0 && (
-                                <span className="ml-1.5 sm:ml-2 text-base sm:text-xl">🎉</span>
-                              )}
-                            </div>
-                            <p className="text-xs sm:text-sm text-gray-500 truncate">{birthday.job_title || 'No title'}</p>
+                  {monthBirthdays.map((birthday) => (
+                    <li key={birthday.employee_id} className="px-3 sm:px-4 py-3 sm:py-4 hover:bg-gray-50">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
+                        <div className="flex-1">
+                          <div className="flex items-center">
+                            <Link
+                              href={`/employees/${birthday.employee_id}`}
+                              className="text-sm font-medium text-blue-600 hover:text-blue-700 truncate"
+                            >
+                              {birthday.first_name} {birthday.last_name}
+                            </Link>
+                            {birthday.days_until_birthday === 0 && (
+                              <span className="ml-1.5 sm:ml-2 text-base sm:text-xl">🎉</span>
+                            )}
                           </div>
-                          <div className="flex sm:block items-center justify-between sm:text-right sm:ml-4">
-                            <div className="flex items-center sm:justify-end space-x-1.5 sm:space-x-2">
-                              <span className="text-xs sm:text-sm font-medium text-gray-900">
-                                {format(new Date(birthday.date_of_birth), 'MMM d')}
-                              </span>
-                              <Badge 
-                                variant={getCountdownBadgeVariant(birthday.days_until_birthday) as 'default' | 'info' | 'warning' | 'error'}
-                                className="text-xs px-1.5 py-0.5 sm:px-2 sm:py-1"
-                              >
-                                {getCountdownText(birthday.days_until_birthday)}
-                              </Badge>
-                            </div>
-                            <p className="text-xs text-gray-500 sm:mt-1">
-                              Turning {birthday.turning_age}
-                            </p>
-                          </div>
+                          <p className="text-xs sm:text-sm text-gray-500 truncate">{birthday.job_title || 'No title'}</p>
                         </div>
-                      </li>
-                    );
-                  })}
+                        <div className="flex sm:block items-center justify-between sm:text-right sm:ml-4">
+                          <div className="flex items-center sm:justify-end space-x-1.5 sm:space-x-2">
+                            <span className="text-xs sm:text-sm font-medium text-gray-900">
+                              {format(new Date(birthday.date_of_birth), 'MMM d')}
+                            </span>
+                            <Badge 
+                              variant={getCountdownBadgeVariant(birthday.days_until_birthday) as 'default' | 'info' | 'warning' | 'error'}
+                              className="text-xs px-1.5 py-0.5 sm:px-2 sm:py-1"
+                            >
+                              {getCountdownText(birthday.days_until_birthday)}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-gray-500 sm:mt-1">
+                            Turning {birthday.turning_age}
+                          </p>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
                 </ul>
               </Card>
             ))}
           </div>
         )}
-      </PageContent>
-    </PageWrapper>
+      </section>
+    </PageLayout>
   );
 }

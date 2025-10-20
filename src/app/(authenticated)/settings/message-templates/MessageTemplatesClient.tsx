@@ -10,7 +10,7 @@ import {
   deleteMessageTemplate,
   toggleMessageTemplate,
 } from '@/app/actions/messageTemplates'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -26,8 +26,6 @@ import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import toast from 'react-hot-toast'
-import { BackButton } from '@/components/ui-v2/navigation/BackButton'
-import { useRouter } from 'next/navigation'
 
 const TEMPLATE_TYPES: Record<string, string> = {
   booking_confirmation: 'Booking Confirmation',
@@ -86,7 +84,6 @@ type TemplateFormData = {
 }
 
 export default function MessageTemplatesClient({ initialTemplates, canManage, initialError }: MessageTemplatesClientProps) {
-  const router = useRouter()
   const [templates, setTemplates] = useState<MessageTemplateRecord[]>(initialTemplates)
   const [error, setError] = useState<string | null>(initialError)
   const [showForm, setShowForm] = useState(false)
@@ -277,265 +274,271 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
     updatePreview(formData.content)
   }, [formData.content])
 
-  return (
-    <Page
-      title="Message Templates"
-      description="Manage SMS templates for automated messages"
-      actions={
-        <div className="flex gap-2">
-          <BackButton label="Back to Settings" onBack={() => router.push('/settings')} />
-          {canManage && (
-            <Button onClick={openNewTemplateModal}>
-              <PlusIcon className="mr-2 h-4 w-4" />
-              New Template
-            </Button>
-          )}
-        </div>
-      }
-      breadcrumbs={[
-        { label: 'Settings', href: '/settings' },
-        { label: 'Message Templates' },
-      ]}
-    >
-      {error && <Alert variant="error" title="Error" description={error} className="mb-4" />}
+  const breadcrumbs = [
+    { label: 'Settings', href: '/settings' },
+    { label: 'Message Templates' },
+  ]
 
-      <Section>
-        <Card>
-          {isRefreshing ? (
-            <div className="flex items-center justify-center h-64">
-              <Spinner size="lg" />
-            </div>
-          ) : templates.length === 0 ? (
-            <EmptyState
-              title="No templates yet"
-              description="Create your first template to start automating messages."
-              action={
-                canManage ? (
-                  <Button onClick={openNewTemplateModal}>
-                    <PlusIcon className="mr-2 h-4 w-4" />
-                    New Template
-                  </Button>
-                ) : undefined
-              }
-            />
-          ) : (
-            <div className="divide-y divide-gray-200">
-              {templates.map((template) => (
-                <div key={template.id} className="px-4 py-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-medium text-gray-900">{template.name}</h3>
-                        <Badge variant={template.is_active ? 'success' : 'warning'} size="sm">
-                          {template.is_active ? 'Active' : 'Inactive'}
-                        </Badge>
-                        {template.is_default && (
-                          <Badge variant="info" size="sm">
-                            Default
+  const headerActions = canManage ? (
+    <Button onClick={openNewTemplateModal}>
+      <PlusIcon className="mr-2 h-4 w-4" />
+      New Template
+    </Button>
+  ) : null
+
+  return (
+    <PageLayout
+      title="Message Templates"
+      subtitle="Manage SMS templates for automated messages"
+      breadcrumbs={breadcrumbs}
+      backButton={{ label: 'Back to Settings', href: '/settings' }}
+      headerActions={headerActions}
+    >
+      <div className="space-y-6">
+        {error && <Alert variant="error" title="Error" description={error} />}
+
+        <Section>
+          <Card>
+            {isRefreshing ? (
+              <div className="flex h-64 items-center justify-center">
+                <Spinner size="lg" />
+              </div>
+            ) : templates.length === 0 ? (
+              <EmptyState
+                title="No templates yet"
+                description="Create your first template to start automating messages."
+                action={
+                  canManage ? (
+                    <Button onClick={openNewTemplateModal}>
+                      <PlusIcon className="mr-2 h-4 w-4" />
+                      New Template
+                    </Button>
+                  ) : undefined
+                }
+              />
+            ) : (
+              <div className="divide-y divide-gray-200">
+                {templates.map((template) => (
+                  <div key={template.id} className="px-4 py-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-medium text-gray-900">{template.name}</h3>
+                          <Badge variant={template.is_active ? 'success' : 'warning'} size="sm">
+                            {template.is_active ? 'Active' : 'Inactive'}
                           </Badge>
+                          {template.is_default && (
+                            <Badge variant="info" size="sm">
+                              Default
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="mt-1 text-sm text-gray-600">
+                          {TEMPLATE_TYPES[template.template_type] || template.template_type}
+                        </p>
+                        {template.description && (
+                          <p className="mt-1 text-sm text-gray-500">{template.description}</p>
                         )}
                       </div>
-                      <p className="text-sm text-gray-600 mt-1">{TEMPLATE_TYPES[template.template_type] || template.template_type}</p>
-                      {template.description && (
-                        <p className="text-sm text-gray-500 mt-1">{template.description}</p>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {canManage && (
-                        <>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            leftIcon={<PencilIcon className="h-4 w-4" />}
-                            onClick={() => editTemplate(template)}
-                            disabled={isMutating}
-                          >
-                            Edit
-                          </Button>
-                          {!template.is_default && (
+                      <div className="flex flex-wrap gap-2">
+                        {canManage && (
+                          <>
                             <Button
                               variant="secondary"
                               size="sm"
-                              onClick={() => handleToggleActive(template)}
+                              leftIcon={<PencilIcon className="h-4 w-4" />}
+                              onClick={() => editTemplate(template)}
                               disabled={isMutating}
                             >
-                              {template.is_active ? 'Deactivate' : 'Activate'}
+                              Edit
                             </Button>
-                          )}
-                          {!template.is_default && (
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              leftIcon={<TrashIcon className="h-4 w-4" />}
-                              onClick={() => handleDelete(template)}
-                              disabled={isMutating}
-                            >
-                              Delete
-                            </Button>
-                          )}
-                        </>
-                      )}
+                            {!template.is_default && (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => handleToggleActive(template)}
+                                disabled={isMutating}
+                              >
+                                {template.is_active ? 'Deactivate' : 'Activate'}
+                              </Button>
+                            )}
+                            {!template.is_default && (
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                leftIcon={<TrashIcon className="h-4 w-4" />}
+                                onClick={() => handleDelete(template)}
+                                disabled={isMutating}
+                              >
+                                Delete
+                              </Button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-3 text-xs text-gray-500">
+                      <span>Variables: {template.variables.join(', ') || 'None'}</span>
+                      <span>
+                        Segments: {template.estimated_segments ?? Math.ceil(template.content.length / 160)}
+                      </span>
+                      <span>Timing: {TIMING_OPTIONS[template.send_timing] || template.send_timing}</span>
                     </div>
                   </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </Section>
 
-                  <div className="mt-3 text-xs text-gray-500 flex flex-wrap gap-3">
-                    <span>Variables: {template.variables.join(', ') || 'None'}</span>
-                    <span>Segments: {template.estimated_segments ?? Math.ceil(template.content.length / 160)}</span>
-                    <span>Timing: {TIMING_OPTIONS[template.send_timing] || template.send_timing}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      </Section>
+        <ConfirmDialog
+          open={!!deleteConfirm}
+          onClose={() => setDeleteConfirm(null)}
+          onConfirm={confirmDelete}
+          title="Delete Template"
+          message={`Are you sure you want to delete the "${deleteConfirm?.name}" template?`}
+          confirmText="Delete"
+          type="danger"
+        />
 
-      <ConfirmDialog
-        open={!!deleteConfirm}
-        onClose={() => setDeleteConfirm(null)}
-        onConfirm={confirmDelete}
-        title="Delete Template"
-        message={`Are you sure you want to delete the "${deleteConfirm?.name}" template?`}
-        confirmText="Delete"
-        type="danger"
-      />
-
-      <Modal
-        open={showForm}
-        onClose={() => {
-          setShowForm(false)
-          setEditingTemplate(null)
-          resetForm()
-        }}
-        title={editingTemplate ? 'Edit Template' : 'New Template'}
-        size="lg"
-      >
-        <Form
-          onSubmit={(e) => {
-            e.preventDefault()
-            handleSave()
+        <Modal
+          open={showForm}
+          onClose={() => {
+            setShowForm(false)
+            setEditingTemplate(null)
+            resetForm()
           }}
+          title={editingTemplate ? 'Edit Template' : 'New Template'}
+          size="lg"
         >
-          <FormGroup label="Name" required>
-            <Input
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              required
-            />
-          </FormGroup>
+          <Form
+            onSubmit={(e) => {
+              e.preventDefault()
+              handleSave()
+            }}
+          >
+            <FormGroup label="Name" required>
+              <Input
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                required
+              />
+            </FormGroup>
 
-          <FormGroup label="Description">
-            <Input
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-            />
-          </FormGroup>
+            <FormGroup label="Description">
+              <Input
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              />
+            </FormGroup>
 
-          {!editingTemplate && (
-            <FormGroup label="Type">
+            {!editingTemplate && (
+              <FormGroup label="Type">
+                <Select
+                  value={formData.template_type}
+                  onChange={(e) => setFormData({ ...formData, template_type: e.target.value })}
+                >
+                  {Object.entries(TEMPLATE_TYPES).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+              </FormGroup>
+            )}
+
+            <FormGroup label="Send Timing">
               <Select
-                value={formData.template_type}
-                onChange={(e) => setFormData({ ...formData, template_type: e.target.value })}
+                value={formData.send_timing}
+                onChange={(e) =>
+                  setFormData({ ...formData, send_timing: e.target.value as TemplateFormData['send_timing'] })
+                }
               >
-                {Object.entries(TEMPLATE_TYPES).map(([key, label]) => (
+                {Object.entries(TIMING_OPTIONS).map(([key, label]) => (
                   <option key={key} value={key}>
                     {label}
                   </option>
                 ))}
               </Select>
             </FormGroup>
-          )}
 
-          <FormGroup label="Send Timing">
-            <Select
-              value={formData.send_timing}
-              onChange={(e) =>
-                setFormData({ ...formData, send_timing: e.target.value as TemplateFormData['send_timing'] })
-              }
+            {formData.send_timing === 'custom' && (
+              <FormGroup label="Hours before event" help="Maximum 30 days (720 hours)">
+                <Input
+                  type="number"
+                  min="1"
+                  max="720"
+                  value={formData.custom_timing_hours ?? ''}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      custom_timing_hours: e.target.value ? parseInt(e.target.value, 10) : null,
+                    })
+                  }
+                  placeholder="Enter hours (1-720)"
+                />
+              </FormGroup>
+            )}
+
+            <FormGroup
+              label="Template Content"
+              help={`${formData.content.length} chars, ~${Math.ceil(Math.max(formData.content.length, 1) / 160)} segments`}
+              required
             >
-              {Object.entries(TIMING_OPTIONS).map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-            </Select>
-          </FormGroup>
-
-          {formData.send_timing === 'custom' && (
-            <FormGroup label="Hours before event" help="Maximum 30 days (720 hours)">
-              <Input
-                type="number"
-                min="1"
-                max="720"
-                value={formData.custom_timing_hours ?? ''}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    custom_timing_hours: e.target.value ? parseInt(e.target.value, 10) : null,
-                  })
-                }
-                placeholder="Enter hours (1-720)"
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {Object.entries(AVAILABLE_VARIABLES).map(([key, desc]) => (
+                  <Button
+                    key={key}
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => insertVariable(key)}
+                    title={desc}
+                  >
+                    {`{{${key}}}`}
+                  </Button>
+                ))}
+              </div>
+              <Textarea
+                id="template-content"
+                value={formData.content}
+                onChange={(e) => {
+                  setFormData({ ...formData, content: e.target.value })
+                  updatePreview(e.target.value)
+                }}
+                rows={8}
+                required
               />
             </FormGroup>
-          )}
 
-          <FormGroup
-            label="Template Content"
-            help={`${formData.content.length} chars, ~${Math.ceil(Math.max(formData.content.length, 1) / 160)} segments`}
-            required
-          >
-            <div className="mb-2 flex flex-wrap gap-1.5">
-              {Object.entries(AVAILABLE_VARIABLES).map(([key, desc]) => (
-                <Button
-                  key={key}
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => insertVariable(key)}
-                  title={desc}
-                >
-                  {`{{${key}}}`}
-                </Button>
-              ))}
+            <Section title="Preview">
+              <Card>
+                <pre className="whitespace-pre-wrap rounded-md bg-gray-100 p-3 text-sm">
+                  {preview || 'Start typing to see preview...'}
+                </pre>
+              </Card>
+            </Section>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setShowForm(false)
+                  setEditingTemplate(null)
+                  resetForm()
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isMutating} loading={isMutating}>
+                {editingTemplate ? 'Save Changes' : 'Create Template'}
+              </Button>
             </div>
-            <Textarea
-              id="template-content"
-              value={formData.content}
-              onChange={(e) => {
-                setFormData({ ...formData, content: e.target.value })
-                updatePreview(e.target.value)
-              }}
-              rows={8}
-              required
-            />
-          </FormGroup>
-
-          <Section title="Preview">
-            <Card>
-              <pre className="bg-gray-100 rounded-md p-3 text-sm whitespace-pre-wrap">
-                {preview || 'Start typing to see preview...'}
-              </pre>
-            </Card>
-          </Section>
-
-          <div className="mt-6 flex justify-end gap-3">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                setShowForm(false)
-                setEditingTemplate(null)
-                resetForm()
-              }}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isMutating} loading={isMutating}>
-              {editingTemplate ? 'Save Changes' : 'Create Template'}
-            </Button>
-          </div>
-        </Form>
-      </Modal>
-    </Page>
+          </Form>
+        </Modal>
+      </div>
+    </PageLayout>
   )
 }

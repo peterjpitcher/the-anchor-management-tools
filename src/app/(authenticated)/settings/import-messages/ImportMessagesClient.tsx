@@ -1,16 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { importMissedMessages } from '@/app/actions/import-messages'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { BackButton } from '@/components/ui-v2/navigation/BackButton'
 
 interface ImportSummary {
   totalFound: number;
@@ -36,7 +34,6 @@ export default function ImportMessagesClient({
   defaultStartDate,
   defaultEndDate,
 }: ImportMessagesClientProps) {
-  const router = useRouter()
   const [startDate, setStartDate] = useState(defaultStartDate)
   const [endDate, setEndDate] = useState(defaultEndDate)
   const [loading, setLoading] = useState(false)
@@ -71,16 +68,12 @@ export default function ImportMessagesClient({
   ]
 
   return (
-    <Page
+    <PageLayout
       title="Import Missed Messages from Twilio"
       breadcrumbs={breadcrumbs}
       loading={loading}
-      actions={
-        <BackButton
-          label="Back to Settings"
-          onBack={() => router.push('/settings')}
-        />
-      }
+      loadingLabel="Importing messages..."
+      backButton={{ label: 'Back to Settings', href: '/settings' }}
     >
       <Section>
         <div className="space-y-4">
@@ -214,6 +207,6 @@ export default function ImportMessagesClient({
           </ul>
         </Card>
       </Section>
-    </Page>
+    </PageLayout>
   )
 }

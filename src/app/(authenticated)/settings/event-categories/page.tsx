@@ -13,8 +13,7 @@ import { EventCategory } from '@/types/event-categories'
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
 import { EventCategoryFormGrouped } from '@/components/EventCategoryFormGrouped'
 // New UI components
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 // import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -22,7 +21,6 @@ import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { toast } from '@/components/ui-v2/feedback/Toast'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
@@ -171,82 +169,68 @@ const [categories, setCategories] = useState<EventCategory[]>([])
     }
   }
 
+  const layoutProps = {
+    title: 'Event Categories',
+    subtitle: 'Manage event categories to organize your events and track customer preferences',
+    backButton: { label: 'Back to Settings', href: '/settings' },
+  }
+
   if (showForm) {
+    const formTitle = editingCategory ? 'Edit Event Category' : 'Create Event Category'
+
     return (
-      <PageWrapper>
-        <PageHeader 
-          title={editingCategory ? 'Edit Event Category' : 'Create Event Category'}
-          backButton={{
-            label: "Back to Categories",
-            onBack: handleCloseForm
-          }}
-        />
-        <PageContent>
-          <Card>
-            <EventCategoryFormGrouped
-              category={editingCategory}
-              onSubmit={async (data) => {
-                try {
-                  const formData = new FormData()
-                  Object.entries(data).forEach(([key, value]) => {
-                    if (value !== null && value !== undefined) {
-                      if (typeof value === 'object') {
-                        formData.append(key, JSON.stringify(value))
-                      } else {
-                        formData.append(key, value.toString())
-                      }
+      <PageLayout
+        title={formTitle}
+        backButton={{ label: 'Back to Categories', onBack: handleCloseForm }}
+      >
+        <Card>
+          <EventCategoryFormGrouped
+            category={editingCategory}
+            onSubmit={async (data) => {
+              try {
+                const formData = new FormData()
+                Object.entries(data).forEach(([key, value]) => {
+                  if (value !== null && value !== undefined) {
+                    if (typeof value === 'object') {
+                      formData.append(key, JSON.stringify(value))
+                    } else {
+                      formData.append(key, value.toString())
                     }
-                  })
-                  
-                  if (editingCategory) {
-                    const result = await updateEventCategoryFromFormData(editingCategory.id, formData)
-                    if (result?.error) {
-                      toast.error(result.error)
-                      return
-                    }
-                    toast.success('Category updated successfully')
-                  } else {
-                    const result = await createEventCategoryFromFormData(formData)
-                    if (result?.error) {
-                      toast.error(result.error)
-                      return
-                    }
-                    toast.success('Category created successfully')
                   }
-                  handleCloseForm()
-                } catch (error) {
-                  toast.error('Failed to save category')
+                })
+                
+                if (editingCategory) {
+                  const result = await updateEventCategoryFromFormData(editingCategory.id, formData)
+                  if (result?.error) {
+                    toast.error(result.error)
+                    return
+                  }
+                  toast.success('Category updated successfully')
+                } else {
+                  const result = await createEventCategoryFromFormData(formData)
+                  if (result?.error) {
+                    toast.error(result.error)
+                    return
+                  }
+                  toast.success('Category created successfully')
                 }
-              }}
-              onCancel={handleCloseForm}
-            />
-          </Card>
-        </PageContent>
-      </PageWrapper>
+                handleCloseForm()
+              } catch (error) {
+                toast.error('Failed to save category')
+              }
+            }}
+            onCancel={handleCloseForm}
+          />
+        </Card>
+      </PageLayout>
     )
   }
 
   if (isLoading) {
     return (
-      <PageWrapper>
-        <PageHeader 
-          title="Event Categories"
-          backButton={{
-            label: "Back to Settings",
-            href: "/settings"
-          }}
-        />
-        <PageContent>
-          <Card>
-            <div className="flex items-center justify-center h-64">
-              <div className="text-center">
-                <Spinner size="lg" />
-                <p className="mt-4 text-gray-500">Loading categories...</p>
-              </div>
-            </div>
-          </Card>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout {...layoutProps} loading loadingLabel="Loading categories...">
+        {null}
+      </PageLayout>
     )
   }
 
@@ -333,32 +317,26 @@ const [categories, setCategories] = useState<EventCategory[]>([])
     },
   ]
 
+  const headerActions = (
+    <NavGroup>
+      <NavLink
+        onClick={() => setAnalyzeConfirm(true)}
+        className={isAnalyzing ? 'cursor-not-allowed opacity-50' : ''}
+      >
+        {isAnalyzing ? 'Analyzing...' : 'Analyze History'}
+      </NavLink>
+      <NavLink onClick={() => handleOpenForm()}>
+        Add Category
+      </NavLink>
+    </NavGroup>
+  )
+
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Event Categories"
-        subtitle="Manage event categories to organize your events and track customer preferences"
-        backButton={{
-          label: "Back to Settings",
-          href: "/settings"
-        }}
-        actions={
-          <NavGroup>
-            <NavLink 
-              onClick={() => setAnalyzeConfirm(true)}
-              className={isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''}
-            >
-              {isAnalyzing ? 'Analyzing...' : 'Analyze History'}
-            </NavLink>
-            <NavLink onClick={() => handleOpenForm()}>
-              Add Category
-            </NavLink>
-          </NavGroup>
-        }
-      />
-      
-      <PageContent>
-        {/* Delete confirmation */}
+    <PageLayout
+      {...layoutProps}
+      headerActions={headerActions}
+    >
+      <div className="space-y-6">
         <ConfirmDialog
           open={!!deleteConfirm}
           onClose={() => setDeleteConfirm(null)}
@@ -369,7 +347,6 @@ const [categories, setCategories] = useState<EventCategory[]>([])
           type="danger"
         />
 
-        {/* Analyze confirmation */}
         <ConfirmDialog
           open={analyzeConfirm}
           onClose={() => setAnalyzeConfirm(false)}
@@ -401,11 +378,12 @@ const [categories, setCategories] = useState<EventCategory[]>([])
           )}
         </Card>
 
-        <Alert variant="info"
+        <Alert
+          variant="info"
           title="About Historical Analysis"
           description="The 'Analyze History' button will scan all your past events and automatically categorize them based on their names. It will also build customer preference profiles showing who regularly attends each type of event. This is a one-time process that helps populate your initial data."
         />
-      </PageContent>
-    </PageWrapper>
+      </div>
+    </PageLayout>
   )
 }

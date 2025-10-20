@@ -3,12 +3,9 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { CalendarIcon, ClipboardDocumentCheckIcon, PencilSquareIcon } from '@heroicons/react/24/outline'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
@@ -16,10 +13,12 @@ import { ProgressBar } from '@/components/ui-v2/feedback/ProgressBar'
 import { Accordion } from '@/components/ui-v2/display/Accordion'
 import { Checkbox } from '@/components/ui-v2/forms/Checkbox'
 import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { formatDate, getTodayIsoDate } from '@/lib/dateUtils'
 import type { ChecklistTodoItem, EventChecklistItem } from '@/lib/event-checklist'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { toggleEventChecklistTask } from '@/app/actions/event-checklist'
+import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 
 interface EventCategory {
   id: string
@@ -48,9 +47,10 @@ interface Event {
 interface EventsClientProps {
   events: Event[]
   todos: ChecklistTodoItem[]
+  initialError?: string | null
 }
 
-export default function EventsClient({ events, todos }: EventsClientProps) {
+export default function EventsClient({ events, todos, initialError }: EventsClientProps) {
   const { hasPermission } = usePermissions()
   const canManageEvents = hasPermission('events', 'manage')
   const today = getTodayIsoDate()
@@ -59,6 +59,7 @@ export default function EventsClient({ events, todos }: EventsClientProps) {
     todos.filter((item) => item.dueDate <= today)
   )
   const [pendingKeys, setPendingKeys] = useState<Set<string>>(new Set())
+  const pageError = initialError ?? null
 
   useEffect(() => {
     setTodoItems(todos.filter((item) => item.dueDate <= today))
@@ -90,47 +91,44 @@ export default function EventsClient({ events, todos }: EventsClientProps) {
   
   const pastEvents = events.filter(e => e.date < today)
   const futureEvents = events.filter(e => e.date >= today)
+
+  const navItems = ([
+    { label: 'Overview', href: '/events' },
+    { label: 'Checklist Todo', href: '/events/todo' },
+    canManageEvents ? { label: 'Manage Categories', href: '/settings/event-categories' } : null,
+    canManageEvents ? { label: 'Create Event', href: '/events/new' } : null,
+  ] as Array<HeaderNavItem | null>).filter((item): item is HeaderNavItem => Boolean(item))
   
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Events"
-        subtitle="Manage your events and track bookings"
-        backButton={{
-          label: "Back to Dashboard",
-          href: "/"
-        }}
-        actions={
-          <NavGroup>
-            <NavLink href="/events/todo">
-              Checklist Todo
-            </NavLink>
-            {canManageEvents && (
-              <>
-                <NavLink href="/settings/event-categories">
-                  Manage Categories
-                </NavLink>
-                <NavLink href="/events/new">
-                  Create Event
-                </NavLink>
-              </>
-            )}
-          </NavGroup>
-        }
-      />
-      
-      <PageContent>
+    <PageLayout
+      title="Events"
+      subtitle="Manage your events and track bookings"
+      backButton={{
+        label: 'Back to Dashboard',
+        href: '/',
+      }}
+      navItems={navItems}
+    >
+      <div className="space-y-6">
+        {pageError && (
+          <Alert
+            variant="error"
+            title="We couldn't load everything"
+            description={pageError}
+          />
+        )}
+
         <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px]">
           <div className="space-y-6">
-            <Card
-              variant="bordered"
-              header={
-                <div className="flex items-center justify-between">
-                  <h2 className="text-base font-semibold text-gray-900">Upcoming Events</h2>
-                  <Badge variant="secondary" size="sm">{futureEvents.length}</Badge>
-                </div>
-              }
-            >
+          <Card
+            variant="bordered"
+            header={
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold text-gray-900">Upcoming Events</h2>
+                <Badge variant="secondary" size="sm">{futureEvents.length}</Badge>
+              </div>
+            }
+          >
               {futureEvents.length === 0 ? (
                 <EmptyState
                   icon={<CalendarIcon />}
@@ -436,7 +434,7 @@ export default function EventsClient({ events, todos }: EventsClientProps) {
             </Card>
           </aside>
         </div>
-      </PageContent>
-    </PageWrapper>
+      </div>
+    </PageLayout>
   )
 }

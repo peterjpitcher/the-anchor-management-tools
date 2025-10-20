@@ -14,10 +14,7 @@ import { toggleCustomerSmsOptIn, getCustomerSmsStats, getCustomerMessages } from
 import { markMessagesAsRead } from '@/app/actions/messageActions'
 import { MessageThread } from '@/components/MessageThread'
 import { CustomerCategoryPreferences } from '@/components/CustomerCategoryPreferences'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card, CardTitle, CardDescription } from '@/components/ui-v2/layout/Card'
 import { DataTable, Column } from '@/components/ui-v2/display/DataTable'
 import { Modal } from '@/components/ui-v2/overlay/Modal'
@@ -44,7 +41,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [bookings, setBookings] = useState<BookingWithEvent[]>([])
   const [allEvents, setAllEvents] = useState<Event[]>([])
-  const [, setLoading] = useState(true)
+  const [loading, setLoading] = useState(true)
   const [smsStats, setSmsStats] = useState<{
     customer: {
       sms_opt_in: boolean;
@@ -345,224 +342,249 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   // Define columns for reminder table (without seats)
   const reminderColumns: Column<BookingWithEvent>[] = bookingColumns.filter(col => col.key !== 'seats')
 
-  if (!customer) {
+  if (loading) {
     return (
-      <PageWrapper>
-        <PageHeader
-          title="Customer Details"
-          subtitle="Customer not found"
-          backButton={{ label: "Back to Customers", href: "/customers" }}
-        />
-        <PageContent>
-          <Alert variant="error" title="Customer not found" description="The requested customer could not be found." />
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="Customer Details"
+        subtitle="Loading customer information"
+        backButton={{ label: 'Back to Customers', href: '/customers' }}
+        loading
+        loadingLabel="Loading customer..."
+      >
+        {null}
+      </PageLayout>
     )
   }
 
+  if (!customer) {
+    return (
+      <PageLayout
+        title="Customer Details"
+        subtitle="Customer not found"
+        backButton={{ label: 'Back to Customers', href: '/customers' }}
+        error="The requested customer could not be found."
+      >
+        {null}
+      </PageLayout>
+    )
+  }
+
+  const customerName = `${customer.first_name} ${customer.last_name}`.trim()
+  const headerActions = canManageEvents ? (
+    <Button onClick={openAddBookingModal}>
+      Add Booking
+    </Button>
+  ) : undefined
+
   return (
-    <PageWrapper>
-      <PageHeader
-        title={`${customer.first_name} ${customer.last_name}`}
-        subtitle={customer.mobile_number || 'No mobile number'}
-        backButton={{ label: "Back to Customers", href: "/customers" }}
-        actions={
-          <NavGroup>
-            {canManageEvents && (
-              <NavLink onClick={openAddBookingModal}>
-                Add Booking
-              </NavLink>
-            )}
-          </NavGroup>
-        }
-      />
-      <PageContent>
-        <div className="space-y-6">
-          {/* Booking Modal */}
-      <Modal
-        open={showModal}
-        onClose={closeModal}
-        title={editingBooking ? 'Edit Booking' : 'Add New Booking'}
-        size="lg"
-      >
-        {isAddingBooking && !eventForNewBooking && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Select an Event
-            </label>
-            <select
-              onChange={e => {
-                const event = allEvents.find(event => event.id === e.target.value)
-                setEventForNewBooking(event)
-              }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-            >
-              <option value="">Select an event</option>
-              {allEvents.map(event => (
-                <option key={event.id} value={event.id}>
-                  {event.name} ({formatDate(event.date)})
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-        {(editingBooking || (isAddingBooking && eventForNewBooking)) && (
-          <BookingForm
-            event={editingBooking?.event ?? eventForNewBooking!}
-            booking={editingBooking}
-            customer={customer}
-            onSubmit={editingBooking ? handleUpdateBooking : handleAddBooking}
-            onCancel={closeModal}
-          />
-        )}
-      </Modal>
-
-      {/* Customer Info Card */}
-      <Card>
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center">
-            <ChatBubbleLeftRightIcon className="h-4 w-4 text-gray-400 mr-1" />
-            <span className={`text-sm font-medium ${customer.sms_opt_in !== false ? 'text-green-600' : 'text-red-600'}`}>
-              SMS {customer.sms_opt_in !== false ? 'Active' : 'Inactive'}
-            </span>
-          </div>
-          {customer.sms_delivery_failures && customer.sms_delivery_failures > 0 && (
-            <span className="text-sm text-orange-600">
-              {customer.sms_delivery_failures} failed deliveries
-            </span>
-          )}
-        </div>
-      </Card>
-
-      {/* Customer Labels Card */}
-      {hasPermission('customers', 'manage') && (
-        <Card
-          header={
-            <CardTitle>Customer Labels</CardTitle>
-          }
+    <PageLayout
+      title={customerName}
+      subtitle={customer.mobile_number || 'No mobile number'}
+      backButton={{ label: 'Back to Customers', href: '/customers' }}
+      headerActions={headerActions}
+    >
+      <div className="space-y-6">
+        {/* Booking Modal */}
+        <Modal
+          open={showModal}
+          onClose={closeModal}
+          title={editingBooking ? 'Edit Booking' : 'Add New Booking'}
+          size="lg"
         >
-          <CustomerLabelSelector customerId={customer.id} canEdit={true} />
-        </Card>
-      )}
+          {isAddingBooking && !eventForNewBooking && (
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700">
+                Select an Event
+              </label>
+              <select
+                onChange={(e) => {
+                  const event = allEvents.find((event) => event.id === e.target.value)
+                  setEventForNewBooking(event)
+                }}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+              >
+                <option value="">Select an event</option>
+                {allEvents.map((event) => (
+                  <option key={event.id} value={event.id}>
+                    {event.name} ({formatDate(event.date)})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {(editingBooking || (isAddingBooking && eventForNewBooking)) && (
+            <BookingForm
+              event={editingBooking?.event ?? eventForNewBooking!}
+              booking={editingBooking}
+              customer={customer}
+              onSubmit={editingBooking ? handleUpdateBooking : handleAddBooking}
+              onCancel={closeModal}
+            />
+          )}
+        </Modal>
 
-      {/* Category Preferences */}
-      <CustomerCategoryPreferences customerId={customer.id} />
-
-      {/* Message Thread */}
-      <Card
-        header={
-          <CardTitle>Messages</CardTitle>
-        }
-      >
-        <MessageThread
-          messages={messages}
-          customerId={customer.id}
-          customerName={`${customer.first_name} ${customer.last_name}`}
-          canReply={customer.sms_opt_in !== false}
-          onMessageSent={async () => {
-            await loadMessages() // Only refresh messages
-          }}
-        />
-      </Card>
-
-      {/* Active Bookings */}
-      <Card
-        header={
-          <div>
-            <CardTitle>Active Bookings ({activeBookings.length})</CardTitle>
-            <CardDescription>
-              Total of {totalSeats} tickets booked across all events.
-            </CardDescription>
+        {/* Customer Info Card */}
+        <Card>
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center">
+              <ChatBubbleLeftRightIcon className="mr-1 h-4 w-4 text-gray-400" />
+              <span
+                className={`text-sm font-medium ${customer.sms_opt_in !== false ? 'text-green-600' : 'text-red-600'}`}
+              >
+                SMS {customer.sms_opt_in !== false ? 'Active' : 'Inactive'}
+              </span>
+            </div>
+            {customer.sms_delivery_failures && customer.sms_delivery_failures > 0 && (
+              <span className="text-sm text-orange-600">
+                {customer.sms_delivery_failures} failed deliveries
+              </span>
+            )}
           </div>
-        }
-      >
-        <DataTable
-          data={activeBookings}
-          columns={bookingColumns}
-          getRowKey={(booking) => booking.id}
-          emptyMessage="No bookings found"
-        />
-      </Card>
-      
-      {/* Reminders */}
-      {reminders.length > 0 && (
+        </Card>
+
+        {/* Customer Labels Card */}
+        {hasPermission('customers', 'manage') && (
+          <Card header={<CardTitle>Customer Labels</CardTitle>}>
+            <CustomerLabelSelector customerId={customer.id} canEdit />
+          </Card>
+        )}
+
+        {/* Category Preferences */}
+        <CustomerCategoryPreferences customerId={customer.id} />
+
+        {/* Message Thread */}
+        <Card header={<CardTitle>Messages</CardTitle>}>
+          <MessageThread
+            messages={messages}
+            customerId={customer.id}
+            customerName={customerName}
+            canReply={customer.sms_opt_in !== false}
+            onMessageSent={async () => {
+              await loadMessages()
+            }}
+          />
+        </Card>
+
+        {/* Active Bookings */}
         <Card
           header={
             <div>
-              <CardTitle>Reminders ({reminders.length})</CardTitle>
+              <CardTitle>Active Bookings ({activeBookings.length})</CardTitle>
               <CardDescription>
-                These are events the customer has been sent a reminder for, but has not booked tickets.
+                Total of {totalSeats} tickets booked across all events.
               </CardDescription>
             </div>
           }
         >
           <DataTable
-            data={reminders}
-            columns={reminderColumns}
+            data={activeBookings}
+            columns={bookingColumns}
             getRowKey={(booking) => booking.id}
-            emptyMessage="No reminders found"
+            emptyMessage="No bookings found"
           />
         </Card>
-      )}
 
-      {/* SMS Status Card */}
-      <Card
-        header={
-          <div className="flex justify-between items-start">
-            <div>
-              <CardTitle>SMS Messaging Status</CardTitle>
-              <CardDescription>
-                Control whether this customer receives SMS notifications for bookings and reminders.
-              </CardDescription>
-            </div>
-            <Button
-              onClick={handleToggleSms}
-              disabled={togglingSmsSetting}
-              variant={customer.sms_opt_in !== false ? 'secondary' : 'primary'}
-              size="sm"
-            >
-              {togglingSmsSetting ? 'Updating...' : (customer.sms_opt_in !== false ? 'Deactivate SMS' : 'Activate SMS')}
-            </Button>
-          </div>
-        }
-      >
-        {smsStats && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <dt className="text-sm font-medium text-gray-500">Total Messages</dt>
-              <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.totalMessages || 0}</dd>
-            </div>
-            <div>
-              <dt className="text-sm font-medium text-gray-500">Delivered</dt>
-              <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.deliveredMessages || 0}</dd>
-            </div>
-            <div>
-              <dt className="text-sm font-medium text-gray-500">Failed</dt>
-              <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.failedMessages || 0}</dd>
-            </div>
-            <div>
-              <dt className="text-sm font-medium text-gray-500">Delivery Rate</dt>
-              <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.deliveryRate || 0}%</dd>
-            </div>
-          </div>
-        )}
-        {customer.sms_deactivation_reason && (
-          <Alert
-            variant="error"
-            title="Auto-deactivated"
-            className="mt-4"
+        {/* Reminders */}
+        {reminders.length > 0 && (
+          <Card
+            header={
+              <div>
+                <CardTitle>Reminders ({reminders.length})</CardTitle>
+                <CardDescription>
+                  These are events the customer has been sent a reminder for, but has not booked tickets.
+                </CardDescription>
+              </div>
+            }
           >
-            {customer.sms_deactivation_reason}
-            {customer.last_sms_failure_reason && (
-              <p className="text-sm text-red-700 mt-1">Last error: {customer.last_sms_failure_reason}</p>
-            )}
-          </Alert>
+            <DataTable
+              data={reminders}
+              columns={reminderColumns}
+              getRowKey={(booking) => booking.id}
+              emptyMessage="No reminders found"
+            />
+          </Card>
         )}
-      </Card>
 
-      {/* Loyalty removed */}
-        </div>
-      </PageContent>
-    </PageWrapper>
+        {/* SMS Status Card */}
+        <Card
+          header={
+            <div className="flex items-start justify-between">
+              <div>
+                <CardTitle>SMS Messaging Status</CardTitle>
+                <CardDescription>
+                  Control whether this customer receives SMS notifications for bookings and reminders.
+                </CardDescription>
+              </div>
+              <Button
+                onClick={handleToggleSms}
+                disabled={togglingSmsSetting}
+                variant={customer.sms_opt_in !== false ? 'secondary' : 'primary'}
+                size="sm"
+              >
+                {togglingSmsSetting
+                  ? 'Updating...'
+                  : customer.sms_opt_in !== false
+                    ? 'Deactivate SMS'
+                    : 'Activate SMS'}
+              </Button>
+            </div>
+          }
+        >
+          {smsStats && (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Total Messages</dt>
+                <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.totalMessages || 0}</dd>
+              </div>
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Delivered</dt>
+                <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.deliveredMessages || 0}</dd>
+              </div>
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Failed</dt>
+                <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.failedMessages || 0}</dd>
+              </div>
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Delivery Rate</dt>
+                <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.deliveryRate || 0}%</dd>
+              </div>
+            </div>
+          )}
+          {customer.sms_deactivation_reason && (
+            <Alert variant="error" title="Auto-deactivated" className="mt-4">
+              {customer.sms_deactivation_reason}
+              {customer.last_sms_failure_reason && (
+                <p className="mt-1 text-sm text-red-700">
+                  Last error: {customer.last_sms_failure_reason}
+                </p>
+              )}
+            </Alert>
+          )}
+        </Card>
+
+        {/* Booking History */}
+        <Card
+          header={
+            <div className="flex items-center justify-between">
+              <CardTitle>Booking History</CardTitle>
+              <Button
+                variant="secondary"
+                onClick={() => router.push(`/events?customer=${customer.id}`)}
+              >
+                View All Events
+              </Button>
+            </div>
+          }
+        >
+          <DataTable
+            data={bookings}
+            columns={bookingColumns}
+            getRowKey={(booking) => booking.id}
+            emptyMessage="No booking history available"
+          />
+        </Card>
+        {/* Loyalty removed */}
+      </div>
+    </PageLayout>
   )
-} 
+}
