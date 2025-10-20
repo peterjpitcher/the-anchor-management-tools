@@ -4,17 +4,16 @@ import { useCallback, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline'
 import { toast } from '@/components/ui-v2/feedback/Toast'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Dropdown } from '@/components/ui-v2/navigation/Dropdown'
 import { SearchInput } from '@/components/ui-v2/forms/SearchInput'
 import { TabNav } from '@/components/ui-v2/navigation/TabNav'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { StatusBadge } from '@/components/ui-v2/display/Badge'
 import { Pagination as PaginationV2 } from '@/components/ui-v2/navigation/Pagination'
+import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { exportEmployees } from '@/app/actions/employeeExport'
 import { getEmployeesRoster, type EmployeeRosterResult } from '@/app/actions/employeeQueries'
 import type { Employee } from '@/types/database'
@@ -148,52 +147,54 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
   const showSearchResultMessage = Boolean(searchTerm)
   const currentEmployees = roster.employees as Employee[]
 
-  return (
-    <PageWrapper>
-      <PageHeader
-        title="Employees"
-        subtitle="Manage your staff and their information"
-        backButton={{ label: 'Back to Dashboard', href: '/dashboard' }}
-        actions={
-          <div className="flex flex-wrap gap-2 sm:gap-3">
-            <NavGroup>
-              {permissions.canCreate && (
-                <NavLink href="/employees/new">
-                  Add Employee
-                </NavLink>
-              )}
-              <NavLink href="/employees/birthdays">
-                Birthdays
-              </NavLink>
-            </NavGroup>
-            {permissions.canExport && (
-              <Dropdown
-                label="Export"
-                icon={<ArrowDownTrayIcon className="h-4 w-4" />}
-                items={[
-                  {
-                    key: 'csv',
-                    label: 'Export as CSV',
-                    description: 'Spreadsheet format',
-                    onClick: () => handleExport('csv')
-                  },
-                  {
-                    key: 'json',
-                    label: 'Export as JSON',
-                    description: 'Data integration format',
-                    onClick: () => handleExport('json')
-                  }
-                ]}
-                disabled={isLoading || currentEmployees.length === 0}
-                variant="secondary"
-                size="sm"
-              />
-            )}
-          </div>
-        }
-      />
+  const navItems: HeaderNavItem[] = [
+    { label: 'Filters', href: '#filters' },
+    { label: 'Roster', href: '#roster' },
+    { label: 'Birthdays', href: '/employees/birthdays' },
+  ]
 
-      <PageContent>
+  const headerActions = (
+    <div className="flex flex-wrap items-center gap-2">
+      {permissions.canCreate && (
+        <LinkButton href="/employees/new" size="sm" variant="primary">
+          Add Employee
+        </LinkButton>
+      )}
+      {permissions.canExport && (
+        <Dropdown
+          label="Export"
+          icon={<ArrowDownTrayIcon className="h-4 w-4" />}
+          items={[
+            {
+              key: 'csv',
+              label: 'Export as CSV',
+              description: 'Spreadsheet format',
+              onClick: () => handleExport('csv')
+            },
+            {
+              key: 'json',
+              label: 'Export as JSON',
+              description: 'Data integration format',
+              onClick: () => handleExport('json')
+            }
+          ]}
+          disabled={isLoading || currentEmployees.length === 0}
+          variant="secondary"
+          size="sm"
+        />
+      )}
+    </div>
+  )
+
+  return (
+    <PageLayout
+      title="Employees"
+      subtitle="Manage your staff and their information"
+      backButton={{ label: 'Back to Dashboard', href: '/dashboard' }}
+      navItems={navItems}
+      headerActions={headerActions}
+    >
+      <section id="filters">
         <Card>
           <div className="space-y-4">
             <SearchInput
@@ -222,6 +223,9 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
           </div>
         </Card>
 
+      </section>
+
+      <section id="roster" className="space-y-6">
         {currentEmployees.length === 0 ? (
           <Card>
             <div className="text-center py-12">
@@ -319,7 +323,7 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
             )}
           </Card>
         )}
-      </PageContent>
-    </PageWrapper>
+      </section>
+    </PageLayout>
   )
 }

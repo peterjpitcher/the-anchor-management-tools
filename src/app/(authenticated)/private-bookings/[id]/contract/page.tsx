@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react'
 import { use } from 'react'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 
 import { BackButton } from '@/components/ui-v2/navigation/BackButton';
@@ -22,13 +22,17 @@ export default function ContractPage({
   }, [id])
 
   return (
-    <Page title="Generating Contract"
-      actions={<BackButton label="Back to Booking" onBack={() => router.back()} />}
+    <PageLayout
+      title="Generating Contract"
+      subtitle="We'll redirect you once the contract is ready"
+      backButton={{ label: 'Back to Booking', onBack: () => router.back() }}
+      loading
+      loadingLabel="Generating contract..."
     >
-      <div className="flex flex-col items-center justify-center min-h-[400px]">
+      <div className="flex min-h-[400px] flex-col items-center justify-center gap-4">
         <Spinner size="lg" />
-        <p className="mt-4 text-gray-600">Generating contract...</p>
+        <p className="text-gray-600">Hang tight while we prepare the contract...</p>
       </div>
-    </Page>
+    </PageLayout>
   )
 }

@@ -5,8 +5,7 @@ import { useRouter } from 'next/navigation';
 import { addEmployee } from '@/app/actions/employeeActions';
 import { Loader2, Save } from 'lucide-react';
 // New UI components
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Tabs } from '@/components/ui-v2/navigation/Tabs';
 import { Button } from '@/components/ui-v2/forms/Button';
@@ -17,6 +16,7 @@ import { Checkbox } from '@/components/ui-v2/forms/Checkbox';
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
 import { toast } from '@/components/ui-v2/feedback/Toast';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
+import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav';
 interface EmployeeData {
   // Personal Details
   first_name: string;
@@ -442,47 +442,53 @@ export default function NewEmployeePage() {
     }
   ];
 
+  const navItems: HeaderNavItem[] = [
+    { label: 'Personal', href: '#personal' },
+    { label: 'Financial', href: '#financial' },
+    { label: 'Health', href: '#health' },
+  ];
+
+  const headerActions = (
+    <Button
+      onClick={handleSaveAndClose}
+      disabled={isLoading}
+      variant="primary"
+    >
+      {isLoading ? (
+        <>
+          <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
+          Saving...
+        </>
+      ) : (
+        <>
+          <Save className="-ml-1 mr-2 h-4 w-4" />
+          Save and Close
+        </>
+      )}
+    </Button>
+  );
+
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Add New Employee"
-        subtitle="Fill in the employee information across all tabs. All data is saved when you click 'Save and Close'."
-        backButton={{
-          label: 'Back to Employees',
-          href: '/employees'
-        }}
-        actions={
-          <Button
-            onClick={handleSaveAndClose}
-            disabled={isLoading}
-            variant="primary"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save className="-ml-1 mr-2 h-4 w-4" />
-                Save and Close
-              </>
-            )}
-          </Button>
-        }
-      />
-      <PageContent>
-        <Card>
-          <Tabs 
-            items={tabs}
-          />
-        </Card>
-        
-        <Alert variant="info">
-          <strong>Note:</strong> You can switch between tabs without losing your data. 
-          All information will be saved when you click &quot;Save and Close&quot;.
-        </Alert>
-      </PageContent>
-    </PageWrapper>
+    <PageLayout
+      title="Add New Employee"
+      subtitle="Fill in the employee information across all tabs. All data is saved when you click 'Save and Close'."
+      backButton={{
+        label: 'Back to Employees',
+        href: '/employees'
+      }}
+      navItems={navItems}
+      headerActions={headerActions}
+    >
+      <Card id="personal">
+        <Tabs 
+          items={tabs}
+        />
+      </Card>
+      
+      <Alert variant="info" id="health">
+        <strong>Note:</strong> You can switch between tabs without losing your data. 
+        All information will be saved when you click &quot;Save and Close&quot;.
+      </Alert>
+    </PageLayout>
   );
 }

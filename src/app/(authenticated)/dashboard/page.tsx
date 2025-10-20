@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { CalendarIcon, UsersIcon, ChatBubbleLeftIcon, CurrencyPoundIcon, TruckIcon } from '@heroicons/react/24/outline'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card, CardTitle } from '@/components/ui-v2/layout/Card'
 import { Stat } from '@/components/ui-v2/display/Stat'
 import { Badge } from '@/components/ui-v2/display/Badge'
@@ -12,6 +11,7 @@ import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import type { BadgeProps } from '@/components/ui-v2/display/Badge'
 import { formatDate, formatDateTime } from '@/lib/dateUtils'
 import { loadDashboardSnapshot, type DashboardSnapshot } from './dashboard-data'
+import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 
 type SectionSummary = {
   id: string
@@ -523,47 +523,52 @@ export default async function DashboardPage() {
     />
   )
 
-  return (
-    <PageWrapper>
-      <PageHeader
-        title="Dashboard"
-        subtitle="Welcome back! Here's what's happening today."
-      />
-      <PageContent>
-        <div className="space-y-6">
-          <div className="space-y-3">
-            {statsCards.length > 0 ? (
-              <>
-                <div className="-mx-2 sm:hidden">
-                  <div className="flex gap-3 px-2 overflow-x-auto scrollbar-hide snap-x snap-mandatory">
-                    {statsCards.map((card) => (
-                      <div key={card.key} className="flex-none w-[240px] snap-start">
-                        {renderStatCard(card, 'sm')}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="hidden sm:grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
-                  {statsCards.map((card) => renderStatCard(card))}
-                </div>
-              </>
-            ) : (
-              <Card>
-                <EmptyState
-                  title="No metrics available"
-                  description="You do not have access to any dashboard metrics yet."
-                />
-              </Card>
-            )}
-          </div>
+  const navItems: HeaderNavItem[] = [
+    { label: 'Overview', href: '#metrics' },
+    { label: 'Operations', href: '#operations' },
+    { label: 'Finance', href: '#finance' },
+  ]
 
-          <div className="grid gap-4 xl:grid-cols-[2fr,1fr]">
-            <div className="space-y-4">
-              {snapshot.events.permitted && snapshot.events.today.length > 0 && (
-                <Card header={<CardTitle>Today&apos;s Events</CardTitle>}>
-                  <SimpleList
-                    items={snapshot.events.today.map((event) => ({
-                      id: event.id,
+  return (
+    <PageLayout
+      title="Dashboard"
+      subtitle="Welcome back! Here's what's happening today."
+      navItems={navItems}
+    >
+      <div className="space-y-6">
+        <section id="metrics" className="space-y-3">
+          {statsCards.length > 0 ? (
+            <>
+              <div className="-mx-2 sm:hidden">
+                <div className="flex gap-3 px-2 overflow-x-auto scrollbar-hide snap-x snap-mandatory">
+                  {statsCards.map((card) => (
+                    <div key={card.key} className="flex-none w-[240px] snap-start">
+                      {renderStatCard(card, 'sm')}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="hidden sm:grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                {statsCards.map((card) => renderStatCard(card))}
+              </div>
+            </>
+          ) : (
+            <Card>
+              <EmptyState
+                title="No metrics available"
+                description="You do not have access to any dashboard metrics yet."
+              />
+            </Card>
+          )}
+        </section>
+
+        <div className="grid gap-4 xl:grid-cols-[2fr,1fr]">
+          <section id="operations" className="space-y-4">
+            {snapshot.events.permitted && snapshot.events.today.length > 0 && (
+              <Card header={<CardTitle>Today&apos;s Events</CardTitle>}>
+                <SimpleList
+                  items={snapshot.events.today.map((event) => ({
+                    id: event.id,
                       title: event.name,
                       subtitle: event.time ?? 'Time TBC',
                       href: `/events/${event.id}`,
@@ -773,9 +778,9 @@ export default async function DashboardPage() {
                   />
                 )}
               </Card>
-            </div>
+          </section>
 
-            <div className="space-y-4">
+          <section id="finance" className="space-y-4">
               <Card
                 header={
                   <div className="flex items-center justify-between">
@@ -922,12 +927,10 @@ export default async function DashboardPage() {
                   }))}
                 />
               </Card>
-
-            </div>
-          </div>
+          </section>
         </div>
-      </PageContent>
-    </PageWrapper>
+      </div>
+    </PageLayout>
   )
 }
 

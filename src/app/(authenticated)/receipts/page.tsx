@@ -1,7 +1,6 @@
 import ReceiptsClient from './_components/ReceiptsClient'
 import { getReceiptWorkspaceData, type ReceiptWorkspaceFilters } from '@/app/actions/receipts'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 
@@ -83,27 +82,24 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
   }
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Receipts"
-        subtitle="Upload statements, tick off receipts, and download quarterly packs."
+    <PageLayout
+      title="Receipts"
+      subtitle="Upload statements, tick off receipts, and download quarterly packs."
+    >
+      <ReceiptsClient
+        initialData={data}
+        initialFilters={{
+          status,
+          direction,
+          search,
+          showOnlyOutstanding,
+          missingVendorOnly,
+          missingExpenseOnly,
+          month: filters.month ?? month,
+          sortBy,
+          sortDirection,
+        }}
       />
-      <PageContent>
-        <ReceiptsClient
-          initialData={data}
-          initialFilters={{
-            status,
-            direction,
-            search,
-            showOnlyOutstanding,
-            missingVendorOnly,
-            missingExpenseOnly,
-            month: filters.month ?? month,
-            sortBy,
-            sortDirection,
-          }}
-        />
-      </PageContent>
-    </PageWrapper>
+    </PageLayout>
   )
 }

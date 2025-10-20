@@ -4,16 +4,15 @@ import { useState, useEffect, useCallback } from 'react'
 import { getMessages, markAllMessagesAsRead } from '@/app/actions/messagesActions'
 import { formatDistanceToNow } from 'date-fns'
 // New UI components
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Skeleton } from '@/components/ui-v2/feedback/Skeleton'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { SimpleList } from '@/components/ui-v2/display/List'
 import { usePermissions } from '@/contexts/PermissionContext'
+import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 
 type ConversationMessage = {
   id: string;
@@ -96,101 +95,90 @@ export default function MessagesPage() {
     }
   }
 
+  const navItems: HeaderNavItem[] = [
+    { label: 'SMS Queue Status', href: '/messages/queue' },
+    { label: 'Send Bulk Message', href: '/messages/bulk' },
+    ...(canManage && totalUnreadCount > 0
+      ? [{ label: 'Mark all as read', onClick: handleMarkAllAsRead }]
+      : []),
+  ]
+
   if (loading) {
     return (
-      <PageWrapper>
-        <PageHeader
-          title="Unread Messages"
-          backButton={{ label: "Back to Dashboard", href: "/dashboard" }}
-        />
-        <PageContent>
-          <Card>
-            <div className="space-y-3">
-              {[...Array(5)].map((_, i) => (
-                <Skeleton key={i} className="h-20" />
-              ))}
-            </div>
-          </Card>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="Unread Messages"
+        backButton={{ label: 'Back to Dashboard', href: '/dashboard' }}
+        navItems={navItems}
+      >
+        <Card>
+          <div className="space-y-3">
+            {[...Array(5)].map((_, i) => (
+              <Skeleton key={i} className="h-20" />
+            ))}
+          </div>
+        </Card>
+      </PageLayout>
     )
   }
   
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Unread Messages"
-        subtitle={`New conversations from customers${totalUnreadCount > 0 ? ` (${totalUnreadCount} unread message${totalUnreadCount !== 1 ? 's' : ''})` : ''}`}
-        backButton={{ label: "Back to Dashboard", href: "/dashboard" }}
-        actions={
-          <div className="flex gap-2">
-            <NavLink href="/messages/queue">
-              SMS Queue Status
-            </NavLink>
-            <NavLink href="/messages/bulk">
-              Send Bulk Message
-            </NavLink>
-            {canManage && totalUnreadCount > 0 && (
-              <NavLink onClick={handleMarkAllAsRead}>
-                Mark all as read
-              </NavLink>
-            )}
-          </div>
-        }
-      />
-      <PageContent>
-        {conversations.length === 0 ? (
-          <Card>
-            <EmptyState
-              title="No unread messages"
-              description="All customer messages have been read"
-            />
-          </Card>
-        ) : (
-          <Card>
-            <SimpleList
-              items={conversations.map((conversation) => {
-                const unreadCount = conversation.messages.filter(
-                  (m) => m.direction === 'inbound' && !m.read_at,
-                ).length
+    <PageLayout
+      title="Unread Messages"
+      subtitle={`New conversations from customers${totalUnreadCount > 0 ? ` (${totalUnreadCount} unread message${totalUnreadCount !== 1 ? 's' : ''})` : ''}`}
+      backButton={{ label: 'Back to Dashboard', href: '/dashboard' }}
+      navItems={navItems}
+    >
+      {conversations.length === 0 ? (
+        <Card>
+          <EmptyState
+            title="No unread messages"
+            description="All customer messages have been read"
+          />
+        </Card>
+      ) : (
+        <Card>
+          <SimpleList
+            items={conversations.map((conversation) => {
+              const unreadCount = conversation.messages.filter(
+                (m) => m.direction === 'inbound' && !m.read_at,
+              ).length
 
-                const fullName = [conversation.customer.first_name, conversation.customer.last_name]
-                  .filter(Boolean)
-                  .join(' ')
-                  .trim()
+              const fullName = [conversation.customer.first_name, conversation.customer.last_name]
+                .filter(Boolean)
+                .join(' ')
+                .trim()
 
-                const subtitle = conversation.customer.mobile_number || 'No phone number on record'
+              const subtitle = conversation.customer.mobile_number || 'No phone number on record'
 
-                return {
-                  id: conversation.customer.id,
-                  href: `/customers/${conversation.customer.id}`,
-                  title: fullName || subtitle,
-                  subtitle,
-                  meta: (
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                      {unreadCount > 0 && (
-                        <Badge variant="info" size="sm" className="self-start">
-                          {unreadCount} unread
-                        </Badge>
-                      )}
-                      <div className="text-left sm:text-right">
-                        <p className="text-sm text-gray-500 whitespace-nowrap">
-                          {formatDistanceToNow(new Date(conversation.lastMessageAt), { addSuffix: true })}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-1">
-                          {conversation.messages.length} message
-                          {conversation.messages.length !== 1 ? 's' : ''}
-                        </p>
-                      </div>
+              return {
+                id: conversation.customer.id,
+                href: `/customers/${conversation.customer.id}`,
+                title: fullName || subtitle,
+                subtitle,
+                meta: (
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                    {unreadCount > 0 && (
+                      <Badge variant="info" size="sm" className="self-start">
+                        {unreadCount} unread
+                      </Badge>
+                    )}
+                    <div className="text-left sm:text-right">
+                      <p className="text-sm text-gray-500 whitespace-nowrap">
+                        {formatDistanceToNow(new Date(conversation.lastMessageAt), { addSuffix: true })}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {conversation.messages.length} message
+                        {conversation.messages.length !== 1 ? 's' : ''}
+                      </p>
                     </div>
-                  ),
-                  className: unreadCount > 0 ? 'bg-blue-50' : '',
-                }
-              })}
-            />
-          </Card>
-        )}
-      </PageContent>
-    </PageWrapper>
+                  </div>
+                ),
+                className: unreadCount > 0 ? 'bg-blue-50' : '',
+              }
+            })}
+          />
+        </Card>
+      )}
+    </PageLayout>
   )
 }

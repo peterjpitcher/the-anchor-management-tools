@@ -34,9 +34,19 @@ export default async function InvoicesPage() {
     checkUserPermission('invoices', 'manage'),
   ])
 
+  const errorMessages: string[] = []
+
+  if (invoicesResult.error) {
+    errorMessages.push('We were unable to load the latest invoices. Data shown below may be out of date.')
+  }
+
+  if (summaryResult.error) {
+    errorMessages.push('Invoice summary totals could not be refreshed.')
+  }
+
   const initialInvoices = invoicesResult.invoices ?? []
   const initialSummary = summaryResult.summary ?? EMPTY_SUMMARY
-  const initialError = invoicesResult.error ?? summaryResult.error ?? null
+  const initialError = errorMessages.length > 0 ? errorMessages.join(' ') : null
 
   return (
     <InvoicesClient

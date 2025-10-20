@@ -14,8 +14,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { TableBooking } from '@/types/table-bookings';
 // New UI components
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { Button } from '@/components/ui-v2/forms/Button';
@@ -109,41 +108,33 @@ export default function TableBookingsCalendarPage() {
 
   if (!canView) {
     return (
-      <PageWrapper>
-        <PageHeader 
-          title="Table Bookings Calendar"
-          subtitle="View all bookings in calendar format"
-          backButton={{
-            label: "Back to Table Bookings",
-            href: "/table-bookings"
-          }}
-        />
-        <PageContent>
-          <Card>
-            <Alert variant="error" title="Access Denied" description="You do not have permission to view the calendar." />
-          </Card>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="Table Bookings Calendar"
+        subtitle="View all bookings in calendar format"
+        backButton={{
+          label: 'Back to Table Bookings',
+          href: '/table-bookings',
+        }}
+      >
+        <Card>
+          <Alert variant="error" title="Access Denied" description="You do not have permission to view the calendar." />
+        </Card>
+      </PageLayout>
     );
   }
 
   if (loading) {
     return (
-      <PageWrapper>
-        <PageHeader 
-          title="Table Bookings Calendar"
-          subtitle="View all bookings in calendar format"
-          backButton={{
-            label: "Back to Table Bookings",
-            href: "/table-bookings"
-          }}
-        />
-        <PageContent>
-          <div className="flex items-center justify-center h-64">
-            <Spinner size="lg" />
-          </div>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="Table Bookings Calendar"
+        subtitle="View all bookings in calendar format"
+        backButton={{
+          label: 'Back to Table Bookings',
+          href: '/table-bookings',
+        }}
+        loading
+        loadingLabel="Loading calendar..."
+      />
     );
   }
 
@@ -154,21 +145,19 @@ export default function TableBookingsCalendarPage() {
   const calendarDays = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Table Bookings Calendar"
-        subtitle="View all bookings in calendar format"
-        backButton={{
-          label: "Back to Table Bookings",
-          href: "/table-bookings"
-        }}
-      />
-      <PageContent>
-        {error && (
-          <Alert variant="error" title="Error" description={error} />
-        )}
+    <PageLayout
+      title="Table Bookings Calendar"
+      subtitle="View all bookings in calendar format"
+      backButton={{
+        label: 'Back to Table Bookings',
+        href: '/table-bookings',
+      }}
+    >
+      {error && (
+        <Alert variant="error" title="Error" description={error} />
+      )}
 
-        <Card>
+      <Card>
         {/* Calendar Header */}
         <div className="px-6 py-4 border-b flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -280,7 +269,6 @@ export default function TableBookingsCalendarPage() {
           </div>
         </div>
       </Card>
-      </PageContent>
-    </PageWrapper>
+    </PageLayout>
   );
 }

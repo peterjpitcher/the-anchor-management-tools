@@ -7,7 +7,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { createCateringPackage, updateCateringPackage, deleteCateringPackage, getCateringPackagesForManagement } from '@/app/actions/privateBookingActions'
 import { CateringPackageDeleteButton } from '@/components/CateringPackageDeleteButton'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -122,17 +122,18 @@ export default async function CateringPackagesPage() {
   ]
 
   return (
-    <Page
+    <PageLayout
       title="Catering Packages"
-      description="Manage food and drink options for private events"
-      actions={
-        <div className="flex items-center space-x-3">
-          <LinkButton href="/private-bookings/settings" variant="secondary">Back to Settings</LinkButton>
-          <LinkButton href="/private-bookings" variant="secondary">Back</LinkButton>
+      subtitle="Manage food and drink options for private events"
+      backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
+      headerActions={
+        <div className="flex flex-wrap items-center gap-2">
+          <LinkButton href="/private-bookings/settings" variant="secondary">Settings Home</LinkButton>
         </div>
       }
     >
-      {/* Add New Package Form */}
+      <div className="space-y-6">
+{/* Add New Package Form */}
       <Card>
         <Section 
           title="Add New Package"
@@ -349,6 +350,9 @@ export default async function CateringPackagesPage() {
           ))}
         </div>
       )}
-    </Page>
+    
+      </div>
+    </PageLayout>
+
   )
 }

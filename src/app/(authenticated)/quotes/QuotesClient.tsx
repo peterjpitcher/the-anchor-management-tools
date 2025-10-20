@@ -6,7 +6,7 @@ import { getQuotes, getQuoteSummary } from '@/app/actions/quotes'
 import type { QuoteWithDetails, QuoteStatus } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { Plus, FileText, TrendingUp, Clock, FileEdit, Download, Package, ArrowRight } from 'lucide-react'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -16,7 +16,6 @@ import { Select } from '@/components/ui-v2/forms/Select'
 import { Stat, StatGroup } from '@/components/ui-v2/display/Stat'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 
 type QuoteSummary = {
@@ -99,6 +98,30 @@ export default function QuotesClient({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(initialError)
 
+  const headerActions = (
+    <div className="flex flex-wrap gap-2">
+      <LinkButton href="/invoices" variant="secondary">
+        <FileText className="h-4 w-4 mr-1 sm:mr-2" />
+        <span className="hidden sm:inline">Invoices</span>
+        <span className="sm:hidden">Inv</span>
+      </LinkButton>
+      <LinkButton
+        href="/quotes/new"
+        variant="primary"
+        disabled={!resolvedPermissions.canCreate}
+        title={
+          resolvedPermissions.canCreate
+            ? undefined
+            : 'You need invoice create permission to add quotes.'
+        }
+      >
+        <Plus className="h-4 w-4 mr-1 sm:mr-2" />
+        <span className="hidden sm:inline">New Quote</span>
+        <span className="sm:hidden">New</span>
+      </LinkButton>
+    </div>
+  )
+
   const loadData = useCallback(async () => {
     if (permissionsLoading) {
       return
@@ -151,118 +174,95 @@ export default function QuotesClient({
 
   if (loading && quotes.length === 0) {
     return (
-      <Page title="Quotes">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <Spinner size="lg" />
-            <p className="mt-4 text-gray-600">Loading quotes...</p>
-          </div>
-        </div>
-      </Page>
+      <PageLayout
+        title="Quotes"
+        subtitle="Manage quotes and estimates for your vendors"
+        headerActions={headerActions}
+        loading
+        loadingLabel="Loading quotes..."
+      />
     )
   }
 
   return (
-    <Page
+    <PageLayout
       title="Quotes"
-      description="Manage quotes and estimates for your vendors"
-      actions={
-        <div className="flex flex-wrap gap-2">
-          <LinkButton href="/invoices" variant="secondary">
-            <FileText className="h-4 w-4 mr-1 sm:mr-2" />
-            <span className="hidden sm:inline">Invoices</span>
-            <span className="sm:hidden">Inv</span>
-          </LinkButton>
-          <LinkButton
-            href="/quotes/new"
-            variant="primary"
-            disabled={!resolvedPermissions.canCreate}
-            title={
-              resolvedPermissions.canCreate
-                ? undefined
-                : 'You need invoice create permission to add quotes.'
-            }
-          >
-            <Plus className="h-4 w-4 mr-1 sm:mr-2" />
-            <span className="hidden sm:inline">New Quote</span>
-            <span className="sm:hidden">New</span>
-          </LinkButton>
-        </div>
-      }
+      subtitle="Manage quotes and estimates for your vendors"
+      headerActions={headerActions}
     >
-      {isReadOnly && (
-        <Alert
-          variant="info"
-          description="You have read-only access to quotes. Creation, conversion, and status changes are disabled for your role."
-          className="mb-6"
-        />
-      )}
+      <div className="space-y-6">
+        {isReadOnly && (
+          <Alert
+            variant="info"
+            description="You have read-only access to quotes. Creation, conversion, and status changes are disabled for your role."
+          />
+        )}
 
-      <Card>
-        <StatGroup>
-          <Stat
-            label="Pending"
-            value={`£${summary.total_pending.toFixed(2)}`}
-            icon={<TrendingUp className="h-5 w-5 text-blue-500" />}
-          />
-          <Stat
-            label="Expired"
-            value={`£${summary.total_expired.toFixed(2)}`}
-            icon={<Clock className="h-5 w-5 text-yellow-500" />}
-          />
-          <Stat
-            label="Accepted"
-            value={`£${summary.total_accepted.toFixed(2)}`}
-            icon={<TrendingUp className="h-5 w-5 text-green-500" />}
-          />
-          <Stat
-            label="Drafts"
-            value={summary.draft_badge}
-            icon={<FileEdit className="h-5 w-5 text-gray-500" />}
-          />
-        </StatGroup>
-      </Card>
-
-      {error && <Alert variant="error" title="Error" description={error} className="my-4" />}
-
-      <Section
-        title="Quotes List"
-        actions={
-          <Button variant="secondary" size="sm" disabled>
-            <Download className="h-4 w-4 mr-1 sm:mr-2" />
-            <span className="hidden sm:inline">Export</span>
-            <span className="sm:hidden">Exp</span>
-          </Button>
-        }
-      >
         <Card>
-          <div className="p-4 border-b">
-            <div className="flex flex-col lg:flex-row gap-3 sm:gap-4 justify-between items-stretch lg:items-center">
-              <div className="flex flex-col sm:flex-row gap-2 flex-1">
-                <Select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value as QuoteStatus | 'all')}
-                  className="sm:w-auto"
-                >
-                  <option value="all">All Quotes</option>
-                  <option value="draft">Draft</option>
-                  <option value="sent">Sent</option>
-                  <option value="accepted">Accepted</option>
-                  <option value="rejected">Rejected</option>
-                  <option value="expired">Expired</option>
-                </Select>
+          <StatGroup>
+            <Stat
+              label="Pending"
+              value={`£${summary.total_pending.toFixed(2)}`}
+              icon={<TrendingUp className="h-5 w-5 text-blue-500" />}
+            />
+            <Stat
+              label="Expired"
+              value={`£${summary.total_expired.toFixed(2)}`}
+              icon={<Clock className="h-5 w-5 text-yellow-500" />}
+            />
+            <Stat
+              label="Accepted"
+              value={`£${summary.total_accepted.toFixed(2)}`}
+              icon={<TrendingUp className="h-5 w-5 text-green-500" />}
+            />
+            <Stat
+              label="Drafts"
+              value={summary.draft_badge}
+              icon={<FileEdit className="h-5 w-5 text-gray-500" />}
+            />
+          </StatGroup>
+        </Card>
 
-                <Input
-                  type="text"
-                  placeholder="Search quotes..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="flex-1"
-                />
+        {error && <Alert variant="error" title="Error" description={error} />}
+
+        <Section
+          title="Quotes List"
+          actions={
+            <Button variant="secondary" size="sm" disabled>
+              <Download className="h-4 w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Export</span>
+              <span className="sm:hidden">Exp</span>
+            </Button>
+          }
+        >
+          <Card>
+            <div className="border-b p-4">
+              <div className="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-1 flex-col gap-2 sm:flex-row">
+                  <Select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value as QuoteStatus | 'all')}
+                    className="sm:w-auto"
+                  >
+                    <option value="all">All Quotes</option>
+                    <option value="draft">Draft</option>
+                    <option value="sent">Sent</option>
+                    <option value="accepted">Accepted</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="expired">Expired</option>
+                  </Select>
+  
+                  <Input
+                    type="text"
+                    placeholder="Search quotes..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="flex-1"
+                  />
+                </div>
               </div>
             </div>
-          </div>
-
+  
           {filteredQuotes.length === 0 ? (
             <EmptyState
               title={searchTerm ? 'No quotes match your search.' : 'No quotes found.'}
@@ -449,6 +449,7 @@ export default function QuotesClient({
           </Card>
         </div>
       </Section>
-    </Page>
+      </div>
+    </PageLayout>
   )
 }

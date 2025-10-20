@@ -7,11 +7,9 @@ import { Event } from '@/types/database'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 // New UI components
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { toast } from '@/components/ui-v2/feedback/Toast'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 type CreateEventActionResult = Awaited<ReturnType<typeof createEvent>>
 
 export default function NewEventPage() {
@@ -74,45 +72,34 @@ export default function NewEventPage() {
 
   if (loading) {
     return (
-      <PageWrapper>
-        <PageHeader 
-          title="Create New Event"
-          backButton={{
-            label: "Back to Events",
-            href: "/events"
-          }}
-        />
-        <PageContent>
-          <div className="flex items-center justify-center min-h-[400px]">
-            <div className="text-center">
-              <Spinner size="lg" />
-              <p className="mt-4 text-gray-600">Loading...</p>
-            </div>
-          </div>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="Create New Event"
+        backButton={{
+          label: 'Back to Events',
+          href: '/events',
+        }}
+        loading
+        loadingLabel="Loading..."
+      />
     )
   }
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Create New Event"
-        subtitle="Add a new event to your calendar"
-        backButton={{
-          label: "Back to Events",
-          href: "/events"
-        }}
-      />
-      <PageContent>
-        <Card>
-          <EventFormGrouped 
-            categories={categories as any}
-            onSubmit={handleSubmit} 
-            onCancel={handleCancel} 
-          />
-        </Card>
-      </PageContent>
-    </PageWrapper>
+    <PageLayout
+      title="Create New Event"
+      subtitle="Add a new event to your calendar"
+      backButton={{
+        label: 'Back to Events',
+        href: '/events',
+      }}
+    >
+      <Card>
+        <EventFormGrouped
+          categories={categories as any}
+          onSubmit={handleSubmit}
+          onCancel={handleCancel}
+        />
+      </Card>
+    </PageLayout>
   )
 }

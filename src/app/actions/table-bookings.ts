@@ -1060,6 +1060,59 @@ export async function markBookingCompleted(bookingId: string) {
   }
 }
 
+export async function deleteTableBooking(bookingId: string) {
+  try {
+    const supabase = await createClient()
+
+    const hasPermission = await checkUserPermission('table_bookings', 'delete')
+    if (!hasPermission) {
+      return { error: 'You do not have permission to delete table bookings.' }
+    }
+
+    const { data: booking, error: fetchError } = await supabase
+      .from('table_bookings')
+      .select('id, status, booking_reference')
+      .eq('id', bookingId)
+      .single()
+
+    if (fetchError || !booking) {
+      return { error: 'Booking not found.' }
+    }
+
+    if (booking.status !== 'pending_payment' && booking.status !== 'cancelled') {
+      return { error: 'Only pending or cancelled bookings can be deleted.' }
+    }
+
+    const { error: deleteError } = await supabase
+      .from('table_bookings')
+      .delete()
+      .eq('id', bookingId)
+
+    if (deleteError) {
+      console.error('Error deleting table booking:', deleteError)
+      return { error: 'Failed to delete booking.' }
+    }
+
+    await logAuditEvent({
+      operation_type: 'delete',
+      resource_type: 'table_booking',
+      resource_id: bookingId,
+      operation_status: 'success',
+      additional_info: {
+        booking_reference: booking.booking_reference
+      }
+    })
+
+    revalidatePath('/table-bookings')
+    revalidatePath(`/table-bookings/${bookingId}`)
+
+    return { success: true }
+  } catch (error: any) {
+    console.error('Unexpected error deleting table booking:', error)
+    return { error: error.message || 'Unexpected error occurred' }
+  }
+}
+
 // Get bookings for a specific date
 export async function getBookingsByDate(date: string) {
   try {

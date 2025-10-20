@@ -24,7 +24,7 @@ import {
   getVendorRate
 } from '@/app/actions/privateBookingActions'
 import type { VenueSpace, CateringPackage, Vendor, ItemType, PrivateBookingItem, PrivateBookingWithDetails } from '@/types/private-bookings'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 // import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -39,7 +39,6 @@ import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 
-import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 import { formatCurrency } from '@/components/ui-v2/utils/format'
 interface AddItemModalProps {
   isOpen: boolean
@@ -780,35 +779,47 @@ export default function ItemsPage() {
 
   if (loading) {
     return (
-      <Page title="Booking Items"
-      actions={<BackButton label="Back to Booking" onBack={() => router.back()} />}
-    >
-        <div className="flex items-center justify-center p-8">
-          <Spinner size="lg" />
-        </div>
-      </Page>
+      <PageLayout
+        title="Booking Items"
+        subtitle="Loading booking details..."
+        backButton={{ label: 'Back to Booking', href: `/private-bookings/${bookingId}` }}
+        loading
+        loadingLabel="Loading items..."
+      />
     )
   }
 
+  const customerLabel = booking
+    ? booking.customer_name || `${booking.customer_first_name || ''} ${booking.customer_last_name || ''}`.trim() || 'Unknown'
+    : 'Unknown'
+
+  const subtitle = booking
+    ? `${customerLabel} - ${booking.event_date ? formatDateFull(booking.event_date) : 'Date TBD'}`
+    : 'Booking details'
+
+  const headerActions = (
+    <div className="flex flex-wrap items-center gap-2">
+      <LinkButton href={`/private-bookings/${bookingId}`} variant="secondary">
+        View Booking
+      </LinkButton>
+      <Button
+        onClick={() => setShowAddModal(true)}
+        leftIcon={<PlusIcon className="h-5 w-5" />}
+      >
+        Add Item
+      </Button>
+    </div>
+  )
+
   return (
-    <Page
+    <PageLayout
       title="Booking Items"
-      description={`${booking?.customer_name || `${booking?.customer_first_name || ''} ${booking?.customer_last_name || ''}`.trim() || 'Unknown'} - ${booking?.event_date ? formatDateFull(booking.event_date) : 'Date TBD'}`}
-      actions={
-        <>
-          <LinkButton href={`/private-bookings/${bookingId}`} variant="secondary">
-            Back
-          </LinkButton>
-          <Button
-            onClick={() => setShowAddModal(true)}
-            leftIcon={<PlusIcon className="h-5 w-5" />}
-          >
-            Add Item
-          </Button>
-        </>
-      }
+      subtitle={subtitle}
+      backButton={{ label: 'Back to Booking', href: `/private-bookings/${bookingId}` }}
+      headerActions={headerActions}
     >
-      <Card>
+      <div className="space-y-6">
+        <Card>
         {items.length === 0 ? (
           <EmptyState icon={<ClipboardDocumentListIcon className="h-12 w-12" />}
             title="No items added yet"
@@ -884,7 +895,7 @@ export default function ItemsPage() {
           </div>
         )}
       </Card>
-
+      </div>
       {/* Modals */}
       <AddItemModal
         isOpen={showAddModal}
@@ -914,6 +925,6 @@ export default function ItemsPage() {
         confirmText="Delete"
         confirmVariant="danger"
       />
-    </Page>
+    </PageLayout>
   )
 }

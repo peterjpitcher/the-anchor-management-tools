@@ -5,8 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createRecurringInvoice } from '@/app/actions/recurring-invoices'
 import { getVendors } from '@/app/actions/vendors'
 import { getLineItemCatalog } from '@/app/actions/invoices'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
@@ -14,7 +13,6 @@ import { Select } from '@/components/ui-v2/forms/Select'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Plus, Trash2, Package } from 'lucide-react'
 import { getTodayIsoDate } from '@/lib/dateUtils'
@@ -185,18 +183,13 @@ export default function NewRecurringInvoicePage() {
 
   if (permissionsLoading || loading) {
     return (
-      <PageWrapper>
-        <PageHeader 
-          title="New Recurring Invoice"
-          subtitle="Set up automated invoice generation"
-          backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-        />
-        <PageContent>
-          <div className="flex items-center justify-center h-64">
-            <Spinner size="lg" />
-          </div>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="New Recurring Invoice"
+        subtitle="Set up automated invoice generation"
+        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+        loading
+        loadingLabel="Loading recurring setup..."
+      />
     )
   }
 
@@ -207,22 +200,21 @@ export default function NewRecurringInvoicePage() {
   const { subtotal, invoiceDiscountAmount, totalVat, total } = calculateTotals()
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="New Recurring Invoice"
-        subtitle="Set up automated invoice generation"
-        breadcrumbs={[
-          { label: 'Invoices', href: '/invoices' },
-          { label: 'Recurring', href: '/invoices/recurring' }
-        ]}
-      />
-      <PageContent>
-        <div className="space-y-6">
-          {error && (
-            <Alert variant="error" description={error} />
-          )}
+    <PageLayout
+      title="New Recurring Invoice"
+      subtitle="Set up automated invoice generation"
+      breadcrumbs={[
+        { label: 'Invoices', href: '/invoices' },
+        { label: 'Recurring', href: '/invoices/recurring' }
+      ]}
+      backButton={{ label: 'Back to Recurring', href: '/invoices/recurring' }}
+    >
+      <div className="space-y-6">
+        {error && (
+          <Alert variant="error" description={error} />
+        )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Information */}
         <Card>
           <h2 className="text-xl font-semibold mb-4">Recurring Details</h2>
@@ -514,9 +506,8 @@ export default function NewRecurringInvoicePage() {
             {submitting ? 'Creating...' : 'Create Recurring Invoice'}
           </Button>
         </div>
-      </form>
-        </div>
-      </PageContent>
-    </PageWrapper>
+        </form>
+      </div>
+    </PageLayout>
   )
 }

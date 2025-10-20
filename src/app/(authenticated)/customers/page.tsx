@@ -19,10 +19,7 @@ import type { CustomerLabelAssignment } from '@/app/actions/customer-labels'
 import { createCustomer as createCustomerAction, updateCustomer as updateCustomerAction, deleteCustomer as deleteCustomerAction, importCustomers as importCustomersAction } from '@/app/actions/customers'
 // Loyalty removed
 // New UI components
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { Button, IconButton } from '@/components/ui-v2/forms/Button'
@@ -32,6 +29,7 @@ import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Pagination as PaginationV2 } from '@/components/ui-v2/navigation/Pagination'
 import { Skeleton } from '@/components/ui-v2/feedback/Skeleton'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 // import { TabNav } from '@/components/ui-v2/navigation/TabNav'
 
 interface CustomerCategoryStats {
@@ -489,72 +487,67 @@ export default function CustomersPage() {
 
   if (showForm || editingCustomer) {
     return (
-      <PageWrapper>
-        <PageHeader
-          title={editingCustomer ? 'Edit Customer' : 'Create New Customer'}
-          backButton={{ label: "Back to Customers", onBack: () => { setShowForm(false); setEditingCustomer(null); } }}
-        />
-        <PageContent>
-          <Card>
-            <CustomerForm
-              customer={editingCustomer ?? undefined}
-              onSubmit={editingCustomer ? handleUpdateCustomer : handleCreateCustomer}
-              onCancel={() => {
-                setShowForm(false)
-                setEditingCustomer(null)
-              }}
-            />
-          </Card>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title={editingCustomer ? 'Edit Customer' : 'Create New Customer'}
+        backButton={{
+          label: 'Back to Customers',
+          onBack: () => {
+            setShowForm(false)
+            setEditingCustomer(null)
+          },
+        }}
+        containerSize="lg"
+      >
+        <Card>
+          <CustomerForm
+            customer={editingCustomer ?? undefined}
+            onSubmit={editingCustomer ? handleUpdateCustomer : handleCreateCustomer}
+            onCancel={() => {
+              setShowForm(false)
+              setEditingCustomer(null)
+            }}
+          />
+        </Card>
+      </PageLayout>
     )
   }
 
   if (showImport) {
     return (
-      <PageWrapper>
-        <PageHeader
-          title="Import Customers"
-          subtitle="Import multiple customers from a CSV file"
-          backButton={{ label: "Back to Customers", onBack: () => setShowImport(false) }}
+      <PageLayout
+        title="Import Customers"
+        subtitle="Import multiple customers from a CSV file"
+        backButton={{
+          label: 'Back to Customers',
+          onBack: () => setShowImport(false),
+        }}
+        containerSize="lg"
+      >
+        <CustomerImport
+          onImportComplete={handleImportCustomers}
+          onCancel={() => setShowImport(false)}
+          existingCustomers={customers}
         />
-        <PageContent>
-          <CustomerImport
-            onImportComplete={handleImportCustomers}
-            onCancel={() => setShowImport(false)}
-            existingCustomers={customers}
-          />
-        </PageContent>
-      </PageWrapper>
+      </PageLayout>
     )
   }
 
+  const navItems: HeaderNavItem[] = canManageCustomers
+    ? [
+        { label: 'Manage Labels', href: '/settings/customer-labels' },
+        { label: 'Import', onClick: openImportCustomers },
+        { label: 'Add Customer', onClick: openCreateCustomer },
+      ]
+    : []
+
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Customers"
-        subtitle="View and manage your customer database"
-        backButton={{ label: "Back to Dashboard", href: "/dashboard" }}
-        actions={
-          <NavGroup>
-            {canManageCustomers && (
-              <>
-                <NavLink href="/settings/customer-labels">
-                  Manage Labels
-                </NavLink>
-                <NavLink onClick={openImportCustomers}>
-                  Import
-                </NavLink>
-                <NavLink onClick={openCreateCustomer}>
-                  Add Customer
-                </NavLink>
-              </>
-            )}
-          </NavGroup>
-        }
-      />
-      <PageContent>
-        <Card>
+    <PageLayout
+      title="Customers"
+      subtitle="View and manage your customer database"
+      backButton={{ label: 'Back to Dashboard', href: '/dashboard' }}
+      navItems={navItems}
+    >
+      <Card>
         <div className="space-y-4">
           <div className="flex flex-col gap-4">
             <SearchInput
@@ -753,7 +746,6 @@ export default function CustomersPage() {
           )}
         </>
       )}
-      </PageContent>
-    </PageWrapper>
+    </PageLayout>
   )
 }

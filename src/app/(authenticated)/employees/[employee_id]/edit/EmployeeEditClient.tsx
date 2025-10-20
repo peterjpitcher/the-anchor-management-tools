@@ -5,12 +5,11 @@ import FinancialDetailsForm from '@/components/FinancialDetailsForm'
 import HealthRecordsForm from '@/components/HealthRecordsForm'
 import { updateEmployee } from '@/app/actions/employeeActions'
 import type { Employee, EmployeeFinancialDetails, EmployeeHealthRecord } from '@/types/database'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Tabs } from '@/components/ui-v2/navigation/Tabs'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 
 interface EmployeeEditClientProps {
   employee: Employee
@@ -59,29 +58,30 @@ export default function EmployeeEditClient({
     }
   ]
 
-  return (
-    <PageWrapper>
-      <PageHeader
-        title={`Edit: ${employee.first_name} ${employee.last_name}`}
-        subtitle="Update employee details"
-        backButton={{
-          label: 'Back to Employee',
-          href: `/employees/${employee.employee_id}`
-        }}
-        actions={
-          <NavGroup>
-            <NavLink href={`/employees/${employee.employee_id}`}>
-              Cancel
-            </NavLink>
-          </NavGroup>
-        }
-      />
+  const navItems: HeaderNavItem[] = [
+    { label: 'Personal', href: '#personal' },
+    { label: 'Financial', href: '#financial' },
+    { label: 'Health', href: '#health' },
+  ]
 
-      <PageContent>
-        <Card>
-          <Tabs items={tabs} />
-        </Card>
-      </PageContent>
-    </PageWrapper>
+  return (
+    <PageLayout
+      title={`Edit: ${employee.first_name} ${employee.last_name}`}
+      subtitle="Update employee details"
+      backButton={{
+        label: 'Back to Employee',
+        href: `/employees/${employee.employee_id}`
+      }}
+      navItems={navItems}
+      headerActions={
+        <LinkButton href={`/employees/${employee.employee_id}`} variant="secondary" size="sm">
+          Cancel
+        </LinkButton>
+      }
+    >
+      <Card id="personal">
+        <Tabs items={tabs} />
+      </Card>
+    </PageLayout>
   )
 }

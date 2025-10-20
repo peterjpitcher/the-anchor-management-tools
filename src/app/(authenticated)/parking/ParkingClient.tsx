@@ -3,8 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { formatDateTime } from '@/lib/dateUtils'
 import { formatCurrency } from '@/components/ui-v2/utils/format'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -13,6 +12,7 @@ import { Select } from '@/components/ui-v2/forms/Select'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
@@ -35,6 +35,7 @@ import {
   getParkingRateConfig
 } from '@/app/actions/parking'
 import type { ParkingRateConfig } from '@/lib/parking/pricing'
+import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 
 interface ParkingPermissions {
   canCreate: boolean
@@ -44,6 +45,7 @@ interface ParkingPermissions {
 
 interface Props {
   permissions: ParkingPermissions
+  initialError?: string | null
 }
 
 const statusOptions: Array<{ value: 'all' | ParkingBookingStatus; label: string }> = [
@@ -101,7 +103,7 @@ const initialFormState = {
   send_payment_link: true
 }
 
-export default function ParkingClient({ permissions }: Props) {
+export default function ParkingClient({ permissions, initialError }: Props) {
   const [bookings, setBookings] = useState<ParkingBooking[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [selectedBooking, setSelectedBooking] = useState<ParkingBooking | null>(null)
@@ -117,6 +119,7 @@ export default function ParkingClient({ permissions }: Props) {
   const [createForm, setCreateForm] = useState(initialFormState)
   const [isPending, startTransition] = useTransition()
   const [isMutating, startMutation] = useTransition()
+  const pageError = initialError ?? null
 
   useEffect(() => {
     void fetchBookings()
@@ -346,6 +349,20 @@ export default function ParkingClient({ permissions }: Props) {
   const upcomingCount = useMemo(() => bookings.filter((b) => new Date(b.start_at) > new Date() && ['pending_payment', 'confirmed'].includes(b.status)).length, [bookings])
   const pendingPaymentCount = useMemo(() => bookings.filter((b) => b.payment_status === 'pending').length, [bookings])
 
+  const navItems: HeaderNavItem[] = [
+    { label: 'Overview', href: '#overview' },
+    { label: 'Bookings', href: '#bookings' },
+    { label: 'Notifications', href: '#notifications' },
+  ]
+
+  const headerActions = permissions.canCreate ? (
+    <Button onClick={() => setShowCreateModal(true)}>
+      New booking
+    </Button>
+  ) : undefined
+
+  const showInitialLoading = loading && bookings.length === 0
+
   const renderBookingRow = (booking: ParkingBooking) => (
     <tr
       key={booking.id}
@@ -377,7 +394,7 @@ export default function ParkingClient({ permissions }: Props) {
 
     const amount = selectedBooking.override_price ?? selectedBooking.calculated_price ?? 0
     return (
-      <Section title="Booking details" description="Review booking summary, vehicle information, and payment state." className="mt-6">
+      <div className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-2">
           <DetailItem label="Reference" value={selectedBooking.reference} />
           <DetailItem label="Customer" value={`${selectedBooking.customer_first_name} ${selectedBooking.customer_last_name ?? ''}`} />
@@ -396,14 +413,14 @@ export default function ParkingClient({ permissions }: Props) {
         </div>
 
         {selectedBooking.notes && (
-          <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
             <strong className="block text-slate-900">Notes</strong>
             <span className="mt-1 block whitespace-pre-wrap">{selectedBooking.notes}</span>
           </div>
         )}
 
         {permissions.canManage && (
-          <div className="mt-6 flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-3">
             {selectedBooking.payment_status === 'pending' && (
               <>
                 <Button
@@ -445,7 +462,7 @@ export default function ParkingClient({ permissions }: Props) {
           </div>
         )}
 
-        <Section title="Recent notifications" description="SMS and email attempts for this booking." className="mt-6">
+        <Section title="Recent notifications" description="SMS and email attempts for this booking.">
           <div className="overflow-hidden rounded-md border border-slate-200">
             <table className="min-w-full divide-y divide-slate-200">
               <thead className="bg-slate-50">
@@ -486,22 +503,25 @@ export default function ParkingClient({ permissions }: Props) {
             </table>
           </div>
         </Section>
-      </Section>
+      </div>
     )
   }
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Parking bookings"
-        subtitle="Manage onsite car park reservations, monitor payments, and keep customer details up to date."
-        actions={permissions.canCreate ? (
-          <Button onClick={() => setShowCreateModal(true)}>New booking</Button>
-        ) : undefined}
-      />
+    <PageLayout
+      title="Parking bookings"
+      subtitle="Manage onsite car park reservations, monitor payments, and keep customer details up to date."
+      navItems={navItems}
+      headerActions={headerActions}
+      loading={showInitialLoading}
+      loadingLabel="Loading bookings..."
+    >
+      <div className="space-y-6">
+        {pageError && (
+          <Alert variant="error" title="We couldn’t load everything" description={pageError} />
+        )}
 
-      <PageContent>
-        <Section className="overflow-hidden" title="Overview" description="Snapshot of upcoming and outstanding activity.">
+        <Section id="overview" className="overflow-hidden" title="Overview" description="Snapshot of upcoming and outstanding activity.">
           <div className="grid gap-4 sm:grid-cols-3">
             <StatCard label="Total bookings" value={bookings.length.toString()} />
             <StatCard label="Upcoming sessions" value={upcomingCount.toString()} />
@@ -509,7 +529,7 @@ export default function ParkingClient({ permissions }: Props) {
           </div>
         </Section>
 
-        <Section className="mt-6" title="Bookings" description="Filter by status, payment state, or search by reference or customer.">
+        <Section id="bookings" className="mt-6" title="Bookings" description="Filter by status, payment state, or search by reference or customer.">
           <div className="flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="flex flex-1 flex-col gap-3 md:flex-row md:items-center">
@@ -602,7 +622,67 @@ export default function ParkingClient({ permissions }: Props) {
             )}
           </div>
         </Section>
-      </PageContent>
+
+        <Section
+          id="notifications"
+          className="mt-6"
+          title="Notifications"
+          description="History of customer reminders and payment links."
+        >
+          <div className="rounded-lg border border-slate-200 bg-white">
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+              <h3 className="text-sm font-semibold text-slate-900">Notification history</h3>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => selectedBooking && void loadNotifications(selectedBooking.id)}
+                disabled={loadingNotifications || !selectedBooking}
+              >
+                {loadingNotifications ? 'Refreshing…' : 'Refresh'}
+              </Button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-200">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Channel</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Event</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Status</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Sent at</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 bg-white">
+                  {loadingNotifications ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-6 text-center text-sm text-slate-500">
+                        <div className="flex items-center justify-center gap-2">
+                          <Spinner size="sm" />
+                          <span>Loading notifications…</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : notifications.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-6 text-center text-sm text-slate-500">
+                        No notification history yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    notifications.map((notification) => (
+                      <tr key={notification.id}>
+                        <td className="px-3 py-2 text-sm capitalize text-slate-700">{notification.channel}</td>
+                        <td className="px-3 py-2 text-sm capitalize text-slate-700">{notification.event_type.replace('_', ' ')}</td>
+                        <td className="px-3 py-2 text-sm text-slate-700">{notification.status}</td>
+                        <td className="px-3 py-2 text-sm text-slate-500">{notification.sent_at ? formatDateTime(notification.sent_at) : '—'}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </Section>
+      </div>
 
       <Modal
         open={showCreateModal}
@@ -804,7 +884,7 @@ export default function ParkingClient({ permissions }: Props) {
           </ModalActions>
         </form>
       </Modal>
-    </PageWrapper>
+    </PageLayout>
   )
 }
 

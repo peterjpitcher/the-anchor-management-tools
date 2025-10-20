@@ -21,7 +21,8 @@ Use this index to find the canonical documentation for The Anchor Management Too
   - [Migration summary](./setup/MIGRATION_SUMMARY.md)
 - **Operational guides** (`/guides/`):
   - [Monitoring setup](./guides/monitoring-setup.md)
-  - [Rate limiting](./guides/rate-limiting-implementation.md)
+- [Rate limiting](./guides/rate-limiting-implementation.md)
+- [Layout migration](./guides/layout-migration.md)
 
 ## API Documentation
 - [API overview](./guides/api/API_README.md) – authentication, rate limits, and key endpoints.

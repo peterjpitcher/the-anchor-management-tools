@@ -1,6 +1,5 @@
 import { getMonthlyReceiptSummary } from '@/app/actions/receipts'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
@@ -30,61 +29,58 @@ export default async function ReceiptsMonthlyPage() {
   const averageOutgoing = summary.length ? totalOutgoing / summary.length : 0
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Monthly receipts overview"
-        subtitle="Track income and spending trends across recent months."
-      />
-      <PageContent>
-        <div className="space-y-6">
-          <div className="flex flex-wrap gap-3">
-            <Link
-              href="/receipts"
-              className="inline-flex items-center rounded-md border border-emerald-100 bg-white px-3 py-1.5 text-sm font-medium text-emerald-700 shadow-sm hover:bg-emerald-50"
-            >
-              ← Back to receipts
-            </Link>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <MetricCard label="Total income (12m)" value={formatCurrency(totalIncome)} tone="income" />
-            <MetricCard label="Total spending (12m)" value={formatCurrency(totalOutgoing)} tone="spend" />
-            <MetricCard label="Average monthly spending" value={formatCurrency(averageOutgoing)} tone="neutral" />
-          </div>
-
-          <Card variant="bordered" header={<h2 className="text-lg font-semibold text-gray-900">Monthly breakdown</h2>}>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  <tr>
-                    <th className="px-4 py-3">Month</th>
-                    <th className="px-4 py-3 text-right">Income</th>
-                    <th className="px-4 py-3 text-right">Outgoings</th>
-                    <th className="px-4 py-3">Top income sources</th>
-                    <th className="px-4 py-3">Top outgoing vendors</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
-                  {summary.map((row) => (
-                    <tr key={row.monthStart}>
-                      <td className="px-4 py-3 font-medium text-gray-900">{formatMonthLabel(row.monthStart)}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">{formatCurrency(row.totalIncome)}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">{formatCurrency(row.totalOutgoing)}</td>
-                      <td className="px-4 py-3">
-                        <TopList items={row.topIncome} emptyLabel="No income recorded" badgeTone="income" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <TopList items={row.topOutgoing} emptyLabel="No outgoings recorded" badgeTone="spend" />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+    <PageLayout
+      title="Monthly receipts overview"
+      subtitle="Track income and spending trends across recent months."
+    >
+      <section className="space-y-6">
+        <div className="flex flex-wrap gap-3">
+          <Link
+            href="/receipts"
+            className="inline-flex items-center rounded-md border border-emerald-100 bg-white px-3 py-1.5 text-sm font-medium text-emerald-700 shadow-sm hover:bg-emerald-50"
+          >
+            ← Back to receipts
+          </Link>
         </div>
-      </PageContent>
-    </PageWrapper>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <MetricCard label="Total income (12m)" value={formatCurrency(totalIncome)} tone="income" />
+          <MetricCard label="Total spending (12m)" value={formatCurrency(totalOutgoing)} tone="spend" />
+          <MetricCard label="Average monthly spending" value={formatCurrency(averageOutgoing)} tone="neutral" />
+        </div>
+
+        <Card variant="bordered" header={<h2 className="text-lg font-semibold text-gray-900">Monthly breakdown</h2>}>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 text-sm">
+              <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                <tr>
+                  <th className="px-4 py-3">Month</th>
+                  <th className="px-4 py-3 text-right">Income</th>
+                  <th className="px-4 py-3 text-right">Outgoings</th>
+                  <th className="px-4 py-3">Top income sources</th>
+                  <th className="px-4 py-3">Top outgoing vendors</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
+                {summary.map((row) => (
+                  <tr key={row.monthStart}>
+                    <td className="px-4 py-3 font-medium text-gray-900">{formatMonthLabel(row.monthStart)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{formatCurrency(row.totalIncome)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{formatCurrency(row.totalOutgoing)}</td>
+                    <td className="px-4 py-3">
+                      <TopList items={row.topIncome} emptyLabel="No income recorded" badgeTone="income" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <TopList items={row.topOutgoing} emptyLabel="No outgoings recorded" badgeTone="spend" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </section>
+    </PageLayout>
   )
 }
 

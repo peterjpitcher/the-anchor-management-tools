@@ -2,15 +2,13 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { Plus, Edit2, Trash2, Package } from 'lucide-react'
@@ -176,18 +174,13 @@ export default function LineItemCatalogPage() {
 
   if (permissionsLoading || loading) {
     return (
-      <PageWrapper>
-        <PageHeader 
-          title="Line Item Catalog"
-          subtitle="Manage reusable line items for invoices and quotes"
-          backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-        />
-        <PageContent>
-          <div className="flex items-center justify-center h-64">
-            <Spinner size="lg" />
-          </div>
-        </PageContent>
-      </PageWrapper>
+      <PageLayout
+        title="Line Item Catalog"
+        subtitle="Manage reusable line items for invoices and quotes"
+        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+        loading
+        loadingLabel="Loading catalog..."
+      />
     )
   }
 
@@ -196,92 +189,57 @@ export default function LineItemCatalogPage() {
   }
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Line Item Catalog"
-        subtitle="Manage reusable line items for invoices and quotes"
-        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-        actions={
-          <Button
-            onClick={() => openForm()}
-            leftIcon={<Plus className="h-4 w-4" />}
-            disabled={!canManage}
-            title={!canManage ? 'You need invoice manage permission to add catalog items.' : undefined}
-          >
-            Add Item
-          </Button>
-        }
-      />
-      <PageContent>
-      {isReadOnly && (
-        <Alert
-          variant="info"
-          description="You have read-only access to the catalog. Create, edit, and delete actions are disabled."
-          className="mb-6"
-        />
-      )}
-      {error && (
-        <Alert variant="error" description={error} className="mb-6" />
-      )}
+    <PageLayout
+      title="Line Item Catalog"
+      subtitle="Manage reusable line items for invoices and quotes"
+      backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+      headerActions={
+        <Button
+          onClick={() => openForm()}
+          leftIcon={<Plus className="h-4 w-4" />}
+          disabled={!canManage}
+          title={!canManage ? 'You need invoice manage permission to add catalog items.' : undefined}
+        >
+          Add Item
+        </Button>
+      }
+    >
+      <div className="space-y-6">
+        {isReadOnly && (
+          <Alert
+            variant="info"
+            description="You have read-only access to the catalog. Create, edit, and delete actions are disabled."
+            className="mb-6"
+          />
+        )}
+        {error && (
+          <Alert variant="error" description={error} className="mb-6" />
+        )}
 
-      {items.length === 0 ? (
-        <EmptyState icon={<Package className="h-12 w-12" />}
-          title="No catalog items found"
-          description="Add common line items for quick reuse."
-          action={
-            canManage ? (
-              <Button onClick={() => openForm()} leftIcon={<Plus className="h-4 w-4" />}>
-                Add Your First Item
-              </Button>
-            ) : undefined
-          }
-        />
-      ) : (
-        <Card>
-          <DataTable
-            data={items}
-            getRowKey={(i) => i.id}
-            columns={[
-              { key: 'name', header: 'Name', cell: (i: LineItemCatalogItem) => <span className="font-medium">{i.name}</span> },
-              { key: 'description', header: 'Description', cell: (i: LineItemCatalogItem) => <span className="text-gray-600">{i.description || '-'}</span> },
-              { key: 'price', header: 'Default Price', align: 'right', cell: (i: LineItemCatalogItem) => <>£{i.default_price.toFixed(2)}</> },
-              { key: 'vat', header: 'VAT Rate', align: 'right', cell: (i: LineItemCatalogItem) => <>{i.default_vat_rate}%</> },
-              { key: 'actions', header: 'Actions', align: 'right', cell: (i: LineItemCatalogItem) => (
-                <div className="flex justify-end gap-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => openForm(i)}
-                    aria-label="Edit item"
-                    iconOnly
-                    disabled={!canManage}
-                    title={!canManage ? 'You need invoice manage permission to edit catalog items.' : undefined}
-                  >
-                    <Edit2 className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    onClick={() => handleDelete(i)}
-                    aria-label="Delete item"
-                    iconOnly
-                    disabled={!canManage}
-                    title={!canManage ? 'You need invoice manage permission to delete catalog items.' : undefined}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) },
-            ]}
-            emptyMessage="No catalog items found"
-            renderMobileCard={(i: LineItemCatalogItem) => (
-              <div className="p-2">
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-gray-900 truncate">{i.name}</div>
-                    {i.description && <div className="text-sm text-gray-600 mt-1 truncate">{i.description}</div>}
-                  </div>
-                  <div className="flex gap-2 ml-4">
+        {items.length === 0 ? (
+          <EmptyState icon={<Package className="h-12 w-12" />}
+            title="No catalog items found"
+            description="Add common line items for quick reuse."
+            action={
+              canManage ? (
+                <Button onClick={() => openForm()} leftIcon={<Plus className="h-4 w-4" />}>
+                  Add Your First Item
+                </Button>
+              ) : undefined
+            }
+          />
+        ) : (
+          <Card>
+            <DataTable
+              data={items}
+              getRowKey={(i) => i.id}
+              columns={[
+                { key: 'name', header: 'Name', cell: (i: LineItemCatalogItem) => <span className="font-medium">{i.name}</span> },
+                { key: 'description', header: 'Description', cell: (i: LineItemCatalogItem) => <span className="text-gray-600">{i.description || '-'}</span> },
+                { key: 'price', header: 'Default Price', align: 'right', cell: (i: LineItemCatalogItem) => <>£{i.default_price.toFixed(2)}</> },
+                { key: 'vat', header: 'VAT Rate', align: 'right', cell: (i: LineItemCatalogItem) => <>{i.default_vat_rate}%</> },
+                { key: 'actions', header: 'Actions', align: 'right', cell: (i: LineItemCatalogItem) => (
+                  <div className="flex justify-end gap-2">
                     <Button
                       variant="secondary"
                       size="sm"
@@ -305,16 +263,51 @@ export default function LineItemCatalogPage() {
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
+                ) },
+              ]}
+              emptyMessage="No catalog items found"
+              renderMobileCard={(i: LineItemCatalogItem) => (
+                <div className="p-2">
+                  <div className="mb-2 flex items-start justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-medium text-gray-900">{i.name}</div>
+                      {i.description && <div className="mt-1 truncate text-sm text-gray-600">{i.description}</div>}
+                    </div>
+                    <div className="ml-4 flex gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => openForm(i)}
+                        aria-label="Edit item"
+                        iconOnly
+                        disabled={!canManage}
+                        title={!canManage ? 'You need invoice manage permission to edit catalog items.' : undefined}
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => handleDelete(i)}
+                        aria-label="Delete item"
+                        iconOnly
+                        disabled={!canManage}
+                        title={!canManage ? 'You need invoice manage permission to delete catalog items.' : undefined}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <div><span className="text-gray-500">Price:</span> <span className="font-medium">£{i.default_price.toFixed(2)}</span></div>
+                    <div><span className="text-gray-500">VAT:</span> <span className="font-medium">{i.default_vat_rate}%</span></div>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center text-sm">
-                  <div><span className="text-gray-500">Price:</span> <span className="font-medium">£{i.default_price.toFixed(2)}</span></div>
-                  <div><span className="text-gray-500">VAT:</span> <span className="font-medium">{i.default_vat_rate}%</span></div>
-                </div>
-              </div>
-            )}
-          />
-        </Card>
-      )}
+              )}
+            />
+          </Card>
+        )}
+      </div>
 
       {/* Form Modal */}
       <Modal
@@ -343,69 +336,66 @@ export default function LineItemCatalogPage() {
           </ModalActions>
         }
       >
-
         <form id="catalog-form" onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Name <span className="text-red-500">*</span>
-                </label>
-                <Input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
-                  disabled={formLoading}
-                />
-              </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">
+              Name <span className="text-red-500">*</span>
+            </label>
+            <Input
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              required
+              disabled={formLoading}
+            />
+          </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Description
-                </label>
-                <Textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  rows={3}
-                  disabled={formLoading}
-                />
-              </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">
+              Description
+            </label>
+            <Textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              rows={3}
+              disabled={formLoading}
+            />
+          </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Default Price (£) <span className="text-red-500">*</span>
-                  </label>
-                  <Input
-                    type="number"
-                    value={formData.default_price}
-                    onChange={(e) => setFormData({ ...formData, default_price: parseFloat(e.target.value) || 0 })}
-                    step="0.01"
-                    min="0"
-                    required
-                    disabled={formLoading}
-                  />
-                </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-sm font-medium">
+                Default Price (£) <span className="text-red-500">*</span>
+              </label>
+              <Input
+                type="number"
+                value={formData.default_price}
+                onChange={(e) => setFormData({ ...formData, default_price: parseFloat(e.target.value) || 0 })}
+                step="0.01"
+                min="0"
+                required
+                disabled={formLoading}
+              />
+            </div>
 
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    VAT Rate (%) <span className="text-red-500">*</span>
-                  </label>
-                  <Input
-                    type="number"
-                    value={formData.default_vat_rate}
-                    onChange={(e) => setFormData({ ...formData, default_vat_rate: parseFloat(e.target.value) || 0 })}
-                    step="0.01"
-                    min="0"
-                    max="100"
-                    required
-                    disabled={formLoading}
-                  />
-                </div>
-              </div>
-
+            <div>
+              <label className="mb-1 block text-sm font-medium">
+                VAT Rate (%) <span className="text-red-500">*</span>
+              </label>
+              <Input
+                type="number"
+                value={formData.default_vat_rate}
+                onChange={(e) => setFormData({ ...formData, default_vat_rate: parseFloat(e.target.value) || 0 })}
+                step="0.01"
+                min="0"
+                max="100"
+                required
+                disabled={formLoading}
+              />
+            </div>
+          </div>
         </form>
       </Modal>
-      </PageContent>
-    </PageWrapper>
+    </PageLayout>
   )
 }

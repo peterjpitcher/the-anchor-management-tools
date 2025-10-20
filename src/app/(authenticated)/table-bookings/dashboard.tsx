@@ -16,14 +16,13 @@ import {
 } from '@heroicons/react/24/outline';
 import { TableBooking } from '@/types/table-bookings';
 // New UI components
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader';
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper';
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { Button } from '@/components/ui-v2/forms/Button';
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
 import { NavLink } from '@/components/ui-v2/navigation/NavLink';
 import { NavGroup } from '@/components/ui-v2/navigation/NavGroup';
+import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav';
 import { Stat, StatGroup } from '@/components/ui-v2/display/Stat';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
@@ -111,98 +110,70 @@ export default function TableBookingsDashboard() {
     return `${displayHours}:${minutes.toString().padStart(2, '0')}${period}`;
   };
 
+  const navItems: HeaderNavItem[] = [
+    { label: 'Overview', href: '#overview' },
+    { label: 'Filters', href: '#filters' },
+    { label: 'Timeline', href: '#timeline' },
+    { label: 'Actions', href: '#quick-actions' },
+  ]
+
+  const headerActions = (
+    <NavGroup>
+      {canCreate && (
+        <NavLink href="/table-bookings/new">
+          Add Booking
+        </NavLink>
+      )}
+      <NavLink href="/table-bookings/calendar">
+        Calendar View
+      </NavLink>
+      {canManage && (
+        <NavLink href="/table-bookings/settings">
+          Settings
+        </NavLink>
+      )}
+    </NavGroup>
+  )
+
+  const layoutProps = {
+    title: 'Table Bookings',
+    subtitle: 'Manage restaurant table reservations',
+    backButton: { label: 'Back to Dashboard', href: '/' },
+  }
+
   if (!canView) {
     return (
-      <PageWrapper>
-        <PageHeader 
-          title="Table Bookings"
-          subtitle="Manage restaurant table reservations"
-          backButton={{
-            label: "Back to Dashboard",
-            href: "/"
-          }}
-        />
-        <PageContent>
-          <Card>
-            <Alert variant="error" 
-              title="Access Denied" 
-              description="You do not have permission to view table bookings." 
-            />
-          </Card>
-        </PageContent>
-      </PageWrapper>
-    );
+      <PageLayout {...layoutProps}>
+        <Card>
+          <Alert variant="error" title="Access Denied" description="You do not have permission to view table bookings." />
+        </Card>
+      </PageLayout>
+    )
   }
 
   if (loading) {
     return (
-      <PageWrapper>
-        <PageHeader 
-          title="Table Bookings"
-          subtitle="Manage restaurant table reservations"
-          backButton={{
-            label: "Back to Dashboard",
-            href: "/"
-          }}
-        />
-        <PageContent>
-          <div className="flex items-center justify-center h-64">
-            <Spinner size="lg" />
-          </div>
-        </PageContent>
-      </PageWrapper>
-    );
+      <PageLayout {...layoutProps}>
+        <div className="flex items-center justify-center h-64">
+          <Spinner size="lg" />
+        </div>
+      </PageLayout>
+    )
   }
 
   if (error) {
     return (
-      <PageWrapper>
-        <PageHeader 
-          title="Table Bookings"
-          subtitle="Manage restaurant table reservations"
-          backButton={{
-            label: "Back to Dashboard",
-            href: "/"
-          }}
-        />
-        <PageContent>
-          <Card>
-            <Alert variant="error" title="Error" description={`Error loading dashboard: ${error}`} />
-          </Card>
-        </PageContent>
-      </PageWrapper>
-    );
+      <PageLayout {...layoutProps}>
+        <Card>
+          <Alert variant="error" title="Error" description={`Error loading dashboard: ${error}`} />
+        </Card>
+      </PageLayout>
+    )
   }
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Table Bookings"
-        subtitle="Manage restaurant table reservations"
-        backButton={{
-          label: "Back to Dashboard",
-          href: "/"
-        }}
-        actions={
-          <NavGroup>
-            {canCreate && (
-              <NavLink href="/table-bookings/new">
-                Add Booking
-              </NavLink>
-            )}
-            <NavLink href="/table-bookings/calendar">
-              Calendar View
-            </NavLink>
-            {canManage && (
-              <NavLink href="/table-bookings/settings">
-                Settings
-              </NavLink>
-            )}
-          </NavGroup>
-        }
-      />
-      
-      <PageContent className="space-y-4 sm:space-y-6 px-0 sm:px-6">
+    <PageLayout {...layoutProps} navItems={navItems} headerActions={headerActions}>
+      <div className="space-y-4 sm:space-y-6 px-0 sm:px-6">
         {/* Stats Grid - Hidden on mobile */}
         <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <Stat
@@ -228,7 +199,7 @@ export default function TableBookingsDashboard() {
         </div>
 
       {/* Date Selector */}
-      <div className="px-2 sm:px-0">
+      <section id="filters" className="px-2 sm:px-0">
         <Card className="w-full">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
@@ -333,11 +304,11 @@ export default function TableBookingsDashboard() {
             <ArrowPathIcon className="h-5 w-5" />
           </Button>
         </div>
-      </Card>
-      </div>
+        </Card>
+      </section>
 
       {/* Bookings Timeline */}
-      <div className="px-2 sm:px-0">
+      <section id="timeline" className="px-2 sm:px-0">
       <Section
         title={
           viewMode === 'day' 
@@ -496,10 +467,10 @@ export default function TableBookingsDashboard() {
           </div>
         </Card>
       </Section>
-      </div>
+      </section>
 
       {/* Quick Actions */}
-      <div className="px-2 sm:px-0">
+      <section id="quick-actions" className="px-2 sm:px-0">
       <Section title="Quick Actions">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           <Link
@@ -545,8 +516,8 @@ export default function TableBookingsDashboard() {
           )}
         </div>
       </Section>
-      </div>
-      </PageContent>
-    </PageWrapper>
+      </section>
+    </div>
+    </PageLayout>
   );
 }

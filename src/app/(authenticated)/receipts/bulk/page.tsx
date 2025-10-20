@@ -1,7 +1,6 @@
 import ReceiptBulkReviewClient from '@/app/(authenticated)/receipts/_components/ReceiptBulkReviewClient'
 import { getReceiptBulkReviewData } from '@/app/actions/receipts'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
-import { PageWrapper, PageContent } from '@/components/ui-v2/layout/PageWrapper'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { receiptTransactionStatusSchema } from '@/lib/validation'
@@ -48,15 +47,12 @@ export default async function ReceiptsBulkPage({ searchParams }: PageProps) {
   }
 
   return (
-    <PageWrapper>
-      <PageHeader
-        title="Bulk classification"
-        subtitle="Group similar transactions, confirm AI suggestions, and roll out rules in one sweep."
-        backButton={{ label: 'Back to receipts', href: '/receipts' }}
-      />
-      <PageContent>
-        <ReceiptBulkReviewClient initialData={data} initialFilters={filters} />
-      </PageContent>
-    </PageWrapper>
+    <PageLayout
+      title="Bulk classification"
+      subtitle="Group similar transactions, confirm AI suggestions, and roll out rules in one sweep."
+      backButton={{ label: 'Back to receipts', href: '/receipts' }}
+    >
+      <ReceiptBulkReviewClient initialData={data} initialFilters={filters} />
+    </PageLayout>
   )
 }

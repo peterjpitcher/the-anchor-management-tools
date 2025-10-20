@@ -14,7 +14,7 @@ import { getPrivateBooking } from '@/app/actions/privateBookingActions'
 import { sendSms } from '@/app/actions/sms'
 import type { PrivateBookingWithDetails, PrivateBookingSmsQueue } from '@/types/private-bookings'
 import { formatDateFull, formatTime12Hour, formatDateTime12Hour } from '@/lib/dateUtils'
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -25,7 +25,6 @@ import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { toast } from '@/components/ui-v2/feedback/Toast'
-import { BackButton } from '@/components/ui-v2/navigation/BackButton'
 import { useRouter } from 'next/navigation'
 
 interface SmsTemplate {
@@ -225,26 +224,36 @@ export default function PrivateBookingMessagesClient({ bookingId, initialBooking
 
   if (loading || !booking) {
     return (
-      <Page
-        title="Loading messages"
-        description="Fetching booking information..."
-        backButton={<BackButton onBack={() => router.push('/private-bookings')} />}
-      >
-        <Card className="flex items-center justify-center py-12">
-          <Spinner size="lg" />
-        </Card>
-      </Page>
+      <PageLayout
+        title="Private Booking Messages"
+        subtitle="Fetching booking information..."
+        backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
+        loading
+        loadingLabel="Loading messages..."
+      />
     )
   }
 
   const isDraft = booking.status === 'draft'
   const canSend = canSendSms && booking.contact_phone
 
+  const headerActions = (
+    <div className="flex flex-wrap items-center gap-2">
+      <LinkButton variant="secondary" size="sm" href={`/private-bookings/${bookingId}`}>
+        View Booking
+      </LinkButton>
+      <LinkButton variant="secondary" size="sm" href="/private-bookings">
+        All Bookings
+      </LinkButton>
+    </div>
+  )
+
   return (
-    <Page
+    <PageLayout
       title="Private Booking Messages"
-      description={`Manage SMS communication for ${booking.customer_full_name || booking.customer_name}`}
-      backButton={<BackButton onBack={() => router.push(`/private-bookings/${bookingId}`)} />}
+      subtitle={`Manage SMS communication for ${booking.customer_full_name || booking.customer_name}`}
+      backButton={{ label: 'Back to Booking', href: `/private-bookings/${bookingId}` }}
+      headerActions={headerActions}
     >
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
@@ -448,6 +457,6 @@ export default function PrivateBookingMessagesClient({ bookingId, initialBooking
           </Section>
         </div>
       </div>
-    </Page>
+    </PageLayout>
   )
 }

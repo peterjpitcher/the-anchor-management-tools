@@ -6,15 +6,15 @@ import { getQuote, convertQuoteToInvoice } from '@/app/actions/quotes'
 import { AlertTriangle } from 'lucide-react'
 import type { QuoteWithDetails } from '@/types/invoices'
 // UI v2 components
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 
-import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 import { usePermissions } from '@/contexts/PermissionContext'
 export default function ConvertQuotePage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
@@ -111,11 +111,13 @@ export default function ConvertQuotePage({ params }: { params: Promise<{ id: str
 
   if (permissionsLoading) {
     return (
-      <Page title="Loading...">
-        <div className="flex items-center justify-center h-64">
-          <Spinner size="lg" />
-        </div>
-      </Page>
+      <PageLayout
+        title="Convert Quote"
+        subtitle="Loading quote details..."
+        backButton={{ label: 'Back to Quotes', href: '/quotes' }}
+        loading
+        loadingLabel="Loading quote..."
+      />
     )
   }
 
@@ -125,41 +127,39 @@ export default function ConvertQuotePage({ params }: { params: Promise<{ id: str
 
   if (loading) {
     return (
-      <Page title="Loading...">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <Spinner size="lg" />
-            <p className="mt-4 text-gray-600">Loading quote...</p>
-          </div>
-        </div>
-      </Page>
+      <PageLayout
+        title="Convert Quote"
+        subtitle="Loading quote details..."
+        backButton={{ label: 'Back to Quotes', href: '/quotes' }}
+        loading
+        loadingLabel="Loading quote..."
+      />
     )
   }
 
   if (!quote) {
     return (
-      <Page title="Convert Quote">
-        <Card>
-          <div className="text-center py-8">
-            <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-            <p className="text-red-600 mb-4">{error || 'Quote not found'}</p>
-            <Button
-              variant="secondary"
-              onClick={() => router.push('/quotes')}
-            >
-              <BackButton label="Back to Quotes" onBack={() => router.push('/quotes')} />
-            </Button>
-          </div>
-        </Card>
-      </Page>
+      <PageLayout
+        title="Convert Quote"
+        subtitle="Quote not found"
+        backButton={{ label: 'Back to Quotes', href: '/quotes' }}
+        error={error || 'Quote not found'}
+      />
     )
   }
 
   return (
-    <Page
+    <PageLayout
       title="Convert Quote to Invoice"
-      description="Review the quote details before converting"
+      subtitle="Review the quote details before converting"
+      backButton={{ label: 'Back to Quote', href: `/quotes/${quoteId}` }}
+      headerActions={
+        <LinkButton href="/quotes" variant="secondary">
+          All Quotes
+        </LinkButton>
+      }
     >
+      <div className="space-y-6">
       {error && (
         <Alert variant="error" title="Error" description={error} />
       )}
@@ -223,6 +223,7 @@ export default function ConvertQuotePage({ params }: { params: Promise<{ id: str
           Cancel
         </Button>
       </div>
-    </Page>
+      </div>
+    </PageLayout>
   )
 }

@@ -8,9 +8,10 @@ import {
 import { createVendor, updateVendor, deleteVendor, getVendorsForManagement } from '@/app/actions/privateBookingActions'
 import { VendorDeleteButton } from '@/components/VendorDeleteButton'
 import type { InvoiceVendor } from '@/types/invoices'
-import { PageHeader } from '@/components/ui-v2/layout/PageHeader'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Select } from '@/components/ui-v2/forms/Select'
@@ -142,16 +143,19 @@ export default async function VendorsPage() {
   ]
 
   return (
-    <div>
-      <PageHeader
-        title="Vendor Database"
-        subtitle="Manage preferred vendors and service providers"
-        backButton={{
-          label: "Back to Private Bookings",
-          href: "/private-bookings"
-        }}
-      />
-
+    <PageLayout
+      title="Vendor Database"
+      subtitle="Manage preferred vendors and service providers"
+      backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
+      headerActions={
+        <div className="flex flex-wrap items-center gap-2">
+          <LinkButton href="/private-bookings/settings" variant="secondary">
+            Settings Home
+          </LinkButton>
+        </div>
+      }
+    >
+      <div className="space-y-6">
       {/* Add New Vendor Form */}
       <Card>
         <Section 
@@ -405,6 +409,7 @@ export default async function VendorsPage() {
           ))}
         </div>
       )}
-    </div>
+      </div>
+    </PageLayout>
   )
 }
