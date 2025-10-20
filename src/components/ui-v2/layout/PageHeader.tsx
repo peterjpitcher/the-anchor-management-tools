@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { BackButton } from '../navigation/BackButton';
 import { Breadcrumbs } from '../navigation/Breadcrumbs';
 import { Bars3Icon } from '@heroicons/react/24/outline';
-import { getUnreadMessageCount } from '@/app/actions/messagesActions';
+import { useUnreadMessageCount } from '@/hooks/useUnreadMessageCount';
 
 interface PageHeaderProps {
   title: string;
@@ -25,7 +25,7 @@ interface PageHeaderProps {
   headerActions?: React.ReactNode;
 }
 
-export function PageHeader({ 
+export function PageHeader({
   title, 
   subtitle, 
   backButton, 
@@ -36,27 +36,7 @@ export function PageHeader({
   headerActions
 }: PageHeaderProps) {
   const router = useRouter();
-  const [unreadCount, setUnreadCount] = useState(0);
-  
-  // Fetch unread message count on mount
-  useEffect(() => {
-    const fetchUnreadCount = async () => {
-      try {
-        const result = await getUnreadMessageCount();
-        setUnreadCount(result?.badge ?? 0);
-      } catch (error) {
-        console.error('Failed to fetch unread message count:', error);
-        setUnreadCount(0);
-      }
-    };
-    
-    fetchUnreadCount();
-    
-    // Refresh count every 30 seconds
-    const interval = setInterval(fetchUnreadCount, 30000);
-    
-    return () => clearInterval(interval);
-  }, []);
+  const unreadCount = useUnreadMessageCount();
   
   // Get the onMenuClick from context if available
   const handleMenuClick = () => {
