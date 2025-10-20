@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useMemo, useState, useTransition, useRef, ChangeEvent, FormEvent, useEffect } from 'react'
 import { toast } from 'react-hot-toast'
@@ -1412,52 +1411,6 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           <SummaryCard title="No receipt required" value={summary.totals.noReceiptRequired} tone="neutral" />
           <SummaryCard title="Can't find" value={summary.totals.cantFind} tone="danger" />
         </div>
-
-      <div className="hidden md:flex md:flex-wrap md:gap-2">
-        <Link
-          href="/receipts/monthly"
-          className="inline-flex items-center rounded-md border border-emerald-100 bg-white px-3 py-1.5 text-sm font-medium text-emerald-700 shadow-sm hover:bg-emerald-50"
-        >
-          Monthly overview
-        </Link>
-        <Link
-          href="/receipts/vendors"
-          className="inline-flex items-center rounded-md border border-emerald-100 bg-white px-3 py-1.5 text-sm font-medium text-emerald-700 shadow-sm hover:bg-emerald-50"
-        >
-          Vendor trends
-        </Link>
-        <Link
-          href="/receipts/pnl"
-          className="inline-flex items-center rounded-md border border-emerald-100 bg-white px-3 py-1.5 text-sm font-medium text-emerald-700 shadow-sm hover:bg-emerald-50"
-        >
-          P&amp;L dashboard
-        </Link>
-        <Link
-          href="/receipts/bulk"
-          className="inline-flex items-center rounded-md border border-emerald-100 bg-white px-3 py-1.5 text-sm font-medium text-emerald-700 shadow-sm hover:bg-emerald-50"
-        >
-          Bulk classification
-        </Link>
-        <Link
-          href="/receipts?needsVendor=1"
-          className="inline-flex items-center rounded-md border border-amber-100 bg-white px-3 py-1.5 text-sm font-medium text-amber-700 shadow-sm hover:bg-amber-50"
-        >
-          Needs vendor
-        </Link>
-        <Link
-          href="/receipts?needsExpense=1"
-          className="inline-flex items-center rounded-md border border-blue-100 bg-white px-3 py-1.5 text-sm font-medium text-blue-700 shadow-sm hover:bg-blue-50"
-        >
-          Needs expense
-        </Link>
-        <Link
-          href="/receipts/missing-expense"
-          className="inline-flex items-center rounded-md border border-rose-100 bg-white px-3 py-1.5 text-sm font-medium text-rose-700 shadow-sm hover:bg-rose-50"
-        >
-          Missing expense summary
-        </Link>
-      </div>
-
       <div className="hidden md:grid md:gap-4 lg:grid-cols-5">
         {canManageReceipts ? (
           <Card className="lg:col-span-3" header={<div className="flex items-center justify-between">
