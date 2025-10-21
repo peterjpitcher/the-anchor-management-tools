@@ -188,6 +188,7 @@ const normalizeBooking = (booking: PrivateBookingWithDetails): PrivateBookingWit
     total_amount: toNumber(booking.total_amount),
     discount_amount: discountAmount,
     calculated_total: calculatedTotal,
+    end_time_next_day: booking.end_time_next_day ?? false,
     items: booking.items
       ?.map(normalizeItem)
       ?.sort((a, b) => {
@@ -204,6 +205,15 @@ const normalizeBooking = (booking: PrivateBookingWithDetails): PrivateBookingWit
 const DATE_TBD_NOTE = 'Event date/time to be confirmed';
 
 const formatMoney = (value: unknown): string => formatCurrency(toNumber(value));
+
+const formatEndTime = (booking: PrivateBookingWithDetails): string => {
+  if (!booking.end_time) {
+    return 'TBC';
+  }
+
+  const formatted = formatTime12Hour(booking.end_time);
+  return booking.end_time_next_day ? `${formatted} (+1 day)` : formatted;
+};
 
 // Payment Modal Component
 interface PaymentModalProps {
@@ -1577,7 +1587,7 @@ export default function PrivateBookingDetailClient({
                       <div className="mt-1 flex items-center text-sm text-gray-900">
                         <ClockIcon className="h-5 w-5 text-gray-400 mr-2" />
                         {formatTime12Hour(booking.start_time)} -{' '}
-                        {formatTime12Hour(booking.end_time || null)}
+                        {formatEndTime(booking)}
                       </div>
                       {booking.setup_time && (
                         <p className="mt-1 text-sm text-gray-500">

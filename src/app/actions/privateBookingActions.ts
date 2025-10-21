@@ -411,23 +411,17 @@ export async function createPrivateBooking(formData: FormData) {
   // Clean up empty strings for time fields
   // Special handling for end_time to ensure it's valid
   const cleanedEndTime = bookingData.end_time || null;
+  let endTimeNextDay = false;
 
-  // Validate that end time comes after start time
   if (cleanedEndTime && finalStartTime) {
     const [startHour, startMin] = finalStartTime.split(':').map(Number);
     const [endHour, endMin] = cleanedEndTime.split(':').map(Number);
-    
+
     const startMinutes = startHour * 60 + startMin;
     const endMinutes = endHour * 60 + endMin;
-    
+
     if (endMinutes <= startMinutes) {
-      console.warn('End time must be after start time', {
-        start_time: bookingData.start_time,
-        end_time: cleanedEndTime,
-        startMinutes,
-        endMinutes
-      });
-      return { error: 'End time must be after the start time' }
+      endTimeNextDay = true;
     }
   }
   
@@ -446,6 +440,7 @@ export async function createPrivateBooking(formData: FormData) {
     start_time: finalStartTime,
     setup_time: bookingData.setup_time || null,
     end_time: cleanedEndTime,
+    end_time_next_day: endTimeNextDay,
     setup_date: bookingData.setup_date || null,
     balance_due_date: bookingData.balance_due_date || balance_due_date || undefined,
     internal_notes: internalNotes,
@@ -458,6 +453,7 @@ export async function createPrivateBooking(formData: FormData) {
     customer_id: customerId || null, // Include the found/created customer ID
     customer_name, // Include for backward compatibility
     balance_due_date: isDateTbd ? null : cleanedBookingData.balance_due_date ?? null,
+    end_time_next_day: endTimeNextDay,
     deposit_amount: depositAmount, // Default £250 if not specified
     created_by: user?.id,
     status: 'draft'
@@ -628,7 +624,7 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
   // Get current booking to check status and date changes
   const { data: currentBooking } = await supabase
     .from('private_bookings')
-    .select('status, contact_phone, customer_first_name, event_date, start_time, customer_id, internal_notes, balance_due_date')
+    .select('status, contact_phone, customer_first_name, event_date, start_time, end_time, end_time_next_day, customer_id, internal_notes, balance_due_date')
     .eq('id', id)
     .single()
 
@@ -666,22 +662,17 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
   const finalStartTime = bookingData.start_time || currentBooking.start_time || DEFAULT_TBD_TIME
 
   const cleanedEndTime = bookingData.end_time || null
+  let endTimeNextDay = currentBooking.end_time_next_day ?? false
+
   if (cleanedEndTime) {
     const [startHour, startMin] = finalStartTime.split(':').map(Number)
     const [endHour, endMin] = cleanedEndTime.split(':').map(Number)
     const startMinutes = startHour * 60 + startMin
     const endMinutes = endHour * 60 + endMin
 
-    if (endMinutes <= startMinutes) {
-      console.warn('End time must be after start time', {
-        bookingId: id,
-        start_time: finalStartTime,
-        attempted_end_time: cleanedEndTime,
-        startMinutes,
-        endMinutes
-      })
-      return { error: 'End time must be after the start time' }
-    }
+    endTimeNextDay = endMinutes <= startMinutes
+  } else {
+    endTimeNextDay = false
   }
 
   let internalNotes = bookingData.internal_notes ?? currentBooking.internal_notes ?? null
@@ -703,6 +694,7 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
     start_time: finalStartTime,
     setup_time: bookingData.setup_time || null,
     end_time: cleanedEndTime,
+    end_time_next_day: endTimeNextDay,
     setup_date: bookingData.setup_date || null,
     balance_due_date: bookingData.balance_due_date || currentBooking.balance_due_date || undefined,
     internal_notes: internalNotes ?? null,

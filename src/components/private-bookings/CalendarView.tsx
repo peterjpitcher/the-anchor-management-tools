@@ -18,6 +18,7 @@ interface CalendarBooking {
   event_date: string
   start_time: string
   end_time: string | null
+  end_time_next_day: boolean | null
   status: BookingStatus
   event_type: string | null
   guest_count: number | null
@@ -330,7 +331,13 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                         <span className="flex items-center gap-1">
                           <ClockIcon className="h-4 w-4" />
                           {formatTime12Hour(booking.start_time)}
-                          {booking.end_time && ` - ${formatTime12Hour(booking.end_time)}`}
+                          {booking.end_time && (
+                            <>
+                              {' - '}
+                              {formatTime12Hour(booking.end_time)}
+                              {booking.end_time_next_day ? ' (+1 day)' : ''}
+                            </>
+                          )}
                         </span>
                         {booking.guest_count && (
                           <span>{booking.guest_count} guests</span>

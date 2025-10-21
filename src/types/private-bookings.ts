@@ -33,6 +33,7 @@ export interface PrivateBooking {
   setup_date?: string
   setup_time?: string
   end_time?: string
+  end_time_next_day?: boolean
   guest_count?: number
   event_type?: string
   status: BookingStatus
@@ -204,6 +205,7 @@ export interface PrivateBookingFormData {
   setup_date?: string
   setup_time?: string
   end_time?: string
+  end_time_next_day?: boolean
   guest_count?: number
   event_type?: string
   internal_notes?: string

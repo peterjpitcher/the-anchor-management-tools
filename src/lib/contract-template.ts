@@ -85,7 +85,10 @@ export function generateContractHTML(data: ContractData): string {
   const customerName = booking.customer_full_name || booking.customer_name || 'To be confirmed'
   const eventDate = formatDate(booking.event_date)
   const startTime = formatTime(booking.start_time)
-  const endTime = formatTime(booking.end_time || null)
+  const rawEndTime = formatTime(booking.end_time || null)
+  const endTime = booking.end_time && booking.end_time_next_day
+    ? `${rawEndTime} (+1 day)`
+    : rawEndTime
   const eventType = booking.event_type || 'To be confirmed'
   const guestCount = booking.guest_count || 'To be confirmed'
   const depositAmount = booking.deposit_amount ?? 250
