@@ -2083,8 +2083,8 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
     baseQuery = baseQuery.eq('status', filters.status)
   }
 
-  if (filters.showOnlyOutstanding) {
-    baseQuery = baseQuery.in('status', ['pending', 'cant_find'])
+  if (filters.showOnlyOutstanding && !filters.status) {
+    baseQuery = baseQuery.eq('status', 'pending')
   }
 
   if (filters.direction && filters.direction !== 'all') {
