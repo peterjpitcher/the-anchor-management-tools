@@ -140,6 +140,22 @@ export type ReceiptMonthlySummaryItem = {
   topOutgoing: Array<{ label: string; amount: number }>
 }
 
+export type ReceiptMonthlyInsightMonth = {
+  monthStart: string
+  totalIncome: number
+  totalOutgoing: number
+  netCash: number
+  topIncome: Array<{ label: string; amount: number }>
+  topOutgoing: Array<{ label: string; amount: number }>
+  incomeBreakdown: Array<{ label: string; amount: number }>
+  spendingBreakdown: Array<{ label: string; amount: number }>
+  statusCounts: Record<ReceiptTransaction['status'], number>
+}
+
+export type ReceiptMonthlyInsights = {
+  months: ReceiptMonthlyInsightMonth[]
+}
+
 export type ReceiptVendorTrendMonth = {
   monthStart: string
   totalOutgoing: number
@@ -2735,6 +2751,122 @@ export async function getMonthlyReceiptSummary(limit = 12): Promise<ReceiptMonth
     topIncome: parseTopList(row.top_income),
     topOutgoing: parseTopList(row.top_outgoing),
   }))
+}
+
+export async function getMonthlyReceiptInsights(limit = 12): Promise<ReceiptMonthlyInsights> {
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    throw new Error('Insufficient permissions')
+  }
+
+  const supabase = createAdminClient()
+
+  const [
+    { data: summaryData, error: summaryError },
+    { data: categoryData, error: categoryError },
+    { data: incomeData, error: incomeError },
+    { data: statusData, error: statusError },
+  ] = await Promise.all([
+    supabase.rpc('get_receipt_monthly_summary', { limit_months: limit }),
+    supabase.rpc('get_receipt_monthly_category_breakdown', { limit_months: limit }),
+    supabase.rpc('get_receipt_monthly_income_breakdown', { limit_months: limit }),
+    supabase.rpc('get_receipt_monthly_status_counts', { limit_months: limit }),
+  ])
+
+  if (summaryError) {
+    console.error('Failed to load monthly receipt summary', summaryError)
+    throw summaryError
+  }
+
+  if (categoryError) {
+    console.error('Failed to load monthly category breakdown', categoryError)
+    throw categoryError
+  }
+
+  if (incomeError) {
+    console.error('Failed to load monthly income breakdown', incomeError)
+    throw incomeError
+  }
+
+  if (statusError) {
+    console.error('Failed to load monthly status counts', statusError)
+    throw statusError
+  }
+
+  const summaryRows = Array.isArray(summaryData) ? summaryData : []
+  const categoryRows = Array.isArray(categoryData) ? categoryData : []
+  const incomeRows = Array.isArray(incomeData) ? incomeData : []
+  const statusRows = Array.isArray(statusData) ? statusData : []
+
+  const monthMap = new Map<string, ReceiptMonthlyInsightMonth>()
+
+  summaryRows.forEach((row: any) => {
+    const monthStart = row.month_start as string
+    const totalIncome = Number(row.total_income ?? 0)
+    const totalOutgoing = Number(row.total_outgoing ?? 0)
+    monthMap.set(monthStart, {
+      monthStart,
+      totalIncome,
+      totalOutgoing,
+      netCash: totalIncome - totalOutgoing,
+      topIncome: parseTopList(row.top_income),
+      topOutgoing: parseTopList(row.top_outgoing),
+      incomeBreakdown: [],
+      spendingBreakdown: [],
+      statusCounts: {
+        pending: 0,
+        completed: 0,
+        auto_completed: 0,
+        no_receipt_required: 0,
+        cant_find: 0,
+      },
+    })
+  })
+
+  categoryRows.forEach((row: any) => {
+    const monthStart = row.month_start as string
+    const entry = monthMap.get(monthStart)
+    if (!entry) return
+
+    entry.spendingBreakdown.push({
+      label: row.category ?? 'Other',
+      amount: Number(row.total_outgoing ?? 0),
+    })
+  })
+
+  incomeRows.forEach((row: any) => {
+    const monthStart = row.month_start as string
+    const entry = monthMap.get(monthStart)
+    if (!entry) return
+
+    entry.incomeBreakdown.push({
+      label: row.source ?? 'Other',
+      amount: Number(row.total_income ?? 0),
+    })
+  })
+
+  statusRows.forEach((row: any) => {
+    const monthStart = row.month_start as string
+    const entry = monthMap.get(monthStart)
+    if (!entry) return
+
+    const status = (row.status as ReceiptTransaction['status']) ?? 'pending'
+    entry.statusCounts[status] = Number(row.total ?? 0)
+  })
+
+  const months = Array.from(monthMap.values()).sort((a, b) => b.monthStart.localeCompare(a.monthStart))
+
+  const ensureSorted = (items: Array<{ label: string; amount: number }>) =>
+    items
+      .filter((item) => item.amount > 0)
+      .sort((a, b) => b.amount - a.amount)
+
+  months.forEach((month) => {
+    month.incomeBreakdown = ensureSorted(month.incomeBreakdown)
+    month.spendingBreakdown = ensureSorted(month.spendingBreakdown)
+  })
+
+  return { months }
 }
 
 export async function getReceiptVendorSummary(monthWindow = 12): Promise<ReceiptVendorSummary[]> {
