@@ -22,7 +22,6 @@ import { Section } from '@/components/ui-v2/layout/Section';
 import { Button } from '@/components/ui-v2/forms/Button';
 import { NavLink } from '@/components/ui-v2/navigation/NavLink';
 import { NavGroup } from '@/components/ui-v2/navigation/NavGroup';
-import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav';
 import { Stat, StatGroup } from '@/components/ui-v2/display/Stat';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
@@ -110,13 +109,6 @@ export default function TableBookingsDashboard() {
     return `${displayHours}:${minutes.toString().padStart(2, '0')}${period}`;
   };
 
-  const navItems: HeaderNavItem[] = [
-    { label: 'Overview', href: '#overview' },
-    { label: 'Filters', href: '#filters' },
-    { label: 'Timeline', href: '#timeline' },
-    { label: 'Actions', href: '#quick-actions' },
-  ]
-
   const navActions = (
     <NavGroup>
       {canCreate && (
@@ -172,7 +164,7 @@ export default function TableBookingsDashboard() {
   }
 
   return (
-    <PageLayout {...layoutProps} navItems={navItems} navActions={navActions}>
+    <PageLayout {...layoutProps} navActions={navActions}>
       <div className="space-y-4 sm:space-y-6 px-0 sm:px-6">
         {/* Stats Grid - Hidden on mobile */}
         <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
