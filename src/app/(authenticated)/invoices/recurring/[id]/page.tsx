@@ -265,7 +265,7 @@ export default function RecurringInvoiceDetailPage() {
   const finalSubtotal = totals.subtotal - invoiceDiscountAmount
   const finalTotal = finalSubtotal + totals.vat
 
-  const headerActions = (
+  const navActions = (
     <div className="flex flex-wrap gap-2">
       <Button
         variant="secondary"
@@ -310,7 +310,7 @@ export default function RecurringInvoiceDetailPage() {
       title="Recurring Invoice Details"
       subtitle={`Template for ${recurringInvoice.vendor?.name || 'Unknown Vendor'}`}
       backButton={{ label: 'Back to Recurring Invoices', href: '/invoices/recurring' }}
-      headerActions={headerActions}
+      navActions={navActions}
     >
       {isReadOnly && (
         <Alert

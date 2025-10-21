@@ -98,7 +98,7 @@ export default function QuotesClient({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(initialError)
 
-  const headerActions = (
+  const navActions = (
     <div className="flex flex-wrap gap-2">
       <LinkButton href="/invoices" variant="secondary">
         <FileText className="h-4 w-4 mr-1 sm:mr-2" />
@@ -177,7 +177,7 @@ export default function QuotesClient({
       <PageLayout
         title="Quotes"
         subtitle="Manage quotes and estimates for your vendors"
-        headerActions={headerActions}
+        navActions={navActions}
         loading
         loadingLabel="Loading quotes..."
       />
@@ -188,7 +188,7 @@ export default function QuotesClient({
     <PageLayout
       title="Quotes"
       subtitle="Manage quotes and estimates for your vendors"
-      headerActions={headerActions}
+      navActions={navActions}
     >
       <div className="space-y-6">
         {isReadOnly && (

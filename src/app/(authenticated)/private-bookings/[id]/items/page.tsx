@@ -797,7 +797,7 @@ export default function ItemsPage() {
     ? `${customerLabel} - ${booking.event_date ? formatDateFull(booking.event_date) : 'Date TBD'}`
     : 'Booking details'
 
-  const headerActions = (
+  const navActions = (
     <div className="flex flex-wrap items-center gap-2">
       <LinkButton href={`/private-bookings/${bookingId}`} variant="secondary">
         View Booking
@@ -816,7 +816,7 @@ export default function ItemsPage() {
       title="Booking Items"
       subtitle={subtitle}
       backButton={{ label: 'Back to Booking', href: `/private-bookings/${bookingId}` }}
-      headerActions={headerActions}
+      navActions={navActions}
     >
       <div className="space-y-6">
         <Card>

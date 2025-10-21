@@ -289,7 +289,7 @@ export default function TableBookingReportsPage() {
     },
   ];
 
-  const headerActions = (
+  const navActions = (
     <Button
       onClick={downloadReport}
       leftIcon={<ArrowDownTrayIcon className="h-5 w-5" />}
@@ -302,7 +302,7 @@ export default function TableBookingReportsPage() {
   return (
     <PageLayout
       {...layoutProps}
-      headerActions={headerActions}
+      navActions={navActions}
     >
       <div className="space-y-6">
         {/* Date Range Selector */}

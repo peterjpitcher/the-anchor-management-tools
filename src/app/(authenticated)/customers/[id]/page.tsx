@@ -370,7 +370,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   }
 
   const customerName = `${customer.first_name} ${customer.last_name}`.trim()
-  const headerActions = canManageEvents ? (
+  const navActions = canManageEvents ? (
     <Button onClick={openAddBookingModal}>
       Add Booking
     </Button>
@@ -381,7 +381,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
       title={customerName}
       subtitle={customer.mobile_number || 'No mobile number'}
       backButton={{ label: 'Back to Customers', href: '/customers' }}
-      headerActions={headerActions}
+      navActions={navActions}
     >
       <div className="space-y-6">
         {/* Booking Modal */}

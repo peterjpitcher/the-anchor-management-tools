@@ -99,7 +99,7 @@ export default async function VenueSpacesPage() {
       title="Venue Spaces"
       subtitle="Manage available spaces for private hire"
       backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
-      headerActions={
+      navActions={
         <LinkButton href="/private-bookings/settings" variant="secondary">
           Settings Home
         </LinkButton>

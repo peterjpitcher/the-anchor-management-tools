@@ -258,7 +258,7 @@ export default function PrivateBookingsClient({
   }
 
   const loading = isPending
-  const headerActions = (
+  const navActions = (
     <div className="flex flex-wrap items-center gap-2">
       <LinkButton href="/private-bookings/sms-queue" variant="secondary" size="sm">
         SMS Queue
@@ -291,7 +291,7 @@ export default function PrivateBookingsClient({
         label: 'Back to Dashboard',
         href: '/',
       }}
-      headerActions={headerActions}
+      navActions={navActions}
     >
       <div className="space-y-6">
         <Card className="hidden sm:block">

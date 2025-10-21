@@ -237,7 +237,7 @@ export default function PrivateBookingMessagesClient({ bookingId, initialBooking
   const isDraft = booking.status === 'draft'
   const canSend = canSendSms && booking.contact_phone
 
-  const headerActions = (
+  const navActions = (
     <div className="flex flex-wrap items-center gap-2">
       <LinkButton variant="secondary" size="sm" href={`/private-bookings/${bookingId}`}>
         View Booking
@@ -253,7 +253,7 @@ export default function PrivateBookingMessagesClient({ bookingId, initialBooking
       title="Private Booking Messages"
       subtitle={`Manage SMS communication for ${booking.customer_full_name || booking.customer_name}`}
       backButton={{ label: 'Back to Booking', href: `/private-bookings/${bookingId}` }}
-      headerActions={headerActions}
+      navActions={navActions}
     >
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">

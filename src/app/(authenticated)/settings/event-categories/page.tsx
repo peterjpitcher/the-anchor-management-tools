@@ -317,7 +317,7 @@ const [categories, setCategories] = useState<EventCategory[]>([])
     },
   ]
 
-  const headerActions = (
+  const navActions = (
     <NavGroup>
       <NavLink
         onClick={() => setAnalyzeConfirm(true)}
@@ -334,7 +334,7 @@ const [categories, setCategories] = useState<EventCategory[]>([])
   return (
     <PageLayout
       {...layoutProps}
-      headerActions={headerActions}
+      navActions={navActions}
     >
       <div className="space-y-6">
         <ConfirmDialog

@@ -126,7 +126,7 @@ export default async function CateringPackagesPage() {
       title="Catering Packages"
       subtitle="Manage food and drink options for private events"
       backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
-      headerActions={
+      navActions={
         <div className="flex flex-wrap items-center gap-2">
           <LinkButton href="/private-bookings/settings" variant="secondary">Settings Home</LinkButton>
         </div>

@@ -129,7 +129,7 @@ export default function TableBookingMonitoringPage() {
     );
   }
 
-  const headerActions = (
+  const navActions = (
     <Button
       variant="secondary"
       size="sm"
@@ -143,7 +143,7 @@ export default function TableBookingMonitoringPage() {
   return (
     <PageLayout
       {...layoutProps}
-      headerActions={headerActions}
+      navActions={navActions}
     >
       <div className="space-y-6">
         {error && (

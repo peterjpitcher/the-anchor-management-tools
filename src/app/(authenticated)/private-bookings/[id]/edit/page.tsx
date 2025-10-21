@@ -190,7 +190,7 @@ export default function EditPrivateBookingPage({
 
   const subtitle = `${customerLabel} - ${booking && booking.event_date ? formatDateFull(booking.event_date) : 'Date TBD'}`
 
-  const headerActions = (
+  const navActions = (
     <div className="flex flex-wrap items-center gap-2">
       <LinkButton href={`/private-bookings/${id}`} variant="secondary">
         View Booking
@@ -210,7 +210,7 @@ export default function EditPrivateBookingPage({
       title="Edit Private Booking"
       subtitle={subtitle}
       backButton={{ label: 'Back to Booking', href: `/private-bookings/${id}` }}
-      headerActions={headerActions}
+      navActions={navActions}
     >
       <div className="space-y-6">
         <Card>

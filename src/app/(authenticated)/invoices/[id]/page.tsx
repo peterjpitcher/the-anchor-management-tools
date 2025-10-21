@@ -215,7 +215,7 @@ export default function InvoiceDetailPage() {
     return acc + (itemAfterInvoiceDiscount * (item.vat_rate / 100))
   }, 0) || 0
 
-  const headerActions = (
+  const navActions = (
     <div className="flex flex-wrap gap-2">
       {invoice.status === 'draft' && canEdit && (
         <>
@@ -325,7 +325,7 @@ export default function InvoiceDetailPage() {
         label: 'Back to Invoices',
         href: '/invoices',
       }}
-      headerActions={headerActions}
+      navActions={navActions}
     >
       <div className="mb-6">
         <div className="flex flex-wrap items-center gap-2 sm:gap-4">

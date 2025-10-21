@@ -306,7 +306,7 @@ export default function SundayLunchMenuPage() {
     }
   ];
 
-  const headerActions = (
+  const navActions = (
     <Button
       onClick={() => {
         setEditingItem(null);
@@ -330,7 +330,7 @@ export default function SundayLunchMenuPage() {
   return (
     <PageLayout
       {...layoutProps}
-      headerActions={headerActions}
+      navActions={navActions}
     >
       <div className="space-y-6">
         {error && (
