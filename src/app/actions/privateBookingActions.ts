@@ -410,9 +410,9 @@ export async function createPrivateBooking(formData: FormData) {
 
   // Clean up empty strings for time fields
   // Special handling for end_time to ensure it's valid
-  let cleanedEndTime = bookingData.end_time || null;
-  
-  // If end_time exists but is the same or before start_time, set it to null
+  const cleanedEndTime = bookingData.end_time || null;
+
+  // Validate that end time comes after start time
   if (cleanedEndTime && finalStartTime) {
     const [startHour, startMin] = finalStartTime.split(':').map(Number);
     const [endHour, endMin] = cleanedEndTime.split(':').map(Number);
@@ -421,13 +421,13 @@ export async function createPrivateBooking(formData: FormData) {
     const endMinutes = endHour * 60 + endMin;
     
     if (endMinutes <= startMinutes) {
-      console.warn('End time is not after start time, setting to null', {
+      console.warn('End time must be after start time', {
         start_time: bookingData.start_time,
         end_time: cleanedEndTime,
         startMinutes,
         endMinutes
       });
-      cleanedEndTime = null;
+      return { error: 'End time must be after the start time' }
     }
   }
   
@@ -665,7 +665,7 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
   const finalEventDate = bookingData.event_date || currentBooking.event_date || toLocalIsoDate(new Date())
   const finalStartTime = bookingData.start_time || currentBooking.start_time || DEFAULT_TBD_TIME
 
-  let cleanedEndTime = bookingData.end_time || null
+  const cleanedEndTime = bookingData.end_time || null
   if (cleanedEndTime) {
     const [startHour, startMin] = finalStartTime.split(':').map(Number)
     const [endHour, endMin] = cleanedEndTime.split(':').map(Number)
@@ -673,7 +673,14 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
     const endMinutes = endHour * 60 + endMin
 
     if (endMinutes <= startMinutes) {
-      cleanedEndTime = null
+      console.warn('End time must be after start time', {
+        bookingId: id,
+        start_time: finalStartTime,
+        attempted_end_time: cleanedEndTime,
+        startMinutes,
+        endMinutes
+      })
+      return { error: 'End time must be after the start time' }
     }
   }
 

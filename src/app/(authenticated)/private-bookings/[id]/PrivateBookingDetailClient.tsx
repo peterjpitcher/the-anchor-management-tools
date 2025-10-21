@@ -76,7 +76,6 @@ import { Card } from "@/components/ui-v2/layout/Card";
 import { Section } from "@/components/ui-v2/layout/Section";
 import { Button } from "@/components/ui-v2/forms/Button";
 import { LinkButton } from "@/components/ui-v2/navigation/LinkButton";
-import type { HeaderNavItem } from "@/components/ui-v2/navigation/HeaderNav";
 import { Input } from "@/components/ui-v2/forms/Input";
 import { Select } from "@/components/ui-v2/forms/Select";
 import { Textarea } from "@/components/ui-v2/forms/Textarea";
@@ -1301,15 +1300,7 @@ export default function PrivateBookingDetailClient({
     canManageVendors
   } = permissions;
 
-  const navItems: HeaderNavItem[] = [
-    { label: "Overview", href: "#event-details" },
-    { label: "Items", href: "#booking-items" },
-    { label: "Notes", href: "#notes-requirements" },
-    { label: "Actions", href: "#quick-actions" },
-    { label: "Info", href: "#booking-info" },
-  ];
-
-  const headerActions = canEdit
+  const navActions = canEdit
     ? (
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" size="sm" onClick={() => setShowStatusModal(true)}>
@@ -1522,8 +1513,7 @@ export default function PrivateBookingDetailClient({
         { label: booking.customer_full_name || booking.customer_name, href: "" },
       ]}
       backButton={{ label: "Back to Private Bookings", href: "/private-bookings" }}
-      navItems={navItems}
-      headerActions={headerActions}
+      navActions={navActions}
     >
       {pageError && (
         <Alert
