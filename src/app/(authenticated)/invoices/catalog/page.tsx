@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Button } from '@/components/ui-v2/forms/Button'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
@@ -194,14 +196,17 @@ export default function LineItemCatalogPage() {
       subtitle="Manage reusable line items for invoices and quotes"
       backButton={{ label: 'Back to Invoices', href: '/invoices' }}
       navActions={
-        <Button
-          onClick={() => openForm()}
-          leftIcon={<Plus className="h-4 w-4" />}
-          disabled={!canManage}
-          title={!canManage ? 'You need invoice manage permission to add catalog items.' : undefined}
-        >
-          Add Item
-        </Button>
+        <NavGroup>
+          <NavLink
+            onClick={canManage ? () => openForm() : undefined}
+            disabled={!canManage}
+            title={!canManage ? 'You need invoice manage permission to add catalog items.' : undefined}
+            className="font-semibold"
+          >
+            <Plus className="h-4 w-4" />
+            Add Item
+          </NavLink>
+        </NavGroup>
       }
     >
       <div className="space-y-6">

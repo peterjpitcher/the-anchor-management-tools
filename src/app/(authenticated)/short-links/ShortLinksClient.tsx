@@ -16,6 +16,8 @@ import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Button, IconButton } from '@/components/ui-v2/forms/Button'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Select } from '@/components/ui-v2/forms/Select'
@@ -367,29 +369,26 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
   }
 
   const navActions = (
-    <div className="flex flex-wrap items-center gap-2">
-      <Button
-        variant="secondary"
-        size="sm"
+    <NavGroup>
+      <NavLink
         onClick={() => {
           setShowVolumeChart(true)
           loadVolumeData(volumePeriod)
         }}
       >
         View Volume Chart
-      </Button>
+      </NavLink>
       {canManage && (
-        <Button
-          variant="primary"
-          size="sm"
+        <NavLink
           onClick={() => {
             setShowCreateModal(true)
           }}
+          className="font-semibold"
         >
           Create Short Link
-        </Button>
+        </NavLink>
       )}
-    </div>
+    </NavGroup>
   )
 
   return (

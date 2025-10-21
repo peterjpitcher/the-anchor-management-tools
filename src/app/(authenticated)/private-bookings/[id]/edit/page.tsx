@@ -17,6 +17,8 @@ import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { formatDateFull } from '@/lib/dateUtils'
@@ -191,17 +193,17 @@ export default function EditPrivateBookingPage({
   const subtitle = `${customerLabel} - ${booking && booking.event_date ? formatDateFull(booking.event_date) : 'Date TBD'}`
 
   const navActions = (
-    <div className="flex flex-wrap items-center gap-2">
-      <LinkButton href={`/private-bookings/${id}`} variant="secondary">
+    <NavGroup>
+      <NavLink href={`/private-bookings/${id}`}>
         View Booking
-      </LinkButton>
-      <LinkButton href={`/private-bookings/${id}/items`} variant="secondary">
+      </NavLink>
+      <NavLink href={`/private-bookings/${id}/items`}>
         Manage Items
-      </LinkButton>
-      <LinkButton href={`/private-bookings/${id}/messages`} variant="secondary">
+      </NavLink>
+      <NavLink href={`/private-bookings/${id}/messages`}>
         View Messages
-      </LinkButton>
-    </div>
+      </NavLink>
+    </NavGroup>
   )
 
 

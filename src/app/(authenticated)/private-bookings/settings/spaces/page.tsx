@@ -16,7 +16,8 @@ import { Input } from '@/components/ui-v2/forms/Input'
 import { Select } from '@/components/ui-v2/forms/Select'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { checkUserPermission } from '@/app/actions/rbac'
@@ -100,9 +101,11 @@ export default async function VenueSpacesPage() {
       subtitle="Manage available spaces for private hire"
       backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
       navActions={
-        <LinkButton href="/private-bookings/settings" variant="secondary">
-          Settings Home
-        </LinkButton>
+        <NavGroup>
+          <NavLink href="/private-bookings/settings">
+            Settings Home
+          </NavLink>
+        </NavGroup>
       }
     >
       <div className="space-y-6">

@@ -10,6 +10,8 @@ interface NavLinkProps {
   children: React.ReactNode;
   className?: string;
   active?: boolean;
+  disabled?: boolean;
+  title?: string;
 }
 
 export function NavLink({ 
@@ -17,30 +19,43 @@ export function NavLink({
   onClick, 
   children, 
   className,
-  active = false 
+  active = false,
+  disabled = false,
+  title,
 }: NavLinkProps) {
   const baseClasses = cn(
-    'text-white hover:text-white/80 cursor-pointer transition-colors duration-200',
-    'border-b-2 border-transparent hover:border-white/60 pb-0.5',
+    'inline-flex items-center gap-2 text-white transition-colors duration-200',
+    'border-b-2 border-transparent pb-0.5',
+    !disabled && 'cursor-pointer hover:text-white/80 hover:border-white/60',
+    disabled && 'opacity-50 cursor-not-allowed',
     active && 'border-white/80 text-white font-medium',
     className
   );
 
-  if (href) {
+  if (href && !disabled) {
     return (
-      <Link href={href} className={baseClasses}>
+      <Link href={href} className={baseClasses} title={title}>
         {children}
       </Link>
     );
   }
 
+  if (onClick && !disabled) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={baseClasses}
+        title={title}
+      >
+        {children}
+      </button>
+    );
+  }
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={baseClasses}
-    >
+    <span className={baseClasses} title={title} aria-disabled={disabled || undefined}>
       {children}
-    </button>
+    </span>
   );
 }

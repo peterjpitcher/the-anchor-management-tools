@@ -12,6 +12,8 @@ import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { toast } from '@/components/ui-v2/feedback/Toast'
@@ -283,109 +285,102 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
   }, 0) || 0
 
   const navActions = (
-    <div className="flex flex-wrap gap-2">
+    <NavGroup>
       {quote.status === 'draft' && (
-        <>
-          <Button
-            onClick={() => handleStatusChange('sent')}
-            disabled={processing || !canEdit}
-            leftIcon={<Mail className="h-4 w-4" />}
-            className="text-sm sm:text-base"
-            title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
-          >
-            <span className="hidden sm:inline">Mark as Sent</span>
-            <span className="sm:hidden">Send</span>
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => router.push(`/quotes/${quote.id}/edit`)}
-            disabled={processing || !canEdit}
-            leftIcon={<Edit className="h-4 w-4" />}
-            className="text-sm sm:text-base"
-            title={!canEdit ? 'You need invoice edit permission to edit quotes.' : undefined}
-          >
-            <span>Edit</span>
-          </Button>
-        </>
-      )}
-      
-      {quote.status === 'sent' && !isExpired && (
-        <>
-          <Button
-            onClick={() => handleStatusChange('accepted')}
-            disabled={processing || !canEdit}
-            variant="success"
-            leftIcon={<CheckCircle className="h-4 w-4" />}
-            className="text-sm sm:text-base"
-            title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
-          >
-            <span className="hidden sm:inline">Mark as Accepted</span>
-            <span className="sm:hidden">Accept</span>
-          </Button>
-          <Button
-            variant="danger"
-            onClick={() => handleStatusChange('rejected')}
-            disabled={processing || !canEdit}
-            leftIcon={<XCircle className="h-4 w-4" />}
-            className="text-sm sm:text-base"
-            title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
-          >
-            <span className="hidden sm:inline">Mark as Rejected</span>
-            <span className="sm:hidden">Reject</span>
-          </Button>
-        </>
-      )}
-      
-      {quote.status === 'accepted' && !quote.converted_to_invoice_id && (
-        <Button onClick={handleConvertToInvoice}
-          disabled={processing || !canCreate}
-          leftIcon={<FileText className="h-4 w-4" />}
-          className="text-sm sm:text-base"
-          title={!canCreate ? 'You need invoice create permission to convert quotes.' : undefined}
+        <NavLink
+          onClick={processing || !canEdit ? undefined : () => handleStatusChange('sent')}
+          disabled={processing || !canEdit}
+          title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
         >
+          <Mail className="h-4 w-4" />
+          <span className="hidden sm:inline">Mark as Sent</span>
+          <span className="sm:hidden">Send</span>
+        </NavLink>
+      )}
+
+      {quote.status === 'draft' && (
+        <NavLink
+          href={`/quotes/${quote.id}/edit`}
+          disabled={processing || !canEdit}
+          title={!canEdit ? 'You need invoice edit permission to edit quotes.' : undefined}
+        >
+          <Edit className="h-4 w-4" />
+          Edit
+        </NavLink>
+      )}
+
+      {quote.status === 'sent' && !isExpired && (
+        <NavLink
+          onClick={processing || !canEdit ? undefined : () => handleStatusChange('accepted')}
+          disabled={processing || !canEdit}
+          title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
+          className="text-green-200"
+        >
+          <CheckCircle className="h-4 w-4" />
+          <span className="hidden sm:inline">Mark as Accepted</span>
+          <span className="sm:hidden">Accept</span>
+        </NavLink>
+      )}
+
+      {quote.status === 'sent' && !isExpired && (
+        <NavLink
+          onClick={processing || !canEdit ? undefined : () => handleStatusChange('rejected')}
+          disabled={processing || !canEdit}
+          title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
+          className="text-red-200"
+        >
+          <XCircle className="h-4 w-4" />
+          <span className="hidden sm:inline">Mark as Rejected</span>
+          <span className="sm:hidden">Reject</span>
+        </NavLink>
+      )}
+
+      {quote.status === 'accepted' && !quote.converted_to_invoice_id && (
+        <NavLink
+          onClick={processing || !canCreate ? undefined : handleConvertToInvoice}
+          disabled={processing || !canCreate}
+          title={!canCreate ? 'You need invoice create permission to convert quotes.' : undefined}
+          className="font-semibold"
+        >
+          <FileText className="h-4 w-4" />
           <span className="hidden sm:inline">Convert to Invoice</span>
           <span className="sm:hidden">Convert</span>
-        </Button>
+        </NavLink>
       )}
 
       {emailConfigured && (
-        <Button
-          variant="secondary"
-          onClick={() => setShowEmailModal(true)}
+        <NavLink
+          onClick={processing || !canEdit ? undefined : () => setShowEmailModal(true)}
           disabled={processing || !canEdit}
-          leftIcon={<Mail className="h-4 w-4" />}
-          className="text-sm sm:text-base"
           title={!canEdit ? 'You need invoice edit permission to email quotes.' : undefined}
         >
+          <Mail className="h-4 w-4" />
           <span className="hidden sm:inline">Send Email</span>
           <span className="sm:hidden">Email</span>
-        </Button>
+        </NavLink>
       )}
-      
-      <Button
-        variant="secondary"
-        onClick={() => window.open(`/api/quotes/${quote.id}/pdf`, '_blank')}
+
+      <NavLink
+        onClick={processing ? undefined : () => window.open(`/api/quotes/${quote.id}/pdf`, '_blank')}
         disabled={processing}
-        leftIcon={<Download className="h-4 w-4" />}
-        className="text-sm sm:text-base"
       >
+        <Download className="h-4 w-4" />
         <span className="hidden sm:inline">Download PDF</span>
         <span className="sm:hidden">PDF</span>
-      </Button>
+      </NavLink>
 
       {quote.status === 'draft' && (
-        <Button
-          variant="danger"
-          onClick={() => setShowDeleteDialog(true)}
+        <NavLink
+          onClick={processing || !canDelete ? undefined : () => setShowDeleteDialog(true)}
           disabled={processing || !canDelete}
-          leftIcon={<Trash2 className="h-4 w-4" />}
-          className="text-sm sm:text-base"
           title={!canDelete ? 'You need invoice delete permission to delete quotes.' : undefined}
+          className="text-red-200"
         >
-          <span>Delete</span>
-        </Button>
+          <Trash2 className="h-4 w-4" />
+          Delete
+        </NavLink>
       )}
-    </div>
+    </NavGroup>
   )
 
   return (

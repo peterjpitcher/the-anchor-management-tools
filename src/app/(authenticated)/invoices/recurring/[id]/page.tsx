@@ -6,6 +6,8 @@ import { getRecurringInvoice, deleteRecurringInvoice, toggleRecurringInvoiceStat
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Button } from '@/components/ui-v2/forms/Button'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { toast } from '@/components/ui-v2/feedback/Toast'
@@ -266,30 +268,26 @@ export default function RecurringInvoiceDetailPage() {
   const finalTotal = finalSubtotal + totals.vat
 
   const navActions = (
-    <div className="flex flex-wrap gap-2">
-      <Button
-        variant="secondary"
-        onClick={() => router.push(`/invoices/recurring/${recurringInvoice.id}/edit`)}
-        leftIcon={<Edit2 className="h-4 w-4" />}
+    <NavGroup>
+      <NavLink
+        href={`/invoices/recurring/${recurringInvoice.id}/edit`}
         disabled={!canEdit}
         title={!canEdit ? 'You need invoice edit permission to update recurring invoices.' : undefined}
       >
+        <Edit2 className="h-4 w-4" />
         Edit
-      </Button>
-      <Button
-        variant={recurringInvoice.is_active ? 'secondary' : 'primary'}
-        onClick={handleToggleStatus}
-        loading={actionLoading}
-        leftIcon={recurringInvoice.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+      </NavLink>
+      <NavLink
+        onClick={actionLoading || !canEdit ? undefined : handleToggleStatus}
         disabled={actionLoading || !canEdit}
         title={!canEdit ? 'You need invoice edit permission to change status.' : undefined}
+        className={recurringInvoice.is_active ? 'text-amber-200' : 'text-green-200'}
       >
+        {recurringInvoice.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
         {recurringInvoice.is_active ? 'Deactivate' : 'Activate'}
-      </Button>
-      <Button
-        variant="primary"
-        onClick={handleGenerateNow}
-        loading={actionLoading}
+      </NavLink>
+      <NavLink
+        onClick={!recurringInvoice.is_active || actionLoading || !canCreate ? undefined : handleGenerateNow}
         disabled={!recurringInvoice.is_active || actionLoading || !canCreate}
         title={
           !canCreate
@@ -298,11 +296,12 @@ export default function RecurringInvoiceDetailPage() {
               ? 'Activate this template before generating.'
               : undefined
         }
-        leftIcon={<FileText className="h-4 w-4" />}
+        className="font-semibold"
       >
-        Generate Now
-      </Button>
-    </div>
+        <FileText className="h-4 w-4" />
+        {actionLoading ? 'Generating...' : 'Generate Now'}
+      </NavLink>
+    </NavGroup>
   )
 
   return (

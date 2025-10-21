@@ -2,7 +2,8 @@ import { getAllRoles, getAllPermissions, checkUserPermission } from '@/app/actio
 import RoleList from './components/RoleList'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { redirect } from 'next/navigation'
 
 export default async function RolesPage() {
@@ -41,9 +42,11 @@ export default async function RolesPage() {
       backButton={{ label: 'Back to Settings', href: '/settings' }}
       navActions={
         canManage ? (
-          <LinkButton href="/roles/new" variant="primary">
-            New Role
-          </LinkButton>
+          <NavGroup>
+            <NavLink href="/roles/new" className="font-semibold">
+              New Role
+            </NavLink>
+          </NavGroup>
         ) : undefined
       }
     >

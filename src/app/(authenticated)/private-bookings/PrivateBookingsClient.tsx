@@ -15,7 +15,8 @@ import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Select } from '@/components/ui-v2/forms/Select'
 import { Badge } from '@/components/ui-v2/display/Badge'
@@ -259,19 +260,19 @@ export default function PrivateBookingsClient({
 
   const loading = isPending
   const navActions = (
-    <div className="flex flex-wrap items-center gap-2">
-      <LinkButton href="/private-bookings/sms-queue" variant="secondary" size="sm">
+    <NavGroup>
+      <NavLink href="/private-bookings/sms-queue">
         SMS Queue
-      </LinkButton>
-      <LinkButton href="/private-bookings/calendar" variant="secondary" size="sm">
+      </NavLink>
+      <NavLink href="/private-bookings/calendar">
         Calendar View
-      </LinkButton>
+      </NavLink>
       {permissions.hasCreatePermission && (
-        <LinkButton href="/private-bookings/new" variant="primary" size="sm">
+        <NavLink href="/private-bookings/new" className="font-semibold">
           Add Booking
-        </LinkButton>
+        </NavLink>
       )}
-    </div>
+    </NavGroup>
   )
 
   useEffect(() => {

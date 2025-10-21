@@ -21,7 +21,8 @@ import { Button } from '@/components/ui-v2/forms/Button'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { toast } from '@/components/ui-v2/feedback/Toast'
@@ -238,14 +239,14 @@ export default function PrivateBookingMessagesClient({ bookingId, initialBooking
   const canSend = canSendSms && booking.contact_phone
 
   const navActions = (
-    <div className="flex flex-wrap items-center gap-2">
-      <LinkButton variant="secondary" size="sm" href={`/private-bookings/${bookingId}`}>
+    <NavGroup>
+      <NavLink href={`/private-bookings/${bookingId}`}>
         View Booking
-      </LinkButton>
-      <LinkButton variant="secondary" size="sm" href="/private-bookings">
+      </NavLink>
+      <NavLink href="/private-bookings">
         All Bookings
-      </LinkButton>
-    </div>
+      </NavLink>
+    </NavGroup>
   )
 
   return (

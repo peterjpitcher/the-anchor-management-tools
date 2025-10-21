@@ -75,7 +75,8 @@ import { PageLayout } from "@/components/ui-v2/layout/PageLayout";
 import { Card } from "@/components/ui-v2/layout/Card";
 import { Section } from "@/components/ui-v2/layout/Section";
 import { Button } from "@/components/ui-v2/forms/Button";
-import { LinkButton } from "@/components/ui-v2/navigation/LinkButton";
+import { NavGroup } from "@/components/ui-v2/navigation/NavGroup";
+import { NavLink } from "@/components/ui-v2/navigation/NavLink";
 import { Input } from "@/components/ui-v2/forms/Input";
 import { Select } from "@/components/ui-v2/forms/Select";
 import { Textarea } from "@/components/ui-v2/forms/Textarea";
@@ -1312,14 +1313,14 @@ export default function PrivateBookingDetailClient({
 
   const navActions = canEdit
     ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={() => setShowStatusModal(true)}>
+        <NavGroup>
+          <NavLink onClick={() => setShowStatusModal(true)}>
             Change Status
-          </Button>
-          <LinkButton href={`/private-bookings/${bookingId}/edit`} variant="primary" size="sm">
+          </NavLink>
+          <NavLink href={`/private-bookings/${bookingId}/edit`} className="font-semibold">
             Edit Details
-          </LinkButton>
-        </div>
+          </NavLink>
+        </NavGroup>
       )
     : undefined;
 

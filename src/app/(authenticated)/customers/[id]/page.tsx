@@ -10,6 +10,8 @@ import { toast } from '@/components/ui-v2/feedback/Toast'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { Button } from '@/components/ui-v2/forms/Button'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { toggleCustomerSmsOptIn, getCustomerSmsStats, getCustomerMessages } from '@/app/actions/customerSmsActions'
 import { markMessagesAsRead } from '@/app/actions/messageActions'
 import { MessageThread } from '@/components/MessageThread'
@@ -371,9 +373,11 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
 
   const customerName = `${customer.first_name} ${customer.last_name}`.trim()
   const navActions = canManageEvents ? (
-    <Button onClick={openAddBookingModal}>
-      Add Booking
-    </Button>
+    <NavGroup>
+      <NavLink onClick={openAddBookingModal} className="font-semibold">
+        Add Booking
+      </NavLink>
+    </NavGroup>
   ) : undefined
 
   return (

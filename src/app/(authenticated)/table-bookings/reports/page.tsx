@@ -11,6 +11,8 @@ import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { Button } from '@/components/ui-v2/forms/Button';
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup';
+import { NavLink } from '@/components/ui-v2/navigation/NavLink';
 import { Input } from '@/components/ui-v2/forms/Input';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { Stat } from '@/components/ui-v2/display/Stat';
@@ -290,13 +292,16 @@ export default function TableBookingReportsPage() {
   ];
 
   const navActions = (
-    <Button
-      onClick={downloadReport}
-      leftIcon={<ArrowDownTrayIcon className="h-5 w-5" />}
-      disabled={!reportData}
-    >
-      Download CSV
-    </Button>
+    <NavGroup>
+      <NavLink
+        onClick={!reportData ? undefined : downloadReport}
+        disabled={!reportData}
+        className="font-semibold"
+      >
+        <ArrowDownTrayIcon className="h-5 w-5" />
+        Download CSV
+      </NavLink>
+    </NavGroup>
   );
 
   return (
