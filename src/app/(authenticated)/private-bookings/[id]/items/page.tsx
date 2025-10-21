@@ -35,7 +35,8 @@ import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Modal } from '@/components/ui-v2/overlay/Modal'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 
@@ -798,17 +799,15 @@ export default function ItemsPage() {
     : 'Booking details'
 
   const navActions = (
-    <div className="flex flex-wrap items-center gap-2">
-      <LinkButton href={`/private-bookings/${bookingId}`} variant="secondary">
+    <NavGroup>
+      <NavLink href={`/private-bookings/${bookingId}`}>
         View Booking
-      </LinkButton>
-      <Button
-        onClick={() => setShowAddModal(true)}
-        leftIcon={<PlusIcon className="h-5 w-5" />}
-      >
+      </NavLink>
+      <NavLink onClick={() => setShowAddModal(true)} className="font-semibold">
+        <PlusIcon className="h-4 w-4" />
         Add Item
-      </Button>
-    </div>
+      </NavLink>
+    </NavGroup>
   )
 
   return (

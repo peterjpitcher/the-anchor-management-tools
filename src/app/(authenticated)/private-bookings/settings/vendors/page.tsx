@@ -11,7 +11,8 @@ import type { InvoiceVendor } from '@/types/invoices'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Select } from '@/components/ui-v2/forms/Select'
@@ -148,11 +149,11 @@ export default async function VendorsPage() {
       subtitle="Manage preferred vendors and service providers"
       backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
       navActions={
-        <div className="flex flex-wrap items-center gap-2">
-          <LinkButton href="/private-bookings/settings" variant="secondary">
+        <NavGroup>
+          <NavLink href="/private-bookings/settings">
             Settings Home
-          </LinkButton>
-        </div>
+          </NavLink>
+        </NavGroup>
       }
     >
       <div className="space-y-6">

@@ -14,6 +14,8 @@ import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { Button } from '@/components/ui-v2/forms/Button';
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup';
+import { NavLink } from '@/components/ui-v2/navigation/NavLink';
 import { Input } from '@/components/ui-v2/forms/Input';
 import { Select } from '@/components/ui-v2/forms/Select';
 import { Textarea } from '@/components/ui-v2/forms/Textarea';
@@ -307,24 +309,27 @@ export default function SundayLunchMenuPage() {
   ];
 
   const navActions = (
-    <Button
-      onClick={() => {
-        setEditingItem(null);
-        setFormData({
-          name: '',
-          description: '',
-          price: 15.49,
-          category: 'main',
-          is_active: true,
-          allergens: '',
-          dietary_info: ''
-        });
-        setShowAddModal(true);
-      }}
-      leftIcon={<PlusIcon className="h-5 w-5" />}
-    >
-      Add Menu Item
-    </Button>
+    <NavGroup>
+      <NavLink
+        onClick={() => {
+          setEditingItem(null);
+          setFormData({
+            name: '',
+            description: '',
+            price: 15.49,
+            category: 'main',
+            is_active: true,
+            allergens: '',
+            dietary_info: ''
+          });
+          setShowAddModal(true);
+        }}
+        className="font-semibold"
+      >
+        <PlusIcon className="h-5 w-5" />
+        Add Menu Item
+      </NavLink>
+    </NavGroup>
   );
 
   return (

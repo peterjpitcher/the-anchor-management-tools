@@ -11,6 +11,8 @@ import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { Button } from '@/components/ui-v2/forms/Button';
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup';
+import { NavLink } from '@/components/ui-v2/navigation/NavLink';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { Stat } from '@/components/ui-v2/display/Stat';
@@ -130,14 +132,12 @@ export default function TableBookingMonitoringPage() {
   }
 
   const navActions = (
-    <Button
-      variant="secondary"
-      size="sm"
-      onClick={loadMonitoringData}
-      leftIcon={<ArrowPathIcon className="h-4 w-4" />}
-    >
-      Refresh
-    </Button>
+    <NavGroup>
+      <NavLink onClick={loadMonitoringData}>
+        <ArrowPathIcon className="h-4 w-4" />
+        Refresh
+      </NavLink>
+    </NavGroup>
   );
 
   return (

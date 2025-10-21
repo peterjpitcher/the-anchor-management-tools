@@ -7,6 +7,8 @@ import { getEmailConfigStatus } from '@/app/actions/email'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Button } from '@/components/ui-v2/forms/Button'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
@@ -216,105 +218,78 @@ export default function InvoiceDetailPage() {
   }, 0) || 0
 
   const navActions = (
-    <div className="flex flex-wrap gap-2">
+    <NavGroup>
       {invoice.status === 'draft' && canEdit && (
-        <>
-          <Button
-            onClick={() => handleStatusChange('sent')}
-            disabled={actionLoading || !canEdit}
-            loading={actionLoading}
-            variant="ghost"
-            size="sm"
-            className="text-white hover:text-white/80 hover:bg-white/10"
-            leftIcon={<Mail className="h-4 w-4" />}
-          >
-            <span className="hidden sm:inline">Mark as Sent</span>
-            <span className="sm:hidden">Send</span>
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => router.push(`/invoices/${invoice.id}/edit`)}
-            disabled={actionLoading}
-            size="sm"
-            className="text-white hover:text-white/80 hover:bg-white/10"
-            leftIcon={<Edit className="h-4 w-4" />}
-          >
-            Edit
-          </Button>
-        </>
+        <NavLink
+          onClick={actionLoading || !canEdit ? undefined : () => handleStatusChange('sent')}
+          disabled={actionLoading || !canEdit}
+        >
+          <Mail className="h-4 w-4" />
+          <span className="hidden sm:inline">Mark as Sent</span>
+          <span className="sm:hidden">Send</span>
+        </NavLink>
+      )}
+
+      {invoice.status === 'draft' && canEdit && (
+        <NavLink href={`/invoices/${invoice.id}/edit`}>
+          <Edit className="h-4 w-4" />
+          Edit
+        </NavLink>
       )}
 
       {invoice.status === 'sent' && canEdit && (
-        <Button
-          onClick={() => handleStatusChange('paid')}
+        <NavLink
+          onClick={actionLoading || !canEdit ? undefined : () => handleStatusChange('paid')}
           disabled={actionLoading || !canEdit}
-          loading={actionLoading}
-          variant="ghost"
-          size="sm"
-          className="text-white hover:text-white/80 hover:bg-white/10"
-          leftIcon={<CheckCircle className="h-4 w-4" />}
         >
+          <CheckCircle className="h-4 w-4" />
           <span className="hidden sm:inline">Mark as Paid</span>
           <span className="sm:hidden">Paid</span>
-        </Button>
+        </NavLink>
       )}
 
       {emailConfigured && canEdit && (
-        <>
-          <Button
-            variant="ghost"
-            onClick={() => setShowEmailModal(true)}
-            disabled={actionLoading || !canEdit}
-            size="sm"
-            className="text-white hover:text-white/80 hover:bg-white/10"
-            leftIcon={<Mail className="h-4 w-4" />}
-          >
-            <span className="hidden sm:inline">Send Email</span>
-            <span className="sm:hidden">Email</span>
-          </Button>
-          {(invoice.status === 'overdue' ||
-            (invoice.status === 'sent' && new Date(invoice.due_date) < new Date())) && (
-            <Button
-              variant="ghost"
-              onClick={() => setShowChaseModal(true)}
-              disabled={actionLoading || !canEdit}
-              size="sm"
-              leftIcon={<Clock className="h-4 w-4" />}
-              className="text-white hover:text-white/80 hover:bg-white/10"
-            >
-              <span className="hidden sm:inline">Chase Payment</span>
-              <span className="sm:hidden">Chase</span>
-            </Button>
-          )}
-        </>
+        <NavLink
+          onClick={actionLoading || !canEdit ? undefined : () => setShowEmailModal(true)}
+          disabled={actionLoading || !canEdit}
+        >
+          <Mail className="h-4 w-4" />
+          <span className="hidden sm:inline">Send Email</span>
+          <span className="sm:hidden">Email</span>
+        </NavLink>
       )}
 
-      <Button
-        variant="ghost"
-        onClick={() => window.open(`/api/invoices/${invoice.id}/pdf`, '_blank')}
+      {emailConfigured && canEdit && (invoice.status === 'overdue' || (invoice.status === 'sent' && new Date(invoice.due_date) < new Date())) && (
+        <NavLink
+          onClick={actionLoading || !canEdit ? undefined : () => setShowChaseModal(true)}
+          disabled={actionLoading || !canEdit}
+        >
+          <Clock className="h-4 w-4" />
+          <span className="hidden sm:inline">Chase Payment</span>
+          <span className="sm:hidden">Chase</span>
+        </NavLink>
+      )}
+
+      <NavLink
+        onClick={actionLoading ? undefined : () => window.open(`/api/invoices/${invoice.id}/pdf`, '_blank')}
         disabled={actionLoading}
-        size="sm"
-        className="text-white hover:text-white/80 hover:bg-white/10"
-        leftIcon={<Download className="h-4 w-4" />}
       >
+        <Download className="h-4 w-4" />
         <span className="hidden sm:inline">Download PDF</span>
         <span className="sm:hidden">PDF</span>
-      </Button>
+      </NavLink>
 
       {invoice.status === 'draft' && canDelete && (
-        <Button
-          variant="ghost"
-          onClick={() => setShowDeleteConfirm(true)}
+        <NavLink
+          onClick={actionLoading ? undefined : () => setShowDeleteConfirm(true)}
           disabled={actionLoading}
-          loading={actionLoading}
-          size="sm"
-          className="text-white hover:text-white/80 hover:bg-white/10"
-          leftIcon={<Trash2 className="h-4 w-4" />}
+          className="text-red-200"
         >
+          <Trash2 className="h-4 w-4" />
           Delete
-        </Button>
+        </NavLink>
       )}
-    </div>
+    </NavGroup>
   )
 
   return (

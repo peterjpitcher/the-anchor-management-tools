@@ -14,7 +14,8 @@ import {
 import { approveSms, rejectSms, sendApprovedSms } from '@/app/actions/privateBookingActions'
 import { formatDateFull, formatDateTime12Hour } from '@/lib/dateUtils'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
@@ -120,11 +121,11 @@ export default async function SmsQueuePage() {
       subtitle="Review and approve SMS messages for private bookings"
       backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
       navActions={
-        <div className="flex flex-wrap items-center gap-2">
-          <LinkButton href="/private-bookings/settings" variant="secondary">
+        <NavGroup>
+          <NavLink href="/private-bookings/settings">
             Settings Home
-          </LinkButton>
-        </div>
+          </NavLink>
+        </NavGroup>
       }
     >
       <div className="space-y-6">

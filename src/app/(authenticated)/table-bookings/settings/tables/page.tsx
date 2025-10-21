@@ -20,6 +20,8 @@ import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { Button } from '@/components/ui-v2/forms/Button';
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup';
+import { NavLink } from '@/components/ui-v2/navigation/NavLink';
 import { Input } from '@/components/ui-v2/forms/Input';
 import { Checkbox } from '@/components/ui-v2/forms/Checkbox';
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
@@ -247,12 +249,12 @@ export default function TableConfigurationPage() {
   }
 
   const navActions = (
-    <Button
-      onClick={() => setShowAddTable(true)}
-      leftIcon={<PlusIcon className="h-5 w-5" />}
-    >
-      Add Table
-    </Button>
+    <NavGroup>
+      <NavLink onClick={() => setShowAddTable(true)} className="font-semibold">
+        <PlusIcon className="h-5 w-5" />
+        Add Table
+      </NavLink>
+    </NavGroup>
   );
 
   return (

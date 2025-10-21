@@ -14,6 +14,8 @@ import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Modal } from '@/components/ui-v2/overlay/Modal'
 import { Form } from '@/components/ui-v2/forms/Form'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
@@ -280,10 +282,12 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
   ]
 
   const navActions = canManage ? (
-    <Button onClick={openNewTemplateModal}>
-      <PlusIcon className="mr-2 h-4 w-4" />
-      New Template
-    </Button>
+    <NavGroup>
+      <NavLink onClick={openNewTemplateModal} className="font-semibold">
+        <PlusIcon className="h-4 w-4" />
+        New Template
+      </NavLink>
+    </NavGroup>
   ) : null
 
   return (

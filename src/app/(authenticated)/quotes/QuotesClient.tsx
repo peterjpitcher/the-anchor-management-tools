@@ -11,6 +11,8 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
+import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Select } from '@/components/ui-v2/forms/Select'
 import { Stat, StatGroup } from '@/components/ui-v2/display/Stat'
@@ -99,27 +101,27 @@ export default function QuotesClient({
   const [error, setError] = useState<string | null>(initialError)
 
   const navActions = (
-    <div className="flex flex-wrap gap-2">
-      <LinkButton href="/invoices" variant="secondary">
-        <FileText className="h-4 w-4 mr-1 sm:mr-2" />
+    <NavGroup>
+      <NavLink href="/invoices">
+        <FileText className="h-4 w-4" />
         <span className="hidden sm:inline">Invoices</span>
         <span className="sm:hidden">Inv</span>
-      </LinkButton>
-      <LinkButton
+      </NavLink>
+      <NavLink
         href="/quotes/new"
-        variant="primary"
         disabled={!resolvedPermissions.canCreate}
         title={
           resolvedPermissions.canCreate
             ? undefined
             : 'You need invoice create permission to add quotes.'
         }
+        className="font-semibold"
       >
-        <Plus className="h-4 w-4 mr-1 sm:mr-2" />
+        <Plus className="h-4 w-4" />
         <span className="hidden sm:inline">New Quote</span>
         <span className="sm:hidden">New</span>
-      </LinkButton>
-    </div>
+      </NavLink>
+    </NavGroup>
   )
 
   const loadData = useCallback(async () => {
