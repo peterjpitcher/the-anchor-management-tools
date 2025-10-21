@@ -39,7 +39,7 @@ export default async function RolesPage() {
       title="Role Management"
       subtitle="Manage roles and permissions for your organization"
       backButton={{ label: 'Back to Settings', href: '/settings' }}
-      headerActions={
+      navActions={
         canManage ? (
           <LinkButton href="/roles/new" variant="primary">
             New Role

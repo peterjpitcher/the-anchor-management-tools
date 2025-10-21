@@ -119,7 +119,7 @@ export default async function SmsQueuePage() {
       title="SMS Queue"
       subtitle="Review and approve SMS messages for private bookings"
       backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
-      headerActions={
+      navActions={
         <div className="flex flex-wrap items-center gap-2">
           <LinkButton href="/private-bookings/settings" variant="secondary">
             Settings Home

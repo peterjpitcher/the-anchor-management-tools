@@ -279,7 +279,7 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
     { label: 'Message Templates' },
   ]
 
-  const headerActions = canManage ? (
+  const navActions = canManage ? (
     <Button onClick={openNewTemplateModal}>
       <PlusIcon className="mr-2 h-4 w-4" />
       New Template
@@ -292,7 +292,7 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
       subtitle="Manage SMS templates for automated messages"
       breadcrumbs={breadcrumbs}
       backButton={{ label: 'Back to Settings', href: '/settings' }}
-      headerActions={headerActions}
+      navActions={navActions}
     >
       <div className="space-y-6">
         {error && <Alert variant="error" title="Error" description={error} />}

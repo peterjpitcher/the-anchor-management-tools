@@ -282,7 +282,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
     return acc + (itemAfterQuoteDiscount * (item.vat_rate / 100))
   }, 0) || 0
 
-  const headerActions = (
+  const navActions = (
     <div className="flex flex-wrap gap-2">
       {quote.status === 'draft' && (
         <>
@@ -389,7 +389,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
   )
 
   return (
-    <PageLayout {...layoutProps} headerActions={headerActions}>
+    <PageLayout {...layoutProps} navActions={navActions}>
       <div className="mb-2">
         <Badge variant={getStatusVariant(quote.status)}>
           {getStatusIcon(quote.status)}

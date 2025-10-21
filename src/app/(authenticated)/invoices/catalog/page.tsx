@@ -193,7 +193,7 @@ export default function LineItemCatalogPage() {
       title="Line Item Catalog"
       subtitle="Manage reusable line items for invoices and quotes"
       backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-      headerActions={
+      navActions={
         <Button
           onClick={() => openForm()}
           leftIcon={<Plus className="h-4 w-4" />}

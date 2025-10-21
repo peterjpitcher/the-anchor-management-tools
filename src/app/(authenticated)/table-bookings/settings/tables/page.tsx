@@ -246,7 +246,7 @@ export default function TableConfigurationPage() {
     );
   }
 
-  const headerActions = (
+  const navActions = (
     <Button
       onClick={() => setShowAddTable(true)}
       leftIcon={<PlusIcon className="h-5 w-5" />}
@@ -258,7 +258,7 @@ export default function TableConfigurationPage() {
   return (
     <PageLayout
       {...layoutProps}
-      headerActions={headerActions}
+      navActions={navActions}
     >
       <div className="space-y-6">
         {error && (

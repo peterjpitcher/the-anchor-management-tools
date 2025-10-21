@@ -193,7 +193,7 @@ export default function RecurringInvoicesPage() {
       title="Recurring Invoices"
       subtitle="Manage automated invoice generation"
       breadcrumbs={[{ label: 'Invoices', href: '/invoices' }]}
-      headerActions={
+      navActions={
         <Button
           onClick={() => router.push('/invoices/recurring/new')}
           leftIcon={<Plus className="h-4 w-4" />}

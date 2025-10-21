@@ -366,7 +366,7 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
     }
   }
 
-  const headerActions = (
+  const navActions = (
     <div className="flex flex-wrap items-center gap-2">
       <Button
         variant="secondary"
@@ -400,7 +400,7 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
         label: 'Back to Settings',
         href: '/settings'
       }}
-      headerActions={headerActions}
+      navActions={navActions}
     >
       <div className="space-y-6">
         <Card id="links" variant="bordered">

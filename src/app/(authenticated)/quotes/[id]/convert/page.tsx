@@ -153,7 +153,7 @@ export default function ConvertQuotePage({ params }: { params: Promise<{ id: str
       title="Convert Quote to Invoice"
       subtitle="Review the quote details before converting"
       backButton={{ label: 'Back to Quote', href: `/quotes/${quoteId}` }}
-      headerActions={
+      navActions={
         <LinkButton href="/quotes" variant="secondary">
           All Quotes
         </LinkButton>

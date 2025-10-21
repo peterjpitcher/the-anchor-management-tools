@@ -147,7 +147,7 @@ export default async function VendorsPage() {
       title="Vendor Database"
       subtitle="Manage preferred vendors and service providers"
       backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
-      headerActions={
+      navActions={
         <div className="flex flex-wrap items-center gap-2">
           <LinkButton href="/private-bookings/settings" variant="secondary">
             Settings Home

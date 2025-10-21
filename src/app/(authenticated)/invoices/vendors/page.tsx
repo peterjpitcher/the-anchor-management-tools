@@ -341,7 +341,7 @@ export default function VendorsPage() {
       title="Vendors"
       subtitle="Manage your invoice vendors"
       backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-      headerActions={
+      navActions={
         <Button
           onClick={() => openForm()}
           leftIcon={<Plus className="h-4 w-4" />}
