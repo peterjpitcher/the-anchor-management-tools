@@ -63,21 +63,21 @@ async function ensureCustomerForPhone(
   try {
     const standardizedPhone = formatPhoneForStorage(phone)
     const variants = generatePhoneVariants(standardizedPhone)
+    const numbersToMatch = variants.length > 0 ? variants : [standardizedPhone]
 
-    let query = supabase.from('customers').select('id').limit(1)
-    if (variants.length === 1) {
-      query = query.eq('mobile_number', variants[0])
-    } else if (variants.length > 1) {
-      const orFilter = variants.map(value => `mobile_number.eq.${value}`).join(',')
-      query = query.or(orFilter)
-    } else {
-      query = query.eq('mobile_number', standardizedPhone)
+    const { data: existingMatches, error: lookupError } = await supabase
+      .from('customers')
+      .select('id')
+      .in('mobile_number', numbersToMatch)
+      .order('created_at', { ascending: true })
+      .limit(1)
+
+    if (lookupError) {
+      console.error('Failed to look up customer for SMS logging:', lookupError)
     }
 
-    const { data: existing, error: lookupError } = await query.maybeSingle()
-
-    if (!lookupError && existing?.id) {
-      return { customerId: existing.id, standardizedPhone }
+    if (existingMatches && existingMatches.length > 0) {
+      return { customerId: existingMatches[0].id, standardizedPhone }
     }
 
     const sanitizedFirstName = fallback.firstName?.trim()
@@ -111,6 +111,19 @@ async function ensureCustomerForPhone(
       .single()
 
     if (insertError) {
+      if ((insertError as any)?.code === '23505') {
+        const { data: conflictMatches } = await supabase
+          .from('customers')
+          .select('id')
+          .in('mobile_number', numbersToMatch)
+          .order('created_at', { ascending: true })
+          .limit(1)
+
+        if (conflictMatches && conflictMatches.length > 0) {
+          return { customerId: conflictMatches[0].id, standardizedPhone }
+        }
+      }
+
       console.error('Failed to create customer for SMS logging:', insertError)
       return { customerId: null, standardizedPhone }
     }

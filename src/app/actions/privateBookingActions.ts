@@ -907,6 +907,7 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
 // Update booking status
 export async function updateBookingStatus(id: string, status: BookingStatus) {
   const supabase = await createClient()
+  const calendarConfigured = isCalendarConfigured()
   
   const canEdit = await checkUserPermission('private_bookings', 'edit')
   if (!canEdit) {
@@ -930,47 +931,86 @@ export async function updateBookingStatus(id: string, status: BookingStatus) {
   console.log('[privateBookingActions] Status updated, checking calendar sync:', {
     bookingId: id,
     newStatus: status,
-    isConfigured: isCalendarConfigured()
+    isConfigured: calendarConfigured
   })
 
-  if (isCalendarConfigured()) {
-    try {
-      // Fetch the full booking details for calendar sync
-      const { data: updatedBooking } = await supabase
-        .from('private_bookings')
-        .select('*')
-        .eq('id', id)
-        .single()
+  try {
+    const { data: updatedBooking, error: fetchError } = await supabase
+      .from('private_bookings')
+      .select('*')
+      .eq('id', id)
+      .single()
 
-      if (updatedBooking) {
-        console.log('[privateBookingActions] Syncing calendar after status change:', {
-          bookingId: id,
-          status: updatedBooking.status,
-          hasCalendarEventId: !!updatedBooking.calendar_event_id
-        })
-
-        const calendarEventId = await syncCalendarEvent(updatedBooking)
-        
-        if (calendarEventId && !updatedBooking.calendar_event_id) {
-          // Update the booking with the new calendar event ID
-          await supabase
-            .from('private_bookings')
-            .update({ calendar_event_id: calendarEventId })
-            .eq('id', id)
-        }
-        
-        console.log('[privateBookingActions] Calendar sync completed after status change:', {
-          bookingId: id,
-          calendarEventId,
-          statusInCalendar: status
-        })
-      }
-    } catch (error) {
-      console.error('[privateBookingActions] Calendar sync exception during status update:', error)
-      // Don't fail the status update if calendar sync fails
+    if (fetchError) {
+      console.error('[privateBookingActions] Failed to fetch booking for calendar sync:', fetchError)
+      revalidatePath('/private-bookings')
+      revalidatePath(`/private-bookings/${id}`)
+      return { success: true }
     }
-  } else {
-    console.log('[privateBookingActions] Calendar not configured, skipping sync')
+
+    if (!updatedBooking) {
+      console.warn('[privateBookingActions] No booking data found for calendar sync after status update')
+      revalidatePath('/private-bookings')
+      revalidatePath(`/private-bookings/${id}`)
+      return { success: true }
+    }
+
+    if (status === 'cancelled') {
+      console.log('[privateBookingActions] Booking cancelled, removing calendar event if present:', {
+        bookingId: id,
+        hasCalendarEventId: !!updatedBooking.calendar_event_id
+      })
+
+      if (updatedBooking.calendar_event_id) {
+        if (calendarConfigured) {
+          try {
+            const deleted = await deleteCalendarEvent(updatedBooking.calendar_event_id)
+            console.log('[privateBookingActions] Calendar deletion triggered due to cancellation:', {
+              bookingId: id,
+              eventId: updatedBooking.calendar_event_id,
+              success: deleted
+            })
+
+            if (deleted) {
+              await supabase
+                .from('private_bookings')
+                .update({ calendar_event_id: null })
+                .eq('id', id)
+            }
+          } catch (error) {
+            console.error('[privateBookingActions] Error deleting calendar event for cancelled booking:', error)
+          }
+        } else {
+          console.log('[privateBookingActions] Calendar not configured; skipping event deletion for cancelled booking')
+        }
+      }
+    } else if (calendarConfigured) {
+      console.log('[privateBookingActions] Syncing calendar after status change:', {
+        bookingId: id,
+        status: updatedBooking.status,
+        hasCalendarEventId: !!updatedBooking.calendar_event_id
+      })
+
+      const calendarEventId = await syncCalendarEvent(updatedBooking)
+      
+      if (calendarEventId && !updatedBooking.calendar_event_id) {
+        await supabase
+          .from('private_bookings')
+          .update({ calendar_event_id: calendarEventId })
+          .eq('id', id)
+      }
+      
+      console.log('[privateBookingActions] Calendar sync completed after status change:', {
+        bookingId: id,
+        calendarEventId,
+        statusInCalendar: status
+      })
+    } else {
+      console.log('[privateBookingActions] Calendar not configured, skipping sync')
+    }
+  } catch (error) {
+    console.error('[privateBookingActions] Calendar sync exception during status update:', error)
+    // Don't fail the status update if calendar operations fail
   }
 
   revalidatePath('/private-bookings')
@@ -1408,7 +1448,7 @@ export async function cancelPrivateBooking(bookingId: string, reason?: string) {
   // Fetch booking details needed for SMS and to check status
   const { data: booking, error: fetchError } = await supabase
     .from('private_bookings')
-    .select('id, status, event_date, customer_first_name, customer_last_name, customer_name, contact_phone')
+    .select('id, status, event_date, customer_first_name, customer_last_name, customer_name, contact_phone, calendar_event_id')
     .eq('id', bookingId)
     .single()
 
@@ -1448,6 +1488,32 @@ export async function cancelPrivateBooking(bookingId: string, reason?: string) {
   if (updateError) {
     console.error('Error cancelling private booking:', updateError)
     return { error: 'Failed to cancel booking' }
+  }
+
+  const calendarConfigured = isCalendarConfigured()
+
+  if (booking.calendar_event_id) {
+    if (calendarConfigured) {
+      try {
+        const deleted = await deleteCalendarEvent(booking.calendar_event_id)
+        console.log('[cancelPrivateBooking] Deleted calendar event after cancellation:', {
+          bookingId,
+          eventId: booking.calendar_event_id,
+          success: deleted
+        })
+
+        if (deleted) {
+          await supabase
+            .from('private_bookings')
+            .update({ calendar_event_id: null })
+            .eq('id', bookingId)
+        }
+      } catch (error) {
+        console.error('[cancelPrivateBooking] Failed to delete calendar event for cancelled booking:', error)
+      }
+    } else {
+      console.log('[cancelPrivateBooking] Calendar not configured; skipping event deletion for cancelled booking')
+    }
   }
 
   // Send SMS to customer if phone exists

@@ -1,8 +1,12 @@
 import { google } from 'googleapis'
+import { addHours } from 'date-fns'
+import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
 import type { PrivateBooking } from '@/types/private-bookings'
 
 // Initialize the calendar API
 const calendar = google.calendar('v3')
+const CALENDAR_TIME_ZONE = 'Europe/London'
+const RFC3339_FORMAT = "yyyy-MM-dd'T'HH:mm:ssXXX"
 
 // Helper function to safely parse JSON with proper escaping
 function parseServiceAccountKey(jsonString: string): any {
@@ -167,21 +171,25 @@ function formatEventTitle(booking: PrivateBooking): string {
 }
 
 // Combine date and time strings
-function combineDateAndTime(date: string, time: string): string {
-  // Ensure we have valid inputs
+function normalizeTime(time: string): string {
+  const [hourRaw = '00', minuteRaw = '00', secondRaw] = time.split(':')
+  const hour = hourRaw.padStart(2, '0')
+  const minute = minuteRaw.padStart(2, '0')
+  const second = (secondRaw ?? '00').padStart(2, '0')
+  return `${hour}:${minute}:${second}`
+}
+
+function combineDateAndTime(date: string, time: string): Date {
   if (!date || !time) throw new Error('Date and time are required')
-  
-  // Parse the date (YYYY-MM-DD) and time (HH:MM or HH:MM:SS)
   const [year, month, day] = date.split('-')
-  const timeParts = time.split(':')
-  const hour = timeParts[0].padStart(2, '0')
-  const minute = timeParts[1].padStart(2, '0')
-  const second = timeParts[2] ? timeParts[2].padStart(2, '0') : '00'
-  
-  // Create an ISO-like datetime string without timezone conversion
-  // This represents the exact time entered, which will be interpreted
-  // in the timezone specified in the Google Calendar event (Europe/London)
-  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${hour}:${minute}:${second}`
+  const normalizedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+  const normalizedTime = normalizeTime(time)
+  const localDateTime = `${normalizedDate}T${normalizedTime}`
+  return fromZonedTime(localDateTime, CALENDAR_TIME_ZONE)
+}
+
+function formatForCalendar(date: Date): string {
+  return formatInTimeZone(date, CALENDAR_TIME_ZONE, RFC3339_FORMAT)
 }
 
 // Format booking details for calendar description
@@ -233,21 +241,23 @@ export async function syncCalendarEvent(booking: PrivateBooking): Promise<string
     const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary'
     console.log('[Google Calendar] Using calendar ID:', calendarId)
 
-    const startDateTime = combineDateAndTime(booking.event_date, booking.start_time)
-    const endDateTime = booking.end_time 
+    const startUtc = combineDateAndTime(booking.event_date, booking.start_time)
+    const endUtc = booking.end_time
       ? combineDateAndTime(booking.event_date, booking.end_time)
-      : combineDateAndTime(booking.event_date, booking.start_time) // Default to 1 hour if no end time
+      : addHours(startUtc, 1)
+    const startDateTime = formatForCalendar(startUtc)
+    const endDateTime = formatForCalendar(endUtc)
     
     const event = {
       summary: formatEventTitle(booking),
       description: formatBookingDetails(booking),
       start: {
         dateTime: startDateTime,
-        timeZone: 'Europe/London',
+        timeZone: CALENDAR_TIME_ZONE,
       },
       end: {
         dateTime: endDateTime,
-        timeZone: 'Europe/London',
+        timeZone: CALENDAR_TIME_ZONE,
       },
       location: 'The Anchor Pub',
       colorId: getEventColor(booking.status),
