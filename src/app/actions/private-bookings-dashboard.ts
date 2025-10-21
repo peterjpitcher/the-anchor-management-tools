@@ -29,6 +29,8 @@ const SELECT_FIELDS = `
   event_type,
   event_date,
   start_time,
+  end_time,
+  end_time_next_day,
   status,
   guest_count,
   total_amount,
@@ -47,6 +49,8 @@ type BookingRow = {
   id: string
   event_date: string | null
   start_time?: string | null
+  end_time?: string | null
+  end_time_next_day?: boolean | null
   status: string
   deposit_paid_date: string | null
   deposit_status?: string | null
@@ -334,7 +338,7 @@ export async function fetchPrivateBookingsForCalendar() {
 
   const { data, error } = await supabase
     .from('private_bookings')
-    .select('id, customer_name, event_date, start_time, end_time, status, event_type, guest_count')
+    .select('id, customer_name, event_date, start_time, end_time, end_time_next_day, status, event_type, guest_count')
     .order('event_date', { ascending: true })
 
   if (error) {

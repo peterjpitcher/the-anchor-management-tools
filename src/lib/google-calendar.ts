@@ -1,5 +1,5 @@
 import { google } from 'googleapis'
-import { addHours } from 'date-fns'
+import { addDays, addHours } from 'date-fns'
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
 import type { PrivateBooking } from '@/types/private-bookings'
 
@@ -179,13 +179,14 @@ function normalizeTime(time: string): string {
   return `${hour}:${minute}:${second}`
 }
 
-function combineDateAndTime(date: string, time: string): Date {
+function combineDateAndTime(date: string, time: string, nextDay = false): Date {
   if (!date || !time) throw new Error('Date and time are required')
   const [year, month, day] = date.split('-')
   const normalizedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
   const normalizedTime = normalizeTime(time)
   const localDateTime = `${normalizedDate}T${normalizedTime}`
-  return fromZonedTime(localDateTime, CALENDAR_TIME_ZONE)
+  const zoned = fromZonedTime(localDateTime, CALENDAR_TIME_ZONE)
+  return nextDay ? addDays(zoned, 1) : zoned
 }
 
 function formatForCalendar(date: Date): string {
@@ -243,7 +244,7 @@ export async function syncCalendarEvent(booking: PrivateBooking): Promise<string
 
     const startUtc = combineDateAndTime(booking.event_date, booking.start_time)
     const endUtc = booking.end_time
-      ? combineDateAndTime(booking.event_date, booking.end_time)
+      ? combineDateAndTime(booking.event_date, booking.end_time, booking.end_time_next_day)
       : addHours(startUtc, 1)
     const startDateTime = formatForCalendar(startUtc)
     const endDateTime = formatForCalendar(endUtc)
