@@ -117,7 +117,7 @@ export default function TableBookingsDashboard() {
     { label: 'Actions', href: '#quick-actions' },
   ]
 
-  const headerActions = (
+  const navActions = (
     <NavGroup>
       {canCreate && (
         <NavLink href="/table-bookings/new">
@@ -172,7 +172,7 @@ export default function TableBookingsDashboard() {
   }
 
   return (
-    <PageLayout {...layoutProps} navItems={navItems} headerActions={headerActions}>
+    <PageLayout {...layoutProps} navItems={navItems} navActions={navActions}>
       <div className="space-y-4 sm:space-y-6 px-0 sm:px-6">
         {/* Stats Grid - Hidden on mobile */}
         <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
