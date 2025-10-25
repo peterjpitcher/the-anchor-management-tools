@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { formatDistanceToNow } from 'date-fns'
 import { 
   ExclamationTriangleIcon, 
@@ -78,6 +77,7 @@ interface QueueResponse {
   jobs: Job[]
   stats: QueueStats
   lastSyncedAt: string
+  syncedWithTwilio?: boolean
 }
 
 const QUEUED_STATUSES = new Set(['queued', 'accepted', 'scheduled'])
@@ -89,7 +89,6 @@ const DELIVERED_STATUSES = new Set(['delivered', 'received'])
 export const dynamic = 'force-dynamic'
 
 export default function SMSQueueStatusPage() {
-  const supabase = useSupabase()
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('queued')
   const [messages, setMessages] = useState<QueuedMessage[]>([])
@@ -105,10 +104,18 @@ export default function SMSQueueStatusPage() {
   })
   const [refreshing, setRefreshing] = useState(false)
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
+  const [lastTwilioSyncAt, setLastTwilioSyncAt] = useState<string | null>(null)
+  const [reconciling, setReconciling] = useState(false)
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (options: { sync?: boolean; withLoader?: boolean; suppressErrorToast?: boolean } = {}) => {
+    const { sync = false, withLoader = false, suppressErrorToast = false } = options
+
+    if (withLoader) {
+      setLoading(true)
+    }
+
     try {
-      const response = await fetch('/api/messages/queue', {
+      const response = await fetch(`/api/messages/queue${sync ? '?sync=1' : ''}`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json'
@@ -136,27 +143,47 @@ export default function SMSQueueStatusPage() {
       setMessages(normalizedMessages)
       setJobs(normalizedJobs)
       setStats(data.stats)
-      setLastSyncedAt(data.lastSyncedAt)
+      setLastSyncedAt(data.lastSyncedAt ?? null)
+      if (data.syncedWithTwilio) {
+        setLastTwilioSyncAt(data.lastSyncedAt ?? null)
+      }
+      return true
     } catch (error) {
       console.error('Error loading SMS queue data:', error)
-      toast.error('Failed to load SMS queue data')
+      if (!suppressErrorToast) {
+        toast.error('Failed to load SMS queue data')
+      }
+      return false
     } finally {
-      setLoading(false)
       setRefreshing(false)
+      if (withLoader) {
+        setLoading(false)
+      }
     }
   }, [])
 
   useEffect(() => {
-    void loadData()
+    void loadData({ withLoader: true })
     const interval = setInterval(() => {
       void loadData()
-    }, 10000)
+    }, 15000)
     return () => clearInterval(interval)
   }, [loadData])
 
   const handleRefresh = async () => {
     setRefreshing(true)
     await loadData()
+  }
+
+  const handleReconcileAll = async () => {
+    setReconciling(true)
+    const success = await loadData({ sync: true, suppressErrorToast: true })
+    if (success) {
+      toast.success('Reconciled pending messages with Twilio')
+    } else {
+      toast.error('Failed to reconcile with Twilio')
+    }
+    setReconciling(false)
   }
 
   const reconcileMessage = async (messageId: string) => {
@@ -205,16 +232,24 @@ export default function SMSQueueStatusPage() {
 
   const deleteMessage = async (messageId: string) => {
     try {
-      const { error } = await supabase
-        .from('messages')
-        .delete()
-        .eq('id', messageId)
+      const response = await fetch('/api/messages/queue', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ action: 'delete', messageId })
+      })
 
-      if (error) throw error
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({ error: 'Failed to delete message' }))
+        throw new Error(payload.error || 'Failed to delete message')
+      }
 
       toast.success('Message deleted')
       await loadData()
-    } catch {
+    } catch (error) {
+      console.error('Failed to delete queued message', error)
       toast.error('Failed to delete message')
     }
   }
@@ -268,6 +303,24 @@ export default function SMSQueueStatusPage() {
           <>
             <ArrowPathIcon className="h-4 w-4 mr-2" />
             Refresh
+          </>
+        )}
+      </Button>
+      <Button
+        onClick={handleReconcileAll}
+        variant="secondary"
+        size="sm"
+        disabled={reconciling || loading}
+      >
+        {reconciling ? (
+          <>
+            <ArrowPathIcon className="h-4 w-4 mr-2 animate-spin" />
+            Reconciling...
+          </>
+        ) : (
+          <>
+            <ArrowPathIcon className="h-4 w-4 mr-2" />
+            Reconcile Twilio
           </>
         )}
       </Button>
@@ -413,10 +466,17 @@ export default function SMSQueueStatusPage() {
                 color={stats.totalJobs > 0 ? "warning" : "default"} 
               />
             </StatGroup>
-            <div className="mt-4 text-sm text-gray-500">
-              Last synced {lastSyncedAt ? formatDistanceToNow(new Date(lastSyncedAt), { addSuffix: true }) : 'just now'}
+            <div className="mt-4 text-sm text-gray-500 flex flex-wrap gap-x-4 gap-y-2">
+              <span>
+                Last refreshed {lastSyncedAt ? formatDistanceToNow(new Date(lastSyncedAt), { addSuffix: true }) : 'just now'}
+              </span>
+              {lastTwilioSyncAt && (
+                <span>
+                  Last Twilio reconciliation {formatDistanceToNow(new Date(lastTwilioSyncAt), { addSuffix: true })}
+                </span>
+              )}
               {stats.oldestMessage && (
-                <span className="ml-4">
+                <span>
                   Oldest queued message {formatDistanceToNow(new Date(stats.oldestMessage), { addSuffix: true })}
                 </span>
               )}

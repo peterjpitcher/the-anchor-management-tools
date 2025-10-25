@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getInvoice, updateInvoiceStatus, deleteInvoice } from '@/app/actions/invoices'
 import { getEmailConfigStatus } from '@/app/actions/email'
@@ -20,6 +20,7 @@ import { EmailInvoiceModal } from '@/components/EmailInvoiceModal'
 import { ChasePaymentModal } from '@/components/ChasePaymentModal'
 import type { InvoiceWithDetails, InvoiceStatus } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
+import { calculateInvoiceTotals, type InvoiceTotalsResult } from '@/lib/invoiceCalculations'
 
 export default function InvoiceDetailPage() {
   const params = useParams()
@@ -37,6 +38,42 @@ export default function InvoiceDetailPage() {
   const [emailConfigured, setEmailConfigured] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const readOnly = !canEdit && !canDelete
+  const invoiceMath = useMemo(() => {
+    if (!invoice || !invoice.line_items || invoice.line_items.length === 0) {
+      return {
+        totals: {
+          subtotalBeforeInvoiceDiscount: 0,
+          invoiceDiscountAmount: 0,
+          vatAmount: 0,
+          totalAmount: 0,
+          lineBreakdown: [],
+        },
+        lineTotals: new Map<string, InvoiceTotalsResult['lineBreakdown'][number]>(),
+      }
+    }
+
+    const calcInput = invoice.line_items.map((item) => ({
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      discount_percentage: item.discount_percentage,
+      vat_rate: item.vat_rate,
+    }))
+
+    const totals = calculateInvoiceTotals(
+      calcInput,
+      invoice.invoice_discount_percentage || 0
+    )
+
+    const lineTotalsMap = new Map<string, InvoiceTotalsResult['lineBreakdown'][number]>()
+    invoice.line_items.forEach((item, index) => {
+      const breakdown = totals.lineBreakdown[index]
+      if (breakdown) {
+        lineTotalsMap.set(item.id, breakdown)
+      }
+    })
+
+    return { totals, lineTotals: lineTotalsMap }
+  }, [invoice])
 
   const rawInvoiceId = params?.id
   const invoiceId = Array.isArray(rawInvoiceId) ? rawInvoiceId[0] : rawInvoiceId ?? null
@@ -200,22 +237,7 @@ export default function InvoiceDetailPage() {
     )
   }
 
-  const subtotal = invoice.line_items?.reduce((acc, item) => {
-    const lineSubtotal = item.quantity * item.unit_price
-    const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
-    return acc + (lineSubtotal - lineDiscount)
-  }, 0) || 0
-
-  const invoiceDiscount = subtotal * (invoice.invoice_discount_percentage / 100)
-
-  const vat = invoice.line_items?.reduce((acc, item) => {
-    const itemSubtotal = item.quantity * item.unit_price
-    const itemDiscount = itemSubtotal * (item.discount_percentage / 100)
-    const itemAfterDiscount = itemSubtotal - itemDiscount
-    const itemShare = subtotal > 0 ? itemAfterDiscount / subtotal : 0
-    const itemAfterInvoiceDiscount = itemAfterDiscount - (invoiceDiscount * itemShare)
-    return acc + (itemAfterInvoiceDiscount * (item.vat_rate / 100))
-  }, 0) || 0
+  const { totals: invoiceTotals, lineTotals } = invoiceMath
 
   const navActions = (
     <NavGroup>
@@ -392,26 +414,16 @@ export default function InvoiceDetailPage() {
                 { key: 'unit_price', header: 'Unit Price', align: 'right', cell: (it: { unit_price: number }) => <span className="text-sm">£{it.unit_price.toFixed(2)}</span> },
                 { key: 'discount', header: 'Discount', align: 'right', cell: (it: { discount_percentage: number }) => <span className="text-sm text-green-600">{it.discount_percentage > 0 ? `-${it.discount_percentage}%` : ''}</span> },
                 { key: 'vat', header: 'VAT', align: 'right', cell: (it: { vat_rate: number }) => <span className="text-sm">{it.vat_rate}%</span> },
-                { key: 'total', header: 'Total', align: 'right', cell: (it: { quantity: number; unit_price: number; discount_percentage: number; vat_rate: number }) => {
-                  const lineSubtotal = it.quantity * it.unit_price
-                  const lineDiscount = lineSubtotal * (it.discount_percentage / 100)
-                  const lineAfterDiscount = lineSubtotal - lineDiscount
-                  const itemShare = subtotal > 0 ? lineAfterDiscount / subtotal : 0
-                  const lineAfterInvoiceDiscount = lineAfterDiscount - (invoiceDiscount * itemShare)
-                  const lineVat = lineAfterInvoiceDiscount * (it.vat_rate / 100)
-                  const lineTotal = lineAfterInvoiceDiscount + lineVat
-                  return <span className="text-sm font-medium">£{lineTotal.toFixed(2)}</span>
+                { key: 'total', header: 'Total', align: 'right', cell: (it: { id: string }) => {
+                  const breakdown = lineTotals.get(it.id)
+                  const total = breakdown ? breakdown.total : 0
+                  return <span className="text-sm font-medium">£{total.toFixed(2)}</span>
                 } },
               ]}
               emptyMessage="No line items"
-              renderMobileCard={(it: { description: string; quantity: number; unit_price: number; discount_percentage: number; vat_rate: number }) => {
-                const lineSubtotal = it.quantity * it.unit_price
-                const lineDiscount = lineSubtotal * (it.discount_percentage / 100)
-                const lineAfterDiscount = lineSubtotal - lineDiscount
-                const itemShare = subtotal > 0 ? lineAfterDiscount / subtotal : 0
-                const lineAfterInvoiceDiscount = lineAfterDiscount - (invoiceDiscount * itemShare)
-                const lineVat = lineAfterInvoiceDiscount * (it.vat_rate / 100)
-                const lineTotal = lineAfterInvoiceDiscount + lineVat
+              renderMobileCard={(it: { description: string; quantity: number; unit_price: number; discount_percentage: number; vat_rate: number; id: string }) => {
+                const breakdown = lineTotals.get(it.id)
+                const lineTotal = breakdown ? breakdown.total : 0
                 return (
                   <div className="border rounded-lg p-4 bg-gray-50">
                     <div className="font-medium text-sm mb-3">{it.description}</div>
@@ -435,21 +447,21 @@ export default function InvoiceDetailPage() {
             <div className="mt-6 pt-6 border-t space-y-2">
               <div className="flex justify-between text-sm">
                 <span>Subtotal:</span>
-                <span>£{subtotal.toFixed(2)}</span>
+                <span>£{invoiceTotals.subtotalBeforeInvoiceDiscount.toFixed(2)}</span>
               </div>
-              {invoice.invoice_discount_percentage > 0 && (
+              {invoiceTotals.invoiceDiscountAmount > 0 && (
                 <div className="flex justify-between text-sm text-green-600">
                   <span>Invoice Discount ({invoice.invoice_discount_percentage}%):</span>
-                  <span>-£{invoiceDiscount.toFixed(2)}</span>
+                  <span>-£{invoiceTotals.invoiceDiscountAmount.toFixed(2)}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm">
                 <span>VAT:</span>
-                <span>£{vat.toFixed(2)}</span>
+                <span>£{invoiceTotals.vatAmount.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-lg font-semibold pt-2 border-t">
                 <span>Total:</span>
-                <span>£{invoice.total_amount.toFixed(2)}</span>
+                <span>£{invoiceTotals.totalAmount.toFixed(2)}</span>
               </div>
             </div>
           </Card>

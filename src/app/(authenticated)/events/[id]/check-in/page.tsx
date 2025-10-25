@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
+import { checkUserPermission } from '@/app/actions/rbac'
 import EventCheckInClient from './EventCheckInClient'
 
 interface EventRecord {
@@ -21,6 +22,11 @@ export default async function EventCheckInPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
+  const canViewEvents = await checkUserPermission('events', 'view')
+  if (!canViewEvents) {
+    return notFound()
+  }
+
   const supabase = getSupabaseAdminClient()
 
   const { data: event, error } = await supabase

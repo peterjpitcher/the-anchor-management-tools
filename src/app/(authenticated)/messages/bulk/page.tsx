@@ -45,6 +45,7 @@ interface Customer {
   event_bookings?: {
     event_id: string
     seats: number | null
+    is_reminder_only: boolean
   }[]
   category_preferences?: {
     category_id: string
@@ -76,13 +77,19 @@ interface FilterOptions {
 export default function BulkMessagePage() {
   const supabase = useSupabase()
   const [customers, setCustomers] = useState<Customer[]>([])
-  const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([])
   const [selectedCustomers, setSelectedCustomers] = useState<Set<string>>(new Set())
   const [customMessage, setCustomMessage] = useState('')
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [sending, setSending] = useState(false)
   const [events, setEvents] = useState<Event[]>([])
   const [categories, setCategories] = useState<EventCategory[]>([])
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 50
+  const [hasMore, setHasMore] = useState(false)
+  const [totalMatches, setTotalMatches] = useState<number | null>(null)
+  const [approximateMatches, setApproximateMatches] = useState<number | null>(null)
+  const [matchesTruncated, setMatchesTruncated] = useState(false)
   // Removed unused showConfirm state
   const [filters, setFilters] = useState<FilterOptions>({
     smsOptIn: 'opted_in',
@@ -97,7 +104,13 @@ export default function BulkMessagePage() {
     categoryAttendance: 'all'
   })
 
-  const selectionSummary = `${selectedCustomers.size} of ${filteredCustomers.length} customers selected`
+  const matchesLabel = matchesTruncated
+    ? `${approximateMatches ?? 'Many'}+ matches`
+    : totalMatches !== null
+      ? `${totalMatches} matches`
+      : `${customers.length}${hasMore ? '+' : ''} loaded`
+  const selectionSummary = `${selectedCustomers.size} selected • ${matchesLabel}`
+  const allLoadedSelected = customers.length > 0 && customers.every(customer => selectedCustomers.has(customer.id))
   const navItems: HeaderNavItem[] = [
     { label: 'Filters', href: '#filters' },
     { label: 'Select', href: '#select-recipients' },
@@ -110,162 +123,123 @@ export default function BulkMessagePage() {
     </div>
   )
 
-  const loadData = useCallback(async () => {
+  const loadMeta = useCallback(async () => {
     try {
-      // Load customers with booking count, event bookings, and category preferences
-      const { data: customersData, error: customersError } = await supabase
-        .from('customers')
-        .select(`
-          *,
-          bookings(count),
-          event_bookings:bookings(event_id, seats),
-          category_preferences:customer_category_stats(category_id, times_attended)
-        `)
-        .order('first_name', { ascending: true })
-        .order('last_name', { ascending: true })
-
-      if (customersError) throw customersError
-
-      // Load events
       const { data: eventsData, error: eventsError } = await supabase
         .from('events')
-        .select('*, category:event_categories(*)')
+        .select('id, name, date, time, category_id')
         .order('date', { ascending: false })
         .order('time', { ascending: false })
+        .limit(200)
 
       if (eventsError) throw eventsError
 
-      // Load categories
       const categoriesResult = await getActiveEventCategories()
       if (!categoriesResult.data) throw new Error('Failed to load categories')
 
-      // Process customer data to include booking count, event bookings, and category preferences
-      const processedCustomers = customersData?.map((customer: Customer & {
-        bookings?: { count: number }[]
-        event_bookings?: { event_id: string; seats: number | null }[]
-        category_preferences?: { category_id: string; times_attended: number }[]
-      }) => ({
-        ...customer,
-        total_bookings: customer.bookings?.[0]?.count || 0,
-        event_bookings: customer.event_bookings || [],
-        category_preferences: customer.category_preferences || []
-      })) || []
-
-      setCustomers(processedCustomers)
       setEvents(eventsData || [])
       setCategories(categoriesResult.data)
     } catch (error) {
-      console.error('Error loading data:', error)
-      toast.error('Failed to load data')
-    } finally {
-      setLoading(false)
+      console.error('Error loading event metadata:', error)
+      toast.error('Failed to load messaging metadata')
     }
   }, [supabase])
 
-  useEffect(() => {
-    loadData()
-  }, [loadData])
+  const loadRecipients = useCallback(
+    async (options: { page?: number; reset?: boolean } = {}) => {
+      const targetPage = options.page ?? 1
+      const reset = options.reset ?? false
 
-  const applyFilters = useCallback(() => {
-    let filtered = [...customers]
+      if (reset || targetPage === 1) {
+        setLoading(true)
+      } else {
+        setLoadingMore(true)
+      }
 
-    // SMS opt-in filter
-    if (filters.smsOptIn === 'opted_in') {
-      filtered = filtered.filter(c => c.sms_opt_in === true)
-    } else if (filters.smsOptIn === 'not_opted_out') {
-      filtered = filtered.filter(c => c.sms_opt_in !== false)
-    }
+      if (reset) {
+        setCustomers([])
+        setPage(1)
+        setHasMore(false)
+        setTotalMatches(null)
+        setApproximateMatches(null)
+        setMatchesTruncated(false)
+      }
 
-    // Bookings filter
-    if (filters.hasBookings === 'with_bookings') {
-      filtered = filtered.filter(c => (c.total_bookings || 0) > 0)
-    } else if (filters.hasBookings === 'without_bookings') {
-      filtered = filtered.filter(c => (c.total_bookings || 0) === 0)
-    }
+      try {
+        const response = await fetch('/api/messages/bulk/customers', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify({
+            filters,
+            page: targetPage,
+            pageSize: PAGE_SIZE,
+          }),
+        })
 
-    // Event attendance filter
-    if (filters.eventId && filters.eventAttendance !== 'all') {
-      if (filters.eventAttendance === 'attending') {
-        filtered = filtered.filter(c => 
-          c.event_bookings?.some(b => b.event_id === filters.eventId)
-        )
-        
-        // Further filter by booking type if attending an event
-        if (filters.bookingType !== 'all') {
-          filtered = filtered.filter(c => {
-            const eventBooking = c.event_bookings?.find(b => b.event_id === filters.eventId)
-            if (!eventBooking) return false
-            
-            if (filters.bookingType === 'bookings_only') {
-              return eventBooking.seats !== null && eventBooking.seats > 0
-            } else if (filters.bookingType === 'reminders_only') {
-              return eventBooking.seats === null || eventBooking.seats === 0
+        const payload = await response.json().catch(() => null)
+
+        if (!response.ok || !payload) {
+          const message = payload?.error || 'Failed to load customers'
+          throw new Error(message)
+        }
+
+        const incoming = payload as {
+          customers: Customer[]
+          page: number
+          pageSize: number
+          hasMore: boolean
+          totalMatches: number | null
+          approximateMatches: number
+          truncated: boolean
+        }
+
+        setCustomers((prev) => {
+          if (targetPage === 1 || reset) {
+            return incoming.customers
+          }
+
+          const existingIds = new Set(prev.map((customer) => customer.id))
+          const merged = [...prev]
+          incoming.customers.forEach((customer) => {
+            if (!existingIds.has(customer.id)) {
+              merged.push(customer)
             }
-            return true
           })
-        }
-      } else if (filters.eventAttendance === 'not_attending') {
-        filtered = filtered.filter(c => 
-          !c.event_bookings?.some(b => b.event_id === filters.eventId)
+          return merged
+        })
+
+        setPage(targetPage)
+        setHasMore(Boolean(incoming.hasMore))
+        setTotalMatches(incoming.totalMatches)
+        setApproximateMatches(incoming.approximateMatches ?? incoming.customers.length)
+        setMatchesTruncated(Boolean(incoming.truncated))
+      } catch (error) {
+        console.error('Error loading customers:', error)
+        toast.error(
+          error instanceof Error ? error.message : 'Failed to load customers',
         )
-      }
-    }
-
-    // Category filter
-    if (filters.categoryId && filters.categoryAttendance !== 'all') {
-      if (filters.categoryAttendance === 'regulars') {
-        filtered = filtered.filter(c => 
-          c.category_preferences?.some(p => 
-            p.category_id === filters.categoryId && p.times_attended > 0
-          )
-        )
-      } else if (filters.categoryAttendance === 'never_attended') {
-        filtered = filtered.filter(c => 
-          !c.category_preferences?.some(p => 
-            p.category_id === filters.categoryId && p.times_attended > 0
-          )
-        )
-      }
-    }
-
-    // Date filters
-    if (filters.createdAfter) {
-      filtered = filtered.filter(c => new Date(c.created_at) >= new Date(filters.createdAfter))
-    }
-    if (filters.createdBefore) {
-      filtered = filtered.filter(c => new Date(c.created_at) <= new Date(filters.createdBefore))
-    }
-
-    // Search filter
-    if (filters.searchTerm) {
-      const search = filters.searchTerm.toLowerCase()
-      filtered = filtered.filter(c => {
-        const fullName = `${c.first_name} ${c.last_name}`.toLowerCase()
-        return fullName.includes(search) || c.mobile_number.includes(search)
-      })
-    }
-
-    setFilteredCustomers(filtered)
-  }, [customers, filters])
-
-  useEffect(() => {
-    applyFilters()
-  }, [applyFilters])
-
-  useEffect(() => {
-    const filteredIds = filteredCustomers.map(customer => customer.id)
-    const filteredSet = new Set(filteredIds)
-
-    setSelectedCustomers(prev => {
-      if (prev.size === filteredSet.size) {
-        const hasDifference = filteredIds.some(id => !prev.has(id))
-        if (!hasDifference) {
-          return prev
+      } finally {
+        if (reset || targetPage === 1) {
+          setLoading(false)
+        } else {
+          setLoadingMore(false)
         }
       }
-      return filteredSet
-    })
-  }, [filteredCustomers])
+    },
+    [filters, PAGE_SIZE],
+  )
+
+  useEffect(() => {
+    void loadMeta()
+  }, [loadMeta])
+
+  useEffect(() => {
+    setSelectedCustomers(new Set())
+    void loadRecipients({ reset: true })
+  }, [filters, loadRecipients])
 
   const selectedRecipients = useMemo(() => {
     if (selectedCustomers.size === 0) return []
@@ -282,12 +256,20 @@ export default function BulkMessagePage() {
     setSelectedCustomers(newSelected)
   }
 
-  function selectAll() {
-    if (selectedCustomers.size === filteredCustomers.length) {
-      setSelectedCustomers(new Set())
-    } else {
-      setSelectedCustomers(new Set(filteredCustomers.map(c => c.id)))
+  function toggleSelectLoaded() {
+    const allLoadedSelected = customers.length > 0
+      && customers.every(customer => selectedCustomers.has(customer.id))
+
+    if (allLoadedSelected) {
+      const next = new Set(selectedCustomers)
+      customers.forEach(customer => next.delete(customer.id))
+      setSelectedCustomers(next)
+      return
     }
+
+    const next = new Set(selectedCustomers)
+    customers.forEach(customer => next.add(customer.id))
+    setSelectedCustomers(next)
   }
 
   function getMessageContent() {
@@ -566,15 +548,16 @@ export default function BulkMessagePage() {
           {/* Customer List */}
           <Section 
             id="select-recipients"
-            title={`Select Recipients (${filteredCustomers.length} customers)`}
+            title={`Select Recipients (${customers.length}${hasMore ? '+' : ''} loaded)`}
             icon={<UserGroupIcon className="h-5 w-5" />}
             actions={
               <Button
-                onClick={selectAll}
+                onClick={toggleSelectLoaded}
                 variant="secondary"
                 size="sm"
+                disabled={customers.length === 0}
               >
-                {selectedCustomers.size === filteredCustomers.length ? 'Deselect All' : 'Select All'}
+                {allLoadedSelected ? 'Deselect Loaded' : 'Select Loaded'}
               </Button>
             }
           >
@@ -613,15 +596,20 @@ export default function BulkMessagePage() {
                   )}
                 </div>
               )}
+              {matchesTruncated && (
+                <Alert variant="warning">
+                  Results are truncated. Refine your filters or load more recipients to continue.
+                </Alert>
+              )}
             
               <div className="max-h-96 overflow-y-auto">
-                {filteredCustomers.length === 0 ? (
+                {customers.length === 0 ? (
                   <div className="p-6 text-center text-gray-500">
                     No customers match your filters
                   </div>
                 ) : (
                   <div className="divide-y divide-gray-200">
-                    {filteredCustomers.map((customer) => (
+                    {customers.map((customer) => (
                       <label
                         key={customer.id}
                         className="flex items-center p-4 hover:bg-gray-50 cursor-pointer"
@@ -655,7 +643,9 @@ export default function BulkMessagePage() {
                               <CalendarIcon className="h-3 w-3 mr-1" />
                               {(() => {
                                 const booking = customer.event_bookings?.find(b => b.event_id === filters.eventId)
-                                return booking?.seats ? `${booking.seats} tickets` : 'Reminder'
+                                if (!booking) return ''
+                                const reminder = booking.is_reminder_only ?? ((booking.seats ?? 0) === 0)
+                                return reminder ? 'Reminder' : `${booking.seats ?? 0} tickets`
                               })()}
                             </Badge>
                           )}
@@ -670,6 +660,20 @@ export default function BulkMessagePage() {
                   </div>
                 )}
               </div>
+              {hasMore && (
+                <div className="p-4 border-t text-right">
+                  <Button
+                    onClick={() => {
+                      void loadRecipients({ page: page + 1 })
+                    }}
+                    variant="secondary"
+                    size="sm"
+                    disabled={loadingMore}
+                  >
+                    {loadingMore ? 'Loading...' : 'Load more'}
+                  </Button>
+                </div>
+              )}
             </Card>
           </Section>
         </div>

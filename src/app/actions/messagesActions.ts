@@ -25,6 +25,8 @@ type Conversation = {
   lastMessageAt: string
 }
 
+const MAX_UNREAD_MESSAGES = 200
+
 export async function getMessages() {
   const canView = await checkUserPermission('messages', 'view')
   if (!canView) {
@@ -33,7 +35,7 @@ export async function getMessages() {
 
   const supabase = await createClient()
 
-  const { data, error } = await supabase
+  const { data, error, count } = await supabase
     .from('messages')
     .select(
       `
@@ -50,19 +52,25 @@ export async function getMessages() {
           mobile_number
         )
       `,
+      { count: 'exact' }
     )
     .eq('direction', 'inbound')
     .is('read_at', null)
     .order('created_at', { ascending: false })
-    .limit(200)
+    .limit(MAX_UNREAD_MESSAGES)
 
   if (error) {
     console.error('Error fetching unread messages:', error)
     return { error: 'Failed to load messages' }
   }
 
+  const totalUnread = typeof count === 'number' ? count : data?.length ?? 0
+  const hasMore = typeof count === 'number'
+    ? count > MAX_UNREAD_MESSAGES
+    : (data?.length ?? 0) >= MAX_UNREAD_MESSAGES
+
   if (!data || data.length === 0) {
-    return { conversations: [] }
+    return { conversations: [], totalUnread, hasMore }
   }
 
   const conversationMap = new Map<string, Conversation>()
@@ -115,7 +123,7 @@ export async function getMessages() {
     (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime(),
   )
 
-  return { conversations }
+  return { conversations, totalUnread, hasMore }
 }
 
 export async function getUnreadMessageCount() {

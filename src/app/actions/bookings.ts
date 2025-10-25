@@ -8,6 +8,7 @@ import { scheduleAndProcessBookingReminders, cancelBookingReminders } from './ev
 import { withRetry } from '@/lib/supabase-retry'
 import { getEventAvailableCapacity, invalidateEventCache } from '@/lib/events'
 import { formatPhoneForStorage } from '@/lib/validation'
+import { checkUserPermission } from '@/app/actions/rbac'
 
 // Booking validation schema
 const bookingSchema = z.object({
@@ -16,7 +17,8 @@ const bookingSchema = z.object({
   seats: z.number()
     .min(0, 'Tickets cannot be negative')
     .max(100, 'Cannot book more than 100 tickets at once'),
-  notes: z.string().max(500, 'Notes too long').optional()
+  notes: z.string().max(500, 'Notes too long').optional(),
+  is_reminder_only: z.boolean().optional()
 })
 
 interface BookingData {
@@ -24,6 +26,7 @@ interface BookingData {
   event_id: string;
   customer_id: string;
   seats: number | null;
+  is_reminder_only: boolean;
   notes: string | null;
   created_at: string;
 }
@@ -31,7 +34,7 @@ interface BookingData {
 type CreateBookingResult = 
   | { success: true; data: BookingData }
   | { error: string }
-  | { error: 'duplicate_booking'; existingBooking: { id: string; seats: number } }
+  | { error: 'duplicate_booking'; existingBooking: { id: string; seats: number; is_reminder_only: boolean } }
 
 export async function createBooking(formData: FormData): Promise<CreateBookingResult> {
   try {
@@ -133,6 +136,7 @@ export async function createBooking(formData: FormData): Promise<CreateBookingRe
       customer_id: customerId,
       seats: parseInt(formData.get('seats') as string || '0'),
       notes: formData.get('notes') as string || undefined,
+      is_reminder_only: formData.get('is_reminder_only') === 'true',
       overwrite: formData.get('overwrite') === 'true' // Check if we should overwrite existing booking
     }
 
@@ -142,11 +146,13 @@ export async function createBooking(formData: FormData): Promise<CreateBookingRe
     }
 
     const data = validationResult.data
+    const isReminderOnly =
+      data.is_reminder_only !== undefined ? data.is_reminder_only : data.seats === 0
 
     // Check if booking already exists
     const { data: existingBooking } = await supabase
       .from('bookings')
-      .select('id, seats')
+      .select('id, seats, is_reminder_only')
       .eq('event_id', data.event_id)
       .eq('customer_id', data.customer_id)
       .single()
@@ -157,7 +163,8 @@ export async function createBooking(formData: FormData): Promise<CreateBookingRe
         error: 'duplicate_booking',
         existingBooking: {
           id: existingBooking.id,
-          seats: existingBooking.seats
+          seats: existingBooking.seats ?? 0,
+          is_reminder_only: existingBooking.is_reminder_only ?? ((existingBooking.seats ?? 0) === 0)
         }
       }
     }
@@ -178,8 +185,9 @@ export async function createBooking(formData: FormData): Promise<CreateBookingRe
       let availableCapacity = await getEventAvailableCapacity(data.event_id)
       
       // If overwriting, add back the existing booking's seats to available capacity
-      if (existingBooking && rawData.overwrite && existingBooking.seats) {
-        availableCapacity = availableCapacity !== null ? availableCapacity + existingBooking.seats : null
+      const existingBookingSeats = existingBooking?.seats ?? 0
+      if (existingBooking && rawData.overwrite && existingBookingSeats > 0) {
+        availableCapacity = availableCapacity !== null ? availableCapacity + existingBookingSeats : null
       }
       
       if (availableCapacity !== null && data.seats > availableCapacity) {
@@ -205,7 +213,8 @@ export async function createBooking(formData: FormData): Promise<CreateBookingRe
             .from('bookings')
             .update({
               seats: data.seats,
-              notes: data.notes || null
+              notes: data.notes || null,
+              is_reminder_only: isReminderOnly
             })
             .eq('id', existingBooking.id)
             .select()
@@ -232,7 +241,8 @@ export async function createBooking(formData: FormData): Promise<CreateBookingRe
               customer_id: data.customer_id,
               seats: data.seats,
               notes: data.notes || null,
-              booking_source: 'direct_booking' // Mark as direct booking
+              booking_source: 'direct_booking', // Mark as direct booking
+              is_reminder_only: isReminderOnly
             })
             .select()
             .single()
@@ -354,6 +364,7 @@ export async function createBulkBookings(eventId: string, customerIds: string[])
       event_id: eventId,
       customer_id: customerId,
       seats: 0, // Default to reminder-only bookings
+      is_reminder_only: true,
       notes: 'Added via bulk add'
     }))
 
@@ -502,6 +513,11 @@ export async function updateBooking(id: string, formData: FormData) {
 
 export async function deleteBooking(id: string) {
   try {
+    const canManageEvents = await checkUserPermission('events', 'manage')
+    if (!canManageEvents) {
+      return { error: 'Insufficient permissions to delete bookings' }
+    }
+
     const supabase = await createClient()
     
     // Get the authenticated user

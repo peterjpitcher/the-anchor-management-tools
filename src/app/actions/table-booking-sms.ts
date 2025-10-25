@@ -36,7 +36,12 @@ const SMSTemplateSchema = z.object({
 // Get all SMS templates
 export async function getSMSTemplates() {
   try {
-    const supabase = await createAdminClient();
+    const hasPermission = await checkUserPermission('table_bookings', 'manage');
+    if (!hasPermission) {
+      return { error: 'You do not have permission to view SMS templates' };
+    }
+
+    const supabase = createAdminClient();
     
     const { data, error } = await supabase
       .from('table_booking_sms_templates')
@@ -304,9 +309,21 @@ export async function queueBookingConfirmationSMS(bookingId: string, useAdminCli
 }
 
 // Queue booking reminder SMS
-export async function queueBookingReminderSMS(bookingId: string) {
+export async function queueBookingReminderSMS(
+  bookingId: string,
+  options: { requirePermission?: boolean } = {},
+) {
   try {
-    const supabase = await createClient();
+    const { requirePermission = true } = options;
+
+    if (requirePermission) {
+      const hasPermission = await checkUserPermission('table_bookings', 'edit');
+      if (!hasPermission) {
+        return { error: 'You do not have permission to send reminder SMS messages' };
+      }
+    }
+
+    const supabase = createAdminClient();
     
     // Get booking with customer, items and payments
     const { data: booking } = await supabase
@@ -469,11 +486,31 @@ export async function queueCancellationSMS(
 }
 
 // Queue payment request SMS for Sunday lunch
-export async function queuePaymentRequestSMS(bookingId: string, useAdminClient: boolean = false) {
+type QueuePaymentRequestOptions = {
+  useAdminClient?: boolean;
+  requirePermission?: boolean;
+};
+
+export async function queuePaymentRequestSMS(
+  bookingId: string,
+  optionsOrUseAdminClient: boolean | QueuePaymentRequestOptions = {},
+) {
   try {
-    // Use admin client when called from unauthenticated contexts
-    const { createClient, createAdminClient } = await import('@/lib/supabase/server');
-    const supabase = useAdminClient ? createAdminClient() : await createClient();
+    const options: QueuePaymentRequestOptions =
+      typeof optionsOrUseAdminClient === 'boolean'
+        ? { useAdminClient: optionsOrUseAdminClient }
+        : optionsOrUseAdminClient;
+
+    const { useAdminClient = false, requirePermission = true } = options;
+
+    if (requirePermission) {
+      const hasPermission = await checkUserPermission('table_bookings', 'manage');
+      if (!hasPermission) {
+        return { error: 'You do not have permission to send payment request SMS messages' };
+      }
+    }
+
+    const supabase = createAdminClient();
     
     // Get booking with customer and items
     const { data: booking } = await supabase

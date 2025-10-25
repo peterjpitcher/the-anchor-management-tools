@@ -154,8 +154,13 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(({
   const handleClear = () => {
     if (controlledValue === undefined) {
       setInternalValue('')
+      onSearch('')
+    } else {
+      // Emit empty value and let parent clear
+      onSearch('')
     }
-    onSearch('')
+    setShowDropdown(false)
+    setSelectedIndex(-1)
     inputRef.current?.focus()
   }
   

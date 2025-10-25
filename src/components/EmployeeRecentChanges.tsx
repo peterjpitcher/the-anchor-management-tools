@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { getEmployeeChangesSummary } from '@/app/actions/employee-history'
 import { formatDateTime } from '@/lib/dateUtils'
-import { ClockIcon } from '@heroicons/react/24/outline'
 import { usePermissions } from '@/contexts/PermissionContext'
 
 interface ChangeRecord {
@@ -19,89 +18,95 @@ interface EmployeeRecentChangesProps {
 }
 
 export function EmployeeRecentChanges({ employeeId }: EmployeeRecentChangesProps) {
-  // This component requires RPC functions that may not be configured in the database
-  // Return null to avoid errors until the required database functions are available
-  return null
-  
-  /* TODO: Enable this component when the following RPC function is available:
-  - get_employee_changes_summary
-  
   const { hasPermission } = usePermissions()
   const [changes, setChanges] = useState<ChangeRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const canViewHistory = hasPermission('employees', 'view')
 
   useEffect(() => {
-    if (canViewHistory) {
-      loadRecentChanges()
-    } else {
-      setIsLoading(false)
+    let isMounted = true
+
+    const loadRecentChanges = async () => {
+      if (!canViewHistory) {
+        if (isMounted) {
+          setChanges([])
+          setError('You do not have permission to view recent changes.')
+          setIsLoading(false)
+        }
+        return
+      }
+
+      try {
+        setIsLoading(true)
+        setError(null)
+        const result = await getEmployeeChangesSummary(employeeId)
+
+        if (!isMounted) {
+          return
+        }
+
+        if (result.error) {
+          console.error('Error loading employee changes:', result.error)
+          setChanges([])
+          setError('Recent changes are temporarily unavailable.')
+        } else if (result.data) {
+          setChanges(result.data.slice(0, 5))
+        } else {
+          setChanges([])
+        }
+      } catch (loadError) {
+        console.error('Error loading employee changes:', loadError)
+        if (isMounted) {
+          setChanges([])
+          setError('Recent changes are temporarily unavailable.')
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    loadRecentChanges()
+
+    return () => {
+      isMounted = false
     }
   }, [employeeId, canViewHistory])
 
-  async function loadRecentChanges() {
-    try {
-      setIsLoading(true)
-      const result = await getEmployeeChangesSummary(employeeId)
-      
-      if (result.error) {
-        console.error('Error loading changes:', result.error)
-        // Don't show the component if there's an error
-        setChanges([])
-      } else if (result.data) {
-        setChanges(result.data.slice(0, 5)) // Show only last 5 changes
-      }
-    } catch (error) {
-      console.error('Error loading recent changes:', error)
-      // Don't show the component if there's an error
-      setChanges([])
-    } finally {
-      setIsLoading(false)
-    }
-  }
-  */
-
-  /*
-  if (!canViewHistory) {
-    return null
-  }
-
   if (isLoading) {
-    // Don't show loading state since the component will likely fail
-    return null
+    return (
+      <div className="flex items-center justify-center py-6">
+        <span className="text-sm text-gray-500">Loading recent changes…</span>
+      </div>
+    )
+  }
+
+  if (error) {
+    return <p className="text-sm text-gray-500">{error}</p>
   }
 
   if (changes.length === 0) {
-    return null
+    return <p className="text-sm text-gray-500">No recent changes recorded.</p>
   }
 
   return (
-    <div className="bg-white shadow sm:rounded-lg">
-      <div className="px-4 py-5 sm:p-6">
-        <h3 className="text-sm font-medium text-gray-900 flex items-center mb-3">
-          <ClockIcon className="h-4 w-4 mr-1.5" />
-          Recent Changes
-        </h3>
-        <div className="space-y-3">
-          {changes.map((change, index) => (
-            <div key={index} className="text-sm">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <p className="text-gray-900">{change.summary}</p>
-                  <p className="text-gray-500 text-xs mt-1">
-                    by {change.changed_by} • {formatDateTime(change.change_date)}
-                  </p>
-                </div>
-              </div>
-              {index < changes.length - 1 && (
-                <div className="border-t border-gray-100 mt-3"></div>
-              )}
+    <div className="space-y-3">
+      {changes.map((change, index) => (
+        <div key={`${change.change_date}-${index}`} className="text-sm">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <p className="text-gray-900">{change.summary || 'Employee record updated'}</p>
+              <p className="text-gray-500 text-xs mt-1">
+                by {change.changed_by || 'System'} • {formatDateTime(change.change_date)}
+              </p>
             </div>
-          ))}
+          </div>
+          {index < changes.length - 1 && <div className="border-t border-gray-100 mt-3" />}
         </div>
-      </div>
+      ))}
     </div>
   )
-  */
 }

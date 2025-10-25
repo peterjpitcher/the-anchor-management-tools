@@ -1,6 +1,7 @@
 'use server'
 
 import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
+import { checkUserPermission } from '@/app/actions/rbac'
 import { EVENT_MARKETING_CHANNELS, EVENT_MARKETING_CHANNEL_MAP, buildEventMarketingLinkPayload, buildShortCode, type EventMarketingChannelKey, type EventMarketingLinkPayload } from '@/lib/event-marketing-links'
 import QRCode from 'qrcode'
 
@@ -106,6 +107,11 @@ async function insertShortLinkWithRetries(event: EventRecord, payload: EventMark
 
 export async function generateEventMarketingLinks(eventId: string): Promise<EventMarketingLinksResult> {
   try {
+    const canManageEvents = await checkUserPermission('events', 'manage')
+    if (!canManageEvents) {
+      return { success: false, error: 'Insufficient permissions to manage marketing links' }
+    }
+
     const supabase = getSupabaseAdminClient()
 
     const { data: event, error: eventError } = await supabase
@@ -186,6 +192,11 @@ export async function generateEventMarketingLinks(eventId: string): Promise<Even
 
 export async function getEventMarketingLinks(eventId: string): Promise<EventMarketingLinksResult> {
   try {
+    const canViewEvents = await checkUserPermission('events', 'view')
+    if (!canViewEvents) {
+      return { success: false, error: 'Insufficient permissions to view marketing links' }
+    }
+
     const supabase = getSupabaseAdminClient()
 
     const { data: links, error } = await supabase

@@ -1,6 +1,9 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/server'
+import { checkUserPermission } from '@/app/actions/rbac'
+import { logAuditEvent } from '@/app/actions/audit'
+import { getCurrentUser } from '@/lib/audit-helpers'
 import { logger } from '@/lib/logger'
 import { formatPhoneForStorage } from '@/lib/validation'
 import { fromZonedTime, toZonedTime } from 'date-fns-tz'
@@ -38,6 +41,7 @@ export interface BookingReminderContext {
     sms_opt_in: boolean | null
   }
   seats: number | null
+  is_reminder_only: boolean
 }
 
 interface ScheduleCandidate {
@@ -74,7 +78,8 @@ function buildReminderSchedule(
   context: BookingReminderContext,
   now: Date
 ): ScheduleCandidate[] {
-  const hasSeats = (context.seats || 0) > 0
+  const isReminderOnly = context.is_reminder_only ?? ((context.seats || 0) === 0)
+  const hasSeats = !isReminderOnly && (context.seats || 0) > 0
   const candidates: ScheduleCandidate[] = []
   const eventUtc = buildEventDate(context)
   const eventLocal = toZonedTime(eventUtc, LONDON_TZ)
@@ -124,6 +129,7 @@ async function fetchBookingReminderContext(bookingId: string): Promise<BookingRe
     .from('bookings')
     .select(`
       id,
+      is_reminder_only,
       seats,
       event:events(id, name, date, time),
       customer:customers(id, first_name, last_name, mobile_number, sms_opt_in)
@@ -165,6 +171,7 @@ async function fetchBookingReminderContext(bookingId: string): Promise<BookingRe
       sms_opt_in: customerRecord.sms_opt_in
     },
     seats: data.seats,
+    is_reminder_only: data.is_reminder_only ?? ((data.seats ?? 0) === 0)
   }
 }
 
@@ -393,6 +400,11 @@ export async function addAttendeesWithScheduledSMS(
   customerIds: string[]
 ) {
   try {
+    const canManageEvents = await checkUserPermission('events', 'manage')
+    if (!canManageEvents) {
+      return { error: 'Insufficient permissions to add attendees' }
+    }
+
     const supabase = createAdminClient()
 
     const { data: event, error: eventError } = await supabase
@@ -430,6 +442,7 @@ export async function addAttendeesWithScheduledSMS(
       event_id: eventId,
       customer_id: customerId,
       seats: 0,
+      is_reminder_only: true,
       booking_source: 'bulk_add',
       notes: 'Added via bulk add'
     }))
@@ -454,11 +467,30 @@ export async function addAttendeesWithScheduledSMS(
       }
     }
 
+    const addedCount = inserted.length
+    const skippedCount = uniqueCustomerIds.length - inserted.length
+
+    const userInfo = await getCurrentUser()
+    await logAuditEvent({
+      user_id: userInfo.user_id ?? undefined,
+      user_email: userInfo.user_email ?? undefined,
+      operation_type: 'create',
+      resource_type: 'event_attendees_bulk_add',
+      resource_id: event.id,
+      operation_status: 'success',
+      additional_info: {
+        eventId: event.id,
+        added: addedCount,
+        skipped: skippedCount,
+        remindersScheduled: scheduledCount
+      }
+    })
+
     return {
       success: true,
-      added: inserted.length,
+      added: addedCount,
       remindersScheduled: scheduledCount,
-      skipped: uniqueCustomerIds.length - inserted.length
+      skipped: skippedCount
     }
   } catch (error) {
     logger.error('Error in addAttendeesWithScheduledSMS', {

@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { logger } from '@/lib/logger'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { logAuditEvent } from '@/app/actions/audit'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-type QueueAction = 'reconcile' | 'retry' | 'clear_old'
+type QueueAction = 'reconcile' | 'retry' | 'clear_old' | 'delete'
 
 const QUEUE_LIMIT_DEFAULT = 500
 const JOB_LIMIT_DEFAULT = 100
@@ -24,6 +25,7 @@ interface QueueResponse {
   jobs: any[]
   stats: QueueStats
   lastSyncedAt: string
+  syncedWithTwilio?: boolean
 }
 
 interface QueueStats {
@@ -229,13 +231,17 @@ export async function GET(request: NextRequest) {
 
     const { messages, jobs } = await fetchQueueData(limit, jobLimit)
 
+    const shouldSync = url.searchParams.get('sync') === '1'
+
     let syncedMessages = messages
 
-    try {
-      const result = await syncWithTwilio(messages)
-      syncedMessages = result.messages
-    } catch (error) {
-      logger.error('Failed to sync queue with Twilio', { error: error as Error })
+    if (shouldSync) {
+      try {
+        const result = await syncWithTwilio(messages)
+        syncedMessages = result.messages
+      } catch (error) {
+        logger.error('Failed to sync queue with Twilio', { error: error as Error })
+      }
     }
 
     const stats = computeStats(syncedMessages, jobs)
@@ -244,7 +250,8 @@ export async function GET(request: NextRequest) {
       messages: syncedMessages,
       jobs,
       stats,
-      lastSyncedAt: new Date().toISOString()
+      lastSyncedAt: new Date().toISOString(),
+      syncedWithTwilio: shouldSync
     }
 
     return NextResponse.json(payload)
@@ -333,6 +340,65 @@ export async function POST(request: NextRequest) {
 
       if (error) {
         throw error
+      }
+
+      return NextResponse.json({ success: true })
+    }
+
+    if (action === 'delete') {
+      const messageId = body?.messageId
+      if (!messageId) {
+        return NextResponse.json({ error: 'Missing messageId' }, { status: 400 })
+      }
+
+      const adminClient = createAdminClient()
+      const { data: message, error: fetchError } = await adminClient
+        .from('messages')
+        .select('id, customer_id, status, direction, twilio_message_sid, to_number, from_number, created_at')
+        .eq('id', messageId)
+        .single()
+
+      if (fetchError) {
+        logger.error('Failed to load message before delete', { error: fetchError, metadata: { messageId } })
+        return NextResponse.json({ error: 'Message not found' }, { status: 404 })
+      }
+
+      const { error: deleteError } = await adminClient
+        .from('messages')
+        .delete()
+        .eq('id', messageId)
+
+      if (deleteError) {
+        logger.error('Failed to delete queued message', { error: deleteError, metadata: { messageId } })
+        return NextResponse.json({ error: 'Failed to delete message' }, { status: 500 })
+      }
+
+      try {
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+
+        await logAuditEvent({
+          user_id: user?.id,
+          user_email: user?.email ?? undefined,
+          operation_type: 'delete',
+          resource_type: 'message',
+          resource_id: messageId,
+          operation_status: 'success',
+          old_values: {
+            status: message.status,
+            direction: message.direction,
+            customer_id: message.customer_id,
+            twilio_message_sid: message.twilio_message_sid,
+            to_number: message.to_number,
+            from_number: message.from_number,
+            created_at: message.created_at
+          },
+          additional_info: {
+            source: 'queue',
+          },
+        })
+      } catch (auditError) {
+        logger.warn('Failed to record audit event for queue delete', { error: auditError as Error, metadata: { messageId } })
       }
 
       return NextResponse.json({ success: true })

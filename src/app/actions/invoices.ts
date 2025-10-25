@@ -6,13 +6,14 @@ import { logAuditEvent } from './audit'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { getTodayIsoDate } from '@/lib/dateUtils'
-import type { 
-  Invoice, 
-  InvoiceWithDetails, 
+import type {
+  Invoice,
+  InvoiceWithDetails,
   InvoiceStatus,
   InvoiceLineItemInput,
   LineItemCatalogItem
 } from '@/types/invoices'
+import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
 
 // Invoice validation schema
 const CreateInvoiceSchema = z.object({
@@ -159,37 +160,20 @@ export async function createInvoice(formData: FormData): Promise<CreateInvoiceRe
       return { error: 'Line items are required' }
     }
 
-    const lineItems: InvoiceLineItemInput[] = JSON.parse(lineItemsJson)
+    const rawLineItems: InvoiceLineItemInput[] = JSON.parse(lineItemsJson)
+    const lineItems: InvoiceLineItemInput[] = rawLineItems.map((item) => ({
+      catalog_item_id: item.catalog_item_id,
+      description: item.description,
+      quantity: Number(item.quantity) || 0,
+      unit_price: Number(item.unit_price) || 0,
+      discount_percentage: Number(item.discount_percentage) || 0,
+      vat_rate: Number(item.vat_rate) || 0,
+    }))
     if (!Array.isArray(lineItems) || lineItems.length === 0) {
       return { error: 'At least one line item is required' }
     }
 
-    // Calculate totals
-    let subtotal = 0
-    let totalVat = 0
-
-    lineItems.forEach(item => {
-      const lineSubtotal = item.quantity * item.unit_price
-      const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
-      const lineAfterDiscount = lineSubtotal - lineDiscount
-      subtotal += lineAfterDiscount
-    })
-
-    const invoiceDiscount = subtotal * (validatedData.invoice_discount_percentage / 100)
-    const afterInvoiceDiscount = subtotal - invoiceDiscount
-
-    // Calculate VAT after all discounts
-    lineItems.forEach(item => {
-      const lineSubtotal = item.quantity * item.unit_price
-      const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
-      const lineAfterDiscount = lineSubtotal - lineDiscount
-      const lineShare = lineAfterDiscount / subtotal
-      const lineAfterInvoiceDiscount = lineAfterDiscount - (invoiceDiscount * lineShare)
-      const lineVat = lineAfterInvoiceDiscount * (item.vat_rate / 100)
-      totalVat += lineVat
-    })
-
-    const totalAmount = afterInvoiceDiscount + totalVat
+    const totals = calculateInvoiceTotals(lineItems, validatedData.invoice_discount_percentage)
 
     // Get next invoice number
     let invoiceNumber: string
@@ -211,10 +195,10 @@ export async function createInvoice(formData: FormData): Promise<CreateInvoiceRe
         due_date: validatedData.due_date,
         reference: validatedData.reference,
         invoice_discount_percentage: validatedData.invoice_discount_percentage,
-        subtotal_amount: subtotal,
-        discount_amount: invoiceDiscount,
-        vat_amount: totalVat,
-        total_amount: totalAmount,
+        subtotal_amount: totals.subtotalBeforeInvoiceDiscount,
+        discount_amount: totals.invoiceDiscountAmount,
+        vat_amount: totals.vatAmount,
+        total_amount: totals.totalAmount,
         notes: validatedData.notes,
         internal_notes: validatedData.internal_notes,
         status: 'draft' as InvoiceStatus
@@ -764,7 +748,15 @@ export async function updateInvoice(formData: FormData) {
     const lineItemsJson = formData.get('line_items') as string
     let lineItems: InvoiceLineItemInput[]
     try {
-      lineItems = JSON.parse(lineItemsJson)
+      const parsed: InvoiceLineItemInput[] = JSON.parse(lineItemsJson)
+      lineItems = parsed.map((item) => ({
+        catalog_item_id: item.catalog_item_id,
+        description: item.description,
+        quantity: Number(item.quantity) || 0,
+        unit_price: Number(item.unit_price) || 0,
+        discount_percentage: Number(item.discount_percentage) || 0,
+        vat_rate: Number(item.vat_rate) || 0,
+      }))
     } catch {
       return { error: 'Invalid line items data' }
     }
@@ -773,77 +765,43 @@ export async function updateInvoice(formData: FormData) {
       return { error: 'At least one line item is required' }
     }
 
-    // Calculate totals
-    let subtotal = 0
-    let totalVat = 0
-    
-    lineItems.forEach(item => {
-      const lineSubtotal = item.quantity * item.unit_price
-      const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
-      const afterDiscount = lineSubtotal - lineDiscount
-      const lineVat = afterDiscount * (item.vat_rate / 100)
-      
-      subtotal += afterDiscount
-      totalVat += lineVat
-    })
-    
-    const invoiceDiscountAmount = subtotal * (validatedData.invoice_discount_percentage / 100)
-    const finalSubtotal = subtotal - invoiceDiscountAmount
-    const finalVat = totalVat * (1 - validatedData.invoice_discount_percentage / 100)
-    const total = finalSubtotal + finalVat
+    const totals = calculateInvoiceTotals(lineItems, validatedData.invoice_discount_percentage)
 
-    // Start transaction
+    // Perform atomic update using admin client RPC
     const adminClient = await createAdminClient()
-    
-    // Update invoice
-    const { data: updatedInvoice, error: updateError } = await adminClient
-      .from('invoices')
-      .update({
-        ...validatedData,
-        subtotal_amount: subtotal,
-        discount_amount: invoiceDiscountAmount,
-        vat_amount: finalVat,
-        total_amount: total,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', invoiceId)
-      .select()
-      .single()
+    const payload = {
+      invoice_id: invoiceId,
+      invoice_data: {
+        vendor_id: validatedData.vendor_id,
+        invoice_date: validatedData.invoice_date,
+        due_date: validatedData.due_date,
+        reference: validatedData.reference ?? null,
+        invoice_discount_percentage: validatedData.invoice_discount_percentage,
+        subtotal_amount: totals.subtotalBeforeInvoiceDiscount,
+        discount_amount: totals.invoiceDiscountAmount,
+        vat_amount: totals.vatAmount,
+        total_amount: totals.totalAmount,
+        notes: validatedData.notes ?? null,
+        internal_notes: validatedData.internal_notes ?? null
+      },
+      line_items: lineItems.map(item => ({
+        catalog_item_id: item.catalog_item_id || null,
+        description: item.description,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        discount_percentage: item.discount_percentage,
+        vat_rate: item.vat_rate
+      }))
+    }
+
+    const { data: updatedInvoice, error: updateError } = await adminClient.rpc(
+      'update_invoice_with_line_items',
+      payload
+    )
 
     if (updateError) {
-      console.error('Error updating invoice:', updateError)
+      console.error('Error updating invoice via RPC:', updateError)
       return { error: 'Failed to update invoice' }
-    }
-
-    // Delete existing line items
-    const { error: deleteError } = await adminClient
-      .from('invoice_line_items')
-      .delete()
-      .eq('invoice_id', invoiceId)
-
-    if (deleteError) {
-      console.error('Error deleting line items:', deleteError)
-      return { error: 'Failed to update line items' }
-    }
-
-    // Insert new line items
-    const { error: lineItemsError } = await adminClient
-      .from('invoice_line_items')
-      .insert(
-        lineItems.map(item => ({
-          invoice_id: invoiceId,
-          catalog_item_id: item.catalog_item_id || null,
-          description: item.description,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          discount_percentage: item.discount_percentage || 0,
-          vat_rate: item.vat_rate
-        }))
-      )
-
-    if (lineItemsError) {
-      console.error('Error inserting line items:', lineItemsError)
-      return { error: 'Failed to create line items' }
     }
 
     await logAuditEvent({
@@ -853,7 +811,7 @@ export async function updateInvoice(formData: FormData) {
       operation_status: 'success',
       new_values: { 
         invoice_number: updatedInvoice.invoice_number,
-        total: total
+        total: totals.totalAmount
       }
     })
 

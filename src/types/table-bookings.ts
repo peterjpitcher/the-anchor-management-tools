@@ -49,7 +49,7 @@ export interface TableBooking {
   cancellation_reason?: string;
   completed_at?: string;
   no_show_at?: string;
-  modification_badge: number;
+  modification_count: number;
   original_booking_data?: any;
   email_verification_token?: string;
   email_verified_at?: string;

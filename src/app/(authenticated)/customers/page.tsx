@@ -1,7 +1,7 @@
 'use client'
 
 import { useSupabase } from '@/components/providers/SupabaseProvider'
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import type { Customer } from '@/types/database'
 import { CustomerForm } from '@/components/CustomerForm'
 import { CustomerImport } from '@/components/CustomerImport'
@@ -43,11 +43,18 @@ interface CustomerCategoryStats {
   }
 }
 
+type CustomerCategoryStatsQueryRow = {
+  customer_id: string
+  category_id: string
+  times_attended: number
+  last_attended_date: string
+  event_categories: { id: string; name: string } | { id: string; name: string }[]
+}
+
 export default function CustomersPage() {
   const supabase = useSupabase()
   const { hasPermission } = usePermissions()
   const canManageCustomers = hasPermission('customers', 'manage')
-  const [searchInput, setSearchInput] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
@@ -59,23 +66,23 @@ export default function CustomersPage() {
   const [showDeactivated, setShowDeactivated] = useState(false)
   // Loyalty program removed
 
-  // Debounce search term
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setSearchTerm(searchInput)
-    }, 300) // 300ms delay
-
-    return () => clearTimeout(timer)
-  }, [searchInput])
-
   // Memoize query configuration to prevent unnecessary re-renders
-  const queryConfig = useMemo(() => ({
-    select: '*',
-    orderBy: { column: 'first_name', ascending: true },
-    filters: showDeactivated
-      ? [{ column: 'sms_opt_in', operator: 'eq' as const, value: false }]
-      : []
-  }), [showDeactivated])
+  const queryConfig = useMemo(() => {
+    if (showDeactivated) {
+      return {
+        select: '*',
+        orderBy: { column: 'first_name', ascending: true },
+        filters: [{ column: 'sms_opt_in', operator: 'eq' as const, value: false }]
+      }
+    }
+
+    return {
+      select: '*',
+      orderBy: { column: 'first_name', ascending: true },
+      filters: [],
+      or: 'sms_opt_in.is.null,sms_opt_in.eq.true'
+    }
+  }, [showDeactivated])
 
   const [customPageSize, setCustomPageSize] = useState(50)
   
@@ -108,45 +115,60 @@ export default function CustomersPage() {
 
   // Loyalty removed: no special loading
 
-  // Load customer event preferences and labels
+  // Load customer enrichments (preferences, labels, unread counts)
   useEffect(() => {
-    async function loadCustomerData() {
-      if (!customers || customers.length === 0) return
+    let cancelled = false
 
-      try {
-        const customerIds = customers.map(c => c.id)
-        
-        // Loyalty removed
-        
-        // Load preferences
-        const { data: stats, error } = await supabase
+    if (!customers || customers.length === 0) {
+      setCustomerPreferences({})
+      setCustomerLabels({})
+      setUnreadCounts({})
+      return
+    }
+
+    const customerIds = customers.map(c => c.id)
+
+    async function loadCustomerData() {
+      const fetchCustomerCategoryStats = async (ids: string[]): Promise<{
+        data: CustomerCategoryStatsQueryRow[] | null
+        error: unknown
+      }> => {
+        const { data, error } = await supabase
           .from('customer_category_stats')
           .select(`
-            customer_id,
-            category_id,
-            times_attended,
-            last_attended_date,
-            event_categories!inner(
-              id,
-              name
-            )
-          `)
-          .in('customer_id', customerIds)
-          .order('times_attended', { ascending: false }) as {
-            data: Array<{
-              customer_id: string
-              category_id: string
-              times_attended: number
-              last_attended_date: string
-              event_categories: { id: string; name: string } | { id: string; name: string }[]
-            }> | null
-            error: unknown
-          }
+              customer_id,
+              category_id,
+              times_attended,
+              last_attended_date,
+              event_categories!inner(
+                id,
+                name
+              )
+            `)
+          .in('customer_id', ids)
+          .order('times_attended', { ascending: false })
 
-        if (error) {
-          console.error('Error loading customer preferences:', error)
+        return {
+          data: data as CustomerCategoryStatsQueryRow[] | null,
+          error
+        }
+      }
+
+      try {
+        const [statsResult, labelResult, unreadResult] = await Promise.all([
+          fetchCustomerCategoryStats(customerIds),
+          getBulkCustomerLabels(customerIds),
+          getUnreadMessageCounts()
+        ])
+
+        if (cancelled) return
+
+        const { data: stats, error: statsError } = statsResult
+
+        if (statsError) {
+          console.error('Error loading customer preferences:', statsError)
+          setCustomerPreferences({})
         } else {
-          // Group by customer ID
           const preferencesByCustomer: Record<string, CustomerCategoryStats[]> = {}
           stats?.forEach((stat) => {
             if (!preferencesByCustomer[stat.customer_id]) {
@@ -157,70 +179,49 @@ export default function CustomersPage() {
               category_id: stat.category_id,
               times_attended: stat.times_attended,
               last_attended_date: stat.last_attended_date,
-              event_categories: Array.isArray(stat.event_categories) 
-                ? stat.event_categories[0] 
+              event_categories: Array.isArray(stat.event_categories)
+                ? stat.event_categories[0]
                 : stat.event_categories
             })
           })
           setCustomerPreferences(preferencesByCustomer)
         }
-        
-        // Load labels in bulk
-        const { assignments } = await getBulkCustomerLabels(customerIds)
-        if (assignments) {
-          setCustomerLabels(assignments)
+
+        if (labelResult.assignments) {
+          setCustomerLabels(labelResult.assignments)
+        } else if (labelResult.error) {
+          console.error('Error loading label assignments:', labelResult.error)
+          setCustomerLabels({})
         }
+
+        const unreadCountsMap = (unreadResult && typeof unreadResult === 'object')
+          ? unreadResult as Record<string, number>
+          : {}
+        const relevantUnread = customerIds.reduce<Record<string, number>>((acc, id) => {
+          acc[id] = unreadCountsMap[id] ?? 0
+          return acc
+        }, {})
+        setUnreadCounts(relevantUnread)
       } catch (error) {
-        console.error('Error loading customer data:', error)
+        if (!cancelled) {
+          console.error('Error loading customer data:', error)
+        }
       }
     }
 
     loadCustomerData()
+
+    return () => {
+      cancelled = true
+    }
   }, [customers, supabase])
 
-  // Load unread message counts separately with a slight delay to avoid blocking initial render
-  useEffect(() => {
-    let mounted = true
-    
-    async function loadUnreadCounts() {
-      try {
-        // Small delay to let the main content render first
-        await new Promise(resolve => setTimeout(resolve, 100))
-        
-        if (!mounted) return
-        
-        const counts = await getUnreadMessageCounts()
-        if (mounted) {
-          setUnreadCounts(counts)
-        }
-      } catch (error) {
-        console.error('Error loading unread counts:', error)
-        // Silent fail - not critical for page functionality
-      }
-    }
-    
-    loadUnreadCounts()
-    
-    return () => {
-      mounted = false
-    }
-  }, [])
-
   // Process customers with loyalty status and apply filter
-  const customersWithLoyalty = useMemo(() => {
-    if (!customers) return []
-    if (showDeactivated) {
-      return customers
-    }
-    return customers.filter(c => c.sms_opt_in !== false)
-  }, [customers, showDeactivated])
+  const visibleCustomers = useMemo(() => customers ?? [], [customers])
 
-  // Calculate loyal customer IDs for badge counts
-  // Loyalty tracking removed; placeholder removed to avoid unused vars
-
-  async function handleCreateCustomer(
+  const handleCreateCustomer = useCallback(async (
     customerData: Omit<Customer, 'id' | 'created_at'>
-  ) {
+  ) => {
     if (!canManageCustomers) {
       toast.error('You do not have permission to manage customers.')
       return
@@ -249,11 +250,11 @@ export default function CustomersPage() {
       console.error('Error creating customer:', error)
       toast.error('Failed to create customer')
     }
-  }
+  }, [canManageCustomers, loadCustomers])
 
-  async function handleUpdateCustomer(
+  const handleUpdateCustomer = useCallback(async (
     customerData: Omit<Customer, 'id' | 'created_at'>
-  ) {
+  ) => {
     if (!editingCustomer) return
     if (!canManageCustomers) {
       toast.error('You do not have permission to manage customers.')
@@ -285,9 +286,9 @@ export default function CustomersPage() {
       console.error('Error updating customer:', error)
       toast.error('Failed to update customer')
     }
-  }
+  }, [canManageCustomers, editingCustomer, loadCustomers])
 
-  async function handleDeleteCustomer(customer: Customer) {
+  const handleDeleteCustomer = useCallback(async (customer: Customer) => {
     if (!canManageCustomers) {
       toast.error('You do not have permission to manage customers.')
       return
@@ -307,9 +308,9 @@ export default function CustomersPage() {
       console.error('Error deleting customer:', error)
       toast.error(error instanceof Error ? error.message : 'Failed to delete customer')
     }
-  }
+  }, [canManageCustomers, loadCustomers])
 
-  async function handleImportCustomers(customersData: Omit<Customer, 'id' | 'created_at'>[]) {
+  const handleImportCustomers = useCallback(async (customersData: Omit<Customer, 'id' | 'created_at'>[]) => {
     if (!canManageCustomers) {
       toast.error('You do not have permission to manage customers.')
       return
@@ -348,142 +349,149 @@ export default function CustomersPage() {
       console.error('Error importing customers:', error)
       toast.error('Failed to import customers')
     }
-  }
+  }, [canManageCustomers, loadCustomers])
 
-  const openCreateCustomer = () => {
+  const openCreateCustomer = useCallback(() => {
     if (!canManageCustomers) {
       toast.error('You do not have permission to manage customers.')
       return
     }
     setEditingCustomer(null)
     setShowForm(true)
-  }
+  }, [canManageCustomers])
 
-  const openImportCustomers = () => {
+  const openImportCustomers = useCallback(() => {
     if (!canManageCustomers) {
       toast.error('You do not have permission to manage customers.')
       return
     }
     setShowImport(true)
-  }
+  }, [canManageCustomers])
 
-  const startEditCustomer = (customer: CustomerWithLoyalty) => {
+  const startEditCustomer = useCallback((customer: CustomerWithLoyalty) => {
     if (!canManageCustomers) {
       toast.error('You do not have permission to manage customers.')
       return
     }
     setEditingCustomer(customer)
     setShowForm(true)
-  }
+  }, [canManageCustomers])
 
-  const desktopColumns = [
-    {
-      key: 'name',
-      header: 'Name',
-      cell: (customer: CustomerWithLoyalty) => (
-        <div className="space-y-2">
-          <div className="flex items-center">
-            <div className="font-medium text-gray-900">
-              <Link href={`/customers/${customer.id}`} className="text-blue-600 hover:text-blue-700">
-                <CustomerName customer={customer} />
-              </Link>
-              {unreadCounts[customer.id] > 0 && (
-                <Badge variant="primary" size="sm" className="ml-2">
-                  <ChatBubbleLeftIcon className="h-3 w-3 mr-1" />
-                  {unreadCounts[customer.id]}
-                </Badge>
-              )}
+  const desktopColumns = useMemo(() => {
+    const baseColumns = [
+      {
+        key: 'name',
+        header: 'Name',
+        cell: (customer: CustomerWithLoyalty) => (
+          <div className="space-y-2">
+            <div className="flex items-center">
+              <div className="font-medium text-gray-900">
+                <Link href={`/customers/${customer.id}`} className="text-blue-600 hover:text-blue-700">
+                  <CustomerName customer={customer} />
+                </Link>
+                {unreadCounts[customer.id] > 0 && (
+                  <Badge variant="primary" size="sm" className="ml-2">
+                    <ChatBubbleLeftIcon className="h-3 w-3 mr-1" />
+                    {unreadCounts[customer.id]}
+                  </Badge>
+                )}
+              </div>
             </div>
+            <CustomerLabelDisplay assignments={customerLabels[customer.id] || []} />
           </div>
-          <CustomerLabelDisplay assignments={customerLabels[customer.id] || []} />
-        </div>
-      )
-    },
-    {
-      key: 'mobile',
-      header: 'Mobile',
-      cell: (customer: CustomerWithLoyalty) => (
-        <div className="space-y-1">
-          {customer.mobile_number ? (
-            <a href={`tel:${customer.mobile_number}`} className="text-blue-600 hover:text-blue-700">
-              {customer.mobile_number}
-            </a>
-          ) : (
-            '-'
-          )}
-          {customer.email && (
-            <div className="text-sm text-gray-500">
-              {customer.email}
-            </div>
-          )}
-          {customer.mobile_number && customer.sms_opt_in === false && (
-            <Badge 
-              variant="error" 
-              size="sm"
-              icon={<XCircleIcon className="h-3 w-3" />}
-            >
-              SMS Deactivated
-            </Badge>
-          )}
-        </div>
-      )
-    },
-    {
-      key: 'event_preferences',
-      header: 'Event Preferences',
-      cell: (customer: CustomerWithLoyalty) => {
-        if (customerPreferences[customer.id] && customerPreferences[customer.id].length > 0) {
-          return (
-            <BadgeGroup>
-              {customerPreferences[customer.id].slice(0, 3).map((pref) => (
-                <Badge
-                  key={pref.category_id}
-                  variant="success"
-                  size="sm"
-                  title={`Attended ${pref.times_attended} times`}
-                >
-                  {pref.event_categories.name}
-                  {pref.times_attended > 1 && (
-                    <span className="ml-1">×{pref.times_attended}</span>
-                  )}
-                </Badge>
-              ))}
-              {customerPreferences[customer.id].length > 3 && (
-                <span className="text-xs text-gray-500">
-                  +{customerPreferences[customer.id].length - 3} more
-                </span>
-              )}
-            </BadgeGroup>
-          )
+        )
+      },
+      {
+        key: 'mobile',
+        header: 'Mobile',
+        cell: (customer: CustomerWithLoyalty) => (
+          <div className="space-y-1">
+            {customer.mobile_number ? (
+              <a href={`tel:${customer.mobile_number}`} className="text-blue-600 hover:text-blue-700">
+                {customer.mobile_number}
+              </a>
+            ) : (
+              '-'
+            )}
+            {customer.email && (
+              <div className="text-sm text-gray-500">
+                {customer.email}
+              </div>
+            )}
+            {customer.mobile_number && customer.sms_opt_in === false && (
+              <Badge
+                variant="error"
+                size="sm"
+                icon={<XCircleIcon className="h-3 w-3" />}
+              >
+                SMS Deactivated
+              </Badge>
+            )}
+          </div>
+        )
+      },
+      {
+        key: 'event_preferences',
+        header: 'Event Preferences',
+        cell: (customer: CustomerWithLoyalty) => {
+          if (customerPreferences[customer.id] && customerPreferences[customer.id].length > 0) {
+            return (
+              <BadgeGroup>
+                {customerPreferences[customer.id].slice(0, 3).map((pref) => (
+                  <Badge
+                    key={pref.category_id}
+                    variant="success"
+                    size="sm"
+                    title={`Attended ${pref.times_attended} times`}
+                  >
+                    {pref.event_categories.name}
+                    {pref.times_attended > 1 && (
+                      <span className="ml-1">×{pref.times_attended}</span>
+                    )}
+                  </Badge>
+                ))}
+                {customerPreferences[customer.id].length > 3 && (
+                  <span className="text-xs text-gray-500">
+                    +{customerPreferences[customer.id].length - 3} more
+                  </span>
+                )}
+              </BadgeGroup>
+            )
+          }
+          return <span className="text-gray-400">No preferences yet</span>
         }
-        return <span className="text-gray-400">No preferences yet</span>
       }
-    }
-  ]
+    ] as const
 
-  if (canManageCustomers) {
-    desktopColumns.push({
-      key: 'actions',
-      header: '',
-      cell: (customer: CustomerWithLoyalty) => (
-        <div className="flex items-center justify-end space-x-2">
-          <IconButton
-            onClick={() => startEditCustomer(customer)}
-            aria-label="Edit customer"
-          >
-            <PencilIcon className="h-4 w-4" />
-          </IconButton>
-          <IconButton
-            variant="danger"
-            onClick={() => handleDeleteCustomer(customer)}
-            aria-label="Delete customer"
-          >
-            <TrashIcon className="h-4 w-4" />
-          </IconButton>
-        </div>
-      )
-    })
-  }
+    if (!canManageCustomers) {
+      return [...baseColumns]
+    }
+
+    return [
+      ...baseColumns,
+      {
+        key: 'actions',
+        header: '',
+        cell: (customer: CustomerWithLoyalty) => (
+          <div className="flex items-center justify-end space-x-2">
+            <IconButton
+              onClick={() => startEditCustomer(customer)}
+              aria-label="Edit customer"
+            >
+              <PencilIcon className="h-4 w-4" />
+            </IconButton>
+            <IconButton
+              variant="danger"
+              onClick={() => handleDeleteCustomer(customer)}
+              aria-label="Delete customer"
+            >
+              <TrashIcon className="h-4 w-4" />
+            </IconButton>
+          </div>
+        )
+      }
+    ]
+  }, [canManageCustomers, customerLabels, customerPreferences, handleDeleteCustomer, startEditCustomer, unreadCounts])
 
   if (showForm || editingCustomer) {
     return (
@@ -526,7 +534,7 @@ export default function CustomersPage() {
         <CustomerImport
           onImportComplete={handleImportCustomers}
           onCancel={() => setShowImport(false)}
-          existingCustomers={customers}
+          existingCustomers={customers ?? []}
         />
       </PageLayout>
     )
@@ -552,19 +560,18 @@ export default function CustomersPage() {
           <div className="flex flex-col gap-4">
             <SearchInput
               placeholder="Search customers by name or phone..."
-              value={searchInput}
-              onSearch={setSearchInput}
-              debounceDelay={0}
+              onSearch={setSearchTerm}
+              debounceDelay={300}
               className="w-full"
             />
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 sm:items-center sm:justify-between">
               <div className="text-sm text-gray-600">
                 {searchTerm && (
-                  <span>Searching for &quot;{searchTerm}&quot; - Found {customersWithLoyalty.length} customers</span>
+                  <span>Searching for &quot;{searchTerm}&quot; - Found {visibleCustomers.length} customers</span>
                 )}
                 {!searchTerm && totalCount > 0 && (
                   <span>
-                    Showing {customPageSize === 1000 ? customersWithLoyalty.length : Math.min(customersWithLoyalty.length, customPageSize)} of {customersWithLoyalty.length} customers
+                    Showing {customPageSize === 1000 ? visibleCustomers.length : Math.min(visibleCustomers.length, customPageSize)} of {totalCount} customers
                   </span>
                 )}
               </div>
@@ -608,7 +615,7 @@ export default function CustomersPage() {
             ))}
           </div>
         </Card>
-      ) : customersWithLoyalty.length === 0 ? (
+      ) : visibleCustomers.length === 0 ? (
         <Card>
           <EmptyState
             title="No customers found"
@@ -627,7 +634,7 @@ export default function CustomersPage() {
           <div className="hidden md:block">
             <Card>
               <DataTable
-                data={customersWithLoyalty}
+                data={visibleCustomers}
                 getRowKey={(customer) => customer.id}
                 columns={desktopColumns}
               />
@@ -637,7 +644,7 @@ export default function CustomersPage() {
           {/* Mobile view */}
           <div className="block md:hidden">
             <Card className="divide-y divide-gray-200">
-              {customersWithLoyalty.map(customer => (
+              {visibleCustomers.map(customer => (
                 <div key={customer.id} className="px-4 py-4 sm:px-6 hover:bg-gray-50 transition-colors">
                   <div className="flex items-center justify-between">
                     <Link href={`/customers/${customer.id}`} className="block hover:bg-gray-50 flex-1 min-w-0">

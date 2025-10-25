@@ -105,7 +105,8 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
 
   // Date constraints
   const minDate = getTodayIsoDate()
-  const maxDate = getLocalIsoDateDaysAhead(730)
+  // Server validation allows scheduling up to one year ahead; keep client aligned.
+  const maxDate = getLocalIsoDateDaysAhead(365)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

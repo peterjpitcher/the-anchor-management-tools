@@ -224,6 +224,7 @@ export interface Booking {
   customer_id: string;
   event_id: string;
   seats: number | null;
+  is_reminder_only: boolean;
   notes: string | null;
   created_at: string;
   // Join fields

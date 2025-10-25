@@ -6,75 +6,129 @@ import { logAuditEvent } from './audit'
 import { customerSchema, formatPhoneForStorage, optionalEmailSchema } from '@/lib/validation'
 import { getConstraintErrorMessage, isPostgrestError } from '@/lib/dbErrorHandler'
 import { checkUserPermission } from './rbac'
+import type { User as SupabaseUser } from '@supabase/supabase-js'
+
+type CustomerFormData = {
+  first_name: string
+  last_name?: string
+  mobile_number?: string
+  email?: string
+  sms_opt_in: boolean
+}
+
+type CustomerFormResult =
+  | { error: string }
+  | { data: CustomerFormData }
+
+type ManageContext =
+  | { error: string }
+  | {
+      supabase: Awaited<ReturnType<typeof createClient>>
+      user: SupabaseUser
+    }
+
+async function requireCustomerManageContext(): Promise<ManageContext> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+    error: authError
+  } = await supabase.auth.getUser()
+
+  if (authError || !user) {
+    return { error: 'Unauthorized' }
+  }
+
+  const canManage = await checkUserPermission('customers', 'manage', user.id)
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
+
+  return { supabase, user }
+}
+
+function parseCustomerFormData(formData: FormData): CustomerFormResult {
+  const emailInput = formData.get('email')
+  const rawData = {
+    first_name: (formData.get('first_name') as string | null) ?? '',
+    last_name: (formData.get('last_name') as string | null)?.trim() || undefined,
+    mobile_number: (formData.get('mobile_number') as string | null)?.trim() || undefined,
+    email: typeof emailInput === 'string' && emailInput.trim() !== '' ? emailInput.trim() : undefined,
+    sms_opt_in: formData.get('sms_opt_in') === 'on'
+  }
+
+  const validationResult = customerSchema.safeParse(rawData)
+  if (!validationResult.success) {
+    return { error: validationResult.error.errors[0].message }
+  }
+
+  const data = validationResult.data
+
+  const email = data.email ? data.email.toLowerCase() : undefined
+  let mobileNumber: string | undefined
+
+  if (data.mobile_number) {
+    try {
+      mobileNumber = formatPhoneForStorage(data.mobile_number)
+    } catch {
+      return { error: 'Invalid UK phone number format' }
+    }
+  }
+
+  const normalized: CustomerFormData = {
+    first_name: data.first_name,
+    last_name: data.last_name ?? undefined,
+    mobile_number: mobileNumber,
+    email,
+    sms_opt_in: data.sms_opt_in
+  }
+
+  return { data: normalized }
+}
+
+function toCustomerPayload(data: {
+  first_name: string
+  last_name?: string
+  mobile_number?: string
+  email?: string
+  sms_opt_in: boolean
+}) {
+  return {
+    ...data,
+    last_name: data.last_name ?? null,
+    email: data.email ?? null
+  }
+}
 
 export async function createCustomer(formData: FormData) {
   try {
-    const supabase = await createClient()
-    
-    // Get the authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return { error: 'Unauthorized' }
+    const context = await requireCustomerManageContext()
+    if ('error' in context) {
+      return { error: context.error }
+    }
+    const { supabase, user } = context
+
+    const parsed = parseCustomerFormData(formData)
+    if ('error' in parsed) {
+      return { error: parsed.error }
     }
 
-    const canManage = await checkUserPermission('customers', 'manage', user.id)
-    if (!canManage) {
-      return { error: 'Insufficient permissions' }
-    }
-
-
-
-    // Parse and validate form data
-    const emailInput = formData.get('email')
-    const rawData = {
-      first_name: formData.get('first_name') as string,
-      last_name: (formData.get('last_name') as string | null)?.trim() || undefined,
-      mobile_number: (formData.get('mobile_number') as string | null)?.trim() || undefined,
-      email: typeof emailInput === 'string' && emailInput.trim() !== '' ? emailInput.trim() : undefined,
-      sms_opt_in: formData.get('sms_opt_in') === 'on'
-    }
-
-    const validationResult = customerSchema.safeParse(rawData)
-    if (!validationResult.success) {
-      return { error: validationResult.error.errors[0].message }
-    }
-
-    const data = validationResult.data
-
-    if (data.email) {
-      data.email = data.email.toLowerCase();
-    }
-
-    // Standardize phone number to E.164 format if provided
+    const data = parsed.data
     if (data.mobile_number) {
-      try {
-        data.mobile_number = formatPhoneForStorage(data.mobile_number)
-      } catch (error) {
-        return { error: 'Invalid UK phone number format' }
+      const { data: existing } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('mobile_number', data.mobile_number)
+        .maybeSingle()
+
+      if (existing) {
+        return { error: 'A customer with this phone number already exists' }
       }
-    }
-
-    const payload = {
-      ...data,
-      last_name: data.last_name ?? null,
-      email: data.email ?? null
-    }
-
-    // Check for duplicate phone number
-    const { data: existing } = await supabase
-      .from('customers')
-      .select('id')
-      .eq('mobile_number', data.mobile_number)
-      .single()
-
-    if (existing) {
-      return { error: 'A customer with this phone number already exists' }
     }
 
     // Create customer
     const { data: customer, error } = await supabase
       .from('customers')
-      .insert(payload)
+      .insert(toCustomerPayload(data))
       .select()
       .single()
 
@@ -107,70 +161,36 @@ export async function createCustomer(formData: FormData) {
 
 export async function updateCustomer(id: string, formData: FormData) {
   try {
-    const supabase = await createClient()
-    
-    // Get the authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return { error: 'Unauthorized' }
+    const context = await requireCustomerManageContext()
+    if ('error' in context) {
+      return { error: context.error }
+    }
+    const { supabase, user } = context
+
+    const parsed = parseCustomerFormData(formData)
+    if ('error' in parsed) {
+      return { error: parsed.error }
     }
 
-    const canManage = await checkUserPermission('customers', 'manage', user.id)
-    if (!canManage) {
-      return { error: 'Insufficient permissions' }
-    }
+    const data = parsed.data
 
-    // Parse and validate form data
-    const emailInput = formData.get('email')
-    const rawData = {
-      first_name: formData.get('first_name') as string,
-      last_name: (formData.get('last_name') as string | null)?.trim() || undefined,
-      mobile_number: (formData.get('mobile_number') as string | null)?.trim() || undefined,
-      email: typeof emailInput === 'string' && emailInput.trim() !== '' ? emailInput.trim() : undefined,
-      sms_opt_in: formData.get('sms_opt_in') === 'on'
-    }
-
-    const validationResult = customerSchema.safeParse(rawData)
-    if (!validationResult.success) {
-      return { error: validationResult.error.errors[0].message }
-    }
-
-    const data = validationResult.data
-    if (data.email) {
-      data.email = data.email.toLowerCase();
-    }
-
-    // Standardize phone number to E.164 format if provided
     if (data.mobile_number) {
-      try {
-        data.mobile_number = formatPhoneForStorage(data.mobile_number)
-      } catch (error) {
-        return { error: 'Invalid UK phone number format' }
+      const { data: existing } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('mobile_number', data.mobile_number)
+        .neq('id', id)
+        .maybeSingle()
+
+      if (existing) {
+        return { error: 'A customer with this phone number already exists' }
       }
-    }
-
-    const payload = {
-      ...data,
-      last_name: data.last_name ?? null,
-      email: data.email ?? null
-    }
-
-    // Check for duplicate phone number (excluding current customer)
-    const { data: existing } = await supabase
-      .from('customers')
-      .select('id')
-      .eq('mobile_number', data.mobile_number)
-      .neq('id', id)
-      .single()
-
-    if (existing) {
-      return { error: 'A customer with this phone number already exists' }
     }
 
     // Update customer
     const { data: customer, error } = await supabase
       .from('customers')
-      .update(payload)
+      .update(toCustomerPayload(data))
       .eq('id', id)
       .select()
       .single()
@@ -205,18 +225,11 @@ export async function updateCustomer(id: string, formData: FormData) {
 
 export async function deleteCustomer(id: string) {
   try {
-    const supabase = await createClient()
-    
-    // Get the authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return { error: 'Unauthorized' }
+    const context = await requireCustomerManageContext()
+    if ('error' in context) {
+      return { error: context.error }
     }
-
-    const canManage = await checkUserPermission('customers', 'manage', user.id)
-    if (!canManage) {
-      return { error: 'Insufficient permissions' }
-    }
+    const { supabase, user } = context
 
     // Get customer details for audit log
     const { data: customer } = await supabase
@@ -270,16 +283,11 @@ export async function importCustomers(entries: ImportCustomerInput[]) {
       return { error: 'No customers provided' }
     }
 
-    const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return { error: 'Unauthorized' }
+    const context = await requireCustomerManageContext()
+    if ('error' in context) {
+      return { error: context.error }
     }
-
-    const canManage = await checkUserPermission('customers', 'manage', user.id)
-    if (!canManage) {
-      return { error: 'Insufficient permissions' }
-    }
+    const { supabase, user } = context
 
     const preparedCustomers: Array<{
       first_name: string
@@ -434,18 +442,11 @@ export async function importCustomers(entries: ImportCustomerInput[]) {
 
 export async function deleteTestCustomers() {
   try {
-    const supabase = await createClient()
-    
-    // Get the authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return { error: 'Unauthorized' }
+    const context = await requireCustomerManageContext()
+    if ('error' in context) {
+      return { error: context.error }
     }
-
-    const canManage = await checkUserPermission('customers', 'manage', user.id)
-    if (!canManage) {
-      return { error: 'Insufficient permissions' }
-    }
+    const { supabase, user } = context
 
     // Find all customers with 'test' in first or last name (case-insensitive)
     const { data: testCustomers, error: fetchError } = await supabase
