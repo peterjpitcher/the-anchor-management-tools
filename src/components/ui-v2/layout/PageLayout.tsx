@@ -166,7 +166,7 @@ export function PageLayout({
     <ErrorBoundary>
       <div
         className={cn(
-          '-mx-2 sm:-mx-6 -mt-2 sm:-mt-6 flex min-h-screen flex-col bg-gray-100',
+          'flex min-h-screen flex-col bg-gray-100 sm:-mx-6 sm:-mt-6',
           className,
         )}
       >

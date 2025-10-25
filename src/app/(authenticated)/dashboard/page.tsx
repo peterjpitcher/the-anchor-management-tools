@@ -11,7 +11,6 @@ import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import type { BadgeProps } from '@/components/ui-v2/display/Badge'
 import { formatDate, formatDateTime } from '@/lib/dateUtils'
 import { loadDashboardSnapshot, type DashboardSnapshot } from './dashboard-data'
-import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 
 type SectionSummary = {
   id: string
@@ -28,6 +27,19 @@ const currencyFormatter = new Intl.NumberFormat('en-GB', {
   currency: 'GBP',
   maximumFractionDigits: 0,
 })
+
+const cardTitleLinkClasses =
+  'inline-flex items-center gap-2 rounded-md text-primary-700 hover:text-primary-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600'
+
+function renderCardTitleLink(label: string, href: string, enabled: boolean) {
+  return enabled ? (
+    <Link href={href} className={cardTitleLinkClasses}>
+      {label}
+    </Link>
+  ) : (
+    label
+  )
+}
 
 function formatNumber(value: number) {
   return Number.isFinite(value) ? value.toLocaleString() : '0'
@@ -476,18 +488,6 @@ export default async function DashboardPage() {
     })
   }
 
-  if (snapshot.employees.permitted) {
-    statsCards.push({
-      key: 'employees-active',
-      label: 'Active employees',
-      value: snapshot.employees.activeCount,
-      icon: <UsersIcon className="h-full w-full" />,
-      description: 'Currently active staff',
-      color: 'success',
-      href: '/employees',
-    })
-  }
-
   if (snapshot.receipts.permitted) {
     statsCards.push({
       key: 'receipts-attention',
@@ -523,30 +523,18 @@ export default async function DashboardPage() {
     />
   )
 
-  const navItems: HeaderNavItem[] = [
-    { label: 'Overview', href: '#metrics' },
-    { label: 'Operations', href: '#operations' },
-    { label: 'Finance', href: '#finance' },
-  ]
-
   return (
     <PageLayout
       title="Dashboard"
       subtitle="Welcome back! Here's what's happening today."
-      navItems={navItems}
+      navItems={[]}
     >
       <div className="space-y-6">
         <section id="metrics" className="space-y-3">
           {statsCards.length > 0 ? (
             <>
-              <div className="-mx-2 sm:hidden">
-                <div className="flex gap-3 px-2 overflow-x-auto scrollbar-hide snap-x snap-mandatory">
-                  {statsCards.map((card) => (
-                    <div key={card.key} className="flex-none w-[240px] snap-start">
-                      {renderStatCard(card, 'sm')}
-                    </div>
-                  ))}
-                </div>
+              <div className="grid grid-cols-2 gap-3 sm:hidden">
+                {statsCards.map((card) => renderStatCard(card, 'sm'))}
               </div>
               <div className="hidden sm:grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
                 {statsCards.map((card) => renderStatCard(card))}
@@ -565,7 +553,13 @@ export default async function DashboardPage() {
         <div className="grid gap-4 xl:grid-cols-[2fr,1fr]">
           <section id="operations" className="space-y-4">
             {snapshot.events.permitted && snapshot.events.today.length > 0 && (
-              <Card header={<CardTitle>Today&apos;s Events</CardTitle>}>
+              <Card
+                header={
+                  <CardTitle>
+                    {renderCardTitleLink("Today's Events", '/events', snapshot.events.permitted)}
+                  </CardTitle>
+                }
+              >
                 <SimpleList
                   items={snapshot.events.today.map((event) => ({
                     id: event.id,
@@ -587,14 +581,9 @@ export default async function DashboardPage() {
 
               <Card
                 header={
-                  <div className="flex items-center justify-between">
-                    <CardTitle>Upcoming Events</CardTitle>
-                    {snapshot.events.permitted && (
-                      <LinkButton href="/events" variant="secondary" size="sm">
-                        View all
-                      </LinkButton>
-                    )}
-                  </div>
+                  <CardTitle>
+                    {renderCardTitleLink('Upcoming Events', '/events', snapshot.events.permitted)}
+                  </CardTitle>
                 }
               >
                 {!snapshot.events.permitted ? (
@@ -659,14 +648,13 @@ export default async function DashboardPage() {
 
               <Card
                 header={
-                  <div className="flex items-center justify-between">
-                    <CardTitle>Upcoming Private Bookings</CardTitle>
-                    {snapshot.privateBookings.permitted && (
-                      <LinkButton href="/private-bookings" variant="secondary" size="sm">
-                        View all
-                      </LinkButton>
+                  <CardTitle>
+                    {renderCardTitleLink(
+                      'Upcoming Private Bookings',
+                      '/private-bookings',
+                      snapshot.privateBookings.permitted,
                     )}
-                  </div>
+                  </CardTitle>
                 }
               >
                 {!snapshot.privateBookings.permitted ? (
@@ -711,14 +699,13 @@ export default async function DashboardPage() {
 
               <Card
                 header={
-                  <div className="flex items-center justify-between">
-                    <CardTitle>Upcoming Table Bookings</CardTitle>
-                    {snapshot.tableBookings.permitted && (
-                      <LinkButton href="/table-bookings" variant="secondary" size="sm">
-                        View all
-                      </LinkButton>
+                  <CardTitle>
+                    {renderCardTitleLink(
+                      'Upcoming Table Bookings',
+                      '/table-bookings',
+                      snapshot.tableBookings.permitted,
                     )}
-                  </div>
+                  </CardTitle>
                 }
               >
                 {!snapshot.tableBookings.permitted ? (
@@ -783,14 +770,9 @@ export default async function DashboardPage() {
           <section id="finance" className="space-y-4">
               <Card
                 header={
-                  <div className="flex items-center justify-between">
-                    <CardTitle>Upcoming Car Parking</CardTitle>
-                    {snapshot.parking.permitted && (
-                      <LinkButton href="/parking" variant="secondary" size="sm">
-                        Manage parking
-                      </LinkButton>
-                    )}
-                  </div>
+                  <CardTitle>
+                    {renderCardTitleLink('Upcoming Car Parking', '/parking', snapshot.parking.permitted)}
+                  </CardTitle>
                 }
               >
                 {!snapshot.parking.permitted ? (
@@ -848,14 +830,13 @@ export default async function DashboardPage() {
 
               <Card
                 header={
-                  <div className="flex items-center justify-between">
-                    <CardTitle>Recent Unpaid Invoices</CardTitle>
-                    {snapshot.invoices.permitted && (
-                      <LinkButton href="/invoices?status=unpaid" variant="secondary" size="sm">
-                        View all
-                      </LinkButton>
+                  <CardTitle>
+                    {renderCardTitleLink(
+                      'Recent Unpaid Invoices',
+                      '/invoices?status=unpaid',
+                      snapshot.invoices.permitted,
                     )}
-                  </div>
+                  </CardTitle>
                 }
               >
                 {!snapshot.invoices.permitted ? (

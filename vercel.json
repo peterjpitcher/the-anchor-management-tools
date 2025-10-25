@@ -5,6 +5,10 @@
       "schedule": "0 9 * * *"
     },
     {
+      "path": "/api/cron/event-checklist-reminders",
+      "schedule": "0 9 * * *"
+    },
+    {
       "path": "/api/jobs/process",
       "schedule": "* * * * *"
     },
