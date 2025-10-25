@@ -333,14 +333,19 @@ export class UnifiedJobQueue {
                 metadata: { to: payload.to, template: payload.template }
               })
             } else if (result.sid) {
-              await recordOutboundSmsMessage({
+              const messageId = await recordOutboundSmsMessage({
                 supabase,
                 customerId,
                 to: payload.to,
                 body: messageWithSupport,
                 sid: result.sid,
+                fromNumber: result.fromNumber ?? undefined,
+                twilioStatus: result.status ?? 'queued',
                 metadata: payload.booking_id ? { booking_id: payload.booking_id } : null
               })
+              if (!messageId) {
+                return { success: false, error: 'SMS sent but failed to log message' }
+              }
             }
           }
 
@@ -360,14 +365,19 @@ export class UnifiedJobQueue {
               })
             } else if (result.sid) {
               const supabase = await createAdminClient()
-              await recordOutboundSmsMessage({
+              const messageId = await recordOutboundSmsMessage({
                 supabase,
                 customerId,
                 to: payload.to,
                 body: messageWithSupport,
                 sid: result.sid,
+                fromNumber: result.fromNumber ?? undefined,
+                twilioStatus: result.status ?? 'queued',
                 metadata: payload.booking_id ? { booking_id: payload.booking_id } : null
               })
+              if (!messageId) {
+                return { success: false, error: 'SMS sent but failed to log message' }
+              }
             }
           }
 

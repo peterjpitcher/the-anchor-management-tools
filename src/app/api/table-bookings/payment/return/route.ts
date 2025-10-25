@@ -184,8 +184,8 @@ export async function GET(request: NextRequest) {
             if (smsResult.success && smsResult.sid) {
               console.log('[Payment Journey] SMS confirmation sent immediately:', smsResult.sid);
               
-              // Log message in database
-              await supabase
+              const fromNumber = smsResult.fromNumber ?? process.env.TWILIO_PHONE_NUMBER ?? null;
+              const { error: messageInsertError } = await supabase
                 .from('messages')
                 .insert({
                   customer_id: booking.customer.id,
@@ -194,8 +194,8 @@ export async function GET(request: NextRequest) {
                   twilio_message_sid: smsResult.sid,
                   body: messageWithSupport,
                   status: 'sent',
-                  twilio_status: 'queued',
-                  from_number: process.env.TWILIO_PHONE_NUMBER,
+                  twilio_status: smsResult.status ?? 'queued',
+                  from_number: fromNumber,
                   to_number: booking.customer.mobile_number,
                   message_type: 'sms',
                   metadata: { 
@@ -204,6 +204,10 @@ export async function GET(request: NextRequest) {
                     source: 'payment_confirmation'
                   }
                 });
+
+              if (messageInsertError) {
+                console.error('[Payment Journey] Failed to record SMS confirmation:', messageInsertError);
+              }
             } else {
               console.error('[Payment Journey] Failed to send SMS confirmation:', smsResult.error);
             }
