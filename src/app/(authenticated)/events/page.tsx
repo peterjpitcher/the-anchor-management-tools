@@ -1,21 +1,31 @@
 import { redirect } from 'next/navigation'
 import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
 import { buildEventChecklist, EVENT_CHECKLIST_TOTAL_TASKS, ChecklistTodoItem } from '@/lib/event-checklist'
-import { getTodayIsoDate } from '@/lib/dateUtils'
+import { getTodayIsoDate, getLocalIsoDateDaysAgo, getLocalIsoDateDaysAhead } from '@/lib/dateUtils'
 import { checkUserPermission } from '@/app/actions/rbac'
 import EventsClient from './EventsClient'
 
 async function getEvents(): Promise<{ events: any[]; todos: ChecklistTodoItem[]; error?: string }> {
   const supabase = getSupabaseAdminClient()
   const errors: string[] = []
+  const PAST_WINDOW_DAYS = 90
+  const FUTURE_WINDOW_DAYS = 180
+  const earliestDate = getLocalIsoDateDaysAgo(PAST_WINDOW_DAYS)
+  const latestDate = getLocalIsoDateDaysAhead(FUTURE_WINDOW_DAYS)
   
   const { data: events, error } = await supabase
     .from('events')
     .select(`
-      *,
-      category:event_categories(*),
-      bookings (id, seats)
+      id,
+      name,
+      date,
+      time,
+      capacity,
+      category:event_categories(id, name, color),
+      bookings (seats)
     `)
+    .gte('date', earliestDate)
+    .lte('date', latestDate)
     .order('date', { ascending: true })
     .order('time', { ascending: true })
   

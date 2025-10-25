@@ -25,6 +25,7 @@ import { Badge } from '@/components/ui-v2/display/Badge'
 import { CustomerLabelSelector } from '@/components/CustomerLabelSelector'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { deleteBooking as deleteBookingAction } from '@/app/actions/bookings'
+import { getCustomerLabelAssignments, getCustomerLabels, type CustomerLabel, type CustomerLabelAssignment } from '@/app/actions/customer-labels'
 
 type BookingWithEvent = Omit<Booking, 'event'> & {
   event: Pick<Event, 'id' | 'name' | 'date' | 'time' | 'capacity' | 'created_at' | 'slug'>
@@ -39,6 +40,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   const searchParams = useSearchParams()
   const { hasPermission } = usePermissions()
   const canManageEvents = hasPermission('events', 'manage')
+  const canManageMessages = hasPermission('messages', 'manage')
 
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [bookings, setBookings] = useState<BookingWithEvent[]>([])
@@ -62,6 +64,9 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   } | null>(null)
   const [togglingSmsSetting, setTogglingSmsSetting] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
+  const [messagesLoading, setMessagesLoading] = useState(false)
+  const [availableLabels, setAvailableLabels] = useState<CustomerLabel[]>([])
+  const [customerLabelAssignments, setCustomerLabelAssignments] = useState<CustomerLabelAssignment[]>([])
 
   // Modal states
   const [editingBooking, setEditingBooking] = useState<BookingWithEvent | undefined>(undefined)
@@ -69,60 +74,101 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   const [eventForNewBooking, setEventForNewBooking] = useState<Event | undefined>(undefined)
 
   const loadMessages = useCallback(async () => {
+    setMessagesLoading(true)
     try {
       const messagesResult = await getCustomerMessages(params.id)
       if ('error' in messagesResult) {
         console.error('Failed to load messages:', messagesResult.error)
+        toast.error('Failed to load messages')
       } else {
         setMessages(messagesResult.messages)
-        // Mark inbound messages as read
-        await markMessagesAsRead(params.id)
+        if (canManageMessages) {
+          const hasUnreadInbound = messagesResult.messages.some(
+            (message) => message.direction === 'inbound' && !message.read_at
+          )
+          if (hasUnreadInbound) {
+            await markMessagesAsRead(params.id)
+          }
+        }
       }
     } catch (error) {
       console.error('Error loading messages:', error)
       toast.error('Failed to load messages')
+    } finally {
+      setMessagesLoading(false)
     }
-  }, [params.id])
+  }, [canManageMessages, params.id])
 
   const loadData = useCallback(async () => {
+    setLoading(true)
     try {
-      setLoading(true)
-      const { data: customerData, error: customerError } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('id', params.id)
-        .single()
+      const todayIso = getTodayIsoDate()
+      const [
+        { data: customerData, error: customerError },
+        { data: bookingsData, error: bookingsError },
+        { data: eventsData, error: eventsError },
+        smsStatsResult,
+        customerLabelsResult,
+        customerAssignmentsResult
+      ] = await Promise.all([
+        supabase
+          .from('customers')
+          .select('*')
+          .eq('id', params.id)
+          .single(),
+        supabase
+          .from('bookings')
+          .select('*, event:events(id, name, date, time, capacity, created_at, slug, category:event_categories(*))')
+          .eq('customer_id', params.id)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('events')
+          .select('*')
+          .gte('date', todayIso)
+          .order('date'),
+        getCustomerSmsStats(params.id),
+        getCustomerLabels(),
+        getCustomerLabelAssignments(params.id)
+      ])
 
-      if (customerError) throw customerError
+      if (customerError) {
+        throw customerError
+      }
+      if (!customerData) {
+        throw new Error('Customer not found')
+      }
       setCustomer(customerData)
 
-      const { data: bookingsData, error: bookingsError } = await supabase
-        .from('bookings')
-        .select('*, event:events(id, name, date, time, capacity, created_at, slug, category:event_categories(*))')
-        .eq('customer_id', params.id)
-        .order('created_at', { ascending: false })
+      if (bookingsError) {
+        throw bookingsError
+      }
+      setBookings((bookingsData ?? []) as BookingWithEvent[])
 
-      if (bookingsError) throw bookingsError
-      setBookings(bookingsData as BookingWithEvent[])
+      if (eventsError) {
+        throw eventsError
+      }
+      setAllEvents(eventsData ?? [])
 
-      const todayIso = getTodayIsoDate()
-      const { data: eventsData, error: eventsError } = await supabase
-        .from('events')
-        .select('*')
-        .gte('date', todayIso) // Only future events
-        .order('date')
-      if (eventsError) throw eventsError
-      setAllEvents(eventsData)
-
-      // Load SMS stats
-      const stats = await getCustomerSmsStats(params.id)
-      if ('error' in stats) {
-        console.error('Failed to load SMS stats:', stats.error)
+      if ('error' in smsStatsResult) {
+        console.error('Failed to load SMS stats:', smsStatsResult.error)
       } else {
-        setSmsStats(stats)
+        setSmsStats(smsStatsResult)
       }
 
-      // Load messages initially
+      if (customerLabelsResult.data) {
+        setAvailableLabels(customerLabelsResult.data)
+      } else if (customerLabelsResult.error) {
+        console.error('Failed to load customer labels:', customerLabelsResult.error)
+        setAvailableLabels([])
+      }
+
+      if (customerAssignmentsResult.data) {
+        setCustomerLabelAssignments(customerAssignmentsResult.data)
+      } else if (customerAssignmentsResult.error) {
+        console.error('Failed to load customer label assignments:', customerAssignmentsResult.error)
+        setCustomerLabelAssignments([])
+      }
+
       await loadMessages()
     } catch (error) {
       console.error('Error loading customer details:', error)
@@ -130,20 +176,13 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
     } finally {
       setLoading(false)
     }
-  }, [params.id, supabase, loadMessages])
+  }, [loadMessages, params.id, supabase])
 
   useEffect(() => {
     loadData()
   }, [loadData])
 
-  useEffect(() => {
-    // Set up periodic refresh for messages only
-    const interval = setInterval(() => {
-      loadMessages()
-    }, 5000)
-
-    return () => clearInterval(interval)
-  }, [loadMessages])
+  // Messages are refreshed on demand via loadMessages; no aggressive polling.
 
   const handleToggleSms = async () => {
     if (!customer) return
@@ -277,8 +316,8 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
 
 
   const showModal = !!editingBooking || isAddingBooking
-  const activeBookings = bookings.filter(booking => booking.seats && booking.seats > 0)
-  const reminders = bookings.filter(booking => !booking.seats || booking.seats === 0)
+  const activeBookings = bookings.filter(booking => !booking.is_reminder_only)
+  const reminders = bookings.filter(booking => booking.is_reminder_only)
   const totalSeats = activeBookings.reduce((sum, booking) => sum + (booking.seats ?? 0), 0)
 
   // Define columns for booking table
@@ -427,167 +466,193 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
           )}
         </Modal>
 
-        {/* Customer Info Card */}
-        <Card>
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center">
-              <ChatBubbleLeftRightIcon className="mr-1 h-4 w-4 text-gray-400" />
-              <span
-                className={`text-sm font-medium ${customer.sms_opt_in !== false ? 'text-green-600' : 'text-red-600'}`}
-              >
-                SMS {customer.sms_opt_in !== false ? 'Active' : 'Inactive'}
-              </span>
-            </div>
-            {customer.sms_delivery_failures && customer.sms_delivery_failures > 0 && (
-              <span className="text-sm text-orange-600">
-                {customer.sms_delivery_failures} failed deliveries
-              </span>
-            )}
-          </div>
-        </Card>
-
-        {/* Customer Labels Card */}
-        {hasPermission('customers', 'manage') && (
-          <Card header={<CardTitle>Customer Labels</CardTitle>}>
-            <CustomerLabelSelector customerId={customer.id} canEdit />
+        <div className="grid gap-6 xl:grid-cols-3">
+          {/* Messages */}
+          <Card
+            className="xl:col-span-2"
+            header={
+              <div className="flex items-center justify-between">
+                <CardTitle>Messages</CardTitle>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={loadMessages}
+                  disabled={messagesLoading}
+                >
+                  {messagesLoading ? 'Refreshing…' : 'Refresh'}
+                </Button>
+              </div>
+            }
+          >
+            <MessageThread
+              messages={messages}
+              customerId={customer.id}
+              customerName={customerName}
+              canReply={customer.sms_opt_in !== false}
+              onMessageSent={async () => {
+                await loadMessages()
+              }}
+            />
           </Card>
-        )}
 
-        {/* Category Preferences */}
+          {/* At-a-glance column */}
+          <div className="space-y-6">
+            <Card>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <ChatBubbleLeftRightIcon className="h-5 w-5 text-gray-400" />
+                  <span
+                    className={`text-sm font-medium ${customer.sms_opt_in !== false ? 'text-green-600' : 'text-red-600'}`}
+                  >
+                    SMS {customer.sms_opt_in !== false ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+                {customer.sms_delivery_failures && customer.sms_delivery_failures > 0 && (
+                  <span className="text-sm text-orange-600">
+                    {customer.sms_delivery_failures} failed deliveries
+                  </span>
+                )}
+              </div>
+            </Card>
+
+            {hasPermission('customers', 'manage') && (
+              <Card header={<CardTitle>Customer Labels</CardTitle>}>
+                <CustomerLabelSelector
+                  customerId={customer.id}
+                  canEdit
+                  initialLabels={availableLabels}
+                  initialAssignments={customerLabelAssignments}
+                  onLabelsChange={(updatedAssignments) => {
+                    setCustomerLabelAssignments(updatedAssignments)
+                  }}
+                />
+              </Card>
+            )}
+
+            <Card
+              header={
+                <div className="flex items-start justify-between">
+                  <div>
+                    <CardTitle>SMS Messaging Status</CardTitle>
+                    <CardDescription>
+                      Control whether this customer receives SMS notifications for bookings and reminders.
+                    </CardDescription>
+                  </div>
+                  <Button
+                    onClick={handleToggleSms}
+                    disabled={togglingSmsSetting}
+                    variant={customer.sms_opt_in !== false ? 'secondary' : 'primary'}
+                    size="sm"
+                  >
+                    {togglingSmsSetting
+                      ? 'Updating...'
+                      : customer.sms_opt_in !== false
+                        ? 'Deactivate SMS'
+                        : 'Activate SMS'}
+                  </Button>
+                </div>
+              }
+            >
+              {smsStats && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <dt className="text-sm font-medium text-gray-500">Total Messages</dt>
+                    <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.totalMessages || 0}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm font-medium text-gray-500">Delivered</dt>
+                    <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.deliveredMessages || 0}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm font-medium text-gray-500">Failed</dt>
+                    <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.failedMessages || 0}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm font-medium text-gray-500">Delivery Rate</dt>
+                    <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.deliveryRate || 0}%</dd>
+                  </div>
+                </div>
+              )}
+              {customer.sms_deactivation_reason && (
+                <Alert variant="error" title="Auto-deactivated" className="mt-4">
+                  {customer.sms_deactivation_reason}
+                  {customer.last_sms_failure_reason && (
+                    <p className="mt-1 text-sm text-red-700">
+                      Last error: {customer.last_sms_failure_reason}
+                    </p>
+                  )}
+                </Alert>
+              )}
+            </Card>
+          </div>
+        </div>
+
+        {/* Category insights */}
         <CustomerCategoryPreferences customerId={customer.id} />
 
-        {/* Message Thread */}
-        <Card header={<CardTitle>Messages</CardTitle>}>
-          <MessageThread
-            messages={messages}
-            customerId={customer.id}
-            customerName={customerName}
-            canReply={customer.sms_opt_in !== false}
-            onMessageSent={async () => {
-              await loadMessages()
-            }}
-          />
-        </Card>
-
-        {/* Active Bookings */}
-        <Card
-          header={
-            <div>
-              <CardTitle>Active Bookings ({activeBookings.length})</CardTitle>
-              <CardDescription>
-                Total of {totalSeats} tickets booked across all events.
-              </CardDescription>
-            </div>
-          }
-        >
-          <DataTable
-            data={activeBookings}
-            columns={bookingColumns}
-            getRowKey={(booking) => booking.id}
-            emptyMessage="No bookings found"
-          />
-        </Card>
-
-        {/* Reminders */}
-        {reminders.length > 0 && (
+        {/* Bookings & history */}
+        <div className="grid gap-6 xl:grid-cols-2">
           <Card
+            className="xl:col-span-2"
             header={
               <div>
-                <CardTitle>Reminders ({reminders.length})</CardTitle>
+                <CardTitle>Active Bookings ({activeBookings.length})</CardTitle>
                 <CardDescription>
-                  These are events the customer has been sent a reminder for, but has not booked tickets.
+                  Total of {totalSeats} tickets booked across all events.
                 </CardDescription>
               </div>
             }
           >
             <DataTable
-              data={reminders}
-              columns={reminderColumns}
+              data={activeBookings}
+              columns={bookingColumns}
               getRowKey={(booking) => booking.id}
-              emptyMessage="No reminders found"
+              emptyMessage="No bookings found"
             />
           </Card>
-        )}
 
-        {/* SMS Status Card */}
-        <Card
-          header={
-            <div className="flex items-start justify-between">
-              <div>
-                <CardTitle>SMS Messaging Status</CardTitle>
-                <CardDescription>
-                  Control whether this customer receives SMS notifications for bookings and reminders.
-                </CardDescription>
+          <Card
+            className={reminders.length > 0 ? '' : 'xl:col-span-2'}
+            header={
+              <div className="flex items-center justify-between">
+                <CardTitle>Booking History</CardTitle>
+                <Button
+                  variant="secondary"
+                  onClick={() => router.push(`/events?customer=${customer.id}`)}
+                >
+                  View All Events
+                </Button>
               </div>
-              <Button
-                onClick={handleToggleSms}
-                disabled={togglingSmsSetting}
-                variant={customer.sms_opt_in !== false ? 'secondary' : 'primary'}
-                size="sm"
-              >
-                {togglingSmsSetting
-                  ? 'Updating...'
-                  : customer.sms_opt_in !== false
-                    ? 'Deactivate SMS'
-                    : 'Activate SMS'}
-              </Button>
-            </div>
-          }
-        >
-          {smsStats && (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Total Messages</dt>
-                <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.totalMessages || 0}</dd>
-              </div>
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Delivered</dt>
-                <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.deliveredMessages || 0}</dd>
-              </div>
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Failed</dt>
-                <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.failedMessages || 0}</dd>
-              </div>
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Delivery Rate</dt>
-                <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.deliveryRate || 0}%</dd>
-              </div>
-            </div>
+            }
+          >
+            <DataTable
+              data={bookings}
+              columns={bookingColumns}
+              getRowKey={(booking) => booking.id}
+              emptyMessage="No booking history available"
+            />
+          </Card>
+          
+          {reminders.length > 0 && (
+            <Card
+              header={
+                <div>
+                  <CardTitle>Reminders ({reminders.length})</CardTitle>
+                  <CardDescription>
+                    Events the customer has been reminded about but hasn’t booked yet.
+                  </CardDescription>
+                </div>
+              }
+            >
+              <DataTable
+                data={reminders}
+                columns={reminderColumns}
+                getRowKey={(booking) => booking.id}
+                emptyMessage="No reminders found"
+              />
+            </Card>
           )}
-          {customer.sms_deactivation_reason && (
-            <Alert variant="error" title="Auto-deactivated" className="mt-4">
-              {customer.sms_deactivation_reason}
-              {customer.last_sms_failure_reason && (
-                <p className="mt-1 text-sm text-red-700">
-                  Last error: {customer.last_sms_failure_reason}
-                </p>
-              )}
-            </Alert>
-          )}
-        </Card>
-
-        {/* Booking History */}
-        <Card
-          header={
-            <div className="flex items-center justify-between">
-              <CardTitle>Booking History</CardTitle>
-              <Button
-                variant="secondary"
-                onClick={() => router.push(`/events?customer=${customer.id}`)}
-              >
-                View All Events
-              </Button>
-            </div>
-          }
-        >
-          <DataTable
-            data={bookings}
-            columns={bookingColumns}
-            getRowKey={(booking) => booking.id}
-            emptyMessage="No booking history available"
-          />
-        </Card>
-        {/* Loyalty removed */}
+        </div>
       </div>
     </PageLayout>
   )

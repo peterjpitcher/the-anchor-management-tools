@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { 
   getCustomerLabels, 
   getCustomerLabelAssignments,
@@ -17,25 +17,26 @@ interface CustomerLabelSelectorProps {
   customerId: string
   canEdit?: boolean
   onLabelsChange?: (labels: CustomerLabelAssignment[]) => void
+  initialLabels?: CustomerLabel[]
+  initialAssignments?: CustomerLabelAssignment[]
 }
 
 export function CustomerLabelSelector({ 
   customerId, 
   canEdit = false,
-  onLabelsChange 
+  onLabelsChange,
+  initialLabels,
+  initialAssignments
 }: CustomerLabelSelectorProps) {
-  const [allLabels, setAllLabels] = useState<CustomerLabel[]>([])
-  const [customerLabels, setCustomerLabels] = useState<CustomerLabelAssignment[]>([])
-  const [loading, setLoading] = useState(true)
+  const [allLabels, setAllLabels] = useState<CustomerLabel[]>(initialLabels ?? [])
+  const [customerLabels, setCustomerLabels] = useState<CustomerLabelAssignment[]>(initialAssignments ?? [])
+  const [loading, setLoading] = useState(!(initialLabels && initialAssignments))
   const [showSelector, setShowSelector] = useState(false)
   const [assigningLabel, setAssigningLabel] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadData()
-  }, [customerId])
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     try {
+      setLoading(true)
       const [labelsResult, assignmentsResult] = await Promise.all([
         getCustomerLabels(),
         getCustomerLabelAssignments(customerId)
@@ -53,7 +54,7 @@ export function CustomerLabelSelector({
     } finally {
       setLoading(false)
     }
-  }
+  }, [customerId, onLabelsChange])
 
   async function handleAssignLabel(labelId: string) {
     setAssigningLabel(labelId)
@@ -94,6 +95,18 @@ export function CustomerLabelSelector({
 
   const assignedLabelIds = customerLabels.map(cl => cl.label_id)
   const availableLabels = allLabels.filter(l => !assignedLabelIds.includes(l.id))
+
+  useEffect(() => {
+    if (initialLabels && initialAssignments && initialAssignments.every(a => a.customer_id === customerId)) {
+      setAllLabels(initialLabels)
+      setCustomerLabels(initialAssignments)
+      onLabelsChange?.(initialAssignments)
+      setLoading(false)
+      return
+    }
+
+    loadData()
+  }, [customerId, initialAssignments, initialLabels, loadData, onLabelsChange])
 
   if (loading) {
     return (

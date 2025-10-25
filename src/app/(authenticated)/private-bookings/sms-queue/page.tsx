@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { 
+import {
   ChatBubbleLeftRightIcon,
   CheckIcon,
   XMarkIcon,
@@ -22,56 +22,75 @@ import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { SmsQueueActionForm } from '@/components/private-bookings/SmsQueueActionForm'
+import { checkUserPermission } from '@/app/actions/rbac'
+import type { SmsQueueActionState } from '@/components/private-bookings/SmsQueueActionForm'
 
-async function handleApproveSms(formData: FormData) {
+async function handleApproveSms(_prevState: SmsQueueActionState, formData: FormData): Promise<SmsQueueActionState> {
   'use server'
-  
+
   const smsId = formData.get('smsId') as string
+  if (!smsId) {
+    return { status: 'error', message: 'Missing SMS identifier.', changedAt: Date.now() }
+  }
   const result = await approveSms(smsId)
-  
+
   if (result.error) {
     console.error('Error approving SMS:', result.error)
+    return { status: 'error', message: result.error, changedAt: Date.now() }
   }
+
+  return { status: 'success', changedAt: Date.now() }
 }
 
-async function handleRejectSms(formData: FormData) {
+async function handleRejectSms(_prevState: SmsQueueActionState, formData: FormData): Promise<SmsQueueActionState> {
   'use server'
-  
+
   const smsId = formData.get('smsId') as string
+  if (!smsId) {
+    return { status: 'error', message: 'Missing SMS identifier.', changedAt: Date.now() }
+  }
   const result = await rejectSms(smsId)
-  
+
   if (result.error) {
     console.error('Error rejecting SMS:', result.error)
+    return { status: 'error', message: result.error, changedAt: Date.now() }
   }
+
+  return { status: 'success', changedAt: Date.now() }
 }
 
-async function handleSendSms(formData: FormData) {
+async function handleSendSms(_prevState: SmsQueueActionState, formData: FormData): Promise<SmsQueueActionState> {
   'use server'
-  
+
   const smsId = formData.get('smsId') as string
+  if (!smsId) {
+    return { status: 'error', message: 'Missing SMS identifier.', changedAt: Date.now() }
+  }
   const result = await sendApprovedSms(smsId)
-  
+
   if (result.error) {
     console.error('Error sending SMS:', result.error)
+    return { status: 'error', message: result.error, changedAt: Date.now() }
   }
+
+  return { status: 'success', changedAt: Date.now() }
 }
 
 export default async function SmsQueuePage() {
   const supabase = await createClient()
-  
+
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     redirect('/login')
   }
 
-  // Check permissions
-  const { data: hasPermission } = await supabase.rpc('user_has_permission', {
-    p_user_id: user.id,
-    p_module_name: 'private_bookings',
-    p_action: 'manage'
-  })
+  const [canViewQueue, canApproveSms, canSendSms] = await Promise.all([
+    checkUserPermission('private_bookings', 'view_sms_queue'),
+    checkUserPermission('private_bookings', 'approve_sms'),
+    checkUserPermission('private_bookings', 'send'),
+  ])
 
-  if (!hasPermission) {
+  if (!canViewQueue) {
     redirect('/unauthorized')
   }
 
@@ -129,6 +148,16 @@ export default async function SmsQueuePage() {
       }
     >
       <div className="space-y-6">
+      {!canApproveSms && !canSendSms && (
+        <Alert variant="info">
+          You can view the SMS queue but do not currently have permission to approve or send messages.
+        </Alert>
+      )}
+      {error && (
+        <Alert variant="error">
+          We could not refresh the SMS queue. The latest list may be incomplete.
+        </Alert>
+      )}
       {/* Pending Messages */}
       <Section 
         title="Pending Approval"
@@ -195,6 +224,8 @@ export default async function SmsQueuePage() {
                     confirmMessage="Approve this SMS for sending?"
                     leftIcon={<CheckIcon className="h-4 w-4" />}
                     variant="primary"
+                    successMessage="SMS approved"
+                    disabled={!canApproveSms}
                   >
                     Approve
                   </SmsQueueActionForm>
@@ -205,6 +236,8 @@ export default async function SmsQueuePage() {
                     confirmMessage="Reject this SMS?"
                     leftIcon={<XMarkIcon className="h-4 w-4" />}
                     variant="danger"
+                    successMessage="SMS rejected"
+                    disabled={!canApproveSms}
                   >
                     Reject
                   </SmsQueueActionForm>
@@ -262,6 +295,8 @@ export default async function SmsQueuePage() {
                   smsId={sms.id}
                   confirmMessage="Send this approved SMS now?"
                   leftIcon={<PaperAirplaneIcon className="h-4 w-4" />}
+                  successMessage="SMS sent"
+                  disabled={!canSendSms}
                 >
                   Send Now
                 </SmsQueueActionForm>

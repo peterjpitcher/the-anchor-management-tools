@@ -7,6 +7,12 @@ import { upsertRightToWork, getRightToWorkPhotoUrl, deleteRightToWorkPhoto } fro
 import type { EmployeeRightToWork } from '@/types/database'
 import { AlertCircle, CheckCircle, Clock, Upload, Eye, Download, Trash2 } from 'lucide-react'
 
+const DOCUMENT_TYPE_OPTIONS = ['Passport', 'Biometric Residence Permit', 'Share Code', 'Other'] as const
+const LEGACY_DOCUMENT_TYPES = ['List A', 'List B'] as const
+
+const isLegacyDocumentType = (value: string): value is (typeof LEGACY_DOCUMENT_TYPES)[number] =>
+  (LEGACY_DOCUMENT_TYPES as readonly string[]).includes(value)
+
 interface RightToWorkTabProps {
   employeeId: string
   rightToWork: EmployeeRightToWork | null
@@ -89,6 +95,15 @@ export default function RightToWorkTab({
     const today = new Date()
     return followUpDate <= today
   }, [rightToWorkData?.follow_up_date])
+
+  const documentTypeOptions = useMemo(() => {
+    const options = [...DOCUMENT_TYPE_OPTIONS] as string[]
+    const existingType = rightToWorkData?.document_type
+    if (existingType && isLegacyDocumentType(existingType) && !options.includes(existingType)) {
+      options.push(existingType)
+    }
+    return options
+  }, [rightToWorkData?.document_type])
 
   const handleDeletePhoto = async () => {
     if (!canEdit || !rightToWorkData?.photo_storage_path) {
@@ -186,10 +201,13 @@ export default function RightToWorkTab({
               <option value="" disabled>
                 Select document type
               </option>
-              <option value="Passport">Passport</option>
-              <option value="Biometric Residence Permit">Biometric Residence Permit</option>
-              <option value="Share Code">Share Code</option>
-              <option value="Other">Other</option>
+              {documentTypeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {isLegacyDocumentType(option)
+                    ? `Legacy – ${option}`
+                    : option}
+                </option>
+              ))}
             </select>
           </div>
         </div>

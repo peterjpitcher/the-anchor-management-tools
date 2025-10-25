@@ -40,6 +40,7 @@ export function usePagination<T>(
     select?: string
     orderBy?: { column: string; ascending?: boolean }
     filters?: Array<{ column: string; operator: FilterOperator; value: any }>
+    or?: string
   },
   options?: PaginationOptions
 ): PaginationResult<T> {
@@ -125,6 +126,12 @@ export function usePagination<T>(
         const orConditions = searchColumns.map(col => `${col}.ilike.${searchPattern}`).join(',')
         countQuery = countQuery.or(orConditions)
         dataQuery = dataQuery.or(orConditions)
+      }
+
+      // Apply raw OR conditions if provided
+      if (query?.or) {
+        countQuery = countQuery.or(query.or)
+        dataQuery = dataQuery.or(query.or)
       }
 
       // Get total count

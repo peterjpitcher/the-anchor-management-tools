@@ -101,7 +101,7 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
 
       const { data: bookingsData, error: bookingsError } = await supabase
         .from('bookings')
-        .select('*, customer:customers!inner(id, first_name, last_name)')
+        .select('id, customer_id, seats, is_reminder_only, notes, created_at, customer:customers!inner(id, first_name, last_name)')
         .eq('event_id', params.id)
         .order('created_at', { ascending: true })
 
@@ -353,8 +353,8 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
     )
   }
 
-  const activeBookings = bookings.filter(booking => booking.seats && booking.seats > 0)
-  const reminders = bookings.filter(booking => !booking.seats || booking.seats === 0)
+  const activeBookings = bookings.filter(booking => !booking.is_reminder_only)
+  const reminders = bookings.filter(booking => booking.is_reminder_only)
   const totalSeats = activeBookings.reduce((sum, booking) => sum + (booking.seats ?? 0), 0)
   const totalCheckIns = checkIns.length
 

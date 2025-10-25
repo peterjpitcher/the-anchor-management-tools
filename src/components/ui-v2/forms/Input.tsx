@@ -227,7 +227,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(({
         </div>
       )}
       {!loading && !error && rightIcon && (
-        <div className={cn(rightIconClasses, 'text-gray-400')}>
+        <div className={cn(rightIconClasses, 'text-gray-400', 'pointer-events-auto')}>
           {rightIcon}
         </div>
       )}

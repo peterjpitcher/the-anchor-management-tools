@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createInvoice, getLineItemCatalog } from '@/app/actions/invoices'
 import { getVendors } from '@/app/actions/vendors'
@@ -18,6 +18,7 @@ import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 import type { InvoiceVendor } from '@/types/invoices'
 import type { LineItemCatalogItem, InvoiceLineItemInput } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
+import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
 
 type CreateInvoiceActionResult = Awaited<ReturnType<typeof createInvoice>>
 
@@ -157,41 +158,6 @@ export default function NewInvoicePage() {
     setLineItems(lineItems.filter(item => item.id !== id))
   }
 
-  function calculateLineTotal(item: LineItem): number {
-    const subtotal = item.quantity * item.unit_price
-    const discount = subtotal * (item.discount_percentage / 100)
-    const afterDiscount = subtotal - discount
-    const vat = afterDiscount * (item.vat_rate / 100)
-    return afterDiscount + vat
-  }
-
-  function calculateInvoiceTotal(): { subtotal: number; disbadge: number; vat: number; total: number } {
-    const lineSubtotal = lineItems.reduce((acc, item) => {
-      const itemSubtotal = item.quantity * item.unit_price
-      const itemDiscount = itemSubtotal * (item.discount_percentage / 100)
-      return acc + (itemSubtotal - itemDiscount)
-    }, 0)
-
-    const invoiceDiscount = lineSubtotal * (invoiceDiscountPercentage / 100)
-    const afterDiscount = lineSubtotal - invoiceDiscount
-
-    const vat = lineItems.reduce((acc, item) => {
-      const itemSubtotal = item.quantity * item.unit_price
-      const itemDiscount = itemSubtotal * (item.discount_percentage / 100)
-      const itemAfterDiscount = itemSubtotal - itemDiscount
-      const itemShare = itemAfterDiscount / lineSubtotal
-      const itemAfterInvoiceDiscount = itemAfterDiscount - (invoiceDiscount * itemShare)
-      return acc + (itemAfterInvoiceDiscount * (item.vat_rate / 100))
-    }, 0)
-
-    return {
-      subtotal: lineSubtotal,
-      disbadge: invoiceDiscount,
-      vat,
-      total: afterDiscount + vat
-    }
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!canCreate) {
@@ -245,6 +211,22 @@ export default function NewInvoicePage() {
     }
   }
 
+  const calculationInput = useMemo(
+    () =>
+      lineItems.map((item) => ({
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        discount_percentage: item.discount_percentage,
+        vat_rate: item.vat_rate,
+      })),
+    [lineItems]
+  )
+
+  const invoiceTotals = useMemo(
+    () => calculateInvoiceTotals(calculationInput, invoiceDiscountPercentage),
+    [calculationInput, invoiceDiscountPercentage]
+  )
+
   if (permissionsLoading) {
     return (
       <PageLayout
@@ -260,8 +242,6 @@ export default function NewInvoicePage() {
   if (!canCreate) {
     return null
   }
-
-  const totals = calculateInvoiceTotal()
 
   return (
     <PageLayout
@@ -379,8 +359,12 @@ export default function NewInvoicePage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {lineItems.map((item) => (
-                <div key={item.id} className="border rounded-lg p-4">
+              {lineItems.map((item, index) => {
+                const breakdown = invoiceTotals.lineBreakdown[index]
+                const lineTotal = breakdown ? breakdown.total : 0
+
+                return (
+                  <div key={item.id} className="border rounded-lg p-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
                     <div className="sm:col-span-2 lg:col-span-5">
                       <label className="block text-sm font-medium mb-1">
@@ -465,10 +449,11 @@ export default function NewInvoicePage() {
 
                   <div className="mt-3 pt-3 border-t flex justify-between items-center">
                     <span className="text-sm text-gray-600">Line Total:</span>
-                    <span className="font-semibold">£{calculateLineTotal(item).toFixed(2)}</span>
+                    <span className="font-semibold">£{lineTotal.toFixed(2)}</span>
                   </div>
-                </div>
-              ))}
+                  </div>
+                )
+              })}
             </div>
           )}
         </Card>
@@ -513,22 +498,24 @@ export default function NewInvoicePage() {
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span>Subtotal:</span>
-                  <span className="font-medium">£{totals.subtotal.toFixed(2)}</span>
+                  <span className="font-medium">
+                    £{invoiceTotals.subtotalBeforeInvoiceDiscount.toFixed(2)}
+                  </span>
                 </div>
-                {totals.disbadge > 0 && (
+                {invoiceTotals.invoiceDiscountAmount > 0 && (
                   <div className="flex justify-between text-green-600">
-                    <span>Invoice Disbadge: </span>
-                    <span>-£{totals.disbadge.toFixed(2)}</span>
+                    <span>Invoice Discount:</span>
+                    <span>-£{invoiceTotals.invoiceDiscountAmount.toFixed(2)}</span>
                   </div>
                 )}
                 <div className="flex justify-between">
                   <span>VAT:</span>
-                  <span className="font-medium">£{totals.vat.toFixed(2)}</span>
+                  <span className="font-medium">£{invoiceTotals.vatAmount.toFixed(2)}</span>
                 </div>
                 <div className="border-t pt-2">
                   <div className="flex justify-between text-lg font-semibold">
                     <span>Total:</span>
-                    <span>£{totals.total.toFixed(2)}</span>
+                    <span>£{invoiceTotals.totalAmount.toFixed(2)}</span>
                   </div>
                 </div>
               </div>

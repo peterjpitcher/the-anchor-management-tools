@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui-v2/display/Badge'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Skeleton } from '@/components/ui-v2/feedback/Skeleton'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { SimpleList } from '@/components/ui-v2/display/List'
 import { usePermissions } from '@/contexts/PermissionContext'
 import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
@@ -39,6 +40,7 @@ export default function MessagesPage() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
   const [totalUnreadCount, setTotalUnreadCount] = useState(0)
+  const [hasMoreUnread, setHasMoreUnread] = useState(false)
   const { hasPermission } = usePermissions()
   const canManage = hasPermission('messages', 'manage')
 
@@ -58,7 +60,13 @@ export default function MessagesPage() {
       
       const convs = (result.conversations || []) as unknown as Conversation[]
       setConversations(convs)
-      setTotalUnreadCount(convs.reduce((sum, conv) => sum + conv.unreadCount, 0))
+
+      const totalUnread = 'totalUnread' in result && typeof result.totalUnread === 'number'
+        ? result.totalUnread
+        : convs.reduce((sum, conv) => sum + conv.unreadCount, 0)
+
+      setTotalUnreadCount(totalUnread)
+      setHasMoreUnread('hasMore' in result ? Boolean(result.hasMore) : false)
     } catch (error) {
       console.error('Error loading messages:', error)
       toast.error('Failed to load messages')
@@ -128,6 +136,11 @@ export default function MessagesPage() {
       backButton={{ label: 'Back to Dashboard', href: '/dashboard' }}
       navItems={navItems}
     >
+      {hasMoreUnread && (
+        <Alert variant="warning">
+          Showing the 200 most recent unread messages. Visit the customer record to review older unread conversations.
+        </Alert>
+      )}
       {conversations.length === 0 ? (
         <Card>
           <EmptyState

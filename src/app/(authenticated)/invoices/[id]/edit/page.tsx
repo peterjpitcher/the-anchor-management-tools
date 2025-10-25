@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getInvoice, updateInvoice, getLineItemCatalog } from '@/app/actions/invoices'
 import { getVendors } from '@/app/actions/vendors'
@@ -16,6 +16,7 @@ import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Plus, Trash2, Save, Package } from 'lucide-react'
 import type { InvoiceVendor, InvoiceWithDetails, LineItemCatalogItem, InvoiceLineItemInput } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
+import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
 
 export default function EditInvoicePage() {
   const params = useParams()
@@ -140,31 +141,21 @@ export default function EditInvoicePage() {
     setLineItems(updated)
   }
 
-  function calculateLineItemTotal(item: InvoiceLineItemInput) {
-    const subtotal = item.quantity * item.unit_price
-    const discount = subtotal * (item.discount_percentage / 100)
-    const afterDiscount = subtotal - discount
-    const vat = afterDiscount * (item.vat_rate / 100)
-    return { subtotal, discount, vat, total: afterDiscount + vat }
-  }
+  const calculationInput = useMemo(
+    () =>
+      lineItems.map((item) => ({
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        discount_percentage: item.discount_percentage,
+        vat_rate: item.vat_rate,
+      })),
+    [lineItems]
+  )
 
-  function calculateInvoiceTotal() {
-    let subtotal = 0
-    let totalVat = 0
-    
-    lineItems.forEach(item => {
-      const itemCalc = calculateLineItemTotal(item)
-      subtotal += itemCalc.subtotal - itemCalc.discount
-      totalVat += itemCalc.vat
-    })
-    
-    const invoiceDiscount = subtotal * (invoiceDiscountPercentage / 100)
-    const afterInvoiceDiscount = subtotal - invoiceDiscount
-    const finalVat = totalVat * (1 - invoiceDiscountPercentage / 100)
-    const total = afterInvoiceDiscount + finalVat
-    
-    return { subtotal, invoiceDiscount, totalVat: finalVat, total }
-  }
+  const invoiceTotals = useMemo(
+    () => calculateInvoiceTotals(calculationInput, invoiceDiscountPercentage),
+    [calculationInput, invoiceDiscountPercentage]
+  )
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -239,7 +230,6 @@ export default function EditInvoicePage() {
     )
   }
 
-  const totals = calculateInvoiceTotal()
   const pageTitle = invoice?.invoice_number ? `Edit Invoice ${invoice.invoice_number}` : 'Edit Invoice'
   const backHref = invoiceId ? `/invoices/${invoiceId}` : '/invoices'
 
@@ -406,7 +396,7 @@ export default function EditInvoicePage() {
                       />
                     </div>
                     <div className="col-span-2 pt-2 text-right">
-                      £{calculateLineItemTotal(item).total.toFixed(2)}
+                      £{(invoiceTotals.lineBreakdown[index]?.total ?? 0).toFixed(2)}
                     </div>
                     <div className="col-span-1">
                       <Button
@@ -468,21 +458,21 @@ export default function EditInvoicePage() {
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span>Subtotal</span>
-                <span>£{totals.subtotal.toFixed(2)}</span>
+                <span>£{invoiceTotals.subtotalBeforeInvoiceDiscount.toFixed(2)}</span>
               </div>
-              {invoiceDiscountPercentage > 0 && (
+              {invoiceTotals.invoiceDiscountAmount > 0 && (
                 <div className="flex justify-between text-red-600">
                   <span>Invoice Discount ({invoiceDiscountPercentage}%)</span>
-                  <span>-£{totals.invoiceDiscount.toFixed(2)}</span>
+                  <span>-£{invoiceTotals.invoiceDiscountAmount.toFixed(2)}</span>
                 </div>
               )}
               <div className="flex justify-between">
                 <span>VAT</span>
-                <span>£{totals.totalVat.toFixed(2)}</span>
+                <span>£{invoiceTotals.vatAmount.toFixed(2)}</span>
               </div>
               <div className="flex justify-between border-t pt-2 text-lg font-semibold">
                 <span>Total</span>
-                <span>£{totals.total.toFixed(2)}</span>
+                <span>£{invoiceTotals.totalAmount.toFixed(2)}</span>
               </div>
             </div>
           </Card>

@@ -7,6 +7,7 @@ import { logAuditEvent } from './audit'
 import { toLocalIsoDate } from '@/lib/dateUtils'
 import type { Event } from '@/types/database'
 import { generateEventMarketingLinks } from './event-marketing-links'
+import { checkUserPermission } from '@/app/actions/rbac'
 
 // Helper function to format time to HH:MM
 function formatTimeToHHMM(time: string | undefined | null): string | undefined | null {
@@ -177,6 +178,11 @@ type CreateEventResult = { error: string } | { success: true; data: Event }
 
 export async function createEvent(formData: FormData): Promise<CreateEventResult> {
   try {
+    const canManageEvents = await checkUserPermission('events', 'manage')
+    if (!canManageEvents) {
+      return { error: 'Insufficient permissions to create events' }
+    }
+
     const supabase = await createClient()
     
     // Get the authenticated user
@@ -322,6 +328,11 @@ export async function createEvent(formData: FormData): Promise<CreateEventResult
 
 export async function updateEvent(id: string, formData: FormData) {
   try {
+    const canManageEvents = await checkUserPermission('events', 'manage')
+    if (!canManageEvents) {
+      return { error: 'Insufficient permissions to update events' }
+    }
+
     const supabase = await createClient()
     
     // Get the authenticated user
@@ -455,6 +466,11 @@ export async function updateEvent(id: string, formData: FormData) {
 
 export async function deleteEvent(id: string) {
   try {
+    const canManageEvents = await checkUserPermission('events', 'manage')
+    if (!canManageEvents) {
+      return { error: 'Insufficient permissions to delete events' }
+    }
+
     const supabase = await createClient()
     
     // Get the authenticated user

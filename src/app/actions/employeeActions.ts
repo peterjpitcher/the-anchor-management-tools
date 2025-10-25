@@ -914,9 +914,18 @@ export async function upsertHealthRecord(
 }
 
 // Right to Work schemas and actions
+const RIGHT_TO_WORK_DOCUMENT_TYPES = [
+  'Passport',
+  'Biometric Residence Permit',
+  'Share Code',
+  'Other',
+  'List A',
+  'List B'
+] as const
+
 const RightToWorkSchema = z.object({
   employee_id: z.string().uuid(),
-  document_type: z.enum(['List A', 'List B']),
+  document_type: z.enum(RIGHT_TO_WORK_DOCUMENT_TYPES),
   document_details: z.union([z.string().min(1), z.null()]).optional(),
   verification_date: z.string().min(1, 'Verification date is required'),
   document_expiry_date: z.union([z.string().min(1), z.null()]).optional(),
@@ -1076,7 +1085,7 @@ export async function upsertRightToWork(
 // Get signed URL for right to work photo
 export async function getRightToWorkPhotoUrl(photoPath: string): Promise<{ url: string | null; error: string | null }> {
   // Check permission
-  const hasPermission = await checkUserPermission('employees', 'view');
+  const hasPermission = await checkUserPermission('employees', 'view_documents');
   if (!hasPermission) {
     return { url: null, error: 'Insufficient permissions to view employee documents.' };
   }
@@ -1157,6 +1166,29 @@ export async function deleteRightToWorkPhoto(employeeId: string): Promise<{ erro
 }
 
 // Onboarding Checklist action
+
+const ONBOARDING_CHECKLIST_FIELDS = [
+  'wheniwork_invite_sent',
+  'private_whatsapp_added',
+  'team_whatsapp_added',
+  'till_system_setup',
+  'training_flow_setup',
+  'employment_agreement_drafted',
+  'employee_agreement_accepted'
+] as const
+
+type OnboardingChecklistField = typeof ONBOARDING_CHECKLIST_FIELDS[number]
+
+const ONBOARDING_FIELD_CONFIG: Record<OnboardingChecklistField, { label: string; dateField: string }> = {
+  wheniwork_invite_sent: { label: 'WhenIWork Invite Sent', dateField: 'wheniwork_invite_date' },
+  private_whatsapp_added: { label: 'Added to Private WhatsApp', dateField: 'private_whatsapp_date' },
+  team_whatsapp_added: { label: 'Added to Team WhatsApp', dateField: 'team_whatsapp_date' },
+  till_system_setup: { label: 'Till System Setup', dateField: 'till_system_setup_date' },
+  training_flow_setup: { label: 'Training in Flow Setup', dateField: 'training_flow_setup_date' },
+  employment_agreement_drafted: { label: 'Employment Agreement Drafted', dateField: 'employment_agreement_drafted_date' },
+  employee_agreement_accepted: { label: 'Employee Agreement Accepted', dateField: 'employee_agreement_accepted_date' }
+}
+
 export async function updateOnboardingChecklist(
   employeeId: string,
   field: string,
@@ -1168,27 +1200,29 @@ export async function updateOnboardingChecklist(
     return { error: 'Insufficient permissions to update onboarding checklist.' };
   }
 
+  if (!ONBOARDING_CHECKLIST_FIELDS.includes(field as OnboardingChecklistField)) {
+    return { error: 'Unsupported onboarding checklist field.' };
+  }
+
+  const checklistField = field as OnboardingChecklistField;
+  const checklistConfig = ONBOARDING_FIELD_CONFIG[checklistField];
+
   const supabase = getSupabaseAdminClient();
   
   // Build the update object dynamically
   const updateData: any = { employee_id: employeeId };
   
   // Set the boolean field
-  updateData[field] = checked;
-  
-  // If checking the box, also set the corresponding date field
-  if (checked && field.endsWith('_sent') || field.endsWith('_added') || field.endsWith('_setup') || field.endsWith('_drafted') || field.endsWith('_accepted')) {
-    const dateField = field.replace('_sent', '_date')
-                           .replace('_added', '_date')
-                           .replace('_setup', '_date')
-                           .replace('_drafted', '_date')
-                           .replace('_accepted', '_accepted_date');
-    
-    // Special handling for employee_agreement_accepted_date (timestamp)
-    if (dateField === 'employee_agreement_accepted_date') {
-      updateData[dateField] = new Date().toISOString();
+  const isChecked = Boolean(checked);
+  updateData[checklistField] = isChecked;
+
+  const dateField = checklistConfig?.dateField;
+  if (dateField) {
+    if (isChecked) {
+      updateData[dateField] =
+        dateField === 'employee_agreement_accepted_date' ? new Date().toISOString() : getTodayIsoDate();
     } else {
-      updateData[dateField] = getTodayIsoDate();
+      updateData[dateField] = null;
     }
   }
   
@@ -1223,47 +1257,50 @@ export async function updateOnboardingChecklist(
 }
 
 // Get onboarding progress
-export async function getOnboardingProgress(employeeId: string) {
+export async function getOnboardingProgress(
+  employeeId: string
+): Promise<{ data: { completed: number; total: number; percentage: number; items: Array<{ field: OnboardingChecklistField; label: string; completed: boolean; date: string | null }>; data: Record<string, any> | null } | null; error?: string }> {
+  const canView = await checkUserPermission('employees', 'view');
+  if (!canView) {
+    return { data: null, error: 'Insufficient permissions to view onboarding progress.' };
+  }
+
   const supabase = getSupabaseAdminClient();
-  
+
   const { data, error } = await supabase
     .from('employee_onboarding_checklist')
     .select('*')
     .eq('employee_id', employeeId)
     .single();
 
-  if (error && error.code !== 'PGRST116') { // PGRST116 = not found
+  if (error && error.code !== 'PGRST116') {
     console.error('Error fetching onboarding progress:', error);
-    return null;
+    return { data: null, error: 'Failed to fetch onboarding progress.' };
   }
 
-  const checklistItems = [
-    { field: 'wheniwork_invite_sent', label: 'WhenIWork Invite Sent', completed: data?.wheniwork_invite_sent || false },
-    { field: 'private_whatsapp_added', label: 'Added to Private WhatsApp', completed: data?.private_whatsapp_added || false },
-    { field: 'team_whatsapp_added', label: 'Added to Team WhatsApp', completed: data?.team_whatsapp_added || false },
-    { field: 'till_system_setup', label: 'Till System Setup', completed: data?.till_system_setup || false },
-    { field: 'training_flow_setup', label: 'Training in Flow Setup', completed: data?.training_flow_setup || false },
-    { field: 'employment_agreement_drafted', label: 'Employment Agreement Drafted', completed: data?.employment_agreement_drafted || false },
-    { field: 'employee_agreement_accepted', label: 'Employee Agreement Accepted', completed: data?.employee_agreement_accepted || false },
-  ];
+  const record = (data ?? null) as Record<string, any> | null;
 
-  if (!data) {
+  const items = ONBOARDING_CHECKLIST_FIELDS.map((field) => {
+    const config = ONBOARDING_FIELD_CONFIG[field];
     return {
-      completed: 0,
-      total: checklistItems.length,
-      percentage: 0,
-      items: checklistItems,
-      data: null
+      field,
+      label: config.label,
+      completed: Boolean(record?.[field]),
+      date: record ? (record[config.dateField] ?? null) : null
     };
-  }
+  });
 
-  const completed = checklistItems.filter(item => item.completed).length;
-  
+  const completedCount = items.filter((item) => item.completed).length;
+  const total = items.length;
+  const percentage = total === 0 ? 0 : Math.round((completedCount / total) * 100);
+
   return {
-    completed,
-    total: checklistItems.length,
-    percentage: Math.round((completed / checklistItems.length) * 100),
-    items: checklistItems,
-    data
+    data: {
+      completed: completedCount,
+      total,
+      percentage,
+      items,
+      data: record
+    }
   };
 }

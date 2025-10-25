@@ -72,7 +72,7 @@ export async function GET(request: Request) {
         
         try {
           // Queue reminder SMS
-          const smsResult = await queueBookingReminderSMS(booking.id);
+          const smsResult = await queueBookingReminderSMS(booking.id, { requirePermission: false });
           
           // Send reminder email
           let emailSent = false;

@@ -24,19 +24,29 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
     total: number
     percentage: number
     items: ChecklistItem[]
-    data?: any
   } | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     loadProgress()
   }, [employeeId])
 
   async function loadProgress() {
-    const result = await getOnboardingProgress(employeeId)
-    if (result) {
-      setProgress(result)
+    setLoading(true)
+    setError(null)
+
+    try {
+      const result = await getOnboardingProgress(employeeId)
+      if (result.error) {
+        setError(result.error)
+      }
+      setProgress(result.data ?? null)
+    } catch {
+      setError('Failed to load onboarding checklist.')
+      setProgress(null)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   async function handleToggle(field: string, currentValue: boolean) {
@@ -67,6 +77,15 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
     )
   }
 
+  if (error) {
+    return (
+      <div className="bg-white shadow rounded-lg p-6">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Onboarding Checklist</h3>
+        <p className="text-gray-500">{error}</p>
+      </div>
+    )
+  }
+
   if (!progress || !progress.items || progress.items.length === 0) {
     return (
       <div className="bg-white shadow rounded-lg p-6">
@@ -74,18 +93,6 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
         <p className="text-gray-500">No onboarding tasks found. The checklist will appear here once configured.</p>
       </div>
     )
-  }
-
-  const getDateForField = (field: string) => {
-    if (!progress.data) return null
-    
-    const dateField = field.replace('_sent', '_date')
-                           .replace('_added', '_date')
-                           .replace('_setup', '_date')
-                           .replace('_drafted', '_date')
-                           .replace('_accepted', '_accepted_date')
-    
-    return progress.data[dateField]
   }
 
   return (
@@ -122,7 +129,7 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
         
         <ul className="divide-y divide-gray-200">
           {progress.items.map((item) => {
-            const date = getDateForField(item.field)
+            const date = item.date
             const isUpdating = updating === item.field
             
             return (

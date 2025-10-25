@@ -24,14 +24,18 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
   const [customerId, setCustomerId] = useState(booking?.customer_id ?? preselectedCustomer?.id ?? '')
   const [seats, setSeats] = useState(booking?.seats?.toString() ?? '')
   const [notes, setNotes] = useState(booking?.notes ?? '')
+  const [isReminderOnly, setIsReminderOnly] = useState<boolean>(booking?.is_reminder_only ?? ((booking?.seats ?? 0) === 0))
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [customers, setCustomers] = useState<CustomerWithLoyalty[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [allCustomers, setAllCustomers] = useState<CustomerWithLoyalty[]>([])
+  const [blockedCustomerIds, setBlockedCustomerIds] = useState<Set<string>>(new Set())
+  const [loyalCustomerIds, setLoyalCustomerIds] = useState<Set<string>>(new Set())
   const [availableCapacity, setAvailableCapacity] = useState<number | null>(null)
   const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false)
-  const [existingBookingInfo, setExistingBookingInfo] = useState<{ id: string; seats: number } | null>(null)
+  type ExistingBookingInfo = { id: string; seats: number; isReminderOnly: boolean }
+
+  const [existingBookingInfo, setExistingBookingInfo] = useState<ExistingBookingInfo | null>(null)
   const [showNewCustomerForm, setShowNewCustomerForm] = useState(false)
   const [newCustomer, setNewCustomer] = useState({
     firstName: '',
@@ -47,142 +51,182 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
 
   // Calculate available capacity
   const calculateAvailableCapacity = useCallback(async () => {
-    if (!event.capacity) {
-      setAvailableCapacity(null)
-      return
-    }
-
     try {
       const { data: bookings, error } = await supabase
         .from('bookings')
-        .select('seats')
+        .select('id, customer_id, seats')
         .eq('event_id', event.id)
         .not('id', 'eq', booking?.id || '00000000-0000-0000-0000-000000000000')
 
       if (error) throw error
 
-      const totalBooked = bookings?.reduce((sum: number, b: any) => sum + (b.seats || 0), 0) || 0
-      setAvailableCapacity(event.capacity - totalBooked)
+      const relevantBookings = bookings || []
+      if (event.capacity) {
+        const totalBooked = relevantBookings.reduce((sum: number, b: any) => sum + (b.seats || 0), 0)
+        setAvailableCapacity(event.capacity - totalBooked)
+      } else {
+        setAvailableCapacity(null)
+      }
+
+      const blockedIds = new Set<string>()
+      relevantBookings
+        .filter((b: any) => (b.seats || 0) > 0 && b.customer_id)
+        .forEach((b: any) => {
+          blockedIds.add(b.customer_id)
+        })
+
+      if (booking?.customer_id) {
+        blockedIds.delete(booking.customer_id)
+      }
+      setBlockedCustomerIds(blockedIds)
     } catch (error) {
       console.error('Error calculating capacity:', error)
       toast.error('Failed to calculate available capacity')
     }
-  }, [event.id, event.capacity, booking?.id, supabase])
+  }, [event.id, event.capacity, booking?.customer_id, booking?.id, supabase])
 
-  const loadCustomers = useCallback(async () => {
-    if (preselectedCustomer) {
-      const initial = { ...preselectedCustomer, isLoyal: false }
-      setCustomers([initial])
-      setAllCustomers([initial])
-      setSelectedCustomer(initial)
-      setIsLoading(false)
-      return
-    }
-
+  const loadCustomers = useCallback(async (query?: string) => {
     try {
       setIsLoading(true)
-      // Get all customers
-      const { data: customersData, error: customersError } = await supabase
+
+      let request = supabase
         .from('customers')
         .select('*')
         .order('first_name')
+        .limit(60)
 
-      if (customersError) throw customersError
+      const trimmedQuery = query?.trim() ?? ''
+      if (trimmedQuery) {
+        const digits = trimmedQuery.replace(/\D/g, '')
+        const orConditions = [
+          `first_name.ilike.%${trimmedQuery}%`,
+          `last_name.ilike.%${trimmedQuery}%`,
+          `email.ilike.%${trimmedQuery}%`,
+          digits ? `mobile_number.ilike.%${digits}%` : ''
+        ]
+          .filter(Boolean)
+          .join(',')
 
-      // Then get existing bookings for this event with seats > 0
-      const { data: existingBookings } = await supabase
-        .from('bookings')
-        .select('customer_id, seats')
-        .eq('event_id', event.id)
-        .gt('seats', 0)
-
-      if (!existingBookings) {
-        toast.error('Failed to load existing bookings')
-        return
+        if (orConditions) {
+          request = request.or(orConditions)
+        }
       }
 
-      // Get loyal customer IDs
-      const loyalCustomerIds = await getLoyalCustomers(supabase)
+      const { data: customersData, error: customersError } = await request
+      if (customersError) throw customersError
 
-      // Filter out customers who already have a booking with seats for this event
-      // unless it's the current booking's customer
-      const existingCustomerIds = new Set(existingBookings.map((b: any) => b.customer_id))
-      const availableCustomers = (customersData || [])
-        .filter((customer: any) => !existingCustomerIds.has(customer.id) || customer.id === booking?.customer_id)
-        .map((customer: any) => ({
-          ...customer,
-          isLoyal: loyalCustomerIds.includes(customer.id)
-        }))
+      const customerRows = (customersData ?? []) as Customer[]
 
-      // Sort customers with loyal ones at the top
-      const sortedCustomers = sortCustomersByLoyalty(availableCustomers)
-      setAllCustomers(sortedCustomers)
-      setCustomers(sortedCustomers)
+      let candidateCustomers: CustomerWithLoyalty[] = customerRows.map((customer) => ({
+        ...customer,
+        isLoyal: loyalCustomerIds.has(customer.id)
+      }))
+
+      if (blockedCustomerIds.size > 0) {
+        candidateCustomers = candidateCustomers.filter((customer) => !blockedCustomerIds.has(customer.id))
+      }
+
+      if (preselectedCustomer && !candidateCustomers.some((customer) => customer.id === preselectedCustomer.id)) {
+        candidateCustomers.unshift({
+          ...preselectedCustomer,
+          isLoyal: loyalCustomerIds.has(preselectedCustomer.id ?? '')
+        } as CustomerWithLoyalty)
+      }
+
+      if (booking?.customer_id && !candidateCustomers.some((customer) => customer.id === booking.customer_id)) {
+        const existingCustomer = customerRows.find((customer) => customer.id === booking.customer_id)
+        if (existingCustomer) {
+          candidateCustomers.unshift({
+            ...existingCustomer,
+            isLoyal: loyalCustomerIds.has(existingCustomer.id)
+          })
+        }
+      }
+
+      setCustomers(sortCustomersByLoyalty(candidateCustomers))
     } catch (error) {
       console.error('Error loading customers:', error)
       toast.error('Failed to load customers')
     } finally {
       setIsLoading(false)
     }
-  }, [booking?.customer_id, event.id, preselectedCustomer, supabase])
+  }, [blockedCustomerIds, booking?.customer_id, loyalCustomerIds, preselectedCustomer, supabase])
 
   useEffect(() => {
-    loadCustomers()
     calculateAvailableCapacity()
-  }, [loadCustomers, calculateAvailableCapacity])
+  }, [calculateAvailableCapacity])
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      loadCustomers(searchTerm)
+    }, 250)
+
+    return () => clearTimeout(handler)
+  }, [loadCustomers, searchTerm])
+
+  useEffect(() => {
+    let active = true
+
+    async function hydrateLoyalCustomers() {
+      try {
+        const loyalIds = await getLoyalCustomers(supabase)
+        if (active) {
+          setLoyalCustomerIds(new Set(loyalIds))
+        }
+      } catch (error) {
+        console.error('Error loading loyal customers:', error)
+      }
+    }
+
+    hydrateLoyalCustomers()
+
+    return () => {
+      active = false
+    }
+  }, [supabase])
 
   useEffect(() => {
     if (booking) {
       setCustomerId(booking.customer_id ?? '')
-      setSeats(booking.seats?.toString() ?? '')
       setNotes(booking.notes ?? '')
+      const reminderFlag = booking.is_reminder_only ?? ((booking.seats ?? 0) === 0)
+      setIsReminderOnly(reminderFlag)
+      setSeats(reminderFlag ? '' : booking.seats?.toString() ?? '')
+    } else {
+      setIsReminderOnly(false)
     }
   }, [booking])
-
-  useEffect(() => {
-    if (searchTerm.trim() === '') {
-      setCustomers(allCustomers)
-      return
-    }
-
-    const searchTermLower = searchTerm.toLowerCase()
-    const searchTermDigits = searchTerm.replace(/\D/g, '') // Remove non-digits for phone number search
-    const filtered = allCustomers.filter(customer => {
-      const lastName = customer.last_name?.toLowerCase() ?? ''
-      const mobileDigits = customer.mobile_number?.replace(/\D/g, '') ?? ''
-      return (
-        customer.first_name.toLowerCase().includes(searchTermLower) ||
-        lastName.includes(searchTermLower) ||
-        mobileDigits.includes(searchTermDigits)
-      )
-    })
-    setCustomers(filtered)
-  }, [searchTerm, allCustomers])
 
   useEffect(() => {
     if (!customerId) {
       setSelectedCustomer(null)
       return
     }
-
-    const current = allCustomers.find((customer) => customer.id === customerId)
+    const current = customers.find((customer) => customer.id === customerId)
     if (current) {
       setSelectedCustomer(current)
     }
-  }, [allCustomers, customerId])
+  }, [customers, customerId])
 
   const handleSubmit = async (e: React.FormEvent, addAnother: boolean = false, overwrite: boolean = false) => {
     e.preventDefault()
 
     // Validate seats is not negative
-    const seatCount = seats ? parseInt(seats, 10) : null
+    const seatCount = isReminderOnly ? 0 : seats ? parseInt(seats, 10) : null
+    if (!isReminderOnly) {
+      if (seatCount === null || Number.isNaN(seatCount) || seatCount <= 0) {
+        toast.error('Please enter at least 1 ticket')
+        return
+      }
+    }
+
     if (seatCount !== null && seatCount < 0) {
       toast.error('Number of tickets cannot be negative')
       return
     }
 
     // Check capacity if event has capacity limit
-    if (event.capacity && availableCapacity !== null && seatCount) {
+    if (!isReminderOnly && event.capacity && availableCapacity !== null && seatCount) {
       // If editing, add back the original seats to available capacity
       const originalSeats = booking?.seats || 0
       const actualAvailable = availableCapacity + originalSeats
@@ -222,6 +266,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
         }
         formData.append('seats', seatCount?.toString() || '0')
         formData.append('notes', notes || '')
+        formData.append('is_reminder_only', isReminderOnly ? 'true' : 'false')
         if (overwrite) {
           formData.append('overwrite', 'true')
         }
@@ -231,7 +276,12 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
         if ('error' in result) {
           if (result.error === 'duplicate_booking' && 'existingBooking' in result && !overwrite) {
             // Show overwrite confirmation
-            setExistingBookingInfo(result.existingBooking)
+            const existingBooking = result.existingBooking
+            setExistingBookingInfo({
+              id: existingBooking.id,
+              seats: existingBooking.seats,
+              isReminderOnly: existingBooking.is_reminder_only
+            })
             setShowOverwriteConfirm(true)
             setIsSubmitting(false)
             return
@@ -254,6 +304,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
             event_id: result.data.event_id,
             seats: result.data.seats,
             notes: result.data.notes,
+            is_reminder_only: isReminderOnly,
           },
           { keepOpen: addAnother }
         )
@@ -284,6 +335,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
       formData.append('customer_id', finalCustomerId)
       formData.append('seats', seatCount?.toString() || '0')
       formData.append('notes', notes || '')
+      formData.append('is_reminder_only', isReminderOnly ? 'true' : 'false')
       if (overwrite) {
         formData.append('overwrite', 'true')
       }
@@ -293,7 +345,12 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
       if ('error' in result) {
         if (result.error === 'duplicate_booking' && 'existingBooking' in result && !overwrite) {
           // Show overwrite confirmation
-          setExistingBookingInfo(result.existingBooking)
+          const existingBooking = result.existingBooking
+          setExistingBookingInfo({
+            id: existingBooking.id,
+            seats: existingBooking.seats,
+            isReminderOnly: existingBooking.is_reminder_only
+          })
           setShowOverwriteConfirm(true)
           setIsSubmitting(false)
           return
@@ -316,6 +373,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
           event_id: result.data.event_id,
           seats: result.data.seats,
           notes: result.data.notes,
+          is_reminder_only: isReminderOnly,
         },
         { keepOpen: addAnother }
       )
@@ -330,6 +388,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
         setSearchTerm('')
         setShowOverwriteConfirm(false)
         setExistingBookingInfo(null)
+        setIsReminderOnly(false)
         // Reload available customers
         await loadCustomers()
       } else {
@@ -357,8 +416,11 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
               Existing Booking Found
             </h3>
             <p className="text-sm text-gray-600 mb-4">
-              This customer already has a booking for this event with {existingBookingInfo.seats || 0} ticket{existingBookingInfo.seats !== 1 ? 's' : ''}.
-              Would you like to overwrite the existing booking?
+              {existingBookingInfo.isReminderOnly ? (
+                <>This customer currently has a reminder for this event. Converting it will create a full booking.</>
+              ) : (
+                <>This customer already has a booking for this event with {existingBookingInfo.seats || 0} ticket{existingBookingInfo.seats !== 1 ? 's' : ''}. Overwrite the existing booking?</>
+              )}
             </p>
             <div className="mt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
               <Button
@@ -387,13 +449,32 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
           </div>
         </div>
       )}
-      
+
       <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-6">
-      <div>
-        <h2 className="text-lg font-medium text-gray-900 mb-4">
-          New Booking for {event.name} on {formatDate(event.date)} at {event.time}
-        </h2>
-      </div>
+        <div>
+          <h2 className="text-lg font-medium text-gray-900 mb-4">
+            New Booking for {event.name} on {formatDate(event.date)} at {event.time}
+          </h2>
+        </div>
+
+        <div className="flex items-start gap-2">
+          <input
+            id="reminder-only"
+            type="checkbox"
+            checked={isReminderOnly}
+            onChange={(e) => {
+              const value = e.target.checked
+              setIsReminderOnly(value)
+              if (value) {
+                setSeats('')
+              }
+            }}
+            className="mt-1 h-4 w-4 text-green-600 border-gray-300 rounded"
+          />
+          <label htmlFor="reminder-only" className="text-sm text-gray-700">
+            Treat this as a reminder (no tickets reserved). Uncheck to allocate seats.
+          </label>
+        </div>
 
       {!preselectedCustomer && (
         <>
@@ -582,7 +663,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
           htmlFor="seats"
           className="block text-sm font-medium text-gray-900 mb-2"
         >
-          Number of Tickets (Optional)
+          Number of Tickets {isReminderOnly ? '(disabled for reminders)' : ''}
         </label>
         <input
           type="number"
@@ -594,9 +675,11 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
           value={seats}
           onChange={(e) => setSeats(e.target.value)}
           inputMode="numeric"
+          disabled={isReminderOnly}
+          required={!isReminderOnly}
         />
         <p className="mt-2 text-sm text-gray-500">
-          Leave empty if this is just a reminder
+          {isReminderOnly ? 'Reminders do not reserve tickets.' : 'Enter the number of tickets to reserve.'}
         </p>
         {event.capacity && availableCapacity !== null && (
           <p className="mt-1 text-sm text-gray-600">

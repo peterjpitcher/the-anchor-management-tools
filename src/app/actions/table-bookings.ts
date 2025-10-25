@@ -13,6 +13,7 @@ import { formatDateWithTimeForSms } from '@/lib/dateUtils';
 import { ensureReplyInstruction } from '@/lib/sms/support';
 import { startOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addMonths, format as formatDate } from 'date-fns';
 import type { TableBooking } from '@/types/table-bookings';
+import { withIncrementedModificationCount } from '@/lib/table-bookings/modification';
 
 // Helper function to format time from 24hr to 12hr format
 function formatTime12Hour(time24: string): string {
@@ -713,7 +714,7 @@ export async function createTableBooking(formData: FormData) {
           } else {
             console.error('Failed to send payment request SMS immediately:', result.error);
             // Fall back to queueing the SMS if immediate send fails
-            const smsResult = await queuePaymentRequestSMS(booking.id);
+            const smsResult = await queuePaymentRequestSMS(booking.id, { requirePermission: false });
             if (smsResult.error) {
               console.error('Queue SMS error:', smsResult.error);
             }
@@ -724,7 +725,7 @@ export async function createTableBooking(formData: FormData) {
       } catch (smsError) {
         console.error('Error sending payment request SMS:', smsError);
         // Try to queue as fallback
-        const smsResult = await queuePaymentRequestSMS(booking.id);
+        const smsResult = await queuePaymentRequestSMS(booking.id, { requirePermission: false });
         if (smsResult.error) {
           console.error('Queue SMS fallback error:', smsResult.error);
         }
@@ -820,12 +821,16 @@ export async function updateTableBooking(
     }
     
     // Update booking
+    const updatePayload = withIncrementedModificationCount(
+      {
+        ...updates,
+      },
+      (currentBooking as { modification_count?: number }).modification_count,
+    );
+
     const { data: updatedBooking, error: updateError } = await supabase
       .from('table_bookings')
-      .update({
-        ...updates,
-        modification_badge: currentBooking.modification_count + 1,
-      })
+      .update(updatePayload)
       .eq('id', bookingId)
       .select()
       .single();

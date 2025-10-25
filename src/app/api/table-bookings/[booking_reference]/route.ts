@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
+import { withIncrementedModificationCount } from '@/lib/table-bookings/modification';
 import { z } from 'zod';
 
 // Handle CORS preflight
@@ -219,12 +220,16 @@ export async function PUT(
     }
 
     // Update booking
+    const updatePayload = withIncrementedModificationCount(
+      {
+        ...validatedData.updates,
+      },
+      (booking as { modification_count?: number }).modification_count,
+    );
+
     const { data: updatedBooking, error: updateError } = await supabase
       .from('table_bookings')
-      .update({
-        ...validatedData.updates,
-        modification_badge: booking.modification_count + 1,
-      })
+      .update(updatePayload)
       .eq('id', booking.id)
       .select()
       .single();

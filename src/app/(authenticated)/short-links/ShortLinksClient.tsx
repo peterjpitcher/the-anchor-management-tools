@@ -45,19 +45,13 @@ interface ShortLink {
   destination_url: string
   link_type: string
   click_count: number
-  click_badge?: number | null
   created_at: string
   expires_at: string | null
   last_clicked_at: string | null
 }
 
 interface ShortLinkAnalytics {
-  short_link_clicks?: Array<{
-    clicked_at: string
-    referrer?: string | null
-    device_type?: string | null
-    browser?: string | null
-  }>
+  click_count?: number | null
   last_clicked_at?: string | null
   demographics?: {
     devices: Record<string, number>
@@ -350,7 +344,7 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
     const link = links.find(l => l.id === linkId)
     if (!link) return
 
-    const message = `Are you sure you want to delete this short link?\n\n${SHORT_LINK_BASE_URL}/${link.short_code}\n\nAnyone clicking this link will be redirected to the-anchor.pub`
+    const message = `Are you sure you want to delete this short link?\n\n${SHORT_LINK_BASE_URL}/${link.short_code}\n\nAfter deletion, anyone visiting this link will no longer be redirected.`
     if (!confirm(message)) return
 
     try {
@@ -734,7 +728,7 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
                 <Card variant="bordered" padding="sm" className="bg-blue-50">
                   <p className="text-sm text-blue-600">Total Clicks</p>
                   <p className="text-2xl font-bold text-blue-900">
-                    {analytics.short_link_clicks?.length || 0}
+                    {analytics.click_count ?? 0}
                   </p>
                 </Card>
 

@@ -7,13 +7,21 @@ import { checkUserPermission } from './rbac';
 import { logAuditEvent } from './audit';
 
 // Validation schemas
+const CustomCodeSchema = z
+  .string()
+  .trim()
+  .min(3, 'Custom code must be at least 3 characters')
+  .max(32, 'Custom code must be 32 characters or fewer')
+  .regex(/^[a-z0-9-]+$/i, 'Custom code can only contain letters, numbers, and hyphens')
+  .transform((value) => value.toLowerCase());
+
 const CreateShortLinkSchema = z.object({
   name: z.string().max(120).optional(),
   destination_url: z.string().url('Invalid URL'),
   link_type: z.enum(['loyalty_portal', 'event_checkin', 'promotion', 'reward_redemption', 'custom']),
   metadata: z.record(z.any()).optional(),
   expires_at: z.string().optional(),
-  custom_code: z.string().optional()
+  custom_code: CustomCodeSchema.optional()
 });
 
 const UpdateShortLinkSchema = z.object({
@@ -60,6 +68,9 @@ export async function createShortLink(data: z.infer<typeof CreateShortLinkSchema
     
     if (error) {
       console.error('Error creating short link:', error);
+      if ((error as any)?.code === '23505') {
+        return { error: 'Custom code already in use. Please choose another.' };
+      }
       return { error: 'Failed to create short link' };
     }
     
@@ -68,7 +79,7 @@ export async function createShortLink(data: z.infer<typeof CreateShortLinkSchema
       await supabase
         .from('short_links')
         .update({ name: validatedData.name })
-        .eq('short_code', (result as any).short_code)
+        .eq('short_code', (result as any).short_code);
     }
 
     await logAuditEvent({
@@ -326,16 +337,10 @@ export async function resolveShortLink(data: z.infer<typeof ResolveShortLinkSche
       .insert({
         short_link_id: link.id
       })
-      .then(() => {
-        // Update click count
-        supabase
-          .from('short_links')
-          .update({
-            click_count: (link.click_count || 0) + 1,
-            last_clicked_at: new Date().toISOString()
-          })
-          .eq('id', link.id)
-          .then(() => {});
+      .then(async () => {
+        await (supabase as any).rpc('increment_short_link_clicks', {
+          p_short_link_id: link.id
+        });
       });
     
     return {
@@ -374,22 +379,8 @@ export async function getShortLinkAnalytics(shortCode: string) {
     // Get the short link with click data
     const { data: link, error } = await supabase
       .from('short_links')
-      .select(`
-        *,
-        short_link_clicks(
-          clicked_at,
-          user_agent,
-          ip_address,
-          referrer,
-          country,
-          city,
-          device_type,
-          browser,
-          os
-        )
-      `)
+      .select('id, short_code, link_type, destination_url, click_count, last_clicked_at, metadata')
       .eq('short_code', shortCode)
-      .order('clicked_at', { ascending: false, foreignTable: 'short_link_clicks' })
       .single();
     
     if (error || !link) {

@@ -89,7 +89,7 @@ export default function TableBookingReportsPage() {
       const noShowBookings = bookings?.filter((b: any) => b.status === 'no_show') || [];
       
       const totalCovers = confirmedBookings.reduce((sum: number, b: any) => sum + b.party_size, 0);
-      const averagePartySize = totalBookings > 0 ? totalCovers / confirmedBookings.length : 0;
+      const averagePartySize = confirmedBookings.length > 0 ? totalCovers / confirmedBookings.length : 0;
       const noShowRate = totalBookings > 0 ? (noShowBookings.length / totalBookings) * 100 : 0;
       const cancellationRate = totalBookings > 0 ? (cancelledBookings.length / totalBookings) * 100 : 0;
       

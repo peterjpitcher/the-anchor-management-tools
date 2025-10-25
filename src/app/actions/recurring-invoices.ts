@@ -6,6 +6,7 @@ import { logAuditEvent } from './audit'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { toLocalIsoDate } from '@/lib/dateUtils'
+import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
 import type { RecurringInvoice, RecurringInvoiceWithDetails, RecurringFrequency, InvoiceLineItemInput, InvoiceStatus, Invoice } from '@/types/invoices'
 
 // Validation schemas
@@ -461,34 +462,21 @@ export async function generateInvoiceFromRecurring(
     const encoded = ((sequenceData as any).next_sequence + 5000).toString(36).toUpperCase().padStart(5, '0')
     const invoiceNumber = `${seriesCode}-${encoded}`
 
-    // Calculate totals (same logic as in createInvoice)
-    let subtotal = 0
-    let totalVat = 0
+    const lineItemsForTotals = (recurringInvoice.line_items ?? []).map((item: any) => ({
+      quantity: Number(item.quantity) || 0,
+      unit_price: Number(item.unit_price) || 0,
+      discount_percentage: Number(item.discount_percentage) || 0,
+      vat_rate: Number(item.vat_rate) || 0
+    }))
 
-    if (recurringInvoice.line_items) {
-      recurringInvoice.line_items.forEach((item: any) => {
-        const lineSubtotal = item.quantity * item.unit_price
-        const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
-        const lineAfterDiscount = lineSubtotal - lineDiscount
-        subtotal += lineAfterDiscount
-      })
-
-      const invoiceDiscount = subtotal * (recurringInvoice.invoice_discount_percentage / 100)
-      const afterInvoiceDiscount = subtotal - invoiceDiscount
-
-      recurringInvoice.line_items.forEach((item: any) => {
-        const lineSubtotal = item.quantity * item.unit_price
-        const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
-        const lineAfterDiscount = lineSubtotal - lineDiscount
-        const itemShare = subtotal > 0 ? lineAfterDiscount / subtotal : 0
-        const itemAfterInvoiceDiscount = lineAfterDiscount - (invoiceDiscount * itemShare)
-        const itemVat = itemAfterInvoiceDiscount * (item.vat_rate / 100)
-        totalVat += itemVat
-      })
-    }
-
-    const invoiceDiscountAmount = subtotal * (recurringInvoice.invoice_discount_percentage / 100)
-    const totalAmount = subtotal - invoiceDiscountAmount + totalVat
+    const totals = calculateInvoiceTotals(
+      lineItemsForTotals,
+      recurringInvoice.invoice_discount_percentage || 0
+    )
+    const subtotal = totals.subtotalBeforeInvoiceDiscount
+    const invoiceDiscountAmount = totals.invoiceDiscountAmount
+    const totalVat = totals.vatAmount
+    const totalAmount = totals.totalAmount
 
     // Create invoice
     const { data: newInvoice, error: invoiceError } = await supabase

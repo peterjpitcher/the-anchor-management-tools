@@ -47,15 +47,16 @@ export async function updateBookingSeats(bookingId: string, newSeats: number) {
     }
     
     const oldSeats = booking.seats || 0
-    const wasNoSeats = oldSeats === 0
-    const willBeNoSeats = validatedData.seats === 0
+    const wasReminderOnly = booking.is_reminder_only === true
+    const willBeReminderOnly = validatedData.seats === 0
     
     // Update the booking
     const { error: updateError } = await supabase
       .from('bookings')
-      .update({ 
+      .update({
         seats: validatedData.seats,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        is_reminder_only: willBeReminderOnly
       })
       .eq('id', validatedData.bookingId)
     
@@ -94,7 +95,9 @@ export async function updateBookingSeats(bookingId: string, newSeats: number) {
         customerName: `${booking.customer.first_name} ${booking.customer.last_name}`,
         oldSeats,
         newSeats: validatedData.seats,
-        flowChange: wasNoSeats !== willBeNoSeats ? `${wasNoSeats ? 'no_seats' : 'has_seats'} -> ${willBeNoSeats ? 'no_seats' : 'has_seats'}` : 'none'
+        flowChange: wasReminderOnly !== willBeReminderOnly
+          ? `${wasReminderOnly ? 'reminder_only' : 'seated'} -> ${willBeReminderOnly ? 'reminder_only' : 'seated'}`
+          : 'none'
       }
     })
     
@@ -105,7 +108,7 @@ export async function updateBookingSeats(bookingId: string, newSeats: number) {
       success: true, 
       oldSeats,
       newSeats: validatedData.seats,
-      flowChanged: wasNoSeats !== willBeNoSeats
+      flowChanged: wasReminderOnly !== willBeReminderOnly
     }
   } catch (error) {
     logger.error('Error updating booking seats', {

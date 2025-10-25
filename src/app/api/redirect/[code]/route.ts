@@ -68,14 +68,9 @@ export async function GET(
             utm_campaign: utmParams.utm_campaign
           });
           
-        await supabase
-          .from('short_links')
-          .update({
-            click_count: (link.click_count ?? 0) + 1,
-            click_badge: (link.click_badge ?? 0) + 1,
-            last_clicked_at: new Date().toISOString()
-          })
-          .eq('id', link.id);
+        await (supabase as any).rpc('increment_short_link_clicks', {
+          p_short_link_id: link.id
+        });
       } catch (err) {
         console.error('Error tracking click:', err);
       }

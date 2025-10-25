@@ -1352,11 +1352,11 @@ export default function PrivateBookingDetailClient({
   );
 
   useEffect(() => {
-    if (!bookingId) {
+    if (!bookingId || initialBooking) {
       return;
     }
     loadBooking(bookingId);
-  }, [bookingId, loadBooking]);
+  }, [bookingId, initialBooking, loadBooking]);
 
   const refreshBooking = useCallback(() => {
     if (!bookingId) {

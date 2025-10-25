@@ -299,6 +299,11 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
   async function handleSendPaymentRequest() {
     if (!booking) return;
 
+    if (!canManage) {
+      toast.error('You do not have permission to send payment requests.');
+      return;
+    }
+
     try {
       setPaymentSmsLoading(true);
       const result = await queuePaymentRequestSMS(booking.id);
@@ -688,7 +693,7 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
                   </Button>
                 )}
 
-                {booking.status === 'pending_payment' && (
+                {booking.status === 'pending_payment' && canManage && (
                   <div className="text-center">
                     <p className="text-sm text-gray-600 mb-2">Payment required to confirm</p>
                     <Button
