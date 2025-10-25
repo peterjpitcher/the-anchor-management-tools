@@ -384,29 +384,35 @@ export function SimpleList({
       renderItem={(listItem) => {
         const item = listItem.data
         const content = (
-          <div className="flex items-center gap-3">
-            {item.icon && (
-              <div className="flex-shrink-0 text-gray-400">
-                {item.icon}
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-gray-900 truncate">
-                {item.title}
-              </p>
-              {item.subtitle && (
-                <p className="text-sm text-gray-500 truncate">
-                  {item.subtitle}
-                </p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+            <div className="flex items-start gap-3 sm:flex-1 min-w-0">
+              {item.icon && (
+                <div className="flex-shrink-0 text-gray-400">
+                  {item.icon}
+                </div>
               )}
-            </div>
-            {item.meta && (
-              <div className="flex-shrink-0">
-                {item.meta}
+              <div className="min-w-0">
+                <p className="font-medium text-gray-900 break-words sm:truncate">
+                  {item.title}
+                </p>
+                {item.subtitle && (
+                  <p className="text-sm text-gray-500 break-words sm:truncate">
+                    {item.subtitle}
+                  </p>
+                )}
               </div>
-            )}
-            {item.href && (
-              <ChevronRightIcon className="h-5 w-5 text-gray-400 flex-shrink-0" />
+            </div>
+            {(item.meta || item.href) && (
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap sm:justify-end">
+                {item.meta && (
+                  <div className="flex items-center gap-2 sm:justify-end">
+                    {item.meta}
+                  </div>
+                )}
+                {item.href && (
+                  <ChevronRightIcon className="ml-auto h-5 w-5 text-gray-400 flex-shrink-0 sm:ml-0" />
+                )}
+              </div>
             )}
           </div>
         )

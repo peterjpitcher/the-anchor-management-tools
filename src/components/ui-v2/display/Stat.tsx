@@ -8,6 +8,7 @@
  */
 
 import React, { ReactNode } from 'react'
+import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { ArrowUpIcon, ArrowDownIcon } from '@heroicons/react/20/solid'
 import { Skeleton } from '../feedback/Skeleton'
@@ -184,7 +185,10 @@ export function Stat({
   const containerClasses = cn(
     sizeClasses[size].container,
     variantClasses[variant],
-    onClick || href ? 'cursor-pointer hover:bg-gray-50 transition-colors' : '',
+    'block w-full rounded-lg',
+    onClick || href
+      ? 'cursor-pointer hover:bg-gray-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2'
+      : '',
     className
   )
   
@@ -267,9 +271,9 @@ export function Stat({
   // Wrap in link if href provided
   if (href && !loading) {
     return (
-      <a href={href} className={containerClasses}>
+      <Link href={href} className={containerClasses}>
         {content}
-      </a>
+      </Link>
     )
   }
   
@@ -279,7 +283,7 @@ export function Stat({
       <button
         type="button"
         onClick={onClick}
-        className={containerClasses}
+        className={cn(containerClasses, 'text-left')}
       >
         {content}
       </button>
