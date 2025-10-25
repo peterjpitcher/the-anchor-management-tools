@@ -51,7 +51,7 @@ export const sendSMS = async (to: string, body: string) => {
       }
     });
     
-    return { success: true, sid: message.sid };
+    return { success: true, sid: message.sid, fromNumber: message.from ?? null, status: message.status ?? 'queued' };
   } catch (error: any) {
     logger.error('Failed to send SMS after retries', {
       error,
@@ -68,6 +68,6 @@ export const sendSMS = async (to: string, body: string) => {
       userMessage = 'Too many messages sent. Please try again later';
     }
     
-    return { success: false, error: userMessage };
+    return { success: false, error: userMessage, code: error.code };
   }
 }; 

@@ -189,6 +189,7 @@ async function sendBulkSMSImmediate(customerIds: string[], message: string, even
             : Math.ceil(personalizedMessage.length / 153)
           const costUsd = segments * 0.04
 
+          const fromNumber = sendResult.fromNumber ?? process.env.TWILIO_PHONE_NUMBER ?? null
           messagesToInsert.push({
             customer_id: customer.id,
             direction: 'outbound',
@@ -196,8 +197,8 @@ async function sendBulkSMSImmediate(customerIds: string[], message: string, even
             twilio_message_sid: sendResult.sid,
             body: personalizedMessage,
             status: 'sent',
-            twilio_status: 'queued',
-            from_number: process.env.TWILIO_PHONE_NUMBER || '',
+            twilio_status: sendResult.status ?? 'queued',
+            from_number: fromNumber,
             to_number: customer.mobile_number,
             message_type: 'sms',
             segments,
@@ -243,6 +244,13 @@ async function sendBulkSMSImmediate(customerIds: string[], message: string, even
           error: insertError,
           metadata: { count: messagesToInsert.length }
         })
+        return {
+          error: 'Bulk SMS sent but failed to record message history',
+          sent: results.length,
+          failed: errors.length,
+          results,
+          loggingError: insertError.message
+        }
       }
     }
 

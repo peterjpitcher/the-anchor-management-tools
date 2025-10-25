@@ -6,9 +6,9 @@ import { rateLimiters } from '@/lib/rate-limit'
 import { headers } from 'next/headers'
 import { sendSMS } from '@/lib/twilio'
 import { logger } from '@/lib/logger'
-import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { recordOutboundSmsMessage } from '@/lib/sms/logging'
+import { ensureCustomerForPhone, resolveCustomerIdForSms } from '@/lib/sms/customers'
 
 interface TwilioMessageCreateParams {
   to: string
@@ -17,217 +17,6 @@ interface TwilioMessageCreateParams {
   messagingServiceSid?: string
 }
 
-type CustomerFallback = {
-  firstName?: string
-  lastName?: string
-  email?: string | null
-}
-
-type ResolvedCustomerResult = {
-  customerId: string | null
-  standardizedPhone?: string | null
-}
-
-function deriveNameParts(fullName?: string | null): CustomerFallback {
-  if (!fullName) {
-    return {}
-  }
-
-  const parts = fullName
-    .split(' ')
-    .map(part => part.trim())
-    .filter(Boolean)
-
-  if (parts.length === 0) {
-    return {}
-  }
-
-  const [firstName, ...rest] = parts
-  const lastName = rest.length > 0 ? rest.join(' ') : undefined
-
-  return {
-    firstName,
-    lastName
-  }
-}
-
-async function ensureCustomerForPhone(
-  supabase: any,
-  phone: string | null | undefined,
-  fallback: CustomerFallback = {}
-): Promise<ResolvedCustomerResult> {
-  if (!phone) {
-    return { customerId: null, standardizedPhone: null }
-  }
-
-  try {
-    const standardizedPhone = formatPhoneForStorage(phone)
-    const variants = generatePhoneVariants(standardizedPhone)
-    const numbersToMatch = variants.length > 0 ? variants : [standardizedPhone]
-
-    const { data: existingMatches, error: lookupError } = await supabase
-      .from('customers')
-      .select('id')
-      .in('mobile_number', numbersToMatch)
-      .order('created_at', { ascending: true })
-      .limit(1)
-
-    if (lookupError) {
-      console.error('Failed to look up customer for SMS logging:', lookupError)
-    }
-
-    if (existingMatches && existingMatches.length > 0) {
-      return { customerId: existingMatches[0].id, standardizedPhone }
-    }
-
-    const sanitizedFirstName = fallback.firstName?.trim()
-    const sanitizedLastName = fallback.lastName?.trim()
-
-    const fallbackFirstName = sanitizedFirstName && sanitizedFirstName.length > 0
-      ? sanitizedFirstName
-      : 'Unknown'
-
-    let fallbackLastName = sanitizedLastName && sanitizedLastName.length > 0
-      ? sanitizedLastName
-      : null
-
-    if (!fallbackLastName) {
-      const digits = standardizedPhone.replace(/\D/g, '')
-      fallbackLastName = digits.length >= 4 ? digits.slice(-4) : 'Contact'
-    }
-
-    const insertPayload = {
-      first_name: fallbackFirstName,
-      last_name: fallbackLastName,
-      mobile_number: standardizedPhone,
-      email: fallback.email ?? null,
-      sms_opt_in: true
-    }
-
-    const { data: inserted, error: insertError } = await supabase
-      .from('customers')
-      .insert(insertPayload)
-      .select('id')
-      .single()
-
-    if (insertError) {
-      if ((insertError as any)?.code === '23505') {
-        const { data: conflictMatches } = await supabase
-          .from('customers')
-          .select('id')
-          .in('mobile_number', numbersToMatch)
-          .order('created_at', { ascending: true })
-          .limit(1)
-
-        if (conflictMatches && conflictMatches.length > 0) {
-          return { customerId: conflictMatches[0].id, standardizedPhone }
-        }
-      }
-
-      console.error('Failed to create customer for SMS logging:', insertError)
-      return { customerId: null, standardizedPhone }
-    }
-
-    return { customerId: inserted?.id ?? null, standardizedPhone }
-  } catch (error) {
-    console.error('Failed to resolve customer for phone:', error)
-    return { customerId: null, standardizedPhone: null }
-  }
-}
-
-async function resolveCustomerIdForSms(
-  supabase: any,
-  params: { bookingId?: string; customerId?: string; to: string }
-): Promise<{ customerId: string | null }> {
-  if (params.customerId) {
-    return { customerId: params.customerId }
-  }
-
-  let bookingContext:
-    | { type: 'private'; record: any }
-    | { type: 'table'; record: any }
-    | null = null
-
-  if (params.bookingId) {
-    const { data: privateBooking } = await supabase
-      .from('private_bookings')
-      .select(
-        'id, customer_id, contact_phone, customer_first_name, customer_last_name, customer_name, contact_email'
-      )
-      .eq('id', params.bookingId)
-      .maybeSingle()
-
-    if (privateBooking) {
-      if (privateBooking.customer_id) {
-        return { customerId: privateBooking.customer_id }
-      }
-
-      bookingContext = { type: 'private', record: privateBooking }
-    } else {
-      const { data: tableBooking } = await supabase
-        .from('table_bookings')
-        .select(
-          'id, customer_id, customer:customers(id, first_name, last_name, email, mobile_number)'
-        )
-        .eq('id', params.bookingId)
-        .maybeSingle()
-
-      if (tableBooking) {
-        const linkedCustomerId = tableBooking.customer_id || tableBooking.customer?.id
-        if (linkedCustomerId) {
-          return { customerId: linkedCustomerId }
-        }
-
-        bookingContext = { type: 'table', record: tableBooking }
-      }
-    }
-  }
-
-  const bookingRecord = bookingContext?.record
-  const nameFallback = bookingRecord?.customer_first_name || bookingRecord?.customer?.first_name
-    ? {
-        firstName: bookingRecord.customer_first_name || bookingRecord.customer?.first_name,
-        lastName: bookingRecord.customer_last_name || bookingRecord.customer?.last_name || undefined
-      }
-    : deriveNameParts(bookingRecord?.customer_name)
-
-  const fallbackInfo: CustomerFallback = {
-    firstName: nameFallback?.firstName,
-    lastName: nameFallback?.lastName,
-    email: bookingRecord?.contact_email || bookingRecord?.customer?.email || null
-  }
-
-  const phoneToUse = bookingRecord?.contact_phone || bookingRecord?.customer?.mobile_number || params.to
-
-  const { customerId } = await ensureCustomerForPhone(supabase, phoneToUse, fallbackInfo)
-
-  if (customerId && bookingContext) {
-    try {
-      if (bookingContext.type === 'private') {
-        const displayName = fallbackInfo.lastName
-          ? `${fallbackInfo.firstName} ${fallbackInfo.lastName}`.trim()
-          : fallbackInfo.firstName
-
-        await supabase
-          .from('private_bookings')
-          .update({
-            customer_id: customerId,
-            customer_name: displayName || null
-          })
-          .eq('id', bookingContext.record.id)
-      } else if (bookingContext.type === 'table') {
-        await supabase
-          .from('table_bookings')
-          .update({ customer_id: customerId })
-          .eq('id', bookingContext.record.id)
-      }
-    } catch (updateError) {
-      console.error('Failed to link booking to customer:', updateError)
-    }
-  }
-
-  return { customerId }
-}
 
 export async function sendOTPMessage(params: { phoneNumber: string; message: string; customerId?: string }) {
   try {
@@ -235,6 +24,14 @@ export async function sendOTPMessage(params: { phoneNumber: string; message: str
 
     if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
       throw new Error('Twilio credentials not configured')
+    }
+
+    const supabase = createAdminClient()
+    let resolvedCustomerId = customerId ?? null
+
+    if (!resolvedCustomerId) {
+      const ensured = await ensureCustomerForPhone(supabase, phoneNumber)
+      resolvedCustomerId = ensured.customerId
     }
 
     const twilioClientInstance = twilio(
@@ -257,12 +54,11 @@ export async function sendOTPMessage(params: { phoneNumber: string; message: str
 
     const twilioMessage = await twilioClientInstance.messages.create(messageParams)
 
-    if (customerId) {
+    if (resolvedCustomerId) {
       try {
-        const supabase = createAdminClient()
         await recordOutboundSmsMessage({
           supabase,
-          customerId,
+          customerId: resolvedCustomerId,
           to: twilioMessage.to,
           body: message,
           sid: twilioMessage.sid,
@@ -276,6 +72,10 @@ export async function sendOTPMessage(params: { phoneNumber: string; message: str
       } catch (error) {
         console.error('Error recording OTP SMS message:', error)
       }
+    } else {
+      logger.debug('OTP SMS sent but no customer record could be resolved', {
+        metadata: { to: phoneNumber, sid: twilioMessage.sid }
+      })
     }
 
     return { success: true, messageSid: twilioMessage.sid }
@@ -347,6 +147,12 @@ export async function sendSms(params: { to: string; body: string; bookingId?: st
       twilioStatus: twilioMessage.status || 'queued',
       status: twilioMessage.status || 'queued'
     })
+
+    if (!messageRecordId) {
+      logger.warn('SMS sent but failed to log message', {
+        metadata: { to: params.to, sid: twilioMessage.sid }
+      })
+    }
 
     return {
       success: true,
@@ -422,16 +228,25 @@ export async function sendBulkSMSAsync(customerIds: string[], message: string) {
           continue
         }
 
-        await recordOutboundSmsMessage({
+        const messageId = await recordOutboundSmsMessage({
           supabase,
           customerId: customer.id,
           to: customer.mobile_number!,
           body: messageWithSupport,
           sid: sendResult.sid,
+          fromNumber: sendResult.fromNumber ?? undefined,
           metadata: { bulk_sms: true },
           status: 'sent',
-          twilioStatus: 'queued'
+          twilioStatus: sendResult.status ?? 'queued'
         })
+
+        if (!messageId) {
+          errors.push({
+            customerId: customer.id,
+            error: 'SMS sent but failed to record message'
+          })
+          continue
+        }
 
         results.push({
           customerId: customer.id,

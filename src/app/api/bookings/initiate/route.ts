@@ -9,6 +9,8 @@ import { createShortLinkInternal } from '@/app/actions/short-links';
 import twilio from 'twilio';
 import { formatTime12Hour } from '@/lib/dateUtils';
 import { ensureReplyInstruction } from '@/lib/sms/support';
+import { ensureCustomerForPhone } from '@/lib/sms/customers';
+import { recordOutboundSmsMessage } from '@/lib/sms/logging';
 
 const initiateBookingSchema = z.object({
   event_id: z.string().uuid(),
@@ -217,6 +219,9 @@ export async function POST(request: NextRequest) {
         debugInfo.smsSid = twilioMessage.sid;
         smsSent = true;
 
+        const ensured = await ensureCustomerForPhone(supabase, standardizedPhone);
+        const customerIdForLogging = ensured.customerId;
+
         // Calculate segments and cost
         const messageLength = smsMessage.length;
         const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153);
@@ -241,6 +246,30 @@ export async function POST(request: NextRequest) {
             }
           })
           .eq('token', bookingToken);
+
+        if (customerIdForLogging) {
+          const messageId = await recordOutboundSmsMessage({
+            supabase,
+            customerId: customerIdForLogging,
+            to: twilioMessage.to,
+            body: smsMessage,
+            sid: twilioMessage.sid,
+            fromNumber: twilioMessage.from || process.env.TWILIO_PHONE_NUMBER || null,
+            status: twilioMessage.status || 'queued',
+            twilioStatus: twilioMessage.status || 'queued',
+            metadata: {
+              pending_booking_token: bookingToken,
+              context: 'booking_initiation'
+            },
+            sentAt: smsDetails.sent_at
+          });
+
+          if (!messageId) {
+            debugInfo.warnings.push('SMS sent but not recorded in messages table');
+          }
+        } else {
+          debugInfo.warnings.push('SMS sent but customer record not resolved for logging');
+        }
       }
     } catch (smsError: any) {
       debugInfo.errors.push(`SMS error: ${smsError?.message || 'Unknown SMS error'}`);

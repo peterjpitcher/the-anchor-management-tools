@@ -573,9 +573,9 @@ export async function createTableBooking(formData: FormData) {
 
             if (result.success && result.sid) {
               console.log('SMS sent immediately for booking:', booking.id);
-              
-              // Log the message in the database
-              await supabase
+
+              const fromNumber = result.fromNumber ?? process.env.TWILIO_PHONE_NUMBER ?? null;
+              const { error: messageInsertError } = await supabase
                 .from('messages')
                 .insert({
                   customer_id: customerData.id,
@@ -584,12 +584,16 @@ export async function createTableBooking(formData: FormData) {
                   twilio_message_sid: result.sid,
                   body: messageWithSupport,
                   status: 'sent',
-                  twilio_status: 'queued',
-                  from_number: process.env.TWILIO_PHONE_NUMBER,
+                  twilio_status: result.status ?? 'queued',
+                  from_number: fromNumber,
                   to_number: customerData.mobile_number,
                   message_type: 'sms',
                   metadata: { booking_id: booking.id, template_key: templateKey }
                 });
+
+              if (messageInsertError) {
+                console.error('Failed to record booking confirmation SMS:', messageInsertError);
+              }
             } else {
               console.error('Failed to send SMS immediately:', result.error);
               // Fall back to queuing the SMS if immediate send fails
@@ -680,9 +684,9 @@ export async function createTableBooking(formData: FormData) {
 
           if (result.success && result.sid) {
             console.log('Payment request SMS sent immediately for booking:', booking.id);
-            
-            // Log the message in the database
-            await supabase
+
+            const fromNumber = result.fromNumber ?? process.env.TWILIO_PHONE_NUMBER ?? null;
+            const { error: messageInsertError } = await supabase
               .from('messages')
               .insert({
                 customer_id: customerData.id,
@@ -691,8 +695,8 @@ export async function createTableBooking(formData: FormData) {
                 twilio_message_sid: result.sid,
                 body: messageWithSupport,
                 status: 'sent',
-                twilio_status: 'queued',
-                from_number: process.env.TWILIO_PHONE_NUMBER,
+                twilio_status: result.status ?? 'queued',
+                from_number: fromNumber,
                 to_number: customerData.mobile_number,
                 message_type: 'sms',
                 metadata: { 
@@ -702,6 +706,10 @@ export async function createTableBooking(formData: FormData) {
                   deposit_amount: depositAmount
                 }
               });
+
+            if (messageInsertError) {
+              console.error('Failed to record payment request SMS:', messageInsertError);
+            }
           } else {
             console.error('Failed to send payment request SMS immediately:', result.error);
             // Fall back to queueing the SMS if immediate send fails

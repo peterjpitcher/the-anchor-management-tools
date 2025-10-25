@@ -281,14 +281,20 @@ export class JobQueue {
     }
 
     const supabase = await createAdminClient()
-    await recordOutboundSmsMessage({
+    const messageId = await recordOutboundSmsMessage({
       supabase,
       customerId,
       to: payload.to,
       body: messageWithSupport,
       sid: result.sid,
+      fromNumber: result.fromNumber ?? undefined,
+      twilioStatus: result.status ?? 'queued',
       metadata: payload.booking_id ? { booking_id: payload.booking_id } : null
     })
+
+    if (!messageId) {
+      throw new Error('SMS sent but failed to record message for customer')
+    }
     
     return { success: true, sid: result.sid }
   }
@@ -387,18 +393,28 @@ export class JobQueue {
               continue
             }
 
-            await recordOutboundSmsMessage({
+            const messageId = await recordOutboundSmsMessage({
               supabase,
               customerId: customer.id,
               to: customer.mobile_number!,
               body: personalizedWithSupport,
               sid: result.sid,
+              fromNumber: result.fromNumber ?? undefined,
+              twilioStatus: result.status ?? 'queued',
               metadata: {
                 bulk_job: true,
                 event_id: eventId,
                 category_id: categoryId
               }
             })
+
+            if (!messageId) {
+              errors.push({
+                customerId: customer.id,
+                error: 'SMS sent but failed to record message'
+              })
+              continue
+            }
 
             results.push({
               customerId: customer.id,
