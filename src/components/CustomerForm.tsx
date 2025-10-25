@@ -83,27 +83,6 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
 
         <div>
           <label
-            htmlFor="email"
-            className="block text-sm font-medium text-gray-700 mb-2"
-          >
-            Email
-          </label>
-          <div className="mt-1">
-            <input
-              type="email"
-              id="email"
-              name="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
-              placeholder="name@example.com"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label
             htmlFor="last_name"
             className="block text-sm font-medium text-gray-700 mb-2"
           >
@@ -150,6 +129,27 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
           <p className="mt-2 text-sm text-gray-500">
             Enter a UK mobile number (starting with 07 or +44)
           </p>
+        </div>
+
+        <div>
+          <label
+            htmlFor="email"
+            className="block text-sm font-medium text-gray-700 mb-2"
+          >
+            Email
+          </label>
+          <div className="mt-1">
+            <input
+              type="email"
+              id="email"
+              name="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="block w-full rounded-lg border border-gray-300 px-3 py-3 sm:py-2 text-base sm:text-sm text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 min-h-[44px]"
+              placeholder="name@example.com"
+            />
+          </div>
         </div>
       </div>
 
