@@ -1,15 +1,13 @@
 import type { Booking, Event, Customer } from '@/types/database'
-import { Fragment, useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import toast from 'react-hot-toast'
-import { MagnifyingGlassIcon, UserPlusIcon } from '@heroicons/react/24/outline'
-import { Combobox, Transition } from '@headlessui/react'
-import { CheckIcon, ChevronUpDownIcon } from '@heroicons/react/20/solid'
+import { UserPlusIcon } from '@heroicons/react/24/outline'
 import { formatDate } from '@/lib/dateUtils'
-import { cn } from '@/lib/utils'
-import { CustomerWithLoyalty, getLoyalCustomers, sortCustomersByLoyalty } from '@/lib/customerUtils'
+import { getLoyalCustomers } from '@/lib/customerUtils'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { createBooking } from '@/app/actions/bookings'
+import CustomerSearchInput from '@/components/CustomerSearchInput'
 
 interface BookingFormProps {
   booking?: Booking
@@ -26,9 +24,6 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
   const [notes, setNotes] = useState(booking?.notes ?? '')
   const [isReminderOnly, setIsReminderOnly] = useState<boolean>(booking?.is_reminder_only ?? ((booking?.seats ?? 0) === 0))
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [customers, setCustomers] = useState<CustomerWithLoyalty[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
   const [blockedCustomerIds, setBlockedCustomerIds] = useState<Set<string>>(new Set())
   const [loyalCustomerIds, setLoyalCustomerIds] = useState<Set<string>>(new Set())
   const [availableCapacity, setAvailableCapacity] = useState<number | null>(null)
@@ -43,11 +38,6 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
     email: '',
     mobileNumber: ''
   })
-  const [selectedCustomer, setSelectedCustomer] = useState<CustomerWithLoyalty | null>(
-    booking?.customer_id && preselectedCustomer
-      ? { ...preselectedCustomer, isLoyal: false }
-      : null
-  )
 
   // Calculate available capacity
   const calculateAvailableCapacity = useCallback(async () => {
@@ -85,84 +75,10 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
     }
   }, [event.id, event.capacity, booking?.customer_id, booking?.id, supabase])
 
-  const loadCustomers = useCallback(async (query?: string) => {
-    try {
-      setIsLoading(true)
-
-      let request = supabase
-        .from('customers')
-        .select('*')
-        .order('first_name')
-        .limit(60)
-
-      const trimmedQuery = query?.trim() ?? ''
-      if (trimmedQuery) {
-        const digits = trimmedQuery.replace(/\D/g, '')
-        const orConditions = [
-          `first_name.ilike.%${trimmedQuery}%`,
-          `last_name.ilike.%${trimmedQuery}%`,
-          `email.ilike.%${trimmedQuery}%`,
-          digits ? `mobile_number.ilike.%${digits}%` : ''
-        ]
-          .filter(Boolean)
-          .join(',')
-
-        if (orConditions) {
-          request = request.or(orConditions)
-        }
-      }
-
-      const { data: customersData, error: customersError } = await request
-      if (customersError) throw customersError
-
-      const customerRows = (customersData ?? []) as Customer[]
-
-      let candidateCustomers: CustomerWithLoyalty[] = customerRows.map((customer) => ({
-        ...customer,
-        isLoyal: loyalCustomerIds.has(customer.id)
-      }))
-
-      if (blockedCustomerIds.size > 0) {
-        candidateCustomers = candidateCustomers.filter((customer) => !blockedCustomerIds.has(customer.id))
-      }
-
-      if (preselectedCustomer && !candidateCustomers.some((customer) => customer.id === preselectedCustomer.id)) {
-        candidateCustomers.unshift({
-          ...preselectedCustomer,
-          isLoyal: loyalCustomerIds.has(preselectedCustomer.id ?? '')
-        } as CustomerWithLoyalty)
-      }
-
-      if (booking?.customer_id && !candidateCustomers.some((customer) => customer.id === booking.customer_id)) {
-        const existingCustomer = customerRows.find((customer) => customer.id === booking.customer_id)
-        if (existingCustomer) {
-          candidateCustomers.unshift({
-            ...existingCustomer,
-            isLoyal: loyalCustomerIds.has(existingCustomer.id)
-          })
-        }
-      }
-
-      setCustomers(sortCustomersByLoyalty(candidateCustomers))
-    } catch (error) {
-      console.error('Error loading customers:', error)
-      toast.error('Failed to load customers')
-    } finally {
-      setIsLoading(false)
-    }
-  }, [blockedCustomerIds, booking?.customer_id, loyalCustomerIds, preselectedCustomer, supabase])
 
   useEffect(() => {
     calculateAvailableCapacity()
   }, [calculateAvailableCapacity])
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      loadCustomers(searchTerm)
-    }, 250)
-
-    return () => clearTimeout(handler)
-  }, [loadCustomers, searchTerm])
 
   useEffect(() => {
     let active = true
@@ -196,17 +112,6 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
       setIsReminderOnly(false)
     }
   }, [booking])
-
-  useEffect(() => {
-    if (!customerId) {
-      setSelectedCustomer(null)
-      return
-    }
-    const current = customers.find((customer) => customer.id === customerId)
-    if (current) {
-      setSelectedCustomer(current)
-    }
-  }, [customers, customerId])
 
   const handleSubmit = async (e: React.FormEvent, addAnother: boolean = false, overwrite: boolean = false) => {
     e.preventDefault()
@@ -316,13 +221,12 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
           setCustomerId('')
           setSeats('')
           setNotes('')
-          setSearchTerm('')
           setShowOverwriteConfirm(false)
           setExistingBookingInfo(null)
           setShowNewCustomerForm(false)
           setNewCustomer({ firstName: '', lastName: '', email: '', mobileNumber: '' })
-          // Reload available customers
-          await loadCustomers()
+          // Refresh capacity and blocked customer list
+          await calculateAvailableCapacity()
         } else {
           onCancel() // Close the form if not adding another
         }
@@ -385,12 +289,11 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
         setCustomerId('')
         setSeats('')
         setNotes('')
-        setSearchTerm('')
         setShowOverwriteConfirm(false)
         setExistingBookingInfo(null)
         setIsReminderOnly(false)
-        // Reload available customers
-        await loadCustomers()
+        // Refresh capacity and blocked customer list
+        await calculateAvailableCapacity()
       } else {
         onCancel() // Close the form if not adding another
       }
@@ -400,10 +303,6 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
     } finally {
       setIsSubmitting(false)
     }
-  }
-
-  if (isLoading) {
-    return <div className="text-black">Loading available customers...</div>
   }
 
   return (
@@ -486,92 +385,30 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
               >
                 Search Customer
               </label>
-              <Combobox
-                value={selectedCustomer}
-                onChange={(customer) => {
-                  setSelectedCustomer(customer)
-                  setCustomerId(customer?.id ?? '')
-                  setShowNewCustomerForm(false)
-                  setSearchTerm('')
+              <CustomerSearchInput
+                onCustomerSelect={(customer) => {
+                  if (customer) {
+                    setCustomerId(customer.id)
+                    setShowNewCustomerForm(false)
+                  } else {
+                    setCustomerId('')
+                  }
                 }}
-              >
-                <div className="relative">
-                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                    <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
-                  </div>
-                  <Combobox.Input
-                    id="customer-search"
-                    className="w-full rounded-lg border border-gray-300 bg-white py-3 sm:py-2 pl-10 pr-12 text-base sm:text-sm text-gray-900 placeholder-gray-500 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 min-h-[48px] sm:min-h-[44px]"
-                    displayValue={(customer: CustomerWithLoyalty | null) => (customer ? `${customer.first_name} ${customer.last_name ?? ''} (${customer.mobile_number})` : '')}
-                    onChange={(event) => {
-                      const value = event.target.value
-                      setSearchTerm(value)
-                      setSelectedCustomer(null)
-                      setCustomerId('')
-                    }}
-                    placeholder="Search by name or mobile number"
-                  />
-                  <Combobox.Button className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400">
-                    <ChevronUpDownIcon className="h-5 w-5" aria-hidden="true" />
-                  </Combobox.Button>
-                </div>
-                <Transition
-                  as={Fragment}
-                  leave="transition ease-in duration-100"
-                  leaveFrom="opacity-100"
-                  leaveTo="opacity-0"
-                >
-                  <Combobox.Options className="absolute left-0 z-50 mt-2 max-h-60 w-full overflow-auto rounded-lg bg-white py-2 shadow-lg ring-1 ring-black/10 focus:outline-none">
-                    {customers.length === 0 ? (
-                      <div className="px-4 py-2 text-sm text-gray-500">
-                        {searchTerm
-                          ? 'No customers found. Try a different search or create a new customer.'
-                          : 'No available customers. Either all customers are already booked or none exist yet.'}
-                      </div>
-                    ) : (
-                      customers.map((customer) => (
-                        <Combobox.Option
-                          key={customer.id}
-                          value={customer}
-                          className={({ active }) =>
-                            cn(
-                              'flex cursor-pointer items-center justify-between px-4 py-2 text-sm',
-                              active ? 'bg-green-500 text-white' : 'text-gray-900'
-                            )
-                          }
-                        >
-                          {({ active, selected }) => (
-                            <>
-                              <div className="flex flex-col">
-                                <span className={cn('font-medium', selected && !active && 'text-green-600')}>
-                                  {customer.first_name} {customer.last_name ?? ''}
-                                </span>
-                                <span className="text-xs text-gray-500">
-                                  {customer.mobile_number} {customer.isLoyal ? '• Loyal customer' : ''}
-                                </span>
-                              </div>
-                              {selected && (
-                                <CheckIcon className={cn('h-4 w-4', active ? 'text-white' : 'text-green-600')} aria-hidden="true" />
-                              )}
-                            </>
-                          )}
-                        </Combobox.Option>
-                      ))
-                    )}
-                  </Combobox.Options>
-                </Transition>
-              </Combobox>
+                selectedCustomerId={customerId || undefined}
+                placeholder="Search by name or mobile number"
+                excludeCustomerIds={blockedCustomerIds}
+                highlightCustomerIds={loyalCustomerIds}
+                highlightLabel="Loyal customer"
+              />
             </div>
           )}
-          
+
           {!showNewCustomerForm && (
             <button
               type="button"
               onClick={() => {
                 setShowNewCustomerForm(true)
-                setSelectedCustomer(null)
                 setCustomerId('')
-                setSearchTerm('')
               }}
               className="mt-2 inline-flex items-center text-sm text-blue-600 hover:text-blue-800"
             >

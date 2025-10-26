@@ -39,9 +39,7 @@ export const EVENT_CHECKLIST_DEFINITIONS: EventChecklistDefinition[] = [
   { key: 'schedule_social_content', label: 'Create & schedule social content', offsetDays: -28, channel: 'FB/IG', required: true, order: 9 },
   { key: 'schedule_stories', label: 'Schedule Stories (day-before & day-of)', offsetDays: -28, channel: 'FB/IG', required: true, order: 10 },
   { key: 'print_materials', label: 'Print marketing', offsetDays: -28, channel: 'Admin', required: false, order: 11 },
-  { key: 'post_nextdoor_update', label: 'Post availability/update comment', offsetDays: -7, channel: 'Nextdoor', required: true, order: 12 },
-  { key: 'post_nextdoor_optional_update', label: 'Optional extra update comment', offsetDays: -3, channel: 'Nextdoor', required: false, order: 13 },
-  { key: 'send_whatsapp_reminder', label: 'WhatsApp reminder to local group', offsetDays: 0, channel: 'WhatsApp', required: true, order: 14 }
+  { key: 'send_whatsapp_reminder', label: 'WhatsApp reminder to local group', offsetDays: 0, channel: 'WhatsApp', required: true, order: 12 }
 ]
 
 export const EVENT_CHECKLIST_TOTAL_TASKS = EVENT_CHECKLIST_DEFINITIONS.length
