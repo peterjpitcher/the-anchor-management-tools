@@ -88,14 +88,14 @@ export function HeaderNav({
       )}
       aria-label={ariaLabel}
     >
-      <ul className="flex w-full items-center gap-1 sm:gap-2">
+      <ul className="flex min-w-full items-center gap-1 sm:gap-2">
         {resolvedItems.map(({ item, active }, index) => {
           const { href, onClick, label, icon, disabled, badge } = item
           const key = `${label}-${index}`
           const content = (
             <span
               className={cn(
-                'inline-flex items-center gap-2 rounded-md px-3 py-1.5 transition-colors duration-150',
+                'inline-flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-1.5 transition-colors duration-150',
                 active
                   ? 'bg-white text-sidebar shadow-sm'
                   : 'text-white/80 hover:text-white hover:bg-white/10',
@@ -117,7 +117,7 @@ export function HeaderNav({
           )
 
           return (
-            <li key={key} className="flex">
+            <li key={key} className="flex flex-shrink-0">
               {href ? (
                 <Link href={href} className="focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar">
                   {content}

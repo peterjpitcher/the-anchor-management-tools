@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { MagnifyingGlassIcon, UserIcon, PhoneIcon, CheckIcon } from '@heroicons/react/24/outline'
 import { createClient } from '@/lib/supabase/client'
 
@@ -16,12 +16,18 @@ interface CustomerSearchInputProps {
   onCustomerSelect: (customer: Customer | null) => void
   selectedCustomerId?: string | null
   placeholder?: string
+  excludeCustomerIds?: string[] | Set<string>
+  highlightCustomerIds?: string[] | Set<string>
+  highlightLabel?: string
 }
 
-export default function CustomerSearchInput({ 
-  onCustomerSelect, 
+export default function CustomerSearchInput({
+  onCustomerSelect,
   selectedCustomerId,
-  placeholder = "Search by name or phone..." 
+  placeholder = 'Search by name or phone...',
+  excludeCustomerIds,
+  highlightCustomerIds,
+  highlightLabel = 'Preferred'
 }: CustomerSearchInputProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [searchResults, setSearchResults] = useState<Customer[]>([])
@@ -31,6 +37,20 @@ export default function CustomerSearchInput({
   const searchTimeout = useRef<NodeJS.Timeout | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
+
+  const excludedIds = useMemo(() => {
+    if (!excludeCustomerIds) return null
+    return excludeCustomerIds instanceof Set
+      ? excludeCustomerIds
+      : new Set(excludeCustomerIds)
+  }, [excludeCustomerIds])
+
+  const highlightedIds = useMemo(() => {
+    if (!highlightCustomerIds) return null
+    return highlightCustomerIds instanceof Set
+      ? highlightCustomerIds
+      : new Set(highlightCustomerIds)
+  }, [highlightCustomerIds])
 
   const loadCustomer = useCallback(async (customerId: string) => {
     const { data, error } = await supabase
@@ -50,6 +70,11 @@ export default function CustomerSearchInput({
   useEffect(() => {
     if (selectedCustomerId) {
       loadCustomer(selectedCustomerId)
+    } else {
+      setSelectedCustomer(null)
+      setSearchTerm('')
+      setSearchResults([])
+      setShowDropdown(false)
     }
   }, [selectedCustomerId, loadCustomer])
 
@@ -104,7 +129,12 @@ export default function CustomerSearchInput({
     const { data, error } = await query
 
     if (!error && data) {
-      setSearchResults(data)
+      const filtered = data.filter((customer) => {
+        if (!excludedIds) return true
+        if (selectedCustomerId && customer.id === selectedCustomerId) return true
+        return !excludedIds.has(customer.id)
+      })
+      setSearchResults(filtered)
       setShowDropdown(true)
     } else {
       setSearchResults([])
@@ -229,6 +259,11 @@ export default function CustomerSearchInput({
                     )}
                     {customer.email && (
                       <span className="truncate max-w-[200px] sm:max-w-none">{customer.email}</span>
+                    )}
+                    {highlightedIds?.has(customer.id) && (
+                      <span className="flex items-center text-xs sm:text-sm text-blue-600 font-medium">
+                        • {highlightLabel}
+                      </span>
                     )}
                   </div>
                 </div>
