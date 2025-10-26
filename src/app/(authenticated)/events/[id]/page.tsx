@@ -366,11 +366,28 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
     const items: HeaderNavItem[] = []
 
     if (canManageEvents) {
-      items.push({
-        label: 'Edit Event',
-        href: `/events/${event.id}/edit`,
-        active: false,
-      })
+      items.push(
+        {
+          label: 'New Booking',
+          onClick: () => setShowBookingForm(true),
+          active: false,
+        },
+        {
+          label: 'Launch Check-In',
+          href: `/events/${event.id}/check-in`,
+          active: false,
+        },
+        {
+          label: 'Add Attendees',
+          onClick: () => setShowAddAttendeesModal(true),
+          active: false,
+        },
+        {
+          label: 'Edit Event',
+          href: `/events/${event.id}/edit`,
+          active: false,
+        },
+      )
     }
 
     items.push({
@@ -380,29 +397,12 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
     })
 
     if (canManageEvents) {
-      items.push(
-        {
-          label: 'Download Posters',
-          onClick: handleDownloadReservationPosters,
-          disabled: activeBookings.length === 0,
-          active: false,
-        },
-        {
-          label: 'Add Attendees',
-          onClick: () => setShowAddAttendeesModal(true),
-          active: false,
-        },
-        {
-          label: 'New Booking',
-          onClick: () => setShowBookingForm(true),
-          active: false,
-        },
-        {
-          label: 'Launch Check-in',
-          href: `/events/${event.id}/check-in`,
-          active: false,
-        },
-      )
+      items.push({
+        label: 'Download Posters',
+        onClick: handleDownloadReservationPosters,
+        disabled: activeBookings.length === 0,
+        active: false,
+      })
     }
 
     return items
