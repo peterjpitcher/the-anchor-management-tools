@@ -83,12 +83,12 @@ export function HeaderNav({
   return (
     <nav
       className={cn(
-        'flex flex-1 items-center overflow-x-auto py-1 text-sm sm:text-base',
+        'flex w-full flex-1 items-center overflow-x-auto py-1 text-sm sm:w-auto sm:text-base',
         className,
       )}
       aria-label={ariaLabel}
     >
-      <ul className="flex min-w-full items-center gap-1 sm:gap-2">
+      <ul className="flex min-w-full w-max items-center gap-1 sm:gap-2">
         {resolvedItems.map(({ item, active }, index) => {
           const { href, onClick, label, icon, disabled, badge } = item
           const key = `${label}-${index}`
