@@ -51,30 +51,60 @@ export async function recordOutboundSmsMessage(params: RecordOutboundSmsParams):
   const computedSegments = segments ?? (body.length <= 160 ? 1 : Math.ceil(body.length / 153))
   const computedCostUsd = costUsd ?? computedSegments * 0.04
 
+  const insertPayload: Record<string, unknown> = {
+    customer_id: customerId,
+    direction: 'outbound',
+    message_sid: sid,
+    twilio_message_sid: sid,
+    body,
+    status,
+    twilio_status: twilioStatus,
+    from_number: fromNumber ?? process.env.TWILIO_PHONE_NUMBER ?? null,
+    to_number: to,
+    message_type: 'sms',
+    segments: computedSegments,
+    cost_usd: computedCostUsd,
+    sent_at: sentAt ?? new Date().toISOString(),
+    read_at: readAt ?? new Date().toISOString(),
+  }
+
+  if (metadata !== null && metadata !== undefined) {
+    insertPayload.metadata = metadata
+  }
+
   try {
     const { data, error } = await client
       .from('messages')
-      .insert({
-        customer_id: customerId,
-        direction: 'outbound',
-        message_sid: sid,
-        twilio_message_sid: sid,
-        body,
-        status,
-        twilio_status: twilioStatus,
-        from_number: fromNumber ?? process.env.TWILIO_PHONE_NUMBER ?? null,
-        to_number: to,
-        message_type: 'sms',
-        segments: computedSegments,
-        cost_usd: computedCostUsd,
-        sent_at: sentAt ?? new Date().toISOString(),
-        read_at: readAt ?? new Date().toISOString(),
-        metadata,
-      })
+      .insert(insertPayload)
       .select('id')
       .single()
 
     if (error) {
+      // Fallback: retry without metadata if the column is missing (legacy schema)
+      const isMetadataMissing =
+        insertPayload.metadata !== undefined &&
+        typeof error === 'object' &&
+        error !== null &&
+        'message' in error &&
+        typeof (error as any).message === 'string' &&
+        (error as any).message.toLowerCase().includes("'metadata'")
+
+      if (isMetadataMissing) {
+        const { metadata: _removed, ...withoutMetadata } = insertPayload
+
+        const { data: fallbackData, error: fallbackError } = await client
+          .from('messages')
+          .insert(withoutMetadata)
+          .select('id')
+          .single()
+
+        if (fallbackError) {
+          throw fallbackError
+        }
+
+        return fallbackData?.id ?? null
+      }
+
       throw error
     }
 
