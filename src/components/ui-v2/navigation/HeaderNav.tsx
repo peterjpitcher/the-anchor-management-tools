@@ -81,48 +81,51 @@ export function HeaderNav({
   }
 
   return (
-    <nav
+    <div
       className={cn(
-        'flex w-full flex-1 items-center overflow-x-auto py-1 text-sm sm:w-auto sm:text-base',
+        'relative w-full sm:flex-1',
         className,
       )}
-      aria-label={ariaLabel}
     >
-      <ul className="inline-flex w-max items-center gap-1 sm:gap-2">
-        {resolvedItems.map(({ item, active }, index) => {
-          const { href, onClick, label, icon, disabled, badge } = item
-          const key = `${label}-${index}`
-          const content = (
-            <span
-              className={cn(
-                'inline-flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-1.5 transition-colors duration-150',
-                active
-                  ? 'bg-white text-sidebar shadow-sm'
-                  : 'text-white/80 hover:text-white hover:bg-white/10',
-                disabled && 'opacity-50 pointer-events-none',
-                itemClassName,
-              )}
-            >
-              {icon && <span className="flex items-center">{icon}</span>}
-              <span className="font-medium">{label}</span>
-              {badge !== undefined && badge !== null && (
-                <span className={cn(
-                  'inline-flex min-w-[1.5rem] items-center justify-center rounded-full px-1 text-xs font-semibold',
-                  active ? 'bg-sidebar/10 text-sidebar' : 'bg-white/15 text-white',
-                )}>
-                  {badge}
-                </span>
-              )}
-            </span>
-          )
+      <nav
+        className="overflow-x-auto py-1 text-sm sm:text-base"
+        aria-label={ariaLabel}
+      >
+        <ul className="flex w-max min-w-full items-center gap-1 sm:gap-2">
+          {resolvedItems.map(({ item, active }, index) => {
+            const { href, onClick, label, icon, disabled, badge } = item
+            const key = `${label}-${index}`
+            const content = (
+              <span
+                className={cn(
+                  'inline-flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-1.5 transition-colors duration-150',
+                  active
+                    ? 'bg-white text-sidebar shadow-sm'
+                    : 'text-white/80 hover:text-white hover:bg-white/10',
+                  disabled && 'opacity-50 pointer-events-none',
+                  itemClassName,
+                )}
+              >
+                {icon && <span className="flex items-center">{icon}</span>}
+                <span className="font-medium">{label}</span>
+                {badge !== undefined && badge !== null && (
+                  <span className={cn(
+                    'inline-flex min-w-[1.5rem] items-center justify-center rounded-full px-1 text-xs font-semibold',
+                    active ? 'bg-sidebar/10 text-sidebar' : 'bg-white/15 text-white',
+                  )}>
+                    {badge}
+                  </span>
+                )}
+              </span>
+            )
 
-          return (
-            <li key={key} className="flex flex-shrink-0">
-              {href ? (
-                <Link href={href} className="focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar">
-                  {content}
-                </Link>
-              ) : (
+            return (
+              <li key={key} className="flex flex-shrink-0">
+                {href ? (
+                  <Link href={href} className="focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar">
+                    {content}
+                  </Link>
+                ) : (
                 <button
                   type="button"
                   onClick={onClick}
@@ -133,9 +136,10 @@ export function HeaderNav({
                 </button>
               )}
             </li>
-          )
-        })}
-      </ul>
-    </nav>
+            )
+          })}
+        </ul>
+      </nav>
+    </div>
   )
 }
