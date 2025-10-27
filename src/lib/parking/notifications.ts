@@ -4,6 +4,13 @@ import type { ParkingBooking } from '@/types/parking'
 const CONTACT_NUMBER = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'
 const MANAGER_EMAIL = 'manager@the-anchor.pub'
 
+export function buildPaymentRequestSms(booking: ParkingBooking, paymentUrl: string) {
+  const amount = booking.override_price ?? booking.calculated_price ?? 0
+  const base = `Hi ${booking.customer_first_name}, your parking from ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)} is reserved.`
+  const linkPart = paymentUrl ? ` Pay securely now (£${amount.toFixed(2)}): ${paymentUrl}.` : ''
+  return `${base}${linkPart} Need help? Call us on ${CONTACT_NUMBER}.`
+}
+
 export function buildPaymentReminderSms(booking: ParkingBooking, paymentUrl?: string) {
   const amount = booking.override_price ?? booking.calculated_price ?? 0
   const base = `Hi ${booking.customer_first_name}, your parking from ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)} is still waiting for payment (£${amount.toFixed(2)}).`

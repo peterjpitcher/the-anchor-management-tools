@@ -12,6 +12,7 @@ import { sendEmail } from '@/lib/email/emailService'
 import {
   buildPaymentConfirmationSms,
   buildPaymentConfirmationManagerEmail,
+  buildPaymentRequestSms,
 } from '@/lib/parking/notifications'
 
 interface CreatePaymentOptions {
@@ -87,6 +88,124 @@ export async function createParkingPaymentOrder(
   )
 
   return { payment, orderId, approveUrl }
+}
+
+export async function sendParkingPaymentRequest(
+  booking: ParkingBooking,
+  paymentLink: string,
+  options: { client?: SupabaseClient<any, 'public', any> } = {}
+) {
+  const supabase = options.client ?? createAdminClient()
+  const replyNumber = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+
+  let smsAllowed = true
+  if (booking.customer_id) {
+    const { data, error } = await supabase
+      .from('customers')
+      .select('sms_opt_in')
+      .eq('id', booking.customer_id)
+      .maybeSingle()
+
+    if (error) {
+      logger.warn('Failed to load customer sms preference for payment request', {
+        error,
+        metadata: { bookingId: booking.id }
+      })
+    }
+
+    if (data && data.sms_opt_in === false) {
+      smsAllowed = false
+    }
+  }
+
+  if (!booking.customer_mobile) {
+    await logParkingNotification({
+      booking_id: booking.id,
+      channel: 'sms',
+      event_type: 'payment_request',
+      status: 'skipped',
+      payload: { reason: 'No customer mobile number on booking' }
+    }, supabase)
+    return
+  }
+
+  if (!smsAllowed) {
+    await logParkingNotification({
+      booking_id: booking.id,
+      channel: 'sms',
+      event_type: 'payment_request',
+      status: 'skipped',
+      payload: { reason: 'Customer has opted out of SMS' }
+    }, supabase)
+    return
+  }
+
+  try {
+    const smsBody = ensureReplyInstruction(buildPaymentRequestSms(booking, paymentLink), replyNumber)
+    const smsResult = await sendSMS(booking.customer_mobile, smsBody)
+
+    let messageId: string | null = null
+    let customerIdForLog = booking.customer_id
+
+    if (!customerIdForLog && booking.customer_mobile) {
+      const ensured = await ensureCustomerForPhone(supabase, booking.customer_mobile, {
+        email: (booking as any)?.customer_email ?? null
+      })
+      customerIdForLog = ensured.customerId ?? undefined
+    }
+
+    if (smsResult.success && smsResult.sid && customerIdForLog) {
+      messageId = await recordOutboundSmsMessage({
+        supabase,
+        customerId: customerIdForLog,
+        to: booking.customer_mobile,
+        body: smsBody,
+        sid: smsResult.sid,
+        fromNumber: smsResult.fromNumber ?? undefined,
+        metadata: {
+          parking_booking_id: booking.id,
+          event_type: 'payment_request'
+        },
+        twilioStatus: smsResult.status ?? 'queued'
+      })
+
+      if (!messageId) {
+        logger.warn('Parking payment request SMS sent but failed to record', {
+          metadata: { bookingId: booking.id }
+        })
+      }
+    }
+
+    await logParkingNotification({
+      booking_id: booking.id,
+      channel: 'sms',
+      event_type: 'payment_request',
+      status: smsResult.success ? 'sent' : 'failed',
+      sent_at: smsResult.success ? new Date().toISOString() : null,
+      message_sid: smsResult.success && smsResult.sid ? smsResult.sid : null,
+      payload: { sms: smsBody, message_id: messageId }
+    }, supabase)
+
+    if (!smsResult.success) {
+      logger.warn('Parking payment request SMS failed', {
+        metadata: { bookingId: booking.id, error: smsResult.error }
+      })
+    }
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error))
+    logger.error('Unexpected error sending parking payment request SMS', {
+      error: err,
+      metadata: { bookingId: booking.id }
+    })
+
+    await logParkingNotification({
+      booking_id: booking.id,
+      channel: 'sms',
+      event_type: 'payment_request',
+      status: 'failed',
+      payload: { error: err.message }
+    }, supabase)
+  }
 }
 
 export async function captureParkingPayment(
