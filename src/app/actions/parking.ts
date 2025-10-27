@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { calculateParkingPricing } from '@/lib/parking/pricing'
 import { getActiveParkingRate, insertParkingBooking, getParkingBooking, updateParkingBooking } from '@/lib/parking/repository'
 import { checkParkingCapacity } from '@/lib/parking/capacity'
-import { createParkingPaymentOrder } from '@/lib/parking/payments'
+import { createParkingPaymentOrder, sendParkingPaymentRequest } from '@/lib/parking/payments'
 import { revalidatePath } from 'next/cache'
 import type { ParkingBooking, ParkingBookingStatus, ParkingPaymentStatus } from '@/types/parking'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -184,6 +184,7 @@ export async function createParkingBooking(formData: FormData) {
           client: adminClient
         })
         paymentLink = approveUrl
+        await sendParkingPaymentRequest(booking as ParkingBooking, approveUrl, { client: adminClient })
       } catch (paymentError) {
         console.error('Failed to create parking payment order', paymentError)
       }
