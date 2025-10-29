@@ -20,6 +20,7 @@ import { generateEventReservationPosters } from '@/app/actions/event-reservation
 import { EventChecklistCard } from '@/components/EventChecklistCard'
 import { EventMarketingLinksCard } from '@/components/EventMarketingLinksCard'
 import { getEventMarketingLinks, regenerateEventMarketingLinks, type EventMarketingLink } from '@/app/actions/event-marketing-links'
+import { EventPromotionContentCard } from '@/components/EventPromotionContentCard'
 
 // ui-v2 imports
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
@@ -368,7 +369,7 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
     if (canManageEvents) {
       items.push(
         {
-          label: 'New Booking',
+          label: 'Add a Booking',
           onClick: () => setShowBookingForm(true),
           active: false,
         },
@@ -378,7 +379,7 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
           active: false,
         },
         {
-          label: 'Add Attendees',
+          label: 'Add Bulk Reminders',
           onClick: () => setShowAddAttendeesModal(true),
           active: false,
         },
@@ -707,6 +708,20 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
                   loading={marketingLoading}
                   error={marketingError}
                   onRegenerate={handleRegenerateMarketingLinks}
+                />
+              </section>
+
+              <section id="ai-content">
+                <EventPromotionContentCard
+                  eventId={event.id}
+                  eventName={event.name}
+                  initialTicketUrl={event.booking_url ?? undefined}
+                  brief={event.brief ?? undefined}
+                  marketingLinks={marketingLinks}
+                  facebookName={event.facebook_event_name ?? undefined}
+                  facebookDescription={event.facebook_event_description ?? undefined}
+                  googleTitle={event.gbp_event_title ?? undefined}
+                  googleDescription={event.gbp_event_description ?? undefined}
                 />
               </section>
             </div>

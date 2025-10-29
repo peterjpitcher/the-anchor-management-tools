@@ -1,8 +1,5 @@
 import type { ReceiptExpenseCategory } from '@/types/database'
-
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY
-const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1'
-const DEFAULT_CLASSIFICATION_MODEL = process.env.OPENAI_RECEIPTS_MODEL ?? 'gpt-4o-mini'
+import { getOpenAIConfig } from '@/lib/openai/config'
 
 const MODEL_PRICING_PER_1K_TOKENS: Record<string, { prompt: number; completion: number }> = {
   'gpt-4o-mini': { prompt: 0.00015, completion: 0.0006 },
@@ -80,12 +77,14 @@ export async function classifyReceiptTransaction(input: {
   existingVendor?: string | null
   existingExpenseCategory?: ReceiptExpenseCategory | null
 }): Promise<ClassificationOutcome | null> {
-  if (!OPENAI_API_KEY) {
-    console.warn('OPENAI_API_KEY not configured; skipping classification')
+  const { apiKey, baseUrl, receiptsModel } = await getOpenAIConfig()
+
+  if (!apiKey) {
+    console.warn('OpenAI not configured; skipping classification')
     return null
   }
 
-  const model = DEFAULT_CLASSIFICATION_MODEL
+  const model = receiptsModel
 
   const { details, amountIn, amountOut, transactionType, categories, direction, existingVendor, existingExpenseCategory } = input
 
@@ -111,11 +110,11 @@ Only answer with valid JSON that matches the schema.`
     .filter(Boolean)
     .join('\n')
 
-  const response = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
+  const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
       model,

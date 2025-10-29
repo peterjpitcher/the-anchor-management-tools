@@ -54,12 +54,9 @@ export default function EditTableBookingPage(props: { params: Promise<{ id: stri
 
   useEffect(() => {
     if (bookingDate && partySize && booking) {
-      // Only check availability if date or party size changed
-      if (bookingDate !== booking.booking_date || partySize !== booking.party_size) {
-        checkBookingAvailability();
-      }
+      checkBookingAvailability();
     }
-  }, [bookingDate, partySize]);
+  }, [bookingDate, partySize, booking]);
 
   async function loadBooking() {
     try {

@@ -30,6 +30,11 @@ export interface Event {
   doors_time?: string | null;
   duration_minutes?: number | null;
   last_entry_time?: string | null;
+  brief?: string | null;
+  facebook_event_name?: string | null;
+  facebook_event_description?: string | null;
+  gbp_event_title?: string | null;
+  gbp_event_description?: string | null;
 }
 
 export interface EventChecklistStatus {
