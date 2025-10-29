@@ -20,6 +20,7 @@ import {
   UserGroupIcon
 } from '@heroicons/react/24/outline'
 import { getTodayIsoDate, getLocalIsoDateDaysAhead } from '@/lib/dateUtils'
+import { generateEventSeoContent } from '@/app/actions/event-content'
 
 interface EventFormGroupedProps {
   event?: Event | null
@@ -84,6 +85,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
   const [price, setPrice] = useState(event?.price?.toString() ?? '0')
   const [isFree, setIsFree] = useState(event?.is_free ?? true)
   const [imageUrl, setImageUrl] = useState(event?.hero_image_url ?? '')
+  const [brief, setBrief] = useState(event?.brief ?? '')
   
   // SEO and content fields
   const [slug, setSlug] = useState(event?.slug ?? '')
@@ -100,7 +102,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
   const [durationMinutes, setDurationMinutes] = useState(event?.duration_minutes?.toString() ?? '')
   const [lastEntryTime, setLastEntryTime] = useState(event?.last_entry_time ?? '')
   
-  
+  const [isGeneratingSeo, setIsGeneratingSeo] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Date constraints
@@ -147,6 +149,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
         doors_time: doorsTime || null,
         duration_minutes: durationMinutes && durationMinutes !== '' ? parseInt(durationMinutes) : null,
         last_entry_time: lastEntryTime || null,
+        brief: brief.trim() ? brief.trim() : null,
       }
 
       await onSubmit(eventData)
@@ -237,6 +240,57 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
       setSlug(name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + date)
     }
   }, [name, date, event])
+
+  const handleGenerateSeo = async () => {
+    if (!name.trim()) {
+      toast.error('Add an event name before generating content')
+      return
+    }
+
+    setIsGeneratingSeo(true)
+    try {
+      const selectedCategory = categoryId ? categories.find(cat => cat.id === categoryId) : undefined
+      const result = await generateEventSeoContent({
+        name: name.trim(),
+        date: date || null,
+        time: time || null,
+        categoryName: selectedCategory?.name ?? null,
+        brief: brief.trim() ? brief.trim() : null,
+        performerName: performerName.trim() || null,
+        performerType: performerType.trim() || null,
+        price: price ? parseFloat(price) : null,
+        isFree,
+        bookingUrl: bookingUrl.trim() || null,
+        existingShortDescription: shortDescription || null,
+        existingLongDescription: longDescription || null,
+        existingMetaTitle: metaTitle || null,
+        existingMetaDescription: metaDescription || null,
+        existingHighlights: highlights ? highlights.split(',').map(h => h.trim()).filter(Boolean) : [],
+        existingKeywords: keywords ? keywords.split(',').map(k => k.trim()).filter(Boolean) : []
+      })
+
+      if (!result.success) {
+        toast.error(result.error ?? 'Failed to generate SEO content')
+        return
+      }
+
+      const { metaTitle: nextMetaTitle, metaDescription: nextMetaDescription, shortDescription: nextShort, longDescription: nextLong, highlights: nextHighlights, keywords: nextKeywords } = result.data
+
+      if (nextMetaTitle) setMetaTitle(nextMetaTitle)
+      if (nextMetaDescription) setMetaDescription(nextMetaDescription)
+      if (nextShort) setShortDescription(nextShort)
+      if (nextLong) setLongDescription(nextLong)
+      if (nextHighlights) setHighlights(nextHighlights.join(', '))
+      if (nextKeywords) setKeywords(nextKeywords.join(', '))
+
+      toast.success('SEO content drafted')
+    } catch (error) {
+      console.error('Failed to generate SEO content', error)
+      toast.error('Failed to generate SEO content')
+    } finally {
+      setIsGeneratingSeo(false)
+    }
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -350,6 +404,25 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 fullWidth
               />
             </div>
+          </div>
+
+          <div className="col-span-full">
+            <label htmlFor="brief" className="block text-sm font-medium leading-6 text-gray-900">
+              Event Brief
+            </label>
+            <div className="mt-2">
+              <Textarea
+                id="brief"
+                rows={6}
+                value={brief}
+                onChange={(e) => setBrief(e.target.value)}
+                placeholder="Include positioning, audience, offers, and any must-have talking points."
+                fullWidth
+              />
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              The brief feeds into SEO, marketing copy, and future content tools—keep it up to date.
+            </p>
           </div>
         </div>
       </CollapsibleSection>
@@ -544,6 +617,20 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
         icon={MegaphoneIcon}
         defaultOpen={false}
       >
+        <div className="col-span-full mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-gray-500">
+            Draft optimized copy using your event details and brief. Fine-tune anything after the AI pass.
+          </p>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={handleGenerateSeo}
+            disabled={isGeneratingSeo}
+          >
+            {isGeneratingSeo ? 'Generating...' : 'Generate with AI'}
+          </Button>
+        </div>
         <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
           <div className="sm:col-span-3">
             <label htmlFor="slug" className="block text-sm font-medium leading-6 text-gray-900">

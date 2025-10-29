@@ -26,6 +26,7 @@ import Papa from 'papaparse'
 import { createHash } from 'crypto'
 import { z } from 'zod'
 import { classifyReceiptTransaction, type ClassificationUsage } from '@/lib/openai'
+import { getOpenAIConfig } from '@/lib/openai/config'
 
 const RECEIPT_BUCKET = 'receipts'
 const MAX_RECEIPT_UPLOAD_SIZE = 15 * 1024 * 1024 // 15 MB safety limit
@@ -1137,7 +1138,8 @@ async function classifyTransactionsWithAI(
 ): Promise<void> {
   if (!transactionIds.length) return
 
-  if (!process.env.OPENAI_API_KEY) {
+  const { apiKey } = await getOpenAIConfig()
+  if (!apiKey) {
     return
   }
 
@@ -2283,7 +2285,8 @@ export async function getReceiptBulkReviewData(options: {
   }
 
   const rows = (data ?? []) as RpcDetailGroupRow[]
-  const openAIEnabled = Boolean(process.env.OPENAI_API_KEY)
+  const { apiKey } = await getOpenAIConfig()
+  const openAIEnabled = Boolean(apiKey)
 
   const groups: ReceiptDetailGroup[] = []
 

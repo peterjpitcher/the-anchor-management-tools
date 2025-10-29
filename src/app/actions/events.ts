@@ -55,6 +55,7 @@ const eventSchema = z.object({
   // Content fields
   short_description: z.string().max(500).nullable().optional(),
   long_description: z.string().nullable().optional(),
+  brief: z.string().max(8000).nullable().optional(),
   highlights: z.array(z.string()).default([]),
   keywords: z.array(z.string()).default([]),
   // SEO fields
@@ -244,6 +245,12 @@ export async function createEvent(formData: FormData): Promise<CreateEventResult
       category_id: categoryId,
       short_description: formData.get('short_description') as string || categoryDefaults.short_description || null,
       long_description: formData.get('long_description') as string || categoryDefaults.long_description || null,
+      brief: (() => {
+        const value = formData.get('brief')
+        if (typeof value !== 'string') return null
+        const trimmed = value.trim()
+        return trimmed.length ? trimmed : null
+      })(),
       highlights: formData.get('highlights') ? JSON.parse(formData.get('highlights') as string) : categoryDefaults.highlights || [],
       keywords: formData.get('keywords') ? JSON.parse(formData.get('keywords') as string) : categoryDefaults.keywords || [],
       meta_title: formData.get('meta_title') as string || categoryDefaults.meta_title || null,
@@ -357,6 +364,12 @@ export async function updateEvent(id: string, formData: FormData) {
       category_id: formData.get('category_id') as string || null,
       short_description: formData.get('short_description') as string || null,
       long_description: formData.get('long_description') as string || null,
+      brief: (() => {
+        const value = formData.get('brief')
+        if (typeof value !== 'string') return null
+        const trimmed = value.trim()
+        return trimmed.length ? trimmed : null
+      })(),
       highlights: formData.get('highlights') ? JSON.parse(formData.get('highlights') as string) : [],
       keywords: formData.get('keywords') ? JSON.parse(formData.get('keywords') as string) : [],
       meta_title: formData.get('meta_title') as string || null,

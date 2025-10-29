@@ -308,6 +308,87 @@ export async function queueBookingConfirmationSMS(bookingId: string, useAdminCli
   }
 }
 
+// Queue booking update SMS
+export async function queueBookingUpdateSMS(bookingId: string) {
+  try {
+    const supabase = await createClient();
+    
+    // Fetch booking with customer details
+    const { data: booking } = await supabase
+      .from('table_bookings')
+      .select(`
+        *,
+        customer:customers(*)
+      `)
+      .eq('id', bookingId)
+      .single();
+      
+    if (!booking) {
+      return { error: 'Booking not found' };
+    }
+    
+    if (booking.status !== 'confirmed') {
+      return { message: 'Booking is not confirmed. Skipping update SMS.' };
+    }
+    
+    if (!booking.customer?.sms_opt_in || !booking.customer?.mobile_number) {
+      return { message: 'Customer has opted out of SMS' };
+    }
+    
+    const templateKey = booking.booking_type === 'sunday_lunch'
+      ? 'booking_update_sunday_lunch'
+      : 'booking_update_regular';
+      
+    const { data: template } = await supabase
+      .from('table_booking_sms_templates')
+      .select('*')
+      .eq('template_key', templateKey)
+      .eq('is_active', true)
+      .single();
+      
+    if (!template) {
+      return { error: 'SMS template not found' };
+    }
+    
+    const variables: Record<string, string> = {
+      customer_name: booking.customer.first_name,
+      party_size: booking.party_size.toString(),
+      date: new Date(booking.booking_date).toLocaleDateString('en-GB', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric'
+      }),
+      time: formatTime12Hour(booking.booking_time),
+      reference: booking.booking_reference,
+      contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707',
+    };
+    
+    const { error } = await supabase
+      .from('jobs')
+      .insert({
+        type: 'send_sms',
+        payload: {
+          to: booking.customer.mobile_number,
+          template: templateKey,
+          variables,
+          booking_id: bookingId,
+          customer_id: booking.customer.id,
+        },
+        scheduled_for: new Date().toISOString(),
+      });
+      
+    if (error) {
+      console.error('Queue booking update SMS error:', error);
+      return { error: 'Failed to queue booking update SMS' };
+    }
+    
+    return { success: true, message: 'Booking update SMS queued' };
+  } catch (error) {
+    console.error('Queue booking update SMS error:', error);
+    return { error: 'An unexpected error occurred' };
+  }
+}
+
 // Queue booking reminder SMS
 export async function queueBookingReminderSMS(
   bookingId: string,

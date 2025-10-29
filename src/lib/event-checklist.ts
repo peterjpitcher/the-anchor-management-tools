@@ -38,8 +38,7 @@ export const EVENT_CHECKLIST_DEFINITIONS: EventChecklistDefinition[] = [
   { key: 'add_google_business_post', label: 'Add Google Business Profile Event post', offsetDays: -28, channel: 'Google', required: true, order: 8 },
   { key: 'schedule_social_content', label: 'Create & schedule social content', offsetDays: -28, channel: 'FB/IG', required: true, order: 9 },
   { key: 'schedule_stories', label: 'Schedule Stories (day-before & day-of)', offsetDays: -28, channel: 'FB/IG', required: true, order: 10 },
-  { key: 'print_materials', label: 'Print marketing', offsetDays: -28, channel: 'Admin', required: false, order: 11 },
-  { key: 'send_whatsapp_reminder', label: 'WhatsApp reminder to local group', offsetDays: 0, channel: 'WhatsApp', required: true, order: 12 }
+  { key: 'send_whatsapp_reminder', label: 'WhatsApp reminder to local group', offsetDays: 0, channel: 'WhatsApp', required: true, order: 11 }
 ]
 
 export const EVENT_CHECKLIST_TOTAL_TASKS = EVENT_CHECKLIST_DEFINITIONS.length

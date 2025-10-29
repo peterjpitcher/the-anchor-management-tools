@@ -6,7 +6,7 @@ import { logAuditEvent } from './audit';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { generatePhoneVariants, formatPhoneForStorage } from '@/lib/utils';
-import { queueBookingConfirmationSMS, queueCancellationSMS, queuePaymentRequestSMS } from './table-booking-sms';
+import { queueBookingConfirmationSMS, queueBookingUpdateSMS, queueCancellationSMS, queuePaymentRequestSMS } from './table-booking-sms';
 import { sendBookingConfirmationEmail, sendBookingCancellationEmail } from './table-booking-email';
 import { sendSameDayBookingAlertIfNeeded, TableBookingNotificationRecord } from '@/lib/table-bookings/managerNotifications';
 import { formatDateWithTimeForSms } from '@/lib/dateUtils';
@@ -840,6 +840,10 @@ export async function updateTableBooking(
       return { error: 'Failed to update booking' };
     }
     
+    const dateChanged = updatedBooking.booking_date !== currentBooking.booking_date;
+    const timeChanged = updatedBooking.booking_time !== currentBooking.booking_time;
+    const partySizeChanged = updatedBooking.party_size !== currentBooking.party_size;
+    
     // Log modification
     await supabase
       .from('table_booking_modifications')
@@ -850,6 +854,13 @@ export async function updateTableBooking(
         old_values: currentBooking,
         new_values: updatedBooking,
       });
+    
+    if (updatedBooking.status === 'confirmed' && (dateChanged || timeChanged || partySizeChanged)) {
+      const smsResult = await queueBookingUpdateSMS(bookingId);
+      if (smsResult?.error) {
+        console.error('Booking update SMS queue error:', smsResult.error);
+      }
+    }
     
     // Log audit event
     await logAuditEvent({
