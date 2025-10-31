@@ -2,7 +2,7 @@
 
 import type { Message } from '@/types/database'
 
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { checkUserPermission } from './rbac'
 
@@ -141,7 +141,7 @@ export async function getMessages(): Promise<InboxResponse> {
     return { error: 'Insufficient permissions' }
   }
 
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   const [recentResult, unreadResult, unreadCountResult] = await Promise.all([
     supabase
@@ -308,7 +308,7 @@ export async function getUnreadMessageCount() {
     return { badge: 0 }
   }
 
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   const { count, error } = await supabase
     .from('messages')
