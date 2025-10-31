@@ -332,7 +332,7 @@ export async function getConversationMessages(
     return { error: 'Insufficient permissions' }
   }
 
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   const [messagesResult, customerResult] = await Promise.all([
     supabase
@@ -377,7 +377,7 @@ export async function markMessageAsRead(messageId: string) {
     throw new Error('Insufficient permissions')
   }
 
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   const { error } = await supabase
     .from('messages')
@@ -400,7 +400,7 @@ export async function markAllMessagesAsRead() {
     throw new Error('Insufficient permissions')
   }
 
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   const { error } = await supabase
     .from('messages')
@@ -423,7 +423,7 @@ export async function markConversationAsRead(customerId: string) {
     throw new Error('Insufficient permissions')
   }
 
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   const { error } = await supabase
     .from('messages')
@@ -448,7 +448,7 @@ export async function markConversationAsUnread(customerId: string) {
     throw new Error('Insufficient permissions')
   }
 
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   const { data: latestInbound, error: fetchError } = await supabase
     .from('messages')

@@ -415,7 +415,7 @@ export default function MessagesPage() {
       )}
 
       <div className="grid gap-4 lg:grid-cols-[380px_1fr]">
-        <Card className="h-[75vh]">
+        <Card className="h-[75vh] [&_.card-body]:flex [&_.card-body]:h-full [&_.card-body]:min-h-0 [&_.card-body]:flex-col [&_.card-body]:p-0">
           <div className="flex h-full min-h-0 flex-col">
             <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
               <div>
@@ -510,7 +510,7 @@ export default function MessagesPage() {
           </div>
         </Card>
 
-        <Card className="h-[75vh]">
+        <Card className="h-[75vh] [&_.card-body]:flex [&_.card-body]:h-full [&_.card-body]:min-h-0 [&_.card-body]:flex-col [&_.card-body]:p-0">
           {!selectedCustomerId || !selectedCustomer ? (
             <div className="flex h-full items-center justify-center p-6">
               <EmptyState
