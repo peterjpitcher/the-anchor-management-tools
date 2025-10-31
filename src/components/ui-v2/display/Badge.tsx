@@ -148,7 +148,7 @@ export function Badge({
   
   // Base classes
   const baseClasses = cn(
-    'inline-flex items-center font-medium',
+    'inline-flex flex-shrink-0 items-center font-medium whitespace-nowrap',
     rounded ? 'rounded-full' : 'rounded',
     sizeClasses[size],
     sizeClasses[size].padding,
