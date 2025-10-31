@@ -415,109 +415,111 @@ export default function MessagesPage() {
       )}
 
       <div className="grid gap-4 lg:grid-cols-[380px_1fr]">
-        <Card className="flex h-[75vh] min-h-0 flex-col [&_.card-body]:flex [&_.card-body]:flex-1 [&_.card-body]:overflow-hidden">
-          <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
-            <div>
-              <h2 className="text-base font-semibold text-gray-900">Conversations</h2>
-              <p className="text-sm text-gray-500">
-                {conversations.length} active · {totalUnreadCount} unread
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant={filter === 'all' ? 'primary' : 'secondary'}
-                size="sm"
-                onClick={() => setFilter('all')}
-              >
-                All
-              </Button>
-              <Button
-                variant={filter === 'unread' ? 'primary' : 'secondary'}
-                size="sm"
-                onClick={() => setFilter('unread')}
-              >
-                Unread
-              </Button>
-            </div>
-          </div>
-
-          <div className="flex-1 min-h-0 overflow-y-auto">
-            {listLoading && conversations.length === 0 ? (
-              <div className="p-4">
-                {[...Array(5)].map((_, index) => (
-                  <Skeleton key={index} className="h-20" />
-                ))}
+        <Card className="h-[75vh]">
+          <div className="flex h-full min-h-0 flex-col">
+            <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">Conversations</h2>
+                <p className="text-sm text-gray-500">
+                  {conversations.length} active · {totalUnreadCount} unread
+                </p>
               </div>
-            ) : displayedConversations.length === 0 ? (
-              <div className="p-6">
-                <EmptyState
-                  title={filter === 'unread' ? 'No unread conversations' : 'No conversations'}
-                  description={
-                    filter === 'unread'
-                      ? 'You have responded to every customer.'
-                      : 'Conversations will appear here once a customer reaches out.'
-                  }
-                />
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={filter === 'all' ? 'primary' : 'secondary'}
+                  size="sm"
+                  onClick={() => setFilter('all')}
+                >
+                  All
+                </Button>
+                <Button
+                  variant={filter === 'unread' ? 'primary' : 'secondary'}
+                  size="sm"
+                  onClick={() => setFilter('unread')}
+                >
+                  Unread
+                </Button>
               </div>
-            ) : (
-              <ul className="divide-y divide-gray-200">
-                {displayedConversations.map((conversation) => {
-                  const isSelected = conversation.customer.id === selectedCustomerId
-                  const unread = conversation.unreadCount > 0
+            </div>
 
-                  return (
-                    <li key={conversation.customer.id}>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedCustomerId(conversation.customer.id)}
-                        className={`flex w-full flex-col gap-2 px-4 py-3 text-left transition ${
-                          isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold text-gray-900">
-                              {formatCustomerName(conversation.customer)}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              {conversation.customer.mobile_number ?? 'No number on record'}
-                            </p>
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              {listLoading && conversations.length === 0 ? (
+                <div className="p-4">
+                  {[...Array(5)].map((_, index) => (
+                    <Skeleton key={index} className="h-20" />
+                  ))}
+                </div>
+              ) : displayedConversations.length === 0 ? (
+                <div className="p-6">
+                  <EmptyState
+                    title={filter === 'unread' ? 'No unread conversations' : 'No conversations'}
+                    description={
+                      filter === 'unread'
+                        ? 'You have responded to every customer.'
+                        : 'Conversations will appear here once a customer reaches out.'
+                    }
+                  />
+                </div>
+              ) : (
+                <ul className="divide-y divide-gray-200">
+                  {displayedConversations.map((conversation) => {
+                    const isSelected = conversation.customer.id === selectedCustomerId
+                    const unread = conversation.unreadCount > 0
+
+                    return (
+                      <li key={conversation.customer.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCustomerId(conversation.customer.id)}
+                          className={`flex w-full flex-col gap-2 px-4 py-3 text-left transition ${
+                            isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold text-gray-900">
+                                {formatCustomerName(conversation.customer)}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {conversation.customer.mobile_number ?? 'No number on record'}
+                              </p>
+                            </div>
+                            <div className="flex flex-shrink-0 items-center gap-2 text-right">
+                              {unread && (
+                                <Badge variant="info" size="sm" className="whitespace-nowrap">
+                                  {conversation.unreadCount} unread
+                                </Badge>
+                              )}
+                              <span className="text-xs text-gray-500 whitespace-nowrap">
+                                {formatDistanceToNow(new Date(conversation.lastMessageAt), {
+                                  addSuffix: true,
+                                })}
+                              </span>
+                            </div>
                           </div>
-                          <div className="flex flex-shrink-0 items-center gap-2 text-right">
-                            {unread && (
-                              <Badge variant="info" size="sm" className="whitespace-nowrap">
-                                {conversation.unreadCount} unread
-                              </Badge>
-                            )}
-                            <span className="text-xs text-gray-500 whitespace-nowrap">
-                              {formatDistanceToNow(new Date(conversation.lastMessageAt), {
-                                addSuffix: true,
-                              })}
-                            </span>
-                          </div>
-                        </div>
-                        <p className="text-sm text-gray-600">
-                          {getPreviewText(conversation)}
-                        </p>
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
+                          <p className="text-sm text-gray-600">
+                            {getPreviewText(conversation)}
+                          </p>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
           </div>
         </Card>
 
-        <Card className="flex h-[75vh] min-h-0 flex-col [&_.card-body]:flex [&_.card-body]:flex-1 [&_.card-body]:overflow-hidden">
+        <Card className="h-[75vh]">
           {!selectedCustomerId || !selectedCustomer ? (
-            <div className="flex flex-1 items-center justify-center p-6">
+            <div className="flex h-full items-center justify-center p-6">
               <EmptyState
                 title="Select a conversation"
                 description="Choose a customer from the left to review recent messages."
               />
             </div>
           ) : (
-            <>
+            <div className="flex h-full min-h-0 flex-col">
               <div className="flex flex-col gap-3 border-b border-gray-200 px-5 py-4 md:flex-row md:items-start md:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-gray-900">{customerName}</h2>
@@ -569,7 +571,7 @@ export default function MessagesPage() {
                 </div>
               </div>
 
-              <div className="flex-1 px-4 pb-4 pt-2">
+              <div className="flex-1 min-h-0 px-4 pb-4 pt-2">
                 {messagesLoading ? (
                   <div className="flex h-full items-center justify-center">
                     <Spinner size="lg" />
@@ -593,7 +595,7 @@ export default function MessagesPage() {
                   />
                 )}
               </div>
-            </>
+            </div>
           )}
         </Card>
       </div>
