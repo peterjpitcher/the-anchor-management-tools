@@ -40,7 +40,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   const searchParams = useSearchParams()
   const { hasPermission } = usePermissions()
   const canManageEvents = hasPermission('events', 'manage')
-  const canManageMessages = hasPermission('messages', 'manage')
+  const canViewMessages = hasPermission('messages', 'view')
 
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [bookings, setBookings] = useState<BookingWithEvent[]>([])
@@ -82,7 +82,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
         toast.error('Failed to load messages')
       } else {
         setMessages(messagesResult.messages)
-        if (canManageMessages) {
+        if (canViewMessages) {
           const hasUnreadInbound = messagesResult.messages.some(
             (message) => message.direction === 'inbound' && !message.read_at
           )
@@ -97,7 +97,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
     } finally {
       setMessagesLoading(false)
     }
-  }, [canManageMessages, params.id])
+  }, [canViewMessages, params.id])
 
   const loadData = useCallback(async () => {
     setLoading(true)

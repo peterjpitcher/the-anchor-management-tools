@@ -57,8 +57,8 @@ export async function getTotalUnreadCount() {
 }
 
 export async function markMessagesAsRead(customerId: string) {
-  const canManage = await checkUserPermission('messages', 'manage')
-  if (!canManage) {
+  const canView = await checkUserPermission('messages', 'view')
+  if (!canView) {
     return { error: 'Insufficient permissions' }
   }
 

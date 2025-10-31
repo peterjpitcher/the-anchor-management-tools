@@ -115,7 +115,6 @@ export default function BulkMessagePage() {
     { label: 'Filters', href: '#filters' },
     { label: 'Select', href: '#select-recipients' },
     { label: 'Compose', href: '#compose' },
-    { label: 'Queue Status', href: '/messages/queue' },
   ]
   const headerActions = (
     <div className="text-sm text-white/80">
@@ -405,9 +404,9 @@ export default function BulkMessagePage() {
       navItems={navItems}
       headerActions={headerActions}
     >
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Filters and Customer List */}
-        <div className="lg:col-span-2 space-y-6">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+        {/* Filters */}
+        <div className="space-y-6">
           {/* Filters */}
           <Section 
             id="filters"
@@ -545,168 +544,6 @@ export default function BulkMessagePage() {
             </Card>
           </Section>
 
-          {/* Customer List */}
-          <Section 
-            id="select-recipients"
-            title={`Select Recipients (${customers.length}${hasMore ? '+' : ''} loaded)`}
-            icon={<UserGroupIcon className="h-5 w-5" />}
-            actions={
-              <Button
-                onClick={toggleSelectLoaded}
-                variant="secondary"
-                size="sm"
-                disabled={customers.length === 0}
-              >
-                {allLoadedSelected ? 'Deselect Loaded' : 'Select Loaded'}
-              </Button>
-            }
-          >
-            <Card>
-              
-              {/* Active filters summary */}
-              {(filters.eventId || filters.categoryId || filters.smsOptIn !== 'all' || filters.hasBookings !== 'all') && (
-                <div className="p-4 border-b flex flex-wrap gap-2">
-                  {filters.categoryId && (
-                    <Badge variant="info" size="sm">
-                      <TagIcon className="h-3 w-3 mr-1" />
-                      {categories.find(c => c.id === filters.categoryId)?.name}
-                      {filters.categoryAttendance === 'regulars' && ' - Regulars'}
-                      {filters.categoryAttendance === 'never_attended' && ' - Never Attended'}
-                    </Badge>
-                  )}
-                  {filters.eventId && (
-                    <Badge variant="info" size="sm">
-                      <CalendarIcon className="h-3 w-3 mr-1" />
-                      {events.find(e => e.id === filters.eventId)?.name}
-                      {filters.eventAttendance === 'attending' && ' - Attending'}
-                      {filters.eventAttendance === 'not_attending' && ' - Not Attending'}
-                      {filters.bookingType === 'bookings_only' && ' (Bookings)'}
-                      {filters.bookingType === 'reminders_only' && ' (Reminders)'}
-                    </Badge>
-                  )}
-                  {filters.smsOptIn === 'opted_in' && (
-                    <Badge variant="success" size="sm">
-                      SMS Opted In
-                    </Badge>
-                  )}
-                  {filters.hasBookings === 'with_bookings' && (
-                    <Badge variant="info" size="sm">
-                      Has Bookings
-                    </Badge>
-                  )}
-                </div>
-              )}
-              {matchesTruncated && (
-                <Alert variant="warning">
-                  Results are truncated. Refine your filters or load more recipients to continue.
-                </Alert>
-              )}
-            
-              <div className="max-h-96 overflow-y-auto">
-                {customers.length === 0 ? (
-                  <div className="p-6 text-center text-gray-500">
-                    No customers match your filters
-                  </div>
-                ) : (
-                  <div className="divide-y divide-gray-200">
-                    {customers.map((customer) => (
-                      <label
-                        key={customer.id}
-                        className="flex items-center p-4 hover:bg-gray-50 cursor-pointer"
-                      >
-                        <Checkbox
-                          checked={selectedCustomers.has(customer.id)}
-                          onChange={(_e) => toggleCustomer(customer.id)}
-                        />
-                        <div className="ml-3 flex-1">
-                        <div className="text-sm font-medium text-gray-900">{customer.first_name} {customer.last_name}</div>
-                        <div className="text-sm text-gray-500">{customer.mobile_number}</div>
-                      </div>
-                      <div className="ml-3 flex items-center space-x-2">
-                          {customer.sms_opt_in === true && (
-                            <CheckCircleIcon className="h-5 w-5 text-green-500" title="SMS Opted In" />
-                          )}
-                          {customer.sms_opt_in === false && (
-                            <XCircleIcon className="h-5 w-5 text-red-500" title="SMS Opted Out" />
-                          )}
-                          {filters.categoryId && customer.category_preferences?.some(p => p.category_id === filters.categoryId) && (
-                            <Badge variant="info" size="sm">
-                              <TagIcon className="h-3 w-3 mr-1" />
-                              {(() => {
-                                const pref = customer.category_preferences?.find(p => p.category_id === filters.categoryId)
-                                return pref ? `${pref.times_attended}x` : ''
-                              })()}
-                            </Badge>
-                          )}
-                          {filters.eventId && customer.event_bookings?.some(b => b.event_id === filters.eventId) && (
-                            <Badge variant="info" size="sm">
-                              <CalendarIcon className="h-3 w-3 mr-1" />
-                              {(() => {
-                                const booking = customer.event_bookings?.find(b => b.event_id === filters.eventId)
-                                if (!booking) return ''
-                                const reminder = booking.is_reminder_only ?? ((booking.seats ?? 0) === 0)
-                                return reminder ? 'Reminder' : `${booking.seats ?? 0} tickets`
-                              })()}
-                            </Badge>
-                          )}
-                          {customer.total_bookings && customer.total_bookings > 0 && (
-                            <Badge variant="info" size="sm">
-                              {customer.total_bookings} bookings
-                            </Badge>
-                          )}
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {hasMore && (
-                <div className="p-4 border-t text-right">
-                  <Button
-                    onClick={() => {
-                      void loadRecipients({ page: page + 1 })
-                    }}
-                    variant="secondary"
-                    size="sm"
-                    disabled={loadingMore}
-                  >
-                    {loadingMore ? 'Loading...' : 'Load more'}
-                  </Button>
-                </div>
-              )}
-            </Card>
-          </Section>
-        </div>
-
-        {/* Message Composition */}
-        <div className="space-y-6">
-          <Section id="recipients" title="Recipients">
-            <Card>
-              <div className="space-y-3">
-                <div className="text-sm text-gray-700">
-                  {selectedRecipients.length === 0
-                    ? 'No customers selected. Adjust your filters to target specific recipients.'
-                    : `${selectedRecipients.length} customer${selectedRecipients.length === 1 ? '' : 's'} will receive this message.`}
-                </div>
-                {selectedRecipients.length > 0 && (
-                  <div className="max-h-48 overflow-y-auto border rounded-md divide-y">
-                    {selectedRecipients.slice(0, 20).map(recipient => (
-                      <div key={recipient.id} className="px-3 py-2 text-sm flex justify-between">
-                        <span>{recipient.first_name} {recipient.last_name}</span>
-                        <span className="text-gray-500">{recipient.mobile_number}</span>
-                      </div>
-                    ))}
-                    {selectedRecipients.length > 20 && (
-                      <div className="px-3 py-2 text-xs text-gray-500 text-right">
-                        + {selectedRecipients.length - 20} more
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </Card>
-          </Section>
-
           <Section id="compose" title="Compose Message">
             <Card>
               <div className="space-y-4">
@@ -768,6 +605,157 @@ export default function BulkMessagePage() {
               </div>
             </Card>
           </Section>
+
+        </div>
+
+        <div className="space-y-6">
+          <Section 
+            id="select-recipients"
+            title={`Select Recipients (${customers.length}${hasMore ? '+' : ''} loaded)`}
+            icon={<UserGroupIcon className="h-5 w-5" />}
+            actions={
+              <Button
+                onClick={toggleSelectLoaded}
+                variant="secondary"
+                size="sm"
+                disabled={customers.length === 0}
+              >
+                {allLoadedSelected ? 'Deselect Loaded' : 'Select Loaded'}
+              </Button>
+            }
+          >
+            <Card>
+              <div className="space-y-3">
+                <div className="text-sm text-gray-700">
+                  {selectedRecipients.length === 0
+                    ? 'No customers selected. Adjust your filters to target specific recipients.'
+                    : selectionSummary}
+                </div>
+
+                {(filters.eventId || filters.categoryId || filters.smsOptIn !== 'all' || filters.hasBookings !== 'all') && (
+                  <div className="p-4 border rounded-md bg-gray-50 flex flex-wrap gap-2">
+                    {filters.categoryId && (
+                      <Badge variant="info" size="sm" icon={<TagIcon className="h-3 w-3" />}>
+                        {categories.find(c => c.id === filters.categoryId)?.name}
+                        {filters.categoryAttendance === 'regulars' && ' - Regulars'}
+                        {filters.categoryAttendance === 'never_attended' && ' - Never Attended'}
+                      </Badge>
+                    )}
+                    {filters.eventId && (
+                      <Badge variant="info" size="sm" icon={<CalendarIcon className="h-3 w-3" />}>
+                        {events.find(e => e.id === filters.eventId)?.name}
+                        {filters.eventAttendance === 'attending' && ' - Attending'}
+                        {filters.eventAttendance === 'not_attending' && ' - Not Attending'}
+                        {filters.bookingType === 'bookings_only' && ' (Bookings)'}
+                        {filters.bookingType === 'reminders_only' && ' (Reminders)'}
+                      </Badge>
+                    )}
+                    {filters.smsOptIn === 'opted_in' && (
+                      <Badge variant="success" size="sm">
+                        SMS Opted In
+                      </Badge>
+                    )}
+                    {filters.hasBookings === 'with_bookings' && (
+                      <Badge variant="info" size="sm">
+                        Has Bookings
+                      </Badge>
+                    )}
+                  </div>
+                )}
+
+                {matchesTruncated && (
+                  <Alert variant="warning">
+                    Results are truncated. Refine your filters or load more recipients to continue.
+                  </Alert>
+                )}
+
+                <div className="max-h-[520px] overflow-y-auto">
+                  {customers.length === 0 ? (
+                    <div className="p-6 text-center text-gray-500">
+                      No customers match your filters
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-200">
+                      {customers.map((customer) => (
+                        <label
+                          key={customer.id}
+                          className="flex items-center p-4 hover:bg-gray-50 cursor-pointer"
+                        >
+                          <Checkbox
+                            checked={selectedCustomers.has(customer.id)}
+                            onChange={(_e) => toggleCustomer(customer.id)}
+                          />
+                          <div className="ml-3 flex-1">
+                            <div className="text-sm font-medium text-gray-900">{customer.first_name} {customer.last_name}</div>
+                            <div className="text-sm text-gray-500">{customer.mobile_number}</div>
+                          </div>
+                          <div className="ml-3 flex items-center space-x-2">
+                            {customer.sms_opt_in === true && (
+                              <CheckCircleIcon className="h-5 w-5 text-green-500" title="SMS Opted In" />
+                            )}
+                            {customer.sms_opt_in === false && (
+                              <XCircleIcon className="h-5 w-5 text-red-500" title="SMS Opted Out" />
+                            )}
+                    {filters.categoryId && customer.category_preferences?.some(p => p.category_id === filters.categoryId) && (
+                      <Badge
+                        variant="info"
+                        size="sm"
+                        icon={<TagIcon className="h-3 w-3" />}
+                      >
+                        {(() => {
+                          const pref = customer.category_preferences?.find(
+                            p => p.category_id === filters.categoryId,
+                          )
+                          return pref ? `${pref.times_attended}x` : ''
+                        })()}
+                      </Badge>
+                    )}
+                    {filters.eventId && customer.event_bookings?.some(b => b.event_id === filters.eventId) && (
+                      <Badge
+                        variant="info"
+                        size="sm"
+                        icon={<CalendarIcon className="h-3 w-3" />}
+                      >
+                        {(() => {
+                          const booking = customer.event_bookings?.find(
+                            b => b.event_id === filters.eventId,
+                          )
+                          if (!booking) return ''
+                          const reminder = booking.is_reminder_only ?? ((booking.seats ?? 0) === 0)
+                          return reminder ? 'Reminder' : `${booking.seats ?? 0} tickets`
+                        })()}
+                      </Badge>
+                    )}
+                            {customer.total_bookings && customer.total_bookings > 0 && (
+                              <Badge variant="info" size="sm">
+                                {customer.total_bookings} bookings
+                              </Badge>
+                            )}
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {hasMore && (
+                  <div className="p-4 border-t text-right">
+                    <Button
+                      onClick={() => {
+                        void loadRecipients({ page: page + 1 })
+                      }}
+                      variant="secondary"
+                      size="sm"
+                      disabled={loadingMore}
+                    >
+                      {loadingMore ? 'Loading...' : 'Load more'}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </Card>
+          </Section>
+
         </div>
       </div>
     </PageLayout>
