@@ -21,13 +21,15 @@ export function SpecialHoursManager({ canManage }: SpecialHoursManagerProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     date: '',
+    end_date: '',
     opens: '',
     closes: '',
     kitchen_opens: '',
     kitchen_closes: '',
     is_closed: false,
     is_kitchen_closed: false,
-    note: ''
+    note: '',
+    isRange: false
   })
 
   useEffect(() => {
@@ -47,13 +49,15 @@ export function SpecialHoursManager({ canManage }: SpecialHoursManagerProps) {
   const resetForm = () => {
     setFormData({
       date: '',
+      end_date: '',
       opens: '',
       closes: '',
       kitchen_opens: '',
       kitchen_closes: '',
       is_closed: false,
       is_kitchen_closed: false,
-      note: ''
+      note: '',
+      isRange: false
     })
     setEditingId(null)
     setShowForm(false)
@@ -67,13 +71,15 @@ export function SpecialHoursManager({ canManage }: SpecialHoursManagerProps) {
 
     setFormData({
       date: hours.date,
+      end_date: hours.date,
       opens: hours.opens || '',
       closes: hours.closes || '',
       kitchen_opens: hours.kitchen_opens || '',
       kitchen_closes: hours.kitchen_closes || '',
       is_closed: hours.is_closed,
       is_kitchen_closed: hours.is_kitchen_closed || false,
-      note: hours.note || ''
+      note: hours.note || '',
+      isRange: false
     })
     setEditingId(hours.id)
     setShowForm(true)
@@ -98,12 +104,25 @@ export function SpecialHoursManager({ canManage }: SpecialHoursManagerProps) {
     }
   }
 
-  const handleDateChange = async (date: string) => {
+  const handleStartDateChange = async (date: string) => {
     if (!canManage) {
       return
     }
 
-    setFormData(prev => ({ ...prev, date }))
+    setFormData(prev => {
+      const shouldSyncEndDate =
+        !prev.isRange || !prev.end_date || (prev.isRange && prev.end_date < date)
+
+      return {
+        ...prev,
+        date,
+        end_date: shouldSyncEndDate ? date : prev.end_date
+      }
+    })
+
+    if (!date) {
+      return
+    }
     
     // Get day of week from date (0 = Sunday, 6 = Saturday)
     const selectedDate = new Date(date + 'T00:00:00')
@@ -126,6 +145,46 @@ export function SpecialHoursManager({ canManage }: SpecialHoursManagerProps) {
     }
   }
 
+  const handleEndDateChange = (date: string) => {
+    if (!canManage) {
+      return
+    }
+
+    if (!formData.date) {
+      toast.error('Please select a start date first.')
+      return
+    }
+
+    if (date < formData.date) {
+      toast.error('End date cannot be before start date.')
+      return
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      end_date: date
+    }))
+  }
+
+  const handleRangeToggle = (checked: boolean) => {
+    if (!canManage || editingId) {
+      return
+    }
+
+    if (checked && !formData.date) {
+      toast.error('Please select a start date before applying a date range.')
+      return
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      isRange: checked,
+      end_date: checked
+        ? (prev.end_date && prev.end_date >= prev.date ? prev.end_date : prev.date)
+        : prev.date
+    }))
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -133,11 +192,37 @@ export function SpecialHoursManager({ canManage }: SpecialHoursManagerProps) {
       toast.error('You do not have permission to manage special hours.')
       return
     }
+
+    if (!formData.date) {
+      toast.error('Please select a start date.')
+      return
+    }
+
+    if (formData.isRange) {
+      if (!formData.end_date) {
+        toast.error('Please select an end date.')
+        return
+      }
+
+      if (formData.end_date < formData.date) {
+        toast.error('End date cannot be before start date.')
+        return
+      }
+    }
     
     const formDataToSend = new FormData()
-    Object.entries(formData).forEach(([key, value]) => {
-      formDataToSend.append(key, value.toString())
-    })
+    const endDateToSend = formData.isRange ? (formData.end_date || formData.date) : formData.date
+    const isRangeSubmission = formData.isRange
+
+    formDataToSend.append('date', formData.date)
+    formDataToSend.append('end_date', endDateToSend)
+    formDataToSend.append('opens', formData.opens || '')
+    formDataToSend.append('closes', formData.closes || '')
+    formDataToSend.append('kitchen_opens', formData.kitchen_opens || '')
+    formDataToSend.append('kitchen_closes', formData.kitchen_closes || '')
+    formDataToSend.append('is_closed', String(formData.is_closed))
+    formDataToSend.append('is_kitchen_closed', String(formData.is_kitchen_closed))
+    formDataToSend.append('note', formData.note || '')
 
     const result = editingId
       ? await updateSpecialHours(editingId, formDataToSend)
@@ -146,7 +231,13 @@ export function SpecialHoursManager({ canManage }: SpecialHoursManagerProps) {
     if (result.error) {
       toast.error(result.error)
     } else {
-      toast.success(editingId ? 'Special hours updated successfully' : 'Special hours created successfully')
+      const successMessage = editingId
+        ? 'Special hours updated successfully'
+        : isRangeSubmission
+          ? 'Special hours created for the selected date range'
+          : 'Special hours created successfully'
+
+      toast.success(successMessage)
       resetForm()
       loadSpecialHours()
     }
@@ -176,18 +267,44 @@ export function SpecialHoursManager({ canManage }: SpecialHoursManagerProps) {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Date
+                  Start Date
                 </label>
                 <Input
                   type="date"
                   required
                   value={formData.date}
-                  onChange={(e) => handleDateChange(e.target.value)}
+                  onChange={(e) => handleStartDateChange(e.target.value)}
                   disabled={!canManage}
                   fullWidth
                 />
               </div>
-              
+
+              {formData.isRange && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    End Date
+                  </label>
+                  <Input
+                    type="date"
+                    required
+                    value={formData.end_date}
+                    min={formData.date || undefined}
+                    onChange={(e) => handleEndDateChange(e.target.value)}
+                    disabled={!canManage}
+                    fullWidth
+                  />
+                </div>
+              )}
+
+              <div className="sm:col-span-2">
+                <Checkbox
+                  label="Apply to a date range"
+                  checked={formData.isRange}
+                  onChange={(e) => handleRangeToggle(e.target.checked)}
+                  disabled={!canManage || !!editingId}
+                />
+              </div>
+
               <div className="space-y-2">
                 <Checkbox
                   label="Closed all day"

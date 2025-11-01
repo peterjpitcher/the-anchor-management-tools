@@ -24,6 +24,8 @@ const timeSchema = z.preprocess(
 )
 
 // Validation schema for business hours
+const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+
 const businessHoursSchema = z.object({
   day_of_week: z.number().min(0).max(6),
   opens: timeSchema,
@@ -35,7 +37,7 @@ const businessHoursSchema = z.object({
 
 // Validation schema for special hours
 const specialHoursSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  date: isoDateSchema,
   opens: timeSchema,
   closes: timeSchema,
   kitchen_opens: timeSchema,
@@ -231,51 +233,126 @@ export async function createSpecialHours(formData: FormData) {
 
     const { user, admin } = permission
 
-    // Parse form data
-    const rawData = {
-      date: formData.get('date') as string,
-      opens: formData.get('opens') as string || '',
-      closes: formData.get('closes') as string || '',
-      kitchen_opens: formData.get('kitchen_opens') as string || '',
-      kitchen_closes: formData.get('kitchen_closes') as string || '',
-      is_closed: formData.get('is_closed') === 'true',
-      is_kitchen_closed: formData.get('is_kitchen_closed') === 'true',
-      note: formData.get('note') as string || ''
+    const startDateInput = (formData.get('date') as string) || ''
+    const endDateInputRaw = (formData.get('end_date') as string) || startDateInput
+
+    const startDateResult = isoDateSchema.safeParse(startDateInput)
+    if (!startDateResult.success) {
+      return { error: 'Invalid start date format' }
     }
 
-    // Validate
+    const endDateResult = isoDateSchema.safeParse(endDateInputRaw)
+    if (!endDateResult.success) {
+      return { error: 'Invalid end date format' }
+    }
+
+    const startDate = startDateResult.data
+    const endDate = endDateResult.data
+
+    if (endDate < startDate) {
+      return { error: 'End date cannot be before start date' }
+    }
+
+    // Parse form data using the validated start date
+    const rawData = {
+      date: startDate,
+      opens: (formData.get('opens') as string) || '',
+      closes: (formData.get('closes') as string) || '',
+      kitchen_opens: (formData.get('kitchen_opens') as string) || '',
+      kitchen_closes: (formData.get('kitchen_closes') as string) || '',
+      is_closed: formData.get('is_closed') === 'true',
+      is_kitchen_closed: formData.get('is_kitchen_closed') === 'true',
+      note: (formData.get('note') as string) || ''
+    }
+
+    // Validate core special hours fields
     const validationResult = specialHoursSchema.safeParse(rawData)
     if (!validationResult.success) {
       return { error: validationResult.error.errors[0].message }
     }
 
-    const payload = {
-      ...validationResult.data,
-      opens: validationResult.data.is_closed ? null : validationResult.data.opens,
-      closes: validationResult.data.is_closed ? null : validationResult.data.closes,
+    const validatedData = validationResult.data
+
+    const basePayload = {
+      opens: validatedData.is_closed ? null : validatedData.opens,
+      closes: validatedData.is_closed ? null : validatedData.closes,
       kitchen_opens:
-        validationResult.data.is_closed || validationResult.data.is_kitchen_closed
+        validatedData.is_closed || validatedData.is_kitchen_closed
           ? null
-          : validationResult.data.kitchen_opens,
+          : validatedData.kitchen_opens,
       kitchen_closes:
-        validationResult.data.is_closed || validationResult.data.is_kitchen_closed
+        validatedData.is_closed || validatedData.is_kitchen_closed
           ? null
-          : validationResult.data.kitchen_closes
+          : validatedData.kitchen_closes,
+      is_closed: validatedData.is_closed,
+      is_kitchen_closed: validatedData.is_kitchen_closed,
+      note: validatedData.note
     }
 
-    // Create special hours
+    const formatDate = (dateObj: Date) => {
+      const year = dateObj.getFullYear()
+      const month = `${dateObj.getMonth() + 1}`.padStart(2, '0')
+      const day = `${dateObj.getDate()}`.padStart(2, '0')
+      return `${year}-${month}-${day}`
+    }
+
+    const startDateObj = new Date(`${startDate}T00:00:00`)
+    const endDateObj = new Date(`${endDate}T00:00:00`)
+
+    const datesToCreate: string[] = []
+    for (
+      let current = new Date(startDateObj.getTime());
+      current <= endDateObj;
+      current.setDate(current.getDate() + 1)
+    ) {
+      datesToCreate.push(formatDate(current))
+    }
+
+    if (datesToCreate.length === 0) {
+      return { error: 'Unable to determine dates for the requested range' }
+    }
+
+    const { data: existingDates, error: existingCheckError } = await admin
+      .from('special_hours')
+      .select('date')
+      .in('date', datesToCreate)
+
+    if (existingCheckError) {
+      throw existingCheckError
+    }
+
+    if (existingDates && existingDates.length > 0) {
+      const formattedDates = existingDates
+        .map(({ date }) =>
+          new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+          })
+        )
+        .join(', ')
+      return { error: `Special hours already exist for ${formattedDates}` }
+    }
+
+    const payloads = datesToCreate.map((date) => ({
+      ...basePayload,
+      date
+    }))
+
     const { data, error } = await admin
       .from('special_hours')
-      .insert(payload)
+      .insert(payloads)
       .select()
-      .single()
 
     if (error) {
-      if (error.code === '23505') { // Unique violation
-        return { error: 'Special hours already exist for this date' }
-      }
       throw error
     }
+
+    const createdRecords = Array.isArray(data)
+      ? data
+      : data
+        ? [data]
+        : []
 
     // Log audit event
     await logAuditEvent({
@@ -285,13 +362,16 @@ export async function createSpecialHours(formData: FormData) {
       resource_type: 'settings',
       resource_id: 'special_hours',
       operation_status: 'success',
-      new_values: data
+      new_values: {
+        created_dates: datesToCreate,
+        records: createdRecords
+      }
     })
 
     revalidatePath('/settings/business-hours')
     revalidatePath('/api/business/hours')
     
-    return { success: true, data }
+    return { success: true, data: createdRecords }
   } catch (error) {
     console.error('Error creating special hours:', error)
     return { error: 'Failed to create special hours' }
