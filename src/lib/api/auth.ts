@@ -103,11 +103,23 @@ export async function logApiUsage(
   });
 }
 
-export function createApiResponse(data: any, status: number = 200, headers: Record<string, string> = {}) {
+export function createApiResponse(
+  data: any,
+  status: number = 200,
+  headers: Record<string, string> = {}
+) {
+  // Normalise payload so consumers always see a success/data envelope
+  const payload =
+    data && typeof data === 'object' && 'success' in data
+      ? data
+      : { success: true, data };
+
   // Generate ETag for caching
-  const etag = `"${Buffer.from(JSON.stringify(data)).toString('base64').slice(0, 27)}"`;
+  const etag = `"${Buffer.from(JSON.stringify(payload))
+    .toString('base64')
+    .slice(0, 27)}"`;
   
-  return NextResponse.json(data, {
+  return NextResponse.json(payload, {
     status,
     headers: {
       'Content-Type': 'application/json',

@@ -10,7 +10,8 @@ import {
   CalendarDaysIcon,
   DevicePhoneMobileIcon,
   ComputerDesktopIcon,
-  GlobeAltIcon
+  GlobeAltIcon,
+  QrCodeIcon
 } from '@heroicons/react/24/outline'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Section } from '@/components/ui-v2/layout/Section'
@@ -278,6 +279,40 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
     toast.success('Link copied to clipboard!')
   }
 
+  const handleCopyQrCode = async (link: ShortLink) => {
+    const fullUrl = `${SHORT_LINK_BASE_URL}/${link.short_code}`
+
+    try {
+      const QRCode = await import('qrcode')
+      const dataUrl = await QRCode.toDataURL(fullUrl, { margin: 1 })
+
+      if (
+        navigator.clipboard &&
+        'write' in navigator.clipboard &&
+        typeof window !== 'undefined' &&
+        'ClipboardItem' in window
+      ) {
+        const response = await fetch(dataUrl)
+        const blob = await response.blob()
+        const clipboardItem = new (window as any).ClipboardItem({ [blob.type]: blob })
+        await navigator.clipboard.write([clipboardItem])
+        toast.success('QR code copied to clipboard!')
+        return
+      }
+
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(dataUrl)
+        toast.success('QR code copied as data URL!')
+        return
+      }
+
+      throw new Error('Clipboard API not available')
+    } catch (error) {
+      console.error('Failed to copy QR code', error)
+      toast.error('Failed to copy QR code')
+    }
+  }
+
   const handleEdit = (link: ShortLink) => {
     setSelectedLink(link)
     setName(link.name || '')
@@ -462,6 +497,14 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
                     <IconButton
                       size="sm"
                       variant="secondary"
+                      onClick={() => handleCopyQrCode(link)}
+                      title="Copy QR code"
+                    >
+                      <QrCodeIcon className="h-4 w-4 text-gray-600" />
+                    </IconButton>
+                    <IconButton
+                      size="sm"
+                      variant="secondary"
                       onClick={() => handleCopyLink(link)}
                       title="Copy link"
                     >
@@ -520,6 +563,14 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
                 </div>
 
                 <div className="flex justify-between border-t pt-3">
+                  <IconButton
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => handleCopyQrCode(link)}
+                    title="Copy QR code"
+                  >
+                    <QrCodeIcon className="h-4 w-4 text-gray-600" />
+                  </IconButton>
                   <IconButton
                     size="sm"
                     variant="secondary"
