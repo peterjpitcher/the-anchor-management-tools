@@ -24,8 +24,13 @@ export function useUnreadMessageCount(intervalMs = 30_000): number {
       controller?.abort()
       controller = new AbortController()
 
+      if (typeof window === 'undefined' || !window.location?.origin) {
+        return
+      }
+
       try {
-        const response = await fetch('/api/messages/unread-count', {
+        const endpoint = new URL('/api/messages/unread-count', window.location.origin).toString()
+        const response = await fetch(endpoint, {
           method: 'GET',
           cache: 'no-store',
           signal: controller.signal,

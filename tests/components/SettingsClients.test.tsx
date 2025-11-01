@@ -7,6 +7,7 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({
     push: vi.fn(),
   }),
+  usePathname: () => '/',
 }))
 
 vi.mock('@/app/actions/attachmentCategories', () => ({
@@ -77,8 +78,7 @@ describe('Settings client components', () => {
       />,
     )
 
-    const processButton = screen.getByRole('button', { name: 'Process Jobs' })
-    expect(processButton).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Process Jobs' })).not.toBeInTheDocument()
     expect(screen.queryByTitle('Retry job')).not.toBeInTheDocument()
     expect(screen.queryByTitle('Delete job')).not.toBeInTheDocument()
   })

@@ -5,6 +5,13 @@ import BackgroundJobsClient from '@/app/(authenticated)/settings/background-jobs
 import CategoriesClient from '@/app/(authenticated)/settings/categories/CategoriesClient'
 import MessageTemplatesClient from '@/app/(authenticated)/settings/message-templates/MessageTemplatesClient'
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+  }),
+  usePathname: () => '/',
+}))
+
 vi.mock('@/app/actions/backgroundJobs', () => ({
   listBackgroundJobs: vi.fn().mockResolvedValue({
     jobs: [],
@@ -48,8 +55,7 @@ describe('settings manage affordances for read-only roles', () => {
       />,
     )
 
-    const processButton = screen.getByRole('button', { name: /process jobs/i })
-    expect(processButton).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /process jobs/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /retry job/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /delete job/i })).not.toBeInTheDocument()
   })
