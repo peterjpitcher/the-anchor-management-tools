@@ -109,7 +109,7 @@ export default function TableBookingSettingsPage() {
         </Link>
 
         {/* Sunday Lunch Menu */}
-        <Link href="/table-bookings/settings/sunday-lunch">
+        <Link href="/menu-management/dishes?menu=sunday_lunch">
           <Card interactive>
             <div className="flex items-center gap-4 mb-4">
               <div className="p-3 bg-yellow-100 rounded-lg">
@@ -118,7 +118,7 @@ export default function TableBookingSettingsPage() {
               <h2 className="text-lg font-semibold">Sunday Lunch Menu</h2>
             </div>
             <p className="text-gray-600">
-              Configure Sunday lunch menu items and pricing
+              Manage Sunday lunch dishes alongside the main menu builder
             </p>
           </Card>
         </Link>

@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, BuildingOfficeIcon, DocumentTextIcon, StarIcon, LinkIcon, QueueListIcon, ReceiptRefundIcon, TruckIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, BuildingOfficeIcon, DocumentTextIcon, StarIcon, LinkIcon, QueueListIcon, ReceiptRefundIcon, TruckIcon, Squares2X2Icon } from '@heroicons/react/24/outline'
 import { useEffect, useState, useMemo } from 'react'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { Badge } from '@/components/ui-v2/display/Badge'
@@ -26,6 +26,7 @@ const primaryNavigation: NavigationItemWithPermission[] = [
 
 const secondaryNavigation: NavigationItemWithPermission[] = [
   { name: 'Table Bookings', href: '/table-bookings', icon: QueueListIcon, permission: { module: 'table_bookings', action: 'view' } },
+  { name: 'Menu Management', href: '/menu-management', icon: Squares2X2Icon, permission: { module: 'menu_management', action: 'view' } },
   { name: 'Private Bookings', href: '/private-bookings', icon: BuildingOfficeIcon, permission: { module: 'private_bookings', action: 'view' } },
   { name: 'Parking', href: '/parking', icon: TruckIcon, permission: { module: 'parking', action: 'view' } },
   // VIP Club removed

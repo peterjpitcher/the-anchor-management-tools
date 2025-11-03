@@ -9,9 +9,9 @@
  * Provides consistent table styling and behavior across the application.
  */
 
-import { ReactNode, HTMLAttributes, useState, useEffect } from 'react'
+import { ReactNode, HTMLAttributes, useState, useEffect, Fragment } from 'react'
 import { cn } from '@/lib/utils'
-import { ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/20/solid'
+import { ChevronUpIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/20/solid'
 import { Checkbox } from '../forms/Checkbox'
 import { Skeleton, SkeletonCard } from '../feedback/Skeleton'
 import { EmptyState } from './EmptyState'
@@ -108,13 +108,18 @@ export interface DataTableProps<T = unknown> extends HTMLAttributes<HTMLDivEleme
    * Empty state action
    */
   emptyAction?: ReactNode
-  
+ 
   /**
    * Whether rows are selectable
    * @default false
    */
   selectable?: boolean
   
+  /**
+   * Optional class name generator for each row
+   */
+  rowClassName?: (row: T) => string | undefined
+ 
   /**
    * Selected row keys (controlled)
    */
@@ -170,6 +175,21 @@ export interface DataTableProps<T = unknown> extends HTMLAttributes<HTMLDivEleme
    * Custom mobile card renderer
    */
   renderMobileCard?: (row: T) => ReactNode
+
+  /**
+   * Whether rows can be expanded to reveal extra content
+   */
+  expandable?: boolean
+
+  /**
+   * Renderer for expanded row content
+   */
+  renderExpandedContent?: (row: T) => ReactNode
+
+  /**
+   * Keys that should be expanded initially
+   */
+  defaultExpandedKeys?: Array<string | number>
 }
 
 export function DataTable<T = unknown>({
@@ -192,6 +212,10 @@ export function DataTable<T = unknown>({
   striped = false,
   mobileBreakpoint = 768,
   renderMobileCard,
+  expandable = false,
+  renderExpandedContent,
+  defaultExpandedKeys = [],
+  rowClassName,
   className,
   ...props
 }: DataTableProps<T>) {
@@ -200,6 +224,9 @@ export function DataTable<T = unknown>({
   const [isMobile, setIsMobile] = useState(false)
   const [internalSelectedKeys, setInternalSelectedKeys] = useState<Set<string | number>>(
     selectedKeys || new Set()
+  )
+  const [expandedKeys, setExpandedKeys] = useState<Set<string | number>>(
+    new Set(defaultExpandedKeys)
   )
   
   // Check if mobile
@@ -218,6 +245,20 @@ export function DataTable<T = unknown>({
       setInternalSelectedKeys(selectedKeys)
     }
   }, [selectedKeys])
+
+  // Keep expanded keys in sync with row data
+  useEffect(() => {
+    const availableKeys = new Set(data.map(row => getRowKey(row)))
+    setExpandedKeys(prev => {
+      const next = new Set<string | number>()
+      prev.forEach(key => {
+        if (availableKeys.has(key)) {
+          next.add(key)
+        }
+      })
+      return next
+    })
+  }, [data, getRowKey])
   
   // Sort data
   const sortedData = [...data].sort((a, b) => {
@@ -291,7 +332,19 @@ export function DataTable<T = unknown>({
       header: 'px-6 py-4 text-base',
     },
   }
-  
+
+  const toggleExpand = (key: string | number) => {
+    setExpandedKeys(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }
+
   // Loading state
   if (loading) {
     return (
@@ -312,6 +365,9 @@ export function DataTable<T = unknown>({
                       <Skeleton className="h-4 w-4" />
                     </th>
                   )}
+                  {expandable && renderExpandedContent && (
+                    <th className={cn(sizeClasses[size].header)} />
+                  )}
                   {columns.map((column) => (
                     <th
                       key={column.key}
@@ -326,6 +382,11 @@ export function DataTable<T = unknown>({
                 {Array.from({ length: skeletonRows }).map((_, i) => (
                   <tr key={i}>
                     {selectable && (
+                      <td className={sizeClasses[size].cell}>
+                        <Skeleton className="h-4 w-4" />
+                      </td>
+                    )}
+                    {expandable && renderExpandedContent && (
                       <td className={sizeClasses[size].cell}>
                         <Skeleton className="h-4 w-4" />
                       </td>
@@ -365,6 +426,7 @@ export function DataTable<T = unknown>({
         {sortedData.map((row) => {
           const key = getRowKey(row)
           const isSelected = internalSelectedKeys.has(key)
+          const isExpanded = expandedKeys.has(key)
           
           if (renderMobileCard) {
             return (
@@ -409,6 +471,33 @@ export function DataTable<T = unknown>({
                     </span>
                   </div>
                 ))}
+              
+              {expandable && renderExpandedContent && (
+                <>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleExpand(key)
+                    }}
+                    className="inline-flex items-center gap-2 text-sm font-medium text-green-700 hover:text-green-800 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    aria-expanded={isExpanded}
+                  >
+                    <ChevronRightIcon
+                      className={cn(
+                        'h-4 w-4 transition-transform duration-200',
+                        isExpanded && 'rotate-90'
+                      )}
+                    />
+                    {isExpanded ? 'Hide details' : 'View details'}
+                  </button>
+                  {isExpanded && (
+                    <div className="mt-3 border-t border-gray-200 pt-3 text-sm text-gray-700">
+                      {renderExpandedContent(row)}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )
         })}
@@ -445,7 +534,14 @@ export function DataTable<T = unknown>({
                     />
                   </th>
                 )}
-                
+
+                {expandable && renderExpandedContent && (
+                  <th
+                    scope="col"
+                    className={cn(sizeClasses[size].header, 'w-10')}
+                  />
+                )}
+
                 {columns.map((column) => (
                   <th
                     key={column.key}
@@ -456,7 +552,7 @@ export function DataTable<T = unknown>({
                       column.align === 'center' && 'text-center',
                       column.align === 'right' && 'text-right',
                       column.sortable && 'cursor-pointer select-none hover:bg-gray-100',
-                      column.className
+                     column.className
                     )}
                     style={{ width: column.width }}
                     onClick={() => handleSort(column)}
@@ -500,43 +596,80 @@ export function DataTable<T = unknown>({
               {sortedData.map((row) => {
                 const key = getRowKey(row)
                 const isSelected = internalSelectedKeys.has(key)
+                const isExpanded = expandedKeys.has(key)
                 
+                const customRowClass = rowClassName?.(row)
+
                 return (
-                  <tr
-                    key={key}
-                    className={cn(
-                      clickableRows && 'cursor-pointer hover:bg-gray-50',
-                      isSelected && 'bg-green-50'
+                  <Fragment key={key}>
+                    <tr
+                      className={cn(
+                        clickableRows && 'cursor-pointer hover:bg-gray-50',
+                        isSelected && 'bg-green-50',
+                        customRowClass
+                      )}
+                      onClick={() => onRowClick?.(row)}
+                    >
+                      {selectable && (
+                        <td className={cn('relative', sizeClasses[size].cell)}>
+                          <Checkbox
+                            checked={isSelected}
+                            onChange={(e) => {
+                              e.stopPropagation()
+                              handleSelectRow(key, e.target.checked)
+                            }}
+                          />
+                        </td>
+                      )}
+
+                      {expandable && renderExpandedContent && (
+                        <td className={cn(sizeClasses[size].cell, 'w-10')}>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              toggleExpand(key)
+                            }}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-green-500"
+                            aria-expanded={isExpanded}
+                          >
+                            <ChevronRightIcon
+                              className={cn(
+                                'h-4 w-4 transition-transform duration-200',
+                                isExpanded && 'rotate-90'
+                              )}
+                            />
+                          </button>
+                        </td>
+                      )}
+                      
+                      {columns.map((column) => (
+                        <td
+                          key={column.key}
+                          className={cn(
+                            'text-gray-900',
+                            sizeClasses[size].cell,
+                            column.align === 'center' && 'text-center',
+                            column.align === 'right' && 'text-right',
+                            column.className
+                          )}
+                        >
+                          {column.cell(row)}
+                        </td>
+                      ))}
+                    </tr>
+                    {expandable && renderExpandedContent && isExpanded && (
+                      <tr className="bg-gray-50">
+                        {selectable && <td />}
+                        <td
+                          colSpan={columns.length + (expandable ? 1 : 0)}
+                          className={cn('px-6 py-4 text-sm text-gray-700')}
+                        >
+                          {renderExpandedContent(row)}
+                        </td>
+                      </tr>
                     )}
-                    onClick={() => onRowClick?.(row)}
-                  >
-                    {selectable && (
-                      <td className={cn('relative', sizeClasses[size].cell)}>
-                        <Checkbox
-                          checked={isSelected}
-                          onChange={(e) => {
-                            e.stopPropagation()
-                            handleSelectRow(key, e.target.checked)
-                          }}
-                        />
-                      </td>
-                    )}
-                    
-                    {columns.map((column) => (
-                      <td
-                        key={column.key}
-                        className={cn(
-                          'text-gray-900',
-                          sizeClasses[size].cell,
-                          column.align === 'center' && 'text-center',
-                          column.align === 'right' && 'text-right',
-                          column.className
-                        )}
-                      >
-                        {column.cell(row)}
-                      </td>
-                    ))}
-                  </tr>
+                  </Fragment>
                 )
               })}
             </tbody>

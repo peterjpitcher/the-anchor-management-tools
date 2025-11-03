@@ -10,7 +10,8 @@ import {
   CpuChipIcon,
   CommandLineIcon,
   ClockIcon,
-  LinkIcon
+  LinkIcon,
+  ChartBarIcon,
 } from '@heroicons/react/24/outline';
 import { checkUserPermission } from '@/app/actions/rbac';
 import type { ModuleName, ActionType } from '@/types/rbac';
@@ -56,6 +57,13 @@ const settingsSections = [
     href: '/settings/business-hours',
     icon: ClockIcon,
     permission: { module: 'settings', action: 'manage' },
+  },
+  {
+    name: 'Menu GP Target',
+    description: 'Set the standard GP% target applied to all dishes',
+    href: '/settings/menu-target',
+    icon: ChartBarIcon,
+    permission: { module: 'menu_management', action: 'manage' },
   },
   {
     name: 'Attachment Categories',
