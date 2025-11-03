@@ -6,7 +6,8 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import type {
   PrivateBookingWithDetails,
-  BookingStatus
+  BookingStatus,
+  PrivateBookingAuditWithUser
 } from '@/types/private-bookings'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { syncCalendarEvent, deleteCalendarEvent, isCalendarConfigured } from '@/lib/google-calendar'
@@ -104,6 +105,13 @@ async function requirePrivateBookingsPermission(
 
 const DATE_TBD_NOTE = 'Event date/time to be confirmed'
 const DEFAULT_TBD_TIME = '12:00'
+const bookingNoteSchema = z.object({
+  note: z
+    .string()
+    .trim()
+    .min(1, 'Please enter a note before saving.')
+    .max(2000, 'Notes are limited to 2000 characters.')
+})
 
 // Customer creation schema
 const CreateCustomerSchema = z.object({
@@ -264,9 +272,27 @@ export async function getPrivateBooking(id: string) {
         vendor:vendors(*)
       ),
       documents:private_booking_documents(*),
-      sms_queue:private_booking_sms_queue(*)
+      sms_queue:private_booking_sms_queue(*),
+      audits:private_booking_audit(
+        id,
+        booking_id,
+        action,
+        field_name,
+        old_value,
+        new_value,
+        metadata,
+        performed_by,
+        performed_at,
+        performed_by_profile:profiles!private_booking_audit_performed_by_fkey(
+          id,
+          first_name,
+          last_name,
+          email
+        )
+      )
     `)
     .order('display_order', { ascending: true, foreignTable: 'private_booking_items' })
+    .order('performed_at', { ascending: false, foreignTable: 'private_booking_audit' })
     .eq('id', id)
     .single()
 
@@ -275,8 +301,17 @@ export async function getPrivateBooking(id: string) {
     return { error: error.message || 'An error occurred' }
   }
 
+  const {
+    audits: auditsData,
+    ...bookingCore
+  } = data as typeof data & {
+    audits?: PrivateBookingAuditWithUser[]
+  }
+
+  const items = bookingCore.items ?? []
+
   // Calculate additional fields
-  const calculatedTotal = data.items?.reduce((sum: number, item: any) => 
+  const calculatedTotal = items?.reduce((sum: number, item: any) => 
     sum + (item.line_total || 0), 0) || 0
   
   const eventDate = new Date(data.event_date)
@@ -286,11 +321,17 @@ export async function getPrivateBooking(id: string) {
   const depositStatus = data.deposit_paid_date ? 'Paid' : 
     data.deposit_amount > 0 ? 'Required' : 'Not Required'
 
+  const auditTrail = ((auditsData ?? []) as PrivateBookingAuditWithUser[]).slice().sort(
+    (a, b) => new Date(b.performed_at).getTime() - new Date(a.performed_at).getTime()
+  )
+
   const bookingWithDetails: PrivateBookingWithDetails = {
-    ...data,
+    ...(bookingCore as PrivateBookingWithDetails),
+    items,
     calculated_total: calculatedTotal,
     deposit_status: depositStatus,
-    days_until_event: daysUntilEvent
+    days_until_event: daysUntilEvent,
+    audit_trail: auditTrail
   }
 
   return { data: bookingWithDetails }
@@ -1014,6 +1055,62 @@ export async function updateBookingStatus(id: string, status: BookingStatus) {
 
   revalidatePath('/private-bookings')
   revalidatePath(`/private-bookings/${id}`)
+  return { success: true }
+}
+
+export async function addPrivateBookingNote(bookingId: string, note: string) {
+  const validation = bookingNoteSchema.safeParse({ note })
+  if (!validation.success) {
+    return { error: validation.error.errors[0]?.message ?? 'Note validation failed.' }
+  }
+
+  const supabase = await createClient()
+
+  const canEdit = await checkUserPermission('private_bookings', 'edit')
+  if (!canEdit) {
+    return { error: 'You do not have permission to add notes to private bookings' }
+  }
+
+  const {
+    data: { user }
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'You must be signed in to add a note' }
+  }
+
+  const admin = createAdminClient()
+  const trimmedNote = validation.data.note
+
+  const { error } = await admin.from('private_booking_audit').insert({
+    booking_id: bookingId,
+    action: 'note_added',
+    field_name: 'notes',
+    new_value: trimmedNote,
+    metadata: {
+      note_text: trimmedNote
+    },
+    performed_by: user.id
+  })
+
+  if (error) {
+    console.error('Error recording booking note:', error)
+    return { error: error.message || 'Failed to save note' }
+  }
+
+  await logAuditEvent({
+    user_id: user.id,
+    ...(user.email && { user_email: user.email }),
+    operation_type: 'add_note',
+    resource_type: 'private_booking',
+    resource_id: bookingId,
+    operation_status: 'success',
+    additional_info: {
+      note_preview: trimmedNote.substring(0, 120)
+    }
+  })
+
+  revalidatePath(`/private-bookings/${bookingId}`)
   return { success: true }
 }
 

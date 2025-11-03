@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { formatDateFull, formatTime12Hour } from "@/lib/dateUtils";
+import { formatDateFull, formatTime12Hour, formatDateTime12Hour } from "@/lib/dateUtils";
 import {
   PencilIcon,
   UserGroupIcon,
@@ -61,6 +61,7 @@ import {
   getVendors,
   applyBookingDiscount,
   cancelPrivateBooking,
+  addPrivateBookingNote,
 } from '@/app/actions/privateBookingActions'
 import type {
   PrivateBookingWithDetails,
@@ -122,6 +123,8 @@ const statusConfig: Record<
     icon: XMarkIcon,
   },
 };
+
+const NOTE_MAX_LENGTH = 2000;
 
 interface PrivateBookingDetailClientProps {
   bookingId: string;
@@ -200,6 +203,7 @@ const normalizeBooking = (booking: PrivateBookingWithDetails): PrivateBookingWit
         }
         return orderA - orderB;
       }),
+    audit_trail: booking.audit_trail ?? [],
   };
 };
 
@@ -1281,6 +1285,8 @@ export default function PrivateBookingDetailClient({
     null,
   );
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [noteText, setNoteText] = useState('');
+  const [addingNote, setAddingNote] = useState(false);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -1364,6 +1370,49 @@ export default function PrivateBookingDetailClient({
     }
     loadBooking(bookingId);
   }, [bookingId, loadBooking]);
+
+  const handleAddNote = useCallback(async () => {
+    if (addingNote) {
+      return;
+    }
+
+    const trimmed = noteText.trim();
+    if (!trimmed) {
+      toast.error('Please enter a note before saving.');
+      return;
+    }
+
+    if (!bookingId) {
+      toast.error('Booking information is missing.');
+      return;
+    }
+
+    setAddingNote(true);
+    try {
+      const result = await addPrivateBookingNote(bookingId, trimmed);
+      if (result?.error) {
+        toast.error(result.error);
+        return;
+      }
+
+      toast.success('Note added to booking');
+      setNoteText('');
+      refreshBooking();
+    } catch (error) {
+      console.error('Error adding booking note:', error);
+      toast.error('Failed to save note');
+    } finally {
+      setAddingNote(false);
+    }
+  }, [addingNote, bookingId, noteText, refreshBooking]);
+
+  const handleNoteSubmit = useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      await handleAddNote();
+    },
+    [handleAddNote],
+  );
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     if (!canEdit || isReordering || !bookingId) {
@@ -1512,6 +1561,94 @@ export default function PrivateBookingDetailClient({
         .join('\n')
         .trim() || null
     : null
+
+  type AuditEntry = NonNullable<PrivateBookingWithDetails['audit_trail']>[number]
+  const auditTrail = booking.audit_trail ?? []
+
+  const getAuditActor = (entry: AuditEntry): string => {
+    const profile = entry.performed_by_profile
+    if (profile) {
+      const fullName = [profile.first_name, profile.last_name]
+        .filter((value) => value && value.trim().length > 0)
+        .join(' ')
+      if (fullName.trim().length > 0) {
+        return fullName
+      }
+      if (profile.email) {
+        return profile.email
+      }
+    }
+
+    const metadata = (entry.metadata ?? {}) as Record<string, unknown>
+    if (typeof metadata.actor_name === 'string' && metadata.actor_name.trim().length > 0) {
+      return metadata.actor_name
+    }
+    if (typeof metadata.user_email === 'string' && metadata.user_email.trim().length > 0) {
+      return metadata.user_email
+    }
+
+    if (entry.performed_by) {
+      return 'Team member'
+    }
+
+    return 'System'
+  }
+
+  const formatAuditAction = (action: string): string => {
+    const labels: Record<string, string> = {
+      note_added: 'Added a note',
+      contract_generated: 'Generated contract',
+      status_updated: 'Updated status'
+    }
+
+    if (labels[action]) {
+      return labels[action]
+    }
+
+    return action
+      .split('_')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
+  }
+
+  const getAuditDetails = (entry: AuditEntry): string | null => {
+    const metadata = (entry.metadata ?? {}) as Record<string, unknown>
+
+    if (entry.action === 'note_added') {
+      if (typeof metadata.note_text === 'string' && metadata.note_text.trim().length > 0) {
+        return metadata.note_text
+      }
+      if (typeof entry.new_value === 'string' && entry.new_value.trim().length > 0) {
+        return entry.new_value
+      }
+      return null
+    }
+
+    if (entry.action === 'contract_generated') {
+      if (metadata.contract_version !== undefined && metadata.contract_version !== null) {
+        return `Generated contract version ${metadata.contract_version}.`
+      }
+      return 'Generated updated contract.'
+    }
+
+    if (entry.field_name && entry.old_value && entry.new_value) {
+      const fieldLabel = entry.field_name
+        .split('_')
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ')
+      return `${fieldLabel}: ${entry.old_value} → ${entry.new_value}`
+    }
+
+    if (typeof metadata.description === 'string' && metadata.description.trim().length > 0) {
+      return metadata.description
+    }
+
+    if (typeof metadata.note_preview === 'string' && metadata.note_preview.trim().length > 0) {
+      return metadata.note_preview
+    }
+
+    return null
+  }
 
   // StatusIcon is defined inline where needed above; remove duplicate unused const here
 
@@ -1675,6 +1812,76 @@ export default function PrivateBookingDetailClient({
                     title={`Balance due by ${formatDateFull(booking.balance_due_date)}`}
                   />
                 </div>
+              )}
+            </Card>
+          </Section>
+
+          {canEdit && (
+            <Section id="quick-update" title="Quick Booking Update">
+              <Card>
+                <Form onSubmit={handleNoteSubmit} className="space-y-4">
+                  <Textarea
+                    value={noteText}
+                    onChange={(event) => setNoteText(event.target.value)}
+                    rows={4}
+                    maxLength={NOTE_MAX_LENGTH}
+                    placeholder="Capture quick updates, decisions, or follow-ups for the team."
+                  />
+                  <div className="flex items-center justify-between text-xs text-gray-500">
+                    <span>
+                      {noteText.length}/{NOTE_MAX_LENGTH} characters
+                    </span>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      loading={addingNote}
+                      disabled={addingNote || noteText.trim().length === 0}
+                    >
+                      Save Note
+                    </Button>
+                  </div>
+                </Form>
+              </Card>
+            </Section>
+          )}
+
+          <Section id="audit-trail" title="Audit Trail">
+            <Card>
+              {auditTrail.length === 0 ? (
+                <EmptyState
+                  icon={<ClockIcon className="h-12 w-12 text-gray-300" />}
+                  title="No history yet"
+                  description="Updates and actions for this booking will appear here."
+                />
+              ) : (
+                <ul className="space-y-6">
+                  {auditTrail.map((entry) => {
+                    const details = getAuditDetails(entry)
+                    return (
+                      <li key={entry.id} className="relative pl-5">
+                        <span className="absolute left-0 top-2 h-2 w-2 rounded-full bg-blue-500" />
+                        <div className="flex flex-col gap-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-medium text-gray-900">
+                              {getAuditActor(entry)}
+                            </p>
+                            <span className="text-xs text-gray-500">
+                              {formatDateTime12Hour(entry.performed_at)}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-600">
+                            {formatAuditAction(entry.action)}
+                          </p>
+                          {details && (
+                            <p className="text-sm text-gray-500 whitespace-pre-wrap">
+                              {details}
+                            </p>
+                          )}
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
               )}
             </Card>
           </Section>
