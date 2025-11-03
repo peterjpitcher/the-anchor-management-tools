@@ -403,8 +403,36 @@ export async function createTableBooking(formData: FormData) {
       }
     );
     
-    if (policyError || !policyCheck?.[0]?.is_valid) {
-      return { error: policyCheck?.[0]?.error_message || 'Booking does not meet policy requirements' };
+    const policyResult = policyCheck?.[0];
+    const policyErrorMessage = policyResult?.error_message;
+    const isPolicyValid = Boolean(policyResult?.is_valid);
+    const isStaffSource = bookingData.source && bookingData.source !== 'website';
+    
+    if (policyError || !isPolicyValid) {
+      const bookingDateTime = new Date(`${bookingData.booking_date}T${bookingData.booking_time}`);
+      const hoursUntilBooking = (bookingDateTime.getTime() - Date.now()) / (1000 * 60 * 60);
+      const isMinAdvanceViolation =
+        typeof policyErrorMessage === 'string' &&
+        policyErrorMessage.toLowerCase().includes('must be made at least');
+      
+      // Allow staff-entered bookings (phone, walk-ins, etc.) to override the minimum advance notice
+      // while still blocking past-dated bookings and other policy failures.
+      if (
+        isStaffSource &&
+        isMinAdvanceViolation &&
+        !Number.isNaN(hoursUntilBooking) &&
+        hoursUntilBooking >= 0
+      ) {
+        console.warn('Overriding minimum advance booking policy for staff-created booking', {
+          booking_date: bookingData.booking_date,
+          booking_time: bookingData.booking_time,
+          party_size: bookingData.party_size,
+          hours_until_booking: hoursUntilBooking.toFixed(2),
+          source: bookingData.source,
+        });
+      } else {
+        return { error: policyErrorMessage || 'Booking does not meet policy requirements' };
+      }
     }
     
     // Validate that the booking time is within kitchen hours
