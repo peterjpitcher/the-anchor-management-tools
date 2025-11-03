@@ -461,16 +461,41 @@ export async function createTableBooking(formData: FormData) {
                          (!activeHours.kitchen_opens || !activeHours.kitchen_closes);
     
     if (kitchenClosed) {
-      return { error: 'Kitchen is closed on the selected date' };
+      if (isStaffSource) {
+        console.warn('Overriding kitchen closure for staff-created booking', {
+          booking_date: bookingData.booking_date,
+          booking_time: bookingData.booking_time,
+          source: bookingData.source,
+          is_closed: activeHours?.is_closed,
+          is_kitchen_closed: activeHours?.is_kitchen_closed,
+        });
+      } else {
+        return { error: 'Kitchen is closed on the selected date' };
+      }
     }
     
     // Check if booking time is within kitchen hours
     const bookingTime = bookingData.booking_time;
-    const kitchenOpens = activeHours.kitchen_opens;
-    const kitchenCloses = activeHours.kitchen_closes;
+    const kitchenOpens = activeHours?.kitchen_opens || bookingTime;
+    const kitchenCloses = activeHours?.kitchen_closes || bookingTime;
+    const outsideKitchenHours = bookingTime < kitchenOpens || bookingTime >= kitchenCloses;
     
-    if (bookingTime < kitchenOpens || bookingTime >= kitchenCloses) {
-      return { error: `Kitchen is only open from ${formatTime12Hour(kitchenOpens)} to ${formatTime12Hour(kitchenCloses)} on this day` };
+    if (outsideKitchenHours) {
+      if (isStaffSource) {
+        console.warn('Overriding kitchen hours constraint for staff-created booking', {
+          booking_date: bookingData.booking_date,
+          booking_time: bookingData.booking_time,
+          kitchen_opens: kitchenOpens,
+          kitchen_closes: kitchenCloses,
+          source: bookingData.source,
+        });
+      } else {
+        return {
+          error: `Kitchen is only open from ${formatTime12Hour(
+            kitchenOpens
+          )} to ${formatTime12Hour(kitchenCloses)} on this day`
+        };
+      }
     }
     
     // Create booking
