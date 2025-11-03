@@ -57,9 +57,13 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(({
   labelPosition = 'right',
   className,
   disabled,
+  children: checkboxChildren,
   ...props
 }, ref) => {
   const internalRef = useRef<HTMLInputElement>(null)
+
+  const resolvedLabel = label ?? checkboxChildren
+  const resolvedDescription = description
   
   // Handle ref
   const setRefs = (element: HTMLInputElement | null) => {
@@ -160,7 +164,7 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(({
   )
   
   // If no label, render just the checkbox
-  if (!label && !description) {
+  if (!resolvedLabel && !resolvedDescription) {
     return (
       <label className={touchTargetClasses}>
         <input
@@ -199,14 +203,14 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(({
       
       <div className={labelClasses}>
         <div className="font-medium text-gray-900">
-          {label}
+          {resolvedLabel}
         </div>
-        {description && (
+        {resolvedDescription && (
           <div className={cn(
             'text-gray-500 mt-1',
             sizeClasses[size].description
           )}>
-            {description}
+            {resolvedDescription}
           </div>
         )}
       </div>

@@ -286,9 +286,10 @@ export async function POST(request: NextRequest) {
         let menuItemMap = new Map<string, any>();
         if (menuItemIds.length > 0) {
           const { data: menuItems, error: menuError } = await supabase
-            .from('sunday_lunch_menu_items')
-            .select('id, name, price, category, is_active')
-            .in('id', menuItemIds);
+            .from('menu_dishes_with_costs')
+            .select('dish_id, name, selling_price, category_code, is_active, is_default_side')
+            .eq('menu_code', 'sunday_lunch')
+            .in('dish_id', menuItemIds);
           
           if (menuError) {
             console.error('Failed to fetch menu items:', menuError);
@@ -301,20 +302,20 @@ export async function POST(request: NextRequest) {
             );
           }
           
-          // Create lookup map
-          menuItemMap = new Map(menuItems?.map(item => [item.id, item]) || []);
+          menuItemMap = new Map((menuItems || []).map(item => [item.dish_id, item]));
         }
         
         // Phase 1C: Auto-add included sides for Sunday lunch
         // First, fetch ALL menu items including included sides
         const { data: allMenuItems } = await supabase
-          .from('sunday_lunch_menu_items')
-          .select('id, name, price, category, is_active')
+          .from('menu_dishes_with_costs')
+          .select('dish_id, name, selling_price, category_code, is_active, is_default_side')
+          .eq('menu_code', 'sunday_lunch')
           .eq('is_active', true);
         
-        const includedSides = allMenuItems?.filter(item => 
-          item.category === 'side' && item.price === 0
-        ) || [];
+        const includedSides = (allMenuItems || []).filter(item => 
+          item.category_code === 'sunday_lunch_sides' && (item.is_default_side || Number(item.selling_price ?? 0) === 0)
+        );
         
         // Enrich and validate menu selections
         const enrichedSelections = validatedData.menu_selections.map(selection => {
@@ -336,10 +337,10 @@ export async function POST(request: NextRequest) {
               booking_id: booking.id,
               menu_item_id: selection.menu_item_id,
               custom_item_name: dbItem.name, // Always populate from DB
-              item_type: dbItem.category === 'main' ? 'main' : 'side', // Enforce from DB
+              item_type: dbItem.category_code === 'sunday_lunch_mains' ? 'main' : 'side', // Enforce from DB
               quantity: selection.quantity || 1,
               special_requests: selection.special_requests || null,
-              price_at_booking: dbItem.price || 0, // Always use DB price
+              price_at_booking: Number(dbItem.selling_price ?? 0), // Always use DB price
               guest_name: selection.guest_name || null,
             };
           } else if (selection.custom_item_name) {
@@ -393,7 +394,7 @@ export async function POST(request: NextRequest) {
             includedSides.forEach(side => {
               finalSelections.push({
                 booking_id: booking.id,
-                menu_item_id: side.id,
+                menu_item_id: side.dish_id,
                 custom_item_name: side.name,
                 item_type: 'side',
                 quantity: mainCourse.quantity, // Same quantity as the main

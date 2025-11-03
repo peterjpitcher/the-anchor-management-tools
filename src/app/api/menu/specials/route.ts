@@ -6,47 +6,39 @@ import { SCHEMA_AVAILABILITY } from '@/lib/api/schema';
 export async function GET(_request: NextRequest) {
   return withApiAuth(async (_req, _apiKey) => {
     const supabase = createAdminClient();
-    const now = new Date().toISOString();
-    
+    const now = new Date();
+
     const { data: specials, error } = await supabase
-      .from('menu_items')
-      .select(`
-        id,
-        name,
-        description,
-        price,
-        calories,
-        dietary_info,
-        allergens,
-        available_from,
-        available_until,
-        image_url,
-        section:menu_sections!inner(
-          id,
-          name
-        )
-      `)
+      .from('menu_dishes_with_costs')
+      .select('*')
+      .eq('menu_code', 'website_food')
       .eq('is_special', true)
-      .eq('is_available', true)
-      .or(`available_from.is.null,available_from.lte.${now}`)
-      .or(`available_until.is.null,available_until.gte.${now}`)
-      .order('available_from', { ascending: false });
+      .eq('is_active', true)
+      .order('available_from', { ascending: false, nullsFirst: false });
 
     if (error) {
       return createErrorResponse('Failed to fetch specials', 'DATABASE_ERROR', 500);
     }
 
-    const formattedSpecials = specials?.map(special => ({
+    const formattedSpecials = (specials || [])
+      .filter(special => {
+        if (special.available_from && new Date(special.available_from) > now) {
+          return false;
+        }
+        if (special.available_until && new Date(special.available_until) < now) {
+          return false;
+        }
+        return true;
+      })
+      .map(special => ({
       '@type': 'MenuItem',
-      id: special.id,
+      id: special.dish_id,
       name: special.name,
       description: special.description,
-      section: special.section && typeof special.section === 'object' && 'name' in special.section 
-        ? special.section.name 
-        : undefined,
+      section: special.category_name,
       offers: {
         '@type': 'Offer',
-        price: special.price.toString(),
+        price: Number(special.selling_price ?? 0).toFixed(2),
         priceCurrency: 'GBP',
         availability: SCHEMA_AVAILABILITY.IN_STOCK,
         availableAtOrFrom: special.available_from,
@@ -56,10 +48,10 @@ export async function GET(_request: NextRequest) {
         '@type': 'NutritionInformation',
         calories: `${special.calories} calories`,
       } : undefined,
-      dietary_info: special.dietary_info || [],
-      allergens: special.allergens || [],
+      dietary_info: special.dietary_flags || [],
+      allergens: special.allergen_flags || [],
       image: special.image_url,
-    })) || [];
+    }));
 
     return createApiResponse({
       specials: formattedSpecials,

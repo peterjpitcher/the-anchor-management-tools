@@ -2,12 +2,12 @@
 
 import { formatDate, getTodayIsoDate } from '@/lib/dateUtils'
 import Link from 'next/link'
-import { use, useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Customer, Booking, Event, Message } from '@/types/database'
 import { PencilIcon, TrashIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline'
 import { BookingForm } from '@/components/BookingForm'
 import { toast } from '@/components/ui-v2/feedback/Toast'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useSearchParams, useRouter, useParams } from 'next/navigation'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
@@ -33,8 +33,9 @@ type BookingWithEvent = Omit<Booking, 'event'> & {
 
 export const dynamic = 'force-dynamic'
 
-export default function CustomerViewPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
-  const params = use(paramsPromise)
+export default function CustomerViewPage() {
+  const params = useParams<{ id: string }>()
+  const customerId = params.id
   const supabase = useSupabase()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -74,9 +75,12 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
   const [eventForNewBooking, setEventForNewBooking] = useState<Event | undefined>(undefined)
 
   const loadMessages = useCallback(async () => {
+    if (!customerId) {
+      return
+    }
     setMessagesLoading(true)
     try {
-      const messagesResult = await getCustomerMessages(params.id)
+      const messagesResult = await getCustomerMessages(customerId)
       if ('error' in messagesResult) {
         console.error('Failed to load messages:', messagesResult.error)
         toast.error('Failed to load messages')
@@ -87,7 +91,7 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
             (message) => message.direction === 'inbound' && !message.read_at
           )
           if (hasUnreadInbound) {
-            await markMessagesAsRead(params.id)
+            await markMessagesAsRead(customerId)
           }
         }
       }
@@ -97,9 +101,12 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
     } finally {
       setMessagesLoading(false)
     }
-  }, [canViewMessages, params.id])
+  }, [canViewMessages, customerId])
 
   const loadData = useCallback(async () => {
+    if (!customerId) {
+      return
+    }
     setLoading(true)
     try {
       const todayIso = getTodayIsoDate()
@@ -114,21 +121,21 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
         supabase
           .from('customers')
           .select('*')
-          .eq('id', params.id)
+          .eq('id', customerId)
           .single(),
         supabase
           .from('bookings')
           .select('*, event:events(id, name, date, time, capacity, created_at, slug, category:event_categories(*))')
-          .eq('customer_id', params.id)
+          .eq('customer_id', customerId)
           .order('created_at', { ascending: false }),
         supabase
           .from('events')
           .select('*')
           .gte('date', todayIso)
           .order('date'),
-        getCustomerSmsStats(params.id),
+        getCustomerSmsStats(customerId),
         getCustomerLabels(),
-        getCustomerLabelAssignments(params.id)
+        getCustomerLabelAssignments(customerId)
       ])
 
       if (customerError) {
@@ -176,11 +183,13 @@ export default function CustomerViewPage({ params: paramsPromise }: { params: Pr
     } finally {
       setLoading(false)
     }
-  }, [loadMessages, params.id, supabase])
+  }, [customerId, loadMessages, supabase])
 
   useEffect(() => {
-    loadData()
-  }, [loadData])
+    if (customerId) {
+      loadData()
+    }
+  }, [customerId, loadData])
 
   // Messages are refreshed on demand via loadMessages; no aggressive polling.
 

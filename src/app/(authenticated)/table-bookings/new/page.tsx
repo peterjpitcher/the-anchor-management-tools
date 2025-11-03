@@ -241,55 +241,39 @@ export default function NewTableBookingPage() {
         cutoffDate.setDate(targetMenuDate.getDate() - 1);
         cutoffDate.setHours(13, 0, 0, 0);
 
-        const { data, error: menuFetchError } = await supabase
-          .from('sunday_lunch_menu_items')
-          .select('id, name, description, price, category, dietary_info, allergens')
-          .eq('is_active', true)
-          .order('category', { ascending: true })
-          .order('display_order', { ascending: true })
-          .order('name', { ascending: true });
+        const response = await fetch(`/api/table-bookings/menu/sunday-lunch?date=${format(targetMenuDate, 'yyyy-MM-dd')}`);
+        const result = await response.json();
 
-        if (menuFetchError) {
-          throw menuFetchError;
+        if (!response.ok || result?.success === false) {
+          throw new Error(result?.error?.message || 'Failed to load menu');
         }
 
         if (!isActive) {
           return;
         }
 
-        const menuItems = (data || []) as Array<{
-          id: string;
-          name: string;
-          description?: string | null;
-          price: number;
-          category: string;
-          dietary_info?: string[] | null;
-          allergens?: string[] | null;
-        }>;
-
-        const mains = menuItems.filter((item) => item.category === 'main');
-        const sides = menuItems.filter((item) => item.category === 'side');
+        const menuPayload = result.data;
 
         setMenuData({
-          menuDate: format(targetMenuDate, 'yyyy-MM-dd'),
-          mains: mains.map((item) => ({
+          menuDate: menuPayload.menu_date,
+          mains: (menuPayload.mains || []).map((item: any) => ({
             id: item.id,
             name: item.name,
             description: item.description,
-            price: Number(item.price),
+            price: Number(item.price ?? 0),
             dietary_info: item.dietary_info || [],
             allergens: item.allergens || [],
           })),
-          sides: sides.map((item) => ({
+          sides: (menuPayload.sides || []).map((item: any) => ({
             id: item.id,
             name: item.name,
             description: item.description,
-            price: Number(item.price),
+            price: Number(item.price ?? 0),
             dietary_info: item.dietary_info || [],
             allergens: item.allergens || [],
-            included: Number(item.price) === 0,
+            included: Boolean(item.included),
           })),
-          cutoffTime: cutoffDate.toISOString(),
+          cutoffTime: menuPayload.cutoff_time || cutoffDate.toISOString(),
         });
       } catch (err: any) {
         console.error('Sunday lunch menu load error:', err);
@@ -312,7 +296,7 @@ export default function NewTableBookingPage() {
     return () => {
       isActive = false;
     };
-  }, [bookingType, bookingDate, supabase]);
+  }, [bookingType, bookingDate]);
 
   async function checkBookingAvailability() {
     try {

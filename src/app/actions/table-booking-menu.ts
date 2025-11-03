@@ -126,14 +126,15 @@ export async function getSundayLunchMenu(date?: string) {
       }
     }
     
-    // Fetch active menu items from database
+    // Fetch active menu dishes assigned to Sunday lunch menu
     const { data: menuItems, error } = await supabase
-      .from('sunday_lunch_menu_items')
+      .from('menu_dishes_with_costs')
       .select('*')
+      .eq('menu_code', 'sunday_lunch')
       .eq('is_active', true)
-      .order('category')
-      .order('display_order')
-      .order('name');
+      .order('category_code', { ascending: true })
+      .order('sort_order', { ascending: true })
+      .order('name', { ascending: true });
       
     if (error) {
       console.error('Fetch menu error:', error);
@@ -141,12 +142,12 @@ export async function getSundayLunchMenu(date?: string) {
     }
     
     // Organize menu items by category
-    const mains = menuItems?.filter(item => item.category === 'main') || [];
-    const sides = menuItems?.filter(item => item.category === 'side') || [];
+    const mains = (menuItems || []).filter(item => item.category_code === 'sunday_lunch_mains');
+    const sides = (menuItems || []).filter(item => item.category_code === 'sunday_lunch_sides');
     
     // Separate included sides (price = 0) and extra sides (price > 0)
-    const includedSides = sides.filter(item => item.price === 0);
-    const extraSides = sides.filter(item => item.price > 0);
+    const includedSides = sides.filter(item => item.is_default_side || Number(item.selling_price ?? 0) === 0);
+    const extraSides = sides.filter(item => !item.is_default_side && Number(item.selling_price ?? 0) > 0);
     
     // Calculate cutoff time for ordering (1pm Saturday)
     const bookingDate = date ? new Date(date) : getNextSunday();
@@ -158,33 +159,34 @@ export async function getSundayLunchMenu(date?: string) {
       data: {
         menu_date: toLocalIsoDate(bookingDate),
         mains: mains.map(item => ({
-          id: item.id,
+          id: item.dish_id,
           name: item.name,
           description: item.description,
-          price: Number(item.price),
-          dietary_info: item.dietary_info || [],
-          allergens: item.allergens || [],
-          is_available: item.is_active
+          price: Number(item.selling_price ?? 0),
+          dietary_info: item.dietary_flags || [],
+          allergens: item.allergen_flags || [],
+          is_available: item.is_active && (!item.available_from || new Date(item.available_from) <= bookingDate) &&
+            (!item.available_until || new Date(item.available_until) >= bookingDate)
         })),
         sides: [
           // Included sides first
           ...includedSides.map(item => ({
-            id: item.id,
+            id: item.dish_id,
             name: item.name,
             description: item.description,
             price: 0,
-            dietary_info: item.dietary_info || [],
-            allergens: item.allergens || [],
+            dietary_info: item.dietary_flags || [],
+            allergens: item.allergen_flags || [],
             included: true
           })),
           // Then extra sides with prices
           ...extraSides.map(item => ({
-            id: item.id,
+            id: item.dish_id,
             name: item.name,
             description: item.description,
-            price: Number(item.price),
-            dietary_info: item.dietary_info || [],
-            allergens: item.allergens || [],
+            price: Number(item.selling_price ?? 0),
+            dietary_info: item.dietary_flags || [],
+            allergens: item.allergen_flags || [],
             included: false
           }))
         ],

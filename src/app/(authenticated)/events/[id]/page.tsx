@@ -3,7 +3,7 @@
 import { formatDate } from '@/lib/dateUtils'
 import { formatDistanceToNow } from 'date-fns'
 import Link from 'next/link'
-import { use, useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Event as BaseEvent, Booking, Customer } from '@/types/database'
 import { EventCategory } from '@/types/event-categories'
 
@@ -34,6 +34,7 @@ import { formatPhoneForDisplay } from '@/lib/validation'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { deleteBooking } from '@/app/actions/bookings'
+import { useParams } from 'next/navigation'
 type BookingWithCustomer = Omit<Booking, 'customer'> & {
   customer: Pick<Customer, 'first_name' | 'last_name' | 'id'>
 }
@@ -52,8 +53,9 @@ type EventCheckInRecord = {
 
 export const dynamic = 'force-dynamic'
 
-export default function EventViewPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
-  const params = use(paramsPromise)
+export default function EventViewPage() {
+  const params = useParams<{ id: string }>()
+  const eventId = params.id
   const supabase = useSupabase()
   const { hasPermission } = usePermissions()
   const canManageEvents = hasPermission('events', 'manage')
@@ -88,12 +90,15 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
   }, [])
 
   const loadEventData = useCallback(async () => {
+    if (!eventId) {
+      return
+    }
     try {
       setIsLoading(true)
       const { data: eventData, error: eventError } = await supabase
         .from('events')
         .select('*, category:event_categories(*)')
-        .eq('id', params.id)
+        .eq('id', eventId)
         .single()
 
       if (eventError) throw eventError
@@ -103,7 +108,7 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
       const { data: bookingsData, error: bookingsError } = await supabase
         .from('bookings')
         .select('id, customer_id, seats, is_reminder_only, notes, created_at, customer:customers!inner(id, first_name, last_name)')
-        .eq('event_id', params.id)
+        .eq('event_id', eventId)
         .order('created_at', { ascending: true })
 
       if (bookingsError) throw bookingsError
@@ -135,11 +140,13 @@ export default function EventViewPage({ params: paramsPromise }: { params: Promi
     } finally {
       setIsLoading(false)
     }
-  }, [loadMarketingLinks, params.id, supabase])
+  }, [eventId, loadMarketingLinks, supabase])
 
   useEffect(() => {
-    loadEventData()
-  }, [loadEventData])
+    if (eventId) {
+      loadEventData()
+    }
+  }, [eventId, loadEventData])
 
   const handleRegenerateMarketingLinks = useCallback(async () => {
     if (!canManageEvents) {

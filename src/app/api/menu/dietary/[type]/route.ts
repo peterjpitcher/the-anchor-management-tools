@@ -22,74 +22,111 @@ export async function GET(
     }
 
     const supabase = createAdminClient();
-    
-    const { data: items, error } = await supabase
-      .from('menu_items')
+
+    const { data: menu, error: menuError } = await supabase
+      .from('menu_menus')
+      .select('id')
+      .eq('code', 'website_food')
+      .single();
+
+    if (menuError || !menu) {
+      return createErrorResponse('Failed to fetch menu configuration', 'DATABASE_ERROR', 500);
+    }
+
+    const { data: categoryMappings, error: categoriesError } = await supabase
+      .from('menu_category_menus')
       .select(`
-        id,
-        name,
-        description,
-        price,
-        calories,
-        dietary_info,
-        allergens,
-        image_url,
-        section:menu_sections!inner(
+        sort_order,
+        category:menu_categories(
           id,
-          name,
-          sort_order
+          code,
+          name
         )
       `)
-      .eq('is_available', true)
-      .contains('dietary_info', [dietaryType])
-      .order('section.sort_order', { ascending: true });
+      .eq('menu_id', menu.id)
+      .order('sort_order', { ascending: true });
 
-    if (error) {
+    if (categoriesError) {
+      return createErrorResponse('Failed to fetch menu categories', 'DATABASE_ERROR', 500);
+    }
+
+    const { data: dishes, error: dishesError } = await supabase
+      .from('menu_dishes_with_costs')
+      .select('*')
+      .eq('menu_code', 'website_food')
+      .eq('is_active', true)
+      .contains('dietary_flags', [dietaryType])
+      .order('category_code', { ascending: true })
+      .order('sort_order', { ascending: true })
+      .order('name', { ascending: true });
+
+    if (dishesError) {
       return createErrorResponse('Failed to fetch menu items', 'DATABASE_ERROR', 500);
     }
 
-    // Group items by section
-    const sections = items?.reduce((acc: any[], item: any) => {
-      const sectionName = item.section?.name || 'Other';
-      let section = acc.find(s => s.name === sectionName);
-      
-      if (!section) {
-        section = {
-          '@type': 'MenuSection',
-          name: sectionName,
-          items: [],
-        };
-        acc.push(section);
+    const categoryMeta = new Map<string, { name: string; sort_order: number }>();
+    (categoryMappings ?? []).forEach((entry: any) => {
+      if (entry?.category) {
+        categoryMeta.set(entry.category.code, {
+          name: entry.category.name,
+          sort_order: entry.sort_order,
+        });
       }
-      
-      section.items.push({
+    });
+
+    const now = new Date();
+    const sections: any[] = [];
+
+    const grouped = new Map<string, { name: string; sort_order: number; items: any[] }>();
+
+    (dishes || []).forEach(dish => {
+      if (dish.available_from && new Date(dish.available_from) > now) return;
+      if (dish.available_until && new Date(dish.available_until) < now) return;
+
+      const meta = categoryMeta.get(dish.category_code) || { name: dish.category_name || 'Other', sort_order: 999 };
+      if (!grouped.has(dish.category_code)) {
+        grouped.set(dish.category_code, { name: meta.name, sort_order: meta.sort_order, items: [] });
+      }
+
+      grouped.get(dish.category_code)?.items.push({
         '@type': 'MenuItem',
-        id: item.id,
-        name: item.name,
-        description: item.description,
+        id: dish.dish_id,
+        name: dish.name,
+        description: dish.description,
         offers: {
           '@type': 'Offer',
-          price: item.price.toString(),
+          price: Number(dish.selling_price ?? 0).toFixed(2),
           priceCurrency: 'GBP',
           availability: SCHEMA_AVAILABILITY.IN_STOCK,
         },
-        nutrition: item.calories ? {
+        nutrition: dish.calories ? {
           '@type': 'NutritionInformation',
-          calories: `${item.calories} calories`,
+          calories: `${dish.calories} calories`,
         } : undefined,
-        dietary_info: item.dietary_info || [],
-        allergens: item.allergens || [],
-        image: item.image_url,
+        dietary_info: dish.dietary_flags || [],
+        allergens: dish.allergen_flags || [],
+        image: dish.image_url,
       });
-      
-      return acc;
-    }, []) || [];
+    });
+
+    grouped.forEach((value, key) => {
+      sections.push({
+        '@type': 'MenuSection',
+        name: value.name,
+        items: value.items,
+        sort_order: value.sort_order ?? 999,
+      });
+    });
+
+    sections.sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999));
+
+    const totalItems = sections.reduce((sum, section) => sum + (Array.isArray(section.items) ? section.items.length : 0), 0);
 
     return createApiResponse({
       dietary_type: dietaryType,
       menu_sections: sections,
       meta: {
-        total_items: items?.length || 0,
+        total_items: totalItems,
         lastUpdated: new Date().toISOString(),
       },
     });

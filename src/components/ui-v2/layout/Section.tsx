@@ -25,6 +25,11 @@ export interface SectionProps extends ComponentProps {
   description?: string
   
   /**
+   * Legacy prop mapped to description
+   */
+  subtitle?: string
+  
+  /**
    * Actions to display in the section header
    */
   actions?: ReactNode
@@ -62,6 +67,7 @@ export interface SectionProps extends ComponentProps {
 export const Section = forwardRef<HTMLElement, SectionProps>(({
   title,
   description,
+  subtitle,
   actions,
   variant = 'default',
   padding = 'md',
@@ -72,6 +78,7 @@ export const Section = forwardRef<HTMLElement, SectionProps>(({
   children,
   ...props
 }, ref) => {
+  const sectionDescription = description ?? subtitle
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed)
   
   // Padding classes
@@ -89,7 +96,7 @@ export const Section = forwardRef<HTMLElement, SectionProps>(({
     bordered: 'border border-gray-200',
   }
   
-  const hasHeader = title || description || actions
+  const hasHeader = title || sectionDescription || actions
   
   return (
     <section
@@ -139,12 +146,12 @@ export const Section = forwardRef<HTMLElement, SectionProps>(({
                   )}
                 </h3>
               )}
-              {description && (
+              {sectionDescription && (
                 <p className={cn(
                   'text-sm text-gray-500',
                   title && 'mt-1'
                 )}>
-                  {description}
+                  {sectionDescription}
                 </p>
               )}
             </div>

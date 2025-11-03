@@ -48,6 +48,7 @@ export type ModuleName =
   | 'quotes'
   | 'parking'
   | 'short_links'
+  | 'menu_management'
 ;
 
 export type ActionType = 

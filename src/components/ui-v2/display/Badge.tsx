@@ -16,7 +16,7 @@ export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
    * Visual variant of the badge
    * @default 'default'
    */
-  variant?: 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info' | 'secondary'
+  variant?: 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info' | 'secondary' | 'neutral'
   
   /**
    * Size of the badge
@@ -127,6 +127,10 @@ export function Badge({
     secondary: {
       solid: 'bg-gray-200 text-gray-900',
       outlined: 'border-gray-400 text-gray-800',
+    },
+    neutral: {
+      solid: 'bg-slate-100 text-slate-700',
+      outlined: 'border-slate-300 text-slate-700',
     },
     success: {
       solid: 'bg-green-100 text-green-800',
