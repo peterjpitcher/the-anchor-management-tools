@@ -770,8 +770,8 @@ export async function updateInvoice(formData: FormData) {
     // Perform atomic update using admin client RPC
     const adminClient = await createAdminClient()
     const payload = {
-      invoice_id: invoiceId,
-      invoice_data: {
+      p_invoice_id: invoiceId,
+      p_invoice_data: {
         vendor_id: validatedData.vendor_id,
         invoice_date: validatedData.invoice_date,
         due_date: validatedData.due_date,
@@ -784,7 +784,7 @@ export async function updateInvoice(formData: FormData) {
         notes: validatedData.notes ?? null,
         internal_notes: validatedData.internal_notes ?? null
       },
-      line_items: lineItems.map(item => ({
+      p_line_items: lineItems.map(item => ({
         catalog_item_id: item.catalog_item_id || null,
         description: item.description,
         quantity: item.quantity,
