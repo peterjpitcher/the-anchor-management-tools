@@ -1,5 +1,7 @@
 'use server'
 
+import { randomUUID } from 'crypto'
+
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
@@ -49,6 +51,29 @@ async function getNextInvoiceNumber(seriesCode: string): Promise<string> {
   return `${seriesCode}-${encoded}`
 }
 
+async function persistOverdueInvoices() {
+  try {
+    const adminClient = await createAdminClient()
+    const today = getTodayIsoDate()
+
+    const { error } = await adminClient
+      .from('invoices')
+      .update({
+        status: 'overdue' as InvoiceStatus,
+        updated_at: new Date().toISOString(),
+      })
+      .lte('due_date', today)
+      .eq('status', 'sent')
+      .is('deleted_at', null)
+
+    if (error) {
+      console.error('Error persisting overdue invoices:', error)
+    }
+  } catch (error) {
+    console.error('Unexpected error while persisting overdue invoices:', error)
+  }
+}
+
 export async function getInvoices(status?: InvoiceStatus | 'unpaid') {
   try {
     const supabase = await createClient()
@@ -57,6 +82,8 @@ export async function getInvoices(status?: InvoiceStatus | 'unpaid') {
     if (!hasPermission) {
       return { error: 'You do not have permission to view invoices' }
     }
+
+    await persistOverdueInvoices()
 
     let query = supabase
       .from('invoices')
@@ -81,14 +108,16 @@ export async function getInvoices(status?: InvoiceStatus | 'unpaid') {
       return { error: 'Failed to fetch invoices' }
     }
 
-    // Update overdue status for sent invoices
     const today = getTodayIsoDate()
-    const updatedInvoices = invoices.map(invoice => ({
+    const normalizedInvoices = invoices.map((invoice) => ({
       ...invoice,
-      status: invoice.status === 'sent' && invoice.due_date < today ? 'overdue' as InvoiceStatus : invoice.status
+      status:
+        invoice.status === 'sent' && invoice.due_date < today
+          ? ('overdue' as InvoiceStatus)
+          : invoice.status,
     }))
 
-    return { invoices: updatedInvoices as InvoiceWithDetails[] }
+    return { invoices: normalizedInvoices as InvoiceWithDetails[] }
   } catch (error) {
     console.error('Error in getInvoices:', error)
     return { error: 'An unexpected error occurred' }
@@ -103,6 +132,8 @@ export async function getInvoice(invoiceId: string) {
     if (!hasPermission) {
       return { error: 'You do not have permission to view invoices' }
     }
+
+    await persistOverdueInvoices()
 
     const { data: invoice, error } = await supabase
       .from('invoices')
@@ -121,13 +152,13 @@ export async function getInvoice(invoiceId: string) {
       return { error: 'Failed to fetch invoice' }
     }
 
-    // Update overdue status if needed
     const today = getTodayIsoDate()
-    if (invoice.status === 'sent' && invoice.due_date < today) {
-      invoice.status = 'overdue' as InvoiceStatus
-    }
+    const normalized =
+      invoice.status === 'sent' && invoice.due_date < today
+        ? { ...invoice, status: 'overdue' as InvoiceStatus }
+        : invoice
 
-    return { invoice: invoice as InvoiceWithDetails }
+    return { invoice: normalized as InvoiceWithDetails }
   } catch (error) {
     console.error('Error in getInvoice:', error)
     return { error: 'An unexpected error occurred' }
@@ -181,8 +212,8 @@ export async function createInvoice(formData: FormData): Promise<CreateInvoiceRe
       invoiceNumber = await getNextInvoiceNumber('INV')
     } catch (error) {
       console.error('Failed to generate invoice number:', error)
-      // Fallback to timestamp-based number for debugging
-      invoiceNumber = `FALLBACK-${Date.now()}`
+      // Fallback to UUID-based number to avoid collisions
+      invoiceNumber = `INV-${randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`
     }
 
     // Create invoice
@@ -662,8 +693,13 @@ export async function recordPayment(formData: FormData) {
 
     // Update invoice paid amount and status
     const newPaidAmount = invoice.paid_amount + amount
-    const newStatus = newPaidAmount >= invoice.total_amount ? 'paid' : 
-                     invoice.status === 'sent' ? 'partially_paid' : invoice.status
+    let newStatus: InvoiceStatus = invoice.status
+
+    if (newPaidAmount >= invoice.total_amount) {
+      newStatus = 'paid'
+    } else if (newPaidAmount > 0 && invoice.status !== 'void' && invoice.status !== 'written_off') {
+      newStatus = 'partially_paid'
+    }
 
     const { error: updateError } = await supabase
       .from('invoices')

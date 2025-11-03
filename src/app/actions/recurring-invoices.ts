@@ -335,8 +335,6 @@ export async function updateRecurringInvoice(formData: FormData) {
 // Delete recurring invoice
 export async function deleteRecurringInvoice(formData: FormData) {
   try {
-    const supabase = await createClient()
-    
     // Check permissions
     const hasPermission = await checkUserPermission('invoices', 'delete')
     if (!hasPermission) {
@@ -348,26 +346,34 @@ export async function deleteRecurringInvoice(formData: FormData) {
       return { error: 'Recurring invoice ID is required' }
     }
 
-    // Always soft delete (deactivate) recurring invoices
-    const { error: updateError } = await supabase
+    const adminClient = await createAdminClient()
+
+    const { error: lineItemsError } = await adminClient
+      .from('recurring_invoice_line_items')
+      .delete()
+      .eq('recurring_invoice_id', id)
+
+    if (lineItemsError) {
+      console.error('Error removing recurring invoice line items:', lineItemsError)
+      return { error: 'Failed to delete recurring invoice' }
+    }
+
+    const { error: deleteError } = await adminClient
       .from('recurring_invoices')
-      .update({ 
-        is_active: false,
-        updated_at: new Date().toISOString()
-      })
+      .delete()
       .eq('id', id)
 
-    if (updateError) {
-      console.error('Error deactivating recurring invoice:', updateError)
-      return { error: 'Failed to deactivate recurring invoice' }
+    if (deleteError) {
+      console.error('Error deleting recurring invoice:', deleteError)
+      return { error: 'Failed to delete recurring invoice' }
     }
 
     await logAuditEvent({
-      operation_type: 'update',
+      operation_type: 'delete',
       resource_type: 'recurring_invoice',
       resource_id: id,
       operation_status: 'success',
-      additional_info: { action: 'deactivated' }
+      additional_info: { action: 'deleted' }
     })
 
     revalidatePath('/invoices/recurring')
