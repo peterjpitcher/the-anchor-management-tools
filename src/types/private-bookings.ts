@@ -175,6 +175,15 @@ export interface PrivateBookingAudit {
   performed_at: string
 }
 
+export interface PrivateBookingAuditWithUser extends PrivateBookingAudit {
+  performed_by_profile?: {
+    id: string
+    first_name?: string | null
+    last_name?: string | null
+    email?: string | null
+  }
+}
+
 // Extended types with relations
 export interface PrivateBookingWithDetails extends PrivateBooking {
   items?: PrivateBookingItem[]
@@ -190,6 +199,7 @@ export interface PrivateBookingWithDetails extends PrivateBooking {
   days_until_event?: number
   sms_queue?: PrivateBookingSmsQueue[]
   documents?: PrivateBookingDocument[]
+  audit_trail?: PrivateBookingAuditWithUser[]
 }
 
 // Form types for creating/updating
