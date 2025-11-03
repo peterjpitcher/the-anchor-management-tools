@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import JSZip from 'jszip'
+
+export const runtime = 'nodejs'
+
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { generateInvoiceHTML } from '@/lib/invoice-template'
+import { generateInvoicePDF } from '@/lib/pdf-generator'
 import { logAuditEvent } from '@/app/actions/audit'
-import JSZip from 'jszip'
+import type { InvoiceWithDetails } from '@/types/invoices'
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
@@ -104,16 +109,18 @@ export async function GET(request: NextRequest) {
 
     // Generate PDFs for each invoice
     for (const invoice of invoices) {
+      const typedInvoice = invoice as InvoiceWithDetails
+
+      // Generate HTML copy for reference
       const html = generateInvoiceHTML({
-        invoice,
+        invoice: typedInvoice,
         logoUrl: '/logo-black.png'
       })
 
-      // Add HTML file to ZIP (would need server-side PDF generation for true PDFs)
-      zip.file(
-        `invoices/${invoice.invoice_number}.html`,
-        html
-      )
+      const pdfBuffer = await generateInvoicePDF(typedInvoice)
+
+      zip.file(`invoices/${invoice.invoice_number}.html`, html)
+      zip.file(`invoices/${invoice.invoice_number}.pdf`, pdfBuffer)
     }
 
     // Add a README file
@@ -125,9 +132,7 @@ Export Type: ${exportType}
 
 Files included:
 - invoice-summary.csv: Summary of all invoices
-- invoices/: Individual invoice files
-
-Note: Open HTML files in a browser and use Print > Save as PDF for PDF versions.
+- invoices/: Individual invoice files (HTML + PDF)
 `
     zip.file('README.txt', readme)
 

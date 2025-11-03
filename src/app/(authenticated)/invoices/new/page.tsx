@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createInvoice, getLineItemCatalog } from '@/app/actions/invoices'
 import { getVendors } from '@/app/actions/vendors'
@@ -19,6 +19,7 @@ import type { InvoiceVendor } from '@/types/invoices'
 import type { LineItemCatalogItem, InvoiceLineItemInput } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
+import { Modal } from '@/components/ui-v2/overlay/Modal'
 
 type CreateInvoiceActionResult = Awaited<ReturnType<typeof createInvoice>>
 
@@ -48,8 +49,7 @@ export default function NewInvoicePage() {
   const [notes, setNotes] = useState('')
   const [internalNotes, setInternalNotes] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [isCatalogOpen, setIsCatalogOpen] = useState(false)
-  const catalogDropdownRef = useRef<HTMLDivElement | null>(null)
+  const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false)
 
   useEffect(() => {
     if (permissionsLoading) {
@@ -107,21 +107,6 @@ export default function NewInvoicePage() {
       setError(err instanceof Error ? err.message : 'Failed to load data')
     }
   }
-
-  useEffect(() => {
-    if (!isCatalogOpen) {
-      return
-    }
-
-    function handleClickOutside(event: MouseEvent) {
-      if (catalogDropdownRef.current && !catalogDropdownRef.current.contains(event.target as Node)) {
-        setIsCatalogOpen(false)
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [isCatalogOpen])
 
   function addLineItem() {
     const newItem: LineItem = {
@@ -244,16 +229,17 @@ export default function NewInvoicePage() {
   }
 
   return (
-    <PageLayout
-      title="New Invoice"
-      subtitle="Create a new invoice"
-      backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-    >
-      {error && (
-        <Alert variant="error" description={error} className="mb-6" />
-      )}
+    <>
+      <PageLayout
+        title="New Invoice"
+        subtitle="Create a new invoice"
+        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+      >
+        {error && (
+          <Alert variant="error" description={error} className="mb-6" />
+        )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
         <Card className="p-6 overflow-visible">
           <h2 className="text-lg font-semibold mb-4">Invoice Details</h2>
           
@@ -313,38 +299,14 @@ export default function NewInvoicePage() {
             <h2 className="text-lg font-semibold">Line Items</h2>
             <div className="flex flex-wrap gap-2">
               {catalogItems.length > 0 && (
-                <div className="relative" ref={catalogDropdownRef}>
-                  <button
-                    type="button"
-                    onClick={() => setIsCatalogOpen((prev) => !prev)}
-                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-sm"
-                  >
-                    Add from Catalog
-                  </button>
-                  {isCatalogOpen && (
-                    <div className="absolute left-0 right-0 sm:left-auto sm:right-0 mt-2 w-full sm:w-96 bg-white rounded-lg shadow-lg border p-4 z-30 max-h-72 sm:max-h-96 overflow-y-auto">
-                      {catalogItems.map(item => (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => {
-                            addFromCatalog(item)
-                            setIsCatalogOpen(false)
-                          }}
-                          className="w-full text-left p-3 hover:bg-gray-50 rounded-md border-b last:border-b-0 focus:outline-none focus:bg-gray-100"
-                        >
-                          <div className="font-medium text-gray-900">{item.name}</div>
-                          {item.description && (
-                            <div className="text-sm text-gray-600 mt-0.5 line-clamp-2">{item.description}</div>
-                          )}
-                          <div className="text-xs text-gray-400 mt-2">
-                            £{item.default_price.toFixed(2)} • VAT {item.default_vat_rate}%
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setIsCatalogModalOpen(true)}
+                >
+                  Add from Catalog
+                </Button>
               )}
               <Button type="button" onClick={addLineItem} leftIcon={<PlusCircle className="h-4 w-4" />} size="sm">
                 <span className="hidden sm:inline">Add Line Item</span>
@@ -544,6 +506,44 @@ export default function NewInvoicePage() {
           </div>
         </div>
       </form>
-    </PageLayout>
+      </PageLayout>
+
+      <Modal
+        open={isCatalogModalOpen}
+        onClose={() => setIsCatalogModalOpen(false)}
+        title="Add from Catalog"
+        size="lg"
+      >
+        <div className="space-y-3">
+          {catalogItems.length > 0 ? (
+            <div className="max-h-96 overflow-y-auto space-y-2 pr-1">
+              {catalogItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    addFromCatalog(item)
+                    setIsCatalogModalOpen(false)
+                  }}
+                  className="w-full text-left rounded-md border border-gray-200 p-3 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <div className="font-medium text-gray-900">{item.name}</div>
+                  {item.description && (
+                    <div className="text-sm text-gray-600 mt-0.5">{item.description}</div>
+                  )}
+                  <div className="text-xs text-gray-500 mt-2">
+                    £{item.default_price.toFixed(2)} • VAT {item.default_vat_rate}%
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-500 text-center py-4">
+              No catalog items available.
+            </div>
+          )}
+        </div>
+      </Modal>
+    </>
   )
 }
