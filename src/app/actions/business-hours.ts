@@ -4,7 +4,7 @@ import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { logAuditEvent } from '@/app/actions/audit'
-import type { BusinessHours, SpecialHours, ServiceStatus } from '@/types/business-hours'
+import type { BusinessHours, SpecialHours, ServiceStatus, ServiceStatusOverride } from '@/types/business-hours'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 
@@ -57,6 +57,19 @@ type SettingsManagePermissionResult =
 
 const serviceStatusUpdateSchema = z.object({
   is_enabled: z.boolean(),
+  message: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined) ? null : val,
+    z.union([z.string().max(500), z.null()])
+  ),
+})
+
+const serviceStatusOverrideSchema = z.object({
+  start_date: isoDateSchema,
+  end_date: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined) ? null : val,
+    z.union([isoDateSchema, z.null()])
+  ),
+  is_enabled: z.boolean().default(false),
   message: z.preprocess(
     (val) => (val === '' || val === null || val === undefined) ? null : val,
     z.union([z.string().max(500), z.null()])
@@ -226,6 +239,228 @@ export async function getServiceStatuses(serviceCodes?: string[]): Promise<{ dat
   }
 }
 
+export async function getServiceStatusOverrides(
+  serviceCode: string,
+  startDate?: string,
+  endDate?: string
+): Promise<{ data?: ServiceStatusOverride[], error?: string }> {
+  try {
+    const permission = await requireSettingsManagePermission()
+    if ('error' in permission) {
+      return { error: permission.error }
+    }
+
+    const { admin } = permission
+
+    let query = admin
+      .from('service_status_overrides')
+      .select('*')
+      .eq('service_code', serviceCode)
+      .order('start_date', { ascending: true })
+
+    if (startDate) {
+      query = query.gte('end_date', startDate)
+    }
+    if (endDate) {
+      query = query.lte('start_date', endDate)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+
+    return { data: (data || []) as ServiceStatusOverride[] }
+  } catch (error) {
+    console.error('Error fetching service status overrides:', error)
+    return { error: 'Failed to fetch service status overrides' }
+  }
+}
+
+export async function createServiceStatusOverride(
+  serviceCode: string,
+  formData: FormData
+) {
+  try {
+    const permission = await requireSettingsManagePermission()
+    if ('error' in permission) {
+      return { error: permission.error }
+    }
+
+    const { user, admin } = permission
+
+    const parsed = serviceStatusOverrideSchema.safeParse({
+      start_date: formData.get('start_date'),
+      end_date: formData.get('end_date'),
+      is_enabled: formData.get('is_enabled') === 'true',
+      message: formData.get('message'),
+    })
+
+    if (!parsed.success) {
+      return { error: parsed.error.errors[0]?.message || 'Invalid override data' }
+    }
+
+    const startDate = parsed.data.start_date
+    const endDate = parsed.data.end_date ?? parsed.data.start_date
+
+    if (endDate < startDate) {
+      return { error: 'End date cannot be before start date' }
+    }
+
+    const insertPayload = {
+      service_code: serviceCode,
+      start_date: startDate,
+      end_date: endDate,
+      is_enabled: parsed.data.is_enabled,
+      message: parsed.data.message,
+      created_by: user.id,
+    }
+
+    const { data, error: insertError } = await admin
+      .from('service_status_overrides')
+      .insert(insertPayload)
+      .select()
+      .single()
+
+    if (insertError) {
+      console.error('Failed to create service status override:', insertError)
+      return { error: 'Failed to create override' }
+    }
+
+    const override = data as ServiceStatusOverride
+
+    const { error: slotUpdateError } = await admin
+      .from('service_slots')
+      .update({
+        is_active: parsed.data.is_enabled,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('booking_type', 'sunday_lunch')
+      .gte('service_date', startDate)
+      .lte('service_date', endDate)
+
+    if (slotUpdateError) {
+      console.error('Failed to update service slots for override:', slotUpdateError)
+    }
+
+    const { error: regenError } = await admin.rpc('auto_generate_weekly_slots')
+    if (regenError) {
+      console.error('Failed to regenerate service slots after override creation:', regenError)
+    }
+
+    await logAuditEvent({
+      user_id: user.id,
+      ...(user.email && { user_email: user.email }),
+      operation_type: 'create',
+      resource_type: 'service_status_override',
+      resource_id: override.id,
+      operation_status: 'success',
+      new_values: {
+        service_code: serviceCode,
+        start_date: startDate,
+        end_date: endDate,
+        is_enabled: parsed.data.is_enabled,
+      },
+    })
+
+    revalidatePath('/settings/business-hours')
+    revalidatePath('/api/business/hours')
+    revalidatePath('/api/table-bookings/availability')
+    revalidatePath('/api/table-bookings/menu/sunday-lunch')
+
+    return { success: true, data }
+  } catch (error) {
+    console.error('Error creating service status override:', error)
+    return { error: 'Failed to create service status override' }
+  }
+}
+
+export async function deleteServiceStatusOverride(
+  overrideId: string
+) {
+  try {
+    const permission = await requireSettingsManagePermission()
+    if ('error' in permission) {
+      return { error: permission.error }
+    }
+
+    const { user, admin } = permission
+
+    const { data: existing, error: fetchError } = await admin
+      .from('service_status_overrides')
+      .select('*')
+      .eq('id', overrideId)
+      .single()
+
+    if (fetchError || !existing) {
+      console.error('Failed to load service status override:', fetchError)
+      return { error: 'Override not found' }
+    }
+
+    const override = existing as ServiceStatusOverride
+
+    const { error: deleteError } = await admin
+      .from('service_status_overrides')
+      .delete()
+      .eq('id', overrideId)
+
+    if (deleteError) {
+      console.error('Failed to delete service status override:', deleteError)
+      return { error: 'Failed to delete override' }
+    }
+
+    const { data: globalStatus } = await admin
+      .from('service_statuses')
+      .select('is_enabled')
+      .eq('service_code', override.service_code)
+      .single()
+
+    const globalEnabled = globalStatus?.is_enabled !== false
+
+    const { error: slotUpdateError } = await admin
+      .from('service_slots')
+      .update({
+        is_active: globalEnabled,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('booking_type', 'sunday_lunch')
+      .gte('service_date', override.start_date)
+      .lte('service_date', override.end_date)
+
+    if (slotUpdateError) {
+      console.error('Failed to update service slots after override deletion:', slotUpdateError)
+    }
+
+    const { error: regenError } = await admin.rpc('auto_generate_weekly_slots')
+    if (regenError) {
+      console.error('Failed to regenerate service slots after override deletion:', regenError)
+    }
+
+    await logAuditEvent({
+      user_id: user.id,
+      ...(user.email && { user_email: user.email }),
+      operation_type: 'delete',
+      resource_type: 'service_status_override',
+      resource_id: overrideId,
+      operation_status: 'success',
+      old_values: {
+        service_code: override.service_code,
+        start_date: override.start_date,
+        end_date: override.end_date,
+        is_enabled: override.is_enabled,
+      },
+    })
+
+    revalidatePath('/settings/business-hours')
+    revalidatePath('/api/business/hours')
+    revalidatePath('/api/table-bookings/availability')
+    revalidatePath('/api/table-bookings/menu/sunday-lunch')
+
+    return { success: true }
+  } catch (error) {
+    console.error('Error deleting service status override:', error)
+    return { error: 'Failed to delete service status override' }
+  }
+}
+
 export async function updateServiceStatus(
   serviceCode: string,
   payload: { is_enabled: boolean; message?: string | null }
@@ -303,6 +538,30 @@ export async function updateServiceStatus(
 
         if (reactivateError) {
           console.error('Failed to reactivate Sunday lunch service slots:', reactivateError)
+        }
+
+        const { data: disabledOverrides } = await admin
+          .from('service_status_overrides')
+          .select('start_date, end_date, is_enabled')
+          .eq('service_code', 'sunday_lunch')
+          .eq('is_enabled', false)
+
+        if (disabledOverrides && disabledOverrides.length > 0) {
+          for (const override of disabledOverrides) {
+            const { error: overrideSlotError } = await admin
+              .from('service_slots')
+              .update({
+                is_active: false,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('booking_type', 'sunday_lunch')
+              .gte('service_date', override.start_date)
+              .lte('service_date', override.end_date)
+
+            if (overrideSlotError) {
+              console.error('Failed to enforce override while enabling Sunday lunch:', overrideSlotError)
+            }
+          }
         }
 
         const { error: regenError } = await admin.rpc('auto_generate_weekly_slots')
