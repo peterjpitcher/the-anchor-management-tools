@@ -43,6 +43,29 @@ export async function checkAvailability(
     const supabase = supabaseClient || await createClient();
     const bookingDate = new Date(date);
     const dayOfWeek = bookingDate.getDay();
+
+    if (bookingType === 'sunday_lunch') {
+      const { data: serviceStatus } = await supabase
+        .from('service_statuses')
+        .select('is_enabled, message')
+        .eq('service_code', 'sunday_lunch')
+        .single();
+
+      if (serviceStatus && serviceStatus.is_enabled === false) {
+        return {
+          data: {
+            available: false,
+            time_slots: [],
+            kitchen_hours: {
+              opens: '00:00',
+              closes: '00:00',
+              source: 'business_hours',
+            },
+            special_notes: serviceStatus.message || 'Sunday lunch bookings are currently unavailable.',
+          },
+        };
+      }
+    }
     
     // Get business hours for the day
     const { data: businessHours } = await supabase

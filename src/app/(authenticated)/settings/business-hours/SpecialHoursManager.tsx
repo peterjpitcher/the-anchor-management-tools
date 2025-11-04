@@ -36,6 +36,12 @@ export function SpecialHoursManager({ canManage }: SpecialHoursManagerProps) {
     loadSpecialHours()
   }, [])
 
+  const notifySpecialHoursUpdated = () => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('special-hours-updated'))
+    }
+  }
+
   const loadSpecialHours = async () => {
     const result = await getSpecialHours()
     if (result.data) {
@@ -101,6 +107,7 @@ export function SpecialHoursManager({ canManage }: SpecialHoursManagerProps) {
     } else {
       toast.success('Special hours deleted successfully')
       loadSpecialHours()
+      notifySpecialHoursUpdated()
     }
   }
 
@@ -240,6 +247,7 @@ export function SpecialHoursManager({ canManage }: SpecialHoursManagerProps) {
       toast.success(successMessage)
       resetForm()
       loadSpecialHours()
+      notifySpecialHoursUpdated()
     }
   }
 

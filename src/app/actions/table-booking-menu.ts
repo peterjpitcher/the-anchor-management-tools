@@ -118,6 +118,18 @@ export async function getSundayLunchMenu(date?: string) {
   try {
     const supabase = await createClient();
     
+    const { data: serviceStatus } = await supabase
+      .from('service_statuses')
+      .select('is_enabled, message')
+      .eq('service_code', 'sunday_lunch')
+      .single();
+
+    if (serviceStatus && serviceStatus.is_enabled === false) {
+      return {
+        error: serviceStatus.message || 'Sunday lunch bookings are currently unavailable.',
+      };
+    }
+    
     // Check if date is a Sunday
     if (date) {
       const dayOfWeek = new Date(date).getDay();

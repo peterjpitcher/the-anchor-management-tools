@@ -46,6 +46,21 @@ export async function GET(_request: NextRequest) {
       // Continue with empty special hours
     }
 
+    let serviceStatuses: any[] = [];
+    try {
+      const { data, error } = await supabase
+        .from('service_statuses')
+        .select('service_code, display_name, is_enabled, message, updated_at');
+
+      if (error) {
+        console.error('Service status query failed:', error);
+      } else {
+        serviceStatuses = data || [];
+      }
+    } catch (serviceStatusError) {
+      console.error('Service status error:', serviceStatusError);
+    }
+
     // Get today's events for capacity information
     const todayStr = format(today, 'yyyy-MM-dd');
     const { data: todayEvents } = await supabase
@@ -98,6 +113,22 @@ export async function GET(_request: NextRequest) {
     status: special.is_closed ? 'closed' : 'modified',
     note: special.note,
   })) || [];
+
+  const serviceStatus = serviceStatuses.reduce(
+    (acc: Record<string, { displayName: string; isEnabled: boolean; message: string | null; updatedAt: string }>, status: any) => {
+      acc[status.service_code] = {
+        displayName: status.display_name,
+        isEnabled: status.is_enabled !== false,
+        message: status.message,
+        updatedAt: status.updated_at,
+      };
+      return acc;
+    },
+    {}
+  );
+
+  const sundayLunchStatus = serviceStatus['sunday_lunch'];
+  const sundayLunchEnabled = sundayLunchStatus ? sundayLunchStatus.isEnabled : true;
 
   // Calculate current status in London timezone
   const timeZone = 'Europe/London';
@@ -268,12 +299,15 @@ export async function GET(_request: NextRequest) {
   };
 
   // Sunday lunch info
-  const sundayInfo = currentDay === 0 ? {
-    available: true,
-    slots: ['12:00', '12:30', '13:00', '13:30', '14:00'],
-    bookingRequired: true,
-    lastOrderTime: '14:00',
-  } : null;
+  const sundayInfo = sundayLunchEnabled
+    ? {
+        available: sundayLunchEnabled,
+        slots: ['12:00', '12:30', '13:00', '13:30', '14:00'],
+        bookingRequired: true,
+        lastOrderTime: '14:00',
+        message: sundayLunchStatus?.message || null,
+      }
+    : null;
 
   // Build comprehensive response
   const response = {
@@ -281,6 +315,7 @@ export async function GET(_request: NextRequest) {
     data: {
       regularHours: formattedRegularHours,
       specialHours: formattedSpecialHours,
+      serviceStatus,
       currentStatus: {
         ...currentStatus,
         services,

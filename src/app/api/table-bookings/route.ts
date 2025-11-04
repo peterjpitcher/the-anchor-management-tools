@@ -94,6 +94,22 @@ export async function POST(request: NextRequest) {
       // Generate correlation ID for request tracing
       const correlationId = crypto.randomUUID();
 
+      if (validatedData.booking_type === 'sunday_lunch') {
+        const { data: sundayStatus } = await supabase
+          .from('service_statuses')
+          .select('is_enabled, message')
+          .eq('service_code', 'sunday_lunch')
+          .single();
+
+        if (sundayStatus && sundayStatus.is_enabled === false) {
+          return createErrorResponse(
+            sundayStatus.message || 'Sunday lunch bookings are currently unavailable.',
+            'SERVICE_UNAVAILABLE',
+            400
+          );
+        }
+      }
+
       // Phase 2A: Use atomic capacity check for Sunday lunch
       if (validatedData.booking_type === 'sunday_lunch') {
         // Use the new atomic capacity check function

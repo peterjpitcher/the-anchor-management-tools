@@ -24,6 +24,16 @@ export interface SpecialHours {
   updated_at: string
 }
 
+export interface ServiceStatus {
+  service_code: string
+  display_name: string
+  is_enabled: boolean
+  message: string | null
+  metadata: Record<string, unknown>
+  updated_by?: string | null
+  updated_at: string
+}
+
 export const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 export const DAY_ABBREVIATIONS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
