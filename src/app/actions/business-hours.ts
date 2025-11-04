@@ -4,8 +4,9 @@ import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { logAuditEvent } from '@/app/actions/audit'
-import type { BusinessHours, SpecialHours } from '@/types/business-hours'
+import type { BusinessHours, SpecialHours, ServiceStatus } from '@/types/business-hours'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 
 // Helper to validate time format
 const timeSchema = z.preprocess(
@@ -53,6 +54,14 @@ const specialHoursSchema = z.object({
 type SettingsManagePermissionResult =
   | { error: string }
   | { user: SupabaseUser; admin: ReturnType<typeof createAdminClient> }
+
+const serviceStatusUpdateSchema = z.object({
+  is_enabled: z.boolean(),
+  message: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined) ? null : val,
+    z.union([z.string().max(500), z.null()])
+  ),
+})
 
 async function requireSettingsManagePermission(): Promise<SettingsManagePermissionResult> {
   const supabase = await createClient()
@@ -189,6 +198,140 @@ export async function updateBusinessHours(formData: FormData) {
   } catch (error) {
     console.error('Error updating business hours:', error)
     return { error: 'Failed to update business hours' }
+  }
+}
+
+export async function getServiceStatuses(serviceCodes?: string[]): Promise<{ data?: ServiceStatus[], error?: string }> {
+  try {
+    const permission = await requireSettingsManagePermission()
+    if ('error' in permission) {
+      return { error: permission.error }
+    }
+
+    const { admin } = permission
+
+    let query = admin.from('service_statuses').select('*').order('display_name', { ascending: true })
+
+    if (serviceCodes && serviceCodes.length > 0) {
+      query = query.in('service_code', serviceCodes)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+
+    return { data: (data || []) as ServiceStatus[] }
+  } catch (error) {
+    console.error('Error fetching service statuses:', error)
+    return { error: 'Failed to fetch service statuses' }
+  }
+}
+
+export async function updateServiceStatus(
+  serviceCode: string,
+  payload: { is_enabled: boolean; message?: string | null }
+) {
+  try {
+    const permission = await requireSettingsManagePermission()
+    if ('error' in permission) {
+      return { error: permission.error }
+    }
+
+    const { user, admin } = permission
+
+    const validationResult = serviceStatusUpdateSchema.safeParse(payload)
+    if (!validationResult.success) {
+      return { error: validationResult.error.errors[0]?.message || 'Invalid service status data' }
+    }
+
+    const { data: existing, error: fetchError } = await admin
+      .from('service_statuses')
+      .select('*')
+      .eq('service_code', serviceCode)
+      .single()
+
+    if (fetchError) {
+      console.error('Failed to load service status:', fetchError)
+      return { error: 'Service status not found' }
+    }
+
+    const updatePayload = {
+      is_enabled: validationResult.data.is_enabled,
+      message: validationResult.data.message,
+      updated_by: user.id,
+      updated_at: new Date().toISOString(),
+    }
+
+    const { data: updated, error: updateError } = await admin
+      .from('service_statuses')
+      .update(updatePayload)
+      .eq('service_code', serviceCode)
+      .select()
+      .single()
+
+    if (updateError) {
+      console.error('Service status update error:', updateError)
+      return { error: 'Failed to update service status' }
+    }
+
+    const todayIso = getTodayIsoDate()
+
+    if (serviceCode === 'sunday_lunch') {
+      if (!validationResult.data.is_enabled) {
+        // Immediately mark upcoming Sunday lunch slots inactive
+        const { error: slotError } = await admin
+          .from('service_slots')
+          .update({
+            is_active: false,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('booking_type', 'sunday_lunch')
+          .gte('service_date', todayIso)
+
+        if (slotError) {
+          console.error('Failed to deactivate Sunday lunch service slots:', slotError)
+        }
+      } else {
+        // Re-activate existing Sunday lunch slots and trigger regeneration
+        const { error: reactivateError } = await admin
+          .from('service_slots')
+          .update({
+            is_active: true,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('booking_type', 'sunday_lunch')
+          .gte('service_date', todayIso)
+
+        if (reactivateError) {
+          console.error('Failed to reactivate Sunday lunch service slots:', reactivateError)
+        }
+
+        const { error: regenError } = await admin.rpc('auto_generate_weekly_slots')
+        if (regenError) {
+          console.error('Failed to regenerate service slots after enabling Sunday lunch:', regenError)
+        }
+      }
+    }
+
+    await logAuditEvent({
+      user_id: user.id,
+      ...(user.email && { user_email: user.email }),
+      operation_type: 'update',
+      resource_type: 'service_status',
+      resource_id: serviceCode,
+      operation_status: 'success',
+      old_values: { is_enabled: existing?.is_enabled, message: existing?.message },
+      new_values: { is_enabled: updated.is_enabled, message: updated.message },
+    })
+
+    revalidatePath('/settings/business-hours')
+    revalidatePath('/api/business/hours')
+    revalidatePath('/api/table-bookings/availability')
+    revalidatePath('/api/table-bookings/menu/sunday-lunch')
+
+    return { success: true, data: updated }
+  } catch (error) {
+    console.error('Error updating service status:', error)
+    return { error: 'Failed to update service status' }
   }
 }
 

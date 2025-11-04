@@ -2,6 +2,8 @@ import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { BusinessHoursManager } from './BusinessHoursManager'
 import { SpecialHoursManager } from './SpecialHoursManager'
+import { ServiceStatusManager } from './ServiceStatusManager'
+import { SpecialHoursCalendar } from './SpecialHoursCalendar'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
@@ -29,6 +31,14 @@ export default async function BusinessHoursPage() {
             </Suspense>
           </Card>
         </Section>
+
+        <Suspense fallback={<Skeleton className="h-52" />}>
+          <ServiceStatusManager canManage={canManage} />
+        </Suspense>
+
+        <Suspense fallback={<Skeleton className="h-72" />}>
+          <SpecialHoursCalendar canManage={canManage} />
+        </Suspense>
 
         <Section title="Special Hours & Holidays">
           <Card>
