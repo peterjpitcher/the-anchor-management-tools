@@ -1,6 +1,6 @@
 // Service Worker for Anchor Management Tools
-const CACHE_NAME = 'anchor-tools-v1';
-const RUNTIME_CACHE = 'anchor-tools-runtime';
+const CACHE_NAME = 'anchor-tools-v2';
+const RUNTIME_CACHE = 'anchor-tools-runtime-v2';
 
 // Files to cache on install
 const STATIC_CACHE_URLS = [
@@ -71,6 +71,28 @@ self.addEventListener('fetch', (event) => {
           }
         );
       })
+    );
+    return;
+  }
+
+  // Next.js internals - network first to avoid stale manifests/chunks
+  if (url.origin === self.location.origin && url.pathname.startsWith('/_next/')) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (
+            response &&
+            response.status === 200 &&
+            response.type === 'basic'
+          ) {
+            const responseToCache = response.clone();
+            caches.open(RUNTIME_CACHE).then((cache) => {
+              cache.put(request, responseToCache);
+            });
+          }
+          return response;
+        })
+        .catch(() => caches.match(request))
     );
     return;
   }
