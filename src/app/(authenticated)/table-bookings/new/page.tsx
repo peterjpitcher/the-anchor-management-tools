@@ -7,7 +7,7 @@ import { usePermissions } from '@/contexts/PermissionContext';
 import { format, addDays } from 'date-fns';
 import { createTableBooking } from '@/app/actions/table-bookings';
 import { checkAvailability } from '@/app/actions/table-booking-availability';
-import { generatePhoneVariants } from '@/lib/utils';
+import { generatePhoneVariants, formatPhoneForStorage } from '@/lib/utils';
 import Link from 'next/link';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 // New UI components
@@ -338,19 +338,39 @@ export default function NewTableBookingPage() {
 
   async function searchCustomer() {
     try {
-      const phoneVariants = generatePhoneVariants(phoneNumber);
-      const { data } = await supabase
+      const standardizedPhone = formatPhoneForStorage(phoneNumber);
+      const phoneVariants = Array.from(
+        new Set([
+          ...generatePhoneVariants(standardizedPhone),
+          standardizedPhone,
+        ])
+      );
+      const orConditions = [
+        ...phoneVariants.map((v) => `mobile_number.eq.${v}`),
+        `mobile_e164.eq.${standardizedPhone}`,
+      ];
+
+      const { data, error } = await supabase
         .from('customers')
         .select('*')
-        .or(phoneVariants.map(v => `mobile_number.eq.${v}`).join(','))
-        .single();
-        
-      if (data) {
-        setExistingCustomer(data);
-        setFirstName((data as any).first_name);
-        setLastName((data as any).last_name);
-        setEmail((data as any).email || '');
-        setSmsOptIn((data as any).sms_opt_in);
+        .or(orConditions.join(','))
+        .order('created_at', { ascending: true })
+        .limit(1);
+
+      if (error) {
+        console.error('Customer lookup error:', error);
+        setExistingCustomer(null);
+        return;
+      }
+
+      const match = Array.isArray(data) ? data[0] : data;
+
+      if (match) {
+        setExistingCustomer(match);
+        setFirstName((match as any).first_name);
+        setLastName((match as any).last_name);
+        setEmail((match as any).email || '');
+        setSmsOptIn((match as any).sms_opt_in);
       }
     } catch (err) {
       // No existing customer found
