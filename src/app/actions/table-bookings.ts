@@ -223,12 +223,24 @@ async function findOrCreateCustomer(
   const standardizedPhone = formatPhoneForStorage(customerData.mobile_number);
   const phoneVariants = generatePhoneVariants(standardizedPhone);
   const normalizedEmail = customerData.email ? customerData.email.toLowerCase() : undefined;
+  const searchConditions = [
+    ...phoneVariants.map((v) => `mobile_number.eq.${v}`),
+    `mobile_e164.eq.${standardizedPhone}`,
+  ];
 
-  const { data: existingCustomer } = await supabase
+  const { data: existingMatches, error: existingLookupError } = await supabase
     .from('customers')
     .select('*')
-    .or(phoneVariants.map(v => `mobile_number.eq.${v}`).join(','))
-    .single();
+    .or(searchConditions.join(','))
+    .order('created_at', { ascending: true })
+    .limit(1);
+
+  if (existingLookupError) {
+    console.error('Customer lookup error during table booking:', existingLookupError);
+    throw new Error('Failed to find customer');
+  }
+
+  const existingCustomer = (existingMatches?.[0] ?? null) as any | null;
 
   if (existingCustomer) {
     const updates: Record<string, unknown> = {};
@@ -254,10 +266,21 @@ async function findOrCreateCustomer(
     }
 
     if (Object.keys(updates).length > 0) {
-      await supabase
+      const { data: updatedCustomer, error: updateError } = await supabase
         .from('customers')
         .update(updates)
-        .eq('id', existingCustomer.id);
+        .eq('id', existingCustomer.id)
+        .select()
+        .single();
+
+      if (updateError) {
+        console.error('Failed to update existing customer from table booking:', updateError);
+        return { ...existingCustomer, ...updates } as typeof existingCustomer;
+      }
+
+      if (updatedCustomer) {
+        return updatedCustomer;
+      }
 
       return { ...existingCustomer, ...updates } as typeof existingCustomer;
     }
@@ -284,6 +307,24 @@ async function findOrCreateCustomer(
     .single();
 
   if (error) {
+    if (error.code === '23505' && error.message?.includes('idx_customers_mobile_e164')) {
+      const { data: existingByPhone, error: fetchExistingError } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('mobile_e164', standardizedPhone)
+        .order('created_at', { ascending: true })
+        .limit(1);
+
+      if (fetchExistingError) {
+        console.error('Failed to fetch customer after duplicate detected:', fetchExistingError);
+      }
+
+      const duplicateCustomer = existingByPhone?.[0];
+      if (duplicateCustomer) {
+        return duplicateCustomer;
+      }
+    }
+
     console.error('Failed to create customer from table booking:', error);
     throw new Error('Failed to create customer');
   }
