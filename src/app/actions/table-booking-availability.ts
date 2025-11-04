@@ -44,6 +44,8 @@ export async function checkAvailability(
     const bookingDate = new Date(date);
     const dayOfWeek = bookingDate.getDay();
 
+    let overrideNotes: string | null = null;
+
     if (bookingType === 'sunday_lunch') {
       const { data: serviceStatus } = await supabase
         .from('service_statuses')
@@ -51,7 +53,26 @@ export async function checkAvailability(
         .eq('service_code', 'sunday_lunch')
         .single();
 
-      if (serviceStatus && serviceStatus.is_enabled === false) {
+      const { data: overrideRows } = await supabase
+        .from('service_status_overrides')
+        .select('is_enabled, message, start_date, end_date')
+        .eq('service_code', 'sunday_lunch')
+        .lte('start_date', date)
+        .gte('end_date', date)
+        .order('start_date', { ascending: false })
+        .limit(1);
+
+      const override = overrideRows && overrideRows.length > 0 ? overrideRows[0] : null;
+
+      let sundayLunchEnabled = serviceStatus ? serviceStatus.is_enabled !== false : true;
+      let sundayLunchMessage = serviceStatus?.message || null;
+
+      if (override) {
+        sundayLunchEnabled = override.is_enabled;
+        sundayLunchMessage = override.message || sundayLunchMessage;
+      }
+
+      if (!sundayLunchEnabled) {
         return {
           data: {
             available: false,
@@ -61,10 +82,12 @@ export async function checkAvailability(
               closes: '00:00',
               source: 'business_hours',
             },
-            special_notes: serviceStatus.message || 'Sunday lunch bookings are currently unavailable.',
+            special_notes: sundayLunchMessage || 'Sunday lunch bookings are currently unavailable.',
           },
         };
       }
+
+      overrideNotes = override?.message || null;
     }
     
     // Get business hours for the day
@@ -216,7 +239,7 @@ export async function checkAvailability(
           closes: activeHours.kitchen_closes,
           source: specialHours ? 'special_hours' : 'business_hours',
         },
-        special_notes: activeHours.note,
+        special_notes: overrideNotes || activeHours.note,
       }
     };
   } catch (error) {

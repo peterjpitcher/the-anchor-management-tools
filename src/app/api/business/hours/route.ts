@@ -61,6 +61,23 @@ export async function GET(_request: NextRequest) {
       console.error('Service status error:', serviceStatusError);
     }
 
+    let serviceStatusOverrides: any[] = [];
+    try {
+      const { data, error } = await supabase
+        .from('service_status_overrides')
+        .select('service_code, start_date, end_date, is_enabled, message, updated_at, created_by')
+        .gte('end_date', format(today, 'yyyy-MM-dd'))
+        .order('start_date', { ascending: true });
+
+      if (error) {
+        console.error('Service status overrides query failed:', error);
+      } else {
+        serviceStatusOverrides = data || [];
+      }
+    } catch (serviceOverridesError) {
+      console.error('Service status overrides error:', serviceOverridesError);
+    }
+
     // Get today's events for capacity information
     const todayStr = format(today, 'yyyy-MM-dd');
     const { data: todayEvents } = await supabase
@@ -127,7 +144,26 @@ export async function GET(_request: NextRequest) {
     {}
   );
 
+  const serviceOverrides = serviceStatusOverrides.reduce(
+    (acc: Record<string, Array<{ startDate: string; endDate: string; isEnabled: boolean; message: string | null; updatedAt: string; createdBy?: string }>>, override: any) => {
+      if (!acc[override.service_code]) {
+        acc[override.service_code] = [];
+      }
+      acc[override.service_code].push({
+        startDate: override.start_date,
+        endDate: override.end_date,
+        isEnabled: override.is_enabled,
+        message: override.message,
+        updatedAt: override.updated_at,
+        createdBy: override.created_by,
+      });
+      return acc;
+    },
+    {}
+  );
+
   const sundayLunchStatus = serviceStatus['sunday_lunch'];
+  const sundayOverrides = serviceOverrides['sunday_lunch'] || [];
   const sundayLunchEnabled = sundayLunchStatus ? sundayLunchStatus.isEnabled : true;
 
   // Calculate current status in London timezone
@@ -201,6 +237,17 @@ export async function GET(_request: NextRequest) {
 
   // Calculate today's information
   const todayHoursData = todaySpecial || (regularHours?.find(h => h.day_of_week === currentDay));
+  const todaysSundayOverride = sundayOverrides.find(
+    (override: any) =>
+      override.startDate <= todayDate && override.endDate >= todayDate
+  );
+  const sundayLunchEnabledToday =
+    todaysSundayOverride && typeof todaysSundayOverride.isEnabled === 'boolean'
+      ? todaysSundayOverride.isEnabled
+      : sundayLunchEnabled;
+  const sundayLunchMessage =
+    todaysSundayOverride?.message || sundayLunchStatus?.message || null;
+
   const todayInfo = {
     date: todayDate,
     dayName: currentDayName,
@@ -299,13 +346,13 @@ export async function GET(_request: NextRequest) {
   };
 
   // Sunday lunch info
-  const sundayInfo = sundayLunchEnabled
+  const sundayInfo = currentDay === 0
     ? {
-        available: sundayLunchEnabled,
-        slots: ['12:00', '12:30', '13:00', '13:30', '14:00'],
+        available: sundayLunchEnabledToday,
+        slots: sundayLunchEnabledToday ? ['12:00', '12:30', '13:00', '13:30', '14:00'] : [],
         bookingRequired: true,
         lastOrderTime: '14:00',
-        message: sundayLunchStatus?.message || null,
+        message: sundayLunchMessage,
       }
     : null;
 
@@ -316,6 +363,7 @@ export async function GET(_request: NextRequest) {
       regularHours: formattedRegularHours,
       specialHours: formattedSpecialHours,
       serviceStatus,
+      serviceOverrides,
       currentStatus: {
         ...currentStatus,
         services,

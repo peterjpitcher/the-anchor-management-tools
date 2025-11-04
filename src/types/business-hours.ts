@@ -34,6 +34,18 @@ export interface ServiceStatus {
   updated_at: string
 }
 
+export interface ServiceStatusOverride {
+  id: string
+  service_code: string
+  start_date: string
+  end_date: string
+  is_enabled: boolean
+  message: string | null
+  created_by?: string | null
+  created_at: string
+  updated_at: string
+}
+
 export const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 export const DAY_ABBREVIATIONS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']

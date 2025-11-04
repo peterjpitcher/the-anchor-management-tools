@@ -117,25 +117,45 @@ export async function addBookingMenuSelections(
 export async function getSundayLunchMenu(date?: string) {
   try {
     const supabase = await createClient();
-    
+
+    // Determine booking date (defaults to next Sunday)
+    const bookingDate = date ? new Date(date) : getNextSunday();
+    const bookingDateIso = bookingDate.toISOString().split('T')[0];
+
+    // Check if date is a Sunday
+    if (bookingDate.getDay() !== 0) {
+      return { error: 'Sunday lunch menu only available on Sundays' };
+    }
+
     const { data: serviceStatus } = await supabase
       .from('service_statuses')
       .select('is_enabled, message')
       .eq('service_code', 'sunday_lunch')
       .single();
 
-    if (serviceStatus && serviceStatus.is_enabled === false) {
-      return {
-        error: serviceStatus.message || 'Sunday lunch bookings are currently unavailable.',
-      };
+    const { data: overrideRows } = await supabase
+      .from('service_status_overrides')
+      .select('is_enabled, message, start_date, end_date')
+      .eq('service_code', 'sunday_lunch')
+      .lte('start_date', bookingDateIso)
+      .gte('end_date', bookingDateIso)
+      .order('start_date', { ascending: false })
+      .limit(1);
+
+    const override = overrideRows && overrideRows.length > 0 ? overrideRows[0] : null;
+
+    let sundayLunchEnabled = serviceStatus ? serviceStatus.is_enabled !== false : true;
+    let sundayLunchMessage = serviceStatus?.message || null;
+
+    if (override) {
+      sundayLunchEnabled = override.is_enabled;
+      sundayLunchMessage = override.message || sundayLunchMessage;
     }
-    
-    // Check if date is a Sunday
-    if (date) {
-      const dayOfWeek = new Date(date).getDay();
-      if (dayOfWeek !== 0) {
-        return { error: 'Sunday lunch menu only available on Sundays' };
-      }
+
+    if (!sundayLunchEnabled) {
+      return {
+        error: sundayLunchMessage || 'Sunday lunch bookings are currently unavailable.',
+      };
     }
     
     // Fetch active menu dishes assigned to Sunday lunch menu
@@ -162,7 +182,6 @@ export async function getSundayLunchMenu(date?: string) {
     const extraSides = sides.filter(item => !item.is_default_side && Number(item.selling_price ?? 0) > 0);
     
     // Calculate cutoff time for ordering (1pm Saturday)
-    const bookingDate = date ? new Date(date) : getNextSunday();
     const cutoffDate = new Date(bookingDate);
     cutoffDate.setDate(cutoffDate.getDate() - 1); // Saturday
     cutoffDate.setHours(13, 0, 0, 0); // 1pm

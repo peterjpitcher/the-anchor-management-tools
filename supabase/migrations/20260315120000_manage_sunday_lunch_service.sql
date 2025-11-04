@@ -45,6 +45,46 @@ VALUES (
 ON CONFLICT (service_code) DO NOTHING;
 
 -- ========================================
+-- 1B. SERVICE STATUS OVERRIDES TABLE
+-- ========================================
+CREATE TABLE IF NOT EXISTS service_status_overrides (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  service_code TEXT NOT NULL REFERENCES service_statuses(service_code) ON DELETE CASCADE,
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  is_enabled BOOLEAN NOT NULL DEFAULT false,
+  message TEXT,
+  created_by UUID,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  CONSTRAINT service_status_overrides_date_check CHECK (end_date >= start_date),
+  UNIQUE (service_code, start_date, end_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_service_status_overrides_service_date
+  ON service_status_overrides(service_code, start_date, end_date);
+
+ALTER TABLE service_status_overrides ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'service_status_overrides'
+      AND policyname = 'Service role manage service status overrides'
+  ) THEN
+    CREATE POLICY "Service role manage service status overrides"
+      ON service_status_overrides
+      FOR ALL
+      USING (auth.role() = 'service_role')
+      WITH CHECK (auth.role() = 'service_role');
+  END IF;
+END
+$$;
+
+-- ========================================
 -- 2. UPDATE SLOT GENERATION FUNCTIONS TO RESPECT SERVICE STATUS
 -- ========================================
 CREATE OR REPLACE FUNCTION generate_service_slots_for_period(
@@ -61,6 +101,8 @@ DECLARE
   v_day_of_week INTEGER;
   v_slots_created INTEGER := 0;
   v_sunday_enabled BOOLEAN := true;
+  v_override_enabled BOOLEAN;
+  v_effective_enabled BOOLEAN;
 BEGIN
   -- Determine if Sunday lunch service is currently enabled
   SELECT COALESCE(is_enabled, true)
@@ -70,12 +112,29 @@ BEGIN
 
   v_end_date := start_date + days_ahead;
   v_current_date := start_date;
-  
+    
   WHILE v_current_date <= v_end_date LOOP
     v_day_of_week := EXTRACT(DOW FROM v_current_date);
+    v_override_enabled := NULL;
+    v_effective_enabled := v_sunday_enabled;
+    
+    IF v_day_of_week = 0 THEN
+      SELECT is_enabled
+        INTO v_override_enabled
+      FROM service_status_overrides
+      WHERE service_code = 'sunday_lunch'
+        AND start_date <= v_current_date
+        AND end_date >= v_current_date
+      ORDER BY start_date DESC, end_date DESC
+      LIMIT 1;
+      
+      IF v_override_enabled IS NOT NULL THEN
+        v_effective_enabled := v_override_enabled;
+      END IF;
+    END IF;
     
     -- Sunday lunch slots (Sunday = 0)
-    IF v_day_of_week = 0 AND v_sunday_enabled THEN
+    IF v_day_of_week = 0 AND v_effective_enabled THEN
       -- Early Sunday lunch sitting
       INSERT INTO service_slots (
         service_date,
@@ -177,6 +236,8 @@ DECLARE
   v_config RECORD;
   v_slots_created INTEGER := 0;
   v_sunday_enabled BOOLEAN := true;
+  v_override_enabled BOOLEAN;
+  v_effective_enabled BOOLEAN;
 BEGIN
   -- Determine if Sunday lunch service is currently enabled
   SELECT COALESCE(is_enabled, true)
@@ -186,9 +247,26 @@ BEGIN
 
   v_end_date := start_date + days_ahead;
   v_current_date := start_date;
-  
+    
   WHILE v_current_date <= v_end_date LOOP
     v_day_of_week := EXTRACT(DOW FROM v_current_date);
+    v_override_enabled := NULL;
+    v_effective_enabled := v_sunday_enabled;
+    
+    IF v_day_of_week = 0 THEN
+      SELECT is_enabled
+        INTO v_override_enabled
+      FROM service_status_overrides
+      WHERE service_code = 'sunday_lunch'
+        AND start_date <= v_current_date
+        AND end_date >= v_current_date
+      ORDER BY start_date DESC, end_date DESC
+      LIMIT 1;
+      
+      IF v_override_enabled IS NOT NULL THEN
+        v_effective_enabled := v_override_enabled;
+      END IF;
+    END IF;
     
     -- Get all configs for this day of week
     FOR v_config IN 
@@ -197,7 +275,7 @@ BEGIN
       AND is_active = true
     LOOP
       -- Skip Sunday lunch templates when service is disabled
-      IF NOT v_sunday_enabled AND v_config.booking_type = 'sunday_lunch'::table_booking_type THEN
+      IF v_config.booking_type = 'sunday_lunch'::table_booking_type AND NOT v_effective_enabled THEN
         CONTINUE;
       END IF;
 

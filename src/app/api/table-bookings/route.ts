@@ -101,9 +101,28 @@ export async function POST(request: NextRequest) {
           .eq('service_code', 'sunday_lunch')
           .single();
 
-        if (sundayStatus && sundayStatus.is_enabled === false) {
+        const { data: overrideRows } = await supabase
+          .from('service_status_overrides')
+          .select('is_enabled, message, start_date, end_date')
+          .eq('service_code', 'sunday_lunch')
+          .lte('start_date', validatedData.date)
+          .gte('end_date', validatedData.date)
+          .order('start_date', { ascending: false })
+          .limit(1);
+
+        const override = overrideRows && overrideRows.length > 0 ? overrideRows[0] : null;
+
+        let sundayLunchEnabled = sundayStatus ? sundayStatus.is_enabled !== false : true;
+        let sundayLunchMessage = sundayStatus?.message || null;
+
+        if (override) {
+          sundayLunchEnabled = override.is_enabled;
+          sundayLunchMessage = override.message || sundayLunchMessage;
+        }
+
+        if (!sundayLunchEnabled) {
           return createErrorResponse(
-            sundayStatus.message || 'Sunday lunch bookings are currently unavailable.',
+            sundayLunchMessage || 'Sunday lunch bookings are currently unavailable.',
             'SERVICE_UNAVAILABLE',
             400
           );

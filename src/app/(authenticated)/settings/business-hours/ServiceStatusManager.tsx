@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import toast from 'react-hot-toast'
+import { ServiceStatusOverridesManager } from './ServiceStatusOverridesManager'
 
 interface ServiceStatusManagerProps {
   canManage: boolean
@@ -107,11 +108,12 @@ export function ServiceStatusManager({ canManage }: ServiceStatusManagerProps) {
   }
 
   return (
-    <Section
-      title="Service Availability"
-      description="Control whether specific services accept bookings while keeping the kitchen open for regular diners."
-    >
-      <Card padding="lg" className="space-y-6">
+    <div className="space-y-6">
+      <Section
+        title="Service Availability"
+        description="Control whether specific services accept bookings while keeping the kitchen open for regular diners."
+      >
+        <Card padding="lg" className="space-y-6">
         {statuses.length === 0 && (
           <Alert variant="info">
             No managed services found. Contact an administrator if this is unexpected.
@@ -183,7 +185,12 @@ export function ServiceStatusManager({ canManage }: ServiceStatusManagerProps) {
             </div>
           )
         })}
-      </Card>
-    </Section>
+        </Card>
+      </Section>
+      <ServiceStatusOverridesManager
+        serviceCode="sunday_lunch"
+        canManage={canManage}
+      />
+    </div>
   )
 }
