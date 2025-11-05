@@ -19,6 +19,7 @@ import { TrashIcon } from '@heroicons/react/24/outline'
 interface ServiceStatusOverridesManagerProps {
   serviceCode: string
   canManage: boolean
+  initialOverrides?: ServiceStatusOverride[]
 }
 
 interface OverrideFormState {
@@ -36,12 +37,17 @@ const INITIAL_FORM: OverrideFormState = {
 export function ServiceStatusOverridesManager({
   serviceCode,
   canManage,
+  initialOverrides = [],
 }: ServiceStatusOverridesManagerProps) {
-  const [overrides, setOverrides] = useState<ServiceStatusOverride[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [overrides, setOverrides] = useState<ServiceStatusOverride[]>(initialOverrides)
+  const [isLoading, setIsLoading] = useState(false)
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [formState, setFormState] = useState<OverrideFormState>(INITIAL_FORM)
   const [, startTransition] = useTransition()
+
+  useEffect(() => {
+    setOverrides(initialOverrides)
+  }, [initialOverrides])
 
   useEffect(() => {
     void loadOverrides()
@@ -99,6 +105,9 @@ export function ServiceStatusOverridesManager({
       toast.success('Sunday lunch blocked for the selected dates')
       setFormState(INITIAL_FORM)
       await loadOverrides()
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('service-status-overrides-updated'))
+      }
       setPendingId(null)
     })
   }
@@ -119,6 +128,9 @@ export function ServiceStatusOverridesManager({
 
       toast.success('Override removed')
       await loadOverrides()
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('service-status-overrides-updated'))
+      }
       setPendingId(null)
     })
   }

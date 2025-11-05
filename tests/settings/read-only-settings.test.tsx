@@ -1,11 +1,9 @@
 import { describe, beforeEach, it, expect, vi } from 'vitest'
-import type { Mock } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { BusinessHoursManager } from '@/app/(authenticated)/settings/business-hours/BusinessHoursManager'
 import CustomerLabelsClient from '@/app/(authenticated)/settings/customer-labels/CustomerLabelsClient'
 import type { BusinessHours } from '@/types/business-hours'
 import type { CustomerLabel } from '@/app/actions/customer-labels'
-import * as businessHoursActions from '@/app/actions/business-hours'
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
@@ -62,17 +60,15 @@ describe('Settings read-only behaviour', () => {
       kitchen_opens: null,
       kitchen_closes: null,
       is_closed: false,
+      is_kitchen_closed: false,
       created_at: '',
       updated_at: '',
     }))
 
-    const getBusinessHoursMock = businessHoursActions
-      .getBusinessHours as unknown as Mock
-    getBusinessHoursMock.mockResolvedValue({ data: mockHours })
+    const { container } = render(
+      <BusinessHoursManager canManage={false} initialHours={mockHours} />,
+    )
 
-    const { container } = render(<BusinessHoursManager canManage={false} />)
-
-    await waitFor(() => expect(getBusinessHoursMock).toHaveBeenCalled())
     await screen.findByText('Monday')
 
     const timeInputs = container.querySelectorAll('input[type="time"]')

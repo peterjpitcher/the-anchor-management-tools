@@ -1,14 +1,18 @@
-import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { BusinessHoursManager } from './BusinessHoursManager'
 import { SpecialHoursManager } from './SpecialHoursManager'
-import { ServiceStatusManager } from './ServiceStatusManager'
+import { ServiceStatusOverridesManager } from './ServiceStatusOverridesManager'
 import { SpecialHoursCalendar } from './SpecialHoursCalendar'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
-import { Skeleton } from '@/components/ui-v2/feedback/Skeleton'
 import { checkUserPermission } from '@/app/actions/rbac'
+import {
+  getBusinessHours,
+  getSpecialHours,
+  getServiceStatusOverrides,
+} from '@/app/actions/business-hours'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
 
 export default async function BusinessHoursPage() {
   const canManage = await checkUserPermission('settings', 'manage')
@@ -16,6 +20,23 @@ export default async function BusinessHoursPage() {
   if (!canManage) {
     redirect('/unauthorized')
   }
+
+  const [
+    businessHoursResult,
+    serviceStatusOverridesResult,
+    specialHoursResult,
+  ] = await Promise.all([
+    getBusinessHours(),
+    getServiceStatusOverrides('sunday_lunch'),
+    getSpecialHours(),
+  ])
+
+  const businessHours = businessHoursResult.data ?? []
+  const businessHoursError = businessHoursResult.error
+  const serviceStatusOverrides = serviceStatusOverridesResult.data ?? []
+  const serviceStatusOverridesError = serviceStatusOverridesResult.error
+  const specialHours = specialHoursResult.data ?? []
+  const specialHoursError = specialHoursResult.error
 
   return (
     <PageLayout
@@ -26,25 +47,63 @@ export default async function BusinessHoursPage() {
       <div className="space-y-6">
         <Section title="Regular Hours">
           <Card>
-            <Suspense fallback={<Skeleton className="h-64" />}>
-              <BusinessHoursManager canManage={canManage} />
-            </Suspense>
+            {businessHoursError ? (
+              <div className="p-4">
+                <Alert variant="error">
+                  {businessHoursError}
+                </Alert>
+              </div>
+            ) : (
+              <BusinessHoursManager
+                canManage={canManage}
+                initialHours={businessHours}
+              />
+            )}
           </Card>
         </Section>
 
-        <Suspense fallback={<Skeleton className="h-52" />}>
-          <ServiceStatusManager canManage={canManage} />
-        </Suspense>
+        {serviceStatusOverridesError ? (
+          <Section title="Sunday Lunch Exceptions">
+            <Card padding="lg">
+              <Alert variant="error">
+                {serviceStatusOverridesError || 'Failed to load Sunday lunch exceptions.'}
+              </Alert>
+            </Card>
+          </Section>
+        ) : (
+          <ServiceStatusOverridesManager
+            serviceCode="sunday_lunch"
+            canManage={canManage}
+            initialOverrides={serviceStatusOverrides}
+          />
+        )}
 
-        <Suspense fallback={<Skeleton className="h-72" />}>
-          <SpecialHoursCalendar canManage={canManage} />
-        </Suspense>
+        {specialHoursError ? (
+          <Section title="Special Hours & Holidays Calendar">
+            <Card padding="lg">
+              <Alert variant="error">{specialHoursError}</Alert>
+            </Card>
+          </Section>
+        ) : (
+          <SpecialHoursCalendar
+            canManage={canManage}
+            initialSpecialHours={specialHours}
+            initialOverrides={serviceStatusOverrides}
+          />
+        )}
 
         <Section title="Special Hours & Holidays">
           <Card>
-            <Suspense fallback={<Skeleton className="h-64" />}>
-              <SpecialHoursManager canManage={canManage} />
-            </Suspense>
+            {specialHoursError ? (
+              <div className="p-4">
+                <Alert variant="error">{specialHoursError}</Alert>
+              </div>
+            ) : (
+              <SpecialHoursManager
+                canManage={canManage}
+                initialSpecialHours={specialHours}
+              />
+            )}
           </Card>
         </Section>
       </div>

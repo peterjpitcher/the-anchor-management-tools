@@ -86,8 +86,11 @@ export async function markMessagesAsRead(customerId: string) {
 }
 
 export async function sendSmsReply(customerId: string, message: string) {
-  const canManage = await checkUserPermission('messages', 'manage')
-  if (!canManage) {
+  const hasSendPermission =
+    (await checkUserPermission('messages', 'send')) ||
+    (await checkUserPermission('messages', 'manage'))
+
+  if (!hasSendPermission) {
     return { error: 'Insufficient permissions' }
   }
 

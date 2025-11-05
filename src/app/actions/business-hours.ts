@@ -24,17 +24,110 @@ const timeSchema = z.preprocess(
   ])
 )
 
+const toMinutes = (value: string) => {
+  const [hours, minutes] = value.split(':').map(Number)
+  return hours * 60 + minutes
+}
+
 // Validation schema for business hours
 const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 
-const businessHoursSchema = z.object({
-  day_of_week: z.number().min(0).max(6),
-  opens: timeSchema,
-  closes: timeSchema,
-  kitchen_opens: timeSchema,
-  kitchen_closes: timeSchema,
-  is_closed: z.boolean()
-})
+const businessHoursSchema = z
+  .object({
+    day_of_week: z.number().min(0).max(6),
+    opens: timeSchema,
+    closes: timeSchema,
+    kitchen_opens: timeSchema,
+    kitchen_closes: timeSchema,
+    is_closed: z.boolean(),
+    is_kitchen_closed: z.boolean(),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.is_closed) {
+      if (!value.opens) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Opening time is required when the venue is open',
+          path: ['opens'],
+        })
+      }
+
+      if (!value.closes) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Closing time is required when the venue is open',
+          path: ['closes'],
+        })
+      }
+
+      if (value.opens && value.closes) {
+        const opens = toMinutes(value.opens)
+        const closes = toMinutes(value.closes)
+
+        if (closes <= opens) {
+          ctx.addIssue({
+            code: 'custom',
+            message: 'Closing time must be after opening time',
+            path: ['closes'],
+          })
+        }
+      }
+    }
+
+    if (value.is_closed) {
+      if (value.opens !== null || value.closes !== null) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Opening hours must be blank when the venue is marked closed',
+          path: ['opens'],
+        })
+      }
+      if (value.kitchen_opens !== null || value.kitchen_closes !== null) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Kitchen hours must be blank when the venue is marked closed',
+          path: ['kitchen_opens'],
+        })
+      }
+    }
+
+    if (value.is_kitchen_closed) {
+      if (value.kitchen_opens !== null || value.kitchen_closes !== null) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Kitchen times must be blank when the kitchen is closed',
+          path: ['kitchen_opens'],
+        })
+      }
+    }
+
+    if (!value.is_closed && !value.is_kitchen_closed) {
+      if (value.kitchen_opens && value.kitchen_closes) {
+        const kitchenOpens = toMinutes(value.kitchen_opens)
+        const kitchenCloses = toMinutes(value.kitchen_closes)
+
+        if (kitchenCloses <= kitchenOpens) {
+          ctx.addIssue({
+            code: 'custom',
+            message: 'Kitchen closing time must be after kitchen opening time',
+            path: ['kitchen_closes'],
+          })
+        }
+
+        if (value.opens && value.closes) {
+          const opens = toMinutes(value.opens)
+          const closes = toMinutes(value.closes)
+          if (kitchenOpens < opens || kitchenCloses > closes) {
+            ctx.addIssue({
+              code: 'custom',
+              message: 'Kitchen hours must sit inside the main business hours',
+              path: ['kitchen_opens'],
+            })
+          }
+        }
+      }
+    }
+  })
 
 // Validation schema for special hours
 const specialHoursSchema = z.object({
@@ -165,6 +258,7 @@ export async function updateBusinessHours(formData: FormData) {
         kitchen_opens: formData.get(`kitchen_opens_${dayOfWeek}`) as string || '',
         kitchen_closes: formData.get(`kitchen_closes_${dayOfWeek}`) as string || '',
         is_closed: formData.get(`is_closed_${dayOfWeek}`) === 'true',
+        is_kitchen_closed: formData.get(`is_kitchen_closed_${dayOfWeek}`) === 'true',
       }
 
       const validationResult = businessHoursSchema.safeParse(dayData)
@@ -183,8 +277,9 @@ export async function updateBusinessHours(formData: FormData) {
       ...update,
       opens: update.is_closed ? null : update.opens,
       closes: update.is_closed ? null : update.closes,
-      kitchen_opens: update.is_closed ? null : update.kitchen_opens,
-      kitchen_closes: update.is_closed ? null : update.kitchen_closes,
+      kitchen_opens: update.is_closed || update.is_kitchen_closed ? null : update.kitchen_opens,
+      kitchen_closes: update.is_closed || update.is_kitchen_closed ? null : update.kitchen_closes,
+      is_kitchen_closed: update.is_closed ? true : update.is_kitchen_closed,
       updated_at: new Date().toISOString(),
     }))
 

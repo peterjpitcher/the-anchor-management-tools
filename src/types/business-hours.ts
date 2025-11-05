@@ -6,6 +6,7 @@ export interface BusinessHours {
   kitchen_opens: string | null
   kitchen_closes: string | null
   is_closed: boolean
+  is_kitchen_closed: boolean
   created_at: string
   updated_at: string
 }

@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { getSpecialHours } from '@/app/actions/business-hours'
-import type { SpecialHours } from '@/types/business-hours'
+import { getSpecialHours, getServiceStatusOverrides } from '@/app/actions/business-hours'
+import type { SpecialHours, ServiceStatusOverride } from '@/types/business-hours'
 import {
   addMonths,
   eachDayOfInterval,
@@ -23,6 +23,8 @@ import toast from 'react-hot-toast'
 
 interface SpecialHoursCalendarProps {
   canManage: boolean
+  initialSpecialHours: SpecialHours[]
+  initialOverrides?: ServiceStatusOverride[]
 }
 
 type CalendarDay = {
@@ -31,39 +33,80 @@ type CalendarDay = {
   inCurrentMonth: boolean
   isToday: boolean
   special?: SpecialHours
+  overrides: ServiceStatusOverride[]
 }
 
 const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-export function SpecialHoursCalendar({ canManage }: SpecialHoursCalendarProps) {
+const normalizeSpecialHours = (items: SpecialHours[]) =>
+  items.map((item) => ({
+    ...item,
+    is_kitchen_closed: Boolean(item.is_kitchen_closed),
+  }))
+
+const normalizeOverrides = (items: ServiceStatusOverride[]) =>
+  items.map((item) => ({
+    ...item,
+  }))
+
+export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOverrides = [] }: SpecialHoursCalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()))
-  const [specialHours, setSpecialHours] = useState<SpecialHours[]>([])
-  const [loading, setLoading] = useState(true)
+  const [specialHours, setSpecialHours] = useState<SpecialHours[]>(() => normalizeSpecialHours(initialSpecialHours))
+  const [overrides, setOverrides] = useState<ServiceStatusOverride[]>(() => normalizeOverrides(initialOverrides))
+  const [loading, setLoading] = useState(false)
+  const [hasHydrated, setHasHydrated] = useState(false)
+
+  useEffect(() => {
+    setSpecialHours(normalizeSpecialHours(initialSpecialHours))
+  }, [initialSpecialHours])
+
+  useEffect(() => {
+    setOverrides(normalizeOverrides(initialOverrides))
+  }, [initialOverrides])
 
   const loadMonthData = async (anchorMonth: Date) => {
     setLoading(true)
     const startDate = format(startOfMonth(anchorMonth), 'yyyy-MM-dd')
     const endDate = format(endOfMonth(anchorMonth), 'yyyy-MM-dd')
 
-    const result = await getSpecialHours(startDate, endDate)
-    if (result.data) {
-      setSpecialHours(result.data)
-    } else if (result.error) {
-      toast.error(result.error)
+    const [specialResult, overridesResult] = await Promise.all([
+      getSpecialHours(startDate, endDate),
+      getServiceStatusOverrides('sunday_lunch', startDate, endDate),
+    ])
+
+    if (specialResult.data) {
+      setSpecialHours(normalizeSpecialHours(specialResult.data))
+    } else if (specialResult.error) {
+      toast.error(specialResult.error)
       setSpecialHours([])
+    }
+
+    if (overridesResult.data) {
+      setOverrides(normalizeOverrides(overridesResult.data))
+    } else if (overridesResult.error) {
+      toast.error(overridesResult.error)
+      setOverrides([])
     }
     setLoading(false)
   }
 
   useEffect(() => {
+    if (!hasHydrated) {
+      setHasHydrated(true)
+      return
+    }
     void loadMonthData(currentMonth)
-  }, [currentMonth])
+  }, [currentMonth, hasHydrated])
 
   useEffect(() => {
     const handler = () => loadMonthData(currentMonth)
     if (typeof window !== 'undefined') {
       window.addEventListener('special-hours-updated', handler)
-      return () => window.removeEventListener('special-hours-updated', handler)
+      window.addEventListener('service-status-overrides-updated', handler)
+      return () => {
+        window.removeEventListener('special-hours-updated', handler)
+        window.removeEventListener('service-status-overrides-updated', handler)
+      }
     }
     return () => {}
   }, [currentMonth])
@@ -76,15 +119,19 @@ export function SpecialHoursCalendar({ canManage }: SpecialHoursCalendarProps) {
     return days.map((day) => {
       const iso = format(day, 'yyyy-MM-dd')
       const special = specialHours.find((entry) => entry.date === iso)
+      const overridesForDay = overrides.filter(
+        (override) => override.start_date <= iso && override.end_date >= iso
+      )
       return {
         date: day,
         iso,
         inCurrentMonth: isSameMonth(day, currentMonth),
         isToday: isToday(day),
         special,
+        overrides: overridesForDay,
       }
     })
-  }, [currentMonth, specialHours])
+  }, [currentMonth, specialHours, overrides])
 
   return (
     <Section
@@ -145,18 +192,36 @@ export function SpecialHoursCalendar({ canManage }: SpecialHoursCalendarProps) {
               const isClosed = hasSpecial && day.special?.is_closed
               const kitchenClosed =
                 hasSpecial && !isClosed && day.special?.is_kitchen_closed
+              const closingOverride = day.overrides.find((override) => override.is_enabled === false)
+              const enablingOverride = day.overrides.find((override) => override.is_enabled === true)
+              const classNames = [
+                'min-h-[88px] rounded-lg border px-2 py-2 text-left transition',
+                day.inCurrentMonth ? 'border-gray-200' : 'border-gray-100 bg-gray-50 text-gray-400',
+                day.isToday ? 'ring-2 ring-primary-500 ring-offset-2' : '',
+                canManage ? 'hover:border-primary-400 hover:shadow-sm' : '',
+              ]
+
+              if (hasSpecial) {
+                if (isClosed) {
+                  classNames.push('bg-red-50 border-red-200')
+                } else if (kitchenClosed) {
+                  classNames.push('bg-amber-50 border-amber-200')
+                } else {
+                  classNames.push('bg-blue-50 border-blue-200')
+                }
+              }
+
+              if (closingOverride) {
+                classNames.push('bg-rose-50 border-rose-200 text-rose-900')
+              } else if (enablingOverride) {
+                classNames.push('bg-emerald-50 border-emerald-200 text-emerald-900')
+              }
 
               return (
                 <button
                   key={day.iso}
                   type="button"
-                  className={[
-                    'min-h-[88px] rounded-lg border px-2 py-2 text-left transition',
-                    day.inCurrentMonth ? 'border-gray-200' : 'border-gray-100 bg-gray-50 text-gray-400',
-                    day.isToday ? 'ring-2 ring-primary-500 ring-offset-2' : '',
-                    hasSpecial ? (isClosed ? 'bg-red-50 border-red-200' : kitchenClosed ? 'bg-amber-50 border-amber-200' : 'bg-blue-50 border-blue-200') : '',
-                    canManage ? 'hover:border-primary-400 hover:shadow-sm' : '',
-                  ].join(' ')}
+                  className={classNames.join(' ')}
                   disabled
                 >
                   <span className="text-sm font-semibold">{format(day.date, 'd')}</span>
@@ -174,6 +239,35 @@ export function SpecialHoursCalendar({ canManage }: SpecialHoursCalendarProps) {
                       {day.special?.note && (
                         <p className="text-gray-500 line-clamp-2">{day.special.note}</p>
                       )}
+                    </div>
+                  )}
+                  {day.overrides.length > 0 && (
+                    <div className="mt-2 space-y-1 text-xs leading-snug">
+                      {day.overrides.map((override) => {
+                        const isRange = override.start_date !== override.end_date
+                        const isStart = override.start_date === day.iso
+                        const isEnd = override.end_date === day.iso
+                        const statusText = override.is_enabled
+                          ? 'Sunday lunch resumes'
+                          : 'Sunday lunch paused'
+                        const statusColor = override.is_enabled ? 'text-emerald-600' : 'text-rose-600'
+                        const rangeLabel =
+                          isRange && isStart
+                            ? `Through ${format(new Date(override.end_date + 'T00:00:00Z'), 'EEE d MMM')}`
+                            : isRange && isEnd
+                            ? `Ends today`
+                            : null
+
+                        return (
+                          <div key={override.id} className="space-y-1">
+                            <p className={`font-medium ${statusColor}`}>{statusText}</p>
+                            {rangeLabel && <p className="text-gray-600">{rangeLabel}</p>}
+                            {override.message && (
+                              <p className="text-gray-600 line-clamp-2">{override.message}</p>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                 </button>
