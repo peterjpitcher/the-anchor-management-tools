@@ -64,7 +64,8 @@ function getPreviewText(conversation: ConversationSummary) {
 export default function MessagesPage() {
   const router = useRouter()
   const { hasPermission } = usePermissions()
-  const canSendMessages = hasPermission('messages', 'manage')
+  const canSendMessages =
+    hasPermission('messages', 'send') || hasPermission('messages', 'manage')
 
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [listLoading, setListLoading] = useState(true)

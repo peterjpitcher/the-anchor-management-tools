@@ -12,29 +12,51 @@ import toast from 'react-hot-toast'
 
 interface SpecialHoursManagerProps {
   canManage: boolean
+  initialSpecialHours: SpecialHours[]
 }
 
-export function SpecialHoursManager({ canManage }: SpecialHoursManagerProps) {
-  const [specialHours, setSpecialHours] = useState<SpecialHours[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+interface SpecialHoursFormState {
+  date: string
+  end_date: string
+  opens: string
+  closes: string
+  kitchen_opens: string
+  kitchen_closes: string
+  is_closed: boolean
+  is_kitchen_closed: boolean
+  note: string
+  isRange: boolean
+}
+
+const INITIAL_FORM_STATE: SpecialHoursFormState = {
+  date: '',
+  end_date: '',
+  opens: '',
+  closes: '',
+  kitchen_opens: '',
+  kitchen_closes: '',
+  is_closed: false,
+  is_kitchen_closed: false,
+  note: '',
+  isRange: false,
+}
+
+const normalizeSpecialHours = (items: SpecialHours[]) =>
+  items.map((item) => ({
+    ...item,
+    is_kitchen_closed: Boolean(item.is_kitchen_closed),
+  }))
+
+export function SpecialHoursManager({ canManage, initialSpecialHours }: SpecialHoursManagerProps) {
+  const [specialHours, setSpecialHours] = useState<SpecialHours[]>(() => normalizeSpecialHours(initialSpecialHours))
+  const [isLoading, setIsLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [formData, setFormData] = useState({
-    date: '',
-    end_date: '',
-    opens: '',
-    closes: '',
-    kitchen_opens: '',
-    kitchen_closes: '',
-    is_closed: false,
-    is_kitchen_closed: false,
-    note: '',
-    isRange: false
-  })
+  const [formData, setFormData] = useState<SpecialHoursFormState>(INITIAL_FORM_STATE)
 
   useEffect(() => {
-    loadSpecialHours()
-  }, [])
+    setSpecialHours(normalizeSpecialHours(initialSpecialHours))
+  }, [initialSpecialHours])
 
   const notifySpecialHoursUpdated = () => {
     if (typeof window !== 'undefined') {
@@ -42,10 +64,11 @@ export function SpecialHoursManager({ canManage }: SpecialHoursManagerProps) {
     }
   }
 
-  const loadSpecialHours = async () => {
+  const refreshSpecialHours = async () => {
+    setIsLoading(true)
     const result = await getSpecialHours()
     if (result.data) {
-      setSpecialHours(result.data)
+      setSpecialHours(normalizeSpecialHours(result.data))
     } else if (result.error) {
       toast.error(result.error)
     }
@@ -53,18 +76,7 @@ export function SpecialHoursManager({ canManage }: SpecialHoursManagerProps) {
   }
 
   const resetForm = () => {
-    setFormData({
-      date: '',
-      end_date: '',
-      opens: '',
-      closes: '',
-      kitchen_opens: '',
-      kitchen_closes: '',
-      is_closed: false,
-      is_kitchen_closed: false,
-      note: '',
-      isRange: false
-    })
+    setFormData(INITIAL_FORM_STATE)
     setEditingId(null)
     setShowForm(false)
   }
@@ -106,7 +118,7 @@ export function SpecialHoursManager({ canManage }: SpecialHoursManagerProps) {
       toast.error(result.error)
     } else {
       toast.success('Special hours deleted successfully')
-      loadSpecialHours()
+      await refreshSpecialHours()
       notifySpecialHoursUpdated()
     }
   }
@@ -146,7 +158,7 @@ export function SpecialHoursManager({ canManage }: SpecialHoursManagerProps) {
         kitchen_opens: businessHours.kitchen_opens || '',
         kitchen_closes: businessHours.kitchen_closes || '',
         is_closed: false,
-        is_kitchen_closed: false
+        is_kitchen_closed: businessHours.is_kitchen_closed || false
       }))
       toast.success(`Pre-filled with ${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dayOfWeek]} hours`)
     }
@@ -246,7 +258,7 @@ export function SpecialHoursManager({ canManage }: SpecialHoursManagerProps) {
 
       toast.success(successMessage)
       resetForm()
-      loadSpecialHours()
+      await refreshSpecialHours()
       notifySpecialHoursUpdated()
     }
   }

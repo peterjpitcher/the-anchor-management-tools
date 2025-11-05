@@ -63,6 +63,7 @@ export interface BusinessHours {
   kitchen_opens?: string | null;
   kitchen_closes?: string | null;
   is_closed: boolean;
+  is_kitchen_closed?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -75,6 +76,7 @@ export interface SpecialHours {
   kitchen_opens?: string | null;
   kitchen_closes?: string | null;
   is_closed: boolean;
+  is_kitchen_closed?: boolean;
   note?: string | null;
   created_at: string;
   updated_at: string;

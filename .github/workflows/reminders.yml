@@ -1,9 +1,7 @@
-name: Daily SMS Reminders
+name: SMS Reminders Manual Trigger
 
 on:
-  schedule:
-    - cron: '5 9 * * *'  # Run at 9 AM UTC daily
-  workflow_dispatch:      # Allow manual triggering
+  workflow_dispatch:
 
 jobs:
   send-reminders:
