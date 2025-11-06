@@ -62,14 +62,14 @@ export default function AddEmployeeAttachmentForm({
             name="attachment_file"
             type="file"
             ref={fileInputRef}
-            accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+            accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.txt"
             required
             className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-l-lg file:border-0 file:text-sm file:font-semibold file:bg-primary-soft file:text-primary hover:file:bg-primary-soft/80 disabled:cursor-not-allowed"
             disabled={!hasCategories}
           />
         </div>
         <p className="mt-2 text-xs text-gray-500">
-          Accepted: PDF, Word, JPG, PNG (max 10&nbsp;MB).
+          Accepted: PDF, Word, JPG, PNG, TXT (max 10&nbsp;MB).
         </p>
         {state?.errors?.attachment_file && (
           <p className="mt-1 text-sm text-red-600">{state.errors.attachment_file}</p>

@@ -420,7 +420,17 @@ const addAttachmentSchema = z.object({
   attachment_file: z.instanceof(File)
     .refine(file => file.size > 0, "A file is required.")
     .refine(file => file.size < 10 * 1024 * 1024, "File size must be less than 10MB.")
-    .refine(file => ['application/pdf', 'image/jpeg', 'image/png', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'].includes(file.type), "Invalid file type. Only PDF, JPG, PNG, and Word documents are allowed."),
+    .refine(
+      file => [
+        'application/pdf',
+        'image/jpeg',
+        'image/png',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'text/plain'
+      ].includes(file.type),
+      "Invalid file type. Only PDF, JPG, PNG, Word documents, and TXT files are allowed."
+    ),
   category_id: z.string().uuid("A valid category must be selected."),
   description: z.string().optional(),
 });
