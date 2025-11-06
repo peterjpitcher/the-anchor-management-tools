@@ -39,7 +39,7 @@ export default function AddEmployeeNoteForm({ employeeId }: AddEmployeeNoteFormP
   }, [state, router])
 
   return (
-    <form action={dispatch} ref={formRef} className="mt-4">
+    <form action={dispatch} ref={formRef}>
       <div>
         <label htmlFor="note_text" className="sr-only">
           Add a note

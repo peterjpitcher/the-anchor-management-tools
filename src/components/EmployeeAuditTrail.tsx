@@ -2,22 +2,44 @@
 
 import { useMemo } from 'react'
 import { formatDateTime } from '@/lib/dateUtils'
-import { ClockIcon, UserIcon } from '@heroicons/react/24/outline'
-import type { AuditLogEntry } from '@/app/actions/employeeDetails'
+import { ClockIcon, UserIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline'
+import type { AuditLogEntry, EmployeeNoteWithAuthor } from '@/app/actions/employeeDetails'
 
 interface EmployeeAuditTrailProps {
   employeeId: string
   employeeName?: string
   auditLogs: AuditLogEntry[]
+  notes?: EmployeeNoteWithAuthor[]
   canViewAudit: boolean
 }
 
 export function EmployeeAuditTrail({
   employeeName,
   auditLogs,
+  notes,
   canViewAudit
 }: EmployeeAuditTrailProps) {
-  const logs = useMemo(() => auditLogs ?? [], [auditLogs])
+  const timelineEntries = useMemo(() => {
+    const auditEntries =
+      auditLogs?.map((log) => ({
+        type: 'audit' as const,
+        createdAt: log.created_at,
+        id: log.id,
+        log
+      })) ?? []
+
+    const noteEntries =
+      notes?.map((note) => ({
+        type: 'note' as const,
+        createdAt: note.created_at,
+        id: note.note_id,
+        note
+      })) ?? []
+
+    return [...auditEntries, ...noteEntries].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
+  }, [auditLogs, notes])
 
   if (!canViewAudit) {
     return (
@@ -27,7 +49,7 @@ export function EmployeeAuditTrail({
     )
   }
 
-  if (logs.length === 0) {
+  if (timelineEntries.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500">
         No audit history available{employeeName ? ` for ${employeeName}` : ''}.
@@ -140,37 +162,63 @@ export function EmployeeAuditTrail({
 
           <div className="mt-4 flow-root">
             <ul className="-mb-8">
-              {logs.map((log, idx) => (
-                <li key={log.id}>
-                  <div className="relative pb-8">
-                    {idx !== logs.length - 1 ? (
-                      <span className="absolute top-5 left-5 -ml-px h-full w-0.5 bg-gray-200" aria-hidden="true" />
-                    ) : null}
-                    <div className="relative flex space-x-3">
-                      <div>
-                        <span
-                          className={`flex h-10 w-10 items-center justify-center rounded-full ${getActionColor(
-                            log.operation_type
-                          )}`}
-                        >
-                          <UserIcon className="h-5 w-5" />
-                        </span>
-                      </div>
-                      <div className="flex-1 space-y-1">
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm font-medium text-gray-900">
-                            {log.user_email ?? 'System'} {getActionLabel(log)}
-                          </p>
-                          <p className="text-xs text-gray-500">{formatDateTime(log.created_at)}</p>
+              {timelineEntries.map((entry, idx) => {
+                const isAudit = entry.type === 'audit'
+                const log = isAudit ? entry.log : null
+                const note = !isAudit ? entry.note : null
+
+                return (
+                  <li key={entry.id}>
+                    <div className="relative pb-8">
+                      {idx !== timelineEntries.length - 1 ? (
+                        <span className="absolute top-5 left-5 -ml-px h-full w-0.5 bg-gray-200" aria-hidden="true" />
+                      ) : null}
+                      <div className="relative flex space-x-3">
+                        <div>
+                          <span
+                            className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                              isAudit ? getActionColor(log!.operation_type) : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {isAudit ? (
+                              <UserIcon className="h-5 w-5" />
+                            ) : (
+                              <ChatBubbleLeftRightIcon className="h-5 w-5" />
+                            )}
+                          </span>
                         </div>
-                        {formatDetails(log) && (
-                          <p className="text-sm text-gray-500">{formatDetails(log)}</p>
-                        )}
+                        <div className="flex-1 space-y-1">
+                          {isAudit ? (
+                            <>
+                              <div className="flex items-center justify-between">
+                                <p className="text-sm font-medium text-gray-900">
+                                  {log!.user_email ?? 'System'} {getActionLabel(log!)}
+                                </p>
+                                <p className="text-xs text-gray-500">{formatDateTime(log!.created_at)}</p>
+                              </div>
+                              {formatDetails(log!) && (
+                                <p className="text-sm text-gray-500">{formatDetails(log!)}</p>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex items-center justify-between">
+                                <p className="text-sm font-medium text-gray-900">
+                                  {note!.author_name} added a note
+                                </p>
+                                <p className="text-xs text-gray-500">{formatDateTime(note!.created_at)}</p>
+                              </div>
+                              <p className="text-sm text-gray-600 whitespace-pre-wrap break-words">
+                                {note!.note_text}
+                              </p>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                )
+              })}
             </ul>
           </div>
         </div>

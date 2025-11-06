@@ -201,6 +201,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
       backButton={{ label: 'Back to Employees', href: '/employees' }}
       navItems={navItems}
       headerActions={headerActions}
+      containerSize="2xl"
     >
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
@@ -241,13 +242,17 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
             id="notes"
             title="Notes"
             description="Track key updates and conversations related to this employee."
-            actions={
-              permissions.canEdit ? (
-                <AddEmployeeNoteForm employeeId={employee.employee_id} />
-              ) : null
-            }
+            className="bg-white shadow-md ring-1 ring-black/5"
           >
-            <EmployeeNotesList notes={notes} />
+            <div className="space-y-6">
+              {permissions.canEdit && (
+                <div className="border-b border-gray-200 pb-6">
+                  <AddEmployeeNoteForm employeeId={employee.employee_id} />
+                </div>
+              )}
+
+              <EmployeeNotesList notes={notes} />
+            </div>
           </Section>
 
           <Section
@@ -258,27 +263,31 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
                 ? 'Manage employee documents and files.'
                 : 'You do not have permission to view employee documents.'
             }
-            actions={
-              permissions.canUploadDocuments ? (
-                <AddEmployeeAttachmentForm
-                  employeeId={employee.employee_id}
-                  categories={attachmentCategories}
-                />
-              ) : null
-            }
+            className="bg-white shadow-md ring-1 ring-black/5"
           >
-            {permissions.canViewDocuments ? (
-              <EmployeeAttachmentsList
-                employeeId={employee.employee_id}
-                attachments={attachments}
-                categoryLookup={attachmentCategoryMap}
-                canDelete={permissions.canDeleteDocuments}
-              />
-            ) : (
-              <div className="text-sm text-gray-500">
-                Document visibility requires `employees:view_documents`.
-              </div>
-            )}
+            <div className="space-y-6">
+              {permissions.canViewDocuments ? (
+                <EmployeeAttachmentsList
+                  employeeId={employee.employee_id}
+                  attachments={attachments}
+                  categoryLookup={attachmentCategoryMap}
+                  canDelete={permissions.canDeleteDocuments}
+                />
+              ) : (
+                <div className="text-sm text-gray-500">
+                  Document visibility requires `employees:view_documents`.
+                </div>
+              )}
+
+              {permissions.canUploadDocuments && (
+                <div className="border-t border-gray-200 pt-6">
+                  <AddEmployeeAttachmentForm
+                    employeeId={employee.employee_id}
+                    categories={attachmentCategories}
+                  />
+                </div>
+              )}
+            </div>
           </Section>
         </div>
 
@@ -289,6 +298,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
                 employeeId={employee.employee_id}
                 employeeName={`${employee.first_name} ${employee.last_name}`}
                 auditLogs={auditLogs}
+                notes={notes}
                 canViewAudit={permissions.canView}
               />
             </Card>
