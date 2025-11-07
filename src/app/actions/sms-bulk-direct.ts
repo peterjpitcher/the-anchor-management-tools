@@ -10,6 +10,7 @@ import { headers } from 'next/headers'
 import { rateLimiters } from '@/lib/rate-limit'
 import { checkUserPermission } from './rbac'
 import { sendSMS } from '@/lib/twilio'
+import { formatDateInLondon } from '@/lib/dateUtils'
 
 // This is the corrected bulk SMS function that sends directly for small batches
 export async function sendBulkSMSDirect(customerIds: string[], message: string, eventId?: string, categoryId?: string) {
@@ -147,12 +148,15 @@ async function sendBulkSMSImmediate(customerIds: string[], message: string, even
 
       if (eventDetails) {
         personalized = personalized.replace(/{{event_name}}/g, eventDetails.name)
-        personalized = personalized.replace(/{{event_date}}/g, new Date(eventDetails.date).toLocaleDateString('en-GB', {
-          weekday: 'long',
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric'
-        }))
+        personalized = personalized.replace(
+          /{{event_date}}/g,
+          formatDateInLondon(eventDetails.date, {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+          })
+        )
         personalized = personalized.replace(/{{event_time}}/g, eventDetails.time)
       }
 

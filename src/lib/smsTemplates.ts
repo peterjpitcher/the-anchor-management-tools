@@ -1,5 +1,6 @@
 import { getSupabaseAdminClient } from '@/lib/supabase-singleton';
 import { cache } from './cache';
+import { formatDateInLondon } from '@/lib/dateUtils';
 
 // Legacy templates for fallback
 export const smsTemplates = {
@@ -7,13 +8,13 @@ export const smsTemplates = {
     firstName: string
     seats: number
     eventName: string
-    eventDate: Date
+    eventDate: string | Date
     eventTime: string
     qrCodeUrl?: string
   }) => {
-    const formattedDate = new Date(params.eventDate).toLocaleDateString('en-GB', {
+    const formattedDate = formatDateInLondon(params.eventDate, {
       month: 'long',
-      day: 'numeric',
+      day: 'numeric'
     })
     const baseMessage = `Hi ${params.firstName}, your booking for ${params.seats} people for our ${params.eventName} on ${formattedDate} at ${params.eventTime} is confirmed!`
     const qrMessage = params.qrCodeUrl ? ` Check-in with QR: ${params.qrCodeUrl}` : ''
@@ -24,10 +25,10 @@ export const smsTemplates = {
     firstName: string
     seats: number
     eventName: string
-    eventDate: Date
+    eventDate: string | Date
     eventTime: string
   }) => {
-    const formattedDate = new Date(params.eventDate).toLocaleDateString('en-GB', {
+    const formattedDate = formatDateInLondon(params.eventDate, {
       weekday: 'long',
       month: 'long',
       day: 'numeric'
@@ -41,11 +42,11 @@ export const smsTemplates = {
   bookedOneMonth: (params: {
     firstName: string
     eventName: string
-    eventDate: Date
+    eventDate: string | Date
     eventTime: string
     seats: number
   }) => {
-    const formattedDate = new Date(params.eventDate).toLocaleDateString('en-GB', {
+    const formattedDate = formatDateInLondon(params.eventDate, {
       weekday: 'long',
       month: 'long',
       day: 'numeric'
@@ -56,11 +57,11 @@ export const smsTemplates = {
   bookedOneWeek: (params: {
     firstName: string
     eventName: string
-    eventDate: Date
+    eventDate: string | Date
     eventTime: string
     seats: number
   }) => {
-    const formattedDate = new Date(params.eventDate).toLocaleDateString('en-GB', {
+    const formattedDate = formatDateInLondon(params.eventDate, {
       weekday: 'long',
       month: 'long',
       day: 'numeric'
@@ -86,10 +87,10 @@ export const smsTemplates = {
   reminderInviteOneMonth: (params: {
     firstName: string
     eventName: string
-    eventDate: Date
+    eventDate: string | Date
     eventTime: string
   }) => {
-    const formattedDate = new Date(params.eventDate).toLocaleDateString('en-GB', {
+    const formattedDate = formatDateInLondon(params.eventDate, {
       weekday: 'long',
       month: 'long',
       day: 'numeric'
@@ -100,10 +101,10 @@ export const smsTemplates = {
   reminderInviteOneWeek: (params: {
     firstName: string
     eventName: string
-    eventDate: Date
+    eventDate: string | Date
     eventTime: string
   }) => {
-    const formattedDate = new Date(params.eventDate).toLocaleDateString('en-GB', {
+    const formattedDate = formatDateInLondon(params.eventDate, {
       weekday: 'long',
       month: 'long',
       day: 'numeric'
@@ -123,12 +124,12 @@ export const smsTemplates = {
   reminderOnly: (params: {
     firstName: string
     eventName: string
-    eventDate: Date
+    eventDate: string | Date
     eventTime: string
   }) => {
-    const formattedDate = new Date(params.eventDate).toLocaleDateString('en-GB', {
+    const formattedDate = formatDateInLondon(params.eventDate, {
       month: 'long',
-      day: 'numeric',
+      day: 'numeric'
     })
     return `Hi ${params.firstName}, don't forget, we've got our ${params.eventName} on ${formattedDate} at ${params.eventTime}! Let us know if you want to book tickets. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
   },
@@ -137,12 +138,12 @@ export const smsTemplates = {
   noSeats2Weeks: (params: {
     firstName: string
     eventName: string
-    eventDate: Date
+    eventDate: string | Date
     eventTime: string
   }) => {
-    const formattedDate = new Date(params.eventDate).toLocaleDateString('en-GB', {
+    const formattedDate = formatDateInLondon(params.eventDate, {
       month: 'long',
-      day: 'numeric',
+      day: 'numeric'
     })
     return `Hi ${params.firstName}, we'd love to see you at our ${params.eventName} on ${formattedDate} at ${params.eventTime}! Reply with the number of tickets you'd like to book or call us on ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}. The Anchor`
   },
@@ -151,12 +152,12 @@ export const smsTemplates = {
   noSeats1Week: (params: {
     firstName: string
     eventName: string
-    eventDate: Date
+    eventDate: string | Date
     eventTime: string
   }) => {
-    const formattedDate = new Date(params.eventDate).toLocaleDateString('en-GB', {
+    const formattedDate = formatDateInLondon(params.eventDate, {
       month: 'long',
-      day: 'numeric',
+      day: 'numeric'
     })
     return `Hi ${params.firstName}, just 1 week until our ${params.eventName} on ${formattedDate} at ${params.eventTime}! Still time to book your tickets - just reply with how many you need. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
   },
@@ -174,13 +175,13 @@ export const smsTemplates = {
   hasSeats1Week: (params: {
     firstName: string
     eventName: string
-    eventDate: Date
+    eventDate: string | Date
     eventTime: string
     seats: number
   }) => {
-    const formattedDate = new Date(params.eventDate).toLocaleDateString('en-GB', {
+    const formattedDate = formatDateInLondon(params.eventDate, {
       month: 'long',
-      day: 'numeric',
+      day: 'numeric'
     })
     return `Hi ${params.firstName}, see you next week! You have ${params.seats} tickets booked for our ${params.eventName} on ${formattedDate} at ${params.eventTime}. Want to bring more friends? Reply to add extra tickets. The Anchor ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}`
   },
@@ -211,13 +212,13 @@ export const smsTemplates = {
   weekBeforeReminder: (params: {
     firstName: string
     eventName: string
-    eventDate: Date
+    eventDate: string | Date
     eventTime: string
     seats?: number
   }) => {
-    const formattedDate = new Date(params.eventDate).toLocaleDateString('en-GB', {
+    const formattedDate = formatDateInLondon(params.eventDate, {
       month: 'long',
-      day: 'numeric',
+      day: 'numeric'
     })
     const seatInfo = params.seats
       ? `and you have ${params.seats} tickets booked`
