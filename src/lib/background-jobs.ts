@@ -2,7 +2,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { Job, JobType, JobPayload, JobOptions } from './job-types'
 import { logger } from './logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
-import { formatTime12Hour } from '@/lib/dateUtils'
+import { formatTime12Hour, formatDateInLondon } from '@/lib/dateUtils'
 import { recordOutboundSmsMessage } from '@/lib/sms/logging'
 
 export class JobQueue {
@@ -360,12 +360,15 @@ export class JobQueue {
           // Add event-specific variables if available
           if (eventDetails) {
             personalizedMessage = personalizedMessage.replace(/{{event_name}}/g, eventDetails.name)
-            personalizedMessage = personalizedMessage.replace(/{{event_date}}/g, new Date(eventDetails.date).toLocaleDateString('en-GB', {
-              weekday: 'long',
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric'
-            }))
+            personalizedMessage = personalizedMessage.replace(
+              /{{event_date}}/g,
+              formatDateInLondon(eventDetails.date, {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+              })
+            )
             personalizedMessage = personalizedMessage.replace(
               /{{event_time}}/g,
               eventDetails.time ? formatTime12Hour(eventDetails.time) : 'TBC'

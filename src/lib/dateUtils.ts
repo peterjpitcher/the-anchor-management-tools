@@ -1,7 +1,27 @@
+const LONDON_TIMEZONE = 'Europe/London'
+
+function toDate(value: string | Date): Date {
+  return value instanceof Date ? new Date(value.getTime()) : new Date(value)
+}
+
+export function formatDateInLondon(
+  date: string | Date,
+  options?: Intl.DateTimeFormatOptions,
+  locale: string = 'en-GB'
+): string {
+  const d = toDate(date)
+  return d.toLocaleDateString(locale, { ...options, timeZone: LONDON_TIMEZONE })
+}
+
 export function formatDate(date: string | Date): string {
-  const d = new Date(date)
-  // Format as "January 15, 2024"
-  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  const d = toDate(date)
+  // Format as "January 15, 2024" (US format for legacy UI sections)
+  return d.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: LONDON_TIMEZONE
+  })
 }
 
 export function getTodayIsoDate(): string {
@@ -32,12 +52,11 @@ export function getLocalIsoDateDaysAhead(days: number): string {
 
 export function formatDateFull(date: string | Date | null): string {
   if (!date) return 'To be confirmed'
-  const d = new Date(date)
-  return d.toLocaleDateString('en-GB', { 
+  return formatDateInLondon(date, {
     weekday: 'long',
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric' 
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
   })
 }
 
@@ -62,34 +81,43 @@ export function formatTime12Hour(time: string | null): string {
 }
 
 export function formatDateTime(date: string | Date): string {
-  const d = new Date(date)
-  return d.toLocaleString('en-GB', { 
-    year: 'numeric', 
-    month: 'short', 
+  const d = toDate(date)
+  return d.toLocaleString('en-GB', {
+    year: 'numeric',
+    month: 'short',
     day: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    timeZone: LONDON_TIMEZONE
   })
 }
 
 export function formatDateTime12Hour(date: string | Date): string {
-  const d = new Date(date)
+  const d = toDate(date)
   const dateStr = d.toLocaleDateString('en-GB', {
     year: 'numeric',
     month: 'short',
-    day: 'numeric'
+    day: 'numeric',
+    timeZone: LONDON_TIMEZONE
   })
-  
-  const hours = d.getHours().toString().padStart(2, '0')
-  const minutes = d.getMinutes().toString().padStart(2, '0')
+
+  const londonTime = new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: LONDON_TIMEZONE
+  })
+    .format(d)
+    .split(':')
+
+  const [hours, minutes] = londonTime.length === 2 ? londonTime : ['00', '00']
   const timeStr = formatTime12Hour(`${hours}:${minutes}`)
-  
+
   return `${dateStr} at ${timeStr}`
 }
 
 export function formatDateWithTimeForSms(date: string | Date, time?: string | null): string {
-  const d = new Date(date)
-  const formattedDate = d.toLocaleDateString('en-GB', {
+  const formattedDate = formatDateInLondon(date, {
     weekday: 'long',
     day: 'numeric',
     month: 'long'

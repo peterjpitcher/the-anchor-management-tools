@@ -5,7 +5,7 @@ import twilio from 'twilio'
 import { smsTemplates, getMessageTemplate } from '@/lib/smsTemplates'
 import { logger } from '@/lib/logger'
 import { ReminderType } from './event-sms-scheduler'
-import { formatTime12Hour } from '@/lib/dateUtils'
+import { formatTime12Hour, formatDateInLondon } from '@/lib/dateUtils'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 
 interface ProcessOptions {
@@ -82,7 +82,7 @@ function buildTemplate(reminder: ReminderRow): string {
     return ''
   }
 
-  const eventDate = new Date(booking.event.date)
+  const eventDate = booking.event.date
   const common = {
     firstName: booking.customer.first_name,
     eventName: booking.event.name,
@@ -282,7 +282,7 @@ export async function processScheduledEventReminders(options: ProcessOptions = {
         customer_name: `${customer.first_name} ${customer.last_name || ''}`.trim(),
         first_name: customer.first_name,
         event_name: event.name,
-        event_date: new Date(event.date).toLocaleDateString('en-GB', {
+        event_date: formatDateInLondon(event.date, {
           month: 'long',
           day: 'numeric'
         }),
