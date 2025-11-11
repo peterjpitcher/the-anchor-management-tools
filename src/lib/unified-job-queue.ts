@@ -8,6 +8,7 @@ import { logger } from './logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { recordOutboundSmsMessage } from '@/lib/sms/logging'
 import { formatTime12Hour } from '@/lib/dateUtils'
+import { sendEventReminderById } from '@/lib/reminders/send-event-reminder'
 
 export type JobType = 
   | 'send_sms'
@@ -400,11 +401,17 @@ export class UnifiedJobQueue {
         return
       
       case 'process_event_reminder':
-        // TODO: Implement reminder processor
-        // const { processEventReminders } = await import('@/lib/reminder-processor')
-        // return await processEventReminders(payload.eventId)
-        console.log('Event reminder processor not implemented')
-        return
+        {
+          const reminderId = payload.reminder_id || payload.reminderId
+          if (!reminderId || typeof reminderId !== 'string') {
+            throw new Error('process_event_reminder jobs require a reminder_id')
+          }
+          const result = await sendEventReminderById(reminderId)
+          if (!result.success) {
+            throw new Error(result.error)
+          }
+          return result
+        }
       
       default:
         throw new Error(`Unknown job type: ${type}`)
