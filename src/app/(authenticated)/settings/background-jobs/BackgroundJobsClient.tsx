@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import type { BackgroundJob, BackgroundJobFilters, BackgroundJobSummary } from '@/app/actions/backgroundJobs'
 import { listBackgroundJobs, retryBackgroundJob, deleteBackgroundJob } from '@/app/actions/backgroundJobs'
 import { runCronJob } from '@/app/actions/cronJobs'
+import { getReminderQueueSummary, type ReminderQueueSummary } from '@/app/actions/reminderQueue'
 import { formatDate } from '@/lib/dateUtils'
 import toast from 'react-hot-toast'
 import {
@@ -54,24 +55,38 @@ type BackgroundJobsClientProps = {
   initialSummary: BackgroundJobSummary
   canManage: boolean
   initialError: string | null
+  initialReminderSummary: ReminderQueueSummary
+  initialReminderError: string | null
 }
 
-export default function BackgroundJobsClient({ initialJobs, initialSummary, canManage, initialError }: BackgroundJobsClientProps) {
+export default function BackgroundJobsClient({
+  initialJobs,
+  initialSummary,
+  canManage,
+  initialError,
+  initialReminderSummary,
+  initialReminderError
+}: BackgroundJobsClientProps) {
   const router = useRouter()
   const [jobs, setJobs] = useState<BackgroundJob[]>(initialJobs)
   const [summary, setSummary] = useState<BackgroundJobSummary>(initialSummary)
   const [error, setError] = useState<string | null>(initialError)
+  const [reminderSummary, setReminderSummary] = useState<ReminderQueueSummary>(initialReminderSummary)
+  const [reminderError, setReminderError] = useState<string | null>(initialReminderError)
   const [filters, setFilters] = useState<BackgroundJobFilters>({})
   const [selectedJob, setSelectedJob] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [isRefreshing, startRefreshTransition] = useTransition()
   const [isMutating, startMutateTransition] = useTransition()
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isReminderRefreshing, startReminderRefresh] = useTransition()
 
   useEffect(() => {
     setJobs(initialJobs)
     setSummary(initialSummary)
-  }, [initialJobs, initialSummary])
+    setReminderSummary(initialReminderSummary)
+    setReminderError(initialReminderError)
+  }, [initialJobs, initialSummary, initialReminderSummary, initialReminderError])
 
   const pagedJobs = useMemo(() => {
     const start = (page - 1) * PAGE_SIZE
@@ -155,6 +170,22 @@ export default function BackgroundJobsClient({ initialJobs, initialSummary, canM
       .finally(() => {
         setIsProcessing(false)
       })
+  }
+
+  const refreshReminderSummary = () => {
+    startReminderRefresh(async () => {
+      const result = await getReminderQueueSummary()
+      if (result.error) {
+        setReminderError(result.error)
+        toast.error(result.error)
+        return
+      }
+
+      if (result.summary) {
+        setReminderSummary(result.summary)
+        setReminderError(null)
+      }
+    })
   }
 
   const handleRetry = (jobId: string) => {
@@ -314,6 +345,50 @@ export default function BackgroundJobsClient({ initialJobs, initialSummary, canM
               value={summary.failed}
               color={summary.failed > 0 ? 'error' : 'default'}
             />
+          </div>
+        </Section>
+
+        <Section title="Reminder Queue Health">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <p className="text-sm text-gray-600">
+              Tracks scheduled event reminders still waiting to send. Jobs run asynchronously via the queue.
+            </p>
+            <div className="flex items-center gap-2">
+              {reminderError && <span className="text-sm text-red-600">{reminderError}</span>}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={refreshReminderSummary}
+                disabled={isReminderRefreshing}
+                loading={isReminderRefreshing}
+              >
+                Refresh
+              </Button>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-4">
+            <Stat label="Due Now" value={reminderSummary.pendingDue} color={reminderSummary.pendingDue > 0 ? 'warning' : 'default'} />
+            <Stat label="Upcoming" value={reminderSummary.pendingScheduled} />
+            <Stat label="Failed" value={reminderSummary.failed} color={reminderSummary.failed > 0 ? 'error' : 'default'} />
+            <Stat label="Cancelled" value={reminderSummary.cancelled} />
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+            <Card>
+              <p className="text-sm text-gray-600">Next Reminder Due</p>
+              <p className="mt-1 text-lg font-semibold">
+                {reminderSummary.nextDueAt ? formatDate(reminderSummary.nextDueAt) : 'None'}
+              </p>
+            </Card>
+            <Card>
+              <p className="text-sm text-gray-600">Last Reminder Sent</p>
+              <p className="mt-1 text-lg font-semibold">
+                {reminderSummary.lastSentAt ? formatDate(reminderSummary.lastSentAt) : 'Not recorded'}
+              </p>
+            </Card>
+            <Card>
+              <p className="text-sm text-gray-600">Active Reminder Jobs</p>
+              <p className="mt-1 text-lg font-semibold">{reminderSummary.activeJobs}</p>
+            </Card>
           </div>
         </Section>
 
