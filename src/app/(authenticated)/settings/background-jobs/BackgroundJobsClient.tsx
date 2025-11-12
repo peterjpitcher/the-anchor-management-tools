@@ -55,8 +55,18 @@ type BackgroundJobsClientProps = {
   initialSummary: BackgroundJobSummary
   canManage: boolean
   initialError: string | null
-  initialReminderSummary: ReminderQueueSummary
-  initialReminderError: string | null
+  initialReminderSummary?: ReminderQueueSummary | null
+  initialReminderError?: string | null
+}
+
+const defaultReminderSummary: ReminderQueueSummary = {
+  pendingDue: 0,
+  pendingScheduled: 0,
+  failed: 0,
+  cancelled: 0,
+  nextDueAt: null,
+  lastSentAt: null,
+  activeJobs: 0,
 }
 
 export default function BackgroundJobsClient({
@@ -64,14 +74,16 @@ export default function BackgroundJobsClient({
   initialSummary,
   canManage,
   initialError,
-  initialReminderSummary,
-  initialReminderError
+  initialReminderSummary = defaultReminderSummary,
+  initialReminderError = null
 }: BackgroundJobsClientProps) {
   const router = useRouter()
   const [jobs, setJobs] = useState<BackgroundJob[]>(initialJobs)
   const [summary, setSummary] = useState<BackgroundJobSummary>(initialSummary)
   const [error, setError] = useState<string | null>(initialError)
-  const [reminderSummary, setReminderSummary] = useState<ReminderQueueSummary>(initialReminderSummary)
+  const [reminderSummary, setReminderSummary] = useState<ReminderQueueSummary>(
+    initialReminderSummary ?? defaultReminderSummary
+  )
   const [reminderError, setReminderError] = useState<string | null>(initialReminderError)
   const [filters, setFilters] = useState<BackgroundJobFilters>({})
   const [selectedJob, setSelectedJob] = useState<string | null>(null)
@@ -84,8 +96,8 @@ export default function BackgroundJobsClient({
   useEffect(() => {
     setJobs(initialJobs)
     setSummary(initialSummary)
-    setReminderSummary(initialReminderSummary)
-    setReminderError(initialReminderError)
+    setReminderSummary(initialReminderSummary ?? defaultReminderSummary)
+    setReminderError(initialReminderError ?? null)
   }, [initialJobs, initialSummary, initialReminderSummary, initialReminderError])
 
   const pagedJobs = useMemo(() => {
