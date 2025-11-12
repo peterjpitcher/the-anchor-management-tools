@@ -9,7 +9,7 @@ export interface InvoiceTemplateData {
 
 export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
   const { invoice, logoUrl } = data
-  
+
   // Check if any line items have discounts or if there's an invoice discount
   const hasDiscounts = invoice.invoice_discount_percentage > 0 || 
     (invoice.line_items?.some(item => item.discount_percentage > 0) ?? false)
@@ -21,6 +21,14 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
 
   const formatCurrency = (amount: number) => {
     return `£${amount.toFixed(2)}`
+  }
+
+  const formatPaymentTerms = () => {
+    const terms = invoice.vendor?.payment_terms
+    if (typeof terms !== 'number') {
+      return '30 days'
+    }
+    return terms === 0 ? 'Due upon receipt' : `${terms} days`
   }
 
   // Calculate line item totals
@@ -400,7 +408,7 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
     </div>
     <div class="meta-item">
       <span class="meta-label">Terms</span>
-      <span class="meta-value">${invoice.vendor?.payment_terms || 30} days</span>
+      <span class="meta-value">${formatPaymentTerms()}</span>
     </div>
   </div>
 
