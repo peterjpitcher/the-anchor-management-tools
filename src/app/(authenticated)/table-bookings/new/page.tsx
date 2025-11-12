@@ -100,6 +100,7 @@ export default function NewTableBookingPage() {
   const [menuData, setMenuData] = useState<SundayLunchMenuData | null>(null);
   const [menuLoading, setMenuLoading] = useState(false);
   const [menuError, setMenuError] = useState<string | null>(null);
+  const [cashPaymentReceived, setCashPaymentReceived] = useState(false);
   
   // Sunday lunch menu state
   const [sundayLunchItems, setSundayLunchItems] = useState<SundayLunchGuestSelection[]>([]);
@@ -298,6 +299,12 @@ export default function NewTableBookingPage() {
     };
   }, [bookingType, bookingDate]);
 
+  useEffect(() => {
+    if (bookingType !== 'sunday_lunch' && cashPaymentReceived) {
+      setCashPaymentReceived(false);
+    }
+  }, [bookingType, cashPaymentReceived]);
+
   async function checkBookingAvailability() {
     try {
       setCheckingAvailability(true);
@@ -439,6 +446,10 @@ export default function NewTableBookingPage() {
       formData.append('party_size', partySize.toString());
       formData.append('booking_type', bookingType);
       formData.append('source', 'phone');
+      formData.append(
+        'cash_payment_received',
+        bookingType === 'sunday_lunch' && cashPaymentReceived ? 'true' : 'false'
+      );
       
       // Customer data
       if (existingCustomer) {
@@ -510,12 +521,12 @@ export default function NewTableBookingPage() {
       
       if (result.error) {
         setError(result.error);
-      } else if (bookingType === 'sunday_lunch' && result.data) {
-        // For Sunday lunch, redirect to payment page using booking reference
+      } else if (result.data?.status === 'pending_payment' && result.data.booking_reference) {
         router.push(`/table-booking/${result.data.booking_reference}/payment`);
+      } else if (result.data?.id) {
+        router.push(`/table-bookings/${result.data.id}`);
       } else {
-        // For regular bookings, go to booking details
-        router.push(`/table-bookings/${result.data?.id}`);
+        router.push('/table-bookings');
       }
     } catch (err: any) {
       console.error('Booking creation error:', err);
@@ -772,11 +783,27 @@ export default function NewTableBookingPage() {
           </Card>
         </Section>
 
+        {bookingType === 'sunday_lunch' && (
+          <Section
+            title="Payment"
+            description="Sunday lunch bookings require a £5 per guest deposit. Mark it as paid if you've already collected cash."
+          >
+            <Card>
+              <Checkbox
+                checked={cashPaymentReceived}
+                onChange={(e) => setCashPaymentReceived(e.target.checked)}
+                label="Deposit paid in cash (skip payment link)"
+                description="We'll confirm the booking without sending the automated payment link."
+              />
+            </Card>
+          </Section>
+        )}
+
         {/* Sunday Lunch Menu Selection */}
         {bookingType === 'sunday_lunch' && selectedTime && (
           <Section 
             title="Sunday Lunch Pre-Order"
-            description="Please select main course and extras for each guest. Payment will be required to confirm the booking."
+            description="Please select main course and extras for each guest. Payment will be required to confirm the booking unless you've marked the deposit as paid in cash."
           >
             {menuLoading && (
               <Card className="mb-4">
@@ -920,7 +947,11 @@ export default function NewTableBookingPage() {
             disabled={!selectedTime || checkingAvailability}
             loading={submitting}
           >
-            {bookingType === 'sunday_lunch' ? 'Create & Request Payment' : 'Create Booking'}
+            {bookingType === 'sunday_lunch'
+              ? cashPaymentReceived
+                ? 'Create Booking'
+                : 'Create & Request Payment'
+              : 'Create Booking'}
           </Button>
           
           <LinkButton

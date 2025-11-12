@@ -15,6 +15,12 @@ const navigationCards = [
     badge: 'Costs',
   },
   {
+    title: 'Recipes',
+    description: 'Build prep recipes from ingredients once, then reuse them across multiple dishes for consistent costing.',
+    href: '/menu-management/recipes',
+    badge: 'Prep',
+  },
+  {
     title: 'Dishes',
     description: 'Build dishes from ingredients, set selling prices, and assign to menus with automatic GP% monitoring.',
     href: '/menu-management/dishes',
@@ -52,7 +58,7 @@ export default async function MenuManagementHomePage() {
       backButton={{ label: 'Back to Dashboard', href: '/' }}
     >
       <Section>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {navigationCards.map(card => (
             <Card key={card.title} className="p-6 flex flex-col justify-between">
               <div className="space-y-3">

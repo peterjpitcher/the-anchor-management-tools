@@ -47,6 +47,14 @@ interface IngredientSummary {
   portions_per_pack?: number | null;
 }
 
+interface RecipeSummary {
+  id: string;
+  name: string;
+  portion_cost: number;
+  yield_quantity: number;
+  yield_unit: string;
+}
+
 interface MenuCategorySummary {
   id: string;
   code: string;
@@ -77,6 +85,22 @@ interface DishIngredientDetail {
   allergens: string[];
 }
 
+interface DishRecipeDetail {
+  recipe_id: string;
+  recipe_name: string;
+  quantity: number;
+  yield_pct?: number | null;
+  wastage_pct?: number | null;
+  cost_override?: number | null;
+  notes?: string | null;
+  portion_cost?: number | null;
+  yield_quantity?: number | null;
+  yield_unit?: string | null;
+  dietary_flags: string[];
+  allergen_flags: string[];
+  recipe_is_active: boolean;
+}
+
 interface DishAssignment {
   menu_code: string;
   category_code: string;
@@ -102,12 +126,22 @@ interface DishListItem {
   allergen_flags: string[];
   assignments: DishAssignment[];
   ingredients: DishIngredientDetail[];
+  recipes: DishRecipeDetail[];
 }
 
 interface DishIngredientFormRow {
   ingredient_id: string;
   quantity: string;
   unit: string;
+  yield_pct: string;
+  wastage_pct: string;
+  cost_override: string;
+  notes: string;
+}
+
+interface DishRecipeFormRow {
+  recipe_id: string;
+  quantity: string;
   yield_pct: string;
   wastage_pct: string;
   cost_override: string;
@@ -154,6 +188,15 @@ const defaultIngredientRow: DishIngredientFormRow = {
   notes: '',
 };
 
+const defaultRecipeRow: DishRecipeFormRow = {
+  recipe_id: '',
+  quantity: '',
+  yield_pct: '100',
+  wastage_pct: '0',
+  cost_override: '',
+  notes: '',
+};
+
 const defaultAssignmentRow: DishAssignmentFormRow = {
   menu_code: 'website_food',
   category_code: '',
@@ -168,6 +211,7 @@ export default function MenuDishesPage() {
   const { hasPermission } = usePermissions();
   const [dishes, setDishes] = useState<DishListItem[]>([]);
   const [ingredients, setIngredients] = useState<IngredientSummary[]>([]);
+  const [recipes, setRecipes] = useState<RecipeSummary[]>([]);
   const [menus, setMenus] = useState<MenuSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -176,6 +220,7 @@ export default function MenuDishesPage() {
   const [editingDishId, setEditingDishId] = useState<string | null>(null);
   const [formState, setFormState] = useState<DishFormState>(defaultDishForm);
   const [formIngredients, setFormIngredients] = useState<DishIngredientFormRow[]>([defaultIngredientRow]);
+  const [formRecipes, setFormRecipes] = useState<DishRecipeFormRow[]>([defaultRecipeRow]);
   const [formAssignments, setFormAssignments] = useState<DishAssignmentFormRow[]>([defaultAssignmentRow]);
   const [dishToDelete, setDishToDelete] = useState<DishListItem | null>(null);
   const canManage = hasPermission('menu_management', 'manage');
@@ -195,6 +240,7 @@ export default function MenuDishesPage() {
     Promise.all([
       loadMenus(),
       loadIngredients(),
+      loadRecipes(),
     ]).catch((err) => {
       console.error('Initial load error:', err);
     });
@@ -258,6 +304,21 @@ export default function MenuDishesPage() {
             dietary_flags: ingredient.dietary_flags || [],
             allergens: ingredient.allergens || [],
           })),
+          recipes: (dish.recipes || []).map((recipe: any) => ({
+            recipe_id: recipe.recipe_id,
+            recipe_name: recipe.recipe_name,
+            quantity: Number(recipe.quantity ?? 0),
+            yield_pct: recipe.yield_pct,
+            wastage_pct: recipe.wastage_pct,
+            cost_override: recipe.cost_override,
+            notes: recipe.notes,
+            portion_cost: recipe.portion_cost != null ? Number(recipe.portion_cost) : null,
+            yield_quantity: recipe.yield_quantity != null ? Number(recipe.yield_quantity) : null,
+            yield_unit: recipe.yield_unit ?? null,
+            dietary_flags: recipe.dietary_flags || [],
+            allergen_flags: recipe.allergen_flags || [],
+            recipe_is_active: recipe.recipe_is_active ?? true,
+          })),
         };
       });
       const apiTarget =
@@ -308,6 +369,26 @@ export default function MenuDishesPage() {
     }
   }
 
+  async function loadRecipes() {
+    try {
+      const response = await fetch('/api/menu-management/recipes?summary=1');
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to load recipes');
+      }
+      const mapped: RecipeSummary[] = (result.data || []).map((recipe: any) => ({
+        id: recipe.id,
+        name: recipe.name,
+        portion_cost: Number(recipe.portion_cost ?? 0),
+        yield_quantity: Number(recipe.yield_quantity ?? 1),
+        yield_unit: recipe.yield_unit || 'portion',
+      }));
+      setRecipes(mapped);
+    } catch (err) {
+      console.error('loadRecipes summary error:', err);
+    }
+  }
+
   async function loadMenus() {
     try {
       const response = await fetch('/api/menu-management/menus');
@@ -338,6 +419,7 @@ export default function MenuDishesPage() {
   function resetForm() {
     setFormState(defaultDishForm);
     setFormIngredients([defaultIngredientRow]);
+    setFormRecipes([defaultRecipeRow]);
     const initialMenu = selectedMenu ?? menus[0] ?? null;
     setFormAssignments([{
       ...defaultAssignmentRow,
@@ -382,6 +464,16 @@ export default function MenuDishesPage() {
           notes: row.notes || '',
         })) || [defaultIngredientRow]
       );
+      setFormRecipes(
+        (detail.recipes || []).map((row: any) => ({
+          recipe_id: row.recipe_id,
+          quantity: String(row.quantity ?? ''),
+          yield_pct: String(row.yield_pct ?? 100),
+          wastage_pct: String(row.wastage_pct ?? 0),
+          cost_override: row.cost_override ? String(row.cost_override) : '',
+          notes: row.notes || '',
+        })) || [defaultRecipeRow]
+      );
       setFormAssignments(
         (detail.assignments || []).map((row: any) => ({
           menu_code: row.menu?.code || menus[0]?.code || 'website_food',
@@ -410,6 +502,19 @@ export default function MenuDishesPage() {
 
   function updateIngredientRow(index: number, updates: Partial<DishIngredientFormRow>) {
     setFormIngredients(prev => prev.map((row, i) => (i === index ? { ...row, ...updates } : row)));
+  }
+
+  function addRecipeRow() {
+    setFormRecipes(prev => [...prev, defaultRecipeRow]);
+  }
+
+  function removeRecipeRow(index: number) {
+    if (formRecipes.length <= 1) return;
+    setFormRecipes(prev => prev.filter((_, i) => i !== index));
+  }
+
+  function updateRecipeRow(index: number, updates: Partial<DishRecipeFormRow>) {
+    setFormRecipes(prev => prev.map((row, i) => (i === index ? { ...row, ...updates } : row)));
   }
 
   function addAssignmentRow() {
@@ -452,6 +557,12 @@ export default function MenuDishesPage() {
     return map;
   }, [ingredients]);
 
+  const recipeMap = useMemo(() => {
+    const map = new Map<string, RecipeSummary>();
+    recipes.forEach(recipe => map.set(recipe.id, recipe));
+    return map;
+  }, [recipes]);
+
   const filteredDishes = useMemo(() => {
     const term = quickFilter.trim().toLowerCase();
     if (!term) {
@@ -466,11 +577,14 @@ export default function MenuDishesPage() {
       if (dish.ingredients.some(ingredient => ingredient.ingredient_name.toLowerCase().includes(term))) {
         return true;
       }
+      if (dish.recipes.some(recipe => recipe.recipe_name.toLowerCase().includes(term))) {
+        return true;
+      }
       return false;
     });
   }, [dishes, quickFilter]);
 
-  const computedPortionCost = useMemo(() => {
+  const ingredientCost = useMemo(() => {
     return formIngredients.reduce((sum, row) => {
       if (!row.ingredient_id) return sum;
       const base = ingredientMap.get(row.ingredient_id);
@@ -490,6 +604,31 @@ export default function MenuDishesPage() {
       return sum + lineCost;
     }, 0);
   }, [formIngredients, ingredientMap]);
+
+  const recipeCost = useMemo(() => {
+    return formRecipes.reduce((sum, row) => {
+      if (!row.recipe_id) return sum;
+      const recipe = recipeMap.get(row.recipe_id);
+      if (!recipe) return sum;
+      const quantity = parseFloat(row.quantity || '0');
+      if (!quantity || Number.isNaN(quantity)) return sum;
+      const yieldPct = parseFloat(row.yield_pct || '100');
+      const wastagePct = parseFloat(row.wastage_pct || '0');
+      const costOverride = row.cost_override ? parseFloat(row.cost_override) : undefined;
+      const unitCost = costOverride !== undefined && !Number.isNaN(costOverride)
+        ? costOverride
+        : Number(recipe.portion_cost ?? 0);
+      if (!unitCost) return sum;
+      const yieldFactor = yieldPct > 0 ? yieldPct / 100 : 1;
+      const wastageFactor = 1 + (Number.isNaN(wastagePct) ? 0 : wastagePct / 100);
+      const lineCost = costOverride !== undefined && !Number.isNaN(costOverride)
+        ? costOverride
+        : (quantity / (yieldFactor || 1)) * unitCost * wastageFactor;
+      return sum + lineCost;
+    }, 0);
+  }, [formRecipes, recipeMap]);
+
+  const computedPortionCost = ingredientCost + recipeCost;
 
   const sellingPrice = parseFloat(formState.selling_price || '0');
   const computedGp = sellingPrice > 0 ? (sellingPrice - computedPortionCost) / sellingPrice : null;
@@ -520,6 +659,16 @@ export default function MenuDishesPage() {
             ingredient_id: row.ingredient_id,
             quantity: parseFloat(row.quantity || '0') || 0,
             unit: row.unit || 'portion',
+            yield_pct: parseFloat(row.yield_pct || '100') || 100,
+            wastage_pct: parseFloat(row.wastage_pct || '0') || 0,
+            cost_override: row.cost_override ? parseFloat(row.cost_override) : null,
+            notes: row.notes || null,
+          })),
+        recipes: formRecipes
+          .filter(row => row.recipe_id && parseFloat(row.quantity || '0') > 0)
+          .map(row => ({
+            recipe_id: row.recipe_id,
+            quantity: parseFloat(row.quantity || '0') || 0,
             yield_pct: parseFloat(row.yield_pct || '100') || 100,
             wastage_pct: parseFloat(row.wastage_pct || '0') || 0,
             cost_override: row.cost_override ? parseFloat(row.cost_override) : null,
@@ -589,6 +738,7 @@ export default function MenuDishesPage() {
       <NavLink onClick={openCreateModal} className="font-semibold">
         {addDishLabel}
       </NavLink>
+      <NavLink href="/menu-management/recipes">Manage Recipes</NavLink>
     </NavGroup>
   ) : undefined;
 
@@ -728,57 +878,119 @@ export default function MenuDishesPage() {
   ];
 
   const renderDishIngredients = (dish: DishListItem) => {
-    if (!dish.ingredients.length) {
-      return <p className="text-sm text-gray-500">No ingredients linked to this dish yet.</p>;
+    const hasRecipes = dish.recipes.length > 0;
+    const hasIngredients = dish.ingredients.length > 0;
+
+    if (!hasRecipes && !hasIngredients) {
+      return <p className="text-sm text-gray-500">No ingredients or recipes linked to this dish yet.</p>;
     }
 
     return (
-      <div className="space-y-3">
-        {dish.ingredients.map((ingredient) => {
-          const quantityLabel = ingredient.quantity
-            ? `${ingredient.quantity}${ingredient.unit ? ` ${ingredient.unit}` : ingredient.default_unit ? ` ${ingredient.default_unit}` : ''}`
-            : ingredient.unit || ingredient.default_unit || 'n/a';
+      <div className="space-y-6">
+        {hasRecipes && (
+          <div>
+            <h4 className="text-sm font-semibold text-gray-900">Recipes</h4>
+            <div className="mt-3 space-y-3">
+              {dish.recipes.map(recipe => {
+                const costLabel = recipe.cost_override != null
+                  ? `Override £${Number(recipe.cost_override).toFixed(2)}`
+                  : recipe.portion_cost != null
+                    ? `£${Number(recipe.portion_cost).toFixed(2)} per portion`
+                    : 'Cost unavailable';
 
-          const unitCostLabel = ingredient.cost_override != null
-            ? `Override £${Number(ingredient.cost_override).toFixed(2)}`
-            : ingredient.latest_unit_cost != null
-              ? `£${Number(ingredient.latest_unit_cost).toFixed(4)} per ${ingredient.unit || ingredient.default_unit || 'unit'}`
-              : 'Unit cost unavailable';
-
-          return (
-            <div key={ingredient.ingredient_id} className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <div className="font-medium text-gray-900">{ingredient.ingredient_name}</div>
-                  <div className="mt-1 text-xs text-gray-500">
-                    {ingredient.dietary_flags.length > 0
-                      ? `Dietary: ${ingredient.dietary_flags.join(', ')}`
-                      : 'Dietary info not set'}
+                return (
+                  <div key={recipe.recipe_id} className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="font-medium text-gray-900 flex items-center gap-2">
+                          {recipe.recipe_name}
+                          {!recipe.recipe_is_active && (
+                            <Badge variant="warning" size="sm">
+                              Inactive
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          Qty {recipe.quantity} portion{recipe.quantity === 1 ? '' : 's'}
+                        </div>
+                        {recipe.notes && (
+                          <div className="mt-1 text-xs text-gray-500">Notes: {recipe.notes}</div>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-start text-xs text-gray-500 sm:items-end">
+                        <span>{costLabel}</span>
+                        <span>
+                          Yield: {recipe.yield_quantity != null ? `${recipe.yield_quantity} ${recipe.yield_unit || ''}` : '—'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="mt-2 text-xs text-gray-500 space-x-2">
+                      {recipe.dietary_flags.length > 0 && (
+                        <span>Dietary: {recipe.dietary_flags.join(', ')}</span>
+                      )}
+                      {recipe.allergen_flags.length > 0 && (
+                        <span>Allergens: {recipe.allergen_flags.join(', ')}</span>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-xs text-gray-500">
-                    {ingredient.allergens.length > 0
-                      ? `Allergens: ${ingredient.allergens.join(', ')}`
-                      : 'No allergens recorded'}
-                  </div>
-                  {ingredient.notes && (
-                    <div className="mt-1 text-xs text-gray-500">Notes: {ingredient.notes}</div>
-                  )}
-                </div>
-                <div className="flex flex-col items-start sm:items-end">
-                  <Badge variant="primary">Qty {quantityLabel}</Badge>
-                  <span className="mt-2 text-xs text-gray-500">{unitCostLabel}</span>
-                </div>
-              </div>
-              <div className="mt-3 grid gap-2 text-xs text-gray-600 sm:grid-cols-3">
-                <span>Yield: {ingredient.yield_pct != null ? `${ingredient.yield_pct}%` : '—'}</span>
-                <span>Wastage: {ingredient.wastage_pct != null ? `${ingredient.wastage_pct}%` : '—'}</span>
-                <span>
-                  Pack cost: {ingredient.latest_pack_cost != null ? `£${Number(ingredient.latest_pack_cost).toFixed(2)}` : '—'}
-                </span>
-              </div>
+                );
+              })}
             </div>
-          );
-        })}
+          </div>
+        )}
+
+        {hasIngredients && (
+          <div>
+            <h4 className="text-sm font-semibold text-gray-900">Ingredients</h4>
+            <div className="mt-3 space-y-3">
+              {dish.ingredients.map((ingredient) => {
+                const quantityLabel = ingredient.quantity
+                  ? `${ingredient.quantity}${ingredient.unit ? ` ${ingredient.unit}` : ingredient.default_unit ? ` ${ingredient.default_unit}` : ''}`
+                  : ingredient.unit || ingredient.default_unit || 'n/a';
+
+                const unitCostLabel = ingredient.cost_override != null
+                  ? `Override £${Number(ingredient.cost_override).toFixed(2)}`
+                  : ingredient.latest_unit_cost != null
+                    ? `£${Number(ingredient.latest_unit_cost).toFixed(4)} per ${ingredient.unit || ingredient.default_unit || 'unit'}`
+                    : 'Unit cost unavailable';
+
+                return (
+                  <div key={ingredient.ingredient_id} className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="font-medium text-gray-900">{ingredient.ingredient_name}</div>
+                        <div className="mt-1 text-xs text-gray-500">
+                          {ingredient.dietary_flags.length > 0
+                            ? `Dietary: ${ingredient.dietary_flags.join(', ')}`
+                            : 'Dietary info not set'}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {ingredient.allergens.length > 0
+                            ? `Allergens: ${ingredient.allergens.join(', ')}`
+                            : 'No allergens recorded'}
+                        </div>
+                        {ingredient.notes && (
+                          <div className="mt-1 text-xs text-gray-500">Notes: {ingredient.notes}</div>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-start sm:items-end">
+                        <Badge variant="primary">Qty {quantityLabel}</Badge>
+                        <span className="mt-2 text-xs text-gray-500">{unitCostLabel}</span>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid gap-2 text-xs text-gray-600 sm:grid-cols-3">
+                      <span>Yield: {ingredient.yield_pct != null ? `${ingredient.yield_pct}%` : '—'}</span>
+                      <span>Wastage: {ingredient.wastage_pct != null ? `${ingredient.wastage_pct}%` : '—'}</span>
+                      <span>
+                        Pack cost: {ingredient.latest_pack_cost != null ? `£${Number(ingredient.latest_pack_cost).toFixed(2)}` : '—'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -966,6 +1178,94 @@ export default function MenuDishesPage() {
               </div>
             </div>
           </div>
+
+          <Section
+            title="Recipes"
+            description="Reuse prep recipes in this dish. Costs from the recipe roll into the portion cost automatically."
+          >
+            <div className="space-y-3">
+              {recipes.length === 0 && (
+                <Alert variant="warning">
+                  No recipes available yet. Add recipes from the Recipes tab or continue with direct ingredients.
+                </Alert>
+              )}
+              {formRecipes.map((row, index) => (
+                <Card key={`dish-recipe-${index}`} className="space-y-3 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <FormGroup label="Recipe" required className="flex-1">
+                      <Select
+                        value={row.recipe_id}
+                        onChange={(e) => updateRecipeRow(index, { recipe_id: e.target.value })}
+                      >
+                        <option value="">Select recipe</option>
+                        {recipes.map(recipe => (
+                          <option key={recipe.id} value={recipe.id}>
+                            {recipe.name} (£{recipe.portion_cost.toFixed(2)} / {recipe.yield_unit})
+                          </option>
+                        ))}
+                      </Select>
+                    </FormGroup>
+                    <FormGroup label="Quantity" required>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={row.quantity}
+                        onChange={(e) => updateRecipeRow(index, { quantity: e.target.value })}
+                      />
+                    </FormGroup>
+                    <FormGroup label="Yield %">
+                      <Input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.1"
+                        value={row.yield_pct}
+                        onChange={(e) => updateRecipeRow(index, { yield_pct: e.target.value })}
+                      />
+                    </FormGroup>
+                    <FormGroup label="Wastage %">
+                      <Input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.1"
+                        value={row.wastage_pct}
+                        onChange={(e) => updateRecipeRow(index, { wastage_pct: e.target.value })}
+                      />
+                    </FormGroup>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <FormGroup label="Cost Override (£)">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={row.cost_override}
+                        onChange={(e) => updateRecipeRow(index, { cost_override: e.target.value })}
+                      />
+                    </FormGroup>
+                    <FormGroup label="Notes">
+                      <Input
+                        value={row.notes}
+                        onChange={(e) => updateRecipeRow(index, { notes: e.target.value })}
+                      />
+                    </FormGroup>
+                  </div>
+                  {formRecipes.length > 1 && (
+                    <div className="flex justify-end">
+                      <Button variant="ghost" size="sm" onClick={() => removeRecipeRow(index)}>
+                        Remove
+                      </Button>
+                    </div>
+                  )}
+                </Card>
+              ))}
+              <Button type="button" variant="ghost" onClick={addRecipeRow}>
+                Add Recipe
+              </Button>
+            </div>
+          </Section>
 
           <Section
             title="Ingredients"

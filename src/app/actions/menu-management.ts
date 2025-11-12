@@ -26,12 +26,12 @@ const STORAGE_TYPES = ['ambient', 'chilled', 'frozen', 'dry', 'other'] as const;
 
 const IngredientSchema = z.object({
   name: z.string().min(1),
-  description: z.string().optional(),
+  description: z.string().nullable().optional(),
   default_unit: z.enum(UNITS).default('each'),
   storage_type: z.enum(STORAGE_TYPES).default('ambient'),
-  supplier_name: z.string().optional(),
-  supplier_sku: z.string().optional(),
-  brand: z.string().optional(),
+  supplier_name: z.string().nullable().optional(),
+  supplier_sku: z.string().nullable().optional(),
+  brand: z.string().nullable().optional(),
   pack_size: z.number().nonnegative().nullable().optional(),
   pack_size_unit: z.enum(UNITS).optional().nullable(),
   pack_cost: z.number().nonnegative().default(0),
@@ -40,7 +40,7 @@ const IngredientSchema = z.object({
   shelf_life_days: z.number().int().nullable().optional(),
   allergens: z.array(z.string()).default([]),
   dietary_flags: z.array(z.string()).default([]),
-  notes: z.string().optional(),
+  notes: z.string().nullable().optional(),
   is_active: z.boolean().default(true),
 });
 
@@ -63,6 +63,28 @@ const DishIngredientSchema = z.object({
   notes: z.string().nullable().optional(),
 });
 
+const RecipeIngredientSchema = DishIngredientSchema.extend({});
+
+const DishRecipeSchema = z.object({
+  recipe_id: z.string().uuid(),
+  quantity: z.number().positive(),
+  yield_pct: z.number().min(0).max(100).default(100),
+  wastage_pct: z.number().min(0).max(100).default(0),
+  cost_override: z.number().nonnegative().nullable().optional(),
+  notes: z.string().nullable().optional(),
+});
+
+const RecipeSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  instructions: z.string().optional(),
+  yield_quantity: z.number().positive().default(1),
+  yield_unit: z.enum(UNITS).default('portion'),
+  notes: z.string().nullable().optional(),
+  is_active: z.boolean().default(true),
+  ingredients: z.array(RecipeIngredientSchema).default([]),
+});
+
 const DishAssignmentSchema = z.object({
   menu_code: z.string().min(1),
   category_code: z.string().min(1),
@@ -83,11 +105,13 @@ const DishSchema = z.object({
   image_url: z.string().optional(),
   notes: z.string().nullable().optional(),
   ingredients: z.array(DishIngredientSchema).default([]),
+  recipes: z.array(DishRecipeSchema).default([]),
   assignments: z.array(DishAssignmentSchema).min(1),
 });
 
 type IngredientInput = z.infer<typeof IngredientSchema>;
 type IngredientPriceInput = z.infer<typeof IngredientPriceSchema>;
+type RecipeInput = z.infer<typeof RecipeSchema>;
 type DishInput = z.infer<typeof DishSchema>;
 
 export async function listMenuIngredients() {
@@ -467,6 +491,429 @@ export async function deleteMenuIngredient(id: string) {
   }
 }
 
+type ListMenuRecipesOptions = {
+  includeIngredients?: boolean;
+  includeAssignments?: boolean;
+};
+
+export async function listMenuRecipes(options?: ListMenuRecipesOptions) {
+  try {
+    const includeIngredients = options?.includeIngredients !== false;
+    const includeAssignments = options?.includeAssignments !== false;
+    const supabase = await createClient();
+
+    const { data: recipes, error } = await supabase
+      .from('menu_recipes')
+      .select('id, name, description, instructions, yield_quantity, yield_unit, portion_cost, allergen_flags, dietary_flags, notes, is_active, created_at, updated_at')
+      .order('name', { ascending: true });
+
+    if (error) {
+      console.error('listMenuRecipes error:', error);
+      return { error: 'Failed to fetch recipes' };
+    }
+
+    const recipeIds = (recipes || []).map(recipe => recipe.id);
+    let ingredientRows: any[] = [];
+    let priceMap = new Map<string, any>();
+    let dishLinkRows: any[] = [];
+    let assignmentRows: any[] = [];
+
+    if (includeIngredients && recipeIds.length > 0) {
+      const { data: ingredientData, error: ingredientError } = await supabase
+        .from('menu_recipe_ingredients')
+        .select(`
+          recipe_id,
+          quantity,
+          unit,
+          yield_pct,
+          wastage_pct,
+          cost_override,
+          notes,
+          ingredient:menu_ingredients(
+            id,
+            name,
+            default_unit,
+            allergens,
+            dietary_flags
+          )
+        `)
+        .in('recipe_id', recipeIds);
+
+      if (ingredientError) {
+        console.error('listMenuRecipes ingredient error:', ingredientError);
+      } else {
+        ingredientRows = ingredientData || [];
+      }
+
+      const ingredientIds = Array.from(
+        new Set(
+          ingredientRows
+            .map(row => row.ingredient?.id)
+            .filter((id): id is string => Boolean(id))
+        )
+      );
+
+      if (ingredientIds.length > 0) {
+        const { data: pricingData, error: pricingError } = await supabase
+          .from('menu_ingredients_with_prices')
+          .select('id, latest_unit_cost, latest_pack_cost, pack_cost, default_unit')
+          .in('id', ingredientIds);
+
+        if (pricingError) {
+          console.error('listMenuRecipes ingredient pricing error:', pricingError);
+        } else {
+          priceMap = new Map(
+            (pricingData || []).map(entry => [entry.id, entry])
+          );
+        }
+      }
+    }
+
+    if (includeAssignments && recipeIds.length > 0) {
+      const { data: dishRecipeData, error: dishRecipeError } = await supabase
+        .from('menu_dish_recipes')
+        .select(`
+          recipe_id,
+          quantity,
+          dish:menu_dishes(
+            id,
+            name,
+            selling_price,
+            gp_pct,
+            is_active
+          )
+        `)
+        .in('recipe_id', recipeIds);
+
+      if (dishRecipeError) {
+        console.error('listMenuRecipes dish link error:', dishRecipeError);
+      } else {
+        dishLinkRows = dishRecipeData || [];
+      }
+
+      const dishIds = Array.from(
+        new Set(
+          dishLinkRows
+            .map(row => row.dish?.id)
+            .filter((id): id is string => Boolean(id))
+        )
+      );
+
+      if (dishIds.length > 0) {
+        const { data: assignmentsData, error: assignmentsError } = await supabase
+          .from('menu_dish_menu_assignments')
+          .select('dish_id, sort_order, is_special, is_default_side, menu:menu_menus(code, name), category:menu_categories(code, name)')
+          .in('dish_id', dishIds);
+
+        if (assignmentsError) {
+          console.error('listMenuRecipes assignments error:', assignmentsError);
+        } else {
+          assignmentRows = assignmentsData || [];
+        }
+      }
+    }
+
+    const ingredientsByRecipe = new Map<string, any[]>();
+    ingredientRows.forEach(row => {
+      if (!row?.ingredient?.id) return;
+      const pricing = priceMap.get(row.ingredient.id);
+      const detail = {
+        ingredient_id: row.ingredient.id,
+        ingredient_name: row.ingredient.name,
+        quantity: Number(row.quantity ?? 0),
+        unit: row.unit,
+        yield_pct: row.yield_pct,
+        wastage_pct: row.wastage_pct,
+        cost_override: row.cost_override,
+        notes: row.notes,
+        latest_unit_cost: pricing?.latest_unit_cost != null ? Number(pricing.latest_unit_cost) : null,
+        latest_pack_cost:
+          pricing?.latest_pack_cost != null
+            ? Number(pricing.latest_pack_cost)
+            : pricing?.pack_cost != null
+              ? Number(pricing.pack_cost)
+              : null,
+        default_unit: pricing?.default_unit ?? row.ingredient.default_unit ?? null,
+        dietary_flags: row.ingredient.dietary_flags || [],
+        allergens: row.ingredient.allergens || [],
+      };
+
+      const existing = ingredientsByRecipe.get(row.recipe_id) || [];
+      existing.push(detail);
+      ingredientsByRecipe.set(row.recipe_id, existing);
+    });
+
+    const assignmentsByDish = new Map<string, any[]>();
+    assignmentRows.forEach(row => {
+      const entry = {
+        menu_code: row.menu?.code ?? '',
+        menu_name: row.menu?.name ?? '',
+        category_code: row.category?.code ?? '',
+        category_name: row.category?.name ?? '',
+        sort_order: row.sort_order ?? 0,
+        is_special: row.is_special ?? false,
+        is_default_side: row.is_default_side ?? false,
+      };
+
+      const existing = assignmentsByDish.get(row.dish_id) || [];
+      existing.push(entry);
+      assignmentsByDish.set(row.dish_id, existing);
+    });
+
+    const usageByRecipe = new Map<string, any[]>();
+    dishLinkRows.forEach(row => {
+      if (!row?.dish?.id) return;
+      const entry = {
+        dish_id: row.dish.id,
+        dish_name: row.dish.name,
+        quantity: Number(row.quantity ?? 0),
+        dish_gp_pct: row.dish.gp_pct ?? null,
+        dish_selling_price: Number(row.dish.selling_price ?? 0),
+        dish_is_active: row.dish.is_active ?? false,
+        assignments: (assignmentsByDish.get(row.dish.id) || []).sort((a, b) => {
+          if (a.menu_code === b.menu_code) {
+            return a.sort_order - b.sort_order;
+          }
+          return a.menu_code.localeCompare(b.menu_code);
+        }),
+      };
+
+      const existing = usageByRecipe.get(row.recipe_id) || [];
+      existing.push(entry);
+      usageByRecipe.set(row.recipe_id, existing);
+    });
+
+    const result = (recipes || []).map(recipe => ({
+      ...recipe,
+      ingredients: includeIngredients
+        ? (ingredientsByRecipe.get(recipe.id) || []).sort((a, b) =>
+            a.ingredient_name.localeCompare(b.ingredient_name)
+          )
+        : [],
+      usage: includeAssignments ? usageByRecipe.get(recipe.id) || [] : [],
+    }));
+
+    return { data: result };
+  } catch (error) {
+    console.error('listMenuRecipes unexpected error:', error);
+    return { error: 'An unexpected error occurred' };
+  }
+}
+
+export async function getMenuRecipeDetail(id: string) {
+  try {
+    const supabase = await createClient();
+
+    const [
+      { data: recipe, error: recipeError },
+      { data: ingredients, error: ingredientsError },
+      { data: usage, error: usageError },
+    ] = await Promise.all([
+      supabase.from('menu_recipes').select('*').eq('id', id).single(),
+      supabase
+        .from('menu_recipe_ingredients')
+        .select('id, recipe_id, ingredient_id, quantity, unit, yield_pct, wastage_pct, cost_override, notes, ingredient:menu_ingredients(name, default_unit)')
+        .eq('recipe_id', id),
+      supabase
+        .from('menu_dish_recipes')
+        .select('dish:menu_dishes(id, name, selling_price, gp_pct, is_active), quantity')
+        .eq('recipe_id', id),
+    ]);
+
+    if (recipeError || ingredientsError || usageError) {
+      return { error: 'Failed to fetch recipe detail' };
+    }
+
+    return {
+      data: {
+        recipe,
+        ingredients: ingredients || [],
+        usage: usage || [],
+      },
+    };
+  } catch (error) {
+    console.error('getMenuRecipeDetail unexpected error:', error);
+    return { error: 'An unexpected error occurred' };
+  }
+}
+
+export async function createMenuRecipe(input: RecipeInput) {
+  try {
+    const hasPermission = await checkUserPermission('menu_management', 'manage');
+    if (!hasPermission) {
+      return { error: 'You do not have permission to manage menu recipes' };
+    }
+
+    const supabase = await createClient();
+    const payload = RecipeSchema.parse(input);
+
+    const { data: recipe, error: recipeError } = await supabase
+      .from('menu_recipes')
+      .insert({
+        name: payload.name,
+        description: payload.description || null,
+        instructions: payload.instructions || null,
+        yield_quantity: payload.yield_quantity,
+        yield_unit: payload.yield_unit,
+        notes: payload.notes || null,
+        is_active: payload.is_active,
+      })
+      .select()
+      .single();
+
+    if (recipeError || !recipe) {
+      console.error('createMenuRecipe recipe error:', recipeError);
+      return { error: 'Failed to create recipe' };
+    }
+
+    if (payload.ingredients.length > 0) {
+      const { error: ingredientsError } = await supabase.from('menu_recipe_ingredients').insert(
+        payload.ingredients.map(ing => ({
+          recipe_id: recipe.id,
+          ingredient_id: ing.ingredient_id,
+          quantity: ing.quantity,
+          unit: ing.unit,
+          yield_pct: ing.yield_pct,
+          wastage_pct: ing.wastage_pct,
+          cost_override: ing.cost_override ?? null,
+          notes: ing.notes || null,
+        }))
+      );
+
+      if (ingredientsError) {
+        console.error('createMenuRecipe ingredients error:', ingredientsError);
+        await supabase.from('menu_recipes').delete().eq('id', recipe.id);
+        return { error: 'Failed to add recipe ingredients' };
+      }
+    }
+
+    await supabase.rpc('menu_refresh_recipe_calculations', { p_recipe_id: recipe.id });
+
+    await logAuditEvent({
+      operation_type: 'create',
+      resource_type: 'menu_recipe',
+      resource_id: recipe.id,
+      operation_status: 'success',
+      additional_info: {
+        name: recipe.name,
+      },
+    });
+
+    return { success: true, data: recipe };
+  } catch (error) {
+    console.error('createMenuRecipe unexpected error:', error);
+    return { error: 'An unexpected error occurred' };
+  }
+}
+
+export async function updateMenuRecipe(id: string, input: RecipeInput) {
+  try {
+    const hasPermission = await checkUserPermission('menu_management', 'manage');
+    if (!hasPermission) {
+      return { error: 'You do not have permission to manage menu recipes' };
+    }
+
+    const supabase = await createClient();
+    const payload = RecipeSchema.parse(input);
+
+    const { data: recipe, error: recipeError } = await supabase
+      .from('menu_recipes')
+      .update({
+        name: payload.name,
+        description: payload.description || null,
+        instructions: payload.instructions || null,
+        yield_quantity: payload.yield_quantity,
+        yield_unit: payload.yield_unit,
+        notes: payload.notes || null,
+        is_active: payload.is_active,
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (recipeError || !recipe) {
+      console.error('updateMenuRecipe recipe error:', recipeError);
+      return { error: 'Failed to update recipe' };
+    }
+
+    const { error: deleteIngredientsError } = await supabase
+      .from('menu_recipe_ingredients')
+      .delete()
+      .eq('recipe_id', id);
+
+    if (deleteIngredientsError) {
+      console.error('updateMenuRecipe delete ingredients error:', deleteIngredientsError);
+      return { error: 'Failed to update recipe ingredients' };
+    }
+
+    if (payload.ingredients.length > 0) {
+      const { error: insertIngredientsError } = await supabase.from('menu_recipe_ingredients').insert(
+        payload.ingredients.map(ing => ({
+          recipe_id: id,
+          ingredient_id: ing.ingredient_id,
+          quantity: ing.quantity,
+          unit: ing.unit,
+          yield_pct: ing.yield_pct,
+          wastage_pct: ing.wastage_pct,
+          cost_override: ing.cost_override ?? null,
+          notes: ing.notes || null,
+        }))
+      );
+
+      if (insertIngredientsError) {
+        console.error('updateMenuRecipe insert ingredients error:', insertIngredientsError);
+        return { error: 'Failed to update recipe ingredients' };
+      }
+    }
+
+    await supabase.rpc('menu_refresh_recipe_calculations', { p_recipe_id: id });
+
+    await logAuditEvent({
+      operation_type: 'update',
+      resource_type: 'menu_recipe',
+      resource_id: id,
+      operation_status: 'success',
+      additional_info: {
+        name: recipe.name,
+      },
+    });
+
+    return { success: true, data: recipe };
+  } catch (error) {
+    console.error('updateMenuRecipe unexpected error:', error);
+    return { error: 'An unexpected error occurred' };
+  }
+}
+
+export async function deleteMenuRecipe(id: string) {
+  try {
+    const hasPermission = await checkUserPermission('menu_management', 'manage');
+    if (!hasPermission) {
+      return { error: 'You do not have permission to manage menu recipes' };
+    }
+
+    const supabase = await createClient();
+
+    const { error } = await supabase.from('menu_recipes').delete().eq('id', id);
+    if (error) {
+      console.error('deleteMenuRecipe error:', error);
+      return { error: 'Failed to delete recipe' };
+    }
+
+    await logAuditEvent({
+      operation_type: 'delete',
+      resource_type: 'menu_recipe',
+      resource_id: id,
+      operation_status: 'success',
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error('deleteMenuRecipe unexpected error:', error);
+    return { error: 'An unexpected error occurred' };
+  }
+}
+
 async function getMenuAndCategoryIds(
   assignments: Array<{ menu_code: string; category_code: string }>,
   admin = createAdminClient()
@@ -617,6 +1064,40 @@ export async function listMenuDishes(menuCode?: string) {
       }
     }
 
+    let recipeRows: any[] = [];
+    const recipeMetaMap = new Map<string, any>();
+    if (dishIds.length > 0) {
+      const { data: recipeData, error: recipeError } = await supabase
+        .from('menu_dish_recipes')
+        .select('dish_id, recipe_id, quantity, yield_pct, wastage_pct, cost_override, notes')
+        .in('dish_id', dishIds);
+
+      if (recipeError) {
+        console.error('listMenuDishes recipes error:', recipeError);
+      } else {
+        recipeRows = recipeData || [];
+      }
+
+      const recipeIds = Array.from(
+        new Set(recipeRows.map(row => row.recipe_id).filter((id): id is string => Boolean(id)))
+      );
+
+      if (recipeIds.length > 0) {
+        const { data: recipeDetails, error: recipeDetailsError } = await supabase
+          .from('menu_recipes')
+          .select('id, name, portion_cost, yield_quantity, yield_unit, allergen_flags, dietary_flags, is_active')
+          .in('id', recipeIds);
+
+        if (recipeDetailsError) {
+          console.error('listMenuDishes recipe metadata error:', recipeDetailsError);
+        } else {
+          (recipeDetails || []).forEach(recipe => {
+            recipeMetaMap.set(recipe.id, recipe);
+          });
+        }
+      }
+    }
+
     const ingredientsByDish = new Map<string, any[]>();
     ingredientRows.forEach(row => {
       if (!row?.ingredient?.id) return;
@@ -630,8 +1111,13 @@ export async function listMenuDishes(menuCode?: string) {
         wastage_pct: row.wastage_pct,
         cost_override: row.cost_override,
         notes: row.notes,
-        latest_unit_cost: pricing?.latest_unit_cost ?? null,
-        latest_pack_cost: pricing?.latest_pack_cost ?? pricing?.pack_cost ?? null,
+        latest_unit_cost: pricing?.latest_unit_cost != null ? Number(pricing.latest_unit_cost) : null,
+        latest_pack_cost:
+          pricing?.latest_pack_cost != null
+            ? Number(pricing.latest_pack_cost)
+            : pricing?.pack_cost != null
+              ? Number(pricing.pack_cost)
+              : null,
         default_unit: pricing?.default_unit ?? row.ingredient.default_unit ?? null,
         dietary_flags: row.ingredient.dietary_flags || [],
         allergens: row.ingredient.allergens || [],
@@ -640,6 +1126,32 @@ export async function listMenuDishes(menuCode?: string) {
       const existing = ingredientsByDish.get(row.dish_id) || [];
       existing.push(detail);
       ingredientsByDish.set(row.dish_id, existing);
+    });
+
+    const recipesByDish = new Map<string, any[]>();
+    recipeRows.forEach(row => {
+      if (!row?.recipe_id) return;
+      const recipeMeta = recipeMetaMap.get(row.recipe_id);
+      if (!recipeMeta) return;
+      const detail = {
+        recipe_id: row.recipe_id,
+        recipe_name: recipeMeta.name,
+        quantity: Number(row.quantity ?? 0),
+        yield_pct: row.yield_pct,
+        wastage_pct: row.wastage_pct,
+        cost_override: row.cost_override,
+        notes: row.notes,
+        portion_cost: recipeMeta.portion_cost != null ? Number(recipeMeta.portion_cost) : null,
+        yield_quantity: recipeMeta.yield_quantity != null ? Number(recipeMeta.yield_quantity) : null,
+        yield_unit: recipeMeta.yield_unit ?? 'portion',
+        dietary_flags: recipeMeta.dietary_flags || [],
+        allergen_flags: recipeMeta.allergen_flags || [],
+        recipe_is_active: recipeMeta.is_active ?? true,
+      };
+
+      const existing = recipesByDish.get(row.dish_id) || [];
+      existing.push(detail);
+      recipesByDish.set(row.dish_id, existing);
     });
 
     const result = dishes.map(dish => {
@@ -655,10 +1167,15 @@ export async function listMenuDishes(menuCode?: string) {
         a.ingredient_name.localeCompare(b.ingredient_name)
       );
 
+      const dishRecipes = (recipesByDish.get(dish.id) || []).sort((a, b) =>
+        a.recipe_name.localeCompare(b.recipe_name)
+      );
+
       return {
         ...base,
         assignments: sortedAssignments,
         ingredients: dishIngredients,
+        recipes: dishRecipes,
         target_gp_pct: targetGpPct,
       };
     });
@@ -675,27 +1192,66 @@ export async function getMenuDishDetail(dishId: string) {
     const supabase = await createClient();
     const targetGpPct = await getMenuTargetGp({ client: supabase });
 
-    const [{ data: dish, error: dishError }, { data: ingredients, error: ingredientsError }, { data: assignments, error: assignmentsError }] =
-      await Promise.all([
-        supabase.from('menu_dishes').select('*').eq('id', dishId).single(),
-        supabase
-          .from('menu_dish_ingredients')
-          .select('id, ingredient_id, quantity, unit, yield_pct, wastage_pct, cost_override, notes, ingredient:menu_ingredients(name, default_unit)')
-          .eq('dish_id', dishId),
-        supabase
-          .from('menu_dish_menu_assignments')
-          .select('menu_id, category_id, sort_order, is_special, is_default_side, available_from, available_until, menu:menu_menus(code, name), category:menu_categories(code, name)')
-          .eq('dish_id', dishId),
-      ]);
+    const [
+      { data: dish, error: dishError },
+      { data: ingredients, error: ingredientsError },
+      { data: assignments, error: assignmentsError },
+      { data: recipeLinks, error: recipesError },
+    ] = await Promise.all([
+      supabase.from('menu_dishes').select('*').eq('id', dishId).single(),
+      supabase
+        .from('menu_dish_ingredients')
+        .select('id, ingredient_id, quantity, unit, yield_pct, wastage_pct, cost_override, notes, ingredient:menu_ingredients(name, default_unit)')
+        .eq('dish_id', dishId),
+      supabase
+        .from('menu_dish_menu_assignments')
+        .select('menu_id, category_id, sort_order, is_special, is_default_side, available_from, available_until, menu:menu_menus(code, name), category:menu_categories(code, name)')
+        .eq('dish_id', dishId),
+      supabase
+        .from('menu_dish_recipes')
+        .select('id, recipe_id, quantity, yield_pct, wastage_pct, cost_override, notes')
+        .eq('dish_id', dishId),
+    ]);
 
-    if (dishError || ingredientsError || assignmentsError) {
+    if (dishError || ingredientsError || assignmentsError || recipesError) {
       return { error: 'Failed to fetch dish detail' };
+    }
+
+    let recipes: any[] = [];
+    if (Array.isArray(recipeLinks) && recipeLinks.length > 0) {
+      const recipeIds = Array.from(
+        new Set(
+          recipeLinks
+            .map(row => row.recipe_id)
+            .filter((id): id is string => Boolean(id))
+        )
+      );
+
+      let recipeMetaMap = new Map<string, any>();
+      if (recipeIds.length > 0) {
+        const { data: meta, error: recipeMetaError } = await supabase
+          .from('menu_recipes')
+          .select('id, name, portion_cost, yield_quantity, yield_unit')
+          .in('id', recipeIds);
+
+        if (recipeMetaError) {
+          console.error('getMenuDishDetail recipe meta error:', recipeMetaError);
+        } else {
+          recipeMetaMap = new Map((meta || []).map(entry => [entry.id, entry]));
+        }
+      }
+
+      recipes = recipeLinks.map(link => ({
+        ...link,
+        recipe: recipeMetaMap.get(link.recipe_id) || null,
+      }));
     }
 
     return {
       data: {
         dish: dish ? { ...dish, target_gp_pct: targetGpPct } : dish,
         ingredients: ingredients || [],
+        recipes: recipes || [],
         assignments: assignments || [],
       },
     };
@@ -757,6 +1313,26 @@ export async function createMenuDish(input: DishInput) {
         console.error('createMenuDish ingredients error:', ingredientsError);
         await supabase.from('menu_dishes').delete().eq('id', dish.id);
         return { error: 'Failed to add dish ingredients' };
+      }
+    }
+
+    if (payload.recipes.length > 0) {
+      const { error: recipesError } = await supabase.from('menu_dish_recipes').insert(
+        payload.recipes.map(recipe => ({
+          dish_id: dish.id,
+          recipe_id: recipe.recipe_id,
+          quantity: recipe.quantity,
+          yield_pct: recipe.yield_pct,
+          wastage_pct: recipe.wastage_pct,
+          cost_override: recipe.cost_override ?? null,
+          notes: recipe.notes || null,
+        }))
+      );
+
+      if (recipesError) {
+        console.error('createMenuDish recipes error:', recipesError);
+        await supabase.from('menu_dishes').delete().eq('id', dish.id);
+        return { error: 'Failed to add dish recipes' };
       }
     }
 
@@ -862,6 +1438,35 @@ export async function updateMenuDish(id: string, input: DishInput) {
       if (insertIngredientsError) {
         console.error('updateMenuDish insert ingredients error:', insertIngredientsError);
         return { error: 'Failed to update dish ingredients' };
+      }
+    }
+
+    const { error: deleteRecipesError } = await supabase
+      .from('menu_dish_recipes')
+      .delete()
+      .eq('dish_id', id);
+
+    if (deleteRecipesError) {
+      console.error('updateMenuDish delete recipes error:', deleteRecipesError);
+      return { error: 'Failed to update dish recipes' };
+    }
+
+    if (payload.recipes.length > 0) {
+      const { error: insertRecipesError } = await supabase.from('menu_dish_recipes').insert(
+        payload.recipes.map(recipe => ({
+          dish_id: id,
+          recipe_id: recipe.recipe_id,
+          quantity: recipe.quantity,
+          yield_pct: recipe.yield_pct,
+          wastage_pct: recipe.wastage_pct,
+          cost_override: recipe.cost_override ?? null,
+          notes: recipe.notes || null,
+        }))
+      );
+
+      if (insertRecipesError) {
+        console.error('updateMenuDish insert recipes error:', insertRecipesError);
+        return { error: 'Failed to update dish recipes' };
       }
     }
 
