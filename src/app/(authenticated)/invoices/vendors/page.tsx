@@ -228,7 +228,7 @@ export default function VendorsPage() {
         phone: vendor.phone || '',
         address: vendor.address || '',
         vat_number: vendor.vat_number || '',
-        payment_terms: vendor.payment_terms || 30,
+        payment_terms: vendor.payment_terms ?? 30,
         notes: vendor.notes || ''
       })
     } else {
@@ -554,7 +554,10 @@ export default function VendorsPage() {
                   <Input
                     type="number"
                     value={formData.payment_terms}
-                    onChange={(e) => setFormData({ ...formData, payment_terms: parseInt(e.target.value) || 30 })}
+                    onChange={(e) => {
+                      const nextValue = Number.isNaN(e.target.valueAsNumber) ? 0 : e.target.valueAsNumber
+                      setFormData({ ...formData, payment_terms: nextValue })
+                    }}
                     min="0"
                   />
                 </div>
