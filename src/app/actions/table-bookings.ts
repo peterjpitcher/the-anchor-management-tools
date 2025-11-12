@@ -43,6 +43,7 @@ const CreateTableBookingSchema = z.object({
   celebration_type: z.string().optional(),
   duration_minutes: z.number().default(120),
   source: z.string().default('phone'),
+  cash_payment_received: z.boolean().default(false),
 });
 
 const CreateCustomerSchema = z.object({
@@ -397,6 +398,7 @@ export async function createTableBooking(formData: FormData) {
       celebration_type: formData.get('celebration_type') || undefined,
       duration_minutes: parseInt(formData.get('duration_minutes') as string) || 120,
       source: formData.get('source') || 'phone',
+      cash_payment_received: formData.get('cash_payment_received') === 'true',
     });
     
     // If no customer_id, try to find or create customer
@@ -448,6 +450,16 @@ export async function createTableBooking(formData: FormData) {
     const policyErrorMessage = policyResult?.error_message;
     const isPolicyValid = Boolean(policyResult?.is_valid);
     const isStaffSource = bookingData.source && bookingData.source !== 'website';
+    const cashPaymentReceived = Boolean(bookingData.cash_payment_received);
+
+    if (cashPaymentReceived) {
+      if (bookingData.booking_type !== 'sunday_lunch') {
+        return { error: 'Cash payment option is only available for Sunday lunch bookings' };
+      }
+      if (!isStaffSource) {
+        return { error: 'Cash payment option is only available for staff bookings' };
+      }
+    }
     
     if (policyError || !isPolicyValid) {
       const bookingDateTime = new Date(`${bookingData.booking_date}T${bookingData.booking_time}`);
@@ -540,6 +552,11 @@ export async function createTableBooking(formData: FormData) {
     }
     
     // Create booking
+    const initialStatus =
+      bookingData.booking_type === 'sunday_lunch' && !cashPaymentReceived
+        ? 'pending_payment'
+        : 'confirmed';
+
     const { data: booking, error: bookingError } = await supabase
       .from('table_bookings')
       .insert({
@@ -554,7 +571,7 @@ export async function createTableBooking(formData: FormData) {
         celebration_type: bookingData.celebration_type,
         duration_minutes: bookingData.duration_minutes,
         source: bookingData.source,
-        status: bookingData.booking_type === 'sunday_lunch' ? 'pending_payment' : 'confirmed',
+        status: initialStatus,
       })
       .select('*, customer:customers(first_name, last_name, mobile_number, email)')
       .single();
@@ -591,6 +608,30 @@ export async function createTableBooking(formData: FormData) {
         }
       } catch (err) {
         console.error('Menu items parsing error:', err);
+      }
+    }
+
+    if (booking.booking_type === 'sunday_lunch' && cashPaymentReceived) {
+      const depositAmount = booking.party_size * 5;
+      const recordedAt = new Date().toISOString();
+      const { error: paymentError } = await adminSupabase
+        .from('table_booking_payments')
+        .insert({
+          booking_id: booking.id,
+          amount: depositAmount,
+          payment_method: 'cash',
+          status: 'completed',
+          paid_at: recordedAt,
+          payment_metadata: {
+            recorded_via: 'manual_cash',
+            recorded_at: recordedAt,
+            recorded_in_app: true,
+            deposit_amount: depositAmount,
+          },
+        });
+
+      if (paymentError) {
+        console.error('Failed to record cash payment for Sunday lunch booking:', paymentError);
       }
     }
 

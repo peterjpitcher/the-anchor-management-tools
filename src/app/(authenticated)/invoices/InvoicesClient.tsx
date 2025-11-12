@@ -43,6 +43,18 @@ interface InvoicesClientProps {
   permissions: PermissionSnapshot
 }
 
+const currencyFormatter = new Intl.NumberFormat('en-GB', {
+  style: 'currency',
+  currency: 'GBP',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
+const numberFormatter = new Intl.NumberFormat('en-GB')
+
+const formatCurrency = (value: number) => currencyFormatter.format(value)
+const formatNumber = (value: number) => numberFormatter.format(value)
+
 export default function InvoicesClient({
   initialInvoices,
   initialSummary,
@@ -227,7 +239,7 @@ export default function InvoicesClient({
         key: 'total_amount',
         header: 'Amount',
         align: 'right',
-        cell: (invoice) => `£${invoice.total_amount.toFixed(2)}`,
+        cell: (invoice) => formatCurrency(invoice.total_amount),
         sortable: true,
       },
       {
@@ -240,7 +252,7 @@ export default function InvoicesClient({
           }
           return (
             <span className={invoice.status === 'overdue' ? 'text-red-600 font-medium' : ''}>
-              £{(invoice.total_amount - invoice.paid_amount).toFixed(2)}
+              {formatCurrency(invoice.total_amount - invoice.paid_amount)}
             </span>
           )
         },
@@ -305,25 +317,25 @@ export default function InvoicesClient({
         <div className="hidden gap-4 sm:grid sm:grid-cols-2 lg:grid-cols-4">
           <Stat
             label="Outstanding"
-            value={`£${summary.total_outstanding.toFixed(2)}`}
+            value={formatCurrency(summary.total_outstanding)}
             description="Awaiting payment"
             icon={<FileText />}
           />
           <Stat
             label="Overdue"
-            value={`£${summary.total_overdue.toFixed(2)}`}
+            value={formatCurrency(summary.total_overdue)}
             description="Past due date"
             icon={<FileText />}
           />
           <Stat
             label="This Month"
-            value={`£${summary.total_this_month.toFixed(2)}`}
+            value={formatCurrency(summary.total_this_month)}
             description="Collected"
             icon={<FileText />}
           />
           <Stat
             label="Drafts"
-            value={summary.count_draft.toString()}
+            value={formatNumber(summary.count_draft)}
             description="Unsent invoices"
             icon={<FileText />}
           />
@@ -448,7 +460,7 @@ export default function InvoicesClient({
                   <div>
                     <div className="text-xs text-gray-500">Total Amount</div>
                     <div className="text-lg font-semibold">
-                      £{invoice.total_amount.toFixed(2)}
+                      {formatCurrency(invoice.total_amount)}
                     </div>
                   </div>
                   <div className="text-right">
@@ -459,7 +471,7 @@ export default function InvoicesClient({
                       <div
                         className={`font-semibold ${isOverdue ? 'text-red-600' : ''}`}
                       >
-                        £{(invoice.total_amount - invoice.paid_amount).toFixed(2)}
+                        {formatCurrency(invoice.total_amount - invoice.paid_amount)}
                       </div>
                     )}
                   </div>
