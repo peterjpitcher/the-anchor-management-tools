@@ -65,6 +65,14 @@ export function generateInvoiceHTML(data: InvoiceTemplateData): string {
     }
   }
 
+  const formatPaymentTerms = () => {
+    const terms = invoice.vendor?.payment_terms
+    if (typeof terms !== 'number') {
+      return '30 days'
+    }
+    return terms === 0 ? 'Due upon receipt' : `${terms} days`
+  }
+
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -389,7 +397,7 @@ export function generateInvoiceHTML(data: InvoiceTemplateData): string {
     </div>
     <div class="meta-item">
       <span class="meta-label">Terms</span>
-      <span class="meta-value">${invoice.vendor?.payment_terms || 30} days</span>
+      <span class="meta-value">${formatPaymentTerms()}</span>
     </div>
   </div>
 

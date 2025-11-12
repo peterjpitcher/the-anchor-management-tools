@@ -6,6 +6,7 @@ import { logAuditEvent } from './audit'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import type { InvoiceVendor } from '@/types/invoices'
+import { parsePaymentTermsValue } from '@/lib/vendors/paymentTerms'
 
 // Vendor validation schema
 const VendorSchema = z.object({
@@ -68,7 +69,7 @@ export async function createVendor(formData: FormData) {
       phone: formData.get('phone') || undefined,
       address: formData.get('address') || undefined,
       vat_number: formData.get('vat_number') || undefined,
-      payment_terms: parseInt(formData.get('payment_terms') as string) || 30,
+      payment_terms: parsePaymentTermsValue(formData.get('payment_terms')),
       notes: formData.get('notes') || undefined
     })
 
@@ -137,7 +138,7 @@ export async function updateVendor(formData: FormData) {
       phone: formData.get('phone') || undefined,
       address: formData.get('address') || undefined,
       vat_number: formData.get('vat_number') || undefined,
-      payment_terms: parseInt(formData.get('payment_terms') as string) || 30,
+      payment_terms: parsePaymentTermsValue(formData.get('payment_terms')),
       notes: formData.get('notes') || undefined
     })
 
