@@ -108,7 +108,7 @@ export function generateInvoiceHTML(data: InvoiceTemplateData): string {
     }
     
     .logo {
-      max-width: 180px;
+      max-width: 108px;
       height: auto;
       margin-bottom: 10px;
     }

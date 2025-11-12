@@ -35,7 +35,7 @@ export async function generateInvoicePDF(invoice: InvoiceWithDetails): Promise<B
     const html = generateCompactInvoiceHTML({
       invoice,
       logoUrl: process.env.NEXT_PUBLIC_APP_URL 
-        ? `${process.env.NEXT_PUBLIC_APP_URL}/logo-black.png`
+        ? `${process.env.NEXT_PUBLIC_APP_URL}/logo-oj.jpg`
         : undefined
     })
     
@@ -111,7 +111,7 @@ export async function generateQuotePDF(quote: QuoteWithDetails): Promise<Buffer>
     const html = generateCompactQuoteHTML({
       quote,
       logoUrl: process.env.NEXT_PUBLIC_APP_URL 
-        ? `${process.env.NEXT_PUBLIC_APP_URL}/logo-black.png`
+        ? `${process.env.NEXT_PUBLIC_APP_URL}/logo-oj.jpg`
         : undefined
     })
     
