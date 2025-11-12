@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
       // Generate HTML copy for reference
       const html = generateInvoiceHTML({
         invoice: typedInvoice,
-        logoUrl: '/logo-black.png'
+        logoUrl: '/logo-oj.jpg'
       })
 
       const pdfBuffer = await generateInvoicePDF(typedInvoice)
