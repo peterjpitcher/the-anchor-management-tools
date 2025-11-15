@@ -12,11 +12,11 @@ export function ServiceWorkerRegistration() {
             .register('/sw.js')
             .then((registration) => {
               console.log('Service Worker registered:', registration)
-              
-              // Check for updates periodically
-              setInterval(() => {
-                registration.update()
-              }, 60000) // Check every minute
+
+              // Trigger a single update check after registration
+              registration.update().catch(() => {
+                // Ignore update failures; they'll retry on next navigation
+              })
             })
             .catch((error) => {
               console.error('Service Worker registration failed:', error)
