@@ -32,19 +32,39 @@ function generateTimeSlots(
   return slots;
 }
 
+type AvailabilityOptions = {
+  allowSundayLunchCutoffOverride?: boolean;
+};
+
 // Check availability for a specific date
 export async function checkAvailability(
   date: string,
   partySize: number,
   bookingType?: 'regular' | 'sunday_lunch',
-  supabaseClient?: any // Optional client for API usage
+  supabaseClient?: any, // Optional client for API usage
+  options?: AvailabilityOptions
 ): Promise<{ data?: BookingAvailability; error?: string }> {
   try {
     const supabase = supabaseClient || await createClient();
     const bookingDate = new Date(date);
     const dayOfWeek = bookingDate.getDay();
 
-    let overrideNotes: string | null = null;
+    const { allowSundayLunchCutoffOverride = false } = options || {};
+    const specialNotes: string[] = [];
+    const addSpecialNote = (note?: string | null) => {
+      if (note && note.trim()) {
+        specialNotes.push(note.trim());
+      }
+    };
+    const buildSpecialNotes = (...notes: Array<string | null | undefined>) => {
+      const combined = [...specialNotes];
+      notes.forEach((note) => {
+        if (note && note.trim()) {
+          combined.push(note.trim());
+        }
+      });
+      return combined.length > 0 ? combined.join(' ') : undefined;
+    };
 
     if (bookingType === 'sunday_lunch') {
       const { data: serviceStatus } = await supabase
@@ -70,6 +90,9 @@ export async function checkAvailability(
       if (override) {
         sundayLunchEnabled = override.is_enabled;
         sundayLunchMessage = override.message || sundayLunchMessage;
+        if (override.message) {
+          addSpecialNote(override.message);
+        }
       }
 
       if (!sundayLunchEnabled) {
@@ -82,12 +105,13 @@ export async function checkAvailability(
               closes: '00:00',
               source: 'business_hours',
             },
-            special_notes: sundayLunchMessage || 'Sunday lunch bookings are currently unavailable.',
+            special_notes: buildSpecialNotes(
+              sundayLunchMessage || 'Sunday lunch bookings are currently unavailable.'
+            ),
           },
         };
       }
 
-      overrideNotes = override?.message || null;
     }
     
     // Get business hours for the day
@@ -117,7 +141,9 @@ export async function checkAvailability(
             closes: '00:00',
             source: specialHours ? 'special_hours' : 'business_hours',
           },
-          special_notes: activeHours?.note || 'Restaurant closed on this date',
+          special_notes: buildSpecialNotes(
+            activeHours?.note || 'Restaurant closed on this date'
+          ),
         }
       };
     }
@@ -136,7 +162,9 @@ export async function checkAvailability(
             closes: activeHours.closes || '00:00',
             source: specialHours ? 'special_hours' : 'business_hours',
           },
-          special_notes: activeHours.note || 'Kitchen closed on this date',
+          special_notes: buildSpecialNotes(
+            activeHours.note || 'Kitchen closed on this date'
+          ),
         }
       };
     }
@@ -208,6 +236,8 @@ export async function checkAvailability(
     );
     
     // Special Sunday lunch validation
+    let pastSundayLunchCutoff = false;
+
     if (bookingType === 'sunday_lunch' && dayOfWeek === 0) {
       const now = new Date();
       const saturday1pm = new Date(bookingDate);
@@ -215,18 +245,23 @@ export async function checkAvailability(
       saturday1pm.setHours(13, 0, 0, 0); // 1pm
       
       if (now > saturday1pm) {
-        return {
-          data: {
-            available: false,
-            time_slots: [],
-            kitchen_hours: {
-              opens: activeHours.kitchen_opens,
-              closes: activeHours.kitchen_closes,
-              source: specialHours ? 'special_hours' : 'business_hours',
-            },
-            special_notes: 'Sunday lunch bookings must be made before 1pm on Saturday',
-          }
-        };
+        const sundayCutoffMessage = 'Sunday lunch bookings must be made before 1pm on Saturday';
+        if (!allowSundayLunchCutoffOverride) {
+          return {
+            data: {
+              available: false,
+              time_slots: [],
+              kitchen_hours: {
+                opens: activeHours.kitchen_opens,
+                closes: activeHours.kitchen_closes,
+                source: specialHours ? 'special_hours' : 'business_hours',
+              },
+              special_notes: buildSpecialNotes(sundayCutoffMessage),
+            }
+          };
+        }
+        pastSundayLunchCutoff = true;
+        addSpecialNote(`${sundayCutoffMessage}. Staff override in effect.`);
       }
     }
     
@@ -239,7 +274,12 @@ export async function checkAvailability(
           closes: activeHours.kitchen_closes,
           source: specialHours ? 'special_hours' : 'business_hours',
         },
-        special_notes: overrideNotes || activeHours.note,
+        special_notes: buildSpecialNotes(
+          activeHours?.note,
+          pastSundayLunchCutoff
+            ? 'Past the Saturday 1pm cutoff for Sunday lunch. Confirm availability manually before accepting.'
+            : null
+        ),
       }
     };
   } catch (error) {
