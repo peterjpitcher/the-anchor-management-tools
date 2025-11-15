@@ -172,6 +172,37 @@ type IngredientFormState = {
   is_active: boolean;
 };
 
+function calculatePortionCost(ingredient: Ingredient): number | null {
+  const packCostSource = ingredient.latest_pack_cost ?? ingredient.pack_cost;
+  if (packCostSource == null) {
+    return null;
+  }
+  const packCost = Number(packCostSource);
+  const portionsValue = ingredient.portions_per_pack;
+  if (portionsValue == null) {
+    return null;
+  }
+  const portions = Number(portionsValue);
+  if (Number.isNaN(packCost) || Number.isNaN(portions) || portions <= 0) {
+    return null;
+  }
+  return packCost / portions;
+}
+
+function formatRoundedCost(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) {
+    return '—';
+  }
+  const pennies = Math.round(value * 100);
+  if (!Number.isFinite(pennies)) {
+    return '—';
+  }
+  if (Math.abs(pennies) < 100) {
+    return `${pennies}p`;
+  }
+  return `£${(pennies / 100).toFixed(2)}`;
+}
+
 const createDefaultFormState = (): IngredientFormState => ({
   name: '',
   description: '',
@@ -507,20 +538,18 @@ export default function MenuIngredientsPage() {
       key: 'costs',
       header: 'Costs',
       cell: (ingredient: Ingredient) => (
-        <div className="text-sm space-y-1">
+        <div className="text-sm">
           <div>Pack: £{Number(ingredient.latest_pack_cost ?? ingredient.pack_cost).toFixed(2)}</div>
-          <div className="text-xs text-gray-500">
-            Unit: £{Number(ingredient.latest_unit_cost ?? 0).toFixed(4)}
-          </div>
         </div>
       ),
     },
     {
-      key: 'wastage',
-      header: 'Waste %',
-      cell: (ingredient: Ingredient) => (
-        <span className="text-sm">{Number(ingredient.wastage_pct || 0).toFixed(1)}%</span>
-      ),
+      key: 'portionCost',
+      header: 'Portion cost',
+      cell: (ingredient: Ingredient) => {
+        const portionCost = calculatePortionCost(ingredient);
+        return <span className="text-sm">{formatRoundedCost(portionCost)}</span>;
+      },
     },
     {
       key: 'usage',
