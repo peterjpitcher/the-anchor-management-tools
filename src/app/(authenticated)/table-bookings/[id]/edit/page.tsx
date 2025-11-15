@@ -33,6 +33,7 @@ export default function EditTableBookingPage(props: { params: Promise<{ id: stri
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [availabilityNotice, setAvailabilityNotice] = useState<string | null>(null);
   
   // Form state
   const [bookingDate, setBookingDate] = useState('');
@@ -106,11 +107,23 @@ export default function EditTableBookingPage(props: { params: Promise<{ id: stri
     try {
       setCheckingAvailability(true);
       setError(null);
+      setAvailabilityNotice(null);
       
-      const result = await checkAvailability(bookingDate, partySize, booking.booking_type);
+      const availabilityOptions =
+        booking.booking_type === 'sunday_lunch'
+          ? { allowSundayLunchCutoffOverride: true }
+          : undefined;
+      const result = await checkAvailability(
+        bookingDate,
+        partySize,
+        booking.booking_type,
+        undefined,
+        availabilityOptions
+      );
       
       if (result.error) {
         setError(result.error);
+        setAvailabilityNotice(null);
         // Keep current time slot even if no others available
         setAvailableSlots([{
           time: booking.booking_time,
@@ -119,6 +132,7 @@ export default function EditTableBookingPage(props: { params: Promise<{ id: stri
         }]);
       } else if (result.data) {
         const slots = result.data.time_slots;
+        setAvailabilityNotice(result.data.special_notes || null);
         
         // Always include current booking time in available slots
         const hasCurrentTime = slots.some(slot => slot.time === booking.booking_time);
@@ -132,10 +146,6 @@ export default function EditTableBookingPage(props: { params: Promise<{ id: stri
         }
         
         setAvailableSlots(slots);
-        
-        if (result.data.special_notes) {
-          setError(result.data.special_notes);
-        }
       }
     } catch (err: any) {
       console.error('Availability check error:', err);
@@ -274,6 +284,14 @@ export default function EditTableBookingPage(props: { params: Promise<{ id: stri
       <div className="mx-auto max-w-3xl">
         {error && (
           <Alert variant="error" description={error} className="mb-4" />
+        )}
+
+        {availabilityNotice && (
+          <Alert
+            variant="warning"
+            description={availabilityNotice}
+            className="mb-4"
+          />
         )}
 
         {booking.status !== 'confirmed' && (

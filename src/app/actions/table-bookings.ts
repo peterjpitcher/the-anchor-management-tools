@@ -467,21 +467,26 @@ export async function createTableBooking(formData: FormData) {
       const isMinAdvanceViolation =
         typeof policyErrorMessage === 'string' &&
         policyErrorMessage.toLowerCase().includes('must be made at least');
+      const isSundayCutoffViolation =
+        bookingData.booking_type === 'sunday_lunch' &&
+        typeof policyErrorMessage === 'string' &&
+        policyErrorMessage.toLowerCase().includes('sunday lunch bookings must be made before 1pm on saturday');
+      const canOverridePolicy =
+        isStaffSource &&
+        (isMinAdvanceViolation || isSundayCutoffViolation) &&
+        !Number.isNaN(hoursUntilBooking) &&
+        hoursUntilBooking >= 0;
       
       // Allow staff-entered bookings (phone, walk-ins, etc.) to override the minimum advance notice
       // while still blocking past-dated bookings and other policy failures.
-      if (
-        isStaffSource &&
-        isMinAdvanceViolation &&
-        !Number.isNaN(hoursUntilBooking) &&
-        hoursUntilBooking >= 0
-      ) {
-        console.warn('Overriding minimum advance booking policy for staff-created booking', {
+      if (canOverridePolicy) {
+        console.warn('Overriding booking policy for staff-created booking', {
           booking_date: bookingData.booking_date,
           booking_time: bookingData.booking_time,
           party_size: bookingData.party_size,
           hours_until_booking: hoursUntilBooking.toFixed(2),
           source: bookingData.source,
+          policy_error: policyErrorMessage,
         });
       } else {
         return { error: policyErrorMessage || 'Booking does not meet policy requirements' };

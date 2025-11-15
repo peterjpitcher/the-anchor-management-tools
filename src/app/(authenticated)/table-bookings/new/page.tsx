@@ -322,7 +322,18 @@ export default function NewTableBookingPage() {
         }
       }
       
-      const result = await checkAvailability(bookingDate, partySize, bookingType);
+      const availabilityOptions =
+        bookingType === 'sunday_lunch'
+          ? { allowSundayLunchCutoffOverride: true }
+          : undefined;
+
+      const result = await checkAvailability(
+        bookingDate,
+        partySize,
+        bookingType,
+        undefined,
+        availabilityOptions
+      );
       
       if (result.error) {
         setError(result.error);
