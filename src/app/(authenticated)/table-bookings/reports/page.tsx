@@ -19,6 +19,8 @@ import { Stat } from '@/components/ui-v2/display/Stat';
 import { DataTable } from '@/components/ui-v2/display/DataTable';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { TabNav } from '@/components/ui-v2/navigation/TabNav';
+import { toast } from '@/components/ui-v2/feedback/Toast';
+import { generateSundayLunchCookSheet } from '@/app/actions/sunday-lunch-cook-sheet';
 
 interface ReportData {
   totalBookings: number;
@@ -43,6 +45,14 @@ interface ReportData {
   };
 }
 
+function getUpcomingSunday(baseDate: Date = new Date()) {
+  const next = new Date(baseDate);
+  const day = next.getDay();
+  const daysUntilSunday = day === 0 ? 0 : 7 - day;
+  next.setDate(next.getDate() + daysUntilSunday);
+  return next;
+}
+
 export default function TableBookingReportsPage() {
   const supabase = useSupabase();
   const { hasPermission } = usePermissions();
@@ -54,6 +64,8 @@ export default function TableBookingReportsPage() {
     end: format(endOfMonth(new Date()), 'yyyy-MM-dd'),
   });
   const [reportType, setReportType] = useState<'month' | 'week' | 'custom'>('month');
+  const [sundayDate, setSundayDate] = useState(format(getUpcomingSunday(), 'yyyy-MM-dd'));
+  const [downloadingCookSheet, setDownloadingCookSheet] = useState(false);
 
   const canView = hasPermission('table_bookings', 'view');
   const canManage = hasPermission('table_bookings', 'manage');
@@ -199,6 +211,56 @@ export default function TableBookingReportsPage() {
     }
   }
 
+  async function handleDownloadSundayLunchSheet() {
+    if (!sundayDate) {
+      toast.error('Please choose a Sunday date.');
+      return;
+    }
+
+    const parsed = new Date(sundayDate);
+    if (Number.isNaN(parsed.getTime()) || parsed.getDay() !== 0) {
+      toast.error('Selected date must be a Sunday.');
+      return;
+    }
+
+    const loadingToast = toast.loading('Generating cook sheet...');
+    setDownloadingCookSheet(true);
+
+    try {
+      const result = await generateSundayLunchCookSheet(sundayDate);
+
+      if (!result || 'error' in result) {
+        toast.error(result?.error || 'Failed to generate cook sheet.', { id: loadingToast });
+        return;
+      }
+
+      if (result.success && result.pdf && result.filename) {
+        const binary = atob(result.pdf);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        const pdfBlob = new Blob([bytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(pdfBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = result.filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        toast.success('Cook sheet downloaded.', { id: loadingToast });
+      } else {
+        toast.error('Failed to generate cook sheet.', { id: loadingToast });
+      }
+    } catch (err) {
+      console.error('Error downloading Sunday lunch cook sheet:', err);
+      toast.error('Failed to generate cook sheet.', { id: loadingToast });
+    } finally {
+      setDownloadingCookSheet(false);
+    }
+  }
+
   async function downloadReport() {
     if (!reportData) return;
     
@@ -335,6 +397,31 @@ export default function TableBookingReportsPage() {
             </Button>
           </div>
         )}
+      </Card>
+
+      <Card>
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+          <div className="flex-1 space-y-2">
+            <div>
+              <p className="text-base font-semibold text-gray-900">Sunday Lunch Cook Sheet</p>
+              <p className="text-sm text-gray-600">Download mains by time slot as a landscape A4 matrix for the kitchen.</p>
+            </div>
+            <Input
+              type="date"
+              value={sundayDate}
+              onChange={(e) => setSundayDate(e.target.value)}
+              className="w-full md:w-60"
+            />
+            <p className="text-xs text-gray-500">Must be a Sunday date.</p>
+          </div>
+          <Button
+            onClick={handleDownloadSundayLunchSheet}
+            loading={downloadingCookSheet}
+            disabled={downloadingCookSheet}
+          >
+            Download PDF
+          </Button>
+        </div>
       </Card>
 
       {reportData && (
