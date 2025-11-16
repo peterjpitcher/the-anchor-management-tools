@@ -1,4 +1,4 @@
-import puppeteer from 'puppeteer'
+import puppeteer, { type PDFOptions } from 'puppeteer'
 import chromium from '@sparticuz/chromium'
 import { generateCompactInvoiceHTML } from './invoice-template-compact'
 import { generateCompactQuoteHTML } from './quote-template-compact'
@@ -157,7 +157,10 @@ export async function generateQuotePDF(quote: QuoteWithDetails): Promise<Buffer>
 }
 
 // Helper function to generate PDF with custom HTML
-export async function generatePDFFromHTML(html: string): Promise<Buffer> {
+export async function generatePDFFromHTML(
+  html: string,
+  pdfOptions?: PDFOptions
+): Promise<Buffer> {
   let browser = null
   
   try {
@@ -197,7 +200,8 @@ export async function generatePDFFromHTML(html: string): Promise<Buffer> {
         right: '15mm',
         bottom: '15mm',
         left: '15mm'
-      }
+      },
+      ...pdfOptions
     })
     
     return Buffer.from(pdf)
