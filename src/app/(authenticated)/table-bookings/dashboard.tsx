@@ -12,8 +12,9 @@ import {
   XCircleIcon,
   ArrowPathIcon,
   ArrowLeftIcon,
-  ArrowRightIcon
+  ArrowRightIcon,
 } from '@heroicons/react/24/outline';
+import { ArrowUpIcon, ArrowDownIcon, MinusIcon } from '@heroicons/react/20/solid';
 import { TableBooking } from '@/types/table-bookings';
 // New UI components
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
@@ -29,11 +30,23 @@ import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 import { EmptyState } from '@/components/ui-v2/display/EmptyState';
 import { getTableBookingsDashboardData } from '@/app/actions/table-bookings';
 
+interface GrowthMetric {
+  bookings: number;
+  covers: number;
+  bookingsChange: number;
+  coversChange: number;
+}
+
 interface DashboardStats {
   todayBookings: number;
   weekBookings: number;
   monthBookings: number;
   pendingPayments: number;
+  growth: {
+    lastMonth: GrowthMetric;
+    last3Months: GrowthMetric;
+    lastYear: GrowthMetric;
+  };
 }
 
 const DEFAULT_STATS: DashboardStats = {
@@ -41,7 +54,61 @@ const DEFAULT_STATS: DashboardStats = {
   weekBookings: 0,
   monthBookings: 0,
   pendingPayments: 0,
+  growth: {
+    lastMonth: { bookings: 0, covers: 0, bookingsChange: 0, coversChange: 0 },
+    last3Months: { bookings: 0, covers: 0, bookingsChange: 0, coversChange: 0 },
+    lastYear: { bookings: 0, covers: 0, bookingsChange: 0, coversChange: 0 },
+  },
 };
+
+function GrowthIndicator({ change }: { change: number }) {
+  if (change > 0) {
+    return (
+      <span className="inline-flex items-baseline text-green-600 text-sm font-medium">
+        <ArrowUpIcon className="h-4 w-4 self-center shrink-0 mr-0.5" aria-hidden="true" />
+        {change}%
+      </span>
+    );
+  }
+  if (change < 0) {
+    return (
+      <span className="inline-flex items-baseline text-red-600 text-sm font-medium">
+        <ArrowDownIcon className="h-4 w-4 self-center shrink-0 mr-0.5" aria-hidden="true" />
+        {Math.abs(change)}%
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-baseline text-gray-500 text-sm font-medium">
+      <MinusIcon className="h-4 w-4 self-center shrink-0 mr-0.5" aria-hidden="true" />
+      0%
+    </span>
+  );
+}
+
+function GrowthCard({ title, metric }: { title: string; metric: GrowthMetric }) {
+  return (
+    <Card className="p-4">
+      <h3 className="text-sm font-medium text-gray-500 mb-3">{title}</h3>
+      <div className="space-y-3">
+        <div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-600">Bookings</span>
+            <GrowthIndicator change={metric.bookingsChange} />
+          </div>
+          <div className="text-2xl font-semibold text-gray-900 mt-1">{metric.bookings}</div>
+        </div>
+        <div className="pt-3 border-t border-gray-100">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-600">Covers (Pax)</span>
+            <GrowthIndicator change={metric.coversChange} />
+          </div>
+          <div className="text-2xl font-semibold text-gray-900 mt-1">{metric.covers}</div>
+        </div>
+      </div>
+    </Card>
+  );
+}
 
 export default function TableBookingsDashboard() {
   const { hasPermission } = usePermissions();
@@ -79,7 +146,12 @@ export default function TableBookingsDashboard() {
       }
 
       setBookings(result.data.bookings);
-      setStats(result.data.stats);
+      // Ensure stats structure is complete even if backend returns partial (for safety)
+      setStats({
+        ...DEFAULT_STATS,
+        ...result.data.stats,
+        growth: result.data.stats.growth || DEFAULT_STATS.growth,
+      });
     } catch (err) {
       console.error('Error loading table bookings dashboard:', err);
       setBookings([]);
@@ -189,6 +261,16 @@ export default function TableBookingsDashboard() {
             icon={<ExclamationCircleIcon />}
           />
         </div>
+
+        {/* Growth & Trends */}
+        <section id="growth-trends" className="px-2 sm:px-0">
+          <h2 className="text-lg font-medium text-gray-900 mb-3">Growth & Trends</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <GrowthCard title="Vs Last Month (30 Days)" metric={stats.growth.lastMonth} />
+            <GrowthCard title="Vs Previous 3 Months (90 Days)" metric={stats.growth.last3Months} />
+            <GrowthCard title="Vs Previous Year (12 Months)" metric={stats.growth.lastYear} />
+          </div>
+        </section>
 
       {/* Date Selector */}
       <section id="filters" className="px-2 sm:px-0">

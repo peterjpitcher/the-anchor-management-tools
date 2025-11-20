@@ -1,21 +1,20 @@
 'use server';
 
-import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { logAuditEvent } from './audit';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { generatePhoneVariants, formatPhoneForStorage } from '@/lib/utils';
+import { generatePhoneVariants } from '@/lib/utils';
 import { queueBookingConfirmationSMS, queueBookingUpdateSMS, queueCancellationSMS, queuePaymentRequestSMS } from './table-booking-sms';
-import { sendBookingConfirmationEmail, sendBookingCancellationEmail } from './table-booking-email';
+import { queueBookingEmail } from './table-booking-email'; // Updated import
 import { sendSameDayBookingAlertIfNeeded, TableBookingNotificationRecord } from '@/lib/table-bookings/managerNotifications';
-import { formatDateWithTimeForSms } from '@/lib/dateUtils';
-import { ensureReplyInstruction } from '@/lib/sms/support';
-import { startOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addMonths, format as formatDate } from 'date-fns';
+import { startOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addMonths, format as formatDate, subDays, isWithinInterval, parseISO } from 'date-fns';
 import type { TableBooking } from '@/types/table-bookings';
-import { withIncrementedModificationCount } from '@/lib/table-bookings/modification';
+import { TableBookingService } from '@/services/table-bookings';
 
-// Helper function to format time from 24hr to 12hr format
+// ... (formatTime12Hour and Schemas remain unchanged)
 function formatTime12Hour(time24: string): string {
   const timeWithoutSeconds = time24.split(':').slice(0, 2).join(':');
   const [hours, minutes] = timeWithoutSeconds.split(':').map(Number);
@@ -30,7 +29,7 @@ function formatTime12Hour(time24: string): string {
   }
 }
 
-// Validation schemas
+// Validation schemas (Keeping these in the action as they are used for input parsing directly)
 const CreateTableBookingSchema = z.object({
   customer_id: z.string().uuid().optional(),
   booking_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -46,7 +45,7 @@ const CreateTableBookingSchema = z.object({
   cash_payment_received: z.boolean().default(false),
 });
 
-const CreateCustomerSchema = z.object({
+const CreateCustomerSchema = z.object({ // This schema is not directly used after service refactoring
   first_name: z.string().min(1),
   last_name: z.string().optional(),
   mobile_number: z.string().min(10),
@@ -68,11 +67,23 @@ const UpdateTableBookingSchema = z.object({
 
 type DashboardViewMode = 'day' | 'week' | 'month' | 'next-month';
 
+type GrowthMetric = {
+  bookings: number;
+  covers: number;
+  bookingsChange: number;
+  coversChange: number;
+};
+
 type DashboardStats = {
   todayBookings: number;
   weekBookings: number;
   monthBookings: number;
   pendingPayments: number;
+  growth: {
+    lastMonth: GrowthMetric;
+    last3Months: GrowthMetric;
+    lastYear: GrowthMetric;
+  };
 };
 
 type DashboardResult = {
@@ -81,6 +92,7 @@ type DashboardResult = {
 };
 
 const BOOKINGS_STATUSES = ['confirmed', 'pending_payment'];
+const HISTORICAL_STATUSES = ['confirmed', 'pending_payment', 'completed'];
 
 function toSafeDate(dateString: string | undefined): Date {
   const parsed = dateString ? new Date(dateString) : new Date();
@@ -92,6 +104,71 @@ function toSafeDate(dateString: string | undefined): Date {
 
 function formatDateOnly(date: Date) {
   return formatDate(date, 'yyyy-MM-dd');
+}
+
+function calculateGrowth(current: number, previous: number): number {
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return Math.round(((current - previous) / previous) * 100);
+}
+
+async function getGrowthStats(supabase: any): Promise<DashboardStats['growth']> {
+  const now = new Date();
+  const twoYearsAgo = subDays(now, 730);
+
+  // Fetch minimal data for calculation
+  const { data, error } = await supabase
+    .from('table_bookings')
+    .select('booking_date, party_size')
+    .in('status', HISTORICAL_STATUSES)
+    .gte('booking_date', formatDateOnly(twoYearsAgo));
+
+  if (error || !data) {
+    console.error('Error fetching historical stats:', error);
+    return {
+      lastMonth: { bookings: 0, covers: 0, bookingsChange: 0, coversChange: 0 },
+      last3Months: { bookings: 0, covers: 0, bookingsChange: 0, coversChange: 0 },
+      lastYear: { bookings: 0, covers: 0, bookingsChange: 0, coversChange: 0 },
+    };
+  }
+
+  const bookings = data as { booking_date: string; party_size: number }[];
+
+  const calculatePeriodStats = (days: number) => {
+    const currentStart = subDays(now, days);
+    const previousStart = subDays(now, days * 2);
+    
+    let currentBookings = 0;
+    let currentCovers = 0;
+    let previousBookings = 0;
+    let previousCovers = 0;
+
+    bookings.forEach(b => {
+      const date = parseISO(b.booking_date);
+      // Check if in current period
+      if (date >= currentStart && date <= now) {
+        currentBookings++;
+        currentCovers += b.party_size;
+      }
+      // Check if in previous period
+      else if (date >= previousStart && date < currentStart) {
+        previousBookings++;
+        previousCovers += b.party_size;
+      }
+    });
+
+    return {
+      bookings: currentBookings,
+      covers: currentCovers,
+      bookingsChange: calculateGrowth(currentBookings, previousBookings),
+      coversChange: calculateGrowth(currentCovers, previousCovers),
+    };
+  };
+
+  return {
+    lastMonth: calculatePeriodStats(30),
+    last3Months: calculatePeriodStats(90),
+    lastYear: calculatePeriodStats(365),
+  };
 }
 
 export async function getTableBookingsDashboardData(params: {
@@ -155,7 +232,7 @@ export async function getTableBookingsDashboardData(params: {
         .lte('booking_date', formatDateOnly(monthEnd));
     }
 
-    const [{ data: bookings, error: bookingsError }, todayCount, weekCount, monthCount, pendingCount] = await Promise.all([
+    const [{ data: bookings, error: bookingsError }, todayCount, weekCount, monthCount, pendingCount, growthStats] = await Promise.all([
       bookingsQuery,
       supabase
         .from('table_bookings')
@@ -189,6 +266,7 @@ export async function getTableBookingsDashboardData(params: {
         .select('id', { count: 'exact', head: true })
         .eq('status', 'pending_payment')
         .gte('booking_date', formatDateOnly(startOfDay(new Date()))),
+      getGrowthStats(supabase),
     ]);
 
     if (bookingsError) {
@@ -201,6 +279,7 @@ export async function getTableBookingsDashboardData(params: {
       weekBookings: weekCount.count || 0,
       monthBookings: monthCount.count || 0,
       pendingPayments: pendingCount.count || 0,
+      growth: growthStats,
     };
 
     return {
@@ -216,124 +295,7 @@ export async function getTableBookingsDashboardData(params: {
   }
 }
 
-// Helper function to find or create customer
-async function findOrCreateCustomer(
-  supabase: ReturnType<typeof createAdminClient>,
-  customerData: z.infer<typeof CreateCustomerSchema>
-) {
-  const standardizedPhone = formatPhoneForStorage(customerData.mobile_number);
-  const phoneVariants = generatePhoneVariants(standardizedPhone);
-  const normalizedEmail = customerData.email ? customerData.email.toLowerCase() : undefined;
-  const searchConditions = [
-    ...phoneVariants.map((v) => `mobile_number.eq.${v}`),
-    `mobile_e164.eq.${standardizedPhone}`,
-  ];
-
-  const { data: existingMatches, error: existingLookupError } = await supabase
-    .from('customers')
-    .select('*')
-    .or(searchConditions.join(','))
-    .order('created_at', { ascending: true })
-    .limit(1);
-
-  if (existingLookupError) {
-    console.error('Customer lookup error during table booking:', existingLookupError);
-    throw new Error('Failed to find customer');
-  }
-
-  const existingCustomer = (existingMatches?.[0] ?? null) as any | null;
-
-  if (existingCustomer) {
-    const updates: Record<string, unknown> = {};
-
-    if (customerData.sms_opt_in !== existingCustomer.sms_opt_in) {
-      updates.sms_opt_in = customerData.sms_opt_in;
-    }
-
-    if (existingCustomer.mobile_number !== standardizedPhone) {
-      updates.mobile_number = standardizedPhone;
-    }
-
-    if (!existingCustomer.mobile_e164 || existingCustomer.mobile_e164 !== standardizedPhone) {
-      updates.mobile_e164 = standardizedPhone;
-    }
-
-    if (customerData.last_name && customerData.last_name !== existingCustomer.last_name) {
-      updates.last_name = customerData.last_name;
-    }
-
-    if (normalizedEmail && normalizedEmail !== existingCustomer.email) {
-      updates.email = normalizedEmail;
-    }
-
-    if (Object.keys(updates).length > 0) {
-      const { data: updatedCustomer, error: updateError } = await supabase
-        .from('customers')
-        .update(updates)
-        .eq('id', existingCustomer.id)
-        .select()
-        .single();
-
-      if (updateError) {
-        console.error('Failed to update existing customer from table booking:', updateError);
-        return { ...existingCustomer, ...updates } as typeof existingCustomer;
-      }
-
-      if (updatedCustomer) {
-        return updatedCustomer;
-      }
-
-      return { ...existingCustomer, ...updates } as typeof existingCustomer;
-    }
-
-    return existingCustomer;
-  }
-
-  const insertPayload: Record<string, unknown> = {
-    first_name: customerData.first_name,
-    last_name: customerData.last_name ?? null,
-    mobile_number: standardizedPhone,
-    mobile_e164: standardizedPhone,
-    sms_opt_in: customerData.sms_opt_in,
-  };
-
-  if (normalizedEmail) {
-    insertPayload.email = normalizedEmail;
-  }
-
-  const { data: newCustomer, error } = await supabase
-    .from('customers')
-    .insert(insertPayload)
-    .select()
-    .single();
-
-  if (error) {
-    if (error.code === '23505' && error.message?.includes('idx_customers_mobile_e164')) {
-      const { data: existingByPhone, error: fetchExistingError } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('mobile_e164', standardizedPhone)
-        .order('created_at', { ascending: true })
-        .limit(1);
-
-      if (fetchExistingError) {
-        console.error('Failed to fetch customer after duplicate detected:', fetchExistingError);
-      }
-
-      const duplicateCustomer = existingByPhone?.[0];
-      if (duplicateCustomer) {
-        return duplicateCustomer;
-      }
-    }
-
-    console.error('Failed to create customer from table booking:', error);
-    throw new Error('Failed to create customer');
-  }
-
-  return newCustomer;
-}
-
-// Check table availability - now uses fixed capacity system
+// Check table availability
 export async function checkTableAvailability(
   date: string,
   time: string,
@@ -341,40 +303,17 @@ export async function checkTableAvailability(
   excludeBookingId?: string
 ) {
   try {
-    const supabase = await createClient();
-    
-    // Call the updated database function that uses fixed capacity
-    const { data, error } = await supabase.rpc('check_table_availability', {
-      p_date: date,
-      p_time: time,
-      p_party_size: partySize,
-      p_duration_minutes: 120,
-      p_exclude_booking_id: excludeBookingId || null,
-    });
-    
-    if (error) {
-      console.error('Availability check error:', error);
-      return { error: 'Failed to check availability' };
-    }
-    
-    return { 
-      data: {
-        available_capacity: data[0]?.available_capacity || 0,
-        is_available: data[0]?.is_available || false,
-      }
-    };
+    const result = await TableBookingService.checkAvailability(date, time, partySize, excludeBookingId);
+    return { data: result };
   } catch (error) {
     console.error('Availability check error:', error);
-    return { error: 'An unexpected error occurred' };
+    return { error: 'Failed to check availability' };
   }
 }
 
 // Create table booking
 export async function createTableBooking(formData: FormData) {
   try {
-    const supabase = await createClient();
-    const adminSupabase = createAdminClient();
-    
     // Check permissions
     const hasPermission = await checkUserPermission('table_bookings', 'create');
     if (!hasPermission) {
@@ -400,246 +339,30 @@ export async function createTableBooking(formData: FormData) {
       source: formData.get('source') || 'phone',
       cash_payment_received: formData.get('cash_payment_received') === 'true',
     });
-    
-    // If no customer_id, try to find or create customer
-    let customerId = bookingData.customer_id;
-    if (!customerId && formData.get('customer_first_name')) {
-      const rawFirstName = (formData.get('customer_first_name') as string | null)?.trim() || '';
-      const rawLastName = (formData.get('customer_last_name') as string | null)?.trim() || '';
-      const rawMobile = (formData.get('customer_mobile_number') as string | null)?.trim() || '';
-      const rawEmail = (formData.get('customer_email') as string | null)?.trim() || '';
-      const customerData = CreateCustomerSchema.parse({
-        first_name: rawFirstName,
-        last_name: rawLastName || undefined,
-        mobile_number: rawMobile,
-        email: rawEmail || undefined,
-        sms_opt_in: formData.get('customer_sms_opt_in') === 'true',
-      });
 
-      const customer = await findOrCreateCustomer(adminSupabase, customerData);
-      customerId = customer.id;
-    }
-    
-    if (!customerId) {
-      return { error: 'Customer information is required' };
-    }
-    
-    // Check availability
-    const availability = await checkTableAvailability(
-      bookingData.booking_date,
-      bookingData.booking_time,
-      bookingData.party_size
-    );
-    
-    if (availability.error || !availability.data?.is_available) {
-      return { error: 'No tables available for the selected time' };
-    }
-    
-    // Validate booking against policy
-    const { data: policyCheck, error: policyError } = await supabase.rpc(
-      'validate_booking_against_policy',
-      {
-        p_booking_type: bookingData.booking_type,
-        p_booking_date: bookingData.booking_date,
-        p_booking_time: bookingData.booking_time,
-        p_party_size: bookingData.party_size,
-      }
-    );
-    
-    const policyResult = policyCheck?.[0];
-    const policyErrorMessage = policyResult?.error_message;
-    const isPolicyValid = Boolean(policyResult?.is_valid);
-    const isStaffSource = bookingData.source && bookingData.source !== 'website';
-    const cashPaymentReceived = Boolean(bookingData.cash_payment_received);
-
-    if (cashPaymentReceived) {
-      if (bookingData.booking_type !== 'sunday_lunch') {
-        return { error: 'Cash payment option is only available for Sunday lunch bookings' };
-      }
-      if (!isStaffSource) {
-        return { error: 'Cash payment option is only available for staff bookings' };
-      }
-    }
-    
-    if (policyError || !isPolicyValid) {
-      const bookingDateTime = new Date(`${bookingData.booking_date}T${bookingData.booking_time}`);
-      const hoursUntilBooking = (bookingDateTime.getTime() - Date.now()) / (1000 * 60 * 60);
-      const isMinAdvanceViolation =
-        typeof policyErrorMessage === 'string' &&
-        policyErrorMessage.toLowerCase().includes('must be made at least');
-      const isSundayCutoffViolation =
-        bookingData.booking_type === 'sunday_lunch' &&
-        typeof policyErrorMessage === 'string' &&
-        policyErrorMessage.toLowerCase().includes('sunday lunch bookings must be made before 1pm on saturday');
-      const canOverridePolicy =
-        isStaffSource &&
-        (isMinAdvanceViolation || isSundayCutoffViolation) &&
-        !Number.isNaN(hoursUntilBooking) &&
-        hoursUntilBooking >= 0;
-      
-      // Allow staff-entered bookings (phone, walk-ins, etc.) to override the minimum advance notice
-      // while still blocking past-dated bookings and other policy failures.
-      if (canOverridePolicy) {
-        console.warn('Overriding booking policy for staff-created booking', {
-          booking_date: bookingData.booking_date,
-          booking_time: bookingData.booking_time,
-          party_size: bookingData.party_size,
-          hours_until_booking: hoursUntilBooking.toFixed(2),
-          source: bookingData.source,
-          policy_error: policyErrorMessage,
-        });
-      } else {
-        return { error: policyErrorMessage || 'Booking does not meet policy requirements' };
-      }
-    }
-    
-    // Validate that the booking time is within kitchen hours
-    const bookingDay = new Date(bookingData.booking_date).getDay();
-    
-    // Get business hours for the booking day
-    const { data: businessHours } = await supabase
-      .from('business_hours')
-      .select('kitchen_opens, kitchen_closes, is_closed, is_kitchen_closed')
-      .eq('day_of_week', bookingDay)
-      .single();
-      
-    // Check for special hours
-    const { data: specialHours } = await supabase
-      .from('special_hours')
-      .select('kitchen_opens, kitchen_closes, is_closed, is_kitchen_closed')
-      .eq('date', bookingData.booking_date)
-      .single();
-      
-    const activeHours = specialHours || businessHours;
-    
-    // Check if kitchen is closed
-    const kitchenClosed = !activeHours || 
-                         activeHours.is_closed || 
-                         activeHours.is_kitchen_closed ||
-                         (!activeHours.kitchen_opens || !activeHours.kitchen_closes);
-    
-    if (kitchenClosed) {
-      if (isStaffSource) {
-        console.warn('Overriding kitchen closure for staff-created booking', {
-          booking_date: bookingData.booking_date,
-          booking_time: bookingData.booking_time,
-          source: bookingData.source,
-          is_closed: activeHours?.is_closed,
-          is_kitchen_closed: activeHours?.is_kitchen_closed,
-        });
-      } else {
-        return { error: 'Kitchen is closed on the selected date' };
-      }
-    }
-    
-    // Check if booking time is within kitchen hours
-    const bookingTime = bookingData.booking_time;
-    const kitchenOpens = activeHours?.kitchen_opens || bookingTime;
-    const kitchenCloses = activeHours?.kitchen_closes || bookingTime;
-    const outsideKitchenHours = bookingTime < kitchenOpens || bookingTime >= kitchenCloses;
-    
-    if (outsideKitchenHours) {
-      if (isStaffSource) {
-        console.warn('Overriding kitchen hours constraint for staff-created booking', {
-          booking_date: bookingData.booking_date,
-          booking_time: bookingData.booking_time,
-          kitchen_opens: kitchenOpens,
-          kitchen_closes: kitchenCloses,
-          source: bookingData.source,
-        });
-      } else {
-        return {
-          error: `Kitchen is only open from ${formatTime12Hour(
-            kitchenOpens
-          )} to ${formatTime12Hour(kitchenCloses)} on this day`
-        };
-      }
-    }
-    
-    // Create booking
-    const initialStatus =
-      bookingData.booking_type === 'sunday_lunch' && !cashPaymentReceived
-        ? 'pending_payment'
-        : 'confirmed';
-
-    const { data: booking, error: bookingError } = await supabase
-      .from('table_bookings')
-      .insert({
-        customer_id: customerId,
-        booking_date: bookingData.booking_date,
-        booking_time: bookingData.booking_time,
-        party_size: bookingData.party_size,
-        booking_type: bookingData.booking_type,
-        special_requirements: bookingData.special_requirements,
-        dietary_requirements: bookingData.dietary_requirements,
-        allergies: bookingData.allergies,
-        celebration_type: bookingData.celebration_type,
-        duration_minutes: bookingData.duration_minutes,
-        source: bookingData.source,
-        status: initialStatus,
-      })
-      .select('*, customer:customers(first_name, last_name, mobile_number, email)')
-      .single();
-      
-    if (bookingError) {
-      console.error('Booking creation error:', bookingError);
-      return { error: 'Failed to create booking' };
-    }
-    
-    // If menu items provided (for Sunday lunch), create them
+    // Extract menu items if present
+    let menuItems = undefined;
     const menuItemsData = formData.get('menu_items');
-    if (menuItemsData && booking.booking_type === 'sunday_lunch') {
+    if (menuItemsData) {
       try {
-        const menuItems = JSON.parse(menuItemsData as string);
-        
-        // Insert booking items
-        const { error: itemsError } = await supabase
-          .from('table_booking_items')
-          .insert(
-            menuItems.map((item: any) => ({
-              booking_id: booking.id,
-              custom_item_name: item.custom_item_name,
-              item_type: item.item_type,
-              quantity: item.quantity,
-              guest_name: item.guest_name,
-              price_at_booking: item.price_at_booking,
-              special_requests: item.special_requests,
-            }))
-          );
-          
-        if (itemsError) {
-          console.error('Menu items creation error:', itemsError);
-          // Don't fail the whole booking, but log the issue
-        }
+        menuItems = JSON.parse(menuItemsData as string);
       } catch (err) {
         console.error('Menu items parsing error:', err);
       }
     }
 
-    if (booking.booking_type === 'sunday_lunch' && cashPaymentReceived) {
-      const depositAmount = booking.party_size * 5;
-      const recordedAt = new Date().toISOString();
-      const { error: paymentError } = await adminSupabase
-        .from('table_booking_payments')
-        .insert({
-          booking_id: booking.id,
-          amount: depositAmount,
-          payment_method: 'cash',
-          status: 'completed',
-          paid_at: recordedAt,
-          payment_metadata: {
-            recorded_via: 'manual_cash',
-            recorded_at: recordedAt,
-            recorded_in_app: true,
-            deposit_amount: depositAmount,
-          },
-        });
-
-      if (paymentError) {
-        console.error('Failed to record cash payment for Sunday lunch booking:', paymentError);
-      }
-    }
-
+    // Call Service
+    const booking = await TableBookingService.createBooking({
+      ...bookingData,
+      customer_first_name: (formData.get('customer_first_name') as string | null)?.trim() || undefined,
+      customer_last_name: (formData.get('customer_last_name') as string | null)?.trim() || undefined,
+      customer_mobile_number: (formData.get('customer_mobile_number') as string | null)?.trim() || undefined,
+      customer_email: (formData.get('customer_email') as string | null)?.trim() || undefined,
+      customer_sms_opt_in: formData.get('customer_sms_opt_in') === 'true',
+      menu_items: menuItems,
+    });
+    
+    // Send same day alert (this might also be queued eventually, but is not part of this refactor)
     await sendSameDayBookingAlertIfNeeded(booking as TableBookingNotificationRecord);
 
     // Log audit event
@@ -657,219 +380,15 @@ export async function createTableBooking(formData: FormData) {
       }
     });
     
-    // Send confirmation SMS if booking is confirmed (not pending payment)
+    // Queue confirmation SMS and Email
     if (booking.status === 'confirmed') {
-      console.log(`Booking confirmed, attempting to queue SMS for booking ${booking.id}`);
-      
-      // Send SMS immediately for booking confirmations
-      try {
-        // Get customer details (we already have them from the booking creation)
-        const { data: customerData } = await adminSupabase
-          .from('customers')
-          .select('*')
-          .eq('id', customerId)
-          .single();
-        
-        if (customerData?.sms_opt_in && customerData?.mobile_number) {
-          // Get the appropriate template
-          const templateKey = bookingData.booking_type === 'sunday_lunch'
-            ? 'booking_confirmation_sunday_lunch'
-            : 'booking_confirmation_regular';
-          
-          const { data: template } = await supabase
-            .from('table_booking_sms_templates')
-            .select('*')
-            .eq('template_key', templateKey)
-            .eq('is_active', true)
-            .single();
-          
-          if (template) {
-            // Prepare variables
-            const variables: Record<string, string> = {
-              customer_name: customerData.first_name,
-              party_size: booking.party_size.toString(),
-              date: new Date(booking.booking_date).toLocaleDateString('en-GB', {
-                weekday: 'long',
-                month: 'long',
-                day: 'numeric'
-              }),
-              time: formatTime12Hour(booking.booking_time),
-              reference: booking.booking_reference,
-              contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707',
-            };
-            
-            // Build the message text from template
-            let messageText = template.template_text;
-            Object.entries(variables).forEach(([key, value]) => {
-              messageText = messageText.replace(new RegExp(`{{${key}}}`, 'g'), value);
-            });
-            
-            // Send SMS immediately
-            const { sendSMS } = await import('@/lib/twilio');
-            const messageWithSupport = ensureReplyInstruction(
-              messageText,
-              process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
-            );
-            const result = await sendSMS(customerData.mobile_number, messageWithSupport);
-
-            if (result.success && result.sid) {
-              console.log('SMS sent immediately for booking:', booking.id);
-
-              const fromNumber = result.fromNumber ?? process.env.TWILIO_PHONE_NUMBER ?? null;
-              const { error: messageInsertError } = await supabase
-                .from('messages')
-                .insert({
-                  customer_id: customerData.id,
-                  direction: 'outbound',
-                  message_sid: result.sid,
-                  twilio_message_sid: result.sid,
-                  body: messageWithSupport,
-                  status: 'sent',
-                  twilio_status: result.status ?? 'queued',
-                  from_number: fromNumber,
-                  to_number: customerData.mobile_number,
-                  message_type: 'sms',
-                  metadata: { booking_id: booking.id, template_key: templateKey }
-                });
-
-              if (messageInsertError) {
-                console.error('Failed to record booking confirmation SMS:', messageInsertError);
-              }
-            } else {
-              console.error('Failed to send SMS immediately:', result.error);
-              // Fall back to queuing the SMS if immediate send fails
-              await supabase
-                .from('jobs')
-                .insert({
-                  type: 'send_sms',
-                  payload: {
-                    to: customerData.mobile_number,
-                    template: templateKey,
-                    variables,
-                    booking_id: booking.id,
-                    customer_id: customerData.id,
-                  },
-                  scheduled_for: new Date().toISOString(),
-                });
-            }
-          } else {
-            console.error('SMS template not found:', templateKey);
-          }
-        } else {
-          console.log('Customer has opted out of SMS or has no phone number');
-        }
-      } catch (smsError) {
-        console.error('Error sending SMS:', smsError);
-      }
-      
-      // Also send email confirmation
-      const emailResult = await sendBookingConfirmationEmail(booking.id);
-      if (emailResult.error) {
-        console.error('Send email error:', emailResult.error);
-      }
+      console.log(`Booking confirmed, queuing SMS and Email for booking ${booking.id}`);
+      await queueBookingConfirmationSMS(booking.id);
+      await queueBookingEmail(booking.id, 'confirmation');
     } else if (booking.status === 'pending_payment' && booking.booking_type === 'sunday_lunch') {
-      // For Sunday lunch, send payment request SMS immediately
-      console.log(`Sunday lunch booking created, sending payment request SMS for booking ${booking.id}`);
-      
-      try {
-        // Get customer details
-        const { data: customerData } = await supabase
-          .from('customers')
-          .select('*')
-          .eq('id', customerId)
-          .single();
-        
-        if (customerData?.sms_opt_in && customerData?.mobile_number) {
-          // Calculate payment deadline (Saturday 1pm before the Sunday booking)
-          const bookingDate = new Date(booking.booking_date);
-          const deadlineDate = new Date(bookingDate);
-          deadlineDate.setDate(bookingDate.getDate() - 1); // Saturday before
-          deadlineDate.setHours(13, 0, 0, 0); // 1pm
-          
-          const deadlineFormatted = formatDateWithTimeForSms(
-            deadlineDate,
-            `${deadlineDate.getHours().toString().padStart(2, '0')}:${deadlineDate.getMinutes().toString().padStart(2, '0')}`
-          );
-          
-          // Calculate deposit amount
-          const depositAmount = booking.party_size * 5;
-          
-          // Generate payment URL with link shortening
-          const longPaymentUrl = `/table-booking/${booking.booking_reference}/payment`;
-          const { createShortLinkInternal } = await import('@/app/actions/short-links');
-          const shortLinkResult = await createShortLinkInternal({
-            destination_url: `${process.env.NEXT_PUBLIC_APP_URL}${longPaymentUrl}`,
-            link_type: 'custom',
-            metadata: { 
-              booking_id: booking.id,
-              booking_reference: booking.booking_reference,
-              type: 'sunday_lunch_payment'
-            },
-            expires_at: deadlineDate.toISOString()
-          });
-          
-          const paymentUrl = shortLinkResult.success 
-            ? shortLinkResult.data.full_url 
-            : `${process.env.NEXT_PUBLIC_APP_URL}${longPaymentUrl}`;
-          
-          // Build message with dynamic deadline and urgency
-          const messageText = `Hi ${customerData.first_name}, your Sunday Lunch booking at The Anchor (ref: ${booking.booking_reference}) for ${booking.party_size} people requires a £${depositAmount.toFixed(2)} deposit to confirm. ⚠️ PAYMENT DEADLINE: ${deadlineFormatted}. Pay now: ${paymentUrl}. If payment is not received by the deadline, your booking will be automatically cancelled. Reply to this message if you have any questions or call ${process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'}.`;
-          
-          // Send SMS immediately
-          const { sendSMS } = await import('@/lib/twilio');
-          const messageWithSupport = ensureReplyInstruction(
-            messageText,
-            process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
-          );
-          const result = await sendSMS(customerData.mobile_number, messageWithSupport);
-
-          if (result.success && result.sid) {
-            console.log('Payment request SMS sent immediately for booking:', booking.id);
-
-            const fromNumber = result.fromNumber ?? process.env.TWILIO_PHONE_NUMBER ?? null;
-            const { error: messageInsertError } = await supabase
-              .from('messages')
-              .insert({
-                customer_id: customerData.id,
-                direction: 'outbound',
-                message_sid: result.sid,
-                twilio_message_sid: result.sid,
-                body: messageWithSupport,
-                status: 'sent',
-                twilio_status: result.status ?? 'queued',
-                from_number: fromNumber,
-                to_number: customerData.mobile_number,
-                message_type: 'sms',
-                metadata: { 
-                  booking_id: booking.id, 
-                  template_key: 'payment_request',
-                  deadline: deadlineFormatted,
-                  deposit_amount: depositAmount
-                }
-              });
-
-            if (messageInsertError) {
-              console.error('Failed to record payment request SMS:', messageInsertError);
-            }
-          } else {
-            console.error('Failed to send payment request SMS immediately:', result.error);
-            // Fall back to queueing the SMS if immediate send fails
-            const smsResult = await queuePaymentRequestSMS(booking.id, { requirePermission: false });
-            if (smsResult.error) {
-              console.error('Queue SMS error:', smsResult.error);
-            }
-          }
-        } else {
-          console.log('Customer has opted out of SMS or has no phone number');
-        }
-      } catch (smsError) {
-        console.error('Error sending payment request SMS:', smsError);
-        // Try to queue as fallback
-        const smsResult = await queuePaymentRequestSMS(booking.id, { requirePermission: false });
-        if (smsResult.error) {
-          console.error('Queue SMS fallback error:', smsResult.error);
-        }
-      }
+      console.log(`Sunday lunch booking created, queuing payment request SMS for booking ${booking.id}`);
+      await queuePaymentRequestSMS(booking.id, { requirePermission: false });
+      await queueBookingEmail(booking.id, 'payment_request');
     }
     
     // Revalidate paths
@@ -877,9 +396,9 @@ export async function createTableBooking(formData: FormData) {
     revalidatePath('/table-bookings/calendar');
     
     return { success: true, data: booking };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Create booking error:', error);
-    return { error: 'An unexpected error occurred' };
+    return { error: error.message || 'An unexpected error occurred' };
   }
 }
 
@@ -889,114 +408,16 @@ export async function updateTableBooking(
   updates: z.infer<typeof UpdateTableBookingSchema>
 ) {
   try {
-    const supabase = await createClient();
-    
     // Check permissions
     const hasPermission = await checkUserPermission('table_bookings', 'edit');
     if (!hasPermission) {
       return { error: 'You do not have permission to edit bookings' };
     }
-    
-    // Get current booking
-    const { data: currentBooking, error: fetchError } = await supabase
-      .from('table_bookings')
-      .select('*')
-      .eq('id', bookingId)
-      .single();
-      
-    if (fetchError || !currentBooking) {
-      return { error: 'Booking not found' };
-    }
-    
-    // If date/time/size changed, check availability
-    if (updates.booking_date || updates.booking_time || updates.party_size) {
-      const availability = await checkTableAvailability(
-        updates.booking_date || currentBooking.booking_date,
-        updates.booking_time || currentBooking.booking_time,
-        updates.party_size || currentBooking.party_size,
-        bookingId
-      );
-      
-      if (availability.error || !availability.data?.is_available) {
-        return { error: 'No tables available for the updated time' };
-      }
-      
-      // Also validate kitchen hours if date or time changed
-      if (updates.booking_date || updates.booking_time) {
-        const newDate = updates.booking_date || currentBooking.booking_date;
-        const newTime = updates.booking_time || currentBooking.booking_time;
-        const bookingDay = new Date(newDate).getDay();
-        
-        // Get business hours for the booking day
-        const { data: businessHours } = await supabase
-          .from('business_hours')
-          .select('kitchen_opens, kitchen_closes, is_closed, is_kitchen_closed')
-          .eq('day_of_week', bookingDay)
-          .single();
-          
-        // Check for special hours
-        const { data: specialHours } = await supabase
-          .from('special_hours')
-          .select('kitchen_opens, kitchen_closes, is_closed, is_kitchen_closed')
-          .eq('date', newDate)
-          .single();
-          
-        const activeHours = specialHours || businessHours;
-        
-        // Check if kitchen is closed
-        const kitchenClosed = !activeHours || 
-                             activeHours.is_closed || 
-                             activeHours.is_kitchen_closed ||
-                             (!activeHours.kitchen_opens || !activeHours.kitchen_closes);
-        
-        if (kitchenClosed) {
-          return { error: 'Kitchen is closed on the selected date' };
-        }
-        
-        // Check if booking time is within kitchen hours
-        if (newTime < activeHours.kitchen_opens || newTime >= activeHours.kitchen_closes) {
-          return { error: `Kitchen is only open from ${formatTime12Hour(activeHours.kitchen_opens)} to ${formatTime12Hour(activeHours.kitchen_closes)} on this day` };
-        }
-      }
-    }
-    
-    // Update booking
-    const updatePayload = withIncrementedModificationCount(
-      {
-        ...updates,
-      },
-      (currentBooking as { modification_count?: number }).modification_count,
-    );
 
-    const { data: updatedBooking, error: updateError } = await supabase
-      .from('table_bookings')
-      .update(updatePayload)
-      .eq('id', bookingId)
-      .select()
-      .single();
-      
-    if (updateError) {
-      console.error('Booking update error:', updateError);
-      return { error: 'Failed to update booking' };
-    }
+    const { updatedBooking, currentBooking, changes } = await TableBookingService.updateBooking(bookingId, updates);
     
-    const dateChanged = updatedBooking.booking_date !== currentBooking.booking_date;
-    const timeChanged = updatedBooking.booking_time !== currentBooking.booking_time;
-    const partySizeChanged = updatedBooking.party_size !== currentBooking.party_size;
-    
-    // Log modification
-    await supabase
-      .from('table_booking_modifications')
-      .insert({
-        booking_id: bookingId,
-        modified_by: (await supabase.auth.getUser()).data.user?.id,
-        modification_type: 'manual_update',
-        old_values: currentBooking,
-        new_values: updatedBooking,
-      });
-    
-    if (updatedBooking.status === 'confirmed' && (dateChanged || timeChanged || partySizeChanged)) {
-      const smsResult = await queueBookingUpdateSMS(bookingId);
+    if (updatedBooking.status === 'confirmed' && (changes.dateChanged || changes.timeChanged || changes.partySizeChanged)) {
+      const smsResult = await queueBookingUpdateSMS(updatedBooking.id);
       if (smsResult?.error) {
         console.error('Booking update SMS queue error:', smsResult.error);
       }
@@ -1019,64 +440,22 @@ export async function updateTableBooking(
     revalidatePath(`/table-bookings/${bookingId}`);
     
     return { success: true, data: updatedBooking };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Update booking error:', error);
-    return { error: 'An unexpected error occurred' };
+    return { error: error.message || 'An unexpected error occurred' };
   }
 }
 
 // Cancel table booking
 export async function cancelTableBooking(bookingId: string, reason: string) {
   try {
-    const supabase = await createClient();
-    const adminSupabase = createAdminClient();
-
     // Check permissions
     const hasPermission = await checkUserPermission('table_bookings', 'edit');
     if (!hasPermission) {
       return { error: 'You do not have permission to cancel bookings' };
     }
-    
-    // Get booking
-    const { data: booking, error: fetchError } = await adminSupabase
-      .from('table_bookings')
-      .select('*, table_booking_payments(*)')
-      .eq('id', bookingId)
-      .single();
-      
-    if (fetchError || !booking) {
-      return { error: 'Booking not found' };
-    }
-    
-    // Check if already cancelled
-    if (booking.status === 'cancelled') {
-      return { error: 'Booking is already cancelled' };
-    }
-    
-    // Calculate refund if payment exists
-    let refundAmount = 0;
-    if (booking.table_booking_payments?.length > 0) {
-      const { data: refundCalc } = await supabase.rpc('calculate_refund_amount', {
-        p_booking_id: bookingId,
-      });
-      
-      refundAmount = refundCalc?.[0]?.refund_amount || 0;
-    }
-    
-    // Update booking status
-    const { error: updateError } = await adminSupabase
-      .from('table_bookings')
-      .update({
-        status: 'cancelled',
-        cancelled_at: new Date().toISOString(),
-        cancellation_reason: reason,
-      })
-      .eq('id', bookingId);
-      
-    if (updateError) {
-      console.error('Booking cancellation error:', updateError);
-      return { error: 'Failed to cancel booking' };
-    }
+
+    const { booking, refundAmount, refundEligible } = await TableBookingService.cancelBooking(bookingId, reason);
     
     // Log audit event
     await logAuditEvent({
@@ -1091,21 +470,13 @@ export async function cancelTableBooking(bookingId: string, reason: string) {
       }
     });
     
-    // Send cancellation SMS
+    // Queue cancellation SMS and Email
     const refundMessage = refundAmount > 0 
       ? `A refund of £${refundAmount.toFixed(2)} will be processed within 3-5 business days.`
       : 'No payment was taken for this booking.';
     
-    const smsResult = await queueCancellationSMS(bookingId, refundMessage);
-    if (smsResult.error) {
-      console.error('Queue cancellation error:', smsResult.error);
-    }
-    
-    // Also send cancellation email
-    const emailResult = await sendBookingCancellationEmail(bookingId, refundMessage);
-    if (emailResult.error) {
-      console.error('Send cancellation email error:', emailResult.error);
-    }
+    await queueCancellationSMS(booking.id, refundMessage);
+    await queueBookingEmail(booking.id, 'cancellation', { refundMessage });
     
     // Revalidate paths
     revalidatePath('/table-bookings');
@@ -1115,42 +486,26 @@ export async function cancelTableBooking(bookingId: string, reason: string) {
       success: true, 
       data: { 
         booking_id: bookingId,
-        refund_eligible: refundAmount > 0,
+        refund_eligible: refundEligible,
         refund_amount: refundAmount,
       }
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Cancel booking error:', error);
-    return { error: 'An unexpected error occurred' };
+    return { error: error.message || 'An unexpected error occurred' };
   }
 }
 
 // Mark booking as no-show
 export async function markBookingNoShow(bookingId: string) {
   try {
-    const supabase = await createClient();
-    
     // Check permissions
     const hasPermission = await checkUserPermission('table_bookings', 'edit');
     if (!hasPermission) {
       return { error: 'You do not have permission to update bookings' };
     }
-    
-    // Update booking status
-    const { data: booking, error } = await supabase
-      .from('table_bookings')
-      .update({
-        status: 'no_show',
-        no_show_at: new Date().toISOString(),
-      })
-      .eq('id', bookingId)
-      .select()
-      .single();
-      
-    if (error) {
-      console.error('No-show update error:', error);
-      return { error: 'Failed to mark as no-show' };
-    }
+
+    const booking = await TableBookingService.markNoShow(bookingId);
     
     // Log audit event
     await logAuditEvent({
@@ -1169,38 +524,22 @@ export async function markBookingNoShow(bookingId: string) {
     revalidatePath(`/table-bookings/${bookingId}`);
     
     return { success: true, data: booking };
-  } catch (error) {
+  } catch (error: any) {
     console.error('No-show error:', error);
-    return { error: 'An unexpected error occurred' };
+    return { error: error.message || 'An unexpected error occurred' };
   }
 }
 
 // Mark booking as completed
 export async function markBookingCompleted(bookingId: string) {
   try {
-    const supabase = await createClient();
-    
     // Check permissions
     const hasPermission = await checkUserPermission('table_bookings', 'edit');
     if (!hasPermission) {
       return { error: 'You do not have permission to update bookings' };
     }
-    
-    // Update booking status
-    const { data: booking, error } = await supabase
-      .from('table_bookings')
-      .update({
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-      })
-      .eq('id', bookingId)
-      .select()
-      .single();
-      
-    if (error) {
-      console.error('Complete booking error:', error);
-      return { error: 'Failed to mark as completed' };
-    }
+
+    const booking = await TableBookingService.markCompleted(bookingId);
     
     // Log audit event
     await logAuditEvent({
@@ -1218,44 +557,20 @@ export async function markBookingCompleted(bookingId: string) {
     revalidatePath(`/table-bookings/${bookingId}`);
     
     return { success: true, data: booking };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Complete booking error:', error);
-    return { error: 'An unexpected error occurred' };
+    return { error: error.message || 'An unexpected error occurred' };
   }
 }
 
 export async function deleteTableBooking(bookingId: string) {
   try {
-    const supabase = await createClient()
-
     const hasPermission = await checkUserPermission('table_bookings', 'delete')
     if (!hasPermission) {
       return { error: 'You do not have permission to delete table bookings.' }
     }
 
-    const { data: booking, error: fetchError } = await supabase
-      .from('table_bookings')
-      .select('id, status, booking_reference')
-      .eq('id', bookingId)
-      .single()
-
-    if (fetchError || !booking) {
-      return { error: 'Booking not found.' }
-    }
-
-    if (booking.status !== 'pending_payment' && booking.status !== 'cancelled') {
-      return { error: 'Only pending or cancelled bookings can be deleted.' }
-    }
-
-    const { error: deleteError } = await supabase
-      .from('table_bookings')
-      .delete()
-      .eq('id', bookingId)
-
-    if (deleteError) {
-      console.error('Error deleting table booking:', deleteError)
-      return { error: 'Failed to delete booking.' }
-    }
+    const booking = await TableBookingService.deleteBooking(bookingId);
 
     await logAuditEvent({
       operation_type: 'delete',
@@ -1277,7 +592,7 @@ export async function deleteTableBooking(bookingId: string) {
   }
 }
 
-// Get bookings for a specific date
+// ... (GetBookingsByDate, SearchBookings, GetTableBookingDetails, SearchTableBookings - Keep as is)
 export async function getBookingsByDate(date: string) {
   try {
     const supabase = await createClient();
@@ -1388,6 +703,106 @@ export async function searchBookings(searchTerm: string) {
     return { data: allBookings };
   } catch (error) {
     console.error('Search bookings error:', error);
+    return { error: 'An unexpected error occurred' };
+  }
+}
+
+// Get detailed booking information
+export async function getTableBookingDetails(bookingId: string) {
+  try {
+    const supabase = await createClient();
+
+    // Check permissions
+    const hasPermission = await checkUserPermission('table_bookings', 'view');
+    if (!hasPermission) {
+      return { error: 'You do not have permission to view bookings' };
+    }
+
+    const { data, error } = await supabase
+      .from('table_bookings')
+      .select(`
+        *,
+        customer:customers(*),
+        table_booking_items(*),
+        table_booking_payments(*),
+        table_booking_modifications(*)
+      `)
+      .eq('id', bookingId)
+      .single();
+
+    if (error) {
+      console.error('Error fetching booking details:', error);
+      return { error: 'Failed to fetch booking details' };
+    }
+
+    if (!data) {
+      return { error: 'Booking not found' };
+    }
+
+    return { success: true, data };
+  } catch (error: any) {
+    console.error('Unexpected error fetching booking details:', error);
+    return { error: 'An unexpected error occurred' };
+  }
+}
+
+// Targeted search for bookings
+export async function searchTableBookings(searchTerm: string, searchType: 'name' | 'phone' | 'reference') {
+  try {
+    const supabase = await createClient();
+
+    const hasPermission = await checkUserPermission('table_bookings', 'view');
+    if (!hasPermission) {
+      return { error: 'You do not have permission to search bookings' };
+    }
+
+    let query = supabase
+      .from('table_bookings')
+      .select(`
+        *,
+        customer:customers(*)
+      `)
+      .order('booking_date', { ascending: false })
+      .order('booking_time', { ascending: false })
+      .limit(50);
+
+    if (searchType === 'name') {
+      const { data: customers } = await supabase
+        .from('customers')
+        .select('id')
+        .or(`first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%`);
+
+      if (customers && customers.length > 0) {
+        query = query.in('customer_id', customers.map((c: any) => c.id));
+      } else {
+        return { success: true, data: [] };
+      }
+    } else if (searchType === 'phone') {
+      const cleanPhone = searchTerm.replace(/\D/g, '');
+      const { data: customers } = await supabase
+        .from('customers')
+        .select('id')
+        .like('mobile_number', `%${cleanPhone}%`);
+
+      if (customers && customers.length > 0) {
+        query = query.in('customer_id', customers.map((c: any) => c.id));
+      } else {
+        return { success: true, data: [] };
+      }
+    } else if (searchType === 'reference') {
+      query = query.ilike('booking_reference', `%${searchTerm}%`);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Search error:', error);
+      return { error: 'Failed to search bookings' };
+    }
+
+    return { success: true, data: data || [] };
+  } catch (error: any) {
+    console.error('Unexpected search error:', error);
     return { error: 'An unexpected error occurred' };
   }
 }
