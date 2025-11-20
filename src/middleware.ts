@@ -171,25 +171,31 @@ export async function middleware(request: NextRequest) {
     expiresAt <= now + 60
 
   if (shouldRefresh) {
-    const refreshed = await refreshSession(refreshToken)
-    if (refreshed) {
-      workingSession = {
-        ...workingSession,
-        access_token: refreshed.access_token,
-        refresh_token: refreshed.refresh_token ?? refreshToken,
-        token_type: refreshed.token_type ?? workingSession.token_type,
-        expires_in: refreshed.expires_in ?? workingSession.expires_in,
-        expires_at:
-          refreshed.expires_at ??
-          Math.floor(Date.now() / 1000) + (refreshed.expires_in ?? workingSession.expires_in ?? 0),
-      }
+    try {
+      const refreshed = await refreshSession(refreshToken)
+      if (refreshed) {
+        workingSession = {
+          ...workingSession,
+          access_token: refreshed.access_token,
+          refresh_token: refreshed.refresh_token ?? refreshToken,
+          token_type: refreshed.token_type ?? workingSession.token_type,
+          expires_in: refreshed.expires_in ?? workingSession.expires_in,
+          expires_at:
+            refreshed.expires_at ??
+            Math.floor(Date.now() / 1000) + (refreshed.expires_in ?? workingSession.expires_in ?? 0),
+        }
 
-      if (refreshed.user !== undefined) {
-        workingSession.user = refreshed.user
-        workingUser = refreshed.user
-      }
+        if (refreshed.user !== undefined) {
+          workingSession.user = refreshed.user
+          workingUser = refreshed.user
+        }
 
-      sessionUpdated = true
+        sessionUpdated = true
+      }
+    } catch (error) {
+      // If refresh fails, we continue with the existing session if it's still valid
+      // The client will handle re-authentication if needed
+      console.error('Session refresh failed:', error)
     }
   }
 

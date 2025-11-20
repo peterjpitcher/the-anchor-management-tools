@@ -1,5 +1,6 @@
 import type { ReceiptExpenseCategory } from '@/types/database'
 import { getOpenAIConfig } from '@/lib/openai/config'
+import { retry, RetryConfigs } from '@/lib/retry'
 
 const MODEL_PRICING_PER_1K_TOKENS: Record<string, { prompt: number; completion: number }> = {
   'gpt-4o-mini': { prompt: 0.00015, completion: 0.0006 },
@@ -110,42 +111,45 @@ Only answer with valid JSON that matches the schema.`
     .filter(Boolean)
     .join('\n')
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.1,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'receipt_classification',
-          schema: {
-            type: 'object',
-            properties: {
-              vendor_name: { type: ['string', 'null'], description: 'The suggested vendor or merchant name.' },
-              expense_category: {
-                type: ['string', 'null'],
-                description: 'The accounting bucket that matches the transaction.',
-                enum: categories,
+  const response = await retry(
+    async () => fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.1,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'receipt_classification',
+            schema: {
+              type: 'object',
+              properties: {
+                vendor_name: { type: ['string', 'null'], description: 'The suggested vendor or merchant name.' },
+                expense_category: {
+                  type: ['string', 'null'],
+                  description: 'The accounting bucket that matches the transaction.',
+                  enum: categories,
+                },
+                reasoning: { type: ['string', 'null'], description: 'One-line explanation for auditing.' },
               },
-              reasoning: { type: ['string', 'null'], description: 'One-line explanation for auditing.' },
+              required: ['vendor_name', 'expense_category'],
+              additionalProperties: false,
             },
-            required: ['vendor_name', 'expense_category'],
-            additionalProperties: false,
           },
         },
-      },
-      max_tokens: 300,
+        max_tokens: 300,
+      }),
     }),
-  })
+    RetryConfigs.api
+  )
 
   if (!response.ok) {
     console.error('OpenAI classification request failed', await response.text())
@@ -174,16 +178,16 @@ Only answer with valid JSON that matches the schema.`
 
   const usage: ClassificationUsage | undefined = payload?.usage
     ? {
-        model: payload.usage.model ?? model,
-        promptTokens: payload.usage.prompt_tokens ?? 0,
-        completionTokens: payload.usage.completion_tokens ?? 0,
-        totalTokens: payload.usage.total_tokens ?? ((payload.usage.prompt_tokens ?? 0) + (payload.usage.completion_tokens ?? 0)),
-        cost: calculateOpenAICost(
-          payload.usage.model ?? model,
-          payload.usage.prompt_tokens ?? 0,
-          payload.usage.completion_tokens ?? 0
-        ),
-      }
+      model: payload.usage.model ?? model,
+      promptTokens: payload.usage.prompt_tokens ?? 0,
+      completionTokens: payload.usage.completion_tokens ?? 0,
+      totalTokens: payload.usage.total_tokens ?? ((payload.usage.prompt_tokens ?? 0) + (payload.usage.completion_tokens ?? 0)),
+      cost: calculateOpenAICost(
+        payload.usage.model ?? model,
+        payload.usage.prompt_tokens ?? 0,
+        payload.usage.completion_tokens ?? 0
+      ),
+    }
     : undefined
 
   return {

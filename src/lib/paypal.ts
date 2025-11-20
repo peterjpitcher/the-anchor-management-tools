@@ -1,7 +1,8 @@
 import { TableBooking, TableBookingItem } from '@/types/table-bookings';
+import { retry, RetryConfigs } from './retry';
 
 // PayPal configuration
-const PAYPAL_BASE_URL = process.env.PAYPAL_ENVIRONMENT === 'sandbox' 
+const PAYPAL_BASE_URL = process.env.PAYPAL_ENVIRONMENT === 'sandbox'
   ? 'https://api-m.sandbox.paypal.com'
   : 'https://api-m.paypal.com';
 
@@ -14,24 +15,27 @@ async function getAccessToken(): Promise<string> {
   if (!PAYPAL_CLIENT_ID || !PAYPAL_CLIENT_SECRET) {
     throw new Error('PayPal credentials not configured. Please check PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET environment variables.');
   }
-  
+
   const auth = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`).toString('base64');
-  
-  const response = await fetch(`${PAYPAL_BASE_URL}/v1/oauth2/token`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Basic ${auth}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: 'grant_type=client_credentials',
-  });
-  
+
+  const response = await retry(
+    async () => fetch(`${PAYPAL_BASE_URL}/v1/oauth2/token`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: 'grant_type=client_credentials',
+    }),
+    RetryConfigs.api
+  );
+
   if (!response.ok) {
     const errorText = await response.text();
     console.error('PayPal access token error:', errorText);
     throw new Error(`Failed to get PayPal access token: ${response.status} ${response.statusText}`);
   }
-  
+
   const data = await response.json();
   return data.access_token;
 }
@@ -44,20 +48,20 @@ export async function createPayPalOrder(
   depositOnly: boolean = false
 ) {
   const accessToken = await getAccessToken();
-  
+
   // Calculate total from booking items
   const items = booking.table_booking_items || [];
   const totalAmount = items.reduce(
-    (sum, item) => sum + (item.price_at_booking * item.quantity), 
+    (sum, item) => sum + (item.price_at_booking * item.quantity),
     0
   );
-  
+
   // Calculate payment amount (deposit or full amount)
   const paymentAmount = depositOnly ? booking.party_size * 5 : totalAmount;
-  const description = depositOnly 
+  const description = depositOnly
     ? `Sunday Lunch Booking Deposit - ${booking.booking_reference} (£5 per person)`
     : `Sunday Lunch Booking - ${booking.booking_reference}`;
-  
+
   const order = {
     intent: 'CAPTURE',
     purchase_units: [{
@@ -83,25 +87,28 @@ export async function createPayPalOrder(
       },
     },
   };
-  
-  const response = await fetch(`${PAYPAL_BASE_URL}/v2/checkout/orders`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`,
-      'PayPal-Request-Id': `booking-${booking.id}`,
-    },
-    body: JSON.stringify(order),
-  });
-  
+
+  const response = await retry(
+    async () => fetch(`${PAYPAL_BASE_URL}/v2/checkout/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+        'PayPal-Request-Id': `booking-${booking.id}`,
+      },
+      body: JSON.stringify(order),
+    }),
+    RetryConfigs.api
+  );
+
   if (!response.ok) {
     const errorText = await response.text();
     let errorMessage = 'Failed to create PayPal order';
-    
+
     try {
       const errorJson = JSON.parse(errorText);
       console.error('PayPal order creation error:', errorJson);
-      
+
       // Extract specific error details if available
       if (errorJson.details && errorJson.details.length > 0) {
         errorMessage = errorJson.details[0].description || errorJson.message || errorMessage;
@@ -111,10 +118,10 @@ export async function createPayPalOrder(
     } catch (e) {
       console.error('PayPal order creation error (raw):', errorText);
     }
-    
+
     throw new Error(errorMessage);
   }
-  
+
   const data = await response.json();
   return {
     orderId: data.id,
@@ -173,15 +180,18 @@ export async function createSimplePayPalOrder(options: PayPalOrderOptions) {
     }
   };
 
-  const response = await fetch(`${PAYPAL_BASE_URL}/v2/checkout/orders`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`,
-      'PayPal-Request-Id': `parking-${customId}`
-    },
-    body: JSON.stringify(orderPayload)
-  });
+  const response = await retry(
+    async () => fetch(`${PAYPAL_BASE_URL}/v2/checkout/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+        'PayPal-Request-Id': `parking-${customId}`
+      },
+      body: JSON.stringify(orderPayload)
+    }),
+    RetryConfigs.api
+  );
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -199,21 +209,24 @@ export async function createSimplePayPalOrder(options: PayPalOrderOptions) {
 // Capture PayPal payment
 export async function capturePayPalPayment(orderId: string) {
   const accessToken = await getAccessToken();
-  
-  const response = await fetch(`${PAYPAL_BASE_URL}/v2/checkout/orders/${orderId}/capture`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`,
-    },
-  });
-  
+
+  const response = await retry(
+    async () => fetch(`${PAYPAL_BASE_URL}/v2/checkout/orders/${orderId}/capture`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    }),
+    RetryConfigs.api
+  );
+
   if (!response.ok) {
     const error = await response.json();
     console.error('PayPal capture error:', error);
     throw new Error('Failed to capture PayPal payment');
   }
-  
+
   const data = await response.json();
   return {
     transactionId: data.purchase_units[0].payments.captures[0].id,
@@ -230,33 +243,36 @@ export async function refundPayPalPayment(
   reason?: string
 ) {
   const accessToken = await getAccessToken();
-  
+
   const refundData: any = {
     amount: {
       value: amount.toFixed(2),
       currency_code: 'GBP',
     },
   };
-  
+
   if (reason) {
     refundData.note_to_payer = reason;
   }
-  
-  const response = await fetch(`${PAYPAL_BASE_URL}/v2/payments/captures/${captureId}/refund`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify(refundData),
-  });
-  
+
+  const response = await retry(
+    async () => fetch(`${PAYPAL_BASE_URL}/v2/payments/captures/${captureId}/refund`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(refundData),
+    }),
+    RetryConfigs.api
+  );
+
   if (!response.ok) {
     const error = await response.json();
     console.error('PayPal refund error:', error);
     throw new Error('Failed to process PayPal refund');
   }
-  
+
   const data = await response.json();
   return {
     refundId: data.id,
@@ -272,7 +288,7 @@ export async function verifyPayPalWebhook(
   webhookId: string
 ): Promise<boolean> {
   const accessToken = await getAccessToken();
-  
+
   const verificationData = {
     auth_algo: headers['paypal-auth-algo'],
     cert_url: headers['paypal-cert-url'],
@@ -282,21 +298,24 @@ export async function verifyPayPalWebhook(
     webhook_id: webhookId,
     webhook_event: JSON.parse(body),
   };
-  
-  const response = await fetch(`${PAYPAL_BASE_URL}/v1/notifications/verify-webhook-signature`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify(verificationData),
-  });
-  
+
+  const response = await retry(
+    async () => fetch(`${PAYPAL_BASE_URL}/v1/notifications/verify-webhook-signature`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(verificationData),
+    }),
+    RetryConfigs.api
+  );
+
   if (!response.ok) {
     console.error('PayPal webhook verification failed');
     return false;
   }
-  
+
   const data = await response.json();
   return data.verification_status === 'SUCCESS';
 }
@@ -304,16 +323,19 @@ export async function verifyPayPalWebhook(
 // Get order details
 export async function getPayPalOrder(orderId: string) {
   const accessToken = await getAccessToken();
-  
-  const response = await fetch(`${PAYPAL_BASE_URL}/v2/checkout/orders/${orderId}`, {
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-    },
-  });
-  
+
+  const response = await retry(
+    async () => fetch(`${PAYPAL_BASE_URL}/v2/checkout/orders/${orderId}`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    }),
+    RetryConfigs.api
+  );
+
   if (!response.ok) {
     throw new Error('Failed to get PayPal order details');
   }
-  
+
   return response.json();
 }
