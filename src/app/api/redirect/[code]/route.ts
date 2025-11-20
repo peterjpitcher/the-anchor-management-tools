@@ -43,38 +43,36 @@ export async function GET(
       return NextResponse.redirect('https://www.the-anchor.pub');
     }
     
-    // Track the click asynchronously (don't wait for it)
-    Promise.resolve().then(async () => {
-      try {
-        const userAgent = request.headers.get('user-agent');
-        const { deviceType, browser, os } = parseUserAgent(userAgent);
-        const utmParams = parseQueryParams(request.url);
-        
-        await supabase
-          .from('short_link_clicks')
-          .insert({
-            short_link_id: link.id,
-            user_agent: userAgent,
-            referrer: request.headers.get('referer'),
-            ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip'),
-            country: getCountryFromHeaders(request.headers),
-            city: getCityFromHeaders(request.headers),
-            region: getRegionFromHeaders(request.headers),
-            device_type: deviceType,
-            browser,
-            os,
-            utm_source: utmParams.utm_source,
-            utm_medium: utmParams.utm_medium,
-            utm_campaign: utmParams.utm_campaign
-          });
-          
-        await (supabase as any).rpc('increment_short_link_clicks', {
-          p_short_link_id: link.id
+    // Track the click synchronously to ensure it records in serverless environment
+    try {
+      const userAgent = request.headers.get('user-agent');
+      const { deviceType, browser, os } = parseUserAgent(userAgent);
+      const utmParams = parseQueryParams(request.url);
+      
+      await supabase
+        .from('short_link_clicks')
+        .insert({
+          short_link_id: link.id,
+          user_agent: userAgent,
+          referrer: request.headers.get('referer'),
+          ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip'),
+          country: getCountryFromHeaders(request.headers),
+          city: getCityFromHeaders(request.headers),
+          region: getRegionFromHeaders(request.headers),
+          device_type: deviceType,
+          browser,
+          os,
+          utm_source: utmParams.utm_source,
+          utm_medium: utmParams.utm_medium,
+          utm_campaign: utmParams.utm_campaign
         });
-      } catch (err) {
-        console.error('Error tracking click:', err);
-      }
-    });
+        
+      await (supabase as any).rpc('increment_short_link_clicks', {
+        p_short_link_id: link.id
+      });
+    } catch (err) {
+      console.error('Error tracking click:', err);
+    }
     
     // Redirect immediately to the destination URL
     return NextResponse.redirect(link.destination_url);
