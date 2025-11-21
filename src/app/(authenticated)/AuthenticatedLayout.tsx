@@ -23,23 +23,44 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
   const [isSigningOut, setIsSigningOut] = useState(false)
 
   useEffect(() => {
+    let mounted = true
+
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session) {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return
+
+      if (session?.user) {
         setUser(session.user)
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null)
+        router.replace('/auth/login')
       }
-      setLoading(false)
     })
 
     async function getUser() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (user) {
-        setUser(user)
+      try {
+        const {
+          data: { user },
+          error,
+        } = await supabase.auth.getUser()
+        
+        if (mounted) {
+          if (error) {
+            console.error('Auth check error:', error)
+            setUser(null)
+          } else if (user) {
+            setUser(user)
+          }
+          setLoading(false)
+        }
+      } catch (error) {
+        console.error('Auth check failed:', error)
+        if (mounted) {
+          setUser(null)
+          setLoading(false)
+        }
       }
-      setLoading(false)
     }
 
     getUser()
@@ -52,10 +73,11 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
     window.addEventListener('open-mobile-menu', handleOpenMenu)
 
     return () => {
+      mounted = false
       subscription.unsubscribe()
       window.removeEventListener('open-mobile-menu', handleOpenMenu)
     }
-  }, [supabase])
+  }, [supabase, router])
 
   useEffect(() => {
     if (!loading && !user) {

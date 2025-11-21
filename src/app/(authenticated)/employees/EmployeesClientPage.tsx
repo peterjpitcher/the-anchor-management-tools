@@ -48,14 +48,16 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
 
   const updateFilters = useCallback((updates: { status?: EmployeeStatus; search?: string; page?: number }) => {
     const params = new URLSearchParams(searchParams.toString())
+    let hasChanges = false
     
-    if (updates.status !== undefined) {
+    if (updates.status !== undefined && updates.status !== selectedStatus) {
       params.set('status', updates.status)
       // Reset to page 1 when filter changes, unless page is explicitly provided
       if (updates.page === undefined) params.set('page', '1')
+      hasChanges = true
     }
     
-    if (updates.search !== undefined) {
+    if (updates.search !== undefined && updates.search !== searchTerm) {
       if (updates.search) {
         params.set('search', updates.search)
       } else {
@@ -63,16 +65,20 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
       }
       // Reset to page 1 when search changes
       if (updates.page === undefined) params.set('page', '1')
+      hasChanges = true
     }
     
-    if (updates.page !== undefined) {
+    if (updates.page !== undefined && updates.page !== currentPage) {
       params.set('page', updates.page.toString())
+      hasChanges = true
     }
 
-    startTransition(() => {
-      router.push(`${pathname}?${params.toString()}`)
-    })
-  }, [searchParams, pathname, router])
+    if (hasChanges) {
+      startTransition(() => {
+        router.push(`${pathname}?${params.toString()}`)
+      })
+    }
+  }, [searchParams, pathname, router, selectedStatus, searchTerm, currentPage])
 
   const handleExport = useCallback(
     async (format: 'csv' | 'json') => {
