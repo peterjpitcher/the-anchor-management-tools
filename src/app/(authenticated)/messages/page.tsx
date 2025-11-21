@@ -12,9 +12,10 @@ import {
   markConversationAsUnread,
   type ConversationSummary,
 } from '@/app/actions/messagesActions'
-import { MessageThread } from '@/components/MessageThread'
+import { MessageThread } from '@/components/features/messages/MessageThread'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
@@ -344,30 +345,32 @@ export default function MessagesPage() {
     await loadConversations()
   }
 
-  const navItems: HeaderNavItem[] = [
-    { label: 'Send Bulk Message', href: '/messages/bulk' },
-    {
-      label: 'Refresh',
-      onClick: () => {
-        void handleRefresh()
-      },
-    },
-    ...(totalUnreadCount > 0
-      ? [
-          {
-            label: markingAll ? 'Marking…' : 'Mark all as read',
-            onClick: () => {
-              void handleMarkAllAsRead()
-            },
-            disabled: markingAll,
-          },
-        ]
-      : []),
-  ]
-
-  const headerActions = (
-    <div className="text-sm text-white/80">
-      {totalUnreadCount > 0 ? `${totalUnreadCount} unread` : 'Inbox clear'}
+  const navActions = (
+    <div className="flex flex-wrap items-center gap-2">
+      <LinkButton href="/messages/bulk" variant="primary" size="sm">
+        Send Bulk Message
+      </LinkButton>
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => {
+          void handleRefresh()
+        }}
+      >
+        Refresh
+      </Button>
+      {totalUnreadCount > 0 && (
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            void handleMarkAllAsRead()
+          }}
+          disabled={markingAll}
+        >
+          {markingAll ? 'Marking…' : 'Mark all as read'}
+        </Button>
+      )}
     </div>
   )
 
@@ -383,8 +386,7 @@ export default function MessagesPage() {
         title="Messages Inbox"
         subtitle="Review and respond to customer conversations"
         backButton={{ label: 'Back to Dashboard', href: '/dashboard' }}
-        navItems={navItems}
-        headerActions={headerActions}
+        navActions={navActions}
       >
         <Card>
           <div className="space-y-3 p-4">
@@ -406,8 +408,7 @@ export default function MessagesPage() {
           : 'All caught up'
       }
       backButton={{ label: 'Back to Dashboard', href: '/dashboard' }}
-      navItems={navItems}
-      headerActions={headerActions}
+      navActions={navActions}
     >
       {hasMoreUnread && (
         <Alert variant="warning" className="mb-4">

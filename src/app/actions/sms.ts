@@ -1,6 +1,6 @@
 'use server'
 
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import twilio from 'twilio'
 import { rateLimiters } from '@/lib/rate-limit'
 import { headers } from 'next/headers'

@@ -1,6 +1,6 @@
 'use server'
 
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { jobQueue } from '@/lib/unified-job-queue'
 import { logger } from '@/lib/logger'
 import { ReminderType } from './event-sms-scheduler'

@@ -1,7 +1,7 @@
 'use server'
 
 import { checkUserPermission } from './rbac'
-import { createAdminClient } from '@/lib/supabase/server'
+import { EmployeeService } from '@/services/employees'
 import type { Employee } from '@/types/database'
 
 type EmployeeStatus = 'all' | 'Active' | 'Former' | 'Prospective'
@@ -43,10 +43,7 @@ export interface EmployeeRosterResult {
 export async function getEmployeesRoster(
   request: EmployeeRosterRequest = {}
 ): Promise<EmployeeRosterResult> {
-  const [canView, supabase] = await Promise.all([
-    checkUserPermission('employees', 'view'),
-    Promise.resolve(createAdminClient())
-  ])
+  const canView = await checkUserPermission('employees', 'view')
 
   const pageSize = typeof request.pageSize === 'number' && request.pageSize > 0 ? request.pageSize : 50
   const requestedPage = typeof request.page === 'number' && request.page > 0 ? request.page : 1
@@ -80,87 +77,19 @@ export async function getEmployeesRoster(
   }
 
   try {
-    const [allCountRes, activeCountRes, formerCountRes, prospectiveCountRes] = await Promise.all([
-      supabase.from('employees').select('*', { count: 'exact', head: true }),
-      supabase.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'Active'),
-      supabase.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'Former'),
-      supabase.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'Prospective')
-    ])
+    const result = await EmployeeService.getEmployeesRoster({
+      page: requestedPage,
+      pageSize,
+      searchTerm,
+      statusFilter
+    })
 
-    if (allCountRes.error || activeCountRes.error || formerCountRes.error || prospectiveCountRes.error) {
-      throw allCountRes.error || activeCountRes.error || formerCountRes.error || prospectiveCountRes.error
-    }
-
-    const applyFilters = <T>(query: T) => {
-      let builder: any = query
-      if (statusFilter !== 'all') {
-        builder = builder.eq('status', statusFilter)
-      }
-      if (searchTerm) {
-        const searchPattern = `%${searchTerm}%`
-        builder = builder.or(
-          [
-            `first_name.ilike.${searchPattern}`,
-            `last_name.ilike.${searchPattern}`,
-            `email_address.ilike.${searchPattern}`,
-            `job_title.ilike.${searchPattern}`
-          ].join(',')
-        )
-      }
-      return builder
-    }
-
-    const { count, error: countError } = await applyFilters(
-      supabase.from('employees').select('*', { count: 'exact', head: true })
-    )
-
-    if (countError) {
-      throw countError
-    }
-
-    const totalCount = count ?? 0
-    const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize)
-    const currentPage = totalPages === 0 ? 1 : Math.min(requestedPage, totalPages)
-
-    const from = (currentPage - 1) * pageSize
-    const to = from + pageSize - 1
-
-    const { data, error: dataError } = await applyFilters(
-      supabase
-        .from('employees')
-        .select('*')
-        .order('employment_start_date', { ascending: true })
-        .range(from, to)
-    )
-
-    if (dataError) {
-      throw dataError
-    }
-
-    return {
-      employees: (data ?? []) as Employee[],
-      pagination: {
-        page: currentPage,
-        pageSize,
-        totalCount,
-        totalPages
-      },
-      statusCounts: {
-        all: allCountRes.count ?? 0,
-        active: activeCountRes.count ?? 0,
-        former: formerCountRes.count ?? 0,
-        prospective: prospectiveCountRes.count ?? 0
-      },
-      filters: {
-        statusFilter,
-        searchTerm
-      }
-    }
-  } catch (error) {
+    return result;
+  } catch (error: any) {
     console.error('[getEmployeesRoster] Failed to fetch employees roster:', error)
     return {
       ...emptyResult,
-      error: 'Failed to load employees.'
+      error: error.message || 'Failed to load employees.'
     }
   }
 }

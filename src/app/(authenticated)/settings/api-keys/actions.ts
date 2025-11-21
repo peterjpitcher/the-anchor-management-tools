@@ -1,6 +1,7 @@
 'use server'
 
-import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { generateApiKey as genKey, hashApiKey } from '@/lib/api/auth'
 import { logAuditEvent } from '@/app/actions/audit'
 import type { ApiKey } from '@/types/api'

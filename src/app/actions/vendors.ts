@@ -1,12 +1,14 @@
 'use server'
 
-import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import type { InvoiceVendor } from '@/types/invoices'
 import { parsePaymentTermsValue } from '@/lib/vendors/paymentTerms'
+import { VendorService } from '@/services/vendors' // Import the new service
 
 // Vendor validation schema
 const VendorSchema = z.object({
@@ -19,12 +21,6 @@ const VendorSchema = z.object({
   payment_terms: z.number().min(0).default(30),
   notes: z.string().optional().or(z.literal(''))
 })
-
-function emptyToNull(v?: string | null): string | null {
-  if (v == null) return null
-  const s = String(v).trim()
-  return s.length === 0 ? null : s
-}
 
 export async function getVendors() {
   try {
@@ -73,28 +69,7 @@ export async function createVendor(formData: FormData) {
       notes: formData.get('notes') || undefined
     })
 
-    // Map empty strings to null so fields can be cleared
-    const payload = {
-      name: validatedData.name,
-      contact_name: emptyToNull(validatedData.contact_name as any),
-      email: emptyToNull(validatedData.email as any),
-      phone: emptyToNull(validatedData.phone as any),
-      address: emptyToNull(validatedData.address as any),
-      vat_number: emptyToNull(validatedData.vat_number as any),
-      payment_terms: validatedData.payment_terms,
-      notes: emptyToNull(validatedData.notes as any)
-    }
-
-    const { data: vendor, error } = await supabase
-      .from('invoice_vendors')
-      .insert([payload])
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Error creating vendor:', error)
-      return { error: 'Failed to create vendor' }
-    }
+    const vendor = await VendorService.createVendor(validatedData);
 
     await logAuditEvent({
       operation_type: 'create',
@@ -108,12 +83,12 @@ export async function createVendor(formData: FormData) {
     revalidatePath('/invoices/new')
     
     return { vendor, success: true }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in createVendor:', error)
     if (error instanceof z.ZodError) {
       return { error: error.errors[0].message }
     }
-    return { error: 'An unexpected error occurred' }
+    return { error: error.message || 'An unexpected error occurred' }
   }
 }
 
@@ -142,29 +117,7 @@ export async function updateVendor(formData: FormData) {
       notes: formData.get('notes') || undefined
     })
 
-    // Map empty strings to null so fields can be cleared
-    const payload = {
-      name: validatedData.name,
-      contact_name: emptyToNull(validatedData.contact_name as any),
-      email: emptyToNull(validatedData.email as any),
-      phone: emptyToNull(validatedData.phone as any),
-      address: emptyToNull(validatedData.address as any),
-      vat_number: emptyToNull(validatedData.vat_number as any),
-      payment_terms: validatedData.payment_terms,
-      notes: emptyToNull(validatedData.notes as any)
-    }
-
-    const { data: vendor, error } = await supabase
-      .from('invoice_vendors')
-      .update(payload)
-      .eq('id', vendorId)
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Error updating vendor:', error)
-      return { error: 'Failed to update vendor' }
-    }
+    const vendor = await VendorService.updateVendor(vendorId, validatedData);
 
     await logAuditEvent({
       operation_type: 'update',
@@ -178,12 +131,12 @@ export async function updateVendor(formData: FormData) {
     revalidatePath('/invoices')
     
     return { vendor, success: true }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in updateVendor:', error)
     if (error instanceof z.ZodError) {
       return { error: error.errors[0].message }
     }
-    return { error: 'An unexpected error occurred' }
+    return { error: error.message || 'An unexpected error occurred' }
   }
 }
 
@@ -201,62 +154,21 @@ export async function deleteVendor(formData: FormData) {
       return { error: 'Vendor ID is required' }
     }
 
-    // Check if vendor has any invoices
-    const { data: invoices, error: checkError } = await supabase
-      .from('invoices')
-      .select('id')
-      .eq('vendor_id', vendorId)
-      .limit(1)
+    const { action } = await VendorService.deleteVendor(vendorId);
 
-    if (checkError) {
-      console.error('Error checking vendor usage:', checkError)
-      return { error: 'Failed to check vendor usage' }
-    }
-
-    if (invoices && invoices.length > 0) {
-      // Soft delete by marking as inactive
-      const { error } = await supabase
-        .from('invoice_vendors')
-        .update({ is_active: false })
-        .eq('id', vendorId)
-
-      if (error) {
-        console.error('Error deactivating vendor:', error)
-        return { error: 'Failed to deactivate vendor' }
-      }
-
-      await logAuditEvent({
-        operation_type: 'deactivate',
-        resource_type: 'vendor',
-        resource_id: vendorId,
-        operation_status: 'success',
-        additional_info: { reason: 'Has associated invoices' }
-      })
-    } else {
-      // Hard delete if no invoices
-      const { error } = await supabase
-        .from('invoice_vendors')
-        .delete()
-        .eq('id', vendorId)
-
-      if (error) {
-        console.error('Error deleting vendor:', error)
-        return { error: 'Failed to delete vendor' }
-      }
-
-      await logAuditEvent({
-        operation_type: 'delete',
-        resource_type: 'vendor',
-        resource_id: vendorId,
-        operation_status: 'success'
-      })
-    }
+    await logAuditEvent({
+      operation_type: action === 'deactivated' ? 'deactivate' : 'delete',
+      resource_type: 'vendor',
+      resource_id: vendorId,
+      operation_status: 'success',
+      additional_info: action === 'deactivated' ? { reason: 'Has associated invoices' } : undefined
+    })
 
     revalidatePath('/invoices/vendors')
     
     return { success: true }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in deleteVendor:', error)
-    return { error: 'An unexpected error occurred' }
+    return { error: error.message || 'An unexpected error occurred' }
   }
 }

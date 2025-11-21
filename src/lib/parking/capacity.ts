@@ -1,4 +1,4 @@
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getActiveParkingRate } from '@/lib/parking/repository'
 import type { ParkingAvailabilitySlot, ParkingCapacityCheckResult, ParkingBookingStatus } from '@/types/parking'
 

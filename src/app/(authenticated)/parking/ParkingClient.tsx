@@ -355,8 +355,8 @@ export default function ParkingClient({ permissions, initialError }: Props) {
     { label: 'Notifications', href: '#notifications' },
   ]
 
-  const headerActions = permissions.canCreate ? (
-    <Button onClick={() => setShowCreateModal(true)}>
+  const navActions = permissions.canCreate ? (
+    <Button size="sm" onClick={() => setShowCreateModal(true)}>
       New booking
     </Button>
   ) : undefined
@@ -444,7 +444,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
               <Button
                 variant="ghost"
                 disabled={isMutating}
-                onClick={() => handleStatusUpdate(selectedBooking.id, 'cancelled', selectedBooking.payment_status)}
+                onClick={() => handleStatusUpdate(selectedBooking.id, 'cancelled')}
               >
                 {isMutating ? 'Updating…' : 'Cancel booking'}
               </Button>
@@ -512,7 +512,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
       title="Parking bookings"
       subtitle="Manage onsite car park reservations, monitor payments, and keep customer details up to date."
       navItems={navItems}
-      headerActions={headerActions}
+      navActions={navActions}
       loading={showInitialLoading}
       loadingLabel="Loading bookings..."
     >

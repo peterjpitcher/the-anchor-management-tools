@@ -11,7 +11,7 @@ import {
 } from '@/app/actions/event-categories'
 import { EventCategory } from '@/types/event-categories'
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
-import { EventCategoryFormGrouped } from '@/components/EventCategoryFormGrouped'
+import { EventCategoryFormGrouped } from '@/components/features/events/EventCategoryFormGrouped'
 // New UI components
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'

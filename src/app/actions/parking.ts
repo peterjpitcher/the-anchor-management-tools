@@ -1,6 +1,7 @@
 'use server'
 
-import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
 import { z } from 'zod'
@@ -359,7 +360,7 @@ export async function getParkingBookingById(bookingId: string) {
 
 export async function updateParkingBookingStatus(
   bookingId: string,
-  updates: Partial<Pick<ParkingBooking, 'status' | 'payment_status' | 'notes'>>
+  updates: Partial<Pick<ParkingBooking, 'status' | 'payment_status' | 'notes' | 'cancelled_at'>>
 ) {
   try {
     const hasPermission = await checkUserPermission('parking', 'manage')
@@ -368,14 +369,80 @@ export async function updateParkingBookingStatus(
     }
 
     const adminClient = createAdminClient()
-    const booking = await updateParkingBooking(bookingId, updates, adminClient)
+
+    const existing = await getParkingBooking(bookingId, adminClient)
+    if (!existing) {
+      return { error: 'Parking booking not found' }
+    }
+
+    let updatesToApply = { ...updates }
+    const nowIso = new Date().toISOString()
+
+    // If cancelled without an explicit payment status, derive an appropriate payment status and sync the latest payment record.
+    if (updates.status === 'cancelled') {
+      const currentPaymentStatus = existing.payment_status
+      let nextPaymentStatus = updates.payment_status ?? currentPaymentStatus
+
+      if (currentPaymentStatus === 'paid') {
+        nextPaymentStatus = 'refunded'
+      } else if (currentPaymentStatus === 'pending') {
+        nextPaymentStatus = 'failed'
+      }
+
+      if (!updates.payment_status && nextPaymentStatus !== currentPaymentStatus) {
+        updatesToApply = { ...updatesToApply, payment_status: nextPaymentStatus }
+      }
+
+      if (!updatesToApply.cancelled_at && !existing.cancelled_at) {
+        updatesToApply = { ...updatesToApply, cancelled_at: nowIso }
+      }
+
+      const { data: latestPayment } = await adminClient
+        .from('parking_booking_payments')
+        .select('*')
+        .eq('booking_id', bookingId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (latestPayment) {
+        const paymentUpdates: Record<string, unknown> = {
+          metadata: {
+            ...(latestPayment.metadata || {}),
+            cancelled_booking: true,
+            cancelled_at: nowIso
+          }
+        }
+
+        if (nextPaymentStatus === 'failed' && latestPayment.status === 'pending') {
+          Object.assign(paymentUpdates, { status: 'failed' })
+        }
+
+        if (nextPaymentStatus === 'refunded' && latestPayment.status === 'paid') {
+          Object.assign(paymentUpdates, { status: 'refunded', refunded_at: nowIso })
+        }
+
+        // Only persist when we actually modified the payment status.
+        if (
+          (paymentUpdates as any).status === 'failed' ||
+          (paymentUpdates as any).status === 'refunded'
+        ) {
+          await adminClient
+            .from('parking_booking_payments')
+            .update(paymentUpdates)
+            .eq('id', latestPayment.id)
+        }
+      }
+    }
+
+    const booking = await updateParkingBooking(bookingId, updatesToApply, adminClient)
 
     await logAuditEvent({
       operation_type: 'update',
       resource_type: 'parking_booking',
       resource_id: bookingId,
       operation_status: 'success',
-      new_values: updates as Record<string, unknown>
+      new_values: updatesToApply as Record<string, unknown>
     })
 
     revalidatePath('/parking')

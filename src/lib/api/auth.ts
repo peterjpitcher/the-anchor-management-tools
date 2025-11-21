@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import { headers } from 'next/headers';
-import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { NextResponse } from 'next/server';
 
 export interface ApiKey {

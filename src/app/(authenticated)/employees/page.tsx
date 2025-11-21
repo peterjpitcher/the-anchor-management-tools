@@ -5,7 +5,13 @@ import EmployeesClientPage from './EmployeesClientPage'
 
 export const dynamic = 'force-dynamic'
 
-export default async function EmployeesPage() {
+interface PageProps {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}
+
+type EmployeeStatus = 'all' | 'Active' | 'Former' | 'Prospective'
+
+export default async function EmployeesPage({ searchParams }: PageProps) {
   const [canView, canCreate, canExport] = await Promise.all([
     checkUserPermission('employees', 'view'),
     checkUserPermission('employees', 'create'),
@@ -16,9 +22,21 @@ export default async function EmployeesPage() {
     redirect('/unauthorized')
   }
 
+  const resolvedParams = await searchParams
+  
+  const page = Number(resolvedParams.page) || 1
+  const searchTerm = typeof resolvedParams.search === 'string' ? resolvedParams.search : ''
+  const statusParam = typeof resolvedParams.status === 'string' ? resolvedParams.status : 'Active'
+  
+  let statusFilter: EmployeeStatus = 'Active'
+  if (['all', 'Active', 'Former', 'Prospective'].includes(statusParam)) {
+    statusFilter = statusParam as EmployeeStatus
+  }
+
   const initialData = await getEmployeesRoster({
-    statusFilter: 'Active',
-    page: 1,
+    statusFilter,
+    searchTerm,
+    page,
     pageSize: 50
   })
 

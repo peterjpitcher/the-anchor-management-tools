@@ -1,34 +1,42 @@
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
-import {
-  SESSION_COOKIE_NAME,
-  USER_COOKIE_NAME,
-  decodeStoredValue,
-  encodeStoredValue,
-  parseJsonValue,
-  readStoredValue,
-  setStoredValue,
-  clearStoredValue,
-  type CookieRecord,
-} from '@/lib/auth/sessionCookies'
+import { type NextRequest, NextResponse } from 'next/server'
+import { updateSession } from '@/lib/supabase/middleware'
 
 const PUBLIC_PATH_PREFIXES = [
-  '/_next',
-  '/static',
+  '/_next',     // Next.js internal
+  '/static',    // Static files directory
+  '/api',       // API routes (often public or handle their own auth)
+  
+  // Auth Routes
   '/auth',
   '/error',
   '/privacy',
+  
+  // Public Features
   '/booking-confirmation',
   '/booking-success',
   '/table-booking',
   '/parking/guest',
-  '/api',
-]
+];
+
+const PUBLIC_FILE_EXTENSIONS = [
+  '.png', '.jpg', '.jpeg', '.svg', '.gif', '.webp', '.ico', '.json', '.xml', '.txt', '.css', '.js'
+];
 
 function isPublicPath(pathname: string) {
-  if (pathname === '/') return true
-  if (pathname.includes('.')) return true
-  return PUBLIC_PATH_PREFIXES.some(prefix => pathname.startsWith(prefix))
+  if (pathname === '/') return true;
+  
+  // Check for specific public prefixes
+  if (PUBLIC_PATH_PREFIXES.some(prefix => pathname.startsWith(prefix))) {
+    return true;
+  }
+
+  // Check for file extensions (e.g., /logo.png)
+  // This is safer than `pathname.includes('.')` which would expose `/user/john.doe`
+  if (PUBLIC_FILE_EXTENSIONS.some(ext => pathname.toLowerCase().endsWith(ext))) {
+    return true;
+  }
+
+  return false;
 }
 
 function isVipHost(hostname: string) {
@@ -47,175 +55,32 @@ function sanitizeRedirectTarget(url: URL) {
   }
 }
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-if (!SUPABASE_URL) {
-  throw new Error('NEXT_PUBLIC_SUPABASE_URL is required for middleware auth enforcement.')
-}
-
-if (!SUPABASE_ANON_KEY) {
-  throw new Error('NEXT_PUBLIC_SUPABASE_ANON_KEY is required for middleware auth enforcement.')
-}
-
-const supabaseUrl = new URL(SUPABASE_URL)
-const supabaseAnonKey = SUPABASE_ANON_KEY as string
-
-type StoredSession = {
-  access_token?: string
-  refresh_token?: string
-  expires_at?: number
-  expires_in?: number
-  token_type?: string
-  user?: unknown
-  [key: string]: unknown
-}
-
-type RefreshResponse = {
-  access_token: string
-  refresh_token?: string
-  token_type?: string
-  expires_in?: number
-  expires_at?: number
-  user?: unknown
-}
-
-async function refreshSession(refreshToken: string): Promise<RefreshResponse | null> {
-  try {
-    const refreshUrl = new URL('/auth/v1/token?grant_type=refresh_token', supabaseUrl)
-    const response = await fetch(refreshUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: supabaseAnonKey,
-      },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-      cache: 'no-store',
-    })
-
-    if (!response.ok) {
-      return null
-    }
-
-    const data = (await response.json()) as RefreshResponse
-    if (!data.access_token) {
-      return null
-    }
-
-    return data
-  } catch (error) {
-    console.error('Failed to refresh Supabase session in middleware:', error)
-    return null
-  }
-}
-
-function extractSession(request: NextRequest) {
-  const allCookies: CookieRecord[] = request.cookies.getAll()
-  const sessionEncoded = readStoredValue(allCookies, SESSION_COOKIE_NAME)
-  const sessionDecoded = decodeStoredValue(sessionEncoded)
-  const session = parseJsonValue<StoredSession>(sessionDecoded)
-
-  const userEncoded = readStoredValue(allCookies, USER_COOKIE_NAME)
-  const userDecoded = decodeStoredValue(userEncoded)
-  const userWrapper = parseJsonValue<{ user: unknown }>(userDecoded)
-
-  return {
-    session,
-    storedUser: userWrapper?.user ?? (session && 'user' in session ? session.user : null),
-    cookies: allCookies,
-  }
-}
-
-function redirectToLogin(request: NextRequest, cookieNames: string[], secure: boolean) {
-  const redirectUrl = request.nextUrl.clone()
-  redirectUrl.pathname = '/auth/login'
-  redirectUrl.searchParams.set('redirectedFrom', sanitizeRedirectTarget(request.nextUrl))
-
-  const response = NextResponse.redirect(redirectUrl)
-  clearStoredValue(response, SESSION_COOKIE_NAME, cookieNames, secure)
-  clearStoredValue(response, USER_COOKIE_NAME, cookieNames, secure)
-  return response
-}
-
 export async function middleware(request: NextRequest) {
   const hostname = request.headers.get('host') || ''
   if (isVipHost(hostname)) {
     return NextResponse.next()
   }
 
+  // Refresh session if needed and get the fresh response object + user
+  const { response, user } = await updateSession(request)
+
   if (isPublicPath(request.nextUrl.pathname)) {
-    return NextResponse.next()
+    return response
   }
 
-  const secure = request.nextUrl.protocol === 'https:'
-  const { session, storedUser, cookies } = extractSession(request)
-  const cookieNames = cookies.map(cookie => cookie.name)
+  if (!user) {
+    const redirectUrl = request.nextUrl.clone()
+    redirectUrl.pathname = '/auth/login'
+    redirectUrl.searchParams.set('redirectedFrom', sanitizeRedirectTarget(request.nextUrl))
 
-  if (!session || typeof session.access_token !== 'string') {
-    return redirectToLogin(request, cookieNames, secure)
-  }
+    const redirectResponse = NextResponse.redirect(redirectUrl)
+    
+    // Copy any cookies set by updateSession (like clearing invalid tokens) to the redirect
+    response.cookies.getAll().forEach(cookie => {
+      redirectResponse.cookies.set(cookie)
+    })
 
-  const accessToken = session.access_token
-  const refreshToken = typeof session.refresh_token === 'string' ? session.refresh_token : null
-
-  let workingSession = { ...session }
-  let workingUser = storedUser
-  let sessionUpdated = false
-
-  const now = Math.floor(Date.now() / 1000)
-  const expiresAt = typeof workingSession.expires_at === 'number' ? workingSession.expires_at : null
-  const shouldRefresh =
-    !!refreshToken &&
-    expiresAt !== null &&
-    // refresh a little before expiry to avoid race conditions
-    expiresAt <= now + 60
-
-  if (shouldRefresh) {
-    try {
-      const refreshed = await refreshSession(refreshToken)
-      if (refreshed) {
-        workingSession = {
-          ...workingSession,
-          access_token: refreshed.access_token,
-          refresh_token: refreshed.refresh_token ?? refreshToken,
-          token_type: refreshed.token_type ?? workingSession.token_type,
-          expires_in: refreshed.expires_in ?? workingSession.expires_in,
-          expires_at:
-            refreshed.expires_at ??
-            Math.floor(Date.now() / 1000) + (refreshed.expires_in ?? workingSession.expires_in ?? 0),
-        }
-
-        if (refreshed.user !== undefined) {
-          workingSession.user = refreshed.user
-          workingUser = refreshed.user
-        }
-
-        sessionUpdated = true
-      }
-    } catch (error) {
-      // If refresh fails, we continue with the existing session if it's still valid
-      // The client will handle re-authentication if needed
-      console.error('Session refresh failed:', error)
-    }
-  }
-
-  if (typeof workingSession.access_token !== 'string') {
-    return redirectToLogin(request, cookieNames, secure)
-  }
-
-  const response = NextResponse.next()
-
-  if (sessionUpdated) {
-    const encodedSession = encodeStoredValue(JSON.stringify(workingSession))
-    setStoredValue(response, SESSION_COOKIE_NAME, encodedSession, cookieNames, secure)
-
-    const normalizedUser = workingSession.user ?? workingUser ?? null
-    if (normalizedUser) {
-      const encodedUser = encodeStoredValue(JSON.stringify({ user: normalizedUser }))
-      setStoredValue(response, USER_COOKIE_NAME, encodedUser, cookieNames, secure)
-    } else {
-      clearStoredValue(response, USER_COOKIE_NAME, cookieNames, secure)
-    }
+    return redirectResponse
   }
 
   return response

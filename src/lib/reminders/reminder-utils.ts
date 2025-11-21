@@ -1,6 +1,6 @@
 import { ReminderType } from '@/app/actions/event-sms-scheduler'
 import { formatTime12Hour } from '@/lib/dateUtils'
-import { smsTemplates } from '@/lib/smsTemplates'
+import { smsTemplates } from '@/lib/smsTemplates';
 
 export type ReminderRow = {
   id: string

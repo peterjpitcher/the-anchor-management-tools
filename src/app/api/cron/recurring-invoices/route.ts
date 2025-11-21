@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { generateInvoiceFromRecurring } from '@/app/actions/recurring-invoices'
 import { sendInvoiceEmail } from '@/lib/microsoft-graph'
 import { generateInvoiceHTML } from '@/lib/invoice-template'

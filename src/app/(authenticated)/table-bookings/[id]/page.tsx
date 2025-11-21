@@ -2,7 +2,6 @@
 
 import { useState, useEffect, use, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { usePermissions } from '@/contexts/PermissionContext';
 import { format } from 'date-fns';
 import { 
@@ -22,13 +21,13 @@ import {
   TrashIcon
 } from '@heroicons/react/24/outline';
 import { TableBooking, TableBookingItem, TableBookingPayment } from '@/types/table-bookings';
-import { cancelTableBooking, markBookingNoShow, markBookingCompleted, deleteTableBooking } from '@/app/actions/table-bookings';
+import { cancelTableBooking, markBookingNoShow, markBookingCompleted, deleteTableBooking, getTableBookingDetails } from '@/app/actions/table-bookings';
 import { processBookingRefund, getRefundEligibility } from '@/app/actions/table-booking-refunds';
 import { queueBookingReminderSMS, queuePaymentRequestSMS } from '@/app/actions/table-booking-sms';
 import { getCustomerMessages } from '@/app/actions/customerSmsActions';
 import { markMessagesAsRead } from '@/app/actions/messageActions';
 import { Message } from '@/types/database';
-import { MessageThread } from '@/components/MessageThread';
+import { MessageThread } from '@/components/features/messages/MessageThread';
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
@@ -42,11 +41,11 @@ import { Badge } from '@/components/ui-v2/display/Badge';
 import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 import { Modal } from '@/components/ui-v2/overlay/Modal';
 import { toast } from '@/components/ui-v2/feedback/Toast';
+
 export default function BookingDetailsPage(props: { params: Promise<{ id: string }> }) {
   const params = use(props.params);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = useSupabase();
   const { hasPermission } = usePermissions();
   const [booking, setBooking] = useState<TableBooking | null>(null);
   const [loading, setLoading] = useState(true);
@@ -139,20 +138,13 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
       setLoading(true);
       setError(null);
 
-      const { data, error } = await supabase
-        .from('table_bookings')
-        .select(`
-          *,
-          customer:customers(*),
-          table_booking_items(*),
-          table_booking_payments(*),
-          table_booking_modifications(*)
-        `)
-        .eq('id', params.id)
-        .single();
+      const result = await getTableBookingDetails(params.id);
 
-      if (error) throw error;
+      if (result.error || !result.data) {
+        throw new Error(result.error || 'Failed to load booking');
+      }
       
+      const data = result.data;
       setBooking(data);
 
       // Check refund eligibility if there's a payment

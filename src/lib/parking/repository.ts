@@ -1,4 +1,4 @@
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { ParkingBooking, ParkingRate, ParkingPaymentRecord, ParkingNotificationRecord } from '@/types/parking'
 import type { SupabaseClient } from '@supabase/supabase-js'
 

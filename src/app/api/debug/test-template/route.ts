@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getMessageTemplate } from '@/lib/smsTemplates'
 
 export async function GET(request: NextRequest) {
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     console.log('[API Debug] Testing template:', { eventId, templateType })
     
     // Test the RPC function directly
-    const supabase = getSupabaseAdminClient()
+    const supabase = createAdminClient()
     const mappedType = templateType === 'bookingConfirmation' ? 'booking_confirmation' : 
                       templateType === 'reminderOnly' ? 'booking_reminder_confirmation' : 
                       templateType
@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
         p_template_type: mappedType
       })
       .single()
+// ... rest of file
     
     // Test the getMessageTemplate function
     const testVariables = {

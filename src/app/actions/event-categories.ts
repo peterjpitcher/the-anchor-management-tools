@@ -1,12 +1,14 @@
 'use server'
 
-import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { logAuditEvent } from '@/app/actions/audit'
 import type { EventCategory, CategoryFormData, CategoryRegular, CrossCategorySuggestion, CategoryRecentCheckIn } from '@/types/event-categories'
 import { toLocalIsoDate } from '@/lib/dateUtils'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
+import { EventCategoryService } from '@/services/event-categories'
 
 // Helper function to format time to HH:MM
 function formatTimeToHHMM(time: string | undefined | null): string | undefined | null {
@@ -203,43 +205,14 @@ export async function createEventCategory(formData: CategoryFormData) {
       return { error: permission.error }
     }
 
-    const { user, admin } = permission
+    const { user } = permission
 
     const validationResult = categorySchema.safeParse(formData)
     if (!validationResult.success) {
       return { error: validationResult.error.errors[0].message }
     }
 
-    const data = validationResult.data
-
-    const { data: maxSortOrder } = await admin
-      .from('event_categories')
-      .select('sort_order')
-      .order('sort_order', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    const nextSortOrder = (maxSortOrder?.sort_order || 0) + 1
-
-    const slug = data.slug || data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-
-    const { data: category, error } = await admin
-      .from('event_categories')
-      .insert({
-        ...data,
-        slug,
-        sort_order: nextSortOrder,
-        default_price: data.default_price ?? 0,
-        default_is_free: data.default_is_free ?? true,
-        default_event_status: data.default_event_status || 'scheduled',
-      })
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Category creation error:', error)
-      return { error: 'Failed to create event category' }
-    }
+    const category = await EventCategoryService.createCategory(validationResult.data as CategoryFormData);
 
     await logAuditEvent({
       user_id: user.id,
@@ -254,9 +227,9 @@ export async function createEventCategory(formData: CategoryFormData) {
 
     revalidatePath('/settings/event-categories')
     return { success: true, data: category }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Unexpected error creating event category:', error)
-    return { error: 'An unexpected error occurred' }
+    return { error: error.message || 'An unexpected error occurred' }
   }
 }
 
@@ -267,49 +240,14 @@ export async function updateEventCategory(id: string, formData: CategoryFormData
       return { error: permission.error }
     }
 
-    const { user, admin } = permission
+    const { user } = permission
 
     const validationResult = categorySchema.safeParse(formData)
     if (!validationResult.success) {
       return { error: validationResult.error.errors[0].message }
     }
 
-    const data = validationResult.data
-
-    const { data: oldCategory, error: loadError } = await admin
-      .from('event_categories')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle()
-
-    if (loadError) {
-      console.error('Error loading event category before update:', loadError)
-      return { error: 'Failed to load event category' }
-    }
-
-    if (!oldCategory) {
-      return { error: 'Event category not found' }
-    }
-
-    const slug = data.slug || data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-
-    const { data: category, error } = await admin
-      .from('event_categories')
-      .update({
-        ...data,
-        slug,
-        default_price: data.default_price ?? oldCategory.default_price ?? 0,
-        default_is_free: data.default_is_free ?? oldCategory.default_is_free ?? true,
-        default_event_status: data.default_event_status || oldCategory.default_event_status || 'scheduled',
-      })
-      .eq('id', id)
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Category update error:', error)
-      return { error: 'Failed to update event category' }
-    }
+    const { category, oldCategory } = await EventCategoryService.updateCategory(id, validationResult.data as CategoryFormData);
 
     await logAuditEvent({
       user_id: user.id,
@@ -325,9 +263,9 @@ export async function updateEventCategory(id: string, formData: CategoryFormData
 
     revalidatePath('/settings/event-categories')
     return { success: true, data: category }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Unexpected error updating event category:', error)
-    return { error: 'An unexpected error occurred' }
+    return { error: error.message || 'An unexpected error occurred' }
   }
 }
 
@@ -338,46 +276,9 @@ export async function deleteEventCategory(id: string) {
       return { error: permission.error }
     }
 
-    const { user, admin } = permission
+    const { user } = permission
 
-    const { count, error: usageError } = await admin
-      .from('events')
-      .select('*', { count: 'exact', head: true })
-      .eq('category_id', id)
-
-    if (usageError) {
-      console.error('Error checking event category usage:', usageError)
-      return { error: 'Failed to validate event category usage' }
-    }
-
-    if (typeof count === 'number' && count > 0) {
-      return { error: 'Cannot delete category that is assigned to events' }
-    }
-
-    const { data: category, error: loadError } = await admin
-      .from('event_categories')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle()
-
-    if (loadError) {
-      console.error('Error loading event category before delete:', loadError)
-      return { error: 'Failed to load event category' }
-    }
-
-    if (!category) {
-      return { error: 'Event category not found' }
-    }
-
-    const { error } = await admin
-      .from('event_categories')
-      .delete()
-      .eq('id', id)
-    
-    if (error) {
-      console.error('Category deletion error:', error)
-      return { error: 'Failed to delete event category' }
-    }
+    const category = await EventCategoryService.deleteCategory(id);
 
     await logAuditEvent({
       user_id: user.id,
@@ -392,12 +293,13 @@ export async function deleteEventCategory(id: string) {
 
     revalidatePath('/settings/event-categories')
     return { success: true }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Unexpected error deleting event category:', error)
-    return { error: 'An unexpected error occurred' }
+    return { error: error.message || 'An unexpected error occurred' }
   }
 }
 
+// ... (Keep getCategoryRegulars, getCategoryRecentCheckIns, getCrossCategorySuggestions, etc. as read-only helpers)
 export async function getCategoryRegulars(categoryId: string, daysBack: number = 90): Promise<{ data?: CategoryRegular[], error?: string }> {
   try {
     const supabase = await createClient()

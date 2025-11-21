@@ -1,67 +1,38 @@
 'use server'
 
-import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import type {
   PrivateBookingWithDetails,
   BookingStatus,
-  PrivateBookingAuditWithUser
 } from '@/types/private-bookings'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
-import { syncCalendarEvent, deleteCalendarEvent, isCalendarConfigured } from '@/lib/google-calendar'
-import { queueAndSendPrivateBookingSms } from './private-booking-sms'
-import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils'
-import { toLocalIsoDate, formatTime12Hour } from '@/lib/dateUtils'
+
+import { toLocalIsoDate } from '@/lib/dateUtils'
+import { sanitizeMoneyString } from '@/lib/utils'
 import { logAuditEvent } from './audit'
+import { 
+  PrivateBookingService, 
+  privateBookingSchema, 
+  bookingNoteSchema, 
+  formatTimeToHHMM,
+  ALLOWED_VENDOR_TYPES,
+  CreatePrivateBookingInput,
+  UpdatePrivateBookingInput
+} from '@/services/private-bookings'
+import { SmsQueueService } from '@/services/sms-queue' // Still needed for SMS actions
 
-// Helper function to format time to HH:MM
-function formatTimeToHHMM(time: string | undefined): string | undefined {
-  if (!time) return undefined
-  
-  // If time is already in correct format, return it
-  if (/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/.test(time)) {
-    return time
+// Helper function to extract string values from FormData
+const getString = (formData: FormData, key: string): string | undefined => {
+  const value = formData.get(key)
+  if (typeof value === 'string' && value.trim() !== '') {
+    return value.trim()
   }
-  
-  // Parse and format time
-  const [hours, minutes] = time.split(':')
-  const formattedHours = hours.padStart(2, '0')
-  const formattedMinutes = (minutes || '00').padStart(2, '0')
-  
-  return `${formattedHours}:${formattedMinutes}`
+  return undefined
 }
-
-// Time validation schema
-const timeSchema = z.string().regex(
-  /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/,
-  'Time must be in HH:MM format (24-hour)'
-)
-
-// Private booking validation schema
-const privateBookingSchema = z.object({
-  customer_first_name: z.string().min(1, 'First name is required'),
-  customer_last_name: z.string().optional(),
-  customer_id: z.string().uuid().optional().nullable(),
-  contact_phone: z.string().optional(),
-  contact_email: z.string().email('Invalid email format').optional().or(z.literal('')),
-  event_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').optional(),
-  start_time: timeSchema.optional(),
-  setup_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').optional().or(z.literal('')),
-  setup_time: timeSchema.optional().or(z.literal('')),
-  end_time: timeSchema.optional().or(z.literal('')),
-  guest_count: z.number().min(0, 'Guest count cannot be negative').optional(),
-  event_type: z.string().optional(),
-  internal_notes: z.string().optional(),
-  customer_requests: z.string().optional(),
-  special_requirements: z.string().optional(),
-  accessibility_needs: z.string().optional(),
-  source: z.string().optional(),
-  deposit_amount: z.number().min(0).optional(),
-  balance_due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').optional().or(z.literal('')),
-  status: z.enum(['draft', 'confirmed', 'completed', 'cancelled']).optional()
-})
 
 type PrivateBookingsManageAction =
   | 'manage_catering'
@@ -72,6 +43,7 @@ type PrivateBookingsPermissionResult =
   | { error: string }
   | { user: SupabaseUser; admin: ReturnType<typeof createAdminClient> }
 
+// This helper remains in the action, managing permission checks and user context
 async function requirePrivateBookingsPermission(
   action: PrivateBookingsManageAction
 ): Promise<PrivateBookingsPermissionResult> {
@@ -84,525 +56,133 @@ async function requirePrivateBookingsPermission(
     return { error: 'Not authenticated' }
   }
 
-  const admin = createAdminClient()
-  const { data, error } = await admin.rpc('user_has_permission', {
-    p_user_id: user.id,
-    p_module_name: 'private_bookings',
-    p_action: action
-  })
-
-  if (error) {
-    console.error('Permission check failed:', error)
-    return { error: 'Failed to verify permissions' }
+  // Use PermissionService here if it were available
+  const canManage = await checkUserPermission('private_bookings', action); // Using existing checkUserPermission
+  if (!canManage) {
+    return { error: 'Insufficient permissions' };
   }
-
-  if (data !== true) {
-    return { error: 'Insufficient permissions' }
-  }
-
-  return { user, admin }
+  const admin = createAdminClient();
+  return { user, admin };
 }
 
-const DATE_TBD_NOTE = 'Event date/time to be confirmed'
-const DEFAULT_TBD_TIME = '12:00'
-const bookingNoteSchema = z.object({
-  note: z
-    .string()
-    .trim()
-    .min(1, 'Please enter a note before saving.')
-    .max(2000, 'Notes are limited to 2000 characters.')
-})
 
-// Customer creation schema
-const CreateCustomerSchema = z.object({
-  first_name: z.string().min(1),
-  last_name: z.string().optional(),
-  mobile_number: z.string().min(10),
-  email: z.string().email().optional(),
-  sms_opt_in: z.boolean().default(true),
-})
-
-// Helper function to find or create customer
-async function findOrCreateCustomer(
-  supabase: any,
-  customerData: z.infer<typeof CreateCustomerSchema>
-) {
-  const standardizedPhone = formatPhoneForStorage(customerData.mobile_number);
-  const phoneVariants = generatePhoneVariants(standardizedPhone);
-  
-  // Try to find existing customer
-  const { data: existingCustomer } = await supabase
-    .from('customers')
-    .select('*')
-    .or(phoneVariants.map(v => `mobile_number.eq.${v}`).join(','))
-    .single();
-    
-  if (existingCustomer) {
-    // Update opt-in status if changed
-    if (customerData.sms_opt_in !== existingCustomer.sms_opt_in) {
-      await supabase
-        .from('customers')
-        .update({ sms_opt_in: customerData.sms_opt_in })
-        .eq('id', existingCustomer.id);
-    }
-    if (customerData.last_name && customerData.last_name !== existingCustomer.last_name) {
-      await supabase
-        .from('customers')
-        .update({ last_name: customerData.last_name })
-        .eq('id', existingCustomer.id);
-    }
-    const normalizedEmail = customerData.email ? customerData.email.toLowerCase() : undefined
-    if (normalizedEmail && normalizedEmail !== existingCustomer.email) {
-      await supabase
-        .from('customers')
-        .update({ email: normalizedEmail })
-        .eq('id', existingCustomer.id);
-    }
-    return existingCustomer;
-  }
-  
-  // Create new customer
-  const { data: newCustomer, error } = await supabase
-    .from('customers')
-    .insert({
-      first_name: customerData.first_name,
-      last_name: customerData.last_name ?? null,
-      mobile_number: standardizedPhone,
-      email: customerData.email ? customerData.email.toLowerCase() : null,
-      sms_opt_in: customerData.sms_opt_in,
-    })
-    .select()
-    .single();
-    
-  if (error) {
-    throw new Error('Failed to create customer');
-  }
-  
-  return newCustomer;
-}
-
-// Get all private bookings with optional filtering
+// Get all private bookings with optional filtering (this should use PrivateBookingService.getBookings)
 export async function getPrivateBookings(filters?: {
   status?: BookingStatus
   fromDate?: string
   toDate?: string
   customerId?: string
 }) {
-  const supabase = await createClient()
-  
-  let query = supabase
-    .from('private_bookings')
-    .select(`
-      *,
-      customer:customers(id, first_name, last_name, mobile_number),
-      items:private_booking_items(
-        *,
-        space:venue_spaces(*),
-        package:catering_packages(*),
-        vendor:vendors(*)
-      )
-    `)
-    .order('event_date', { ascending: true })
-    .order('display_order', { ascending: true, foreignTable: 'private_booking_items' })
-
-  if (filters?.status) {
-    query = query.eq('status', filters.status)
-  }
-  
-  if (filters?.fromDate) {
-    query = query.gte('event_date', filters.fromDate)
-  }
-  
-  if (filters?.toDate) {
-    query = query.lte('event_date', filters.toDate)
-  }
-  
-  if (filters?.customerId) {
-    query = query.eq('customer_id', filters.customerId)
-  }
-
-  const { data, error } = await query
-
-  if (error) {
-    console.error('Error fetching private bookings:', error)
-    return { error: error.message || 'An error occurred' }
-  }
-
-  // Calculate additional fields for each booking
-  const bookingsWithDetails: PrivateBookingWithDetails[] = (data || []).map(booking => {
-    const calculatedTotal = booking.items?.reduce((sum: number, item: any) => 
-      sum + (item.line_total || 0), 0) || 0
-    
-    const eventDate = new Date(booking.event_date)
-    const today = new Date()
-    const daysUntilEvent = Math.ceil((eventDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-    
-    const depositStatus = booking.deposit_paid_date ? 'Paid' : 
-      booking.deposit_amount > 0 ? 'Required' : 'Not Required'
-
-    return {
-      ...booking,
-      calculated_total: calculatedTotal,
-      deposit_status: depositStatus,
-      days_until_event: daysUntilEvent
+  try {
+    const hasPermission = await checkUserPermission('private_bookings', 'view');
+    if (!hasPermission) {
+      return { error: 'You do not have permission to view private bookings' };
     }
-  })
-
-  return { data: bookingsWithDetails }
+    const { data } = await PrivateBookingService.getBookings(filters);
+    return { data };
+  } catch (error: any) {
+    console.error('Error fetching private bookings:', error);
+    return { error: error.message || 'An error occurred' };
+  }
 }
 
 // Get single private booking by ID
 export async function getPrivateBooking(id: string) {
-  const supabase = await createClient()
-
   const canView = await checkUserPermission('private_bookings', 'view')
   if (!canView) {
     return { error: 'You do not have permission to view private bookings' }
   }
   
-  const { data, error } = await supabase
-    .from('private_bookings')
-    .select(`
-      *,
-      customer:customers(id, first_name, last_name, mobile_number),
-      items:private_booking_items(
-        *,
-        space:venue_spaces(*),
-        package:catering_packages(*),
-        vendor:vendors(*)
-      ),
-      documents:private_booking_documents(*),
-      sms_queue:private_booking_sms_queue(*),
-      audits:private_booking_audit(
-        id,
-        booking_id,
-        action,
-        field_name,
-        old_value,
-        new_value,
-        metadata,
-        performed_by,
-        performed_at,
-        performed_by_profile:profiles!private_booking_audit_performed_by_fkey(
-          id,
-          first_name,
-          last_name,
-          email
-        )
-      )
-    `)
-    .order('display_order', { ascending: true, foreignTable: 'private_booking_items' })
-    .order('performed_at', { ascending: false, foreignTable: 'private_booking_audit' })
-    .eq('id', id)
-    .single()
-
-  if (error) {
-    console.error('Error fetching private booking:', error)
-    return { error: error.message || 'An error occurred' }
+  try {
+    const data = await PrivateBookingService.getBookingById(id);
+    return { data };
+  } catch (error: any) {
+    console.error('Error fetching private booking:', error);
+    return { error: error.message || 'An error occurred' };
   }
-
-  const {
-    audits: auditsData,
-    ...bookingCore
-  } = data as typeof data & {
-    audits?: PrivateBookingAuditWithUser[]
-  }
-
-  const items = bookingCore.items ?? []
-
-  // Calculate additional fields
-  const calculatedTotal = items?.reduce((sum: number, item: any) => 
-    sum + (item.line_total || 0), 0) || 0
-  
-  const eventDate = new Date(data.event_date)
-  const today = new Date()
-  const daysUntilEvent = Math.ceil((eventDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-  
-  const depositStatus = data.deposit_paid_date ? 'Paid' : 
-    data.deposit_amount > 0 ? 'Required' : 'Not Required'
-
-  const auditTrail = ((auditsData ?? []) as PrivateBookingAuditWithUser[]).slice().sort(
-    (a, b) => new Date(b.performed_at).getTime() - new Date(a.performed_at).getTime()
-  )
-
-  const bookingWithDetails: PrivateBookingWithDetails = {
-    ...(bookingCore as PrivateBookingWithDetails),
-    items,
-    calculated_total: calculatedTotal,
-    deposit_status: depositStatus,
-    days_until_event: daysUntilEvent,
-    audit_trail: auditTrail
-  }
-
-  return { data: bookingWithDetails }
 }
 
 // Create a new private booking
 export async function createPrivateBooking(formData: FormData) {
-  const supabase = await createClient()
-  const isDateTbd = formData.get('date_tbd') === 'true'
+  try {
+    const supabase = await createClient()
+    const isDateTbd = formData.get('date_tbd') === 'true'
 
-  const canCreate = await checkUserPermission('private_bookings', 'create')
-  if (!canCreate) {
-    return { error: 'You do not have permission to create private bookings' }
-  }
-
-  const getString = (key: string): string | undefined => {
-    const value = formData.get(key)
-    if (typeof value === 'string' && value.trim() !== '') {
-      return value.trim()
+    const canCreate = await checkUserPermission('private_bookings', 'create')
+    if (!canCreate) {
+      return { error: 'You do not have permission to create private bookings' }
     }
-    return undefined
-  }
 
-  const eventDateInput = getString('event_date')
-  const startTimeRaw = getString('start_time')
-  const setupTimeRaw = getString('setup_time')
-  const endTimeRaw = getString('end_time')
-
-  const rawData = {
-    customer_first_name: (getString('customer_first_name') || '').trim(),
-    customer_last_name: getString('customer_last_name'),
-    customer_id: getString('customer_id'),
-    contact_phone: getString('contact_phone'),
-    contact_email: getString('contact_email'),
-    event_date: eventDateInput,
-    start_time: startTimeRaw ? formatTimeToHHMM(startTimeRaw) : undefined,
-    setup_date: getString('setup_date'),
-    setup_time: setupTimeRaw ? formatTimeToHHMM(setupTimeRaw) : undefined,
-    end_time: endTimeRaw ? formatTimeToHHMM(endTimeRaw) : undefined,
-    guest_count: (() => {
-      const value = getString('guest_count')
-      return value ? parseInt(value, 10) : undefined
-    })(),
-    event_type: getString('event_type'),
-    internal_notes: getString('internal_notes'),
-    customer_requests: getString('customer_requests'),
-    special_requirements: getString('special_requirements'),
-    accessibility_needs: getString('accessibility_needs'),
-    source: getString('source'),
-    deposit_amount: (() => {
-      const value = getString('deposit_amount')
-      return value ? parseFloat(value) : undefined
-    })(),
-    balance_due_date: getString('balance_due_date'),
-  }
-
-  // Debug logging for time fields
-  console.log('Raw booking data times:', {
-    start_time: rawData.start_time,
-    end_time: rawData.end_time,
-    customer_id: rawData.customer_id,
-    is_new_customer: !rawData.customer_id
-  })
-
-  // Validate data
-  const validationResult = privateBookingSchema.safeParse(rawData)
-  if (!validationResult.success) {
-    return { error: validationResult.error.errors[0].message }
-  }
-
-  const bookingData = validationResult.data
-
-  const finalEventDate = bookingData.event_date || toLocalIsoDate(new Date())
-  const finalStartTime = bookingData.start_time || DEFAULT_TBD_TIME
-
-  // Get current user
-  const { data: { user } } = await supabase.auth.getUser()
-  
-  // Find or create customer if not already selected
-  let customerId = bookingData.customer_id
-  if (!customerId && bookingData.customer_first_name && bookingData.contact_phone) {
-    try {
-      const customerData = {
-        first_name: bookingData.customer_first_name.trim(),
-        last_name: bookingData.customer_last_name?.trim() || undefined,
-        mobile_number: bookingData.contact_phone.trim(),
-        email: bookingData.contact_email?.trim() || undefined,
-        sms_opt_in: true, // Default to true for private bookings
-      }
-      
-      const customer = await findOrCreateCustomer(supabase, customerData)
-      customerId = customer.id
-      
-      console.log('Customer found/created:', { 
-        id: customer.id, 
-        isNew: !bookingData.customer_id,
-        name: `${customer.first_name} ${customer.last_name}`
-      })
-    } catch (error) {
-      console.error('Error creating/finding customer:', error)
-      // Continue without linking to customer - maintain backward compatibility
+    const rawData = {
+      customer_first_name: (getString(formData, 'customer_first_name') || '').trim(),
+      customer_last_name: getString(formData, 'customer_last_name'),
+      customer_id: getString(formData, 'customer_id'),
+      contact_phone: getString(formData, 'contact_phone'),
+      contact_email: getString(formData, 'contact_email'),
+      event_date: getString(formData, 'event_date'),
+      start_time: getString(formData, 'start_time') ? formatTimeToHHMM(getString(formData, 'start_time')) : undefined,
+      setup_date: getString(formData, 'setup_date'),
+      setup_time: getString(formData, 'setup_time') ? formatTimeToHHMM(getString(formData, 'setup_time')) : undefined,
+      end_time: getString(formData, 'end_time') ? formatTimeToHHMM(getString(formData, 'end_time')) : undefined,
+      guest_count: (() => {
+        const value = getString(formData, 'guest_count')
+        return value ? parseInt(value, 10) : undefined
+      })(),
+      event_type: getString(formData, 'event_type'),
+      internal_notes: getString(formData, 'internal_notes'),
+      customer_requests: getString(formData, 'customer_requests'),
+      special_requirements: getString(formData, 'special_requirements'),
+      accessibility_needs: getString(formData, 'accessibility_needs'),
+      source: getString(formData, 'source'),
+      deposit_amount: (() => {
+        const value = getString(formData, 'deposit_amount')
+        return value ? parseFloat(value) : undefined
+      })(),
+      balance_due_date: getString(formData, 'balance_due_date'),
     }
-  }
-  
-  // Calculate balance_due_date if not provided (7 days before event)
-  let balance_due_date = bookingData.balance_due_date
-  if (!balance_due_date && finalEventDate) {
-    const eventDate = new Date(finalEventDate)
-    eventDate.setDate(eventDate.getDate() - 7)
-    balance_due_date = toLocalIsoDate(eventDate)
-  }
 
-  // Construct customer_name for backward compatibility
-  const customer_name = bookingData.customer_last_name 
-    ? `${bookingData.customer_first_name} ${bookingData.customer_last_name}`
-    : bookingData.customer_first_name
-
-  // Clean up empty strings for time fields
-  // Special handling for end_time to ensure it's valid
-  const cleanedEndTime = bookingData.end_time || null;
-  let endTimeNextDay = false;
-
-  if (cleanedEndTime && finalStartTime) {
-    const [startHour, startMin] = finalStartTime.split(':').map(Number);
-    const [endHour, endMin] = cleanedEndTime.split(':').map(Number);
-
-    const startMinutes = startHour * 60 + startMin;
-    const endMinutes = endHour * 60 + endMin;
-
-    if (endMinutes <= startMinutes) {
-      endTimeNextDay = true;
+    // Validate data
+    const validationResult = privateBookingSchema.safeParse(rawData)
+    if (!validationResult.success) {
+      return { error: validationResult.error.errors[0].message }
     }
-  }
-  
-  let internalNotes = bookingData.internal_notes
-  if (isDateTbd) {
-    if (!internalNotes) {
-      internalNotes = DATE_TBD_NOTE
-    } else if (!internalNotes.includes(DATE_TBD_NOTE)) {
-      internalNotes = `${internalNotes}\n${DATE_TBD_NOTE}`
-    }
-  }
 
-  const cleanedBookingData = {
-    ...bookingData,
-    event_date: finalEventDate,
-    start_time: finalStartTime,
-    setup_time: bookingData.setup_time || null,
-    end_time: cleanedEndTime,
-    end_time_next_day: endTimeNextDay,
-    setup_date: bookingData.setup_date || null,
-    balance_due_date: bookingData.balance_due_date || balance_due_date || undefined,
-    internal_notes: internalNotes,
-  }
+    const bookingData = validationResult.data
 
-  const depositAmount = bookingData.deposit_amount ?? 250
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser()
 
-  const insertData = {
-    ...cleanedBookingData,
-    customer_id: customerId || null, // Include the found/created customer ID
-    customer_name, // Include for backward compatibility
-    balance_due_date: isDateTbd ? null : cleanedBookingData.balance_due_date ?? null,
-    end_time_next_day: endTimeNextDay,
-    deposit_amount: depositAmount, // Default £250 if not specified
-    created_by: user?.id,
-    status: 'draft'
-  }
+    // Call Service
+    const booking = await PrivateBookingService.createBooking({
+      ...bookingData,
+      customer_last_name: bookingData.customer_last_name || undefined,
+      customer_id: bookingData.customer_id || undefined,
+      contact_phone: bookingData.contact_phone || undefined,
+      contact_email: bookingData.contact_email || undefined,
+      event_date: bookingData.event_date || undefined,
+      start_time: bookingData.start_time || undefined,
+      end_time: bookingData.end_time || undefined,
+      setup_date: bookingData.setup_date || undefined,
+      setup_time: bookingData.setup_time || undefined,
+      guest_count: bookingData.guest_count,
+      event_type: bookingData.event_type || undefined,
+      internal_notes: bookingData.internal_notes || undefined,
+      customer_requests: bookingData.customer_requests || undefined,
+      special_requirements: bookingData.special_requirements || undefined,
+      accessibility_needs: bookingData.accessibility_needs || undefined,
+      source: bookingData.source || undefined,
+      deposit_amount: bookingData.deposit_amount,
+      balance_due_date: bookingData.balance_due_date || undefined,
+      created_by: user?.id,
+      date_tbd: isDateTbd
+    } as CreatePrivateBookingInput);
 
-  // Debug logging for database insert
-  console.log('Inserting booking with data:', {
-    start_time: insertData.start_time,
-    end_time: insertData.end_time,
-    customer_id: insertData.customer_id,
-    is_new_customer: !insertData.customer_id
-  })
-
-  const { data, error } = await supabase
-    .from('private_bookings')
-    .insert(insertData)
-    .select()
-    .single()
-
-  if (error) {
+    revalidatePath('/private-bookings')
+    return { success: true, data: booking }
+  } catch (error: any) {
     console.error('Error creating private booking:', error)
-    console.error('Insert data that caused error:', insertData)
     return { error: error.message || 'An error occurred' }
   }
-
-  // Queue and auto-send booking creation SMS if phone number is provided
-  if (data && bookingData.contact_phone) {
-    const eventDateReadable = new Date(finalEventDate).toLocaleDateString('en-GB', { 
-      day: 'numeric', 
-      month: 'long', 
-      year: 'numeric' 
-    })
-
-    const formattedDeposit = depositAmount.toFixed(2)
-    const smsMessage = depositAmount > 0
-      ? `Hi ${bookingData.customer_first_name}, thank you for your enquiry about private hire at The Anchor on ${eventDateReadable}. To secure this date, a deposit of £${formattedDeposit} is required. Reply to this message with any questions.`
-      : `Hi ${bookingData.customer_first_name}, thank you for your enquiry about private hire at The Anchor on ${eventDateReadable}. We normally require a deposit to secure the date, but we've waived it for you. Reply to this message with any questions.`
-
-    const smsResult = await queueAndSendPrivateBookingSms({
-      booking_id: data.id,
-      trigger_type: 'booking_created',
-      template_key: 'private_booking_created',
-      message_body: smsMessage,
-      customer_phone: bookingData.contact_phone,
-      customer_name: customer_name,
-      created_by: user?.id,
-      priority: 2,
-      metadata: {
-        template: 'private_booking_created',
-        first_name: bookingData.customer_first_name,
-        event_date: eventDateReadable,
-        deposit_amount: depositAmount
-      }
-    })
-    
-    if (smsResult.error) {
-      console.error('Error sending booking creation SMS:', smsResult.error)
-    } else if (smsResult.sent) {
-      console.log('Booking creation SMS sent successfully')
-    }
-  }
-
-  // Sync with Google Calendar if configured
-  console.log('[privateBookingActions] Checking calendar sync for new booking:', {
-    hasData: !!data,
-    bookingId: data?.id,
-    isConfigured: isCalendarConfigured()
-  })
-  
-  if (data && isCalendarConfigured()) {
-    console.log('[privateBookingActions] Initiating calendar sync for new booking:', data.id)
-    try {
-      const eventId = await syncCalendarEvent(data)
-      console.log('[privateBookingActions] Calendar sync result:', {
-        bookingId: data.id,
-        eventId: eventId,
-        success: !!eventId
-      })
-      
-      if (eventId) {
-        // Update the booking with the calendar event ID
-        console.log('[privateBookingActions] Updating booking with calendar event ID:', eventId)
-        const { error: updateError } = await supabase
-          .from('private_bookings')
-          .update({ calendar_event_id: eventId })
-          .eq('id', data.id)
-        
-        if (updateError) {
-          console.error('[privateBookingActions] Failed to update booking with calendar event ID:', updateError)
-        } else {
-          console.log('[privateBookingActions] Successfully updated booking with calendar event ID')
-        }
-      } else {
-        console.warn('[privateBookingActions] No event ID returned from calendar sync')
-      }
-    } catch (error) {
-      console.error('[privateBookingActions] Calendar sync exception:', error)
-      // Don't fail the booking creation if calendar sync fails
-    }
-  } else {
-    console.log('[privateBookingActions] Skipping calendar sync:', {
-      hasData: !!data,
-      isConfigured: isCalendarConfigured()
-    })
-  }
-
-  revalidatePath('/private-bookings')
-  return { success: true, data }
 }
 
 // Update private booking
@@ -616,42 +196,28 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
 
   const isDateTbd = formData.get('date_tbd') === 'true'
 
-  const getString = (key: string): string | undefined => {
-    const value = formData.get(key)
-    if (typeof value === 'string' && value.trim() !== '') {
-      return value.trim()
-    }
-    return undefined
-  }
-
-  const eventDateInput = getString('event_date')
-  const startTimeRaw = getString('start_time')
-  const setupTimeRaw = getString('setup_time')
-  const endTimeRaw = getString('end_time')
-
-  // Parse form data
   const rawData = {
-    customer_first_name: (getString('customer_first_name') || '').trim(),
-    customer_last_name: getString('customer_last_name'),
-    customer_id: getString('customer_id'),
-    contact_phone: getString('contact_phone'),
-    contact_email: getString('contact_email'),
-    event_date: eventDateInput,
-    start_time: startTimeRaw ? formatTimeToHHMM(startTimeRaw) : undefined,
-    setup_date: getString('setup_date'),
-    setup_time: setupTimeRaw ? formatTimeToHHMM(setupTimeRaw) : undefined,
-    end_time: endTimeRaw ? formatTimeToHHMM(endTimeRaw) : undefined,
+    customer_first_name: (getString(formData, 'customer_first_name') || '').trim(),
+    customer_last_name: getString(formData, 'customer_last_name'),
+    customer_id: getString(formData, 'customer_id'),
+    contact_phone: getString(formData, 'contact_phone'),
+    contact_email: getString(formData, 'contact_email'),
+    event_date: getString(formData, 'event_date'),
+    start_time: getString(formData, 'start_time') ? formatTimeToHHMM(getString(formData, 'start_time')) : undefined,
+    setup_date: getString(formData, 'setup_date'),
+    setup_time: getString(formData, 'setup_time') ? formatTimeToHHMM(getString(formData, 'setup_time')) : undefined,
+    end_time: getString(formData, 'end_time') ? formatTimeToHHMM(getString(formData, 'end_time')) : undefined,
     guest_count: (() => {
-      const value = getString('guest_count')
+      const value = getString(formData, 'guest_count')
       return value ? parseInt(value, 10) : undefined
     })(),
-    event_type: getString('event_type'),
-    internal_notes: getString('internal_notes'),
-    customer_requests: getString('customer_requests'),
-    special_requirements: getString('special_requirements'),
-    accessibility_needs: getString('accessibility_needs'),
-    source: getString('source'),
-    status: getString('status') as import('@/types/private-bookings').BookingStatus | undefined,
+    event_type: getString(formData, 'event_type'),
+    internal_notes: getString(formData, 'internal_notes'),
+    customer_requests: getString(formData, 'customer_requests'),
+    special_requirements: getString(formData, 'special_requirements'),
+    accessibility_needs: getString(formData, 'accessibility_needs'),
+    source: getString(formData, 'source'),
+    status: getString(formData, 'status') as BookingStatus | undefined,
   }
 
   // Validate data
@@ -662,400 +228,47 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
 
   const bookingData = validationResult.data
 
-  // Get current booking to check status and date changes
-  const { data: currentBooking } = await supabase
-    .from('private_bookings')
-    .select('status, contact_phone, customer_first_name, event_date, start_time, end_time, end_time_next_day, customer_id, internal_notes, balance_due_date')
-    .eq('id', id)
-    .single()
-
-  // Find or create customer if not already linked
-  let customerId = bookingData.customer_id
-  if (!customerId && bookingData.customer_first_name && bookingData.contact_phone) {
-    try {
-      const customerData = {
-        first_name: bookingData.customer_first_name,
-        last_name: bookingData.customer_last_name || '',
-        mobile_number: bookingData.contact_phone,
-        email: bookingData.contact_email,
-        sms_opt_in: true, // Default to true for private bookings
-      }
-      
-      const customer = await findOrCreateCustomer(supabase, customerData)
-      customerId = customer.id
-      
-      console.log('Customer found/created on update:', { 
-        id: customer.id, 
-        wasLinked: !!currentBooking?.customer_id,
-        name: `${customer.first_name} ${customer.last_name}`
-      })
-    } catch (error) {
-      console.error('Error creating/finding customer on update:', error)
-      // Continue without linking to customer - maintain backward compatibility
-    }
-  }
-
-  if (!currentBooking) {
-    return { error: 'Booking not found' }
-  }
-
-  const finalEventDate = bookingData.event_date || currentBooking.event_date || toLocalIsoDate(new Date())
-  const finalStartTime = bookingData.start_time || currentBooking.start_time || DEFAULT_TBD_TIME
-
-  const cleanedEndTime = bookingData.end_time || null
-  let endTimeNextDay = currentBooking.end_time_next_day ?? false
-
-  if (cleanedEndTime) {
-    const [startHour, startMin] = finalStartTime.split(':').map(Number)
-    const [endHour, endMin] = cleanedEndTime.split(':').map(Number)
-    const startMinutes = startHour * 60 + startMin
-    const endMinutes = endHour * 60 + endMin
-
-    endTimeNextDay = endMinutes <= startMinutes
-  } else {
-    endTimeNextDay = false
-  }
-
-  let internalNotes = bookingData.internal_notes ?? currentBooking.internal_notes ?? null
-  if (internalNotes && internalNotes.includes(DATE_TBD_NOTE) && !bookingData.internal_notes) {
-    // keep existing note as-is if not explicitly changed
-    internalNotes = internalNotes
-  }
-  if (isDateTbd) {
-    if (!internalNotes) {
-      internalNotes = DATE_TBD_NOTE
-    } else if (!internalNotes.includes(DATE_TBD_NOTE)) {
-      internalNotes = `${internalNotes}\n${DATE_TBD_NOTE}`
-    }
-  }
-
-  const normalizedBookingData = {
-    ...bookingData,
-    event_date: finalEventDate,
-    start_time: finalStartTime,
-    setup_time: bookingData.setup_time || null,
-    end_time: cleanedEndTime,
-    end_time_next_day: endTimeNextDay,
-    setup_date: bookingData.setup_date || null,
-    balance_due_date: bookingData.balance_due_date || currentBooking.balance_due_date || undefined,
-    internal_notes: internalNotes ?? null,
-  }
-
-  // Construct customer_name for backward compatibility
-  const customer_name = bookingData.customer_last_name 
-    ? `${bookingData.customer_first_name} ${bookingData.customer_last_name}`
-    : bookingData.customer_first_name
-
-  const updatePayload = {
-    ...normalizedBookingData,
-    customer_id: customerId || null,
-    customer_name,
-    balance_due_date: isDateTbd ? null : normalizedBookingData.balance_due_date ?? null,
-    updated_at: new Date().toISOString()
-  }
-
-  const { error } = await supabase
-    .from('private_bookings')
-    .update(updatePayload)
-    .eq('id', id)
-
-  if (error) {
-    console.error('Error updating private booking:', error)
-    return { error: error.message || 'An error occurred' }
-  }
-
-  // Check if event date or time has changed
-  const dateChanged = currentBooking && (
-    currentBooking.event_date !== finalEventDate || 
-    currentBooking.start_time !== finalStartTime
-  )
-
-  if (dateChanged) {
-    // Cancel pending SMS messages that reference the old date
-    // First get the existing messages to preserve their metadata
-    const { data: existingMessages } = await supabase
-      .from('private_booking_sms_queue')
-      .select('id, metadata')
-      .eq('booking_id', id)
-      .in('status', ['pending', 'approved'])
-
-    // Update all messages in a single batch operation
-    if (existingMessages && existingMessages.length > 0) {
-      const messageIds = existingMessages.map(msg => msg.id)
-      const commonMetadata = {
-        cancelled_reason: 'event_date_changed',
-        old_date: currentBooking.event_date,
-        new_date: finalEventDate,
-        old_time: currentBooking.start_time,
-        new_time: finalStartTime,
-        cancelled_at: new Date().toISOString()
-      }
-
-      // Build updates with merged metadata for each message
-      const updates = existingMessages.map(message => ({
-        id: message.id,
-        status: 'cancelled',
-        metadata: {
-          ...(message.metadata || {}),
-          ...commonMetadata
-        }
-      }))
-
-      // Update all messages at once using the IN clause
-      const { error: cancelError } = await supabase
-        .from('private_booking_sms_queue')
-        .upsert(updates, {
-          onConflict: 'id',
-          ignoreDuplicates: false
-        })
-
-      if (cancelError) {
-        console.error('Error cancelling SMS messages:', cancelError)
-      }
-    }
-
-    // Create a notification SMS about the date change if phone number exists
-    const notificationPhone = bookingData.contact_phone || currentBooking.contact_phone
-
-    if (notificationPhone && currentBooking.status !== 'draft') {
-      const oldDate = new Date(currentBooking.event_date)
-      const newDate = new Date(finalEventDate)
-      const oldFormattedDate = oldDate.toLocaleDateString('en-GB', { 
-        day: 'numeric', 
-        month: 'long', 
-        year: 'numeric' 
-      })
-      const newFormattedDate = newDate.toLocaleDateString('en-GB', { 
-        day: 'numeric', 
-        month: 'long', 
-        year: 'numeric' 
-      })
-      
-      const oldTimeFriendly = currentBooking.start_time ? formatTime12Hour(currentBooking.start_time) : 'TBC'
-      const newTimeFriendly = finalStartTime ? formatTime12Hour(finalStartTime) : 'TBC'
-      const smsMessage = `Hi ${bookingData.customer_first_name}, your private booking at The Anchor has been rescheduled from ${oldFormattedDate} at ${oldTimeFriendly} to ${newFormattedDate} at ${newTimeFriendly}. Reply to this message if you have any questions or call 01753 682 707.`
-      
-      await supabase
-        .from('private_booking_sms_queue')
-        .insert({
-          booking_id: id,
-          recipient_phone: notificationPhone,
-          message_body: smsMessage,
-          trigger_type: 'manual',
-          status: 'pending',
-          metadata: {
-            template: 'date_change_notification',
-            old_date: currentBooking.event_date,
-            new_date: finalEventDate,
-            old_time: currentBooking.start_time,
-            new_time: finalStartTime
-          }
-        })
-    }
-  }
-
-  // Queue SMS if status changed to confirmed
-  if (currentBooking && bookingData.status === 'confirmed' && currentBooking.status !== 'confirmed' && bookingData.contact_phone) {
-    const eventDate = new Date(finalEventDate)
-    const formattedDate = eventDate.toLocaleDateString('en-GB', { 
-      day: 'numeric', 
-      month: 'long', 
-      year: 'numeric' 
-    })
-    
-    const smsMessage = `Hi ${bookingData.customer_first_name}, your private booking at The Anchor on ${formattedDate} has been confirmed. We look forward to hosting your event. Reply to this message if you need any help or call 01753 682 707.`
-    
-    await supabase
-      .from('private_booking_sms_queue')
-      .insert({
-        booking_id: id,
-        recipient_phone: bookingData.contact_phone,
-        message_body: smsMessage,
-        trigger_type: 'status_change',
-        status: 'pending',
-        metadata: {
-          template: 'booking_confirmed',
-          status_from: currentBooking.status,
-          status_to: 'confirmed'
-        }
-      })
-  }
-
-  // Sync with Google Calendar if configured
-  console.log('[privateBookingActions] Checking calendar sync for booking update:', {
-    bookingId: id,
-    isConfigured: isCalendarConfigured()
-  })
+  try {
+      // Call Service
+      const booking = await PrivateBookingService.updateBooking(id, {
+        ...bookingData,
+        event_date: bookingData.event_date || undefined,
+        start_time: bookingData.start_time || undefined,
+        end_time: bookingData.end_time || undefined,
+        setup_date: bookingData.setup_date || undefined,
+        setup_time: bookingData.setup_time || undefined,
+        status: bookingData.status || undefined,
+        balance_due_date: bookingData.balance_due_date || undefined,
+        internal_notes: bookingData.internal_notes || undefined,
+        date_tbd: isDateTbd
+      } as UpdatePrivateBookingInput);
   
-  if (isCalendarConfigured()) {
-    console.log('[privateBookingActions] Fetching updated booking data for calendar sync')
-    try {
-      // Get the full booking data with the updated fields
-      const { data: updatedBooking, error: fetchError } = await supabase
-        .from('private_bookings')
-        .select('*')
-        .eq('id', id)
-        .single()
-      
-      if (fetchError) {
-        console.error('[privateBookingActions] Failed to fetch booking for calendar sync:', fetchError)
-      } else if (updatedBooking) {
-        console.log('[privateBookingActions] Syncing updated booking to calendar:', {
-          bookingId: updatedBooking.id,
-          hasExistingEventId: !!updatedBooking.calendar_event_id,
-          existingEventId: updatedBooking.calendar_event_id
-        })
-        
-        const eventId = await syncCalendarEvent(updatedBooking)
-        console.log('[privateBookingActions] Calendar sync result for update:', {
-          bookingId: id,
-          eventId: eventId,
-          hadExistingEventId: !!updatedBooking.calendar_event_id,
-          success: !!eventId
-        })
-        
-        if (eventId && !updatedBooking.calendar_event_id) {
-          // Update the booking with the calendar event ID if it's new
-          console.log('[privateBookingActions] Updating booking with new calendar event ID:', eventId)
-          const { error: updateError } = await supabase
-            .from('private_bookings')
-            .update({ calendar_event_id: eventId })
-            .eq('id', id)
-          
-          if (updateError) {
-            console.error('[privateBookingActions] Failed to update booking with calendar event ID:', updateError)
-          } else {
-            console.log('[privateBookingActions] Successfully updated booking with calendar event ID')
-          }
-        }
-      } else {
-        console.warn('[privateBookingActions] No booking data found for calendar sync')
-      }
-    } catch (error) {
-      console.error('[privateBookingActions] Calendar sync exception during update:', error)
-      // Don't fail the booking update if calendar sync fails
+      revalidatePath('/private-bookings')
+      revalidatePath(`/private-bookings/${id}`)
+      return { success: true, data: booking }
+    } catch (error: any) {
+      console.error('Error updating private booking:', error)
+      return { error: error.message || 'An error occurred' }
     }
-  } else {
-    console.log('[privateBookingActions] Calendar not configured, skipping sync')
   }
-
-  revalidatePath('/private-bookings')
-  revalidatePath(`/private-bookings/${id}`)
-  return { success: true }
-}
 
 // Update booking status
 export async function updateBookingStatus(id: string, status: BookingStatus) {
-  const supabase = await createClient()
-  const calendarConfigured = isCalendarConfigured()
-  
   const canEdit = await checkUserPermission('private_bookings', 'edit')
   if (!canEdit) {
     return { error: 'You do not have permission to update private bookings' }
   }
 
-  const { error } = await supabase
-    .from('private_bookings')
-    .update({
-      status,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', id)
+  try {
+    await PrivateBookingService.updateBookingStatus(id, status);
 
-  if (error) {
+    revalidatePath('/private-bookings')
+    revalidatePath(`/private-bookings/${id}`)
+    return { success: true }
+  } catch (error: any) {
     console.error('Error updating booking status:', error)
     return { error: error.message || 'An error occurred' }
   }
-
-  // Sync with Google Calendar after status update
-  console.log('[privateBookingActions] Status updated, checking calendar sync:', {
-    bookingId: id,
-    newStatus: status,
-    isConfigured: calendarConfigured
-  })
-
-  try {
-    const { data: updatedBooking, error: fetchError } = await supabase
-      .from('private_bookings')
-      .select('*')
-      .eq('id', id)
-      .single()
-
-    if (fetchError) {
-      console.error('[privateBookingActions] Failed to fetch booking for calendar sync:', fetchError)
-      revalidatePath('/private-bookings')
-      revalidatePath(`/private-bookings/${id}`)
-      return { success: true }
-    }
-
-    if (!updatedBooking) {
-      console.warn('[privateBookingActions] No booking data found for calendar sync after status update')
-      revalidatePath('/private-bookings')
-      revalidatePath(`/private-bookings/${id}`)
-      return { success: true }
-    }
-
-    if (status === 'cancelled') {
-      console.log('[privateBookingActions] Booking cancelled, removing calendar event if present:', {
-        bookingId: id,
-        hasCalendarEventId: !!updatedBooking.calendar_event_id
-      })
-
-      if (updatedBooking.calendar_event_id) {
-        if (calendarConfigured) {
-          try {
-            const deleted = await deleteCalendarEvent(updatedBooking.calendar_event_id)
-            console.log('[privateBookingActions] Calendar deletion triggered due to cancellation:', {
-              bookingId: id,
-              eventId: updatedBooking.calendar_event_id,
-              success: deleted
-            })
-
-            if (deleted) {
-              await supabase
-                .from('private_bookings')
-                .update({ calendar_event_id: null })
-                .eq('id', id)
-            }
-          } catch (error) {
-            console.error('[privateBookingActions] Error deleting calendar event for cancelled booking:', error)
-          }
-        } else {
-          console.log('[privateBookingActions] Calendar not configured; skipping event deletion for cancelled booking')
-        }
-      }
-    } else if (calendarConfigured) {
-      console.log('[privateBookingActions] Syncing calendar after status change:', {
-        bookingId: id,
-        status: updatedBooking.status,
-        hasCalendarEventId: !!updatedBooking.calendar_event_id
-      })
-
-      const calendarEventId = await syncCalendarEvent(updatedBooking)
-      
-      if (calendarEventId && !updatedBooking.calendar_event_id) {
-        await supabase
-          .from('private_bookings')
-          .update({ calendar_event_id: calendarEventId })
-          .eq('id', id)
-      }
-      
-      console.log('[privateBookingActions] Calendar sync completed after status change:', {
-        bookingId: id,
-        calendarEventId,
-        statusInCalendar: status
-      })
-    } else {
-      console.log('[privateBookingActions] Calendar not configured, skipping sync')
-    }
-  } catch (error) {
-    console.error('[privateBookingActions] Calendar sync exception during status update:', error)
-    // Don't fail the status update if calendar operations fail
-  }
-
-  revalidatePath('/private-bookings')
-  revalidatePath(`/private-bookings/${id}`)
-  return { success: true }
 }
 
 export async function addPrivateBookingNote(bookingId: string, note: string) {
@@ -1079,39 +292,16 @@ export async function addPrivateBookingNote(bookingId: string, note: string) {
     return { error: 'You must be signed in to add a note' }
   }
 
-  const admin = createAdminClient()
   const trimmedNote = validation.data.note
 
-  const { error } = await admin.from('private_booking_audit').insert({
-    booking_id: bookingId,
-    action: 'note_added',
-    field_name: 'notes',
-    new_value: trimmedNote,
-    metadata: {
-      note_text: trimmedNote
-    },
-    performed_by: user.id
-  })
-
-  if (error) {
+  try {
+    await PrivateBookingService.addNote(bookingId, trimmedNote, user.id, user.email || undefined)
+    revalidatePath(`/private-bookings/${bookingId}`)
+    return { success: true }
+  } catch (error: any) {
     console.error('Error recording booking note:', error)
     return { error: error.message || 'Failed to save note' }
   }
-
-  await logAuditEvent({
-    user_id: user.id,
-    ...(user.email && { user_email: user.email }),
-    operation_type: 'add_note',
-    resource_type: 'private_booking',
-    resource_id: bookingId,
-    operation_status: 'success',
-    additional_info: {
-      note_preview: trimmedNote.substring(0, 120)
-    }
-  })
-
-  revalidatePath(`/private-bookings/${bookingId}`)
-  return { success: true }
 }
 
 // Delete private booking
@@ -1123,94 +313,32 @@ export async function deletePrivateBooking(id: string) {
     return { error: 'You do not have permission to delete private bookings' }
   }
 
-  // Get the booking first to check status and calendar event
-  const { data: booking, error: fetchError } = await supabase
-    .from('private_bookings')
-    .select('status, calendar_event_id')
-    .eq('id', id)
-    .single()
-  
-  if (fetchError || !booking) {
-    console.error('Error fetching booking for deletion:', fetchError)
-    return { error: 'Booking not found' }
-  }
-  
-  // Check if booking status allows deletion
-  const allowedStatuses = ['draft', 'cancelled']
-  if (!allowedStatuses.includes(booking.status)) {
-    return { 
-      error: `Only draft or cancelled bookings can be deleted. This booking is ${booking.status}. Please cancel it first if you need to delete it.`
-    }
-  }
-  
-  const { error } = await supabase
-    .from('private_bookings')
-    .delete()
-    .eq('id', id)
+  try {
+    const { deletedBooking } = await PrivateBookingService.deletePrivateBooking(id);
 
-  if (error) {
+    revalidatePath('/private-bookings')
+    revalidatePath(`/private-bookings/${id}`)
+    return { success: true }
+  } catch (error: any) {
     console.error('Error deleting private booking:', error)
     return { error: error.message || 'An error occurred' }
   }
-
-  // Delete from Google Calendar if configured and event exists
-  console.log('[privateBookingActions] Checking calendar deletion:', {
-    bookingId: id,
-    hasCalendarEventId: !!booking?.calendar_event_id,
-    calendarEventId: booking?.calendar_event_id,
-    isConfigured: isCalendarConfigured()
-  })
-  
-  if (booking?.calendar_event_id && isCalendarConfigured()) {
-    console.log('[privateBookingActions] Deleting calendar event:', booking.calendar_event_id)
-    try {
-      const deleteResult = await deleteCalendarEvent(booking.calendar_event_id)
-      console.log('[privateBookingActions] Calendar deletion result:', {
-        eventId: booking.calendar_event_id,
-        success: deleteResult
-      })
-    } catch (error) {
-      console.error('[privateBookingActions] Calendar deletion exception:', error)
-      // Don't fail the deletion if calendar sync fails
-    }
-  } else {
-    console.log('[privateBookingActions] Skipping calendar deletion:', {
-      hasEventId: !!booking?.calendar_event_id,
-      isConfigured: isCalendarConfigured()
-    })
-  }
-
-  revalidatePath('/private-bookings')
-  revalidatePath(`/private-bookings/${id}`)
-  return { success: true }
 }
 
 // Get venue spaces
 export async function getVenueSpaces(activeOnly = true) {
-  const supabase = await createClient()
-
   const canView = await checkUserPermission('private_bookings', 'view')
   if (!canView) {
     return { error: 'You do not have permission to view private bookings' }
   }
   
-  let query = supabase
-    .from('venue_spaces')
-    .select('*')
-    .order('display_order', { ascending: true })
-
-  if (activeOnly) {
-    query = query.eq('active', true)
+  try {
+    const data = await PrivateBookingService.getVenueSpaces(activeOnly);
+    return { data };
+  } catch (error: any) {
+    console.error('Error fetching venue spaces:', error);
+    return { error: error.message || 'An error occurred' };
   }
-
-  const { data, error } = await query
-
-  if (error) {
-    console.error('Error fetching venue spaces:', error)
-    return { error: error.message || 'An error occurred' }
-  }
-
-  return { data }
 }
 
 export async function getVenueSpacesForManagement() {
@@ -1219,47 +347,29 @@ export async function getVenueSpacesForManagement() {
     return { error: permission.error }
   }
 
-  const { admin } = permission
-
-  const { data, error } = await admin
-    .from('venue_spaces')
-    .select('*')
-    .order('name', { ascending: true })
-
-  if (error) {
+  try {
+    const data = await PrivateBookingService.getVenueSpacesForManagement();
+    return { data };
+  } catch (error: any) {
     console.error('Error fetching venue spaces for management:', error)
     return { error: error.message || 'An error occurred' }
   }
-
-  return { data }
 }
 
 // Get catering packages
 export async function getCateringPackages(activeOnly = true) {
-  const supabase = await createClient()
-
   const canView = await checkUserPermission('private_bookings', 'view')
   if (!canView) {
     return { error: 'You do not have permission to view private bookings' }
   }
   
-  let query = supabase
-    .from('catering_packages')
-    .select('*')
-    .order('display_order', { ascending: true })
-
-  if (activeOnly) {
-    query = query.eq('active', true)
+  try {
+    const data = await PrivateBookingService.getCateringPackages(activeOnly);
+    return { data };
+  } catch (error: any) {
+    console.error('Error fetching catering packages:', error);
+    return { error: error.message || 'An error occurred' };
   }
-
-  const { data, error } = await query
-
-  if (error) {
-    console.error('Error fetching catering packages:', error)
-    return { error: error.message || 'An error occurred' }
-  }
-
-  return { data }
 }
 
 export async function getCateringPackagesForManagement() {
@@ -1268,61 +378,38 @@ export async function getCateringPackagesForManagement() {
     return { error: permission.error }
   }
 
-  const { admin } = permission
-
-  const { data, error } = await admin
-    .from('catering_packages')
-    .select('*')
-    .order('package_type', { ascending: true })
-    .order('name', { ascending: true })
-
-  if (error) {
+  try {
+    const data = await PrivateBookingService.getCateringPackagesForManagement();
+    return { data };
+  } catch (error: any) {
     console.error('Error fetching catering packages for management:', error)
     return { error: error.message || 'An error occurred' }
   }
-
-  return { data }
 }
 
 // Get vendors
 export async function getVendors(serviceType?: string, activeOnly = true) {
-  const supabase = await createClient()
-
   const canView = await checkUserPermission('private_bookings', 'view')
   if (!canView) {
     return { error: 'You do not have permission to view private bookings' }
   }
   
-  let query = supabase
-    .from('vendors')
-    .select('*')
-    .order('preferred', { ascending: false })
-    .order('name', { ascending: true })
+  try {
+    const rawData = await PrivateBookingService.getVendors(serviceType, activeOnly);
+    // sanitizeMoneyString applied here
+    const normalizedData = (rawData || []).map(vendor => {
+      const normalizedRate = sanitizeMoneyString(vendor.typical_rate)
+      return {
+        ...vendor,
+        typical_rate_normalized: normalizedRate,
+      }
+    })
 
-  if (activeOnly) {
-    query = query.eq('active', true)
+    return { data: normalizedData };
+  } catch (error: any) {
+    console.error('Error fetching vendors:', error);
+    return { error: error.message || 'An error occurred' };
   }
-
-  if (serviceType) {
-    query = query.eq('service_type', serviceType)
-  }
-
-  const { data, error } = await query
-
-  if (error) {
-    console.error('Error fetching vendors:', error)
-    return { error: error.message || 'An error occurred' }
-  }
-
-  const normalizedData = (data || []).map(vendor => {
-    const normalizedRate = sanitizeMoneyString(vendor.typical_rate)
-    return {
-      ...vendor,
-      typical_rate_normalized: normalizedRate,
-    }
-  })
-
-  return { data: normalizedData }
 }
 
 export async function getVendorsForManagement() {
@@ -1331,54 +418,42 @@ export async function getVendorsForManagement() {
     return { error: permission.error }
   }
 
-  const { admin } = permission
-
-  const { data, error } = await admin
-    .from('vendors')
-    .select('*')
-    .order('preferred', { ascending: false })
-    .order('name', { ascending: true })
-
-  if (error) {
+  try {
+    const data = await PrivateBookingService.getVendorsForManagement();
+    const normalizedData = (data || []).map(vendor => ({
+      ...vendor,
+      typical_rate_normalized: sanitizeMoneyString(vendor.typical_rate)
+    }))
+    return { data: normalizedData }
+  } catch (error: any) {
     console.error('Error fetching vendors for management:', error)
     return { error: error.message || 'An error occurred' }
   }
-
-  const normalizedData = (data || []).map(vendor => ({
-    ...vendor,
-    typical_rate_normalized: sanitizeMoneyString(vendor.typical_rate)
-  }))
-
-  return { data: normalizedData }
 }
 
 export async function getVendorRate(vendorId: string) {
-  const supabase = await createClient()
-
   const canView = await checkUserPermission('private_bookings', 'view')
   if (!canView) {
     return { error: 'You do not have permission to view private bookings' }
   }
 
-  const { data, error } = await supabase
-    .from('vendors')
-    .select('id, typical_rate')
-    .eq('id', vendorId)
-    .single()
-
-  if (error || !data) {
-    console.error('Error fetching vendor rate:', error)
-    return { error: error?.message || 'Vendor not found' }
-  }
-
-  const normalizedRate = sanitizeMoneyString(data.typical_rate)
-
-  return {
-    data: {
-      vendor_id: data.id,
-      typical_rate: data.typical_rate ?? null,
-      typical_rate_normalized: normalizedRate
+  try {
+    const data = await PrivateBookingService.getVendorRate(vendorId);
+    if (!data) {
+      return { error: 'Vendor not found' }
     }
+    const normalizedRate = sanitizeMoneyString(data.typical_rate)
+
+    return {
+      data: {
+        vendor_id: data.id,
+        typical_rate: data.typical_rate ?? null,
+        typical_rate_normalized: normalizedRate
+      }
+    }
+  } catch (error: any) {
+    console.error('Error fetching vendor rate:', error)
+    return { error: error.message || 'Vendor not found' }
   }
 }
 
@@ -1391,70 +466,21 @@ export async function recordDepositPayment(bookingId: string, formData: FormData
     return { error: 'You do not have permission to record deposits' }
   }
 
-  const paymentMethod = formData.get('payment_method') as string
-  const amount = parseFloat(formData.get('amount') as string)
+  const paymentMethod = getString(formData, 'payment_method') as string
+  const amount = parseFloat(getString(formData, 'amount') as string)
   
   // Get current user
   const { data: { user } } = await supabase.auth.getUser()
   
-  // First, get the booking details for SMS
-  const { data: booking } = await supabase
-    .from('private_bookings')
-    .select('customer_first_name, customer_last_name, customer_name, event_date, contact_phone')
-    .eq('id', bookingId)
-    .single()
-  
-  const { error } = await supabase
-    .from('private_bookings')
-    .update({
-      deposit_paid_date: new Date().toISOString(),
-      deposit_payment_method: paymentMethod,
-      deposit_amount: amount,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', bookingId)
-
-  if (error) {
+  try {
+    await PrivateBookingService.recordDeposit(bookingId, amount, paymentMethod, user?.id || undefined)
+    
+    revalidatePath(`/private-bookings/${bookingId}`)
+    return { success: true }
+  } catch (error: any) {
     console.error('Error recording deposit payment:', error)
     return { error: error.message || 'An error occurred' }
   }
-  
-  // Queue and auto-send SMS for deposit received
-  if (booking && booking.contact_phone) {
-    const eventDate = new Date(booking.event_date).toLocaleDateString('en-GB', { 
-      day: 'numeric', 
-      month: 'long', 
-      year: 'numeric' 
-    })
-    
-    const smsMessage = `Hi ${booking.customer_first_name}, we've received your deposit of £${amount}. Your private booking on ${eventDate} is now secured. Reply to this message with any questions.`
-    
-    const smsResult = await queueAndSendPrivateBookingSms({
-      booking_id: bookingId,
-      trigger_type: 'deposit_received',
-      template_key: 'private_booking_deposit_received',
-      message_body: smsMessage,
-      customer_phone: booking.contact_phone,
-      customer_name: booking.customer_name || `${booking.customer_first_name} ${booking.customer_last_name || ''}`.trim(),
-      created_by: user?.id,
-      priority: 1, // High priority for payment confirmations
-      metadata: {
-        template: 'private_booking_deposit_received',
-        first_name: booking.customer_first_name,
-        amount: amount,
-        event_date: eventDate
-      }
-    })
-    
-    if (smsResult.error) {
-      console.error('Error sending deposit SMS:', smsResult.error)
-    } else if (smsResult.sent) {
-      console.log('Deposit payment SMS sent successfully')
-    }
-  }
-
-  revalidatePath(`/private-bookings/${bookingId}`)
-  return { success: true }
 }
 
 // Record final payment
@@ -1466,185 +492,43 @@ export async function recordFinalPayment(bookingId: string, formData: FormData) 
     return { error: 'You do not have permission to record payments' }
   }
 
-  const paymentMethod = formData.get('payment_method') as string
+  const paymentMethod = getString(formData, 'payment_method') as string
   
   // Get current user
   const { data: { user } } = await supabase.auth.getUser()
   
-  // First, get the booking details for SMS
-  const { data: booking } = await supabase
-    .from('private_bookings')
-    .select('customer_first_name, customer_last_name, customer_name, event_date, contact_phone')
-    .eq('id', bookingId)
-    .single()
-  
-  const { error } = await supabase
-    .from('private_bookings')
-    .update({
-      final_payment_date: new Date().toISOString(),
-      final_payment_method: paymentMethod,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', bookingId)
-
-  if (error) {
+  try {
+    await PrivateBookingService.recordFinalPayment(bookingId, paymentMethod, user?.id || undefined)
+    
+    revalidatePath(`/private-bookings/${bookingId}`)
+    return { success: true }
+  } catch (error: any) {
     console.error('Error recording final payment:', error)
     return { error: error.message || 'An error occurred' }
   }
-  
-  // Queue and auto-send SMS for final payment received
-  if (booking && booking.contact_phone) {
-    const eventDate = new Date(booking.event_date).toLocaleDateString('en-GB', { 
-      day: 'numeric', 
-      month: 'long', 
-      year: 'numeric' 
-    })
-    
-    const smsMessage = `Hi ${booking.customer_first_name}, thank you for your final payment. Your private booking on ${eventDate} is fully paid. Reply to this message with any questions.`
-    
-    const smsResult = await queueAndSendPrivateBookingSms({
-      booking_id: bookingId,
-      trigger_type: 'final_payment_received',
-      template_key: 'private_booking_final_payment',
-      message_body: smsMessage,
-      customer_phone: booking.contact_phone,
-      customer_name: booking.customer_name || `${booking.customer_first_name} ${booking.customer_last_name || ''}`.trim(),
-      created_by: user?.id,
-      priority: 1, // High priority for payment confirmations
-      metadata: {
-        template: 'private_booking_final_payment',
-        first_name: booking.customer_first_name,
-        event_date: eventDate
-      }
-    })
-    
-    if (smsResult.error) {
-      console.error('Error sending final payment SMS:', smsResult.error)
-    } else if (smsResult.sent) {
-      console.log('Final payment SMS sent successfully')
-    }
-  }
-
-  revalidatePath(`/private-bookings/${bookingId}`)
-  return { success: true }
 }
 
 // Cancel a private booking and notify customer by SMS
 export async function cancelPrivateBooking(bookingId: string, reason?: string) {
-  const supabase = await createClient()
-
   const canEdit = await checkUserPermission('private_bookings', 'edit')
   if (!canEdit) {
     return { error: 'You do not have permission to cancel private bookings' }
   }
 
   // Get current user
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Fetch booking details needed for SMS and to check status
-  const { data: booking, error: fetchError } = await supabase
-    .from('private_bookings')
-    .select('id, status, event_date, customer_first_name, customer_last_name, customer_name, contact_phone, calendar_event_id')
-    .eq('id', bookingId)
-    .single()
-
-  if (fetchError || !booking) {
-    return { error: 'Booking not found' }
+  try {
+    await PrivateBookingService.cancelBooking(bookingId, reason || '', user?.id || undefined)
+    
+    revalidatePath('/private-bookings')
+    revalidatePath(`/private-bookings/${bookingId}`)
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error cancelling private booking:', error)
+    return { error: error.message || 'Failed to cancel booking' }
   }
-
-  if (booking.status === 'cancelled' || booking.status === 'completed') {
-    return { error: 'Booking cannot be cancelled' }
-  }
-
-  // Update status to cancelled (with graceful fallback if legacy schema lacks columns)
-  const nowIso = new Date().toISOString()
-  let { error: updateError } = await supabase
-    .from('private_bookings')
-    .update({
-      status: 'cancelled',
-      cancellation_reason: reason || 'Cancelled by staff',
-      cancelled_at: nowIso,
-      updated_at: nowIso
-    })
-    .eq('id', bookingId)
-
-  // Fallback: some environments may not yet have cancellation_reason/cancelled_at
-  if (updateError && (updateError.code === 'PGRST204' || (updateError.message || '').includes('cancellation_reason') || (updateError.message || '').includes('cancelled_at'))) {
-    console.warn('Private bookings schema missing cancellation columns; applying fallback update without those fields')
-    const fallback = await supabase
-      .from('private_bookings')
-      .update({
-        status: 'cancelled',
-        updated_at: nowIso
-      })
-      .eq('id', bookingId)
-    updateError = fallback.error || null
-  }
-
-  if (updateError) {
-    console.error('Error cancelling private booking:', updateError)
-    return { error: 'Failed to cancel booking' }
-  }
-
-  const calendarConfigured = isCalendarConfigured()
-
-  if (booking.calendar_event_id) {
-    if (calendarConfigured) {
-      try {
-        const deleted = await deleteCalendarEvent(booking.calendar_event_id)
-        console.log('[cancelPrivateBooking] Deleted calendar event after cancellation:', {
-          bookingId,
-          eventId: booking.calendar_event_id,
-          success: deleted
-        })
-
-        if (deleted) {
-          await supabase
-            .from('private_bookings')
-            .update({ calendar_event_id: null })
-            .eq('id', bookingId)
-        }
-      } catch (error) {
-        console.error('[cancelPrivateBooking] Failed to delete calendar event for cancelled booking:', error)
-      }
-    } else {
-      console.log('[cancelPrivateBooking] Calendar not configured; skipping event deletion for cancelled booking')
-    }
-  }
-
-  // Send SMS to customer if phone exists
-  if (booking.contact_phone) {
-    const eventDate = new Date(booking.event_date).toLocaleDateString('en-GB', {
-      day: 'numeric', month: 'long', year: 'numeric'
-    })
-
-    const firstName = booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there'
-    const smsMessage = `Hi ${firstName}, your tentative private booking date on ${eventDate} has been cancelled. Reply to this message if you need any help or call 01753 682 707 if you believe this was a mistake.`
-
-    const smsResult = await queueAndSendPrivateBookingSms({
-      booking_id: bookingId,
-      trigger_type: 'booking_cancelled',
-      template_key: 'private_booking_cancelled',
-      message_body: smsMessage,
-      customer_phone: booking.contact_phone,
-      customer_name: booking.customer_name || `${booking.customer_first_name} ${booking.customer_last_name || ''}`.trim(),
-      created_by: user?.id,
-      priority: 2,
-      metadata: {
-        template: 'private_booking_cancelled',
-        event_date: eventDate,
-        reason: reason || 'staff_cancelled'
-      }
-    })
-
-    if (smsResult && 'error' in smsResult && smsResult.error) {
-      console.error('Failed to send cancellation SMS:', smsResult.error)
-    }
-  }
-
-  revalidatePath('/private-bookings')
-  revalidatePath(`/private-bookings/${bookingId}`)
-  return { success: true }
 }
 
 // Apply booking-level discount
@@ -1653,170 +537,120 @@ export async function applyBookingDiscount(bookingId: string, data: {
   discount_amount: number
   discount_reason: string
 }) {
-  const supabase = await createClient()
-  
   const canEdit = await checkUserPermission('private_bookings', 'edit')
   if (!canEdit) {
     return { error: 'You do not have permission to update private bookings' }
   }
 
-  const { error } = await supabase
-    .from('private_bookings')
-    .update({
-      discount_type: data.discount_type,
-      discount_amount: data.discount_amount,
-      discount_reason: data.discount_reason,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', bookingId)
+  try {
+    await PrivateBookingService.applyBookingDiscount(bookingId, data)
 
-  if (error) {
-    console.error('Error applying disbadge: ', error)
+    revalidatePath(`/private-bookings/${bookingId}`)
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error applying discount: ', error)
     return { error: error.message || 'Failed to apply discount' }
   }
-
-  revalidatePath(`/private-bookings/${bookingId}`)
-  return { success: true }
 }
 
-// SMS Queue Management
+// SMS Queue Management (already using SmsQueueService directly, so no change needed here)
+export async function getPrivateBookingSmsQueue(statusFilter?: string[]) {
+  const supabase = await createClient()
+  const {
+    data: { user }
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'Not authenticated' }
+  }
+
+  const canView = await checkUserPermission('private_bookings', 'view_sms_queue')
+  if (!canView) {
+    return { error: 'Insufficient permissions' }
+  }
+
+  try {
+    const queue = await SmsQueueService.getQueue(statusFilter)
+    return { success: true, data: queue }
+  } catch (error: any) {
+    console.error('Error fetching SMS queue:', error)
+    return { error: error.message || 'Failed to fetch SMS queue' }
+  }
+}
+
 export async function approveSms(smsId: string) {
   const supabase = await createClient()
+  const {
+    data: { user }
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'Not authenticated' }
+  }
 
   const canApprove = await checkUserPermission('private_bookings', 'approve_sms')
   if (!canApprove) {
-    return { error: 'You do not have permission to approve SMS messages' }
+    return { error: 'Insufficient permissions' }
   }
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return { error: 'Unauthorized' }
-  }
-  
-  const { error } = await supabase
-    .from('private_booking_sms_queue')
-    .update({
-      status: 'approved',
-      approved_at: new Date().toISOString(),
-      approved_by: user.id
-    })
-    .eq('id', smsId)
-    .eq('status', 'pending')
-  
-  if (error) {
+  try {
+    await SmsQueueService.approveSms(smsId, user.id)
+    revalidatePath('/private-bookings/sms-queue')
+    return { success: true }
+  } catch (error: any) {
     console.error('Error approving SMS:', error)
     return { error: error.message || 'Failed to approve SMS' }
   }
-  
-  revalidatePath('/private-bookings/sms-queue')
-  return { success: true }
 }
 
 export async function rejectSms(smsId: string) {
   const supabase = await createClient()
+  const {
+    data: { user }
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'Not authenticated' }
+  }
 
   const canApprove = await checkUserPermission('private_bookings', 'approve_sms')
   if (!canApprove) {
-    return { error: 'You do not have permission to manage SMS messages' }
+    return { error: 'Insufficient permissions' }
   }
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return { error: 'Unauthorized' }
-  }
-  
-  const { error } = await supabase
-    .from('private_booking_sms_queue')
-    .update({
-      status: 'cancelled',
-      approved_at: new Date().toISOString(),
-      approved_by: user.id
-    })
-    .eq('id', smsId)
-    .eq('status', 'pending')
-  
-  if (error) {
+  try {
+    await SmsQueueService.rejectSms(smsId, user.id)
+    revalidatePath('/private-bookings/sms-queue')
+    return { success: true }
+  } catch (error: any) {
     console.error('Error rejecting SMS:', error)
     return { error: error.message || 'Failed to reject SMS' }
   }
-  
-  revalidatePath('/private-bookings/sms-queue')
-  return { success: true }
 }
 
 export async function sendApprovedSms(smsId: string) {
   const supabase = await createClient()
-  const admin = createAdminClient()
+  const {
+    data: { user }
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'Not authenticated' }
+  }
 
   const canSend = await checkUserPermission('private_bookings', 'send')
   if (!canSend) {
-    return { error: 'You do not have permission to send SMS messages' }
+    return { error: 'Insufficient permissions' }
   }
 
-  // Get the SMS details
-  const { data: sms, error: fetchError } = await supabase
-    .from('private_booking_sms_queue')
-    .select('*')
-    .eq('id', smsId)
-    .eq('status', 'approved')
-    .single()
-  
-  if (fetchError || !sms) {
-    console.error('Error fetching SMS:', fetchError)
-    return { error: 'SMS not found or not approved' }
+  try {
+    await SmsQueueService.sendApprovedSms(smsId)
+    revalidatePath('/private-bookings/sms-queue')
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error sending SMS:', error)
+    return { error: error.message || 'Failed to send SMS' }
   }
-  
-  // Look up the booking to capture customer id for logging
-  const { data: booking } = await admin
-    .from('private_bookings')
-    .select('customer_id')
-    .eq('id', sms.booking_id)
-    .single()
-
-  // Import the SMS sending function
-  const { sendSms } = await import('@/app/actions/sms')
-  
-  // Send the SMS
-  const result = await sendSms({
-    to: sms.recipient_phone,
-    body: sms.message_body,
-    bookingId: sms.booking_id,
-    customerId: booking?.customer_id || undefined
-  })
-  
-  if (result.error) {
-    // Update status to failed
-    await supabase
-      .from('private_booking_sms_queue')
-      .update({
-        status: 'failed',
-        sent_at: new Date().toISOString(),
-        error_message: result.error
-      })
-      .eq('id', smsId)
-    
-    return { error: result.error }
-  }
-  
-  // Update status to sent
-  const updatedMetadata = {
-    ...(sms.metadata ?? {}),
-    ...(result.customerId ? { customer_id: result.customerId } : {}),
-    ...(result.messageId ? { message_id: result.messageId } : {})
-  }
-
-  await supabase
-    .from('private_booking_sms_queue')
-    .update({
-      status: 'sent',
-      sent_at: new Date().toISOString(),
-      twilio_message_sid: result.sid as string,
-      metadata: updatedMetadata
-    })
-    .eq('id', smsId)
-  
-  revalidatePath('/private-bookings/sms-queue')
-  return { success: true }
 }
 
 // Venue Space Management
@@ -1832,51 +666,16 @@ export async function createVenueSpace(data: {
     return { error: permission.error }
   }
 
-  const { user, admin } = permission
+  const { user } = permission
 
-  // Map to correct database columns
-  const dbData = {
-    name: data.name,
-    capacity_seated: data.capacity,
-    rate_per_hour: data.hire_cost,
-    description: data.description,
-    active: data.is_active,
-    minimum_hours: 1, // Default value
-    setup_fee: 0, // Default value
-    display_order: 0 // Default value
-  }
-  
-  const { data: inserted, error } = await admin
-    .from('venue_spaces')
-    .insert(dbData)
-    .select()
-    .single()
-  
-  if (error) {
+  try {
+    await PrivateBookingService.createVenueSpace(data, user.id, user.email || undefined)
+    revalidatePath('/private-bookings/settings/spaces')
+    return { success: true }
+  } catch (error: any) {
     console.error('Error creating venue space:', error)
     return { error: error.message || 'Failed to create venue space' }
   }
-
-  if (inserted) {
-    await logAuditEvent({
-      user_id: user.id,
-      ...(user.email && { user_email: user.email }),
-      operation_type: 'create',
-      resource_type: 'venue_space',
-      resource_id: inserted.id,
-      operation_status: 'success',
-      new_values: {
-        name: inserted.name,
-        capacity_seated: inserted.capacity_seated,
-        rate_per_hour: inserted.rate_per_hour,
-        description: inserted.description,
-        active: inserted.active
-      }
-    })
-  }
-  
-  revalidatePath('/private-bookings/settings/spaces')
-  return { success: true }
 }
 
 export async function updateVenueSpace(id: string, data: {
@@ -1891,71 +690,16 @@ export async function updateVenueSpace(id: string, data: {
     return { error: permission.error }
   }
 
-  const { user, admin } = permission
+  const { user } = permission
 
-  const { data: existing, error: fetchError } = await admin
-    .from('venue_spaces')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle()
-
-  if (fetchError) {
-    console.error('Error loading venue space before update:', fetchError)
-    return { error: 'Failed to load venue space' }
-  }
-
-  if (!existing) {
-    return { error: 'Venue space not found' }
-  }
-
-  // Map to correct database columns
-  const dbData = {
-    name: data.name,
-    capacity_seated: data.capacity,
-    rate_per_hour: data.hire_cost,
-    description: data.description,
-    active: data.is_active
-  }
-  
-  const { data: updated, error } = await admin
-    .from('venue_spaces')
-    .update(dbData)
-    .eq('id', id)
-    .select()
-    .single()
-  
-  if (error) {
+  try {
+    await PrivateBookingService.updateVenueSpace(id, data, user.id, user.email || undefined)
+    revalidatePath('/private-bookings/settings/spaces')
+    return { success: true }
+  } catch (error: any) {
     console.error('Error updating venue space:', error)
     return { error: error.message || 'Failed to update venue space' }
   }
-
-  if (updated) {
-    await logAuditEvent({
-      user_id: user.id,
-      ...(user.email && { user_email: user.email }),
-      operation_type: 'update',
-      resource_type: 'venue_space',
-      resource_id: id,
-      operation_status: 'success',
-      old_values: {
-        name: existing.name,
-        capacity_seated: existing.capacity_seated,
-        rate_per_hour: existing.rate_per_hour,
-        description: existing.description,
-        active: existing.active
-      },
-      new_values: {
-        name: updated.name,
-        capacity_seated: updated.capacity_seated,
-        rate_per_hour: updated.rate_per_hour,
-        description: updated.description,
-        active: updated.active
-      }
-    })
-  }
-  
-  revalidatePath('/private-bookings/settings/spaces')
-  return { success: true }
 }
 
 export async function deleteVenueSpace(id: string) {
@@ -1964,51 +708,16 @@ export async function deleteVenueSpace(id: string) {
     return { error: permission.error }
   }
 
-  const { user, admin } = permission
+  const { user } = permission
 
-  const { data: existing, error: fetchError } = await admin
-    .from('venue_spaces')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle()
-
-  if (fetchError) {
-    console.error('Error loading venue space before delete:', fetchError)
-    return { error: 'Failed to load venue space' }
-  }
-
-  if (!existing) {
-    return { error: 'Venue space not found' }
-  }
-
-  const { error } = await admin
-    .from('venue_spaces')
-    .delete()
-    .eq('id', id)
-  
-  if (error) {
+  try {
+    await PrivateBookingService.deleteVenueSpace(id, user.id, user.email || undefined)
+    revalidatePath('/private-bookings/settings/spaces')
+    return { success: true }
+  } catch (error: any) {
     console.error('Error deleting venue space:', error)
     return { error: error.message || 'Failed to delete venue space' }
   }
-
-  await logAuditEvent({
-    user_id: user.id,
-    ...(user.email && { user_email: user.email }),
-    operation_type: 'delete',
-    resource_type: 'venue_space',
-    resource_id: id,
-    operation_status: 'success',
-    old_values: {
-      name: existing.name,
-      capacity_seated: existing.capacity_seated,
-      rate_per_hour: existing.rate_per_hour,
-      description: existing.description,
-      active: existing.active
-    }
-  })
-  
-  revalidatePath('/private-bookings/settings/spaces')
-  return { success: true }
 }
 
 // Catering Package Management
@@ -2027,55 +736,16 @@ export async function createCateringPackage(data: {
     return { error: permission.error }
   }
 
-  const { user, admin } = permission
+  const { user } = permission
 
-  // Map to correct database columns
-  const dbData = {
-    name: data.name,
-    package_type: data.package_type,
-    cost_per_head: data.per_head_cost,
-    pricing_model: data.pricing_model || 'per_head',
-    minimum_guests: data.minimum_order,
-    description: data.description,
-    dietary_notes: data.includes,
-    active: data.is_active,
-    display_order: 0 // Default value
-  }
-  
-  const { data: inserted, error } = await admin
-    .from('catering_packages')
-    .insert(dbData)
-    .select()
-    .single()
-  
-  if (error) {
+  try {
+    await PrivateBookingService.createCateringPackage(data, user.id, user.email || undefined)
+    revalidatePath('/private-bookings/settings/catering')
+    return { success: true }
+  } catch (error: any) {
     console.error('Error creating catering package:', error)
-    return { error: error.message || 'Failed to create catering package' }
+    return { error: error.message || 'An unexpected error occurred' }
   }
-
-  if (inserted) {
-    await logAuditEvent({
-      user_id: user.id,
-      ...(user.email && { user_email: user.email }),
-      operation_type: 'create',
-      resource_type: 'catering_package',
-      resource_id: inserted.id,
-      operation_status: 'success',
-      new_values: {
-        name: inserted.name,
-        package_type: inserted.package_type,
-        cost_per_head: inserted.cost_per_head,
-        pricing_model: inserted.pricing_model,
-        minimum_guests: inserted.minimum_guests,
-        description: inserted.description,
-        dietary_notes: inserted.dietary_notes,
-        active: inserted.active
-      }
-    })
-  }
-  
-  revalidatePath('/private-bookings/settings/catering')
-  return { success: true }
 }
 
 export async function updateCateringPackage(id: string, data: {
@@ -2093,80 +763,16 @@ export async function updateCateringPackage(id: string, data: {
     return { error: permission.error }
   }
 
-  const { user, admin } = permission
+  const { user } = permission
 
-  const { data: existing, error: fetchError } = await admin
-    .from('catering_packages')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle()
-
-  if (fetchError) {
-    console.error('Error loading catering package before update:', fetchError)
-    return { error: 'Failed to load catering package' }
-  }
-
-  if (!existing) {
-    return { error: 'Catering package not found' }
-  }
-
-  // Map to correct database columns
-  const dbData = {
-    name: data.name,
-    package_type: data.package_type,
-    cost_per_head: data.per_head_cost,
-    pricing_model: data.pricing_model || 'per_head',
-    minimum_guests: data.minimum_order,
-    description: data.description,
-    dietary_notes: data.includes,
-    active: data.is_active
-  }
-  
-  const { data: updated, error } = await admin
-    .from('catering_packages')
-    .update(dbData)
-    .eq('id', id)
-    .select()
-    .single()
-  
-  if (error) {
+  try {
+    await PrivateBookingService.updateCateringPackage(id, data, user.id, user.email || undefined)
+    revalidatePath('/private-bookings/settings/catering')
+    return { success: true }
+  } catch (error: any) {
     console.error('Error updating catering package:', error)
-    return { error: error.message || 'Failed to update catering package' }
+    return { error: error.message || 'An unexpected error occurred' }
   }
-
-  if (updated) {
-    await logAuditEvent({
-      user_id: user.id,
-      ...(user.email && { user_email: user.email }),
-      operation_type: 'update',
-      resource_type: 'catering_package',
-      resource_id: id,
-      operation_status: 'success',
-      old_values: {
-        name: existing.name,
-        package_type: existing.package_type,
-        cost_per_head: existing.cost_per_head,
-        pricing_model: existing.pricing_model,
-        minimum_guests: existing.minimum_guests,
-        description: existing.description,
-        dietary_notes: existing.dietary_notes,
-        active: existing.active
-      },
-      new_values: {
-        name: updated.name,
-        package_type: updated.package_type,
-        cost_per_head: updated.cost_per_head,
-        pricing_model: updated.pricing_model,
-        minimum_guests: updated.minimum_guests,
-        description: updated.description,
-        dietary_notes: updated.dietary_notes,
-        active: updated.active
-      }
-    })
-  }
-  
-  revalidatePath('/private-bookings/settings/catering')
-  return { success: true }
 }
 
 export async function deleteCateringPackage(id: string) {
@@ -2175,54 +781,16 @@ export async function deleteCateringPackage(id: string) {
     return { error: permission.error }
   }
 
-  const { user, admin } = permission
+  const { user } = permission
 
-  const { data: existing, error: fetchError } = await admin
-    .from('catering_packages')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle()
-
-  if (fetchError) {
-    console.error('Error loading catering package before delete:', fetchError)
-    return { error: 'Failed to load catering package' }
-  }
-
-  if (!existing) {
-    return { error: 'Catering package not found' }
-  }
-
-  const { error } = await admin
-    .from('catering_packages')
-    .delete()
-    .eq('id', id)
-  
-  if (error) {
+  try {
+    await PrivateBookingService.deleteCateringPackage(id, user.id, user.email || undefined)
+    revalidatePath('/private-bookings/settings/catering')
+    return { success: true }
+  } catch (error: any) {
     console.error('Error deleting catering package:', error)
-    return { error: error.message || 'Failed to delete catering package' }
+    return { error: error.message || 'An unexpected error occurred' }
   }
-
-  await logAuditEvent({
-    user_id: user.id,
-    ...(user.email && { user_email: user.email }),
-    operation_type: 'delete',
-    resource_type: 'catering_package',
-    resource_id: id,
-    operation_status: 'success',
-    old_values: {
-      name: existing.name,
-      package_type: existing.package_type,
-      cost_per_head: existing.cost_per_head,
-      pricing_model: existing.pricing_model,
-      minimum_guests: existing.minimum_guests,
-      description: existing.description,
-      dietary_notes: existing.dietary_notes,
-      active: existing.active
-    }
-  })
-  
-  revalidatePath('/private-bookings/settings/catering')
-  return { success: true }
 }
 
 // Booking Items Management
@@ -2268,26 +836,8 @@ export async function addBookingItem(data: {
     return { error: 'You do not have permission to modify private bookings' }
   }
 
-  const { data: lastItem, error: orderError } = await supabase
-    .from('private_booking_items')
-    .select('display_order')
-    .eq('booking_id', data.booking_id)
-    .order('display_order', { ascending: false })
-    .limit(1)
-
-  if (orderError) {
-    console.error('Error determining next item order:', orderError)
-    return { error: orderError.message || 'Failed to determine item order' }
-  }
-
-  const nextDisplayOrder = lastItem && lastItem.length > 0 && lastItem[0]?.display_order !== null && lastItem[0]?.display_order !== undefined
-    ? Number(lastItem[0].display_order) + 1
-    : 0
-
-  // Don't include line_total as it's a generated column
-  const { error } = await supabase
-    .from('private_booking_items')
-    .insert({
+  try {
+    await PrivateBookingService.addBookingItem({
       booking_id: data.booking_id,
       item_type: data.item_type,
       space_id: data.space_id,
@@ -2298,18 +848,16 @@ export async function addBookingItem(data: {
       unit_price: data.unit_price,
       discount_value: data.discount_value,
       discount_type: data.discount_type,
-      notes: data.notes,
-      display_order: nextDisplayOrder
-    })
+      notes: data.notes
+    });
   
-  if (error) {
+    revalidatePath(`/private-bookings/${data.booking_id}`)
+    revalidatePath(`/private-bookings/${data.booking_id}/items`)
+    return { success: true }
+  } catch (error: any) {
     console.error('Error adding booking item:', error)
-    return { error: error.message || 'Failed to add booking item' }
+    return { error: error.message || 'An error occurred' }
   }
-  
-  revalidatePath(`/private-bookings/${data.booking_id}`)
-  revalidatePath(`/private-bookings/${data.booking_id}/items`)
-  return { success: true }
 }
 
 export async function updateBookingItem(itemId: string, data: {
@@ -2326,42 +874,18 @@ export async function updateBookingItem(itemId: string, data: {
     return { error: 'You do not have permission to modify private bookings' }
   }
 
-  // Get current item to find booking ID for revalidation
-  const { data: currentItem, error: fetchError } = await supabase
-    .from('private_booking_items')
-    .select('booking_id')
-    .eq('id', itemId)
-    .single()
-  
-  if (fetchError || !currentItem) {
-    return { error: 'Item not found' }
-  }
-  
-  // Build update object - only include fields that are provided
-  const updateData: any = {}
-  
-  if (data.quantity !== undefined) updateData.quantity = data.quantity
-  if (data.unit_price !== undefined) updateData.unit_price = data.unit_price
-  if (data.discount_value !== undefined) updateData.discount_value = data.discount_value
-  if (data.discount_type !== undefined) updateData.discount_type = data.discount_type
-  if (data.notes !== undefined) updateData.notes = data.notes
-  
-  // Don't include line_total as it's a generated column
-  const { error } = await supabase
-    .from('private_booking_items')
-    .update(updateData)
-    .eq('id', itemId)
-  
-  if (error) {
+  try {
+    const result = await PrivateBookingService.updateBookingItem(itemId, data);
+    
+    // Revalidate the booking pages
+    const bookingId = result.bookingId;
+    revalidatePath(`/private-bookings/${bookingId}`)
+    revalidatePath(`/private-bookings/${bookingId}/items`)
+    return { success: true }
+  } catch (error: any) {
     console.error('Error updating booking item:', error)
-    return { error: error.message || 'Failed to update booking item' }
+    return { error: error.message || 'An error occurred' }
   }
-  
-  // Revalidate the booking pages
-  const bookingId = currentItem.booking_id
-  revalidatePath(`/private-bookings/${bookingId}`)
-  revalidatePath(`/private-bookings/${bookingId}/items`)
-  return { success: true }
 }
 
 export async function deleteBookingItem(itemId: string) {
@@ -2372,30 +896,16 @@ export async function deleteBookingItem(itemId: string) {
     return { error: 'You do not have permission to modify private bookings' }
   }
 
-  // Get booking ID before deleting
-  const { data: item, error: fetchError } = await supabase
-    .from('private_booking_items')
-    .select('booking_id')
-    .eq('id', itemId)
-    .single()
-  
-  if (fetchError || !item) {
-    return { error: 'Item not found' }
-  }
-  
-  const { error } = await supabase
-    .from('private_booking_items')
-    .delete()
-    .eq('id', itemId)
-  
-  if (error) {
+  try {
+    const result = await PrivateBookingService.deleteBookingItem(itemId);
+    
+    revalidatePath(`/private-bookings/${result.bookingId}`)
+    revalidatePath(`/private-bookings/${result.bookingId}/items`)
+    return { success: true }
+  } catch (error: any) {
     console.error('Error deleting booking item:', error)
     return { error: error.message || 'Failed to delete booking item' }
   }
-  
-  revalidatePath(`/private-bookings/${item.booking_id}`)
-  revalidatePath(`/private-bookings/${item.booking_id}/items`)
-  return { success: true }
 }
 
 export async function reorderBookingItems(bookingId: string, orderedIds: string[]) {
@@ -2406,74 +916,19 @@ export async function reorderBookingItems(bookingId: string, orderedIds: string[
     return { error: 'You do not have permission to modify private bookings' }
   }
 
-  if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
-    return { error: 'No booking items supplied for reordering' }
+  try {
+    await PrivateBookingService.reorderBookingItems(bookingId, orderedIds);
+
+    revalidatePath(`/private-bookings/${bookingId}`)
+    revalidatePath(`/private-bookings/${bookingId}/items`)
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error updating booking item order:', error)
+    return { error: error.message || 'An error occurred' }
   }
-
-  const { data: existingItems, error: fetchError } = await supabase
-    .from('private_booking_items')
-    .select('id')
-    .eq('booking_id', bookingId)
-
-  if (fetchError) {
-    console.error('Error fetching booking items for reorder:', fetchError)
-    return { error: fetchError.message || 'Failed to fetch booking items' }
-  }
-
-  const existingIds = new Set((existingItems || []).map((item) => item.id))
-
-  const hasInvalidId = orderedIds.some((id) => !existingIds.has(id))
-  if (hasInvalidId || existingIds.size !== orderedIds.length) {
-    return { error: 'Booking items list must include all existing items' }
-  }
-
-  const updateResults = await Promise.all(
-    orderedIds.map((id, index) =>
-      supabase
-        .from('private_booking_items')
-        .update({ display_order: index })
-        .eq('id', id)
-        .eq('booking_id', bookingId)
-        .select('id')
-    )
-  )
-
-  const updateError = updateResults.find((result) => result.error)?.error
-
-  if (updateError) {
-    console.error('Error updating booking item order:', updateError)
-    return { error: updateError.message || 'Failed to update booking item order' }
-  }
-
-  revalidatePath(`/private-bookings/${bookingId}`)
-  revalidatePath(`/private-bookings/${bookingId}/items`)
-  return { success: true }
 }
 
 // Vendor Management
-const ALLOWED_VENDOR_TYPES = [
-  'dj',
-  'band',
-  'photographer',
-  'florist',
-  'decorator',
-  'cake',
-  'entertainment',
-  'transport',
-  'equipment',
-  'other'
-] as const
-
-function sanitizeMoneyString(value: unknown): string | null {
-  if (value === null || value === undefined) return null
-  const raw = typeof value === 'number' ? value.toString() : String(value)
-  const trimmed = raw.trim()
-  if (!trimmed) return null
-  const normalised = trimmed.replace(/,/g, '')
-  const match = normalised.match(/-?\d+(?:\.\d+)?/)
-  return match ? match[0] : null
-}
-
 export async function createVendor(data: {
   name: string
   vendor_type: string
@@ -2491,64 +946,20 @@ export async function createVendor(data: {
     return { error: permission.error }
   }
 
-  const { user, admin } = permission
+  const { user } = permission
 
   if (!ALLOWED_VENDOR_TYPES.includes(data.vendor_type as (typeof ALLOWED_VENDOR_TYPES)[number])) {
     return { error: 'Invalid vendor type provided' }
   }
 
-  const formattedPhone = data.phone ? formatPhoneForStorage(data.phone) : null
-  const typicalRate = sanitizeMoneyString(data.typical_rate) ?? null
-
-  // Map to correct database columns
-  const dbData = {
-    name: data.name,
-    service_type: data.vendor_type,
-    contact_name: data.contact_name,
-    contact_phone: formattedPhone,
-    contact_email: data.email,
-    website: data.website,
-    typical_rate: typicalRate,
-    notes: data.notes,
-    preferred: data.is_preferred,
-    active: data.is_active
-  }
-  
-  const { data: inserted, error } = await admin
-    .from('vendors')
-    .insert(dbData)
-    .select()
-    .single()
-  
-  if (error) {
+  try {
+    await PrivateBookingService.createVendor(data, user.id, user.email || undefined)
+    revalidatePath('/private-bookings/settings/vendors')
+    return { success: true }
+  } catch (error: any) {
     console.error('Error creating vendor:', error)
     return { error: error.message || 'Failed to create vendor' }
   }
-
-  if (inserted) {
-    await logAuditEvent({
-      user_id: user.id,
-      ...(user.email && { user_email: user.email }),
-      operation_type: 'create',
-      resource_type: 'vendor',
-      resource_id: inserted.id,
-      operation_status: 'success',
-      new_values: {
-        name: inserted.name,
-        service_type: inserted.service_type,
-        contact_name: inserted.contact_name,
-        contact_phone: inserted.contact_phone,
-        contact_email: inserted.contact_email,
-        website: inserted.website,
-        typical_rate: inserted.typical_rate,
-        preferred: inserted.preferred,
-        active: inserted.active
-      }
-    })
-  }
-  
-  revalidatePath('/private-bookings/settings/vendors')
-  return { success: true }
 }
 
 export async function updateVendor(id: string, data: {
@@ -2568,91 +979,20 @@ export async function updateVendor(id: string, data: {
     return { error: permission.error }
   }
 
-  const { user, admin } = permission
+  const { user } = permission
 
   if (!ALLOWED_VENDOR_TYPES.includes(data.vendor_type as (typeof ALLOWED_VENDOR_TYPES)[number])) {
     return { error: 'Invalid vendor type provided' }
   }
 
-  const formattedPhone = data.phone ? formatPhoneForStorage(data.phone) : null
-  const typicalRate = sanitizeMoneyString(data.typical_rate) ?? null
-
-  const { data: existing, error: fetchError } = await admin
-    .from('vendors')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle()
-
-  if (fetchError) {
-    console.error('Error loading vendor before update:', fetchError)
-    return { error: 'Failed to load vendor' }
-  }
-
-  if (!existing) {
-    return { error: 'Vendor not found' }
-  }
-
-  // Map to correct database columns
-  const dbData = {
-    name: data.name,
-    service_type: data.vendor_type,
-    contact_name: data.contact_name,
-    contact_phone: formattedPhone,
-    contact_email: data.email,
-    website: data.website,
-    typical_rate: typicalRate,
-    notes: data.notes,
-    preferred: data.is_preferred,
-    active: data.is_active
-  }
-  
-  const { data: updated, error } = await admin
-    .from('vendors')
-    .update(dbData)
-    .eq('id', id)
-    .select()
-    .single()
-  
-  if (error) {
+  try {
+    await PrivateBookingService.updateVendor(id, data, user.id, user.email || undefined)
+    revalidatePath('/private-bookings/settings/vendors')
+    return { success: true }
+  } catch (error: any) {
     console.error('Error updating vendor:', error)
     return { error: error.message || 'Failed to update vendor' }
   }
-
-  if (updated) {
-    await logAuditEvent({
-      user_id: user.id,
-      ...(user.email && { user_email: user.email }),
-      operation_type: 'update',
-      resource_type: 'vendor',
-      resource_id: id,
-      operation_status: 'success',
-      old_values: {
-        name: existing.name,
-        service_type: existing.service_type,
-        contact_name: existing.contact_name,
-        contact_phone: existing.contact_phone,
-        contact_email: existing.contact_email,
-        website: existing.website,
-        typical_rate: existing.typical_rate,
-        preferred: existing.preferred,
-        active: existing.active
-      },
-      new_values: {
-        name: updated.name,
-        service_type: updated.service_type,
-        contact_name: updated.contact_name,
-        contact_phone: updated.contact_phone,
-        contact_email: updated.contact_email,
-        website: updated.website,
-        typical_rate: updated.typical_rate,
-        preferred: updated.preferred,
-        active: updated.active
-      }
-    })
-  }
-  
-  revalidatePath('/private-bookings/settings/vendors')
-  return { success: true }
 }
 
 export async function deleteVendor(id: string) {
@@ -2661,53 +1001,14 @@ export async function deleteVendor(id: string) {
     return { error: permission.error }
   }
 
-  const { user, admin } = permission
+  const { user } = permission
 
-  const { data: existing, error: fetchError } = await admin
-    .from('vendors')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle()
-
-  if (fetchError) {
-    console.error('Error loading vendor before delete:', fetchError)
-    return { error: 'Failed to load vendor' }
-  }
-
-  if (!existing) {
-    return { error: 'Vendor not found' }
-  }
-
-  const { error } = await admin
-    .from('vendors')
-    .delete()
-    .eq('id', id)
-  
-  if (error) {
+  try {
+    await PrivateBookingService.deleteVendor(id, user.id, user.email || undefined)
+    revalidatePath('/private-bookings/settings/vendors')
+    return { success: true }
+  } catch (error: any) {
     console.error('Error deleting vendor:', error)
     return { error: error.message || 'Failed to delete vendor' }
   }
-
-  await logAuditEvent({
-    user_id: user.id,
-    ...(user.email && { user_email: user.email }),
-    operation_type: 'delete',
-    resource_type: 'vendor',
-    resource_id: id,
-    operation_status: 'success',
-    old_values: {
-      name: existing.name,
-      service_type: existing.service_type,
-      contact_name: existing.contact_name,
-      contact_phone: existing.contact_phone,
-      contact_email: existing.contact_email,
-      website: existing.website,
-      typical_rate: existing.typical_rate,
-      preferred: existing.preferred,
-      active: existing.active
-    }
-  })
-  
-  revalidatePath('/private-bookings/settings/vendors')
-  return { success: true }
 }

@@ -1,4 +1,4 @@
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { Job, JobType, JobPayload, JobOptions } from './job-types'
 import { logger } from './logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
@@ -222,6 +222,9 @@ export class JobQueue {
       
       case 'update_sms_health':
         return this.updateSmsHealth(payload)
+
+      case 'send_email':
+        return this.processSendEmail(payload)
       
       default:
         throw new Error(`Unknown job type: ${type}`)
@@ -229,6 +232,49 @@ export class JobQueue {
   }
   
   // Job processors
+
+  private async processSendEmail(payload: JobPayload['send_email']) {
+    const { 
+      sendBookingConfirmationEmail, 
+      sendBookingCancellationEmail, 
+      sendBookingReminderEmail 
+    } = await import('@/app/actions/table-booking-email')
+
+    let result
+
+    switch (payload.template) {
+      case 'table_booking_confirmation':
+      case 'table_booking_confirmation_sunday_lunch':
+        if (!payload.booking_id) throw new Error('booking_id required')
+        result = await sendBookingConfirmationEmail(payload.booking_id, true)
+        break
+        
+      case 'table_booking_cancellation':
+        if (!payload.booking_id) throw new Error('booking_id required')
+        result = await sendBookingCancellationEmail(
+          payload.booking_id,
+          payload.refund_message || 'No payment was taken for this booking.'
+        )
+        break
+        
+      case 'table_booking_reminder':
+        if (!payload.booking_id) throw new Error('booking_id required')
+        result = await sendBookingReminderEmail(payload.booking_id)
+        break
+        
+      // Add payment request case if you implement it
+      // case 'table_booking_payment_request': ...
+
+      default:
+        throw new Error(`Unknown email template: ${payload.template}`)
+    }
+
+    if (result.error) {
+      throw new Error(result.error)
+    }
+
+    return result
+  }
   
   private async processSendSms(payload: JobPayload['send_sms']) {
     const { sendSMS } = await import('./twilio')

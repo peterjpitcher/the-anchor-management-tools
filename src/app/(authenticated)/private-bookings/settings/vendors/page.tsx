@@ -6,8 +6,8 @@ import {
   StarIcon
 } from '@heroicons/react/24/outline'
 import { createVendor, updateVendor, deleteVendor, getVendorsForManagement } from '@/app/actions/privateBookingActions'
-import { VendorDeleteButton } from '@/components/VendorDeleteButton'
-import type { InvoiceVendor } from '@/types/invoices'
+import { VendorDeleteButton } from '@/components/features/invoices/VendorDeleteButton'
+import type { Vendor } from '@/types/private-bookings'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
@@ -99,12 +99,12 @@ export default async function VendorsPage() {
 
   const vendors = vendorsResult.data ?? []
 
-  const vendorsByType = vendors.reduce((acc, vendor) => {
+  const vendorsByType = vendors.reduce((acc: Record<string, Vendor[]>, vendor: Vendor) => {
     const type = vendor.service_type
     if (!acc[type]) acc[type] = []
     acc[type].push(vendor)
     return acc
-  }, {} as Record<string, typeof vendors>)
+  }, {} as Record<string, Vendor[]>)
 
   const vendorTypes = [
     'dj',

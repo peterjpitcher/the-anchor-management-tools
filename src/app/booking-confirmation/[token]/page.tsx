@@ -1,7 +1,7 @@
 import BookingConfirmationClient, {
   PendingBookingWithEvent,
 } from './BookingConfirmationClient'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 interface PageProps {
   params: Promise<{ token: string }>

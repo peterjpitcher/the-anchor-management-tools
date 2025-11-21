@@ -1,9 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react';
-import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { usePermissions } from '@/contexts/PermissionContext';
-import { format, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek } from 'date-fns';
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
 import { ChartBarIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 
 // UI v2 Components
@@ -21,29 +20,7 @@ import { Badge } from '@/components/ui-v2/display/Badge';
 import { TabNav } from '@/components/ui-v2/navigation/TabNav';
 import { toast } from '@/components/ui-v2/feedback/Toast';
 import { generateSundayLunchCookSheet } from '@/app/actions/sunday-lunch-cook-sheet';
-
-interface ReportData {
-  totalBookings: number;
-  totalCovers: number;
-  totalRevenue: number;
-  averagePartySize: number;
-  noShowRate: number;
-  cancellationRate: number;
-  sundayLunchBookings: number;
-  regularBookings: number;
-  bookingsByDay: Record<string, number>;
-  bookingsByHour: Record<string, number>;
-  topCustomers: Array<{
-    customer_id: string;
-    customer_name: string;
-    booking_badge: number;
-    total_covers: number;
-  }>;
-  revenueByType: {
-    sunday_lunch: number;
-    regular: number;
-  };
-}
+import { getTableBookingReportData, type ReportData } from '@/app/actions/table-booking-reports';
 
 function getUpcomingSunday(baseDate: Date = new Date()) {
   const next = new Date(baseDate);
@@ -54,7 +31,6 @@ function getUpcomingSunday(baseDate: Date = new Date()) {
 }
 
 export default function TableBookingReportsPage() {
-  const supabase = useSupabase();
   const { hasPermission } = usePermissions();
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -68,7 +44,6 @@ export default function TableBookingReportsPage() {
   const [downloadingCookSheet, setDownloadingCookSheet] = useState(false);
 
   const canView = hasPermission('table_bookings', 'view');
-  const canManage = hasPermission('table_bookings', 'manage');
 
   useEffect(() => {
     if (canView) {
@@ -81,108 +56,13 @@ export default function TableBookingReportsPage() {
       setLoading(true);
       setError(null);
 
-      // Get all bookings in date range
-      const { data: bookings, error: bookingsError } = await supabase
-        .from('table_bookings')
-        .select(`
-          *,
-          customer:customers(id, first_name, last_name),
-          table_booking_payments(amount, status)
-        `)
-        .gte('booking_date', dateRange.start)
-        .lte('booking_date', dateRange.end);
+      const result = await getTableBookingReportData(dateRange);
 
-      if (bookingsError) throw bookingsError;
+      if ('error' in result) {
+        throw new Error(result.error);
+      }
 
-      // Calculate metrics
-      const totalBookings = bookings?.length || 0;
-      const confirmedBookings = bookings?.filter((b: any) => b.status === 'confirmed' || b.status === 'completed') || [];
-      const cancelledBookings = bookings?.filter((b: any) => b.status === 'cancelled') || [];
-      const noShowBookings = bookings?.filter((b: any) => b.status === 'no_show') || [];
-      
-      const totalCovers = confirmedBookings.reduce((sum: number, b: any) => sum + b.party_size, 0);
-      const averagePartySize = confirmedBookings.length > 0 ? totalCovers / confirmedBookings.length : 0;
-      const noShowRate = totalBookings > 0 ? (noShowBookings.length / totalBookings) * 100 : 0;
-      const cancellationRate = totalBookings > 0 ? (cancelledBookings.length / totalBookings) * 100 : 0;
-      
-      const sundayLunchBookings = confirmedBookings.filter((b: any) => b.booking_type === 'sunday_lunch').length;
-      const regularBookings = confirmedBookings.filter((b: any) => b.booking_type === 'regular').length;
-
-      // Calculate revenue
-      let totalRevenue = 0;
-      let sundayLunchRevenue = 0;
-      bookings?.forEach((booking: any) => {
-        const payment = booking.table_booking_payments?.find((p: any) => p.status === 'completed');
-        if (payment) {
-          totalRevenue += payment.amount;
-          if (booking.booking_type === 'sunday_lunch') {
-            sundayLunchRevenue += payment.amount;
-          }
-        }
-      });
-
-      // Bookings by day of week
-      const bookingsByDay: Record<string, number> = {
-        'Monday': 0,
-        'Tuesday': 0,
-        'Wednesday': 0,
-        'Thursday': 0,
-        'Friday': 0,
-        'Saturday': 0,
-        'Sunday': 0,
-      };
-      
-      confirmedBookings.forEach((booking: any) => {
-        const dayName = format(new Date(booking.booking_date), 'EEEE');
-        bookingsByDay[dayName]++;
-      });
-
-      // Bookings by hour
-      const bookingsByHour: Record<string, number> = {};
-      confirmedBookings.forEach((booking: any) => {
-        const hour = booking.booking_time.split(':')[0];
-        bookingsByHour[hour] = (bookingsByHour[hour] || 0) + 1;
-      });
-
-      // Top customers
-      const customerBookings: Record<string, any> = {};
-      confirmedBookings.forEach((booking: any) => {
-        if (booking.customer) {
-          const customerId = booking.customer.id;
-          if (!customerBookings[customerId]) {
-            customerBookings[customerId] = {
-              customer_id: customerId,
-              customer_name: `${booking.customer.first_name} ${booking.customer.last_name}`,
-              booking_badge: 0,
-              total_covers: 0,
-            };
-          }
-          customerBookings[customerId].booking_badge++;
-          customerBookings[customerId].total_covers += booking.party_size;
-        }
-      });
-      
-      const topCustomers = Object.values(customerBookings)
-        .sort((a, b) => b.booking_badge - a.booking_badge)
-        .slice(0, 10);
-
-      setReportData({
-        totalBookings: confirmedBookings.length,
-        totalCovers,
-        totalRevenue,
-        averagePartySize,
-        noShowRate,
-        cancellationRate,
-        sundayLunchBookings,
-        regularBookings,
-        bookingsByDay,
-        bookingsByHour,
-        topCustomers,
-        revenueByType: {
-          sunday_lunch: sundayLunchRevenue,
-          regular: totalRevenue - sundayLunchRevenue,
-        },
-      });
+      setReportData(result.data);
     } catch (err: any) {
       console.error('Error loading report data:', err);
       setError(err.message);

@@ -34,7 +34,7 @@ Always capture command output in the incident ticket or PR you are preparing.
 1. `tsx scripts/sms-tools/check-reminder-issues.ts` – lists overdue or duplicate reminders.
 2. `tsx scripts/sms-tools/clear-stuck-jobs.ts` – clears failed jobs (only run with production approval).
 3. Review the cron logs in Vercel for `/api/cron/reminders`; ensure the “scheduled pipeline” run completed.
-4. Cross-check the reminder configuration in [docs/sms-reminder-pipeline.md](./sms-reminder-pipeline.md) before altering templates or cadence.
+4. Cross-check the reminder configuration in `src/app/actions/event-sms-scheduler.ts` before altering templates or cadence.
 
 ## Email & PDF Generation
 **Symptoms**: invoice emails fail, PDFs not generated.

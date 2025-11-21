@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
 import SupabaseProvider from "@/components/providers/SupabaseProvider";
-import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
-import { NetworkStatus } from "@/components/NetworkStatus";
+import { ServiceWorkerRegistration } from "@/components/features/shared/ServiceWorkerRegistration";
+import { NetworkStatus } from "@/components/features/shared/NetworkStatus";
 
 export const metadata: Metadata = {
   title: "Management Tools",

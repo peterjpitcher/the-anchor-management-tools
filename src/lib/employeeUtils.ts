@@ -58,6 +58,7 @@ export function getUpcomingBirthday(dateOfBirth: string | Date | null, daysAhead
   
   const dob = new Date(dateOfBirth);
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
   const currentYear = today.getFullYear();
   
   // Get this year's birthday

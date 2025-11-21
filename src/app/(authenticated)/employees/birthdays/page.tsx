@@ -1,25 +1,23 @@
-'use client';
-
-import { useState, useEffect } from 'react';
-import { getAllBirthdays, sendBirthdayReminders } from '@/app/actions/employee-birthdays';
-import { usePermissions } from '@/contexts/PermissionContext';
-import Link from 'next/link';
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { getAllBirthdays } from '@/app/actions/employee-birthdays'
+import { checkUserPermission } from '@/app/actions/rbac'
 import { 
   CakeIcon,
   ExclamationTriangleIcon,
   CalendarIcon
-} from '@heroicons/react/24/outline';
-import { format, getMonth, addDays } from 'date-fns';
-// New UI components
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
-import { Card } from '@/components/ui-v2/layout/Card';
-import { Button } from '@/components/ui-v2/forms/Button';
-import { Badge } from '@/components/ui-v2/display/Badge';
-import { Alert } from '@/components/ui-v2/feedback/Alert';
-import { toast } from '@/components/ui-v2/feedback/Toast';
-import { EmptyState } from '@/components/ui-v2/display/EmptyState';
-import { Skeleton } from '@/components/ui-v2/feedback/Skeleton';
-import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav';
+} from '@heroicons/react/24/outline'
+import { format, getMonth, addDays } from 'date-fns'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
+import { Card } from '@/components/ui-v2/layout/Card'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
+import SendBirthdayRemindersButton from '@/components/features/employees/SendBirthdayRemindersButton'
+
+export const dynamic = 'force-dynamic'
 
 interface EmployeeBirthday {
   employee_id: string;
@@ -37,54 +35,25 @@ const monthNames = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
-export default function EmployeeBirthdaysPage() {
-  const { hasPermission } = usePermissions();
-  const [birthdays, setBirthdays] = useState<EmployeeBirthday[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
+export default async function EmployeeBirthdaysPage() {
+  const [canView, canManage] = await Promise.all([
+    checkUserPermission('employees', 'view'),
+    checkUserPermission('employees', 'manage')
+  ])
 
-  useEffect(() => {
-    const loadBirthdays = async () => {
-      setLoading(true);
-      try {
-        const result = await getAllBirthdays();
-        if (result.error) {
-          toast.error(result.error);
-        } else if (result.birthdays) {
-          setBirthdays(result.birthdays);
-        }
-      } catch {
-        toast.error('Failed to load birthdays');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    loadBirthdays();
-  }, []);
+  if (!canView) {
+    redirect('/unauthorized')
+  }
 
-  const handleSendReminders = async () => {
-    if (!hasPermission('employees', 'manage')) {
-      toast.error('You do not have permission to send reminders');
-      return;
-    }
-
-    setSending(true);
-    try {
-      const result = await sendBirthdayReminders();
-      if (result.error) {
-        toast.error(result.error);
-      } else if ('message' in result) {
-        toast.success(result.message || 'Birthday reminders sent');
-      } else {
-        toast.success('Birthday reminders sent');
-      }
-    } catch {
-      toast.error('Failed to send reminders');
-    } finally {
-      setSending(false);
-    }
-  };
+  const result = await getAllBirthdays()
+  
+  if (result.error) {
+    // In a server component we can't use toast directly.
+    // We'll just render the empty state or an error message.
+    console.error('[EmployeeBirthdaysPage] Error:', result.error)
+  }
+  
+  const birthdays = result.birthdays || []
 
   const getUpcomingBirthdayDate = (daysUntil: number) => {
     return addDays(new Date(), daysUntil);
@@ -131,28 +100,12 @@ export default function EmployeeBirthdaysPage() {
       return aIndex - bIndex;
     });
 
-  if (!hasPermission('employees', 'view')) {
-    return (
-      <PageLayout title="Employee Birthdays" navItems={[]}>
-        <Card>
-          <div className="text-center py-12">
-            <p className="text-gray-500">You don&apos;t have permission to view this page.</p>
-          </div>
-        </Card>
-      </PageLayout>
-    );
-  }
-
   const navItems: HeaderNavItem[] = [
     { label: 'Overview', href: '#overview' },
     { label: 'Birthdays', href: '#birthdays' },
   ];
 
-  const headerActions = hasPermission('employees', 'manage') ? (
-    <Button type="button" onClick={handleSendReminders} variant="primary" size="sm" loading={sending}>
-      {sending ? 'Sending…' : 'Send Weekly Reminders'}
-    </Button>
-  ) : undefined;
+  const headerActions = canManage ? <SendBirthdayRemindersButton /> : undefined;
 
   return (
     <PageLayout
@@ -174,15 +127,7 @@ export default function EmployeeBirthdaysPage() {
       </section>
 
       <section id="birthdays">
-        {loading ? (
-          <Card>
-            <div className="space-y-4">
-              {[...Array(3)].map((_, i) => (
-                <Skeleton key={i} className="h-16" />
-              ))}
-            </div>
-          </Card>
-        ) : birthdays.length === 0 ? (
+        {birthdays.length === 0 ? (
           <Card>
             <EmptyState
               icon={<CakeIcon className="h-12 w-12" />}

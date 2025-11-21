@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { processScheduledEventReminders } from '@/app/actions/sms-event-reminders'
 import { authorizeCronRequest } from '@/lib/cron-auth'
-import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 
 const JOB_NAME = 'event-reminders'
@@ -18,7 +18,7 @@ function getLondonRunKey(now: Date = new Date()): string {
 }
 
 async function acquireCronRun(runKey: string) {
-  const supabase = getSupabaseAdminClient()
+  const supabase = createAdminClient()
   const nowIso = new Date().toISOString()
 
   const { data, error } = await supabase
@@ -101,7 +101,7 @@ async function acquireCronRun(runKey: string) {
 }
 
 async function resolveCronRunResult(
-  supabase: ReturnType<typeof getSupabaseAdminClient>,
+  supabase: ReturnType<typeof createAdminClient>,
   runId: string,
   status: 'completed' | 'failed',
   errorMessage?: string
@@ -125,7 +125,7 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 export async function GET(request: Request) {
-  let runContext: { supabase: ReturnType<typeof getSupabaseAdminClient>; runId: string; runKey: string } | null = null
+  let runContext: { supabase: ReturnType<typeof createAdminClient>; runId: string; runKey: string } | null = null
 
   try {
     // Verify the request is from a trusted source (e.g., Vercel Cron)

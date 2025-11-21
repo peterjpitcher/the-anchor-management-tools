@@ -22,7 +22,6 @@ interface BookingDetails {
   booking_date: string;
   booking_time: string;
   party_size: number;
-  customer_name: string;
   deposit_amount: number;
   outstanding_amount: number;
   items: BookingItem[];
@@ -58,7 +57,6 @@ function BookingSuccessContent() {
         booking_date: data.booking_date,
         booking_time: data.booking_time,
         party_size: data.party_size,
-        customer_name: data.customer_name,
         deposit_amount: depositAmount,
         outstanding_amount: totalAmount - depositAmount,
         items: data.items || []

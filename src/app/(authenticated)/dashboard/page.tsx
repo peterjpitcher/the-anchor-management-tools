@@ -1,26 +1,23 @@
-import type { ReactNode } from 'react'
 import Link from 'next/link'
-import { CalendarIcon, UsersIcon, ChatBubbleLeftIcon, CurrencyPoundIcon, TruckIcon } from '@heroicons/react/24/outline'
+import { 
+  CalendarIcon, 
+  UsersIcon, 
+  ChatBubbleLeftIcon, 
+  CurrencyPoundIcon, 
+  TruckIcon,
+  ExclamationTriangleIcon,
+  ArrowRightIcon,
+  CheckCircleIcon,
+  ClipboardDocumentListIcon,
+  PlusIcon,
+  BellIcon
+} from '@heroicons/react/24/outline'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card, CardTitle } from '@/components/ui-v2/layout/Card'
-import { Stat } from '@/components/ui-v2/display/Stat'
 import { Badge } from '@/components/ui-v2/display/Badge'
-import { EmptyState } from '@/components/ui-v2/display/EmptyState'
-import { SimpleList } from '@/components/ui-v2/display/List'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
-import type { BadgeProps } from '@/components/ui-v2/display/Badge'
-import { formatDate, formatDateTime } from '@/lib/dateUtils'
-import { loadDashboardSnapshot, type DashboardSnapshot } from './dashboard-data'
-
-type SectionSummary = {
-  id: string
-  label: string
-  href?: string
-  permitted: boolean
-  subtitle: string
-  badgeVariant: BadgeProps['variant']
-  badgeText: string
-}
+import { Button } from '@/components/ui-v2/forms/Button'
+import { formatDate } from '@/lib/dateUtils'
+import { loadDashboardSnapshot } from './dashboard-data'
 
 const currencyFormatter = new Intl.NumberFormat('en-GB', {
   style: 'currency',
@@ -28,908 +25,650 @@ const currencyFormatter = new Intl.NumberFormat('en-GB', {
   maximumFractionDigits: 0,
 })
 
-const cardTitleLinkClasses =
-  'inline-flex items-center gap-2 rounded-md text-primary-700 hover:text-primary-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600'
+// Helper to group items by relative date
+function groupItems<T>(items: T[], getDate: (item: T) => string | null) {
+  const groups: Record<string, T[]> = {
+    'Tomorrow': [],
+    'This Week': [],
+    'Next Week': [],
+    'This Month': [],
+    'Later': []
+  }
 
-function renderCardTitleLink(label: string, href: string, enabled: boolean) {
-  return enabled ? (
-    <Link href={href} className={cardTitleLinkClasses}>
-      {label}
-    </Link>
-  ) : (
-    label
-  )
-}
+  const now = new Date()
+  const tomorrow = new Date(now)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  const tomorrowIso = tomorrow.toISOString().split('T')[0]
 
-function formatNumber(value: number) {
-  return Number.isFinite(value) ? value.toLocaleString() : '0'
-}
+  // Get end of current week (Sunday)
+  const endOfWeek = new Date(now)
+  const day = now.getDay()
+  const diff = now.getDate() - day + (day === 0 ? 0 : 7) // adjust when day is sunday
+  endOfWeek.setDate(diff)
+  endOfWeek.setHours(23, 59, 59, 999)
 
-function buildSectionSummaries(snapshot: DashboardSnapshot): SectionSummary[] {
-  const summaries: SectionSummary[] = []
+  // Get end of next week
+  const endOfNextWeek = new Date(endOfWeek)
+  endOfNextWeek.setDate(endOfNextWeek.getDate() + 7)
 
-  const eventsSubtitle = snapshot.events.permitted
-    ? snapshot.events.error
-      ? snapshot.events.error
-      : `${formatNumber(snapshot.events.today.length)} today · ${formatNumber(snapshot.events.totalUpcoming)} upcoming`
-    : 'Requires events:view permission'
-  summaries.push({
-    id: 'events',
-    label: 'Events',
-    href: snapshot.events.permitted ? '/events' : undefined,
-    permitted: snapshot.events.permitted,
-    subtitle: eventsSubtitle,
-    badgeVariant: snapshot.events.permitted
-      ? snapshot.events.error
-        ? 'warning'
-        : 'success'
-      : 'secondary',
-    badgeText: snapshot.events.permitted
-      ? snapshot.events.error
-        ? 'Issue'
-        : 'Accessible'
-      : 'Restricted',
+  // Get end of current month
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+
+  items.forEach(item => {
+    const dateStr = getDate(item)
+    if (!dateStr) return
+
+    const date = new Date(dateStr)
+    const dateIso = date.toISOString().split('T')[0]
+
+    if (dateIso === tomorrowIso) {
+      groups['Tomorrow'].push(item)
+    } else if (date <= endOfWeek) {
+      groups['This Week'].push(item)
+    } else if (date <= endOfNextWeek) {
+      groups['Next Week'].push(item)
+    } else if (date <= endOfMonth) {
+      groups['This Month'].push(item)
+    } else {
+      groups['Later'].push(item)
+    }
   })
 
-  const customersSubtitle = snapshot.customers.permitted
-    ? snapshot.customers.error
-      ? snapshot.customers.error
-      : `${formatNumber(snapshot.customers.total)} on file · ${formatNumber(snapshot.customers.newThisWeek)} new this week`
-    : 'Requires customers:view permission'
-  summaries.push({
-    id: 'customers',
-    label: 'Customers',
-    href: snapshot.customers.permitted ? '/customers' : undefined,
-    permitted: snapshot.customers.permitted,
-    subtitle: customersSubtitle,
-    badgeVariant: snapshot.customers.permitted
-      ? snapshot.customers.error
-        ? 'warning'
-        : 'success'
-      : 'secondary',
-    badgeText: snapshot.customers.permitted
-      ? snapshot.customers.error
-        ? 'Issue'
-        : 'Accessible'
-      : 'Restricted',
-  })
-
-  const messagesSubtitle = snapshot.messages.permitted
-    ? snapshot.messages.error
-      ? snapshot.messages.error
-      : `${formatNumber(snapshot.messages.unread)} unread conversations`
-    : 'Requires messages:view permission'
-  summaries.push({
-    id: 'messages',
-    label: 'Messages',
-    href: snapshot.messages.permitted ? '/messages' : undefined,
-    permitted: snapshot.messages.permitted,
-    subtitle: messagesSubtitle,
-    badgeVariant: snapshot.messages.permitted
-      ? snapshot.messages.error
-        ? 'warning'
-        : snapshot.messages.unread > 0
-          ? 'warning'
-          : 'success'
-      : 'secondary',
-    badgeText: snapshot.messages.permitted
-      ? snapshot.messages.error
-        ? 'Issue'
-        : snapshot.messages.unread > 0
-          ? 'Attention'
-          : 'Accessible'
-      : 'Restricted',
-  })
-
-  const privateBookingSubtitle = snapshot.privateBookings.permitted
-    ? snapshot.privateBookings.error
-      ? snapshot.privateBookings.error
-      : `${formatNumber(snapshot.privateBookings.totalUpcoming)} upcoming bookings`
-    : 'Requires private_bookings:view permission'
-  summaries.push({
-    id: 'private-bookings',
-    label: 'Private Bookings',
-    href: snapshot.privateBookings.permitted ? '/private-bookings' : undefined,
-    permitted: snapshot.privateBookings.permitted,
-    subtitle: privateBookingSubtitle,
-    badgeVariant: snapshot.privateBookings.permitted
-      ? snapshot.privateBookings.error
-        ? 'warning'
-        : 'success'
-      : 'secondary',
-    badgeText: snapshot.privateBookings.permitted
-      ? snapshot.privateBookings.error
-        ? 'Issue'
-        : 'Accessible'
-      : 'Restricted',
-  })
-
-  const tableBookingSubtitle = snapshot.tableBookings.permitted
-    ? snapshot.tableBookings.error
-      ? snapshot.tableBookings.error
-      : `${formatNumber(snapshot.tableBookings.totalUpcoming)} upcoming bookings`
-    : 'Requires table_bookings:view permission'
-  summaries.push({
-    id: 'table-bookings',
-    label: 'Table Bookings',
-    href: snapshot.tableBookings.permitted ? '/table-bookings' : undefined,
-    permitted: snapshot.tableBookings.permitted,
-    subtitle: tableBookingSubtitle,
-    badgeVariant: snapshot.tableBookings.permitted
-      ? snapshot.tableBookings.error
-        ? 'warning'
-        : 'success'
-      : 'secondary',
-    badgeText: snapshot.tableBookings.permitted
-      ? snapshot.tableBookings.error
-        ? 'Issue'
-        : 'Accessible'
-      : 'Restricted',
-  })
-
-  const parkingSubtitle = snapshot.parking.permitted
-    ? snapshot.parking.error
-      ? snapshot.parking.error
-      : `${formatNumber(snapshot.parking.arrivalsToday)} arrivals today · ${formatNumber(snapshot.parking.totalUpcoming)} upcoming`
-    : 'Requires parking:view permission'
-  summaries.push({
-    id: 'parking',
-    label: 'Parking',
-    href: snapshot.parking.permitted ? '/parking' : undefined,
-    permitted: snapshot.parking.permitted,
-    subtitle: parkingSubtitle,
-    badgeVariant: snapshot.parking.permitted
-      ? snapshot.parking.error
-        ? 'warning'
-        : snapshot.parking.pendingPayments > 0
-          ? 'warning'
-          : 'success'
-      : 'secondary',
-    badgeText: snapshot.parking.permitted
-      ? snapshot.parking.error
-        ? 'Issue'
-        : snapshot.parking.pendingPayments > 0
-          ? 'Attention'
-          : 'Accessible'
-      : 'Restricted',
-  })
-
-  const invoicesSubtitle = snapshot.invoices.permitted
-    ? snapshot.invoices.error
-      ? snapshot.invoices.error
-      : `${formatNumber(snapshot.invoices.unpaidCount)} unpaid · ${formatNumber(snapshot.invoices.overdueCount)} overdue`
-    : 'Requires invoices:view permission'
-  summaries.push({
-    id: 'invoices',
-    label: 'Invoices',
-    href: snapshot.invoices.permitted ? '/invoices' : undefined,
-    permitted: snapshot.invoices.permitted,
-    subtitle: invoicesSubtitle,
-    badgeVariant: snapshot.invoices.permitted
-      ? snapshot.invoices.error
-        ? 'warning'
-        : snapshot.invoices.overdueCount > 0
-          ? 'warning'
-          : 'success'
-      : 'secondary',
-    badgeText: snapshot.invoices.permitted
-      ? snapshot.invoices.error
-        ? 'Issue'
-        : snapshot.invoices.overdueCount > 0
-          ? 'Attention'
-          : 'Accessible'
-      : 'Restricted',
-  })
-
-  const receiptsSubtitle = snapshot.receipts.permitted
-    ? snapshot.receipts.error
-      ? snapshot.receipts.error
-      : `${formatNumber(snapshot.receipts.needsAttention)} need review`
-    : 'Requires receipts:view permission'
-  summaries.push({
-    id: 'receipts',
-    label: 'Receipts',
-    href: snapshot.receipts.permitted ? '/receipts' : undefined,
-    permitted: snapshot.receipts.permitted,
-    subtitle: receiptsSubtitle,
-    badgeVariant: snapshot.receipts.permitted
-      ? snapshot.receipts.error
-        ? 'warning'
-        : snapshot.receipts.needsAttention > 0
-          ? 'warning'
-          : 'success'
-      : 'secondary',
-    badgeText: snapshot.receipts.permitted
-      ? snapshot.receipts.error
-        ? 'Issue'
-        : snapshot.receipts.needsAttention > 0
-          ? 'Attention'
-          : 'Accessible'
-      : 'Restricted',
-  })
-
-  const quotesSubtitle = snapshot.quotes.permitted
-    ? snapshot.quotes.error
-      ? snapshot.quotes.error
-      : `Pending ${currencyFormatter.format(snapshot.quotes.totalPendingValue)} · ${snapshot.quotes.draftCount} drafts`
-    : 'Requires quotes or invoices permissions'
-  summaries.push({
-    id: 'quotes',
-    label: 'Quotes',
-    href: snapshot.quotes.permitted ? '/quotes' : undefined,
-    permitted: snapshot.quotes.permitted,
-    subtitle: quotesSubtitle,
-    badgeVariant: snapshot.quotes.permitted
-      ? snapshot.quotes.error
-        ? 'warning'
-        : snapshot.quotes.totalPendingValue > 0
-          ? 'warning'
-          : 'success'
-      : 'secondary',
-    badgeText: snapshot.quotes.permitted
-      ? snapshot.quotes.error
-        ? 'Issue'
-        : snapshot.quotes.totalPendingValue > 0
-          ? 'Attention'
-          : 'Accessible'
-      : 'Restricted',
-  })
-
-  const employeesSubtitle = snapshot.employees.permitted
-    ? snapshot.employees.error
-      ? snapshot.employees.error
-      : `${formatNumber(snapshot.employees.activeCount)} active employees`
-    : 'Requires employees:view permission'
-  summaries.push({
-    id: 'employees',
-    label: 'Employees',
-    href: snapshot.employees.permitted ? '/employees' : undefined,
-    permitted: snapshot.employees.permitted,
-    subtitle: employeesSubtitle,
-    badgeVariant: snapshot.employees.permitted
-      ? snapshot.employees.error
-        ? 'warning'
-        : 'success'
-      : 'secondary',
-    badgeText: snapshot.employees.permitted
-      ? snapshot.employees.error
-        ? 'Issue'
-        : 'Accessible'
-      : 'Restricted',
-  })
-
-  const rolesSubtitle = snapshot.roles.permitted
-    ? snapshot.roles.error
-      ? snapshot.roles.error
-      : `${formatNumber(snapshot.roles.totalRoles)} roles defined`
-    : 'Requires roles:view permission'
-  summaries.push({
-    id: 'roles',
-    label: 'Roles',
-    href: snapshot.roles.permitted ? '/roles' : undefined,
-    permitted: snapshot.roles.permitted,
-    subtitle: rolesSubtitle,
-    badgeVariant: snapshot.roles.permitted
-      ? snapshot.roles.error
-        ? 'warning'
-        : 'success'
-      : 'secondary',
-    badgeText: snapshot.roles.permitted
-      ? snapshot.roles.error
-        ? 'Issue'
-        : 'Accessible'
-      : 'Restricted',
-  })
-
-  const shortLinksSubtitle = snapshot.shortLinks.permitted
-    ? snapshot.shortLinks.error
-      ? snapshot.shortLinks.error
-      : `${formatNumber(snapshot.shortLinks.activeCount)} active links`
-    : 'Requires short_links:view permission'
-  summaries.push({
-    id: 'short-links',
-    label: 'Short Links',
-    href: snapshot.shortLinks.permitted ? '/short-links' : undefined,
-    permitted: snapshot.shortLinks.permitted,
-    subtitle: shortLinksSubtitle,
-    badgeVariant: snapshot.shortLinks.permitted
-      ? snapshot.shortLinks.error
-        ? 'warning'
-        : 'success'
-      : 'secondary',
-    badgeText: snapshot.shortLinks.permitted
-      ? snapshot.shortLinks.error
-        ? 'Issue'
-        : 'Accessible'
-      : 'Restricted',
-  })
-
-  const usersSubtitle = snapshot.users.permitted
-    ? snapshot.users.error
-      ? snapshot.users.error
-      : `${formatNumber(snapshot.users.totalUsers)} users`
-    : 'Requires users:view permission'
-  summaries.push({
-    id: 'users',
-    label: 'Users',
-    href: snapshot.users.permitted ? '/users' : undefined,
-    permitted: snapshot.users.permitted,
-    subtitle: usersSubtitle,
-    badgeVariant: snapshot.users.permitted
-      ? snapshot.users.error
-        ? 'warning'
-        : 'success'
-      : 'secondary',
-    badgeText: snapshot.users.permitted
-      ? snapshot.users.error
-        ? 'Issue'
-        : 'Accessible'
-      : 'Restricted',
-  })
-
-  summaries.push({
-    id: 'profile',
-    label: 'Profile',
-    href: '/profile',
-    permitted: true,
-    subtitle: snapshot.user.lastSignInAt
-      ? `Last signed in ${formatDateTime(snapshot.user.lastSignInAt)}`
-      : 'No recent sign-in recorded',
-    badgeVariant: 'success',
-    badgeText: 'Accessible',
-  })
-
-  summaries.push({
-    id: 'loyalty',
-    label: 'Loyalty',
-    permitted: snapshot.loyalty.permitted,
-    subtitle: snapshot.loyalty.permitted
-      ? 'Legacy tools accessible'
-      : 'Feature decommissioned',
-    badgeVariant: snapshot.loyalty.permitted ? 'warning' : 'default',
-    badgeText: snapshot.loyalty.permitted ? 'Legacy' : 'Removed',
-  })
-
-  summaries.push({
-    id: 'unauthorized',
-    label: 'Unauthorized',
-    href: '/unauthorized',
-    permitted: true,
-    subtitle: 'System route for denied access handling',
-    badgeVariant: 'default',
-    badgeText: 'System',
-  })
-
-  return summaries
+  // Filter out empty groups
+  return Object.entries(groups).filter(([_, items]) => items.length > 0)
 }
 
 export default async function DashboardPage() {
   const snapshot = await loadDashboardSnapshot()
 
-  const statsCards: Array<{
-    key: string
-    label: string
-    value: number | string
-    icon: ReactNode
-    description?: string
-    change?: string
-    changeType?: 'increase' | 'decrease' | 'neutral'
-    color?: 'error' | 'default' | 'success' | 'info' | 'primary' | 'warning'
-    href?: string
+  const quickActions = [
+    { label: 'New Event', href: '/events/new', icon: CalendarIcon, permission: snapshot.events.permitted },
+    { label: 'New Booking', href: '/table-bookings/new', icon: UsersIcon, permission: snapshot.tableBookings.permitted },
+    { label: 'New Private Booking', href: '/private-bookings/new', icon: CurrencyPoundIcon, permission: snapshot.privateBookings.permitted },
+    { label: 'New Invoice', href: '/invoices/new', icon: ClipboardDocumentListIcon, permission: snapshot.invoices.permitted },
+  ]
+
+  // --- Date Helpers ---
+  const todayDate = new Date()
+  const todayIso = todayDate.toISOString().split('T')[0]
+  const isToday = (dateString: string | null) => {
+    if (!dateString) return false
+    return dateString.startsWith(todayIso)
+  }
+
+  // --- Aggregate Today's Items ---
+  const tablesToday = snapshot.tableBookings.permitted 
+    ? snapshot.tableBookings.upcoming.filter(b => isToday(b.booking_date))
+    : []
+    
+  const privateToday = snapshot.privateBookings.permitted
+    ? snapshot.privateBookings.upcoming.filter(b => isToday(b.event_date))
+    : []
+
+  const eventsToday = snapshot.events.permitted
+    ? snapshot.events.today
+    : []
+
+  const parkingToday = snapshot.parking.permitted
+    ? snapshot.parking.upcoming.filter(b => isToday(b.start_at))
+    : []
+
+  const overdueInvoices = snapshot.invoices.permitted
+    ? snapshot.invoices.overdue
+    : []
+
+  const invoicesDueToday = snapshot.invoices.permitted
+    ? snapshot.invoices.dueToday
+    : []
+
+  // Filter Horizon items to exclude today
+  const upcomingTables = snapshot.tableBookings.permitted 
+    ? snapshot.tableBookings.upcoming.filter(b => !isToday(b.booking_date))
+    : []
+  const upcomingPrivate = snapshot.privateBookings.permitted
+    ? snapshot.privateBookings.upcoming.filter(b => !isToday(b.event_date))
+    : []
+  const upcomingParking = snapshot.parking.permitted
+    ? snapshot.parking.upcoming.filter(b => !isToday(b.start_at))
+    : []
+
+  // Group items
+  const groupedTables = groupItems(upcomingTables, b => b.booking_date)
+  const groupedPrivate = groupItems(upcomingPrivate, b => b.event_date)
+  const groupedParking = groupItems(upcomingParking, b => b.start_at)
+
+  // --- Action Items (Needs Attention) ---
+  const actionItems: Array<{
+    id: string
+    title: string
+    description: string
+    href: string
+    severity: 'high' | 'medium' | 'low'
+    icon: any
   }> = []
 
-  if (snapshot.events.permitted) {
-    statsCards.push({
-      key: 'events-today',
-      label: "Today's events",
-      value: snapshot.events.today.length,
-      icon: <CalendarIcon className="h-full w-full" />,
-      description: snapshot.events.nextUpcoming
-        ? `Next: ${snapshot.events.nextUpcoming.time ?? 'TBC'} on ${snapshot.events.nextUpcoming.date ? formatDate(new Date(snapshot.events.nextUpcoming.date)) : 'unknown date'}`
-        : 'No upcoming events scheduled',
-      color: 'info',
-      href: '/events',
-    })
+  // System Health
+  if (snapshot.systemHealth.permitted) {
+    if (snapshot.systemHealth.smsFailures24h > 0) {
+      actionItems.push({
+        id: 'sms-failures',
+        title: 'SMS Failures',
+        description: `${snapshot.systemHealth.smsFailures24h} failed in last 24h`,
+        href: '/settings',
+        severity: 'high',
+        icon: ExclamationTriangleIcon
+      })
+    }
   }
 
-  if (snapshot.customers.permitted) {
-    statsCards.push({
-      key: 'customers-total',
-      label: 'Customers on file',
-      value: snapshot.customers.total.toLocaleString(),
-      icon: <UsersIcon className="h-full w-full" />,
-      description: snapshot.customers.newThisWeek > 0
-        ? `${snapshot.customers.newThisWeek} added this week`
-        : 'No new customers in the last 7 days',
-      color: 'primary',
-      href: '/customers',
-    })
-  }
-
-  if (snapshot.messages.permitted) {
-    statsCards.push({
-      key: 'messages-unread',
-      label: 'Unread messages',
-      value: snapshot.messages.unread,
-      icon: <ChatBubbleLeftIcon className="h-full w-full" />,
-      description: snapshot.messages.unread > 0 ? 'Waiting for a reply' : 'Inbox is clear',
-      change: snapshot.messages.unread > 0 ? `${snapshot.messages.unread} new` : undefined,
-      changeType: snapshot.messages.unread > 0 ? 'increase' : undefined,
-      color: snapshot.messages.unread > 0 ? 'warning' : 'info',
-      href: '/messages',
-    })
-  }
-
-  if (snapshot.parking.permitted) {
-    statsCards.push({
-      key: 'parking-arrivals',
-      label: 'Parking arrivals today',
-      value: snapshot.parking.arrivalsToday,
-      icon: <TruckIcon className="h-full w-full" />,
-      description: snapshot.parking.nextBooking?.start_at
-        ? `Next arrival ${formatDateTime(snapshot.parking.nextBooking.start_at)}`
-        : 'No arrivals scheduled',
-      change: snapshot.parking.pendingPayments > 0 ? `${snapshot.parking.pendingPayments} awaiting payment` : undefined,
-      changeType: snapshot.parking.pendingPayments > 0 ? 'neutral' : undefined,
-      color: 'info',
-      href: '/parking',
-    })
-  }
-
+  // Invoices
   if (snapshot.invoices.permitted) {
-    statsCards.push({
-      key: 'unpaid-invoices',
-      label: 'Unpaid invoices',
-      value: snapshot.invoices.unpaidCount,
-      icon: <CurrencyPoundIcon className="h-full w-full" />,
-      description: snapshot.invoices.overdueCount > 0 ? `${snapshot.invoices.overdueCount} overdue` : 'All on track',
-      color: snapshot.invoices.overdueCount > 0 ? 'warning' : 'primary',
-      href: '/invoices?status=unpaid',
+    if (snapshot.invoices.overdueCount > 0) {
+      actionItems.push({
+        id: 'overdue-inv',
+        title: 'Overdue Invoices',
+        description: `${snapshot.invoices.overdueCount} overdue`,
+        href: '/invoices?status=overdue',
+        severity: 'high',
+        icon: CurrencyPoundIcon
+      })
+    }
+  }
+  
+  // Messages
+  if (snapshot.messages.permitted && snapshot.messages.unread > 0) {
+    actionItems.push({
+      id: 'unread-msg',
+      title: 'Unread Messages',
+      description: `${snapshot.messages.unread} unread`,
+      href: '/messages',
+      severity: 'medium',
+      icon: ChatBubbleLeftIcon
     })
   }
 
-  if (snapshot.receipts.permitted) {
-    statsCards.push({
-      key: 'receipts-attention',
-      label: 'Receipts needing review',
-      value: snapshot.receipts.needsAttention,
-      icon: <ReceiptIcon />,
-      description: snapshot.receipts.needsAttention > 0
-        ? `${snapshot.receipts.pendingCount} pending · ${snapshot.receipts.cantFindCount} missing`
-        : 'All receipts reconciled',
-      color: snapshot.receipts.needsAttention > 0 ? 'warning' : 'success',
+  // Parking
+  if (snapshot.parking.permitted && snapshot.parking.pendingPayments > 0) {
+     actionItems.push({
+       id: 'parking-unpaid',
+       title: 'Unpaid Parking',
+       description: `${snapshot.parking.pendingPayments} pending`,
+       href: '/parking',
+       severity: 'medium',
+       icon: TruckIcon
+     })
+  }
+
+  // Receipts
+  if (snapshot.receipts.permitted && snapshot.receipts.needsAttention > 0) {
+    actionItems.push({
+      id: 'receipts',
+      title: 'Receipt Issues',
+      description: `${snapshot.receipts.needsAttention} need review`,
       href: '/receipts',
+      severity: 'medium',
+      icon: ClipboardDocumentListIcon
     })
   }
-
-  const sectionSummaries = buildSectionSummaries(snapshot)
-
-  const renderStatCard = (
-    card: (typeof statsCards)[number],
-    size: 'sm' | 'md' = 'md',
-  ) => (
-    <Stat
-      key={card.key}
-      label={card.label}
-      value={card.value}
-      icon={card.icon}
-      description={card.description}
-      change={card.change}
-      changeType={card.changeType}
-      variant="filled"
-      color={card.color}
-      size={size}
-      href={card.href}
-    />
-  )
 
   return (
     <PageLayout
       title="Dashboard"
-      subtitle="Welcome back! Here's what's happening today."
+      subtitle={new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
       navItems={[]}
+      className="bg-gray-50"
+      padded={false}
     >
-      <div className="space-y-6">
-        <section id="metrics" className="space-y-3">
-          {statsCards.length > 0 ? (
-            <>
-              <div className="grid grid-cols-2 gap-3 sm:hidden">
-                {statsCards.map((card) => renderStatCard(card, 'sm'))}
-              </div>
-              <div className="hidden sm:grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
-                {statsCards.map((card) => renderStatCard(card))}
-              </div>
-            </>
-          ) : (
-            <Card>
-              <EmptyState
-                title="No metrics available"
-                description="You do not have access to any dashboard metrics yet."
-              />
-            </Card>
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1600px] mx-auto">
+        
+        {/* 1. Stats Overview Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* New Customers */}
+          {snapshot.customers.permitted && (
+            <Link href="/customers" className="block">
+              <Card className="hover:shadow-md transition-shadow cursor-pointer h-full border-l-4 border-l-blue-500">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">New Customers (Month)</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-1">{snapshot.customers.newThisMonth}</p>
+                  </div>
+                  <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
+                    <UsersIcon className="h-6 w-6" />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-3">
+                  vs {snapshot.customers.newLastMonth} last month
+                </p>
+              </Card>
+            </Link>
           )}
-        </section>
 
-        <div className="grid gap-4 xl:grid-cols-[2fr,1fr]">
-          <section id="operations" className="space-y-4">
-            {snapshot.events.permitted && snapshot.events.today.length > 0 && (
-              <Card
-                header={
-                  <CardTitle>
-                    {renderCardTitleLink("Today's Events", '/events', snapshot.events.permitted)}
-                  </CardTitle>
-                }
-              >
-                <SimpleList
-                  items={snapshot.events.today.map((event) => ({
-                    id: event.id,
-                      title: event.name,
-                      subtitle: event.time ?? 'Time TBC',
-                      href: `/events/${event.id}`,
-                      meta: (
-                        <div className="flex items-center text-sm text-gray-500">
-                          <UsersIcon className="h-5 w-5 mr-1 flex-shrink-0" />
-                          <span className="whitespace-nowrap">
-                            {event.bookingCount}/{event.capacity ?? '∞'}
-                          </span>
+          {/* Unpaid Invoices */}
+          {snapshot.invoices.permitted && (
+            <Link href="/invoices?status=unpaid" className="block">
+              <Card className="hover:shadow-md transition-shadow cursor-pointer h-full border-l-4 border-l-red-500">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Unpaid Invoices</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-1">
+                      {currencyFormatter.format(snapshot.invoices.totalUnpaidValue)}
+                    </p>
+                  </div>
+                  <div className="p-2 bg-red-50 rounded-lg text-red-600">
+                    <CurrencyPoundIcon className="h-6 w-6" />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-3">
+                  {snapshot.invoices.unpaidCount} invoices outstanding
+                </p>
+              </Card>
+            </Link>
+          )}
+
+          {/* Receipts */}
+          {snapshot.receipts.permitted && (
+            <Link href="/receipts" className="block">
+              <Card className="hover:shadow-md transition-shadow cursor-pointer h-full border-l-4 border-l-orange-500">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Receipts to Resolve</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-1">{snapshot.receipts.needsAttention}</p>
+                  </div>
+                  <div className="p-2 bg-orange-50 rounded-lg text-orange-600">
+                    <ClipboardDocumentListIcon className="h-6 w-6" />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-3">
+                  Pending review or details
+                </p>
+              </Card>
+            </Link>
+          )}
+
+          {/* Unread Messages */}
+          {snapshot.messages.permitted && (
+            <Link href="/messages" className="block">
+              <Card className="hover:shadow-md transition-shadow cursor-pointer h-full border-l-4 border-l-green-500">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Unread Messages</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-1">{snapshot.messages.unread}</p>
+                  </div>
+                  <div className="p-2 bg-green-50 rounded-lg text-green-600">
+                    <ChatBubbleLeftIcon className="h-6 w-6" />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-3">
+                  From customers
+                </p>
+              </Card>
+            </Link>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+          
+          {/* 2. Main Content (Left 2 Columns) */}
+          <div className="lg:col-span-2 space-y-6">
+            
+            {/* Today's Schedule */}
+            <Card 
+              header={
+                <div className="flex items-center justify-between">
+                  <CardTitle>Today&apos;s Schedule</CardTitle>
+                  <Badge variant="secondary">
+                    {eventsToday.length + privateToday.length + tablesToday.length + parkingToday.length + invoicesDueToday.length + overdueInvoices.length} Items
+                  </Badge>
+                </div>
+              }
+            >
+              {eventsToday.length === 0 && privateToday.length === 0 && tablesToday.length === 0 && parkingToday.length === 0 && invoicesDueToday.length === 0 && overdueInvoices.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <CalendarIcon className="h-12 w-12 mx-auto text-gray-300 mb-2" />
+                  <p>Nothing scheduled for today.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {/* Overdue Invoices - High Priority */}
+                  {overdueInvoices.map(invoice => (
+                    <div key={invoice.id} className="p-4 flex items-start gap-4 bg-red-50 hover:bg-red-100 transition-colors border-l-4 border-red-500">
+                      <div className="p-2 bg-white text-red-600 rounded-lg border border-red-200">
+                        <ExclamationTriangleIcon className="h-5 w-5" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="text-sm font-medium text-red-900">Overdue Invoice #{invoice.invoice_number}</h4>
+                        <p className="text-xs text-red-700">
+                          Due {invoice.due_date ? formatDate(new Date(invoice.due_date)) : 'Unknown'} • {currencyFormatter.format(invoice.total_amount || 0)}
+                        </p>
+                      </div>
+                      <Link href={`/invoices/${invoice.id}`}>
+                        <Button variant="ghost" size="sm" className="text-red-700 hover:text-red-900 hover:bg-red-200" rightIcon={<ArrowRightIcon className="h-4 w-4" />}>View</Button>
+                      </Link>
+                    </div>
+                  ))}
+
+                  {/* Invoices Due Today */}
+                  {invoicesDueToday.map(invoice => (
+                    <div key={invoice.id} className="p-4 flex items-start gap-4 hover:bg-gray-50 transition-colors">
+                      <div className="p-2 bg-yellow-100 text-yellow-700 rounded-lg">
+                        <CurrencyPoundIcon className="h-5 w-5" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="text-sm font-medium text-gray-900">Invoice Due Today #{invoice.invoice_number}</h4>
+                        <p className="text-xs text-gray-500">
+                          {currencyFormatter.format(invoice.total_amount || 0)} • {invoice.vendor ? (Array.isArray(invoice.vendor) ? invoice.vendor[0]?.name : invoice.vendor.name) : 'No Vendor'}
+                        </p>
+                      </div>
+                      <Link href={`/invoices/${invoice.id}`}>
+                        <Button variant="ghost" size="sm" rightIcon={<ArrowRightIcon className="h-4 w-4" />}>View</Button>
+                      </Link>
+                    </div>
+                  ))}
+
+                  {/* Parking Arrivals */}
+                  {parkingToday.map(booking => (
+                    <div key={booking.id} className="p-4 flex items-start gap-4 hover:bg-gray-50 transition-colors">
+                      <div className="p-2 bg-gray-100 text-gray-600 rounded-lg">
+                        <TruckIcon className="h-5 w-5" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="text-sm font-medium text-gray-900">Parking Arrival: {booking.vehicle_registration}</h4>
+                        <p className="text-xs text-gray-500">
+                          {booking.customer_first_name} {booking.customer_last_name} • {booking.start_at ? new Date(booking.start_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Time TBC'}
+                        </p>
+                      </div>
+                      <Link href="/parking">
+                        <Button variant="ghost" size="sm" rightIcon={<ArrowRightIcon className="h-4 w-4" />}>View</Button>
+                      </Link>
+                    </div>
+                  ))}
+
+                  {/* Events */}
+                  {eventsToday.map(event => (
+                    <div key={event.id} className="p-4 flex items-start gap-4 hover:bg-gray-50 transition-colors">
+                      <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
+                        <CalendarIcon className="h-5 w-5" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="text-sm font-medium text-gray-900">{event.name}</h4>
+                        <p className="text-xs text-gray-500">Event • {event.time || 'All Day'}</p>
+                      </div>
+                      <Link href={`/events/${event.id}`}>
+                        <Button variant="ghost" size="sm" rightIcon={<ArrowRightIcon className="h-4 w-4" />}>View</Button>
+                      </Link>
+                    </div>
+                  ))}
+
+                  {/* Private Bookings */}
+                  {privateToday.map(booking => (
+                    <div key={booking.id} className="p-4 flex items-start gap-4 hover:bg-gray-50 transition-colors">
+                      <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
+                        <CurrencyPoundIcon className="h-5 w-5" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="text-sm font-medium text-gray-900">{booking.customer_name}</h4>
+                        <p className="text-xs text-gray-500">Private Booking • {booking.start_time || 'TBC'} • {booking.status}</p>
+                      </div>
+                      <Link href={`/private-bookings/${booking.id}`}>
+                        <Button variant="ghost" size="sm" rightIcon={<ArrowRightIcon className="h-4 w-4" />}>View</Button>
+                      </Link>
+                    </div>
+                  ))}
+
+                  {/* Table Bookings */}
+                  {tablesToday.map(booking => {
+                    const name = Array.isArray(booking.customers) ? booking.customers[0]?.first_name : booking.customers?.first_name
+                    return (
+                      <div key={booking.id} className="p-4 flex items-start gap-4 hover:bg-gray-50 transition-colors">
+                        <div className="p-2 bg-teal-100 text-teal-600 rounded-lg">
+                          <UsersIcon className="h-5 w-5" />
                         </div>
-                      ),
-                    }))}
-                  />
-                </Card>
+                        <div className="flex-1">
+                          <h4 className="text-sm font-medium text-gray-900">{name || 'Guest'}</h4>
+                          <p className="text-xs text-gray-500">Table • {booking.booking_time} • {booking.party_size} ppl</p>
+                        </div>
+                        <Link href={`/table-bookings/${booking.id}`}>
+                          <Button variant="ghost" size="sm" rightIcon={<ArrowRightIcon className="h-4 w-4" />}>View</Button>
+                        </Link>
+                      </div>
+                    )
+                  })}
+                </div>
               )}
+            </Card>
 
-              <Card
+            {/* Upcoming Table Bookings */}
+            {snapshot.tableBookings.permitted && (
+              <Card 
                 header={
-                  <CardTitle>
-                    {renderCardTitleLink('Upcoming Events', '/events', snapshot.events.permitted)}
-                  </CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle>Upcoming Table Bookings</CardTitle>
+                    <Link href="/table-bookings" className="text-sm text-primary-600 hover:text-primary-700 font-medium">View All</Link>
+                  </div>
                 }
               >
-                {!snapshot.events.permitted ? (
-                  <EmptyState
-                    title="Events access restricted"
-                    description="You need the events:view permission to see upcoming events."
-                  />
-                ) : snapshot.events.error ? (
-                  <EmptyState
-                    title="Events unavailable"
-                    description={snapshot.events.error}
-                  />
-                ) : snapshot.events.upcoming.length === 0 ? (
-                  <EmptyState
-                    title="No upcoming events"
-                    description="No events are scheduled yet."
-                    action={
-                      <LinkButton href="/events/new" variant="primary">
-                        Create Event
-                      </LinkButton>
-                    }
-                  />
+                {groupedTables.length > 0 ? (
+                  <div className="divide-y divide-gray-100">
+                    {groupedTables.map(([label, items]) => (
+                      <div key={label}>
+                        <div className="bg-gray-50 px-4 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider sticky top-0">
+                          {label}
+                        </div>
+                        {items.map(booking => {
+                          const customerData = Array.isArray(booking.customers) ? booking.customers[0] : booking.customers
+                          const fullName = customerData ? `${customerData.first_name || ''} ${customerData.last_name || ''}`.trim() : 'Guest'
+                          return (
+                            <Link key={booking.id} href={`/table-bookings/${booking.id}`} className="block hover:bg-gray-50 transition-colors">
+                              <div className="py-2 px-4 flex items-center gap-3">
+                                <div className="flex-shrink-0 w-10 text-center bg-teal-50 rounded-lg p-1 border border-teal-100 text-teal-700">
+                                  <span className="block text-xs font-bold uppercase">
+                                    {booking.booking_date ? new Date(booking.booking_date).toLocaleDateString('en-US', { month: 'short' }) : 'TBC'}
+                                  </span>
+                                  <span className="block text-base font-bold">
+                                    {booking.booking_date ? new Date(booking.booking_date).getDate() : '?'}
+                                  </span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-900 truncate">
+                                    {fullName} <span className="text-xs text-gray-500">• {booking.booking_time || 'Time TBC'} • {booking.party_size} ppl</span>
+                                  </p>
+                                </div>
+                                <ArrowRightIcon className="h-5 w-5 text-gray-300" />
+                              </div>
+                            </Link>
+                          )
+                        })}
+                      </div>
+                    ))}
+                  </div>
                 ) : (
-                  <>
-                    <SimpleList
-                      items={snapshot.events.upcoming.slice(0, 10).map((event) => {
-                        const eventDate = event.date ? new Date(event.date) : null
-                        const isThisWeek =
-                          eventDate != null && eventDate.getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000
+                  <div className="p-8 text-center text-gray-500">No upcoming table bookings.</div>
+                )}
+              </Card>
+            )}
 
-                        return {
-                          id: event.id,
-                          title: event.name,
-                          subtitle: eventDate
-                            ? `${formatDate(eventDate)} at ${event.time ?? 'TBC'}`
-                            : `Date TBC at ${event.time ?? 'TBC'}`,
-                          href: `/events/${event.id}`,
-                          meta: (
-                            <div className="flex items-center gap-2">
-                              <div className="flex items-center text-sm text-gray-500">
-                                <UsersIcon className="h-5 w-5 mr-1 flex-shrink-0" />
-                                <span className="whitespace-nowrap">
-                                  {event.bookingCount}/{event.capacity ?? '∞'}
+            {/* Upcoming Private Bookings */}
+            {snapshot.privateBookings.permitted && (
+              <Card 
+                header={
+                  <div className="flex items-center justify-between">
+                    <CardTitle>Upcoming Private Bookings</CardTitle>
+                    <Link href="/private-bookings" className="text-sm text-primary-600 hover:text-primary-700 font-medium">View All</Link>
+                  </div>
+                }
+              >
+                {groupedPrivate.length > 0 ? (
+                  <div className="divide-y divide-gray-100">
+                    {groupedPrivate.map(([label, items]) => (
+                      <div key={label}>
+                        <div className="bg-gray-50 px-4 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider sticky top-0">
+                          {label}
+                        </div>
+                        {items.map(booking => (
+                          <Link key={booking.id} href={`/private-bookings/${booking.id}`} className="block hover:bg-gray-50 transition-colors">
+                            <div className="py-2 px-4 flex items-center gap-3">
+                              <div className="flex-shrink-0 w-10 text-center bg-indigo-50 rounded-lg p-1 border border-indigo-100 text-indigo-700">
+                                <span className="block text-xs font-bold uppercase">
+                                  {booking.event_date ? new Date(booking.event_date).toLocaleDateString('en-US', { month: 'short' }) : 'TBC'}
+                                </span>
+                                <span className="block text-base font-bold">
+                                  {booking.event_date ? new Date(booking.event_date).getDate() : '?'}
                                 </span>
                               </div>
-                              {isThisWeek && <Badge variant="warning" size="sm">This week</Badge>}
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-900 truncate">
+                                  {booking.customer_name || 'Guest'} <span className="text-xs text-gray-500">• {booking.start_time || 'Time TBC'} • {booking.status}</span>
+                                </p>
+                              </div>
+                              <ArrowRightIcon className="h-5 w-5 text-gray-300" />
                             </div>
-                          ),
-                        }
-                      })}
-                    />
-                    {snapshot.events.totalUpcoming > 10 && (
-                      <div className="text-center pt-4">
-                        <Badge variant="secondary" size="sm">
-                          +{snapshot.events.totalUpcoming - 10} more events
-                        </Badge>
+                          </Link>
+                        ))}
                       </div>
-                    )}
-                  </>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-8 text-center text-gray-500">No upcoming private bookings.</div>
                 )}
               </Card>
+            )}
 
-              <Card
+            {/* Upcoming Parking */}
+            {snapshot.parking.permitted && (
+              <Card 
                 header={
-                  <CardTitle>
-                    {renderCardTitleLink(
-                      'Upcoming Private Bookings',
-                      '/private-bookings',
-                      snapshot.privateBookings.permitted,
-                    )}
-                  </CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle>Upcoming Parking</CardTitle>
+                    <Link href="/parking" className="text-sm text-primary-600 hover:text-primary-700 font-medium">View All</Link>
+                  </div>
                 }
               >
-                {!snapshot.privateBookings.permitted ? (
-                  <EmptyState
-                    title="Private bookings access restricted"
-                    description="You need the private_bookings:view permission to see this data."
-                  />
-                ) : snapshot.privateBookings.error ? (
-                  <EmptyState
-                    title="Private bookings unavailable"
-                    description={snapshot.privateBookings.error}
-                  />
-                ) : snapshot.privateBookings.upcoming.length === 0 ? (
-                  <EmptyState
-                    title="No upcoming private bookings"
-                    description="No private bookings are scheduled yet."
-                    action={
-                      <LinkButton href="/private-bookings/new" variant="primary">
-                        Create Booking
-                      </LinkButton>
-                    }
-                  />
-                ) : (
-                  <SimpleList
-                    items={snapshot.privateBookings.upcoming.map((booking) => ({
-                      id: booking.id,
-                      title: booking.customer_name ?? 'Unknown customer',
-                      subtitle: `${booking.event_date ? formatDate(new Date(booking.event_date)) : 'Date TBC'} at ${booking.start_time ?? 'TBC'}`,
-                      href: `/private-bookings/${booking.id}`,
-                      meta: (
-                        <Badge
-                          variant={booking.status === 'confirmed' ? 'success' : 'warning'}
-                          size="sm"
-                        >
-                          {booking.status ?? 'pending'}
-                        </Badge>
-                      ),
-                    }))}
-                  />
-                )}
-              </Card>
-
-              <Card
-                header={
-                  <CardTitle>
-                    {renderCardTitleLink(
-                      'Upcoming Table Bookings',
-                      '/table-bookings',
-                      snapshot.tableBookings.permitted,
-                    )}
-                  </CardTitle>
-                }
-              >
-                {!snapshot.tableBookings.permitted ? (
-                  <EmptyState
-                    title="Table bookings access restricted"
-                    description="You need the table_bookings:view permission to see this data."
-                  />
-                ) : snapshot.tableBookings.error ? (
-                  <EmptyState
-                    title="Table bookings unavailable"
-                    description={snapshot.tableBookings.error}
-                  />
-                ) : snapshot.tableBookings.upcoming.length === 0 ? (
-                  <EmptyState
-                    title="No upcoming table bookings"
-                    description="No table bookings are scheduled yet."
-                    action={
-                      <LinkButton href="/table-bookings/new" variant="primary">
-                        Create Booking
-                      </LinkButton>
-                    }
-                  />
-                ) : (
-                  <SimpleList
-                    items={snapshot.tableBookings.upcoming.map((booking) => {
-                      const customer = Array.isArray(booking.customers)
-                        ? booking.customers[0]
-                        : booking.customers
-                      const customerName = customer
-                        ? `${customer.first_name ?? ''} ${customer.last_name ?? ''}`.trim() || 'Unknown customer'
-                        : 'Unknown customer'
-                      return {
-                        id: booking.id,
-                        title: customerName,
-                        subtitle: `${booking.booking_date ? formatDate(new Date(booking.booking_date)) : 'Date TBC'} at ${booking.booking_time ?? 'TBC'}`,
-                        href: `/table-bookings/${booking.id}`,
-                        meta: (
-                          <div className="flex items-center gap-2">
-                            <div className="flex items-center text-sm text-gray-500">
-                              <UsersIcon className="h-5 w-5 mr-1 flex-shrink-0" />
-                              <span className="whitespace-nowrap">
-                                {booking.party_size ?? 0} guests
-                              </span>
-                            </div>
-                            {booking.status && (
-                              <Badge
-                                variant={booking.status === 'confirmed' ? 'success' : 'warning'}
-                                size="sm"
-                              >
-                                {booking.status}
-                              </Badge>
-                            )}
-                          </div>
-                        ),
-                      }
-                    })}
-                  />
-                )}
-              </Card>
-          </section>
-
-          <section id="finance" className="space-y-4">
-              <Card
-                header={
-                  <CardTitle>
-                    {renderCardTitleLink('Upcoming Car Parking', '/parking', snapshot.parking.permitted)}
-                  </CardTitle>
-                }
-              >
-                {!snapshot.parking.permitted ? (
-                  <EmptyState
-                    title="Parking access restricted"
-                    description="You need the parking:view permission to see this data."
-                  />
-                ) : snapshot.parking.error ? (
-                  <EmptyState
-                    title="Parking bookings unavailable"
-                    description={snapshot.parking.error}
-                  />
-                ) : snapshot.parking.upcoming.length === 0 ? (
-                  <EmptyState
-                    title="No upcoming parking bookings"
-                    description="No arrivals scheduled for the next few days."
-                  />
-                ) : (
-                  <SimpleList
-                    items={snapshot.parking.upcoming.map((booking) => ({
-                      id: booking.id,
-                      title: booking.reference ?? 'No reference',
-                      subtitle: booking.start_at ? formatDateTime(booking.start_at) : 'Start time TBC',
-                      href: `/parking/${booking.id}`,
-                      meta: (
-                        <div className="flex items-center gap-2">
-                          {booking.status && (
-                            <Badge
-                              variant={booking.status === 'confirmed' ? 'success' : 'warning'}
-                              size="sm"
-                            >
-                              {booking.status}
-                            </Badge>
-                          )}
-                          {booking.payment_status && (
-                            <Badge
-                              variant={
-                                booking.payment_status === 'paid'
-                                  ? 'success'
-                                  : booking.payment_status === 'pending'
-                                    ? 'warning'
-                                    : 'default'
-                              }
-                              size="sm"
-                            >
-                              {booking.payment_status}
-                            </Badge>
-                          )}
+                {groupedParking.length > 0 ? (
+                  <div className="divide-y divide-gray-100">
+                    {groupedParking.map(([label, items]) => (
+                      <div key={label}>
+                        <div className="bg-gray-50 px-4 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider sticky top-0">
+                          {label}
                         </div>
-                      ),
-                    }))}
-                  />
-                )}
-              </Card>
-
-              <Card
-                header={
-                  <CardTitle>
-                    {renderCardTitleLink(
-                      'Recent Unpaid Invoices',
-                      '/invoices?status=unpaid',
-                      snapshot.invoices.permitted,
-                    )}
-                  </CardTitle>
-                }
-              >
-                {!snapshot.invoices.permitted ? (
-                  <EmptyState
-                    title="Invoices access restricted"
-                    description="You need the invoices:view permission to see this data."
-                  />
-                ) : snapshot.invoices.error ? (
-                  <EmptyState
-                    title="Invoices unavailable"
-                    description={snapshot.invoices.error}
-                  />
-                ) : snapshot.invoices.unpaid.length === 0 ? (
-                  <EmptyState
-                    title="No unpaid invoices"
-                    description="All invoices are up to date."
-                  />
-                ) : (
-                  <SimpleList
-                    items={snapshot.invoices.unpaid.map((invoice) => {
-                      const vendor = Array.isArray(invoice.vendor) ? invoice.vendor[0] : invoice.vendor
-                      const vendorName = vendor?.name ?? 'Unknown vendor'
-                      const formattedTotal =
-                        invoice.total_amount != null && Number.isFinite(invoice.total_amount)
-                          ? currencyFormatter.format(invoice.total_amount)
-                          : currencyFormatter.format(0)
-                      const isOverdue =
-                        invoice.due_date != null && new Date(invoice.due_date) < new Date()
-
-                      return {
-                        id: invoice.id,
-                        title: `Invoice #${invoice.invoice_number ?? '—'}`,
-                        subtitle: vendorName,
-                        href: `/invoices/${invoice.id}`,
-                        meta: (
-                          <div className="flex items-center gap-2">
-                            <div className="flex items-center text-sm font-medium text-gray-900">
-                              <CurrencyPoundIcon className="h-5 w-5 mr-1 flex-shrink-0" />
-                              <span>{formattedTotal}</span>
-                            </div>
-                            {invoice.due_date && (
-                              <Badge
-                                variant={isOverdue ? 'error' : 'warning'}
-                                size="sm"
-                              >
-                                {isOverdue ? 'Overdue' : `Due ${formatDate(new Date(invoice.due_date))}`}
+                        {items.map(booking => (
+                          <Link key={booking.id} href={`/parking`} className="block hover:bg-gray-50 transition-colors">
+                            <div className="py-2 px-4 flex items-center gap-3">
+                              <div className="flex-shrink-0 w-10 text-center bg-gray-50 rounded-lg p-1 border border-gray-200 text-gray-700">
+                                <TruckIcon className="h-5 w-5 mx-auto" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-900 truncate">
+                                  {booking.vehicle_registration} <span className="text-xs text-gray-500">• {booking.start_at ? formatDate(new Date(booking.start_at)) : 'TBC'} {booking.customer_first_name && `• ${booking.customer_first_name} ${booking.customer_last_name || ''}`}</span>
+                                </p>
+                              </div>
+                              <Badge variant={booking.payment_status === 'paid' ? 'success' : 'warning'}>
+                                {booking.payment_status}
                               </Badge>
-                            )}
-                          </div>
-                        ),
-                      }
-                    })}
-                  />
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-8 text-center text-gray-500">No upcoming parking bookings.</div>
                 )}
               </Card>
+            )}
+          </div>
 
-              <Card header={<CardTitle>Section Snapshot</CardTitle>}>
-                <SimpleList
-                  items={sectionSummaries.map((section) => ({
-                    id: section.id,
-                    title: section.label,
-                    subtitle: section.subtitle,
-                    href: section.href,
-                    meta: (
-                      <Badge variant={section.badgeVariant} size="sm">
-                        {section.badgeText}
-                      </Badge>
-                    ),
-                  }))}
-                />
-              </Card>
-          </section>
+          {/* 3. Sidebar (Right Column) */}
+          <div className="space-y-6">
+            
+            {/* Quick Actions */}
+            <Card>
+              <CardTitle className="mb-4">Quick Actions</CardTitle>
+              <div className="grid grid-cols-2 gap-3">
+                {quickActions.filter(qa => qa.permission).map((action) => (
+                  <Link
+                    key={action.label}
+                    href={action.href}
+                    className="flex flex-col items-center justify-center p-3 bg-white border border-gray-200 rounded-lg hover:border-primary-500 hover:shadow-sm transition-all text-center group"
+                  >
+                    <action.icon className="h-6 w-6 text-gray-400 group-hover:text-primary-600 mb-2" />
+                    <span className="text-xs font-medium text-gray-700 group-hover:text-primary-700">{action.label}</span>
+                  </Link>
+                ))}
+              </div>
+            </Card>
+
+            {/* Action Required */}
+            <Card 
+              header={
+                <div className="flex items-center gap-2">
+                  <BellIcon className="h-5 w-5 text-gray-500" />
+                  <CardTitle>Action Required</CardTitle>
+                </div>
+              }
+            >
+              {actionItems.length > 0 ? (
+                <div className="space-y-3">
+                  {actionItems.map(item => (
+                    <Link 
+                      key={item.id}
+                      href={item.href}
+                      className={`
+                        flex items-start gap-3 p-3 rounded-lg border transition-colors
+                        ${item.severity === 'high' 
+                          ? 'bg-red-50 border-red-100 hover:bg-red-100' 
+                          : 'bg-orange-50 border-orange-100 hover:bg-orange-100'
+                        }
+                      `}
+                    >
+                      <item.icon className={`h-5 w-5 mt-0.5 flex-shrink-0 ${item.severity === 'high' ? 'text-red-600' : 'text-orange-600'}`} />
+                      <div>
+                        <p className={`text-sm font-medium ${item.severity === 'high' ? 'text-red-900' : 'text-orange-900'}`}>
+                          {item.title}
+                        </p>
+                        <p className={`text-xs ${item.severity === 'high' ? 'text-red-700' : 'text-orange-700'}`}>
+                          {item.description}
+                        </p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <CheckCircleIcon className="h-10 w-10 text-green-500 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm text-gray-600">All caught up!</p>
+                  <p className="text-xs text-gray-400">No alerts requiring attention.</p>
+                </div>
+              )}
+            </Card>
+
+            {/* Quick Stats / System Info */}
+            {snapshot.employees.permitted && (
+              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">System Status</h4>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Active Staff</span>
+                    <Badge variant="secondary">{snapshot.employees.activeCount}</Badge>
+                  </div>
+                  {snapshot.customers.permitted && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-600">New Customers (7d)</span>
+                      <Badge variant="success">+{snapshot.customers.newThisWeek}</Badge>
+                    </div>
+                  )}
+                  {snapshot.shortLinks.permitted && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-600">Active Short Links</span>
+                      <span className="text-sm font-medium text-gray-900">{snapshot.shortLinks.activeCount}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+          </div>
         </div>
       </div>
     </PageLayout>
-  )
-}
-
-function ReceiptIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      className="h-full w-full"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M9 7h6M9 11h6m-6 4h3m7 3.5-2-2-2 2-2-2-2 2-2-2-2 2V4.75A1.75 1.75 0 0 1 7.75 3h8.5A1.75 1.75 0 0 1 18 4.75V18.5Z"
-      />
-    </svg>
   )
 }

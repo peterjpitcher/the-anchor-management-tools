@@ -1,6 +1,6 @@
 'use server';
 
-import { createAdminClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { createPayPalOrder } from '@/lib/paypal';
 import { revalidatePath } from 'next/cache';
 

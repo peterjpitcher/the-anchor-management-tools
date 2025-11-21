@@ -1,12 +1,12 @@
 'use server'
 
-import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { unstable_cache } from 'next/cache'
 
 // Cache events data for 2 minutes
 export const getEventsWithBookings = unstable_cache(
   async () => {
-    const supabase = getSupabaseAdminClient()
+    const supabase = createAdminClient()
     
     // Get all events with booking counts in a single query
     const { data: events, error } = await supabase
@@ -40,7 +40,7 @@ export const getEventsWithBookings = unstable_cache(
 // Get a single event with full details
 export const getEventDetails = unstable_cache(
   async (eventId: string) => {
-    const supabase = getSupabaseAdminClient()
+    const supabase = createAdminClient()
     
     const { data: event, error } = await supabase
       .from('events')

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { z } from 'zod';
 import { scheduleAndProcessBookingReminders } from '@/app/actions/event-sms-scheduler';
 import { logAuditEvent } from '@/app/actions/audit';

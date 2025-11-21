@@ -1,4 +1,6 @@
 import { redirect } from 'next/navigation'
+import type { VenueSpace } from '@/types/private-bookings'
+
 import { 
   PlusIcon, 
   MapPinIcon,
@@ -6,7 +8,7 @@ import {
   XMarkIcon
 } from '@heroicons/react/24/outline'
 import { createVenueSpace, updateVenueSpace, deleteVenueSpace, getVenueSpacesForManagement } from '@/app/actions/privateBookingActions'
-import { VenueSpaceDeleteButton } from '@/components/VenueSpaceDeleteButton'
+import { VenueSpaceDeleteButton } from '@/components/features/private-bookings/VenueSpaceDeleteButton'
 import { formatDateFull } from '@/lib/dateUtils'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
@@ -88,7 +90,7 @@ export default async function VenueSpacesPage() {
     throw new Error(spacesResult.error)
   }
 
-  const spaces = spacesResult.data ?? []
+  const spaces = (spacesResult.data ?? []) as VenueSpace[]
 
   const statusOptions = [
     { value: 'true', label: 'Active' },

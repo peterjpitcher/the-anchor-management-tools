@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { usePermissions } from '@/contexts/PermissionContext';
 import Link from 'next/link';
 import { 
@@ -16,6 +15,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { TableBooking } from '@/types/table-bookings';
 import { format } from 'date-fns';
+import { searchTableBookings } from '@/app/actions/table-bookings';
 // New UI components
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card } from '@/components/ui-v2/layout/Card';
@@ -31,7 +31,6 @@ import { EmptyState } from '@/components/ui-v2/display/EmptyState';
 import { List } from '@/components/ui-v2/display/List';
 
 export default function TableBookingSearchPage() {
-  const supabase = useSupabase();
   const { hasPermission } = usePermissions();
   const [searchTerm, setSearchTerm] = useState('');
   const [searchType, setSearchType] = useState<'name' | 'phone' | 'reference'>('name');
@@ -52,55 +51,13 @@ export default function TableBookingSearchPage() {
       setSearching(true);
       setHasSearched(true);
       
-      let query = supabase
-        .from('table_bookings')
-        .select(`
-          *,
-          customer:customers(*)
-        `)
-        .order('booking_date', { ascending: false })
-        .order('booking_time', { ascending: false })
-        .limit(50);
+      const result = await searchTableBookings(searchTerm, searchType);
       
-      if (searchType === 'name') {
-        // Search by customer name
-        const { data: customers } = await supabase
-          .from('customers')
-          .select('id')
-          .or(`first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%`);
-        
-        if (customers && customers.length > 0) {
-          query = query.in('customer_id', customers.map((c: any) => c.id));
-        } else {
-          setResults([]);
-          return;
-        }
-      } else if (searchType === 'phone') {
-        // Search by phone number
-        const cleanPhone = searchTerm.replace(/\D/g, '');
-        const { data: customers } = await supabase
-          .from('customers')
-          .select('id')
-          .like('mobile_number', `%${cleanPhone}%`);
-        
-        if (customers && customers.length > 0) {
-          query = query.in('customer_id', customers.map((c: any) => c.id));
-        } else {
-          setResults([]);
-          return;
-        }
-      } else if (searchType === 'reference') {
-        // Search by booking reference
-        query = query.ilike('booking_reference', `%${searchTerm}%`);
-      }
-      
-      const { data, error } = await query;
-      
-      if (error) {
-        console.error('Search error:', error);
+      if (result.error) {
+        console.error('Search error:', result.error);
         setResults([]);
       } else {
-        setResults(data || []);
+        setResults(result.data || []);
       }
     } catch (err) {
       console.error('Search error:', err);

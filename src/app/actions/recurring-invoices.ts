@@ -1,13 +1,14 @@
 'use server'
 
-import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { toLocalIsoDate } from '@/lib/dateUtils'
 import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
-import type { RecurringInvoice, RecurringInvoiceWithDetails, RecurringFrequency, InvoiceLineItemInput, InvoiceStatus, Invoice } from '@/types/invoices'
+import type { RecurringInvoiceWithDetails, RecurringFrequency, InvoiceLineItemInput } from '@/types/invoices'
+import { InvoiceService } from '@/services/invoices'
 
 // Validation schemas
 const CreateRecurringInvoiceSchema = z.object({
@@ -87,7 +88,6 @@ export async function getRecurringInvoice(id: string) {
   try {
     const supabase = await createClient()
     
-    // Check permissions
     const hasPermission = await checkUserPermission('invoices', 'view')
     if (!hasPermission) {
       return { error: 'You do not have permission to view recurring invoices' }
@@ -142,8 +142,9 @@ export async function getRecurringInvoice(id: string) {
 export async function createRecurringInvoice(formData: FormData) {
   try {
     const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
     
-    // Check permissions
     const hasPermission = await checkUserPermission('invoices', 'create')
     if (!hasPermission) {
       return { error: 'You do not have permission to create recurring invoices' }
@@ -162,7 +163,6 @@ export async function createRecurringInvoice(formData: FormData) {
       internal_notes: formData.get('internal_notes') || undefined
     })
 
-    // Calculate next invoice date based on start date and frequency
     const nextInvoiceDate = new Date(validatedData.start_date)
     
     // Create recurring invoice
@@ -203,7 +203,6 @@ export async function createRecurringInvoice(formData: FormData) {
 
         if (lineItemsError) {
           console.error('Error creating line items:', lineItemsError)
-          // Delete the recurring invoice if line items fail
           await supabase.from('recurring_invoices').delete().eq('id', recurringInvoice.id)
           return { error: 'Failed to create line items' }
         }
@@ -211,14 +210,15 @@ export async function createRecurringInvoice(formData: FormData) {
     }
 
     await logAuditEvent({
+      user_id: user.id,
+      user_email: user.email,
       operation_type: 'create',
       resource_type: 'recurring_invoice',
       resource_id: recurringInvoice.id,
       operation_status: 'success',
       additional_info: { 
         vendor_id: validatedData.vendor_id,
-        frequency: validatedData.frequency,
-        start_date: validatedData.start_date
+        frequency: validatedData.frequency
       }
     })
 
@@ -238,14 +238,14 @@ export async function createRecurringInvoice(formData: FormData) {
 export async function updateRecurringInvoice(formData: FormData) {
   try {
     const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
     
-    // Check permissions
     const hasPermission = await checkUserPermission('invoices', 'edit')
     if (!hasPermission) {
       return { error: 'You do not have permission to update recurring invoices' }
     }
 
-    // Parse and validate data
     const validatedData = UpdateRecurringInvoiceSchema.parse({
       id: formData.get('id'),
       vendor_id: formData.get('vendor_id'),
@@ -262,7 +262,6 @@ export async function updateRecurringInvoice(formData: FormData) {
 
     const { id, ...updateData } = validatedData
 
-    // Update recurring invoice
     const { error: updateError } = await supabase
       .from('recurring_invoices')
       .update({
@@ -271,21 +270,13 @@ export async function updateRecurringInvoice(formData: FormData) {
       })
       .eq('id', id)
 
-    if (updateError) {
-      console.error('Error updating recurring invoice:', updateError)
-      return { error: 'Failed to update recurring invoice' }
-    }
+    if (updateError) return { error: 'Failed to update recurring invoice' }
 
-    // Update line items (delete existing and recreate)
-    await supabase
-      .from('recurring_invoice_line_items')
-      .delete()
-      .eq('recurring_invoice_id', id)
+    await supabase.from('recurring_invoice_line_items').delete().eq('recurring_invoice_id', id)
 
     const lineItemsJson = formData.get('line_items')
     if (lineItemsJson) {
       const lineItems = JSON.parse(lineItemsJson as string)
-      
       if (lineItems.length > 0) {
         const { error: lineItemsError } = await supabase
           .from('recurring_invoice_line_items')
@@ -300,23 +291,17 @@ export async function updateRecurringInvoice(formData: FormData) {
               vat_rate: item.vat_rate
             }))
           )
-
-        if (lineItemsError) {
-          console.error('Error updating line items:', lineItemsError)
-          return { error: 'Failed to update line items' }
-        }
+        if (lineItemsError) return { error: 'Failed to update line items' }
       }
     }
 
     await logAuditEvent({
+      user_id: user.id,
+      user_email: user.email,
       operation_type: 'update',
       resource_type: 'recurring_invoice',
       resource_id: id,
-      operation_status: 'success',
-      additional_info: { 
-        vendor_id: validatedData.vendor_id,
-        is_active: validatedData.is_active
-      }
+      operation_status: 'success'
     })
 
     revalidatePath('/invoices/recurring')
@@ -335,73 +320,58 @@ export async function updateRecurringInvoice(formData: FormData) {
 // Delete recurring invoice
 export async function deleteRecurringInvoice(formData: FormData) {
   try {
-    // Check permissions
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
     const hasPermission = await checkUserPermission('invoices', 'delete')
-    if (!hasPermission) {
-      return { error: 'You do not have permission to delete recurring invoices' }
-    }
+    if (!hasPermission) return { error: 'You do not have permission to delete recurring invoices' }
 
     const id = formData.get('id') as string
-    if (!id) {
-      return { error: 'Recurring invoice ID is required' }
-    }
+    if (!id) return { error: 'ID required' }
 
-    const adminClient = await createAdminClient()
-
-    const { error: lineItemsError } = await adminClient
+    const { error: lineItemsError } = await supabase
       .from('recurring_invoice_line_items')
       .delete()
       .eq('recurring_invoice_id', id)
 
-    if (lineItemsError) {
-      console.error('Error removing recurring invoice line items:', lineItemsError)
-      return { error: 'Failed to delete recurring invoice' }
-    }
+    if (lineItemsError) return { error: 'Failed to delete items' }
 
-    const { error: deleteError } = await adminClient
+    const { error: deleteError } = await supabase
       .from('recurring_invoices')
       .delete()
       .eq('id', id)
 
-    if (deleteError) {
-      console.error('Error deleting recurring invoice:', deleteError)
-      return { error: 'Failed to delete recurring invoice' }
-    }
+    if (deleteError) return { error: 'Failed to delete invoice' }
 
     await logAuditEvent({
+      user_id: user.id,
+      user_email: user.email,
       operation_type: 'delete',
       resource_type: 'recurring_invoice',
       resource_id: id,
-      operation_status: 'success',
-      additional_info: { action: 'deleted' }
+      operation_status: 'success'
     })
 
     revalidatePath('/invoices/recurring')
-    
     return { success: true }
   } catch (error) {
-    console.error('Error in deleteRecurringInvoice:', error)
     return { error: 'An unexpected error occurred' }
   }
 }
 
 // Generate invoice from recurring invoice
-type GenerateInvoiceResult = { error: string } | { success: true; invoice: Invoice }
-
 export async function generateInvoiceFromRecurring(
   recurringInvoiceId: string,
   options: { bypassPermissionCheck?: boolean } = {}
-): Promise<GenerateInvoiceResult> {
+) {
   try {
     const supabase = await createClient()
-    const adminClient = await createAdminClient()
+    const { data: { user } } = await supabase.auth.getUser()
     
-    // Check permissions
     if (!options.bypassPermissionCheck) {
       const hasPermission = await checkUserPermission('invoices', 'create')
-      if (!hasPermission) {
-        return { error: 'You do not have permission to generate invoices' }
-      }
+      if (!hasPermission) return { error: 'Insufficient permissions' }
     }
 
     // Get recurring invoice details
@@ -412,9 +382,7 @@ export async function generateInvoiceFromRecurring(
         vendor:invoice_vendors(
           id,
           name,
-          payment_terms,
-          email,
-          contact_name
+          payment_terms
         ),
         line_items:recurring_invoice_line_items(
           catalog_item_id,
@@ -428,14 +396,8 @@ export async function generateInvoiceFromRecurring(
       .eq('id', recurringInvoiceId)
       .single()
 
-    if (fetchError || !recurringInvoice) {
-      console.error('Error fetching recurring invoice:', fetchError)
-      return { error: 'Recurring invoice not found' }
-    }
-
-    if (!recurringInvoice.is_active) {
-      return { error: 'Recurring invoice is not active' }
-    }
+    if (fetchError || !recurringInvoice) return { error: 'Recurring invoice not found' }
+    if (!recurringInvoice.is_active) return { error: 'Recurring invoice is not active' }
 
     // Calculate dates
     const invoiceDate = new Date()
@@ -446,102 +408,35 @@ export async function generateInvoiceFromRecurring(
     const effectivePaymentTerms = vendorPaymentTerms ?? recurringInvoice.days_before_due ?? 0
     dueDate.setDate(dueDate.getDate() + effectivePaymentTerms)
 
-    // Get next invoice number
-    const { data: seriesData } = await adminClient
-      .from('invoice_series')
-      .select('series_code')
-      .single()
-
-    const seriesCode = seriesData?.series_code || 'INV'
-    
-    // Get and increment the sequence atomically
-    const { data: sequenceData, error: sequenceError } = await adminClient
-      .rpc('get_and_increment_invoice_series', { p_series_code: seriesCode })
-      .single()
-
-    if (sequenceError) {
-      console.error('Error getting invoice number:', sequenceError)
-      return { error: 'Failed to generate invoice number' }
-    }
-
-    // Generate invoice number
-    const encoded = ((sequenceData as any).next_sequence + 5000).toString(36).toUpperCase().padStart(5, '0')
-    const invoiceNumber = `${seriesCode}-${encoded}`
-
-    const lineItemsForTotals = (recurringInvoice.line_items ?? []).map((item: any) => ({
+    // Prepare line items for service
+    const lineItems: InvoiceLineItemInput[] = (recurringInvoice.line_items ?? []).map((item: any) => ({
+      catalog_item_id: item.catalog_item_id,
+      description: item.description,
       quantity: Number(item.quantity) || 0,
       unit_price: Number(item.unit_price) || 0,
       discount_percentage: Number(item.discount_percentage) || 0,
       vat_rate: Number(item.vat_rate) || 0
     }))
 
-    const totals = calculateInvoiceTotals(
-      lineItemsForTotals,
-      recurringInvoice.invoice_discount_percentage || 0
-    )
-    const subtotal = totals.subtotalBeforeInvoiceDiscount
-    const invoiceDiscountAmount = totals.invoiceDiscountAmount
-    const totalVat = totals.vatAmount
-    const totalAmount = totals.totalAmount
+    // Use InvoiceService to create the invoice
+    const newInvoice = await InvoiceService.createInvoice({
+      vendor_id: recurringInvoice.vendor_id,
+      invoice_date: toLocalIsoDate(invoiceDate),
+      due_date: toLocalIsoDate(dueDate),
+      reference: recurringInvoice.reference,
+      invoice_discount_percentage: recurringInvoice.invoice_discount_percentage || 0,
+      notes: recurringInvoice.notes,
+      internal_notes: recurringInvoice.internal_notes,
+      line_items: lineItems
+    })
 
-    // Create invoice
-    const { data: newInvoice, error: invoiceError } = await supabase
-      .from('invoices')
-      .insert({
-        invoice_number: invoiceNumber,
-        vendor_id: recurringInvoice.vendor_id,
-        invoice_date: toLocalIsoDate(invoiceDate),
-        due_date: toLocalIsoDate(dueDate),
-        reference: recurringInvoice.reference,
-        invoice_discount_percentage: recurringInvoice.invoice_discount_percentage,
-        subtotal_amount: subtotal,
-        discount_amount: invoiceDiscountAmount,
-        vat_amount: totalVat,
-        total_amount: totalAmount,
-        notes: recurringInvoice.notes,
-        internal_notes: recurringInvoice.internal_notes,
-        status: 'draft' as InvoiceStatus
-      })
-      .select()
-      .single()
-
-    if (invoiceError) {
-      console.error('Error creating invoice:', invoiceError)
-      return { error: 'Failed to create invoice' }
-    }
-
-    // Create line items
-    if (recurringInvoice.line_items && recurringInvoice.line_items.length > 0) {
-      const lineItemsToInsert = recurringInvoice.line_items.map((item: any) => ({
-        invoice_id: newInvoice.id,
-        catalog_item_id: item.catalog_item_id || null,
-        description: item.description,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        discount_percentage: item.discount_percentage || 0,
-        vat_rate: item.vat_rate
-        // GENERATED columns excluded
-      }))
-
-      const { error: lineItemsError } = await supabase
-        .from('invoice_line_items')
-        .insert(lineItemsToInsert)
-
-      if (lineItemsError) {
-        console.error('Error creating line items:', lineItemsError)
-        // Rollback invoice creation
-        await supabase.from('invoices').delete().eq('id', newInvoice.id)
-        return { error: 'Failed to create invoice line items' }
-      }
-    }
-
-    // Update next invoice date
+    // Update recurring invoice next date
     const nextDate = calculateNextInvoiceDate(
       invoiceDate,
       recurringInvoice.frequency as RecurringFrequency
     )
 
-    const { error: updateError } = await supabase
+    await supabase
       .from('recurring_invoices')
       .update({
         next_invoice_date: nextDate.toISOString(),
@@ -550,11 +445,8 @@ export async function generateInvoiceFromRecurring(
       })
       .eq('id', recurringInvoiceId)
 
-    if (updateError) {
-      console.error('Error updating recurring invoice:', updateError)
-    }
-
     await logAuditEvent({
+      user_id: user?.id, // Might be undefined if triggered by cron, handle gracefully in audit
       operation_type: 'create',
       resource_type: 'invoice',
       resource_id: newInvoice.id,
@@ -570,32 +462,26 @@ export async function generateInvoiceFromRecurring(
     revalidatePath('/invoices/recurring')
     
     return { success: true, invoice: newInvoice }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in generateInvoiceFromRecurring:', error)
-    return { error: 'An unexpected error occurred' }
+    return { error: error.message || 'An unexpected error occurred' }
   }
 }
 
-// Toggle recurring invoice active status
 export async function toggleRecurringInvoiceStatus(formData: FormData) {
   try {
     const supabase = await createClient()
-    
-    // Check permissions
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
     const hasPermission = await checkUserPermission('invoices', 'edit')
-    if (!hasPermission) {
-      return { error: 'You do not have permission to update recurring invoices' }
-    }
+    if (!hasPermission) return { error: 'Insufficient permissions' }
 
     const id = formData.get('id') as string
     const currentStatus = formData.get('current_status') === 'true'
-    
-    if (!id) {
-      return { error: 'Recurring invoice ID is required' }
-    }
+    if (!id) return { error: 'ID required' }
 
-    // Toggle the status
-    const { error: updateError } = await supabase
+    const { error } = await supabase
       .from('recurring_invoices')
       .update({ 
         is_active: !currentStatus,
@@ -603,36 +489,29 @@ export async function toggleRecurringInvoiceStatus(formData: FormData) {
       })
       .eq('id', id)
 
-    if (updateError) {
-      console.error('Error toggling recurring invoice status:', updateError)
-      return { error: 'Failed to update recurring invoice status' }
-    }
+    if (error) return { error: 'Failed to toggle status' }
 
     await logAuditEvent({
+      user_id: user.id,
+      user_email: user.email,
       operation_type: 'update',
       resource_type: 'recurring_invoice',
       resource_id: id,
       operation_status: 'success',
       additional_info: { 
-        action: !currentStatus ? 'activated' : 'deactivated',
-        old_status: currentStatus,
-        new_status: !currentStatus
+        action: !currentStatus ? 'activated' : 'deactivated'
       }
     })
 
     revalidatePath('/invoices/recurring')
-    
     return { success: true, newStatus: !currentStatus }
   } catch (error) {
-    console.error('Error in toggleRecurringInvoiceStatus:', error)
     return { error: 'An unexpected error occurred' }
   }
 }
 
-// Helper function to calculate next invoice date
 function calculateNextInvoiceDate(currentDate: Date, frequency: RecurringFrequency): Date {
   const nextDate = new Date(currentDate)
-  
   switch (frequency) {
     case 'weekly':
       nextDate.setDate(nextDate.getDate() + 7)
@@ -647,6 +526,5 @@ function calculateNextInvoiceDate(currentDate: Date, frequency: RecurringFrequen
       nextDate.setFullYear(nextDate.getFullYear() + 1)
       break
   }
-  
   return nextDate
 }

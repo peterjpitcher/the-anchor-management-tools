@@ -1,12 +1,12 @@
 import { redirect } from 'next/navigation'
-import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { buildEventChecklist, EVENT_CHECKLIST_TOTAL_TASKS, ChecklistTodoItem } from '@/lib/event-checklist'
 import { getTodayIsoDate, getLocalIsoDateDaysAgo, getLocalIsoDateDaysAhead } from '@/lib/dateUtils'
 import { checkUserPermission } from '@/app/actions/rbac'
 import EventsClient from './EventsClient'
 
 async function getEvents(): Promise<{ events: any[]; todos: ChecklistTodoItem[]; error?: string }> {
-  const supabase = getSupabaseAdminClient()
+  const supabase = createAdminClient()
   const errors: string[] = []
   const PAST_WINDOW_DAYS = 90
   const FUTURE_WINDOW_DAYS = 180
@@ -33,6 +33,7 @@ async function getEvents(): Promise<{ events: any[]; todos: ChecklistTodoItem[];
     console.error('Error fetching events:', error)
     errors.push('We were unable to load events. Please try again.')
   }
+  // ... rest of the function
   
   const safeEvents = events ?? []
   const eventIds = safeEvents.map(event => event.id).filter(Boolean) as string[]

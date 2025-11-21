@@ -1,0 +1,142 @@
+name: Cron Jobs
+
+on:
+  schedule:
+    # Job Processor (Every minute)
+    - cron: '* * * * *'
+    # Reminders (9 AM daily)
+    - cron: '0 9 * * *'
+    # Invoice Reminders (10 AM daily)
+    - cron: '0 10 * * *'
+    # Recurring Invoices (8 AM daily)
+    - cron: '0 8 * * *'
+    # Auto Send Invoices (7 AM daily)
+    - cron: '0 7 * * *'
+    # Apply Customer Labels (2 AM daily)
+    - cron: '0 2 * * *'
+    # Table Booking Reminders (Every 4 hours)
+    - cron: '0 */4 * * *'
+    # Table Booking Monitoring (Hourly)
+    - cron: '0 * * * *'
+    # Generate Slots (2 AM on Monday)
+    - cron: '0 2 * * 1'
+    # Cleanup Rate Limits (Midnight daily)
+    - cron: '0 0 * * *'
+    # Reconcile SMS (Hourly)
+    - cron: '0 * * * *'
+
+  workflow_dispatch:
+    inputs:
+      job:
+        description: 'Job to run (optional)'
+        required: false
+        type: choice
+        options:
+          - all
+          - process-jobs
+          - reminders
+          - invoice-reminders
+          - recurring-invoices
+          - auto-send-invoices
+          - apply-customer-labels
+          - birthday-reminders
+          - table-booking-reminders
+          - table-booking-monitoring
+          - generate-slots
+          - cleanup-rate-limits
+          - reconcile-sms
+
+jobs:
+  cron-runner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Secrets
+        run: |
+          if [ -z "${{ secrets.CRON_SECRET }}" ]; then
+            echo "Error: CRON_SECRET is not set"
+            exit 1
+          fi
+
+      - name: Run Cron Job
+        run: |
+          BASE_URL="https://management.orangejelly.co.uk"
+          AUTH_HEADER="Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+          
+          run_job() {
+            local endpoint=$1
+            local name=$2
+            echo "Running $name..."
+            response=$(curl -s -w "\n%{http_code}" -X GET "$BASE_URL$endpoint" -H "$AUTH_HEADER")
+            http_code=$(echo "$response" | tail -n1)
+            content=$(echo "$response" | sed '$d')
+            
+            if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+              echo "✅ $name success ($http_code)"
+            else
+              echo "❌ $name failed ($http_code): $content"
+              # We don't exit here to allow other jobs to run if "all" is selected
+            fi
+          }
+
+          # Determine which jobs to run based on schedule or input
+          
+          # 1. Job Processor (Every minute)
+          if [ "${{ github.event_name }}" == "schedule" ] && [ "${{ github.event.schedule }}" == "* * * * *" ] || [ "${{ inputs.job }}" == "process-jobs" ] || [ "${{ inputs.job }}" == "all" ] || [ "${{ inputs.job }}" == "" ]; then
+             # Using the existing job processor endpoint
+             # Note: The old action used POST, but typically cron endpoints are GET. 
+             # The route handler supports both GET (health) and POST (process).
+             # Let's use POST as per the previous github action.
+             echo "Running Job Processor..."
+             curl -s -X POST "$BASE_URL/api/jobs/process" \
+               -H "$AUTH_HEADER" \
+               -H "Content-Type: application/json" \
+               -H "x-vercel-cron: 1"
+          fi
+
+          # 2. Reminders (9 AM) & Event Checklist
+          if [ "${{ github.event.schedule }}" == "0 9 * * *" ] || [ "${{ inputs.job }}" == "reminders" ] || [ "${{ inputs.job }}" == "all" ]; then
+            run_job "/api/cron/reminders" "Reminders"
+            run_job "/api/cron/event-checklist-reminders" "Event Checklist"
+          fi
+
+          # 3. Invoice Reminders (10 AM)
+          if [ "${{ github.event.schedule }}" == "0 10 * * *" ] || [ "${{ inputs.job }}" == "invoice-reminders" ] || [ "${{ inputs.job }}" == "all" ]; then
+            run_job "/api/cron/invoice-reminders" "Invoice Reminders"
+          fi
+
+          # 4. Recurring Invoices & Birthday Reminders (8 AM)
+          if [ "${{ github.event.schedule }}" == "0 8 * * *" ] || [ "${{ inputs.job }}" == "recurring-invoices" ] || [ "${{ inputs.job }}" == "birthday-reminders" ] || [ "${{ inputs.job }}" == "all" ]; then
+            run_job "/api/cron/recurring-invoices" "Recurring Invoices"
+            run_job "/api/cron/birthday-reminders" "Birthday Reminders"
+          fi
+
+          # 5. Auto Send Invoices (7 AM)
+          if [ "${{ github.event.schedule }}" == "0 7 * * *" ] || [ "${{ inputs.job }}" == "auto-send-invoices" ] || [ "${{ inputs.job }}" == "all" ]; then
+            run_job "/api/cron/auto-send-invoices" "Auto Send Invoices"
+          fi
+
+          # 6. Customer Labels (2 AM)
+          if [ "${{ github.event.schedule }}" == "0 2 * * *" ] || [ "${{ inputs.job }}" == "apply-customer-labels" ] || [ "${{ inputs.job }}" == "all" ]; then
+            run_job "/api/cron/apply-customer-labels" "Customer Labels"
+          fi
+
+          # 7. Table Booking Reminders (Every 4 hours)
+          if [ "${{ github.event.schedule }}" == "0 */4 * * *" ] || [ "${{ inputs.job }}" == "table-booking-reminders" ] || [ "${{ inputs.job }}" == "all" ]; then
+            run_job "/api/cron/table-booking-reminders" "Table Booking Reminders"
+          fi
+
+          # 8. Table Booking Monitoring & Reconcile SMS (Hourly)
+          if [ "${{ github.event.schedule }}" == "0 * * * *" ] || [ "${{ inputs.job }}" == "table-booking-monitoring" ] || [ "${{ inputs.job }}" == "reconcile-sms" ] || [ "${{ inputs.job }}" == "all" ]; then
+            run_job "/api/cron/table-booking-monitoring" "Table Booking Monitoring"
+            run_job "/api/cron/reconcile-sms" "Reconcile SMS"
+          fi
+
+          # 9. Generate Slots (2 AM Mon)
+          if [ "${{ github.event.schedule }}" == "0 2 * * 1" ] || [ "${{ inputs.job }}" == "generate-slots" ] || [ "${{ inputs.job }}" == "all" ]; then
+            run_job "/api/cron/generate-slots" "Generate Slots"
+          fi
+
+          # 10. Cleanup Rate Limits (Midnight)
+          if [ "${{ github.event.schedule }}" == "0 0 * * *" ] || [ "${{ inputs.job }}" == "cleanup-rate-limits" ] || [ "${{ inputs.job }}" == "all" ]; then
+            run_job "/api/cron/cleanup-rate-limits" "Cleanup Rate Limits"
+          fi
