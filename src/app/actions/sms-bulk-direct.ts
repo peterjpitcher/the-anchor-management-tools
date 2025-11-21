@@ -5,7 +5,7 @@
 
 import { jobQueue } from '@/lib/background-jobs'
 import { logger } from '@/lib/logger'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { headers } from 'next/headers'
 import { rateLimiters } from '@/lib/rate-limit'
 import { checkUserPermission } from './rbac'

@@ -7,18 +7,18 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Tabs } from '@/components/ui-v2/navigation/Tabs'
 import { Badge } from '@/components/ui-v2/display/Badge'
-import DeleteEmployeeButton from '@/components/DeleteEmployeeButton'
-import EmployeeNotesList from '@/components/EmployeeNotesList'
-import AddEmployeeNoteForm from '@/components/AddEmployeeNoteForm'
-import EmployeeAttachmentsList from '@/components/EmployeeAttachmentsList'
-import AddEmployeeAttachmentForm from '@/components/AddEmployeeAttachmentForm'
-import EmergencyContactsTab from '@/components/EmergencyContactsTab'
-import FinancialDetailsTab from '@/components/FinancialDetailsTab'
-import HealthRecordsTab from '@/components/HealthRecordsTab'
-import RightToWorkTab from '@/components/RightToWorkTab'
-import OnboardingChecklistTab from '@/components/OnboardingChecklistTab'
-import { EmployeeAuditTrail } from '@/components/EmployeeAuditTrail'
-import { EmployeeRecentChanges } from '@/components/EmployeeRecentChanges'
+import DeleteEmployeeButton from '@/components/features/employees/DeleteEmployeeButton'
+import EmployeeNotesList from '@/components/features/employees/EmployeeNotesList'
+import AddEmployeeNoteForm from '@/components/features/employees/AddEmployeeNoteForm'
+import EmployeeAttachmentsList from '@/components/features/employees/EmployeeAttachmentsList'
+import AddEmployeeAttachmentForm from '@/components/features/employees/AddEmployeeAttachmentForm'
+import EmergencyContactsTab from '@/components/features/employees/EmergencyContactsTab'
+import FinancialDetailsTab from '@/components/features/employees/FinancialDetailsTab'
+import HealthRecordsTab from '@/components/features/employees/HealthRecordsTab'
+import RightToWorkTab from '@/components/features/employees/RightToWorkTab'
+import OnboardingChecklistTab from '@/components/features/employees/OnboardingChecklistTab'
+import { EmployeeAuditTrail } from '@/components/features/employees/EmployeeAuditTrail'
+import { EmployeeRecentChanges } from '@/components/features/employees/EmployeeRecentChanges'
 import { getEmployeeDetailData } from '@/app/actions/employeeDetails'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
@@ -178,7 +178,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     { label: 'Audit Trail', href: '#audit' },
   ]
 
-  const headerActions = (
+  const navActions = (
     <div className="flex flex-wrap items-center gap-2">
       {permissions.canEdit && (
         <LinkButton href={`/employees/${employee.employee_id}/edit`} size="sm" variant="primary">
@@ -200,7 +200,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
       subtitle={employee.job_title}
       backButton={{ label: 'Back to Employees', href: '/employees' }}
       navItems={navItems}
-      headerActions={headerActions}
+      navActions={navActions}
       containerSize="2xl"
     >
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

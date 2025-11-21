@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { testCalendarConnection, isCalendarConfigured } from '@/lib/google-calendar'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function GET(_request: Request) {
   try {

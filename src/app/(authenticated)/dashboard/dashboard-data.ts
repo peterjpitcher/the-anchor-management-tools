@@ -1,7 +1,9 @@
 'use server'
 
 import { unstable_cache } from 'next/cache'
-import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { PrivateBookingService } from '@/services/private-bookings'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 
 type EventSummary = {
@@ -26,6 +28,8 @@ type CustomersSnapshot = {
   permitted: boolean
   total: number
   newThisWeek: number
+  newThisMonth: number
+  newLastMonth: number
   error?: string
 }
 
@@ -113,6 +117,9 @@ type InvoicesSnapshot = {
   unpaid: InvoiceSummary[]
   unpaidCount: number
   overdueCount: number
+  totalUnpaidValue: number
+  overdue: InvoiceSummary[]
+  dueToday: InvoiceSummary[]
   error?: string
 }
 
@@ -163,6 +170,13 @@ type LoyaltySnapshot = {
   permitted: boolean
 }
 
+type SystemHealthSnapshot = {
+  permitted: boolean
+  smsFailures24h: number
+  failedCronJobs24h: number
+  error?: string
+}
+
 type ProfileSnapshot = {
   permitted: boolean
   email: string | null
@@ -186,6 +200,7 @@ export type DashboardSnapshot = {
   shortLinks: ShortLinksSnapshot
   users: UsersSnapshot
   loyalty: LoyaltySnapshot
+  systemHealth: SystemHealthSnapshot
 }
 
 type PermissionRecord = {
@@ -237,6 +252,13 @@ const fetchDashboardSnapshot = unstable_cache(
     const todayIso = getTodayIsoDate()
     const nowIso = new Date().toISOString()
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    
+    // Calculate month ranges
+    const now = new Date()
+    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString()
+    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0).toISOString() // Last day of previous month
 
     const permissionsMap = new Map<string, Set<string>>()
     const { data: permissionsData, error: permissionsError } = await supabase
@@ -259,11 +281,12 @@ const fetchDashboardSnapshot = unstable_cache(
       totalUpcoming: 0,
     }
 
-    // Initialize all snapshot objects
     const customers: CustomersSnapshot = {
       permitted: hasModuleAccess(permissionsMap, 'customers'),
       total: 0,
       newThisWeek: 0,
+      newThisMonth: 0,
+      newLastMonth: 0,
     }
 
     const messages: MessagesSnapshot = {
@@ -296,6 +319,9 @@ const fetchDashboardSnapshot = unstable_cache(
       unpaid: [],
       unpaidCount: 0,
       overdueCount: 0,
+      totalUnpaidValue: 0,
+      overdue: [],
+      dueToday: [],
     }
 
     const employees: EmployeesSnapshot = {
@@ -339,6 +365,12 @@ const fetchDashboardSnapshot = unstable_cache(
 
     const loyalty: LoyaltySnapshot = {
       permitted: hasModuleAccess(permissionsMap, 'loyalty'),
+    }
+
+    const systemHealth: SystemHealthSnapshot = {
+      permitted: hasModuleAccess(permissionsMap, 'settings') || hasModuleAccess(permissionsMap, 'users'),
+      smsFailures24h: 0,
+      failedCronJobs24h: 0,
     }
 
     // Execute all permitted fetches in parallel
@@ -389,19 +421,32 @@ const fetchDashboardSnapshot = unstable_cache(
 
       customers.permitted ? (async () => {
         try {
-          const [totalResult, newResult] = await Promise.all([
+          const [totalResult, newWeekResult, newMonthResult, lastMonthResult] = await Promise.all([
             supabase.from('customers').select('id', { count: 'exact', head: true }),
             supabase
               .from('customers')
               .select('id', { count: 'exact', head: true })
               .gte('created_at', sevenDaysAgo),
+            supabase
+              .from('customers')
+              .select('id', { count: 'exact', head: true })
+              .gte('created_at', startOfThisMonth),
+            supabase
+              .from('customers')
+              .select('id', { count: 'exact', head: true })
+              .gte('created_at', startOfLastMonth)
+              .lt('created_at', startOfThisMonth),
           ])
 
           if (totalResult.error) throw totalResult.error
-          if (newResult.error) throw newResult.error
+          if (newWeekResult.error) throw newWeekResult.error
+          if (newMonthResult.error) throw newMonthResult.error
+          if (lastMonthResult.error) throw lastMonthResult.error
 
           customers.total = totalResult.count ?? 0
-          customers.newThisWeek = newResult.count ?? 0
+          customers.newThisWeek = newWeekResult.count ?? 0
+          customers.newThisMonth = newMonthResult.count ?? 0
+          customers.newLastMonth = lastMonthResult.count ?? 0
         } catch (error) {
           console.error('Failed to load dashboard customer metrics:', error)
           customers.error = 'Failed to load customer metrics'
@@ -427,25 +472,10 @@ const fetchDashboardSnapshot = unstable_cache(
 
       privateBookings.permitted ? (async () => {
         try {
-          const { data, error, count } = await supabase
-            .from('private_bookings')
-            .select(
-              `
-                id,
-                customer_name,
-                event_date,
-                start_time,
-                status,
-                customer_id
-              `,
-              { count: 'exact' }
-            )
-            .gte('event_date', todayIso)
-            .order('event_date', { ascending: true })
-            .order('start_time', { ascending: true })
-            .range(0, 4)
-
-          if (error) throw error
+          const { data, count } = await PrivateBookingService.getBookings({
+            fromDate: todayIso,
+            limit: 20
+          });
 
           privateBookings.upcoming = (data ?? []).map((booking) => ({
             id: booking.id as string,
@@ -485,7 +515,7 @@ const fetchDashboardSnapshot = unstable_cache(
             .neq('status', 'cancelled')
             .order('booking_date', { ascending: true })
             .order('booking_time', { ascending: true })
-            .range(0, 4)
+            .range(0, 19)
 
           if (error) throw error
 
@@ -523,10 +553,10 @@ const fetchDashboardSnapshot = unstable_cache(
               `,
               { count: 'exact' }
             )
-            .gte('start_at', nowIso)
+            .gte('start_at', todayIso) // Changed from nowIso to todayIso
             .in('status', ['pending_payment', 'confirmed'])
             .order('start_at', { ascending: true })
-            .range(0, 4)
+            .range(0, 19)
 
           if (error) throw error
 
@@ -556,7 +586,8 @@ const fetchDashboardSnapshot = unstable_cache(
 
       invoices.permitted ? (async () => {
         try {
-          const [unpaidResult, overdueResult] = await Promise.all([
+          const [unpaidResult, overdueCountResult, allUnpaidResult, overdueListResult, dueTodayListResult] = await Promise.all([
+            // Limited unpaid for display in lists
             supabase
               .from('invoices')
               .select(
@@ -573,15 +604,58 @@ const fetchDashboardSnapshot = unstable_cache(
               .neq('status', 'paid')
               .order('due_date', { ascending: true })
               .range(0, 4),
+            // Overdue count (already there)
             supabase
               .from('invoices')
               .select('id', { count: 'exact', head: true })
               .neq('status', 'paid')
               .lt('due_date', todayIso),
+            // Total unpaid value (already there)
+            supabase
+              .from('invoices')
+              .select('total_amount')
+              .neq('status', 'paid'),
+            // NEW: Overdue invoices list (up to 5 for display in today's schedule)
+            supabase
+              .from('invoices')
+              .select(
+                `
+                  id,
+                  invoice_number,
+                  total_amount,
+                  status,
+                  due_date,
+                  vendor:invoice_vendors(name)
+                `
+              )
+              .neq('status', 'paid')
+              .lt('due_date', todayIso)
+              .order('due_date', { ascending: true })
+              .range(0, 4),
+            // NEW: Invoices due today list (up to 5 for display in today's schedule)
+            supabase
+              .from('invoices')
+              .select(
+                `
+                  id,
+                  invoice_number,
+                  total_amount,
+                  status,
+                  due_date,
+                  vendor:invoice_vendors(name)
+                `
+              )
+              .neq('status', 'paid')
+              .eq('due_date', todayIso)
+              .order('due_date', { ascending: true })
+              .range(0, 4),
           ])
 
           if (unpaidResult.error) throw unpaidResult.error
-          if (overdueResult.error) throw overdueResult.error
+          if (overdueCountResult.error) throw overdueCountResult.error
+          if (allUnpaidResult.error) throw allUnpaidResult.error
+          if (overdueListResult.error) throw overdueListResult.error
+          if (dueTodayListResult.error) throw dueTodayListResult.error
 
           invoices.unpaid = (unpaidResult.data ?? []).map((invoice) => ({
             id: invoice.id as string,
@@ -592,7 +666,27 @@ const fetchDashboardSnapshot = unstable_cache(
             vendor: invoice.vendor ?? null,
           }))
           invoices.unpaidCount = unpaidResult.count ?? invoices.unpaid.length
-          invoices.overdueCount = overdueResult.count ?? 0
+          invoices.overdueCount = overdueCountResult.count ?? 0
+          
+          invoices.totalUnpaidValue = (allUnpaidResult.data ?? []).reduce((sum, inv) => sum + (Number(inv.total_amount) || 0), 0)
+
+          invoices.overdue = (overdueListResult.data ?? []).map((invoice) => ({
+            id: invoice.id as string,
+            invoice_number: (invoice.invoice_number as string) ?? null,
+            total_amount: invoice.total_amount != null ? Number(invoice.total_amount) : null,
+            status: (invoice.status as string) ?? null,
+            due_date: (invoice.due_date as string) ?? null,
+            vendor: invoice.vendor ?? null,
+          }))
+
+          invoices.dueToday = (dueTodayListResult.data ?? []).map((invoice) => ({
+            id: invoice.id as string,
+            invoice_number: (invoice.invoice_number as string) ?? null,
+            total_amount: invoice.total_amount != null ? Number(invoice.total_amount) : null,
+            status: (invoice.status as string) ?? null,
+            due_date: (invoice.due_date as string) ?? null,
+            vendor: invoice.vendor ?? null,
+          }))
         } catch (error) {
           console.error('Failed to load dashboard invoices:', error)
           invoices.error = 'Failed to load invoices'
@@ -736,6 +830,41 @@ const fetchDashboardSnapshot = unstable_cache(
           usersSnapshot.error = 'Failed to load user metrics'
         }
       })() : Promise.resolve(),
+
+      systemHealth.permitted ? (async () => {
+        try {
+          const admin = createAdminClient()
+          const [smsResult, cronResult] = await Promise.all([
+            admin
+              .from('messages')
+              .select('id', { count: 'exact', head: true })
+              .eq('status', 'failed')
+              .gte('created_at', oneDayAgo),
+            admin
+              .from('cron_job_runs')
+              .select('id', { count: 'exact', head: true })
+              .eq('status', 'failed')
+              .gte('created_at', oneDayAgo),
+          ])
+
+          if (smsResult.error) throw smsResult.error
+          
+          systemHealth.smsFailures24h = smsResult.count ?? 0
+          
+          if (cronResult.error) {
+             console.warn('Failed to fetch cron job runs, possibly table missing:', cronResult.error)
+             systemHealth.failedCronJobs24h = 0
+          } else {
+             systemHealth.failedCronJobs24h = cronResult.count ?? 0
+          }
+
+        } catch (error) {
+          console.error('Failed to load dashboard system health:', error)
+          systemHealth.error = 'Failed to load system health'
+        }
+      })() : Promise.resolve(),
+      // Ensure all items in Promise.allSettled are followed by a comma,
+      // and the final closing parenthesis and bracket match the opening ones.
     ])
 
     const profile: ProfileSnapshot = {
@@ -761,6 +890,7 @@ const fetchDashboardSnapshot = unstable_cache(
       shortLinks,
       users: usersSnapshot,
       loyalty,
+      systemHealth,
     }
   },
   ['dashboard-snapshot'],

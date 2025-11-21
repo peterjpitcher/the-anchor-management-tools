@@ -3,7 +3,7 @@ import archiver, { type ArchiverError } from 'archiver'
 import { PassThrough } from 'stream'
 import Papa from 'papaparse'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { receiptQuarterExportSchema } from '@/lib/validation'
 import type { ReceiptTransaction, ReceiptFile } from '@/types/database'
 

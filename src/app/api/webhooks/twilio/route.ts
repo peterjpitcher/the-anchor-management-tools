@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs'
-import { getSupabaseAdminClient, getSupabaseAnonClient } from '@/lib/supabase-singleton';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@supabase/supabase-js';
 import twilio from 'twilio';
 import { retry, RetryConfigs } from '@/lib/retry';
@@ -10,7 +10,27 @@ import { skipTwilioSignatureValidation } from '@/lib/env';
 
 // Create public Supabase client for logging (no auth required)
 function getPublicSupabaseClient() {
-  return getSupabaseAnonClient();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Missing Supabase environment variables')
+  }
+
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+    db: {
+      schema: 'public'
+    },
+    global: {
+      headers: {
+        'x-client-info': 'supabase-anon-webhook'
+      }
+    }
+  })
 }
 
 // Log webhook attempt to database
@@ -154,7 +174,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Get admin client for database operations
-    adminClient = getSupabaseAdminClient();
+    adminClient = createAdminClient();
     
     // Determine webhook type and process
     if (params.Body && params.From && params.To) {

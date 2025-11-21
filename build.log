@@ -1,0 +1,208 @@
+
+> the-anchor-management-tools@0.1.0 build
+> next build
+
+   ▲ Next.js 15.3.3
+   - Environments: .env.local
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 9.0s
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/127) ...
+   Generating static pages (31/127) 
+   Generating static pages (63/127) 
+   Generating static pages (95/127) 
+ ✓ Generating static pages (127/127)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                            Size  First Load JS
+┌ ○ /                                                 373 B         102 kB
+├ ○ /_not-found                                       990 B         103 kB
+├ ƒ /api/bookings                                     327 B         102 kB
+├ ƒ /api/bookings/confirm                             327 B         102 kB
+├ ƒ /api/bookings/initiate                            327 B         102 kB
+├ ƒ /api/bug-report                                   327 B         102 kB
+├ ƒ /api/business-hours                               327 B         102 kB
+├ ƒ /api/business/amenities                           327 B         102 kB
+├ ƒ /api/business/hours                               327 B         102 kB
+├ ƒ /api/cron/apply-customer-labels                   327 B         102 kB
+├ ƒ /api/cron/auto-send-invoices                      327 B         102 kB
+├ ƒ /api/cron/birthday-reminders                      327 B         102 kB
+├ ƒ /api/cron/cleanup-rate-limits                     327 B         102 kB
+├ ƒ /api/cron/event-checklist-reminders               327 B         102 kB
+├ ƒ /api/cron/generate-slots                          327 B         102 kB
+├ ƒ /api/cron/invoice-reminders                       327 B         102 kB
+├ ƒ /api/cron/parking-notifications                   327 B         102 kB
+├ ƒ /api/cron/reconcile-sms                           327 B         102 kB
+├ ƒ /api/cron/recurring-invoices                      327 B         102 kB
+├ ƒ /api/cron/reminders                               327 B         102 kB
+├ ƒ /api/cron/table-booking-monitoring                327 B         102 kB
+├ ƒ /api/cron/table-booking-reminders                 327 B         102 kB
+├ ƒ /api/debug/calendar                               327 B         102 kB
+├ ƒ /api/debug/test-template                          327 B         102 kB
+├ ƒ /api/event-categories                             327 B         102 kB
+├ ƒ /api/events                                       327 B         102 kB
+├ ƒ /api/events/[id]                                  327 B         102 kB
+├ ƒ /api/events/[id]/check-availability               327 B         102 kB
+├ ƒ /api/events/recurring                             327 B         102 kB
+├ ƒ /api/events/today                                 327 B         102 kB
+├ ƒ /api/invoices/[id]/pdf                            327 B         102 kB
+├ ƒ /api/invoices/export                              327 B         102 kB
+├ ƒ /api/jobs/process                                 327 B         102 kB
+├ ƒ /api/jobs/process-now                             327 B         102 kB
+├ ƒ /api/menu                                         327 B         102 kB
+├ ƒ /api/menu-management/dishes                       327 B         102 kB
+├ ƒ /api/menu-management/dishes/[id]                  327 B         102 kB
+├ ƒ /api/menu-management/ingredients                  327 B         102 kB
+├ ƒ /api/menu-management/ingredients/[id]             327 B         102 kB
+├ ƒ /api/menu-management/ingredients/[id]/prices      327 B         102 kB
+├ ƒ /api/menu-management/menus                        327 B         102 kB
+├ ƒ /api/menu-management/recipes                      327 B         102 kB
+├ ƒ /api/menu-management/recipes/[id]                 327 B         102 kB
+├ ƒ /api/menu/dietary/[type]                          327 B         102 kB
+├ ƒ /api/menu/specials                                327 B         102 kB
+├ ƒ /api/messages/bulk/customers                      327 B         102 kB
+├ ƒ /api/messages/unread-count                        327 B         102 kB
+├ ƒ /api/monitoring/table-bookings/health             327 B         102 kB
+├ ƒ /api/parking/availability                         327 B         102 kB
+├ ƒ /api/parking/bookings                             327 B         102 kB
+├ ƒ /api/parking/bookings/[id]                        327 B         102 kB
+├ ƒ /api/parking/payment/return                       327 B         102 kB
+├ ƒ /api/parking/rates                                327 B         102 kB
+├ ƒ /api/private-bookings/contract                    327 B         102 kB
+├ ƒ /api/quotes/[id]/pdf                              327 B         102 kB
+├ ƒ /api/receipts/export                              327 B         102 kB
+├ ƒ /api/redirect                                     327 B         102 kB
+├ ƒ /api/redirect/[code]                              327 B         102 kB
+├ ƒ /api/table-bookings                               327 B         102 kB
+├ ƒ /api/table-bookings/[booking_reference]           327 B         102 kB
+├ ƒ /api/table-bookings/[booking_reference]/cancel    327 B         102 kB
+├ ƒ /api/table-bookings/[booking_reference]/public    327 B         102 kB
+├ ƒ /api/table-bookings/availability                  327 B         102 kB
+├ ƒ /api/table-bookings/confirm-payment               327 B         102 kB
+├ ƒ /api/table-bookings/menu/sunday-lunch             327 B         102 kB
+├ ƒ /api/table-bookings/payment/create                327 B         102 kB
+├ ƒ /api/table-bookings/payment/return                327 B         102 kB
+├ ƒ /api/test-auth                                    327 B         102 kB
+├ ƒ /api/test-calendar                                327 B         102 kB
+├ ƒ /api/webhooks/paypal/parking                      327 B         102 kB
+├ ƒ /api/webhooks/paypal/table-bookings               327 B         102 kB
+├ ƒ /api/webhooks/twilio                              327 B         102 kB
+├ ƒ /auth/callback                                    327 B         102 kB
+├ ƒ /auth/confirm                                     327 B         102 kB
+├ ○ /auth/login                                     6.82 kB         132 kB
+├ ○ /auth/recover                                     327 B         102 kB
+├ ƒ /auth/reset                                     5.86 kB         165 kB
+├ ○ /auth/reset-password                            8.68 kB         177 kB
+├ ƒ /booking-confirmation/[token]                   9.73 kB         138 kB
+├ ƒ /booking-success/[id]                           3.25 kB         321 kB
+├ ƒ /customers                                      11.2 kB         241 kB
+├ ƒ /customers/[id]                                 12.4 kB         252 kB
+├ ƒ /dashboard                                      1.74 kB         171 kB
+├ ƒ /employees                                      8.73 kB         203 kB
+├ ƒ /employees/[employee_id]                        18.5 kB         187 kB
+├ ƒ /employees/[employee_id]/edit                   9.47 kB         178 kB
+├ ƒ /employees/birthdays                              782 B         177 kB
+├ ƒ /employees/new                                  5.68 kB         186 kB
+├ ƒ /error                                            176 B         105 kB
+├ ƒ /events                                         9.58 kB         190 kB
+├ ƒ /events/[id]                                    32.3 kB         283 kB
+├ ƒ /events/[id]/check-in                           6.32 kB         175 kB
+├ ƒ /events/[id]/edit                               1.04 kB         231 kB
+├ ƒ /events/new                                       971 B         231 kB
+├ ƒ /events/todo                                     6.3 kB         187 kB
+├ ○ /icon                                             327 B         102 kB
+├ ƒ /invoices                                       11.1 kB         184 kB
+├ ƒ /invoices/[id]                                  14.1 kB         245 kB
+├ ƒ /invoices/[id]/edit                             4.25 kB         185 kB
+├ ƒ /invoices/[id]/payment                          3.19 kB         184 kB
+├ ƒ /invoices/catalog                               10.5 kB         189 kB
+├ ƒ /invoices/export                                6.42 kB         183 kB
+├ ƒ /invoices/new                                   5.31 kB         192 kB
+├ ƒ /invoices/recurring                             4.37 kB         196 kB
+├ ƒ /invoices/recurring/[id]                        7.19 kB         199 kB
+├ ƒ /invoices/recurring/[id]/edit                   7.29 kB         184 kB
+├ ƒ /invoices/recurring/new                         8.28 kB         185 kB
+├ ƒ /invoices/vendors                               12.6 kB         233 kB
+├ ○ /login                                           2.3 kB         112 kB
+├ ƒ /menu-management                                1.01 kB         170 kB
+├ ƒ /menu-management/dishes                         15.9 kB         205 kB
+├ ƒ /menu-management/ingredients                    13.8 kB         203 kB
+├ ƒ /menu-management/recipes                        11.7 kB         201 kB
+├ ƒ /messages                                       5.63 kB         191 kB
+├ ƒ /messages/bulk                                  8.44 kB         232 kB
+├ ƒ /parking                                        14.2 kB         195 kB
+├ ƒ /parking/guest/[id]                               189 B         110 kB
+├ ○ /privacy                                        3.88 kB         253 kB
+├ ƒ /private-bookings                               7.59 kB         195 kB
+├ ƒ /private-bookings/[id]                          30.3 kB         224 kB
+├ ƒ /private-bookings/[id]/contract                 1.83 kB         171 kB
+├ ƒ /private-bookings/[id]/edit                     6.43 kB         230 kB
+├ ƒ /private-bookings/[id]/items                    4.66 kB         198 kB
+├ ƒ /private-bookings/[id]/messages                 5.13 kB         186 kB
+├ ƒ /private-bookings/calendar                      5.63 kB         174 kB
+├ ƒ /private-bookings/new                           6.06 kB         230 kB
+├ ƒ /private-bookings/settings/catering             4.12 kB         173 kB
+├ ƒ /private-bookings/settings/spaces               4.11 kB         173 kB
+├ ƒ /private-bookings/settings/vendors              4.11 kB         173 kB
+├ ƒ /private-bookings/sms-queue                     1.91 kB         178 kB
+├ ƒ /profile                                        8.31 kB         235 kB
+├ ƒ /profile/change-password                        5.14 kB         221 kB
+├ ƒ /quotes                                         11.4 kB         185 kB
+├ ƒ /quotes/[id]                                     7.7 kB         312 kB
+├ ƒ /quotes/[id]/convert                            3.95 kB         180 kB
+├ ƒ /quotes/[id]/edit                               8.67 kB         129 kB
+├ ƒ /quotes/new                                     6.87 kB         189 kB
+├ ƒ /receipts                                       14.1 kB         207 kB
+├ ƒ /receipts/bulk                                  5.77 kB         201 kB
+├ ƒ /receipts/missing-expense                         219 B         169 kB
+├ ƒ /receipts/monthly                               3.62 kB         172 kB
+├ ƒ /receipts/pnl                                   5.58 kB         182 kB
+├ ƒ /receipts/vendors                               3.38 kB         172 kB
+├ ƒ /roles                                          7.46 kB         186 kB
+├ ƒ /roles/new                                      1.07 kB         170 kB
+├ ƒ /settings                                       2.82 kB         175 kB
+├ ƒ /settings/api-keys                              7.43 kB         192 kB
+├ ƒ /settings/audit-logs                            7.95 kB         185 kB
+├ ƒ /settings/background-jobs                       10.2 kB         193 kB
+├ ƒ /settings/business-hours                        9.67 kB         197 kB
+├ ƒ /settings/categories                            7.77 kB         177 kB
+├ ƒ /settings/customer-labels                       8.79 kB         155 kB
+├ ƒ /settings/event-categories                      13.5 kB         207 kB
+├ ƒ /settings/gdpr                                  5.65 kB         179 kB
+├ ƒ /settings/import-messages                       5.52 kB         174 kB
+├ ƒ /settings/menu-target                           4.29 kB         173 kB
+├ ƒ /settings/message-templates                     12.4 kB         194 kB
+├ ƒ /settings/sync-birthdays                        5.56 kB         124 kB
+├ ƒ /short-links                                    15.3 kB         199 kB
+├ ƒ /table-booking/[reference]/payment              6.38 kB         128 kB
+├ ○ /table-booking/success                          6.39 kB         128 kB
+├ ƒ /table-bookings                                 11.8 kB         187 kB
+├ ƒ /table-bookings/[id]                            11.5 kB         203 kB
+├ ƒ /table-bookings/[id]/edit                       3.68 kB         225 kB
+├ ƒ /table-bookings/[id]/payment                      327 B         102 kB
+├ ƒ /table-bookings/calendar                         5.9 kB         224 kB
+├ ƒ /table-bookings/monitoring                       9.4 kB         227 kB
+├ ƒ /table-bookings/new                             9.82 kB         231 kB
+├ ƒ /table-bookings/reports                         11.2 kB         199 kB
+├ ƒ /table-bookings/search                          9.92 kB         185 kB
+├ ƒ /table-bookings/settings                        3.87 kB         173 kB
+├ ƒ /table-bookings/settings/policies                7.4 kB         231 kB
+├ ƒ /table-bookings/settings/sms-templates          9.54 kB         233 kB
+├ ƒ /table-bookings/settings/tables                 10.9 kB         238 kB
+├ ƒ /table-bookings/settings/time-slots             6.16 kB         225 kB
+├ ƒ /unauthorized                                   1.91 kB         171 kB
+└ ƒ /users                                          7.16 kB         197 kB
++ First Load JS shared by all                        102 kB
+  ├ chunks/1684-5bb7438017a536c5.js                 46.4 kB
+  ├ chunks/4bd1b696-fa8be009550942fb.js             53.2 kB
+  └ other shared chunks (total)                     1.97 kB
+
+
+ƒ Middleware                                        83.4 kB
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

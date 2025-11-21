@@ -11,7 +11,9 @@ import {
   ExclamationTriangleIcon,
   PaperAirplaneIcon
 } from '@heroicons/react/24/outline'
+
 import { approveSms, rejectSms, sendApprovedSms } from '@/app/actions/privateBookingActions'
+import { SmsQueueService } from '@/services/sms-queue'
 import { formatDateFull, formatDateTime12Hour } from '@/lib/dateUtils'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
@@ -95,25 +97,13 @@ export default async function SmsQueuePage() {
   }
 
   // Fetch SMS queue with booking details
-  const { data: smsQueue, error } = await supabase
-    .from('private_booking_sms_queue')
-    .select(`
-      *,
-      booking:private_bookings(
-        id,
-        customer_name,
-        customer_first_name,
-        customer_last_name,
-        event_date,
-        event_type,
-        status
-      )
-    `)
-    .in('status', ['pending', 'approved', 'cancelled'])
-    .order('created_at', { ascending: false })
-
-  if (error) {
-    console.error('Error fetching SMS queue:', error)
+  let smsQueue = null
+  let error = null
+  try {
+    smsQueue = await SmsQueueService.getQueue(['pending', 'approved', 'cancelled'])
+  } catch (e: any) {
+    console.error('Error fetching SMS queue:', e)
+    error = e
   }
 
   // Group by status

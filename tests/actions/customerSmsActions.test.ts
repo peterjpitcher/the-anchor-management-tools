@@ -47,13 +47,16 @@ const mockAdminClient = {
 }
 
 vi.mock('@/lib/supabase/server', () => ({
-  createAdminClient: vi.fn(() => mockAdminClient),
   createClient: vi.fn(),
+}))
+
+vi.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: vi.fn(() => mockAdminClient),
 }))
 
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getDeliveryFailureReport, getSmsDeliveryStats } from '@/app/actions/customerSmsActions'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 const mockedPermission = checkUserPermission as unknown as Mock
 const mockedCreateAdminClient = createAdminClient as unknown as Mock

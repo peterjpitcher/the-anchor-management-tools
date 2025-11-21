@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 import EventCheckInClient from './EventCheckInClient'
 
@@ -27,7 +27,7 @@ export default async function EventCheckInPage({
     return notFound()
   }
 
-  const supabase = getSupabaseAdminClient()
+  const supabase = createAdminClient()
 
   const { data: event, error } = await supabase
     .from('events')

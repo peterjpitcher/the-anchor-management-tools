@@ -1,7 +1,8 @@
 'use client'
 
-import { useCallback, useState, useTransition } from 'react'
+import { useCallback, useTransition } from 'react'
 import Link from 'next/link'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
@@ -15,7 +16,7 @@ import { Pagination as PaginationV2 } from '@/components/ui-v2/navigation/Pagina
 import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { exportEmployees } from '@/app/actions/employeeExport'
-import { getEmployeesRoster, type EmployeeRosterResult } from '@/app/actions/employeeQueries'
+import type { EmployeeRosterResult } from '@/app/actions/employeeQueries'
 import type { Employee } from '@/types/database'
 import { formatDate } from '@/lib/dateUtils'
 import { calculateLengthOfService } from '@/lib/employeeUtils'
@@ -31,74 +32,47 @@ interface EmployeesClientPageProps {
 }
 
 export default function EmployeesClientPage({ initialData, permissions }: EmployeesClientPageProps) {
-  const [roster, setRoster] = useState<EmployeeRosterResult>(initialData)
-  const [selectedStatus, setSelectedStatus] = useState<EmployeeStatus>(initialData.filters.statusFilter)
-  const [searchTerm, setSearchTerm] = useState(initialData.filters.searchTerm)
-  const [currentPage, setCurrentPage] = useState(initialData.pagination.page)
-  const [isFetching, setIsFetching] = useState(false)
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
 
+  // Derive state directly from server data
+  const roster = initialData
+  const selectedStatus = initialData.filters.statusFilter
+  const searchTerm = initialData.filters.searchTerm
+  const currentPage = initialData.pagination.page
   const pageSize = initialData.pagination.pageSize
-  const isLoading = isFetching || isPending
+  
+  const isLoading = isPending
 
-  const loadRoster = useCallback(
-    (params: { statusFilter?: EmployeeStatus; searchTerm?: string; page?: number } = {}) => {
-      const nextStatus = params.statusFilter ?? selectedStatus
-      const nextSearch = params.searchTerm ?? searchTerm
-      const nextPage = params.page ?? currentPage
-      const previousState = {
-        status: selectedStatus,
-        search: searchTerm,
-        page: currentPage
+  const updateFilters = useCallback((updates: { status?: EmployeeStatus; search?: string; page?: number }) => {
+    const params = new URLSearchParams(searchParams.toString())
+    
+    if (updates.status !== undefined) {
+      params.set('status', updates.status)
+      // Reset to page 1 when filter changes, unless page is explicitly provided
+      if (updates.page === undefined) params.set('page', '1')
+    }
+    
+    if (updates.search !== undefined) {
+      if (updates.search) {
+        params.set('search', updates.search)
+      } else {
+        params.delete('search')
       }
+      // Reset to page 1 when search changes
+      if (updates.page === undefined) params.set('page', '1')
+    }
+    
+    if (updates.page !== undefined) {
+      params.set('page', updates.page.toString())
+    }
 
-      if (nextStatus === selectedStatus && nextSearch === searchTerm && nextPage === currentPage) {
-        return
-      }
-
-      setSelectedStatus(nextStatus)
-      setSearchTerm(nextSearch)
-      setCurrentPage(nextPage)
-      setIsFetching(true)
-
-      startTransition(() => {
-        getEmployeesRoster({
-          statusFilter: nextStatus,
-          searchTerm: nextSearch,
-          page: nextPage,
-          pageSize
-        })
-          .then((result) => {
-            if (result.error) {
-              toast.error(result.error)
-              setSelectedStatus(previousState.status)
-              setSearchTerm(previousState.search)
-              setCurrentPage(previousState.page)
-              return
-            }
-
-            setRoster(result)
-            setSelectedStatus(result.filters.statusFilter)
-            setSearchTerm(result.filters.searchTerm)
-            setCurrentPage(result.pagination.page)
-          })
-          .catch((error) => {
-            if (error instanceof Error && error.name === 'AbortError') {
-              return
-            }
-            console.error('[EmployeesClientPage] Failed to load roster', error)
-            toast.error('Failed to load employees.')
-            setSelectedStatus(previousState.status)
-            setSearchTerm(previousState.search)
-            setCurrentPage(previousState.page)
-          })
-          .finally(() => {
-            setIsFetching(false)
-          })
-      })
-    },
-    [selectedStatus, searchTerm, currentPage, pageSize]
-  )
+    startTransition(() => {
+      router.push(`${pathname}?${params.toString()}`)
+    })
+  }, [searchParams, pathname, router])
 
   const handleExport = useCallback(
     async (format: 'csv' | 'json') => {
@@ -153,13 +127,8 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
     { label: 'Birthdays', href: '/employees/birthdays' },
   ]
 
-  const headerActions = (
+  const navActions = (
     <div className="flex flex-wrap items-center gap-2">
-      {permissions.canCreate && (
-        <LinkButton href="/employees/new" size="sm" variant="primary">
-          Add Employee
-        </LinkButton>
-      )}
       {permissions.canExport && (
         <Dropdown
           label="Export"
@@ -183,6 +152,11 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
           size="sm"
         />
       )}
+      {permissions.canCreate && (
+        <LinkButton href="/employees/new" size="sm" variant="primary">
+          Add Employee
+        </LinkButton>
+      )}
     </div>
   )
 
@@ -192,15 +166,15 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
       subtitle="Manage your staff and their information"
       backButton={{ label: 'Back to Dashboard', href: '/dashboard' }}
       navItems={navItems}
-      headerActions={headerActions}
+      navActions={navActions}
     >
       <section id="filters">
         <Card>
           <div className="space-y-4">
             <SearchInput
               placeholder="Search by name, email, or job title..."
-              defaultValue={initialData.filters.searchTerm}
-              onSearch={(value) => loadRoster({ searchTerm: value, page: 1 })}
+              defaultValue={searchTerm}
+              onSearch={(value) => updateFilters({ search: value })}
               loading={isLoading}
             />
 
@@ -212,7 +186,7 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
                 { key: 'Former', label: 'Former', mobileLabel: 'Former', badge: roster.statusCounts.former }
               ]}
               activeKey={selectedStatus}
-              onChange={(tab) => loadRoster({ statusFilter: tab as EmployeeStatus, page: 1 })}
+              onChange={(tab) => updateFilters({ status: tab as EmployeeStatus })}
             />
 
             {showSearchResultMessage && (
@@ -318,7 +292,7 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
                 totalPages={roster.pagination.totalPages}
                 totalItems={roster.pagination.totalCount}
                 itemsPerPage={pageSize}
-                onPageChange={(page) => loadRoster({ page })}
+                onPageChange={(page) => updateFilters({ page })}
               />
             )}
           </Card>

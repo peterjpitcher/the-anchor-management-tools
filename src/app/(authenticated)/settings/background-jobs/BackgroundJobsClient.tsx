@@ -320,9 +320,10 @@ export default function BackgroundJobsClient({
     { label: 'Details', href: '#job-details' },
   ]
 
-  const headerActions = canManage ? (
+  const navActions = canManage ? (
     <Button
       variant="primary"
+      size="sm"
       onClick={processJobs}
       disabled={!canManage || isProcessing}
       loading={isProcessing}
@@ -342,7 +343,7 @@ export default function BackgroundJobsClient({
       breadcrumbs={breadcrumbs}
       backButton={{ label: 'Back to Settings', href: '/settings' }}
       navItems={navItems}
-      headerActions={headerActions}
+      navActions={navActions}
     >
       <div className="space-y-6">
         {error && <Alert variant="error" title="Error" description={error} />}

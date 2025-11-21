@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { EventFormGrouped } from '@/components/EventFormGrouped'
+import { EventFormGrouped } from '@/components/features/events/EventFormGrouped'
 import { createEvent } from '@/app/actions/events'
 import { Event } from '@/types/database'
 import { useEffect, useState } from 'react'

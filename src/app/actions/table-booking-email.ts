@@ -1,6 +1,7 @@
 'use server';
 
-import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { sendEmail } from '@/lib/email/emailService';
 import { 
   generateBookingConfirmationEmail, 
@@ -81,10 +82,11 @@ export async function sendBookingConfirmationEmail(bookingId: string, useAdminCl
 // Send booking cancellation email
 export async function sendBookingCancellationEmail(
   bookingId: string,
-  refundMessage: string
+  refundMessage: string,
+  useAdminClient: boolean = false
 ) {
   try {
-    const supabase = await createClient();
+    const supabase = useAdminClient ? createAdminClient() : await createClient();
     
     // Get booking with customer
     const { data: booking, error } = await supabase
@@ -208,6 +210,60 @@ export async function sendBookingReminderEmail(bookingId: string) {
 }
 
 // Queue all booking emails (for use in jobs system)
+export async function queueBookingEmail(
+  bookingId: string,
+  emailType: 'confirmation' | 'cancellation' | 'reminder' | 'payment_request',
+  options?: { refundMessage?: string; useAdminClient?: boolean; }
+) {
+  try {
+    const { useAdminClient = false, refundMessage } = options || {};
+    const supabase = useAdminClient ? createAdminClient() : await createClient();
+
+    let templateKey: string;
+    const payload: any = { booking_id: bookingId };
+
+    switch (emailType) {
+      case 'confirmation':
+        templateKey = 'table_booking_confirmation';
+        break;
+      case 'cancellation':
+        templateKey = 'table_booking_cancellation';
+        payload.refund_message = refundMessage;
+        break;
+      case 'reminder':
+        templateKey = 'table_booking_reminder';
+        break;
+      case 'payment_request': // Assuming you'll have a template for payment requests as well
+        templateKey = 'table_booking_payment_request';
+        break;
+      default:
+        throw new Error(`Unknown email type: ${emailType}`);
+    }
+
+    const { error } = await supabase
+      .from('jobs')
+      .insert({
+        type: 'send_email',
+        payload: {
+          template: templateKey,
+          ...payload,
+        },
+        scheduled_for: new Date().toISOString(),
+      });
+
+    if (error) {
+      console.error('Queue email error:', error);
+      throw new Error('Failed to queue email');
+    }
+
+    return { success: true, message: `Email (${emailType}) queued` };
+  } catch (error) {
+    console.error(`Queue email (${emailType}) error:`, error);
+    return { error: (error as Error).message || 'An unexpected error occurred' };
+  }
+}
+
+// Process all booking emails (for use in jobs system)
 export async function processBookingEmailQueue() {
   try {
     const supabase = await createClient();
@@ -218,7 +274,7 @@ export async function processBookingEmailQueue() {
       .select('*')
       .eq('type', 'send_email')
       .eq('status', 'pending')
-      .like('payload->template', 'table_booking%')
+      .like('payload->>template', 'table_booking%') // Updated to use '->>' for text comparison
       .order('created_at')
       .limit(10);
       
@@ -238,20 +294,25 @@ export async function processBookingEmailQueue() {
         // Process based on template type
         switch (payload.template) {
           case 'table_booking_confirmation':
-          case 'table_booking_confirmation_sunday_lunch':
-            result = await sendBookingConfirmationEmail(payload.booking_id);
+            result = await sendBookingConfirmationEmail(payload.booking_id, true); // Use admin client for job processor
             break;
             
           case 'table_booking_cancellation':
             result = await sendBookingCancellationEmail(
               payload.booking_id,
-              payload.refund_message || 'No payment was taken for this booking.'
+              payload.refund_message || 'No payment was taken for this booking.',
+              true // Use admin client for job processor
             );
             break;
             
           case 'table_booking_reminder':
             result = await sendBookingReminderEmail(payload.booking_id);
             break;
+
+          // Add case for payment request email if applicable
+          // case 'table_booking_payment_request':
+          //   result = await sendBookingPaymentRequestEmail(payload.booking_id, true);
+          //   break;
             
           default:
             console.error('Unknown template:', payload.template);

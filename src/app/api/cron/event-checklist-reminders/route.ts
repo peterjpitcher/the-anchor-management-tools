@@ -1,37 +1,35 @@
 import { NextResponse } from 'next/server'
-import { getSupabaseAdminClient } from '@/lib/supabase-singleton'
-import { getOutstandingTodos, EVENT_CHECKLIST_DEFINITIONS } from '@/lib/event-checklist'
-import { getTodayIsoDate, formatDate, formatDateFull } from '@/lib/dateUtils'
-import { sendEmail } from '@/lib/email/emailService'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { authorizeCronRequest } from '@/lib/cron-auth'
+import { getTodayIsoDate, formatDate, formatDateFull } from '@/lib/dateUtils'
+import { getOutstandingTodos, EVENT_CHECKLIST_DEFINITIONS } from '@/lib/event-checklist'
+import { sendEmail } from '@/lib/email/emailService'
 
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
+const RECIPIENT = process.env.EVENT_CHECKLIST_EMAIL_RECIPIENT || 'peter@orangejelly.co.uk'
 
-const RECIPIENT = 'peter@orangejelly.co.uk'
-
-interface ChecklistEventSummary {
+type ChecklistEventSummary = {
   eventId: string
   eventName: string
   eventDate: string
-  tasks: {
+  tasks: Array<{
     label: string
     dueDate: string
     dueDateFormatted: string
     status: 'overdue' | 'due_today'
     channel: string
-  }[]
+  }>
 }
 
 export async function GET(request: Request) {
-  const authResult = authorizeCronRequest(request)
-
-  if (!authResult.authorized) {
-    return new NextResponse('Unauthorized', { status: 401 })
-  }
-
+// ...
   try {
-    const supabase = getSupabaseAdminClient()
+    const auth = authorizeCronRequest(request)
+    if (!auth.authorized) {
+      return new NextResponse('Unauthorized', { status: 401 })
+    }
+
+    const supabase = createAdminClient()
+    // ...
     const todayIso = getTodayIsoDate()
 
     const { data: events, error: eventsError } = await supabase

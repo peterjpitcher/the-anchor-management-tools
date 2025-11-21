@@ -13,9 +13,15 @@ interface PermissionContextType {
 
 const PermissionContext = createContext<PermissionContextType | undefined>(undefined);
 
-export function PermissionProvider({ children }: { children: React.ReactNode }) {
-  const [permissions, setPermissions] = useState<UserPermission[]>([]);
-  const [loading, setLoading] = useState(true);
+export function PermissionProvider({ 
+  children, 
+  initialPermissions 
+}: { 
+  children: React.ReactNode;
+  initialPermissions?: UserPermission[];
+}) {
+  const [permissions, setPermissions] = useState<UserPermission[]>(initialPermissions || []);
+  const [loading, setLoading] = useState(!initialPermissions);
 
   const fetchPermissions = async () => {
     try {
@@ -31,8 +37,10 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
   };
 
   useEffect(() => {
-    fetchPermissions();
-  }, []);
+    if (!initialPermissions) {
+      fetchPermissions();
+    }
+  }, [initialPermissions]);
 
   const hasPermission = (module: ModuleName, action: ActionType) => {
     return permissions.some(

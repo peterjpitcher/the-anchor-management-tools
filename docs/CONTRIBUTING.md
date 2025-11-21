@@ -26,30 +26,15 @@ When working on Supabase features, link the CLI and apply migrations with `supab
 - `supabase/migrations/` – SQL migrations synced with production. Create new migrations using the Supabase CLI and the `YYYYMMDDHHMMSS_description.sql` naming convention.
 - `scripts/` – Operational scripts; active SMS tooling is in `scripts/sms-tools/`.
 
-## Coding Standards
-- **TypeScript**: strict mode; avoid `any`. Prefer explicit interfaces and discriminated unions. Prefix unused parameters with `_` to satisfy ESLint.
-- **Server actions**: every mutation should reside in `src/app/actions/`; always call `checkUserPermission()` before mutating data and `logAuditEvent()` for sensitive operations.
-- **Supabase**: use the shared clients from `src/lib/supabase/*`. Never instantiate a raw client inside React components.
-- **Phone numbers**: normalise to E.164 (`+44…`) before storage; utilities exist in `src/lib/validation.ts`.
-- **Error handling**: surface actionable error messages and log the full error server-side using the shared logger.
+## Development Standards
+We enforce strict development standards for UI, Code Quality, Database, and Architecture.
+**Before writing any code, please read the [Standards Documentation](./standards/README.md).**
 
-## UI & Styling
-- Components follow Tailwind’s utility-first approach and 2-space indentation.
-- Keep components small and composable; colocate feature-specific UI under its module (e.g., `src/app/(authenticated)/events/components/`).
-- Use the design tokens defined in `src/components/ui-v2/tokens.ts` when building new UI in the v2 library.
-- For icons, rely on Heroicons or Lucide; avoid adding new icon packs.
-
-## Testing & QA
-- There are currently no automated Playwright tests checked into the repo. Before opening a PR:
-  - Run `npm run lint`.
-  - Build the app with `npm run build`.
-  - Manually smoke-test the flow you touched (log in, execute the affected feature, verify audit logs and SMS behaviour where relevant).
-- If you add new automated tests, place Playwright specs under `tests/` and keep suites focused on critical paths (auth, bookings, invoicing). Update [docs/TESTING.md](./TESTING.md) with new commands or fixtures.
-
-## Documentation Expectations
-- Update documentation when behaviour, API signatures, environment variables, or operational steps change.
-- Reference the canonical docs in `docs/` rather than creating ad-hoc files. If you must add new material, link it from `docs/README.md`.
-- For security-sensitive changes, capture the impact in [docs/SECURITY.md](./SECURITY.md) or the relevant compliance guide.
+- **[UI & UX](./standards/UI_UX.md)**: Component usage and styling rules.
+- **[Database](./standards/DATABASE.md)**: Schema and RLS guidelines.
+- **[Code Quality](./standards/CODE_QUALITY.md)**: TypeScript and formatting.
+- **[Architecture](./standards/ARCHITECTURE.md)**: Server Actions and data flow.
+- **[Process](./standards/PROCESS.md)**: Testing and Deployment workflows.
 
 ## Support
 - Production issues should be logged through the `/bug-report` API or the in-app bug reporter to maintain audit trails.

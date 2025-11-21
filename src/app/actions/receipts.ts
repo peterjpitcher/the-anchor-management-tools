@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { checkUserPermission } from './rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import {
   receiptRuleSchema,
   receiptMarkSchema,

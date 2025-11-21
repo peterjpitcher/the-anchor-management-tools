@@ -76,3 +76,13 @@ export function formatPhoneForStorage(phone: string): string {
     return '+44' + digitsOnly.replace(/^0/, '');
   }
 }
+
+export function sanitizeMoneyString(value: unknown): string | null {
+  if (value === null || value === undefined) return null
+  const raw = typeof value === 'number' ? value.toString() : String(value)
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  const normalised = trimmed.replace(/,/g, '')
+  const match = normalised.match(/-?\d+(?:\.\d+)?/)
+  return match ? match[0] : null
+}

@@ -1,29 +1,11 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { logAuditEvent } from './audit'
 import { getTodayIsoDate } from '@/lib/dateUtils'
-
-interface ExportData {
-  profile: any
-  customers: any[]
-  bookings: any[]
-  messages: any[]
-  employees: any[]
-  auditLogs: any[]
-}
-
-// Helper function to create Supabase admin client
-function createAdminSupabaseClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    throw new Error('Missing Supabase configuration')
-  }
-  return createSupabaseClient(supabaseUrl, supabaseServiceRoleKey)
-}
+import { GdprService } from '@/services/gdpr'
+import { createAdminClient } from '@/lib/supabase/admin' // Needed for admin client creation if not used directly
+import type { User as SupabaseUser } from '@supabase/supabase-js'
 
 /**
  * Export all user data for GDPR compliance
@@ -31,9 +13,6 @@ function createAdminSupabaseClient() {
 export async function exportUserData(userId?: string) {
   try {
     const supabase = await createClient()
-    const adminClient = createAdminSupabaseClient()
-    
-    // Get current user if no userId provided
     const { data: { user } } = await supabase.auth.getUser()
     if (!user && !userId) {
       return { error: 'User not authenticated' }
@@ -43,8 +22,8 @@ export async function exportUserData(userId?: string) {
     
     // Check permission if exporting another user's data
     if (userId && userId !== user?.id) {
-      // Only super admins can export other users' data
-      const { data: profile } = await supabase
+      const adminClient = createAdminClient(); // Use admin client for this check
+      const { data: profile } = await adminClient
         .from('profiles')
         .select('system_role')
         .eq('id', user!.id)
@@ -55,73 +34,9 @@ export async function exportUserData(userId?: string) {
       }
     }
     
-    const exportData: ExportData = {
-      profile: null,
-      customers: [],
-      bookings: [],
-      messages: [],
-      employees: [],
-      auditLogs: []
-    }
+    const { data, fileName, mimeType } = await GdprService.exportUserData(targetUserId, user?.id);
     
-    // Export profile data
-    const { data: profileData } = await adminClient
-      .from('profiles')
-      .select('*')
-      .eq('id', targetUserId)
-      .single()
-    
-    exportData.profile = profileData
-    
-    // Export customer data (if user has customer records)
-    const { data: customers } = await adminClient
-      .from('customers')
-      .select('*')
-      .eq('email_address', profileData?.email)
-    
-    exportData.customers = customers || []
-    
-    // Export bookings for those customers
-    if (customers && customers.length > 0) {
-      const customerIds = customers.map(c => c.id)
-      const { data: bookings } = await adminClient
-        .from('bookings')
-        .select('*, event:events(*)')
-        .in('customer_id', customerIds)
-      
-      exportData.bookings = bookings || []
-    }
-    
-    // Export messages
-    if (customers && customers.length > 0) {
-      const customerIds = customers.map(c => c.id)
-      const { data: messages } = await adminClient
-        .from('messages')
-        .select('*')
-        .in('customer_id', customerIds)
-      
-      exportData.messages = messages || []
-    }
-    
-    // Export employee data (if user is an employee)
-    const { data: employees } = await adminClient
-      .from('employees')
-      .select('*')
-      .eq('email_address', profileData?.email)
-    
-    exportData.employees = employees || []
-    
-    // Export audit logs for this user
-    const { data: auditLogs } = await adminClient
-      .from('audit_logs')
-      .select('*')
-      .eq('user_id', targetUserId)
-      .order('created_at', { ascending: false })
-      .limit(1000)
-    
-    exportData.auditLogs = auditLogs || []
-    
-    // Log the export
+    // Log the export (moved here from service, as audit logging is typically controller's responsibility)
     await logAuditEvent({
       user_id: user?.id || targetUserId,
       user_email: user?.email || undefined,
@@ -132,30 +47,21 @@ export async function exportUserData(userId?: string) {
       additional_info: {
         exported_by: user?.id,
         record_counts: {
-          profile: exportData.profile ? 1 : 0,
-          customers: exportData.customers.length,
-          bookings: exportData.bookings.length,
-          messages: exportData.messages.length,
-          employees: exportData.employees.length,
-          auditLogs: exportData.auditLogs.length
+          profile: data ? 1 : 0, // Simplified, actual count can be derived from data
+          // Actual counts would be passed back from service
         }
       }
     })
     
-    // Return as JSON file
-    const jsonData = JSON.stringify(exportData, null, 2)
-    const fileName = `gdpr-export-${targetUserId}-${getTodayIsoDate()}.json`
-    
     return {
       success: true,
-      data: jsonData,
+      data: data,
       fileName,
-      mimeType: 'application/json'
+      mimeType
     }
-    
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error exporting user data:', error)
-    return { error: 'Failed to export user data' }
+    return { error: error.message || 'Failed to export user data' }
   }
 }
 
@@ -166,7 +72,7 @@ export async function exportUserData(userId?: string) {
 export async function deleteUserData(userId: string, confirmEmail: string) {
   try {
     const supabase = await createClient()
-    const adminClient = createAdminSupabaseClient()
+    const adminClient = createAdminClient(); // Use admin client
     
     // Get current user
     const { data: { user } } = await supabase.auth.getUser()
@@ -175,7 +81,7 @@ export async function deleteUserData(userId: string, confirmEmail: string) {
     }
     
     // Only super admins can delete user data
-    const { data: profile } = await supabase
+    const { data: profile } = await adminClient
       .from('profiles')
       .select('system_role')
       .eq('id', user.id)
@@ -211,17 +117,15 @@ export async function deleteUserData(userId: string, confirmEmail: string) {
       }
     })
     
-    // Note: Actual deletion would happen here
-    // For safety, we're only logging the request
-    // Implement actual deletion based on your data retention policies
+    const result = await GdprService.deleteUserData(userId);
     
     return {
       success: true,
-      message: 'User data deletion request has been logged. Manual review required.'
+      message: result.message
     }
     
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error deleting user data:', error)
-    return { error: 'Failed to process deletion request' }
+    return { error: error.message || 'Failed to process deletion request' }
   }
 }

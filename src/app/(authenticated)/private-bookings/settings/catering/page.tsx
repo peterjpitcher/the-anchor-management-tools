@@ -6,7 +6,7 @@ import {
   CheckIcon
 } from '@heroicons/react/24/outline'
 import { createCateringPackage, updateCateringPackage, deleteCateringPackage, getCateringPackagesForManagement } from '@/app/actions/privateBookingActions'
-import { CateringPackageDeleteButton } from '@/components/CateringPackageDeleteButton'
+import { CateringPackageDeleteButton } from '@/components/features/catering/CateringPackageDeleteButton'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
@@ -96,8 +96,8 @@ export default async function CateringPackagesPage() {
   const packages = packagesResult.data ?? []
 
   // Group packages by type
-  const packagesByType = packages?.reduce((acc, pkg) => {
-    const type = pkg.package_type
+  const packagesByType = packages?.reduce((acc: Record<string, CateringPackage[]>, pkg: CateringPackage) => {
+    const type = pkg.package_type ?? 'Other'
     if (!acc[type]) acc[type] = []
     acc[type].push(pkg)
     return acc

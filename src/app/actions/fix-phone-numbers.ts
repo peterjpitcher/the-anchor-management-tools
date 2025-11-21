@@ -1,17 +1,6 @@
 'use server'
 
-import { createClient } from '@supabase/supabase-js'
-
-function getSupabaseAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    throw new Error('Missing Supabase environment variables')
-  }
-
-  return createClient(supabaseUrl, supabaseServiceRoleKey)
-}
+import { createAdminClient } from '@/lib/supabase/admin'
 
 // Standardize a UK phone number to E.164 format
 function standardizePhoneNumber(phone: string): string | null {
@@ -39,7 +28,7 @@ function standardizePhoneNumber(phone: string): string | null {
 }
 
 export async function analyzePhoneNumbers() {
-  const supabase = getSupabaseAdminClient()
+  const supabase = createAdminClient()
   
   console.log('=== ANALYZING PHONE NUMBERS ===')
   
@@ -137,7 +126,7 @@ export async function analyzePhoneNumbers() {
 }
 
 export async function fixPhoneNumbers(dryRun: boolean = true) {
-  const supabase = getSupabaseAdminClient()
+  const supabase = createAdminClient()
   
   console.log(`=== ${dryRun ? 'DRY RUN' : 'FIXING'} PHONE NUMBERS ===`)
   

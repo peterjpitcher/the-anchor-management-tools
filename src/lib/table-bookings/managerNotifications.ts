@@ -2,7 +2,7 @@
 
 import { sendEmail } from '@/lib/email/emailService'
 import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 const MANAGER_EMAIL = 'manager@the-anchor.pub'
 

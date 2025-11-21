@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { isGraphConfigured, sendInvoiceEmail } from '@/lib/microsoft-graph'
 import { getTodayIsoDate } from '@/lib/dateUtils'

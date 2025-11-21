@@ -1,7 +1,8 @@
 'use server'
 
 import twilio from 'twilio'
-import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/app/actions/audit'
 import type { ActionType } from '@/types/rbac'
 import type { User as SupabaseUser } from '@supabase/supabase-js'

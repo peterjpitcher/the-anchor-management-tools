@@ -3,20 +3,24 @@
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import type { Customer } from '@/types/database'
-import { CustomerForm } from '@/components/CustomerForm'
-import { CustomerImport } from '@/components/CustomerImport'
-import { PlusIcon, PencilIcon, TrashIcon, XCircleIcon } from '@heroicons/react/24/outline'
-import { CustomerName } from '@/components/CustomerName'
-import type { CustomerWithLoyalty } from '@/lib/customerUtils'
-import Link from 'next/link'
-import { getUnreadMessageCounts } from '@/app/actions/messageActions'
-import { ChatBubbleLeftIcon } from '@heroicons/react/24/solid'
-import { usePagination } from '@/hooks/usePagination'
-import { CustomerLabelDisplay } from '@/components/CustomerLabelDisplay'
+import { CustomerForm } from '@/components/features/customers/CustomerForm'
+import { CustomerImport } from '@/components/features/customers/CustomerImport'
+import { CustomerName } from '@/components/features/customers/CustomerName'
+import { CustomerLabelDisplay } from '@/components/features/customers/CustomerLabelDisplay'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { getBulkCustomerLabels } from '@/app/actions/customer-labels-bulk'
+import { getUnreadMessageCounts } from '@/app/actions/messageActions'
 import type { CustomerLabelAssignment } from '@/app/actions/customer-labels'
 import { createCustomer as createCustomerAction, updateCustomer as updateCustomerAction, deleteCustomer as deleteCustomerAction, importCustomers as importCustomersAction } from '@/app/actions/customers'
+import Link from 'next/link'
+import { ChatBubbleLeftIcon, XCircleIcon, PencilIcon, TrashIcon, PlusIcon } from '@heroicons/react/24/outline'
+
+// Define CustomerWithLoyalty locally as it was likely removed or missing
+type CustomerWithLoyalty = Customer & {
+  // Add any loyalty fields if they existed, otherwise just Customer
+  // loyalty_points?: number
+  // loyalty_tier?: string
+}
 // Loyalty removed
 // New UI components
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
@@ -27,10 +31,10 @@ import { SearchInput } from '@/components/ui-v2/forms/SearchInput'
 import { Badge, BadgeGroup } from '@/components/ui-v2/display/Badge'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Pagination as PaginationV2 } from '@/components/ui-v2/navigation/Pagination'
+import { usePagination } from '@/hooks/usePagination'
 import { Skeleton } from '@/components/ui-v2/feedback/Skeleton'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
-// import { TabNav } from '@/components/ui-v2/navigation/TabNav'
 
 interface CustomerCategoryStats {
   customer_id: string

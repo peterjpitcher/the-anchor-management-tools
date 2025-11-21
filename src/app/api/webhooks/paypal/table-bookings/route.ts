@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyPayPalWebhook } from '@/lib/paypal';
 import { checkRateLimit, getClientIp, rateLimitConfigs } from '@/lib/rate-limiter';
 
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     }
     
     const event = JSON.parse(body);
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     
     // Log webhook
     await supabase.from('webhook_logs').insert({

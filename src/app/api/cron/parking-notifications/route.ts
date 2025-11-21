@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { sendSMS } from '@/lib/twilio'
 import { sendEmail } from '@/lib/email/emailService'
 import { ensureReplyInstruction } from '@/lib/sms/support'

@@ -100,7 +100,7 @@ function LoginForm() {
     try {
       const result = await signInAction(email.trim(), password)
 
-      if (result?.error) {
+      if ('error' in result && result.error) {
         toast.error(result.error)
         return
       }

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getInvoices, getInvoiceSummary } from '@/app/actions/invoices'
-import { Plus, Download, FileText, Calendar } from 'lucide-react'
+import { Plus, Download, FileText, Calendar, Search } from 'lucide-react'
 import type { InvoiceWithDetails, InvoiceStatus } from '@/types/invoices'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
@@ -14,7 +14,6 @@ import { Input } from '@/components/ui-v2/forms/Input'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { DataTable, type Column } from '@/components/ui-v2/display/DataTable'
-import { MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import { usePermissions } from '@/contexts/PermissionContext'
 import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 
@@ -262,44 +261,116 @@ export default function InvoicesClient({
     []
   )
 
-  const navItems = useMemo<HeaderNavItem[]>(() => {
-    const items: HeaderNavItem[] = []
+    
+          const navItems = useMemo<HeaderNavItem[]>(() => {
 
-    if (resolvedPermissions.canManageCatalog) {
-      items.push({ label: 'Catalog', href: '/invoices/catalog' })
-    }
+    
+          const items: HeaderNavItem[] = []
 
-    if (canManageVendors) {
-      items.push({ label: 'Vendors', href: '/invoices/vendors' })
-    }
+    
+      
 
-    if (canAccessRecurring) {
-      items.push({ label: 'Recurring', href: '/invoices/recurring' })
-    }
+    
+          if (resolvedPermissions.canManageCatalog) {
 
-    if (resolvedPermissions.canExport) {
-      items.push({ label: 'Export', href: '/invoices/export' })
-    }
+    
+            items.push({ label: 'Catalog', href: '/invoices/catalog' })
 
-    if (resolvedPermissions.canCreate) {
-      items.push({ label: 'New Invoice', href: '/invoices/new' })
-    }
+    
+          }
 
-    return items
-  }, [resolvedPermissions, canManageVendors, canAccessRecurring])
+    
+      
 
-  const showLoadingState = loading && filteredInvoices.length === 0
+    
+          if (canManageVendors) {
 
-  return (
-    <PageLayout
-      title="Invoices"
-      subtitle="Manage invoices and payments"
-      backButton={{ label: 'Back to Dashboard', href: '/' }}
-      navItems={navItems.length > 0 ? navItems : undefined}
-      loading={showLoadingState}
-      loadingLabel="Loading invoices..."
-    >
-      <div className="space-y-6">
+    
+            items.push({ label: 'Vendors', href: '/invoices/vendors' })
+
+    
+          }
+
+    
+      
+
+    
+          if (canAccessRecurring) {
+
+    
+            items.push({ label: 'Recurring', href: '/invoices/recurring' })
+
+    
+          }
+
+    
+      
+
+    
+          if (resolvedPermissions.canExport) {
+
+    
+            items.push({ label: 'Export', href: '/invoices/export' })
+
+    
+          }
+
+    
+      
+
+    
+          if (resolvedPermissions.canCreate) {
+
+    
+            items.push({ label: 'New Invoice', href: '/invoices/new' })
+
+    
+          }
+
+    
+      
+
+    
+          return items
+
+    
+        }, [resolvedPermissions, canManageVendors, canAccessRecurring])
+
+    
+      
+
+    
+        const showLoadingState = loading && filteredInvoices.length === 0
+
+    
+      
+
+    
+        return (
+
+    
+          <PageLayout
+
+    
+            title="Invoices"
+
+    
+            subtitle="Manage invoices and payments"
+
+    
+            backButton={{ label: 'Back to Dashboard', href: '/' }}
+
+    
+            navItems={navItems.length > 0 ? navItems : undefined}
+
+    
+            loading={showLoadingState}
+
+    
+            loadingLabel="Loading invoices..."
+
+    
+          >      <div className="space-y-6">
         {error && (
           <Alert
             variant="error"
@@ -367,7 +438,7 @@ export default function InvoicesClient({
                   placeholder="Search invoices..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  leftIcon={<MagnifyingGlassIcon />}
+                  leftIcon={<Search />}
                   className="hidden w-full flex-1 sm:block sm:w-auto"
                   fullWidth={false}
                 />

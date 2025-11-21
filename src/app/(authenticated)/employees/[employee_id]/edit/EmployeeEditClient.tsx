@@ -1,8 +1,8 @@
 'use client'
 
-import EmployeeForm from '@/components/EmployeeForm'
-import FinancialDetailsForm from '@/components/FinancialDetailsForm'
-import HealthRecordsForm from '@/components/HealthRecordsForm'
+import EmployeeForm from '@/components/features/employees/EmployeeForm'
+import FinancialDetailsForm from '@/components/features/employees/FinancialDetailsForm'
+import HealthRecordsForm from '@/components/features/employees/HealthRecordsForm'
 import { updateEmployee } from '@/app/actions/employeeActions'
 import type { Employee, EmployeeFinancialDetails, EmployeeHealthRecord } from '@/types/database'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'

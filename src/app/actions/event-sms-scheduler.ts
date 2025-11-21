@@ -1,6 +1,6 @@
 'use server'
 
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
@@ -457,13 +457,33 @@ export async function addAttendeesWithScheduledSMS(
     }
 
     let scheduledCount = 0
-    for (const booking of inserted) {
-      const result = await scheduleBookingReminders(booking.id)
-      if (result.success) {
-        scheduledCount += result.scheduled
-        if (result.dueNowReminderIds.length > 0) {
-          await processScheduledEventReminders({ reminderIds: result.dueNowReminderIds })
+    const allDueNowReminderIds: string[] = []
+
+    // Process scheduling in batches to improve performance while preventing connection pool exhaustion
+    const BATCH_SIZE = 5
+    for (let i = 0; i < inserted.length; i += BATCH_SIZE) {
+      const batch = inserted.slice(i, i + BATCH_SIZE)
+      const results = await Promise.all(
+        batch.map(booking => scheduleBookingReminders(booking.id))
+      )
+
+      for (const result of results) {
+        if (result.success) {
+          scheduledCount += result.scheduled
+          if (result.dueNowReminderIds.length > 0) {
+            allDueNowReminderIds.push(...result.dueNowReminderIds)
+          }
         }
+      }
+    }
+
+    // Process all due reminders in a single batch at the end
+    if (allDueNowReminderIds.length > 0) {
+      // Process in chunks of 50 (default limit of processScheduledEventReminders logic usually matches this)
+      const PROCESS_CHUNK_SIZE = 50
+      for (let i = 0; i < allDueNowReminderIds.length; i += PROCESS_CHUNK_SIZE) {
+        const chunk = allDueNowReminderIds.slice(i, i + PROCESS_CHUNK_SIZE)
+        await processScheduledEventReminders({ reminderIds: chunk })
       }
     }
 

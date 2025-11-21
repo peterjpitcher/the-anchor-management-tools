@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { capturePayPalPayment } from '@/lib/paypal';
 import { sendBookingConfirmationEmail } from '@/app/actions/table-booking-email';
 import { sendManagerOrderNotification } from '@/app/actions/table-booking-manager-email';

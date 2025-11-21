@@ -27,10 +27,6 @@ interface TableBooking {
   status: string;
   booking_type: string;
   total_amount?: number;
-  customer: {
-    first_name: string;
-    last_name: string;
-  };
   table_booking_items: BookingItem[];
 }
 
@@ -81,10 +77,6 @@ export default function TableBookingPaymentPage(props: { params: Promise<{ refer
         party_size: data.party_size,
         status: data.status,
         booking_type: data.booking_type,
-        customer: {
-          first_name: data.customer_name.split(' ')[0],
-          last_name: data.customer_name.split(' ').slice(1).join(' ')
-        },
         table_booking_items: data.items || []
       };
 

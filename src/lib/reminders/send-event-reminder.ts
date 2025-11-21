@@ -1,5 +1,5 @@
 import twilio from 'twilio'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { getMessageTemplate } from '@/lib/smsTemplates'
 import { ensureReplyInstruction } from '@/lib/sms/support'

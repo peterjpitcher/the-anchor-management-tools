@@ -11,16 +11,16 @@ type Event = BaseEvent & {
   category?: EventCategory | null
 }
 import { TrashIcon } from '@heroicons/react/24/outline'
-import { BookingForm } from '@/components/BookingForm'
-import { AddAttendeesModalWithCategories } from '@/components/AddAttendeesModalWithCategories'
+import { BookingForm } from '@/components/features/events/BookingForm'
+import { AddAttendeesModalWithCategories } from '@/components/features/events/AddAttendeesModalWithCategories'
 // Removed unused sendBookingConfirmationSync import
 import { addAttendeesWithScheduledSMS } from '@/app/actions/event-sms-scheduler'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { generateEventReservationPosters } from '@/app/actions/event-reservation-posters'
-import { EventChecklistCard } from '@/components/EventChecklistCard'
-import { EventMarketingLinksCard } from '@/components/EventMarketingLinksCard'
+import { EventChecklistCard } from '@/components/features/events/EventChecklistCard'
+import { EventMarketingLinksCard } from '@/components/features/events/EventMarketingLinksCard'
 import { getEventMarketingLinks, regenerateEventMarketingLinks, type EventMarketingLink } from '@/app/actions/event-marketing-links'
-import { EventPromotionContentCard } from '@/components/EventPromotionContentCard'
+import { EventPromotionContentCard } from '@/components/features/events/EventPromotionContentCard'
 
 // ui-v2 imports
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'

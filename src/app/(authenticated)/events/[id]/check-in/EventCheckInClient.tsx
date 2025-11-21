@@ -86,16 +86,18 @@ export default function EventCheckInClient({ event, reviewLink }: EventCheckInCl
       const result = await lookupEventGuest({ eventId: event.id, phone: phoneInput })
 
       if (!result.success) {
-        setError(result.error)
+        setError(result.error ?? 'An unknown error occurred')
         return
       }
 
-      setNormalizedPhone(result.normalizedPhone)
+      setNormalizedPhone(result.normalizedPhone ?? null)
 
       if (result.status === 'unknown') {
         setStep('unknown')
         return
       }
+
+      if (!result.data) return
 
       setKnownGuest(result.data)
 
@@ -128,7 +130,7 @@ export default function EventCheckInClient({ event, reviewLink }: EventCheckInCl
       }
 
       const displayName =
-        result.data.customerName || `${knownGuest.customer.first_name} ${knownGuest.customer.last_name ?? ''}`.trim() || 'there'
+        result.data?.customerName || `${knownGuest.customer.first_name} ${knownGuest.customer.last_name ?? ''}`.trim() || 'there'
 
       setStatusMessage(`Hello ${displayName}! Welcome to ${event.name}. Thank you for checking in.`)
       setStep('success')
@@ -155,7 +157,7 @@ export default function EventCheckInClient({ event, reviewLink }: EventCheckInCl
         return
       }
 
-      const displayName = result.data.customerName || newGuestDetails.firstName || 'there'
+      const displayName = result.data?.customerName || newGuestDetails.firstName || 'there'
       setStatusMessage(`Hello ${displayName}! Welcome to ${event.name}. Thank you for checking in.`)
       setStep('success')
     })

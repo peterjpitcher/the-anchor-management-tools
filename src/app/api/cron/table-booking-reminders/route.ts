@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { queueBookingReminderSMS } from '@/app/actions/table-booking-sms';
 import { sendBookingReminderEmail } from '@/app/actions/table-booking-email';
 import { addDays, startOfDay, endOfDay } from 'date-fns';

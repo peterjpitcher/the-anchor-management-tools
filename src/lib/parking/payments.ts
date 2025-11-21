@@ -1,7 +1,7 @@
 import { createSimplePayPalOrder, capturePayPalPayment, refundPayPalPayment } from '@/lib/paypal'
 import { insertParkingPayment, getPendingParkingPayment, updateParkingBooking, logParkingNotification } from './repository'
 import { ParkingBooking, ParkingPaymentRecord } from '@/types/parking'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { sendSMS } from '@/lib/twilio'

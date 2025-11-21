@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { getQuote, updateQuoteStatus, convertQuoteToInvoice, deleteQuote } from '@/app/actions/quotes'
 import { getEmailConfigStatus } from '@/app/actions/email'
 import { FileText, Download, Mail, CheckCircle, XCircle, Edit, Copy, Trash2, Clock } from 'lucide-react'
-import { EmailQuoteModal } from '@/components/EmailQuoteModal'
+import { EmailQuoteModal } from '@/components/modals/EmailQuoteModal'
 import type { QuoteWithDetails, QuoteStatus } from '@/types/invoices'
 // UI v2 components
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'

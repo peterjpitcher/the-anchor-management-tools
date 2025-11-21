@@ -1,5 +1,5 @@
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getActiveParkingRate } from '@/lib/parking/repository'
 
 export async function GET(request: Request) {

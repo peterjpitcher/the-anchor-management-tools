@@ -3,7 +3,7 @@
  * This replaces the multiple job queue implementations with a single, consistent system
  */
 
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from './logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { recordOutboundSmsMessage } from '@/lib/sms/logging'

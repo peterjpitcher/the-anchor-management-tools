@@ -1,6 +1,7 @@
 'use server';
 
-import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { logAuditEvent } from './audit';
 import { z } from 'zod';
@@ -217,7 +218,8 @@ export async function testSMSTemplate(
 export async function queueBookingConfirmationSMS(bookingId: string, useAdminClient: boolean = false) {
   try {
     // Use admin client when called from unauthenticated contexts (like PayPal return)
-    const { createClient, createAdminClient } = await import('@/lib/supabase/server');
+    const { createClient } = await import('@/lib/supabase/server');
+    const { createAdminClient } = await import('@/lib/supabase/admin');
     const supabase = useAdminClient ? createAdminClient() : await createClient();
     
     // Get booking with customer and payment details

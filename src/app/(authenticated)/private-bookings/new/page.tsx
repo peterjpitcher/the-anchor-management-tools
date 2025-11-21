@@ -11,7 +11,7 @@ import {
   CurrencyPoundIcon
 } from '@heroicons/react/24/outline'
 import { createPrivateBooking } from '@/app/actions/privateBookingActions'
-import CustomerSearchInput from '@/components/CustomerSearchInput'
+import CustomerSearchInput from '@/components/features/customers/CustomerSearchInput'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'

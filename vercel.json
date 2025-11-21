@@ -1,58 +1,4 @@
 {
-  "crons": [
-    {
-      "path": "/api/cron/reminders",
-      "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/cron/event-checklist-reminders",
-      "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/jobs/process",
-      "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/cron/recurring-invoices",
-      "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/cron/invoice-reminders",
-      "schedule": "0 10 * * *"
-    },
-    {
-      "path": "/api/cron/apply-customer-labels",
-      "schedule": "0 2 * * *"
-    },
-    {
-      "path": "/api/cron/birthday-reminders",
-      "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/cron/table-booking-reminders",
-      "schedule": "0 */4 * * *"
-    },
-    {
-      "path": "/api/cron/cleanup-rate-limits",
-      "schedule": "0 0 * * *"
-    },
-    {
-      "path": "/api/cron/table-booking-monitoring",
-      "schedule": "0 * * * *"
-    },
-    {
-      "path": "/api/cron/generate-slots",
-      "schedule": "0 2 * * 1"
-    },
-    {
-      "path": "/api/cron/auto-send-invoices",
-      "schedule": "0 7 * * *"
-    },
-    {
-      "path": "/api/cron/reconcile-sms",
-      "schedule": "0 * * * *"
-    }
-  ],
   "rewrites": [
     {
       "source": "/",
@@ -95,4 +41,4 @@
       ]
     }
   ]
-} 
+}
