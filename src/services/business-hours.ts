@@ -35,6 +35,7 @@ const businessHoursSchema = z
     kitchen_closes: timeSchema,
     is_closed: z.boolean(),
     is_kitchen_closed: z.boolean(),
+    schedule_config: z.array(z.any()).optional(),
   })
   .superRefine((value, ctx) => {
     if (!value.is_closed) {
@@ -54,18 +55,19 @@ const businessHoursSchema = z
         });
       }
 
-      if (value.opens && value.closes) {
-        const opens = toMinutes(value.opens);
-        const closes = toMinutes(value.closes);
+        if (value.opens && value.closes) {
+          const opens = toMinutes(value.opens);
+          const closes = toMinutes(value.closes);
 
-        if (closes <= opens) {
-          ctx.addIssue({
-            code: 'custom',
-            message: 'Closing time must be after opening time',
-            path: ['closes'],
-          });
+          // Allow closing at 00:00 (midnight) which is numerically 0 but semantically end of day
+          if (closes <= opens && value.closes !== '00:00' && value.closes !== '00:00:00') {
+            ctx.addIssue({
+              code: 'custom',
+              message: 'Closing time must be after opening time',
+              path: ['closes'],
+            });
+          }
         }
-      }
     }
 
     if (value.is_closed) {
@@ -110,7 +112,13 @@ const businessHoursSchema = z
 
         if (value.opens && value.closes) {
           const opens = toMinutes(value.opens);
-          const closes = toMinutes(value.closes);
+          let closes = toMinutes(value.closes);
+
+          // Adjust for midnight closing
+          if (value.closes === '00:00' || value.closes === '00:00:00') {
+            closes = 24 * 60;
+          }
+
           if (kitchenOpens < opens || kitchenCloses > closes) {
             ctx.addIssue({
               code: 'custom',
@@ -193,8 +201,14 @@ export class BusinessHoursService {
         kitchen_closes: formData.get(`kitchen_closes_${dayOfWeek}`) as string || '',
         is_closed: formData.get(`is_closed_${dayOfWeek}`) === 'true',
         is_kitchen_closed: formData.get(`is_kitchen_closed_${dayOfWeek}`) === 'true',
+        schedule_config: formData.get(`schedule_config_${dayOfWeek}`)
+          ? JSON.parse(formData.get(`schedule_config_${dayOfWeek}`) as string)
+          : undefined,
       };
 
+      // Allow schedule_config to pass through even if validation schema doesn't explicitly check it deeply yet
+      // We modify the schema locally or assume it passes if not in schema (Zod strips unknown keys by default!)
+      // WAIT: Zod .parse() STRIPS unknown keys. I MUST update the schema first.
       const validationResult = businessHoursSchema.safeParse(dayData);
       if (!validationResult.success) {
         throw new Error(`Invalid data for ${
@@ -221,6 +235,9 @@ export class BusinessHoursService {
       .upsert(updatedData, { onConflict: 'day_of_week' });
 
     if (error) throw new Error('Failed to update business hours');
+
+    // Trigger slot regeneration
+    await supabase.rpc('auto_generate_weekly_slots');
     
     return { success: true, updatedCount: updates.length };
   }
@@ -534,6 +551,9 @@ export class BusinessHoursService {
 
     if (error) throw new Error('Failed to create special hours');
 
+    // Trigger slot regeneration
+    await supabase.rpc('auto_generate_weekly_slots');
+
     return { data: data || [], datesToCreate };
   }
 
@@ -574,6 +594,9 @@ export class BusinessHoursService {
       throw new Error('Failed to update special hours');
     }
 
+    // Trigger slot regeneration
+    await supabase.rpc('auto_generate_weekly_slots');
+
     return { updated: data, oldData };
   }
 
@@ -585,6 +608,9 @@ export class BusinessHoursService {
 
     const { error } = await supabase.from('special_hours').delete().eq('id', id);
     if (error) throw new Error('Failed to delete special hours');
+
+    // Trigger slot regeneration
+    await supabase.rpc('auto_generate_weekly_slots');
 
     return oldData;
   }

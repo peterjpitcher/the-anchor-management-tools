@@ -49,7 +49,7 @@ export function PageHeader({
   };
   
   return (
-    <div className={`bg-sidebar ${className}`}>
+    <div className={`bg-white border-b border-gray-200 ${className}`}>
       <div className="px-4 sm:px-6 lg:px-12 pt-3 sm:pt-8 pb-3 sm:pb-6">
         {/* Mobile: Compact header with back button, title, and hamburger in one row */}
         <div className="flex items-center gap-2 sm:hidden">
@@ -57,7 +57,7 @@ export function PageHeader({
           {backButton && (
             <button
               onClick={backButton.onBack || (backButton.href ? () => router.push(backButton.href!) : undefined)}
-              className="rounded-md text-white hover:text-white/80 hover:bg-white/10 p-2 focus:outline-none focus:ring-2 focus:ring-white/50"
+              className="rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 p-2 focus:outline-none focus:ring-2 focus:ring-gray-500/50"
             >
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -67,16 +67,16 @@ export function PageHeader({
           
           {/* Title and subtitle */}
           <div className="flex-1 min-w-0">
-            <h1 className="text-lg font-bold text-white truncate">{title}</h1>
+            <h1 className="text-lg font-bold text-gray-900 truncate">{title}</h1>
             {subtitle && (
-              <p className="text-xs text-white/70 truncate">{subtitle}</p>
+              <p className="text-xs text-gray-500 truncate">{subtitle}</p>
             )}
           </div>
           
           {/* Hamburger menu button on the right - mobile only */}
           <button
             type="button"
-            className="relative rounded-md text-white hover:text-white/80 hover:bg-white/10 p-2 focus:outline-none focus:ring-2 focus:ring-white/50"
+            className="relative rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 p-2 focus:outline-none focus:ring-2 focus:ring-gray-500/50"
             onClick={handleMenuClick}
           >
             <span className="sr-only">Open menu</span>
@@ -93,9 +93,9 @@ export function PageHeader({
         <div className="hidden sm:flex sm:flex-col sm:gap-3">
           <div className="flex flex-row items-start justify-between gap-4">
             <div className="flex-1">
-              <h1 className="text-2xl lg:text-3xl font-bold text-white">{title}</h1>
+              <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">{title}</h1>
               {subtitle && (
-                <p className="mt-1 text-sm text-white/80">{subtitle}</p>
+                <p className="mt-1 text-sm text-gray-500">{subtitle}</p>
               )}
             </div>
             
@@ -106,8 +106,8 @@ export function PageHeader({
                   <BackButton 
                     label={backButton.label}
                     onBack={backButton.onBack || (backButton.href ? () => router.push(backButton.href!) : undefined)}
-                    variant="ghost"
-                    className="text-white hover:text-white/80 hover:bg-white/10"
+                    variant="outline"
+                    className="text-gray-700 hover:text-gray-900 hover:bg-gray-50"
                   />
                 )}
               </div>
@@ -118,15 +118,15 @@ export function PageHeader({
         {/* Breadcrumbs if provided */}
         {breadcrumbs && breadcrumbs.length > 0 && (
           <div className="mt-4">
-            <Breadcrumbs items={breadcrumbs} theme="light" />
+            <Breadcrumbs items={breadcrumbs} theme="default" />
           </div>
         )}
       </div>
       
       {/* Sub-navigation row with action buttons */}
       {actions && (
-        <div className="border-t border-white/20 bg-black/10">
-          <div className="px-4 sm:px-6 lg:px-12 py-3 sm:py-4">
+        <div className="">
+          <div className="px-4 sm:px-6 lg:px-12">
             <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs sm:text-sm">
               {actions}
             </div>

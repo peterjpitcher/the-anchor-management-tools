@@ -288,10 +288,6 @@ export default function PrivateBookingsClient({
     <PageLayout
       title="Private Bookings"
       subtitle="Manage private venue bookings and events"
-      backButton={{
-        label: 'Back to Dashboard',
-        href: '/',
-      }}
       navActions={navActions}
     >
       <div className="space-y-6">

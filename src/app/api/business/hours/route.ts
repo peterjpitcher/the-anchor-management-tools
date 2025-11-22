@@ -114,6 +114,7 @@ export async function GET(_request: NextRequest) {
       } : null),
       is_closed: hour.is_closed,
       is_kitchen_closed: hour.is_kitchen_closed,
+      schedule_config: hour.schedule_config || [] // Expose new config
     };
     return acc;
   }, {}) || {};
@@ -129,6 +130,7 @@ export async function GET(_request: NextRequest) {
     } : null),
     status: special.is_closed ? 'closed' : 'modified',
     note: special.note,
+    schedule_config: special.schedule_config || [] // Expose new config
   })) || [];
 
   const serviceStatus = serviceStatuses.reduce(
@@ -356,6 +358,19 @@ export async function GET(_request: NextRequest) {
       }
     : null;
 
+  // Helper to find service times from config
+  const findServiceTimes = (type: string, dayOfWeek: number = 5) => {
+      const dayConfig = regularHours?.find(h => h.day_of_week === dayOfWeek)?.schedule_config;
+      if (Array.isArray(dayConfig)) {
+          const slot = dayConfig.find((s: any) => s.name.toLowerCase().includes(type) || s.booking_type.toLowerCase().includes(type));
+          if (slot) return { start: `${slot.starts_at}:00`, end: `${slot.ends_at}:00` };
+      }
+      return null;
+  };
+
+  const lunchTimes = findServiceTimes('lunch') || { start: '12:00:00', end: '14:30:00' };
+  const dinnerTimes = findServiceTimes('dinner') || { start: '17:00:00', end: '21:00:00' };
+
   // Build comprehensive response
   const response = {
     success: true,
@@ -374,8 +389,8 @@ export async function GET(_request: NextRequest) {
       patterns,
       services: {
         kitchen: {
-          lunch: { start: '12:00:00', end: '14:30:00' },
-          dinner: { start: '17:00:00', end: '21:00:00' },
+          lunch: lunchTimes,
+          dinner: dinnerTimes,
           sundayLunch: sundayInfo,
         },
         bar: {

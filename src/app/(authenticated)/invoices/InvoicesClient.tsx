@@ -349,28 +349,25 @@ export default function InvoicesClient({
         return (
 
     
-          <PageLayout
+                    <PageLayout
 
     
-            title="Invoices"
+                      title="Invoices"
 
     
-            subtitle="Manage invoices and payments"
+                      subtitle="Manage invoices and payments"
 
     
-            backButton={{ label: 'Back to Dashboard', href: '/' }}
+                      navItems={navItems.length > 0 ? navItems : undefined}
 
     
-            navItems={navItems.length > 0 ? navItems : undefined}
+                      loading={showLoadingState}
 
     
-            loading={showLoadingState}
+                      loadingLabel="Loading invoices..."
 
     
-            loadingLabel="Loading invoices..."
-
-    
-          >      <div className="space-y-6">
+                    >      <div className="space-y-6">
         {error && (
           <Alert
             variant="error"

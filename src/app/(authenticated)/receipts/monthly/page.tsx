@@ -214,17 +214,9 @@ export default async function ReceiptsMonthlyPage() {
     <PageLayout
       title="Monthly receipts overview"
       subtitle="Track income and spending trends across recent months."
+      backButton={{ label: 'Back to receipts', href: '/receipts' }}
     >
       <section className="space-y-6">
-        <div className="flex flex-wrap gap-3">
-          <Link
-            href="/receipts"
-            className="inline-flex items-center rounded-md border border-emerald-100 bg-white px-3 py-1.5 text-sm font-medium text-emerald-700 shadow-sm hover:bg-emerald-50"
-          >
-            ← Back to receipts
-          </Link>
-        </div>
-
         <div className="grid gap-4 lg:grid-cols-3">
           <StatCard
             label={`Net cash · ${formatMonthLabel(current.monthStart)}`}

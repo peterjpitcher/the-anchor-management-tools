@@ -27,6 +27,7 @@ import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { Button, IconButton } from '@/components/ui-v2/forms/Button'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { SearchInput } from '@/components/ui-v2/forms/SearchInput'
 import { Badge, BadgeGroup } from '@/components/ui-v2/display/Badge'
 import { toast } from '@/components/ui-v2/feedback/Toast'
@@ -552,12 +553,23 @@ export default function CustomersPage() {
       ]
     : []
 
+  const navActions = (
+    <div className="flex items-center gap-2">
+      {canManageCustomers && (
+        <LinkButton href="/customers/new" size="sm">
+          <PlusIcon className="h-4 w-4 mr-2" />
+          Add Customer
+        </LinkButton>
+      )}
+    </div>
+  )
+
   return (
     <PageLayout
       title="Customers"
-      subtitle="View and manage your customer database"
-      backButton={{ label: 'Back to Dashboard', href: '/dashboard' }}
+      subtitle="Manage your customer database and segments"
       navItems={navItems}
+      navActions={navActions}
     >
       <Card>
         <div className="space-y-4">

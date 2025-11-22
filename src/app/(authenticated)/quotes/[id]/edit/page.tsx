@@ -7,7 +7,7 @@ import { getVendors } from '@/app/actions/vendors'
 import { Plus, Trash2 } from 'lucide-react'
 import type { InvoiceVendor, InvoiceLineItemInput, QuoteWithDetails } from '@/types/invoices'
 // UI v2 components
-import { Page } from '@/components/ui-v2/layout/Page'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -250,11 +250,9 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
 
   if (permissionsLoading) {
     return (
-      <Page title="Loading...">
-        <div className="flex items-center justify-center h-64">
-          <Spinner size="lg" />
-        </div>
-      </Page>
+      <PageLayout title="Loading..." loading>
+        {null}
+      </PageLayout>
     )
   }
 
@@ -264,20 +262,15 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
 
   if (loading) {
     return (
-      <Page title="Loading...">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <Spinner size="lg" />
-            <p className="mt-4 text-gray-600">Loading...</p>
-          </div>
-        </div>
-      </Page>
+      <PageLayout title="Loading..." loading loadingLabel="Loading quote details...">
+        {null}
+      </PageLayout>
     )
   }
 
   if (!quote) {
     return (
-      <Page title="Quote Not Found">
+      <PageLayout title="Quote Not Found" error={error || 'Quote not found'}>
         <Card>
           <div className="text-center py-8">
             <p className="text-red-600 mb-4">{error || 'Quote not found'}</p>
@@ -285,24 +278,26 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
               variant="secondary"
               onClick={() => router.push('/quotes')}
             >
-              <BackButton label="Back to Quote" onBack={() => router.back()} />
+              Back to Quotes
             </Button>
           </div>
         </Card>
-      </Page>
+      </PageLayout>
     )
   }
 
   return (
-    <Page
+    <PageLayout
       title={`Edit Quote ${quote.quote_number}`}
-      description="Update quote details"
+      subtitle="Update quote details"
+      backButton={{ label: 'Back to Quote', href: `/quotes/${quoteId}` }}
     >
-      {error && (
-        <Alert variant="error" title="Error" description={error} />
-      )}
+      <div className="space-y-6">
+        {error && (
+          <Alert variant="error" title="Error" description={error} />
+        )}
 
-      <form onSubmit={handleSubmit} className="space-y-8">
+        <form onSubmit={handleSubmit} className="space-y-8">
         {/* Quote Details */}
         <Section title="Quote Details">
           <Card>
@@ -539,9 +534,10 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
             disabled={submitting}
           >
             Cancel
-          </Button>
-        </div>
-      </form>
-    </Page>
+            </Button>
+          </div>
+        </form>
+      </div>
+    </PageLayout>
   )
 }

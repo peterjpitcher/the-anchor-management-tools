@@ -196,7 +196,6 @@ export default function ProfilePage() {
       <PageLayout
         title="My Profile"
         subtitle="Manage your account details"
-        backButton={{ label: 'Back to Dashboard', href: '/dashboard' }}
         loading
         loadingLabel="Loading profile..."
       />
@@ -208,7 +207,6 @@ export default function ProfilePage() {
       <PageLayout
         title="My Profile"
         subtitle="We couldn't load your profile information."
-        backButton={{ label: 'Back to Dashboard', href: '/dashboard' }}
         error="Profile not found"
       />
     )
@@ -218,7 +216,6 @@ export default function ProfilePage() {
     <PageLayout
       title="My Profile"
       subtitle="Manage your account details"
-      backButton={{ label: 'Back to Dashboard', href: '/dashboard' }}
     >
       <div className="space-y-6">
       {/* Delete confirmation dialog */}

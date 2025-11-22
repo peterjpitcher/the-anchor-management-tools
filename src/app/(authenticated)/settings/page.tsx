@@ -204,7 +204,6 @@ export default async function SettingsPage() {
     <PageLayout
       title="Settings"
       subtitle="Manage application settings and configurations"
-      backButton={{ label: 'Back to Dashboard', href: '/dashboard' }}
       navItems={navItems}
     >
       <div className="space-y-6">

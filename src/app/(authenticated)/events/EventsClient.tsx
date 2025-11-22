@@ -103,10 +103,6 @@ export default function EventsClient({ events, todos, initialError }: EventsClie
     <PageLayout
       title="Events"
       subtitle="Manage your events and track bookings"
-      backButton={{
-        label: 'Back to Dashboard',
-        href: '/',
-      }}
       navItems={navItems}
     >
       <div className="space-y-6">

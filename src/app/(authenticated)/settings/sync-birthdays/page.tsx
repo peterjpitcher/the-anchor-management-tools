@@ -9,7 +9,7 @@ import {
   XCircleIcon
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
-import { Page } from '@/components/ui-v2/layout/Page';
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card, CardTitle } from '@/components/ui-v2/layout/Card';
 import { Button } from '@/components/ui-v2/forms/Button';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
@@ -83,15 +83,14 @@ const { hasPermission } = usePermissions();
   }
 
   return (
-    <Page
+    <PageLayout
       title="Sync Employee Birthdays to Calendar"
-      description="Sync all active employee birthdays to Google Calendar"
+      subtitle="Sync all active employee birthdays to Google Calendar"
       breadcrumbs={[
         { label: 'Settings', href: '/settings' },
         { label: 'Sync Birthdays' }
       ]}
-    
-      actions={<BackButton label="Back to Settings" onBack={() => router.push('/settings')} />}
+      backButton={{ label: 'Back to Settings', href: '/settings' }}
     >
       {/* Info Banner */}
       <Alert
@@ -179,6 +178,6 @@ const { hasPermission } = usePermissions();
           <li>Email reminders will still be sent weekly to manager@the-anchor.pub</li>
         </ol>
       </Section>
-    </Page>
+    </PageLayout>
   );
 }

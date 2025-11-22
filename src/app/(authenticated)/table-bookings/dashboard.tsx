@@ -202,7 +202,6 @@ export default function TableBookingsDashboard() {
   const layoutProps = {
     title: 'Table Bookings',
     subtitle: 'Manage restaurant table reservations',
-    backButton: { label: 'Back to Dashboard', href: '/' },
   }
 
   if (!canView) {

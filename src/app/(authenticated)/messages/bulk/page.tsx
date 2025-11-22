@@ -377,7 +377,6 @@ export default function BulkMessagePage() {
     return (
       <PageLayout
         title="Bulk Message"
-        backButton={{ label: 'Back to Messages', href: '/messages' }}
         navItems={navItems}
         headerActions={headerActions}
         breadcrumbs={[
@@ -396,7 +395,6 @@ export default function BulkMessagePage() {
     <PageLayout
       title="Bulk Message"
       subtitle="Send a message to multiple customers at once"
-      backButton={{ label: 'Back to Messages', href: '/messages' }}
       breadcrumbs={[
         { label: 'Messages', href: '/messages' },
         { label: 'Bulk Message', href: '/messages/bulk' },
