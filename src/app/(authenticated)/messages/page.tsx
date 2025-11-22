@@ -385,7 +385,6 @@ export default function MessagesPage() {
       <PageLayout
         title="Messages Inbox"
         subtitle="Review and respond to customer conversations"
-        backButton={{ label: 'Back to Dashboard', href: '/dashboard' }}
         navActions={navActions}
       >
         <Card>
@@ -407,7 +406,6 @@ export default function MessagesPage() {
           ? `${totalUnreadCount} unread message${totalUnreadCount === 1 ? '' : 's'}`
           : 'All caught up'
       }
-      backButton={{ label: 'Back to Dashboard', href: '/dashboard' }}
       navActions={navActions}
     >
       {hasMoreUnread && (

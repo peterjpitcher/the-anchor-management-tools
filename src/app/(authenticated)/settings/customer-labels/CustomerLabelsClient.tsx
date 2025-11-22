@@ -17,7 +17,7 @@ import {
   SparklesIcon,
   CheckCircleIcon,
 } from '@heroicons/react/24/outline';
-import { Page } from '@/components/ui-v2/layout/Page';
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Button, IconButton } from '@/components/ui-v2/forms/Button';
 import { Modal } from '@/components/ui-v2/overlay/Modal';
@@ -197,10 +197,10 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
   const canManageUI = canManage;
 
   return (
-    <Page
+    <PageLayout
       title="Customer Labels"
-      description="Organise customers with labels for better targeting and management"
-      actions={
+      subtitle="Organise customers with labels for better targeting and management"
+      headerActions={
         canManageUI && (
           <div className="flex space-x-3">
             <Button
@@ -220,9 +220,7 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
           </div>
         )
       }
-      primaryAction={
-        <BackButton label="Back to Settings" onBack={() => router.push('/settings')} />
-      }
+      backButton={{ label: 'Back to Settings', href: '/settings' }}
     >
       {!canManageUI && (
         <Card className="mb-4">
@@ -380,6 +378,6 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
           onConfirm={() => void handleApplyRetroactively()}
         />
       )}
-    </Page>
+    </PageLayout>
   );
 }

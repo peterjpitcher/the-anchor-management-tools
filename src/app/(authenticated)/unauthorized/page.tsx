@@ -11,7 +11,6 @@ export default function UnauthorizedPage() {
     <PageLayout
       title="Access Denied"
       subtitle="You don't have permission to access this page."
-      backButton={{ label: 'Back to Dashboard', href: '/dashboard' }}
     >
       <div className="mx-auto max-w-md">
         <Card className="text-center">

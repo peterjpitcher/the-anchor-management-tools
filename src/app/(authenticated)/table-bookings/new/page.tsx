@@ -942,9 +942,9 @@ export default function NewTableBookingPage() {
                 ))}
 
                 <Alert
-                  variant="info"
-                  title={`Current pre-order total: £${calculateSundayLunchTotal()}`}
-                  description="Main course pricing updates automatically based on your selections. Optional extras are added per guest."
+                  variant="warning"
+                  description='Main course pricing updates automatically based on your selections. "Optional extras" are added per guest.'
+                  className="mt-2"
                 />
               </>
             )}

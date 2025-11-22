@@ -1,3 +1,11 @@
+export interface ScheduleConfigItem {
+  name: string
+  starts_at: string
+  ends_at: string
+  capacity: number
+  booking_type: string
+}
+
 export interface BusinessHours {
   id: string
   day_of_week: number // 0 = Sunday, 6 = Saturday
@@ -7,6 +15,7 @@ export interface BusinessHours {
   kitchen_closes: string | null
   is_closed: boolean
   is_kitchen_closed: boolean
+  schedule_config: ScheduleConfigItem[] | null
   created_at: string
   updated_at: string
 }
@@ -21,6 +30,7 @@ export interface SpecialHours {
   is_closed: boolean
   is_kitchen_closed: boolean
   note: string | null
+  schedule_config: ScheduleConfigItem[] | null
   created_at: string
   updated_at: string
 }

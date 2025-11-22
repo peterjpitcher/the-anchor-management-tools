@@ -83,7 +83,7 @@ export interface PageLayoutProps {
 
 /**
  * PageLayout - Unified wrapper that pairs the app sidebar with a consistent
- * dark header, optional secondary navigation, and padded content area.
+ * light header, optional secondary navigation, and padded content area.
  */
 export function PageLayout({
   title,
@@ -114,14 +114,14 @@ export function PageLayout({
   ) : undefined
 
   const navRow = hasNavRow ? (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between w-full">
       {navItems && navItems.length > 0 ? (
         <HeaderNav items={navItems} />
       ) : (
         <span className="sr-only">Navigation</span>
       )}
       {navActions && (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 mt-2 sm:mt-0">
           {navActions}
         </div>
       )}
@@ -177,7 +177,7 @@ export function PageLayout({
           backButton={backButton}
           actions={
             toolbar ? (
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-3 w-full">
                 {navRow}
                 {toolbar}
               </div>

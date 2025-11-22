@@ -24,7 +24,7 @@ export interface HeaderNavProps {
 
 /**
  * HeaderNav - Consistent horizontal navigation used within page headers.
- * Provides a single place to manage typography, spacing, and responsive fallbacks.
+ * Refactored to use an "underline" style (border-bottom) instead of "pills".
  */
 export function HeaderNav({
   items,
@@ -61,16 +61,23 @@ export function HeaderNav({
         if (item.href.startsWith('#')) {
           active = item.href === currentHash
         } else {
+          // Check for exact path match or if the current path starts with the href (for nested routes)
+          // But exclude the root path '/' from being active on every page
           const hrefWithoutHash = item.href.split('#')[0]
-          active = hrefWithoutHash === pathname
+          active = hrefWithoutHash === pathname || (hrefWithoutHash !== '/' && pathname.startsWith(hrefWithoutHash))
         }
       }
 
       return { item, active }
     })
-
+    
+    // Original logic: force first item active if nothing else matches.
+    // For underline tabs, this might be confusing if we are truly on a different page.
+    // But preserving behavior for now to avoid regression.
     if (!computed.some(({ active }) => active) && computed.length > 0) {
-      computed[0].active = true
+       // Only force active if the items are purely local hash navigations?
+       // For now, let's stick to existing behavior but be careful.
+       computed[0].active = true
     }
 
     return computed
@@ -88,30 +95,30 @@ export function HeaderNav({
       )}
     >
       <nav
-        className="overflow-x-auto py-1 text-sm sm:text-base"
+        className="overflow-x-auto text-sm sm:text-base"
         aria-label={ariaLabel}
       >
-        <ul className="flex w-max min-w-full items-center gap-1 sm:gap-2">
+        <ul className="flex w-max min-w-full items-center gap-4 sm:gap-6 -mb-px">
           {resolvedItems.map(({ item, active }, index) => {
             const { href, onClick, label, icon, disabled, badge } = item
             const key = `${label}-${index}`
             const content = (
               <span
                 className={cn(
-                  'inline-flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-1.5 transition-colors duration-150',
+                  'inline-flex items-center gap-2 whitespace-nowrap px-1 py-3 border-b-2 transition-colors duration-150 text-sm font-medium',
                   active
-                    ? 'bg-white text-sidebar shadow-sm'
-                    : 'text-white/80 hover:text-white hover:bg-white/10',
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
                   disabled && 'opacity-50 pointer-events-none',
                   itemClassName,
                 )}
               >
                 {icon && <span className="flex items-center">{icon}</span>}
-                <span className="font-medium">{label}</span>
+                <span className="">{label}</span>
                 {badge !== undefined && badge !== null && (
                   <span className={cn(
-                    'inline-flex min-w-[1.5rem] items-center justify-center rounded-full px-1 text-xs font-semibold',
-                    active ? 'bg-sidebar/10 text-sidebar' : 'bg-white/15 text-white',
+                    'inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1 text-[10px] font-bold',
+                    active ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600',
                   )}>
                     {badge}
                   </span>
@@ -122,7 +129,7 @@ export function HeaderNav({
             return (
               <li key={key} className="flex flex-shrink-0">
                 {href ? (
-                  <Link href={href} className="focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar">
+                  <Link href={href} className="focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
                     {content}
                   </Link>
                 ) : (
@@ -130,7 +137,7 @@ export function HeaderNav({
                   type="button"
                   onClick={onClick}
                   disabled={disabled}
-                  className="focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+                  className="focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                 >
                   {content}
                 </button>

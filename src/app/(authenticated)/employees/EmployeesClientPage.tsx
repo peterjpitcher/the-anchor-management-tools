@@ -129,7 +129,6 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
 
   const navItems: HeaderNavItem[] = [
     { label: 'Filters', href: '#filters' },
-    { label: 'Roster', href: '#roster' },
     { label: 'Birthdays', href: '/employees/birthdays' },
   ]
 
@@ -170,7 +169,6 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
     <PageLayout
       title="Employees"
       subtitle="Manage your staff and their information"
-      backButton={{ label: 'Back to Dashboard', href: '/dashboard' }}
       navItems={navItems}
       navActions={navActions}
     >

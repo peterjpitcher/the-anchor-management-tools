@@ -55,7 +55,6 @@ export default async function MenuManagementHomePage() {
     <PageLayout
       title="Menu Management"
       subtitle="Control ingredients, dishes, and menu structure from one place"
-      backButton={{ label: 'Back to Dashboard', href: '/' }}
     >
       <Section>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

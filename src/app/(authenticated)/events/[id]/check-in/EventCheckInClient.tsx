@@ -331,17 +331,10 @@ export default function EventCheckInClient({ event, reviewLink }: EventCheckInCl
   const headerTitle = event.name || 'Event Check-In'
 
   return (
-    <PageLayout title={headerTitle} subtitle={headerSubtitle}>
+    <PageLayout title={headerTitle} subtitle={headerSubtitle} backButton={{ label: 'Back to Event', href: `/events/${event.id}` }}>
       <div className="space-y-6">
         <div className="rounded-[32px] bg-white/95 px-6 py-6 text-gray-900 shadow-2xl sm:px-8 sm:py-8">
-          <header className="flex flex-wrap items-center justify-between gap-3 pb-4">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-wide text-emerald-600">Now checking in</p>
-              <h2 className="mt-2 text-3xl font-semibold text-gray-900 sm:text-4xl">{event.name}</h2>
-              {headerSubtitle && <p className="mt-1 text-sm text-gray-600">{headerSubtitle}</p>}
-            </div>
-          </header>
-
+          {/* Removed custom header content as PageLayout provides it */}
           <div className="mt-4 space-y-5">
             {error && <Alert variant="error" title="Unable to continue" description={error} />}
 
@@ -351,8 +344,7 @@ export default function EventCheckInClient({ event, reviewLink }: EventCheckInCl
             {step === 'already' && renderAlreadyCheckedIn()}
             {step === 'success' && renderSuccess()}
           </div>
-        </div>
-
+        </div> {/* End of rounded-[32px] bg-white/95 ... */}
         <p className="text-center text-sm text-emerald-100/80" />
       </div>
     </PageLayout>

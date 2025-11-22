@@ -49,6 +49,7 @@ export type ModuleName =
   | 'parking'
   | 'short_links'
   | 'menu_management'
+  | 'cashing_up'
 ;
 
 export type ActionType = 
@@ -77,7 +78,11 @@ export type ActionType =
   | 'approve_sms'
   | 'enroll'
   | 'redeem'
-  | 'refund';
+  | 'refund'
+  | 'submit'
+  | 'approve'
+  | 'lock'
+  | 'unlock';
 
 export type UserPermission = {
   module_name: ModuleName;
