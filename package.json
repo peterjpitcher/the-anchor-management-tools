@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "vitest run"
+    "test": "VITE_CJS_IGNORE_WARNING=true vitest run"
   },
   "dependencies": {
     "@azure/identity": "^4.10.2",

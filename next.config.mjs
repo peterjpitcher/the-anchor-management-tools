@@ -6,6 +6,8 @@ const nextConfig = {
     },
   },
   webpack: (config) => {
+    // Disable webpack filesystem cache to silence noisy serialization warnings during build
+    config.cache = false
     return config
   },
 };

@@ -1,5 +1,4 @@
 import { type NextRequest, NextResponse } from 'next/server'
-import { updateSession } from '@/lib/supabase/middleware'
 
 const PUBLIC_PATH_PREFIXES = [
   '/_next',     // Next.js internal
@@ -43,6 +42,48 @@ function isVipHost(hostname: string) {
   return hostname === 'vip-club.uk' || hostname.endsWith('.vip-club.uk')
 }
 
+type SessionCookie = {
+  name: string
+  value: string
+  // CookieOptions is compatible with NextResponse cookies, but we keep it loose
+  options?: Record<string, unknown>
+}
+
+type SessionPayload = {
+  user: unknown
+  cookies: SessionCookie[]
+}
+
+async function fetchSession(request: NextRequest): Promise<SessionPayload> {
+  const sessionUrl = new URL('/api/auth/session', request.nextUrl.origin)
+
+  try {
+    const sessionResponse = await fetch(sessionUrl.toString(), {
+      headers: { cookie: request.headers.get('cookie') ?? '' },
+      cache: 'no-store',
+    })
+
+    if (!sessionResponse.ok) {
+      return { user: null, cookies: [] }
+    }
+
+    const data = (await sessionResponse.json()) as Partial<SessionPayload>
+
+    return {
+      user: data?.user ?? null,
+      cookies: Array.isArray(data?.cookies) ? data.cookies : [],
+    }
+  } catch {
+    return { user: null, cookies: [] }
+  }
+}
+
+function applySessionCookies(response: NextResponse, cookies: SessionCookie[]) {
+  cookies.forEach(({ name, value, options }) => {
+    response.cookies.set({ name, value, ...(options ?? {}) })
+  })
+}
+
 function sanitizeRedirectTarget(url: URL) {
   try {
     const decodedPath = decodeURIComponent(url.pathname).trim()
@@ -61,12 +102,13 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Refresh session if needed and get the fresh response object + user
-  const { response, user } = await updateSession(request)
-
   if (isPublicPath(request.nextUrl.pathname)) {
-    return response
+    return NextResponse.next()
   }
+
+  const { user, cookies } = await fetchSession(request)
+  const response = NextResponse.next()
+  applySessionCookies(response, cookies)
 
   if (!user) {
     const redirectUrl = request.nextUrl.clone()
@@ -75,10 +117,7 @@ export async function middleware(request: NextRequest) {
 
     const redirectResponse = NextResponse.redirect(redirectUrl)
     
-    // Copy any cookies set by updateSession (like clearing invalid tokens) to the redirect
-    response.cookies.getAll().forEach(cookie => {
-      redirectResponse.cookies.set(cookie)
-    })
+    applySessionCookies(redirectResponse, cookies)
 
     return redirectResponse
   }

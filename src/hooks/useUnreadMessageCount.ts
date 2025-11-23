@@ -24,7 +24,13 @@ export function useUnreadMessageCount(intervalMs = 30_000): number {
       controller?.abort()
       controller = new AbortController()
 
-      if (typeof window === 'undefined' || !window.location?.origin) {
+      const shouldSkip =
+        process.env.NODE_ENV === 'test' ||
+        typeof window === 'undefined' ||
+        !window.location?.origin ||
+        window.location.origin === 'about:blank'
+
+      if (shouldSkip) {
         return
       }
 
