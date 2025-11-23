@@ -32,7 +32,8 @@ function groupItems<T>(items: T[], getDate: (item: T) => string | null) {
     'This Week': [],
     'Next Week': [],
     'This Month': [],
-    'Later': []
+    'Later': [],
+    'To Be Confirmed': []
   }
 
   const now = new Date()
@@ -56,7 +57,11 @@ function groupItems<T>(items: T[], getDate: (item: T) => string | null) {
 
   items.forEach(item => {
     const dateStr = getDate(item)
-    if (!dateStr) return
+    
+    if (!dateStr) {
+      groups['To Be Confirmed'].push(item)
+      return
+    }
 
     const date = new Date(dateStr)
     const dateIso = date.toISOString().split('T')[0]
