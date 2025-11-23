@@ -15,7 +15,6 @@ export function generateWeeklyCashupHTML({ weekData, siteName, weekStartDate, lo
   const rows = weekData.map(row => `
     <tr class="border-b">
       <td class="py-2 px-4">${row.session_date}</td>
-      <td class="py-2 px-4">${row.shift_code || '-'}</td>
       <td class="py-2 px-4 capitalize">${row.status}</td>
       <td class="py-2 px-4 text-right">£${row.total_expected_amount.toFixed(2)}</td>
       <td class="py-2 px-4 text-right">£${row.total_counted_amount.toFixed(2)}</td>
@@ -56,7 +55,6 @@ export function generateWeeklyCashupHTML({ weekData, siteName, weekStartDate, lo
         <thead class="text-xs text-gray-700 uppercase bg-gray-50 border-b">
           <tr>
             <th class="px-4 py-3">Date</th>
-            <th class="px-4 py-3">Shift</th>
             <th class="px-4 py-3">Status</th>
             <th class="px-4 py-3 text-right">Expected</th>
             <th class="px-4 py-3 text-right">Counted</th>
@@ -68,7 +66,7 @@ export function generateWeeklyCashupHTML({ weekData, siteName, weekStartDate, lo
         </tbody>
         <tfoot class="bg-gray-50 font-bold text-gray-900">
           <tr>
-            <td colspan="3" class="px-4 py-3 text-right">Weekly Totals:</td>
+            <td colspan="2" class="px-4 py-3 text-right">Weekly Totals:</td>
             <td class="px-4 py-3 text-right">£${totalExpected.toFixed(2)}</td>
             <td class="px-4 py-3 text-right">£${totalCounted.toFixed(2)}</td>
             <td class="px-4 py-3 text-right ${totalVariance < 0 ? 'text-red-600' : 'text-green-600'}">£${totalVariance.toFixed(2)}</td>
