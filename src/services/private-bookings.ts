@@ -597,7 +597,7 @@ export class PrivateBookingService {
           vendor:vendors(*)
         )
       `, { count: 'exact' })
-      .order('event_date', { ascending: true })
+      .order('event_date', { ascending: true, nullsFirst: true })
       .order('display_order', { ascending: true, foreignTable: 'private_booking_items' });
 
     if (filters?.status) {
@@ -605,7 +605,8 @@ export class PrivateBookingService {
     }
     
     if (filters?.fromDate) {
-      query = query.gte('event_date', filters.fromDate);
+      // Include future dates OR dates that are to be determined (null)
+      query = query.or(`event_date.gte.${filters.fromDate},event_date.is.null`);
     }
     
     if (filters?.toDate) {
