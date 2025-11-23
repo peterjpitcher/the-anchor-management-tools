@@ -1,0 +1,3 @@
+-- Placeholder for 20251021120000_add_display_order_private_booking_items.sql
+-- This migration was squashed into 20251123120000_squashed.sql
+-- Original file stored at supabase/migrations-archive/pre-squash-20251123/20251021120000_add_display_order_private_booking_items.sql

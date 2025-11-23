@@ -6,7 +6,6 @@ export interface CashupSession {
   id: string;
   site_id: string;
   session_date: string; // YYYY-MM-DD
-  shift_code: string | null;
   status: CashupStatus;
   prepared_by_user_id: string;
   approved_by_user_id: string | null;
@@ -14,7 +13,6 @@ export interface CashupSession {
   total_counted_amount: number;
   total_variance_amount: number;
   notes: string | null;
-  workbook_payload: Record<string, any>;
   created_at: string;
   created_by_user_id: string;
   updated_at: string;
@@ -43,7 +41,6 @@ export interface CashupWeeklyView {
   site_id: string;
   week_start_date: string;
   session_date: string;
-  shift_code: string | null;
   status: CashupStatus;
   total_expected_amount: number;
   total_counted_amount: number;
@@ -55,7 +52,6 @@ export interface CashupWeeklyView {
 export interface UpsertCashupSessionDTO {
   siteId: string;
   sessionDate: string;
-  shiftCode?: string | null;
   status?: CashupStatus;
   notes?: string | null;
   paymentBreakdowns: {
@@ -68,7 +64,6 @@ export interface UpsertCashupSessionDTO {
     denomination: number;
     quantity: number;
   }[];
-  workbookPayload?: Record<string, any>;
 }
 
 export interface CashupDashboardStats {

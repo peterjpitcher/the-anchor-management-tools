@@ -1,0 +1,3 @@
+-- Placeholder for 20250507133000_add_cant_find_receipt_status.sql
+-- This migration was squashed into 20251123120000_squashed.sql
+-- Original file stored at supabase/migrations-archive/pre-squash-20251123/20250507133000_add_cant_find_receipt_status.sql

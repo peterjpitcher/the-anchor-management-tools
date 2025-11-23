@@ -1,0 +1,3 @@
+-- Placeholder for 20251015130000_mark_pre_june_2025_receipts_non_required.sql
+-- This migration was squashed into 20251123120000_squashed.sql
+-- Original file stored at supabase/migrations-archive/pre-squash-20251123/20251015130000_mark_pre_june_2025_receipts_non_required.sql

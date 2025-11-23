@@ -1,0 +1,3 @@
+-- Placeholder for 2025091301_backfill_short_link_counts.sql
+-- This migration was squashed into 20251123120000_squashed.sql
+-- Original file stored at supabase/migrations-archive/pre-squash-20251123/2025091301_backfill_short_link_counts.sql

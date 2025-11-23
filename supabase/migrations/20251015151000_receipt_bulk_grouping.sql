@@ -1,0 +1,3 @@
+-- Placeholder for 20251015151000_receipt_bulk_grouping.sql
+-- This migration was squashed into 20251123120000_squashed.sql
+-- Original file stored at supabase/migrations-archive/pre-squash-20251123/20251015151000_receipt_bulk_grouping.sql

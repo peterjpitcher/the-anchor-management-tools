@@ -61,7 +61,7 @@ for file in $MIGRATION_DIR/*.sql; do
     if [ -f "$file" ]; then
         filename=$(basename "$file")
         count=$(grep -c "CREATE TABLE" "$file" 2>/dev/null || echo 0)
-        if [ $count -gt 0 ]; then
+        if [ "${count:-0}" -gt 0 ]; then
             echo "  $filename: $count tables"
         fi
     fi

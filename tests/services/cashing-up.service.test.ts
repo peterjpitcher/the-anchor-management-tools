@@ -61,7 +61,6 @@ describe('CashingUpService', () => {
     const dto = {
       siteId: 'site-1',
       sessionDate: '2025-01-01',
-      shiftCode: 'DAY',
       status: 'draft' as const,
       notes: 'Test',
       paymentBreakdowns: [
@@ -69,7 +68,6 @@ describe('CashingUpService', () => {
         { paymentTypeCode: 'CARD', paymentTypeLabel: 'Card', expectedAmount: 200, countedAmount: 200 }, // 0
       ],
       cashCounts: [],
-      workbookPayload: {}
     };
 
     // Mock no existing session
@@ -104,12 +102,11 @@ describe('CashingUpService', () => {
     }));
   });
 
-  it('should throw error if session already exists for site/date/shift', async () => {
+  it('should throw error if session already exists for site/date', async () => {
     const userId = 'user-123';
     const dto = {
       siteId: 'site-1',
       sessionDate: '2025-01-01',
-      shiftCode: 'DAY',
       paymentBreakdowns: [],
       cashCounts: []
     };

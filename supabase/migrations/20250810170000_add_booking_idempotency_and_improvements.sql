@@ -1,0 +1,3 @@
+-- Placeholder for 20250810170000_add_booking_idempotency_and_improvements.sql
+-- This migration was squashed into 20251123120000_squashed.sql
+-- Original file stored at supabase/migrations-archive/pre-squash-20251123/20250810170000_add_booking_idempotency_and_improvements.sql

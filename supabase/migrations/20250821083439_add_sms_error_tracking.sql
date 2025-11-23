@@ -1,0 +1,3 @@
+-- Placeholder for 20250821083439_add_sms_error_tracking.sql
+-- This migration was squashed into 20251123120000_squashed.sql
+-- Original file stored at supabase/migrations-archive/pre-squash-20251123/20250821083439_add_sms_error_tracking.sql
