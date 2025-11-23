@@ -76,7 +76,7 @@ export default async function WeeklyCashupPage({ searchParams }: { searchParams:
               <tr><td colSpan={5} className="px-6 py-4 text-center">No data found for this week</td></tr>
             ) : (
               weeklyData.map((row: any) => (
-                <tr key={row.session_date + (row.shift_code || '')} className="bg-white border-b hover:bg-gray-50">
+                <tr key={row.session_date} className="bg-white border-b hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">{row.session_date}</td>
                   <td className="px-6 py-4 capitalize">
                     <span className={`px-2 py-1 rounded text-xs ${
