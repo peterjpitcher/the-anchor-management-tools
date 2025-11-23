@@ -28,8 +28,18 @@ type Env = z.infer<typeof envSchema>;
 
 // Validate environment variables
 function validateEnv(): Env {
+  const withTestDefaults =
+    process.env.NODE_ENV === 'test'
+      ? {
+          NEXT_PUBLIC_SUPABASE_URL: 'http://localhost:54321',
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: 'test-anon-key',
+          NEXT_PUBLIC_APP_URL: 'http://localhost:3000',
+          ...process.env,
+        }
+      : process.env;
+
   try {
-    return envSchema.parse(process.env);
+    return envSchema.parse(withTestDefaults);
   } catch (error) {
     if (error instanceof z.ZodError) {
       const issues = error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`);
