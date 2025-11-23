@@ -474,7 +474,8 @@ const fetchDashboardSnapshot = unstable_cache(
         try {
           const { data, count } = await PrivateBookingService.getBookings({
             fromDate: todayIso,
-            limit: 20
+            limit: 20,
+            useAdmin: true
           });
 
           privateBookings.upcoming = (data ?? []).map((booking) => ({

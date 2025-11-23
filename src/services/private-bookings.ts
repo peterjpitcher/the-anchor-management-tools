@@ -582,8 +582,9 @@ export class PrivateBookingService {
     toDate?: string;
     customerId?: string;
     limit?: number;
+    useAdmin?: boolean;
   }) {
-    const supabase = await createClient();
+    const supabase = filters?.useAdmin ? createAdminClient() : await createClient();
     
     let query = supabase
       .from('private_bookings')
