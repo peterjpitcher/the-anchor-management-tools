@@ -1,0 +1,3 @@
+-- Placeholder for 20260320123000_update_invoice_summary_stats.sql
+-- This migration was squashed into 20251123120000_squashed.sql
+-- Original file stored at supabase/migrations-archive/pre-squash-20251123/20260320123000_update_invoice_summary_stats.sql

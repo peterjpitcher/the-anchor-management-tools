@@ -1,0 +1,3 @@
+-- Placeholder for 20260401200000_create_menu_transactions.sql
+-- This migration was squashed into 20251123120000_squashed.sql
+-- Original file stored at supabase/migrations-archive/pre-squash-20251123/20260401200000_create_menu_transactions.sql

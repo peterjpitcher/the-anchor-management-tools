@@ -1,0 +1,3 @@
+-- Placeholder for 20251025120000_add_booking_reminder_flag.sql
+-- This migration was squashed into 20251123120000_squashed.sql
+-- Original file stored at supabase/migrations-archive/pre-squash-20251123/20251025120000_add_booking_reminder_flag.sql

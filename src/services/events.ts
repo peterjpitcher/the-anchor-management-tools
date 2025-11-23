@@ -399,6 +399,27 @@ export class EventService {
     return event;
   }
 
+  static async getEventsByDate(date: string) {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from('events')
+      .select('*, category:event_categories(*), bookings(seats)')
+      .eq('date', date)
+      .neq('event_status', 'cancelled')
+      .order('time', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching events by date:', error);
+      throw new Error('Failed to fetch events');
+    }
+    
+    // Calculate total booked count for each event
+    return data.map(event => ({
+      ...event,
+      booked_count: event.bookings?.reduce((sum: number, b: any) => sum + (b.seats || 0), 0) || 0
+    }));
+  }
+
   static async getEvents(options?: {
     status?: 'all' | 'scheduled' | 'cancelled' | 'postponed' | 'rescheduled' | 'sold_out';
     searchTerm?: string;

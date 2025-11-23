@@ -1,0 +1,3 @@
+-- Placeholder for 20260401223000_fix_event_time_update.sql
+-- This migration was squashed into 20251123120000_squashed.sql
+-- Original file stored at supabase/migrations-archive/pre-squash-20251123/20260401223000_fix_event_time_update.sql

@@ -1,0 +1,3 @@
+-- Placeholder for 20250728120000_fix_booking_confirmation_join_issues.sql
+-- This migration was squashed into 20251123120000_squashed.sql
+-- Original file stored at supabase/migrations-archive/pre-squash-20251123/20250728120000_fix_booking_confirmation_join_issues.sql

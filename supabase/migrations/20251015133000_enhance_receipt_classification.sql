@@ -1,0 +1,3 @@
+-- Placeholder for 20251015133000_enhance_receipt_classification.sql
+-- This migration was squashed into 20251123120000_squashed.sql
+-- Original file stored at supabase/migrations-archive/pre-squash-20251123/20251015133000_enhance_receipt_classification.sql

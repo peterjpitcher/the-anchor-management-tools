@@ -156,3 +156,58 @@ export async function getDashboardDataAction(siteId?: string, fromDate?: string,
     return { error: error.message };
   }
 }
+
+export async function getDailyTargetAction(siteId: string, date: string) {
+  const supabase = await createClient();
+  try {
+    const target = await CashingUpService.getDailyTarget(supabase, siteId, date);
+    return { success: true, data: target };
+  } catch (error: any) {
+    console.error('Error getting daily target:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function setDailyTargetAction(siteId: string, date: string, amount: number) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  try {
+    await CashingUpService.setDailyTarget(supabase, siteId, date, amount, user.id);
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error setting daily target:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateWeeklyTargetsAction(siteId: string, targets: Record<number, number>, effectiveDate: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  try {
+    const targetArray = Object.entries(targets).map(([day, amount]) => ({
+      dayOfWeek: parseInt(day),
+      amount: Number(amount)
+    }));
+
+    await CashingUpService.setWeeklyTargets(supabase, siteId, targetArray, effectiveDate, user.id);
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error setting weekly targets:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getWeeklyProgressAction(siteId: string, date: string) {
+  const supabase = await createClient();
+  try {
+    const data = await CashingUpService.getWeeklyProgress(supabase, siteId, date);
+    return { success: true, data };
+  } catch (error: any) {
+    console.error('Error getting weekly progress:', error);
+    return { success: false, error: error.message };
+  }
+}

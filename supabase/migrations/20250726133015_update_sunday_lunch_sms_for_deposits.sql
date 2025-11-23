@@ -1,0 +1,3 @@
+-- Placeholder for 20250726133015_update_sunday_lunch_sms_for_deposits.sql
+-- This migration was squashed into 20251123120000_squashed.sql
+-- Original file stored at supabase/migrations-archive/pre-squash-20251123/20250726133015_update_sunday_lunch_sms_for_deposits.sql

@@ -614,4 +614,33 @@ export class BusinessHoursService {
 
     return oldData;
   }
+
+  static async isSiteOpen(siteId: string, date: string): Promise<boolean> {
+    const supabase = await createClient();
+    const dayOfWeek = new Date(date).getDay(); // 0-6
+
+    // 1. Check special hours
+    const { data: special } = await supabase
+      .from('special_hours')
+      .select('is_closed')
+      .eq('date', date)
+      .maybeSingle();
+
+    if (special) {
+      return !special.is_closed;
+    }
+
+    // 2. Check regular hours
+    const { data: regular } = await supabase
+      .from('business_hours')
+      .select('is_closed')
+      .eq('day_of_week', dayOfWeek)
+      .maybeSingle();
+
+    if (regular) {
+      return !regular.is_closed;
+    }
+
+    return false; // Default closed if no info? Or open? Assuming closed safe default.
+  }
 }

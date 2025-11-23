@@ -1,0 +1,3 @@
+-- Placeholder for 20250726000000_add_table_booking_sms_templates.sql
+-- This migration was squashed into 20251123120000_squashed.sql
+-- Original file stored at supabase/migrations-archive/pre-squash-20251123/20250726000000_add_table_booking_sms_templates.sql
