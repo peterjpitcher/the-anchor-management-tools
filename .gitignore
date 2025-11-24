@@ -42,10 +42,6 @@ google-service-account*.json
 *.tsbuildinfo
 next-env.d.ts
 
-# temp files
-temp/
-*.tmp
-
 # sql data dumps
 data.sql
 *.sql.dump
@@ -57,6 +53,9 @@ discovery-*.log
 lint-*.txt
 *-analysis.txt
 analyze-*.txt
+
+# temp data exports
+temp/*.csv
 
 # Playwright test artifacts
 test-results/

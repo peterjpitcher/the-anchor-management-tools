@@ -3,11 +3,11 @@ import { createClient } from '@/lib/supabase/server';
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 
 export default async function WeeklyCashupPage({ searchParams }: { searchParams: Promise<{ siteId?: string; week?: string }> }) {
-  const { siteId: paramSiteId, week: paramWeek } = await searchParams;
+  const { week: paramWeek } = await searchParams;
   const supabase = await createClient();
-  const { data: sites } = await supabase.from('sites').select('id, name');
+  const { data: site } = await supabase.from('sites').select('id, name').limit(1).single();
   
-  const siteId = paramSiteId || sites?.[0]?.id;
+  const siteId = site?.id;
   
   // Default to this week's Monday
   const today = new Date();
@@ -30,18 +30,19 @@ export default async function WeeklyCashupPage({ searchParams }: { searchParams:
     { label: 'Dashboard', href: '/cashing-up/dashboard' },
     { label: 'Daily Entry', href: '/cashing-up/daily' },
     { label: 'Weekly Breakdown', href: '/cashing-up/weekly' },
+    { label: 'Insights', href: '/cashing-up/insights' },
+    { label: 'Import History', href: '/cashing-up/import' },
   ];
+
+  if (!siteId) {
+     return <PageLayout title="Cashing Up" navItems={navItems} error="No site configured." />;
+  }
 
   return (
     <PageLayout title="Cashing Up" navItems={navItems}>
       {/* Filter Form */}
       <form className="flex gap-4 mb-8 items-end">
-        <div>
-          <label className="block text-sm font-medium mb-1">Site</label>
-          <select name="siteId" defaultValue={siteId} className="border rounded p-2 h-10 bg-white">
-            {sites?.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        </div>
+        <input type="hidden" name="siteId" value={siteId} />
         <div>
           <label className="block text-sm font-medium mb-1">Week Commencing</label>
           <input type="date" name="week" defaultValue={weekStart} className="border rounded p-2 h-10" />

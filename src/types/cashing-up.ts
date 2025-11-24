@@ -108,3 +108,22 @@ export interface CashupDashboardData {
     }[];
   };
 }
+
+export interface CashupInsightsData {
+  dayOfWeek: {
+    dayName: string;
+    avgTakings: number;
+    avgVariance: number;
+  }[];
+  paymentMix: {
+    label: string;
+    value: number;
+    percentage: number;
+    color: string;
+  }[];
+  monthlyGrowth: {
+    monthLabel: string;
+    totalTakings: number;
+    previousYearTakings?: number;
+  }[];
+}
