@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getDashboardDataAction } from '@/app/actions/cashing-up';
 import { LineChart } from '@/components/charts/LineChart';
+import { BarChart } from '@/components/charts/BarChart';
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { createClient } from '@/lib/supabase/server';
 
@@ -35,6 +36,7 @@ export default async function CashupDashboardPage({ searchParams }: { searchPara
     { label: 'Dashboard', href: '/cashing-up/dashboard' },
     { label: 'Daily Entry', href: '/cashing-up/daily' },
     { label: 'Weekly Breakdown', href: '/cashing-up/weekly' },
+    { label: 'Insights', href: '/cashing-up/insights' },
     { label: 'Import History', href: '/cashing-up/import' },
   ];
 
@@ -48,6 +50,12 @@ export default async function CashupDashboardPage({ searchParams }: { searchPara
   const takingsData = data.charts.dailyTakings.map(t => ({
     date: t.date,
     value: t.totalTakings
+  }));
+
+  const varianceData = data.charts.dailyVariance.map(v => ({
+    label: v.date.substring(5), // MM-DD
+    value: v.totalVariance,
+    color: v.totalVariance >= 0 ? '#10B981' : '#EF4444'
   }));
 
   // Helper for formatting
@@ -128,10 +136,13 @@ export default async function CashupDashboardPage({ searchParams }: { searchPara
         </div>
         <div className="bg-white p-6 rounded-lg shadow border">
           <h3 className="font-semibold mb-4">Daily Variance Trend</h3>
-           {/* Placeholder for Variance Chart until BarChart supports negative values */}
-           <div className="h-64 flex items-center justify-center text-gray-400 italic">
-             (Chart not available for negative values)
-           </div>
+          <div className="h-64">
+             {varianceData.length > 0 ? (
+                <BarChart data={varianceData} formatType="currency" />
+             ) : (
+                <div className="h-full flex items-center justify-center text-gray-400">No data available</div>
+             )}
+          </div>
         </div>
       </div>
 

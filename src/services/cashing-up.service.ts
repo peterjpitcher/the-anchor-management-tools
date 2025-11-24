@@ -1,7 +1,130 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { UpsertCashupSessionDTO, CashupSession, CashupDashboardData } from '@/types/cashing-up';
+import { UpsertCashupSessionDTO, CashupSession, CashupDashboardData, CashupInsightsData } from '@/types/cashing-up';
 
 export class CashingUpService {
+  static async getInsightsData(supabase: SupabaseClient, siteId: string, year?: number): Promise<CashupInsightsData> {
+    let startDate: Date;
+    let endDate: Date;
+
+    if (year) {
+        startDate = new Date(year, 0, 1); // Jan 1st of the year
+        endDate = new Date(year, 11, 31); // Dec 31st of the year
+    } else {
+        endDate = new Date();
+        startDate = new Date();
+        startDate.setMonth(startDate.getMonth() - 12); // Last 12 months
+    }
+
+    // Fetch Sessions
+    const { data: sessions, error: sessionError } = await supabase
+      .from('cashup_sessions')
+      .select('session_date, total_counted_amount, total_variance_amount')
+      .eq('site_id', siteId)
+      .gte('session_date', startDate.toISOString().split('T')[0])
+      .lte('session_date', endDate.toISOString().split('T')[0]);
+
+    if (sessionError) throw sessionError;
+
+    // Fetch Breakdowns for Payment Mix
+    const { data: breakdowns, error: bdError } = await supabase
+      .from('cashup_payment_breakdowns')
+      .select('payment_type_label, counted_amount, cashup_sessions!inner(site_id, session_date)')
+      .eq('cashup_sessions.site_id', siteId)
+      .gte('cashup_sessions.session_date', startDate.toISOString().split('T')[0])
+      .lte('cashup_sessions.session_date', endDate.toISOString().split('T')[0]);
+
+    if (bdError) throw bdError;
+
+    // --- 1. Day of Week Analysis ---
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayStats = new Map<number, { count: number; takings: number; variance: number }>();
+
+    sessions?.forEach(s => {
+      const date = new Date(s.session_date);
+      const day = date.getDay();
+      const current = dayStats.get(day) || { count: 0, takings: 0, variance: 0 };
+      
+      dayStats.set(day, {
+        count: current.count + 1,
+        takings: current.takings + (s.total_counted_amount || 0),
+        variance: current.variance + (s.total_variance_amount || 0) // Use absolute variance? Usually net is better for "profitability", absolute for "risk". User asked for "Performance" and "Discrepancies". Let's keep signed variance for "Avg Variance" to see bias, but maybe magnitude elsewhere. Request says "Average Variance".
+      });
+    });
+
+    // Sort by Monday (1) to Sunday (0) or standard week? Let's do Monday first.
+    const sortedDays = [1, 2, 3, 4, 5, 6, 0]; 
+    const dayOfWeekData = sortedDays.map(d => {
+      const stats = dayStats.get(d) || { count: 0, takings: 0, variance: 0 };
+      return {
+        dayName: days[d],
+        avgTakings: stats.count ? stats.takings / stats.count : 0,
+        avgVariance: stats.count ? stats.variance / stats.count : 0
+      };
+    });
+
+    // --- 2. Payment Mix ---
+    const mixMap = new Map<string, number>();
+    let totalMix = 0;
+
+    breakdowns?.forEach(b => {
+      const val = b.counted_amount || 0;
+      const label = b.payment_type_label || 'Unknown';
+      mixMap.set(label, (mixMap.get(label) || 0) + val);
+      totalMix += val;
+    });
+
+    const paymentMixData = Array.from(mixMap.entries()).map(([label, value]) => ({
+      label,
+      value,
+      percentage: totalMix ? (value / totalMix) * 100 : 0,
+      color: label.toLowerCase().includes('cash') ? '#10B981' : (label.toLowerCase().includes('card') ? '#3B82F6' : '#F59E0B')
+    })).sort((a, b) => b.value - a.value);
+
+    // --- 3. Monthly Growth ---
+    const monthStats = new Map<string, number>();
+    
+    sessions?.forEach(s => {
+      const d = new Date(s.session_date);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; // YYYY-MM
+      monthStats.set(key, (monthStats.get(key) || 0) + (s.total_counted_amount || 0));
+    });
+
+    const monthlyGrowthData = [];
+    
+    if (year) {
+        // Generate all 12 months for the specific year
+        for (let i = 0; i < 12; i++) {
+            const d = new Date(year, i, 1);
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            const monthLabel = d.toLocaleString('default', { month: 'short' });
+            
+            monthlyGrowthData.push({
+                monthLabel,
+                totalTakings: monthStats.get(key) || 0
+            });
+        }
+    } else {
+        // Generate last 12 months keys to ensure continuity
+        for (let i = 11; i >= 0; i--) {
+            const d = new Date();
+            d.setMonth(d.getMonth() - i);
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            const monthLabel = d.toLocaleString('default', { month: 'short', year: '2-digit' });
+            
+            monthlyGrowthData.push({
+                monthLabel,
+                totalTakings: monthStats.get(key) || 0
+            });
+        }
+    }
+
+    return {
+      dayOfWeek: dayOfWeekData,
+      paymentMix: paymentMixData,
+      monthlyGrowth: monthlyGrowthData
+    };
+  }
+
   static async getSession(supabase: SupabaseClient, id: string) {
     const { data, error } = await supabase
       .from('cashup_sessions')

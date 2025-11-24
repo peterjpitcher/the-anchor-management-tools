@@ -15,6 +15,7 @@ interface BarChartProps {
   showGrid?: boolean;
   showValues?: boolean;
   horizontal?: boolean;
+  formatType?: 'number' | 'currency' | 'shorthandCurrency'; // Added 'shorthandCurrency'
 }
 
 export function BarChart({ 
@@ -23,9 +24,34 @@ export function BarChart({
   color = '#3B82F6',
   showGrid = true,
   showValues = true,
-  horizontal = false
+  horizontal = false,
+  formatType = 'number'
 }: BarChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Helper function for shorthand currency formatting
+  const toKValue = (num: number, currency: string = '£') => {
+    num = Math.abs(num); // Work with absolute value for scaling
+    if (num >= 1000000) {
+      return `${currency}${(num / 1000000).toFixed(1)}M`;
+    }
+    if (num >= 1000) {
+      return `${currency}${(num / 1000).toFixed(1)}k`;
+    }
+    return `${currency}${num.toFixed(0)}`; // For values less than 1000, keep as is
+  };
+
+  // Internal formatter
+  const formatValue = (value: number) => {
+    if (formatType === 'currency') {
+      return `£${value.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+    if (formatType === 'shorthandCurrency') {
+      const sign = value < 0 ? '-' : '';
+      return sign + toKValue(value);
+    }
+    return value.toLocaleString('en-GB'); // Default number formatting
+  };
 
   useEffect(() => {
     if (!canvasRef.current || !data.length) return;
@@ -45,16 +71,24 @@ export function BarChart({
 
     // Calculate dimensions
     const padding = { 
-      top: 20, 
-      right: 20, 
+      top: 30, // Increased top padding for labels
+      right: horizontal ? 60 : 20, // Increased right padding for horizontal value labels
       bottom: horizontal ? 50 : 80, 
-      left: horizontal ? 100 : 50 
+      left: horizontal ? 100 : 70 // Increased left padding for Y-axis labels
     };
     const chartWidth = rect.width - padding.left - padding.right;
     const chartHeight = rect.height - padding.top - padding.bottom;
 
-    // Find max value
-    const maxValue = Math.max(...data.map(d => d.value), 1);
+    // Find min/max value, considering negative values for variance
+    const allValues = data.map(d => d.value);
+    const minValue = Math.min(0, ...allValues); 
+    const maxValue = Math.max(...allValues, 1);
+    
+    // Adjust total range for proper scaling when negatives are present
+    // Add headroom to maxValue so bars don't hit the very top
+    const rangePadding = (maxValue - minValue) * 0.1;
+    const adjustedMax = maxValue + rangePadding;
+    const valueRange = adjustedMax - minValue;
 
     // Draw grid
     if (showGrid) {
@@ -64,6 +98,7 @@ export function BarChart({
       if (horizontal) {
         // Vertical grid lines
         for (let i = 0; i <= 5; i++) {
+          const valueAtLine = minValue + (valueRange * i) / 5;
           const x = padding.left + (chartWidth * i) / 5;
           ctx.beginPath();
           ctx.moveTo(x, padding.top);
@@ -73,11 +108,18 @@ export function BarChart({
       } else {
         // Horizontal grid lines
         for (let i = 0; i <= 5; i++) {
+          const valueAtLine = minValue + (valueRange * (5 - i)) / 5;
           const y = padding.top + (chartHeight * i) / 5;
           ctx.beginPath();
           ctx.moveTo(padding.left, y);
           ctx.lineTo(padding.left + chartWidth, y);
           ctx.stroke();
+          // Also draw Y-axis value labels
+          ctx.fillStyle = '#6B7280';
+          ctx.font = '12px sans-serif';
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(formatValue(valueAtLine), padding.left - 10, y);
         }
       }
     }
@@ -100,9 +142,9 @@ export function BarChart({
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       for (let i = 0; i <= 5; i++) {
-        const value = (maxValue * i) / 5;
+        const value = minValue + (valueRange * i) / 5;
         const x = padding.left + (chartWidth * i) / 5;
-        ctx.fillText(Math.round(value).toString(), x, padding.top + chartHeight + 10);
+        ctx.fillText(formatValue(value), x, padding.top + chartHeight + 10);
       }
 
       // Y-axis labels (categories)
@@ -114,20 +156,19 @@ export function BarChart({
         ctx.fillText(item.label, padding.left - 10, y);
       });
     } else {
-      // Y-axis labels (values)
-      ctx.textAlign = 'right';
-      ctx.textBaseline = 'middle';
-      for (let i = 0; i <= 5; i++) {
-        const value = maxValue - (maxValue * i) / 5;
-        const y = padding.top + (chartHeight * i) / 5;
-        ctx.fillText(Math.round(value).toString(), padding.left - 10, y);
-      }
-
       // X-axis labels (categories)
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       const barWidth = chartWidth / data.length;
+      
+      // Intelligent label skipping
+      // Aim for roughly 15-20 labels max to prevent overlap
+      const maxLabels = 20;
+      const step = Math.ceil(data.length / maxLabels);
+
       data.forEach((item, index) => {
+        if (index % step !== 0) return; // Skip labels to avoid clutter
+
         const x = padding.left + barWidth * (index + 0.5);
         
         // Save context for rotation
@@ -142,6 +183,9 @@ export function BarChart({
     }
 
     // Draw bars
+    // Auto-hide values if too dense to be readable
+    const shouldShowValues = showValues && data.length < 30;
+
     data.forEach((item, index) => {
       const barColor = item.color || color;
       ctx.fillStyle = barColor;
@@ -150,20 +194,29 @@ export function BarChart({
         const barHeight = chartHeight / data.length;
         const barPadding = barHeight * 0.2;
         const actualBarHeight = barHeight - barPadding;
-        const barLength = (item.value / maxValue) * chartWidth;
+        const barLength = (item.value / valueRange) * chartWidth; // Scale by total range
+        
         const y = padding.top + barHeight * index + barPadding / 2;
+        let x = padding.left;
 
-        ctx.fillRect(padding.left, y, barLength, actualBarHeight);
+        // Handle negative bars by starting from the zero line
+        if (item.value < 0) {
+            const zeroLineX = padding.left + (0 - minValue) / valueRange * chartWidth;
+            x = zeroLineX + barLength; // Negative length means start further right
+            ctx.fillRect(x, y, -barLength, actualBarHeight); // Draw leftwards
+        } else {
+            ctx.fillRect(x, y, barLength, actualBarHeight);
+        }
 
         // Draw value
-        if (showValues) {
+        if (shouldShowValues) {
           ctx.fillStyle = '#374151';
           ctx.font = '12px sans-serif';
-          ctx.textAlign = 'left';
+          ctx.textAlign = item.value < 0 ? 'right' : 'left'; // Align to bar end
           ctx.textBaseline = 'middle';
           ctx.fillText(
-            item.value.toString(), 
-            padding.left + barLength + 5, 
+            formatValue(item.value), 
+            item.value < 0 ? x - 5 : x + barLength + 5, 
             y + actualBarHeight / 2
           );
         }
@@ -171,27 +224,37 @@ export function BarChart({
         const barWidth = chartWidth / data.length;
         const barPadding = barWidth * 0.2;
         const actualBarWidth = barWidth - barPadding;
-        const barHeight = (item.value / maxValue) * chartHeight;
+        
+        const barValueHeight = (item.value / valueRange) * chartHeight; // Scale by total range
+        
         const x = padding.left + barWidth * index + barPadding / 2;
-        const y = padding.top + chartHeight - barHeight;
+        let y = padding.top + chartHeight - barValueHeight - ((0 - minValue) / valueRange * chartHeight);
 
-        ctx.fillRect(x, y, actualBarWidth, barHeight);
+        // Position of zero line relative to chart height
+        const zeroLineY = padding.top + chartHeight - (0 - minValue) / valueRange * chartHeight;
+
+        if (item.value < 0) {
+            y = zeroLineY; // Start at zero line
+            ctx.fillRect(x, y, actualBarWidth, -barValueHeight); // Draw upwards
+        } else {
+            ctx.fillRect(x, y, actualBarWidth, barValueHeight);
+        }
 
         // Draw value
-        if (showValues) {
+        if (shouldShowValues) {
           ctx.fillStyle = '#374151';
           ctx.font = '12px sans-serif';
           ctx.textAlign = 'center';
-          ctx.textBaseline = 'bottom';
+          ctx.textBaseline = item.value < 0 ? 'top' : 'bottom'; // Align to bar end
           ctx.fillText(
-            item.value.toString(), 
+            formatValue(item.value), 
             x + actualBarWidth / 2, 
-            y - 5
+            item.value < 0 ? y + 5 : y - 5
           );
         }
       }
     });
-  }, [data, color, showGrid, showValues, horizontal]);
+  }, [data, color, showGrid, showValues, horizontal, formatType]);
 
   return (
     <canvas

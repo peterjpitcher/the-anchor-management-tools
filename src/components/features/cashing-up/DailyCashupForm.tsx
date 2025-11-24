@@ -1,15 +1,17 @@
 'use client';
 
-import { useState, useTransition, useMemo, useEffect } from 'react';
+import { useState, useTransition, useMemo, useEffect, useCallback } from 'react';
 import { upsertSessionAction, submitSessionAction, getDailyTargetAction, setDailyTargetAction, getWeeklyProgressAction } from '@/app/actions/cashing-up';
 import { getDailySummaryAction } from '@/app/actions/daily-summary';
 import { getMissingCashupDatesAction } from '@/app/actions/missing-cashups';
-import { UpsertCashupSessionDTO } from '@/types/cashing-up';
+import { UpsertCashupSessionDTO, CashupSession } from '@/types/cashing-up'; // Added CashupSession
 import { format, parseISO } from 'date-fns';
 import { WeeklyTargetsModal } from './WeeklyTargetsModal';
 
 interface Props {
-  sites: { id: string; name: string }[];
+  site: { id: string; name: string };
+  sessionDate: string; // New prop
+  initialSessionData: CashupSession | null; // New prop
 }
 
 const DENOMINATIONS = [
@@ -26,27 +28,19 @@ const DENOMINATIONS = [
   { value: 50, label: '£50' },
 ];
 
-export function DailyCashupForm({ sites }: Props) {
+export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props) {
   const [isPending, startTransition] = useTransition();
-  const [sessionId, setSessionId] = useState<string | null>(null);
   
-  // 1. Site: Default to first
-  const [siteId] = useState(sites[0]?.id || '');
+  // States derived from props or initial data
+  const [sessionId, setSessionId] = useState<string | null>(initialSessionData?.id || null);
+  const [date, setDate] = useState(sessionDate); // Date from prop
   
-  // 2. Date: Default to yesterday
-  const [date, setDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    return d.toISOString().split('T')[0];
-  });
-
+  const [siteId] = useState(site.id);
+  
   const [cashExpected, setCashExpected] = useState('0');
-  const [cashValues, setCashValues] = useState<Record<string, string>>({}); // Stores Value now, not Count
-  
-  const [cardTotal, setCardTotal] = useState('0'); // Single field for Card Total
-
+  const [cashValues, setCashValues] = useState<Record<string, string>>({});
+  const [cardTotal, setCardTotal] = useState('0');
   const [stripeTotal, setStripeTotal] = useState('0');
-  
   const [userNotes, setUserNotes] = useState('');
   const [autoNotes, setAutoNotes] = useState('');
   
@@ -61,8 +55,57 @@ export function DailyCashupForm({ sites }: Props) {
   const [isEditingTarget, setIsEditingTarget] = useState(false);
   const [showTargetModal, setShowTargetModal] = useState(false);
   const [newTarget, setNewTarget] = useState('');
-  
   const [weeklyData, setWeeklyData] = useState<{ date: string; target: number; actual: number | null }[]>([]);
+
+  // States for warning/edit flow
+  const isInitialLocked = initialSessionData ? initialSessionData.status !== 'draft' : false;
+  const [isFormLocked, setIsFormLocked] = useState(isInitialLocked);
+  const [showWarningMessage, setShowWarningMessage] = useState(isInitialLocked);
+
+  // Effect to initialize form with data
+  useEffect(() => {
+    if (initialSessionData) {
+      setSessionId(initialSessionData.id);
+      setDate(initialSessionData.session_date);
+
+      // Set cash expected
+      const cashExpectedBreakdown = initialSessionData.cashup_payment_breakdowns?.find(b => b.payment_type_code === 'CASH');
+      setCashExpected(cashExpectedBreakdown?.expected_amount?.toString() || '0');
+
+      // Set cash values (from cash_counts total_amount)
+      const initialCashValues: Record<string, string> = {};
+      initialSessionData.cashup_cash_counts?.forEach(c => {
+        initialCashValues[c.denomination.toString()] = c.total_amount?.toString() || '0';
+      });
+      setCashValues(initialCashValues);
+
+      // Set card and stripe totals
+      const cardBreakdown = initialSessionData.cashup_payment_breakdowns?.find(b => b.payment_type_code === 'CARD');
+      setCardTotal(cardBreakdown?.counted_amount?.toString() || '0');
+
+      const stripeBreakdown = initialSessionData.cashup_payment_breakdowns?.find(b => b.payment_type_code === 'STRIPE');
+      setStripeTotal(stripeBreakdown?.counted_amount?.toString() || '0');
+
+      // Set notes
+      setUserNotes(initialSessionData.notes || '');
+
+      // Set lock status
+      setIsFormLocked(initialSessionData.status !== 'draft');
+      setShowWarningMessage(initialSessionData.status !== 'draft');
+
+    } else {
+      // For new entries or if no session data found for the date
+      setSessionId(null);
+      setDate(sessionDate); // Ensure date is set from prop for new entries
+      setCashExpected('0');
+      setCashValues({});
+      setCardTotal('0');
+      setStripeTotal('0');
+      setUserNotes('');
+      setIsFormLocked(false);
+      setShowWarningMessage(false);
+    }
+  }, [initialSessionData, sessionDate]); // Re-run when initialSessionData or sessionDate changes
 
   // Fetch initial data (Target & Missing Dates)
   useEffect(() => {
@@ -94,7 +137,7 @@ export function DailyCashupForm({ sites }: Props) {
         }
       });
     }
-  }, [siteId, date]);
+  }, [siteId, date, dailyTarget]); // Added dailyTarget to dependencies
 
   // Calculate total cash from values
   const cashCountedTotal = useMemo(() => {
@@ -104,7 +147,7 @@ export function DailyCashupForm({ sites }: Props) {
     }, 0);
   }, [cashValues]);
 
-  // Calculate Weekly Stats
+  // Calculate Weekly Stats (useCallback for memoization)
   const weeklyStats = useMemo(() => {
     if (!weeklyData.length) return { revenue: 0, target: 0, percent: 0 };
 
@@ -112,32 +155,15 @@ export function DailyCashupForm({ sites }: Props) {
     let accumulatedTarget = 0;
 
     weeklyData.forEach(day => {
+      // For today's date, use the current form's target and revenue
       if (day.date === date) {
-        // Use current form state for today
-        const todayRevenue = 
-          (cashCountedTotal) + 
-          (parseFloat(cardTotal) || 0) + 
-          (parseFloat(stripeTotal) || 0);
-        
-        accumulatedRevenue += todayRevenue;
-        accumulatedTarget += day.target; // Uses fetched target which might be stale if just edited? No, dailyTarget state is updated.
-        // Actually day.target comes from weeklyData fetch. If we edit target, we should refresh weeklyData.
-        // For now, let's use the `dailyTarget` state for today's target to be responsive.
-        // But `dailyTarget` is only for *today*. 
-        // Better: Subtract day.target and add dailyTarget if dates match.
+        accumulatedRevenue += (cashCountedTotal) + (parseFloat(cardTotal) || 0) + (parseFloat(stripeTotal) || 0);
+        accumulatedTarget += dailyTarget;
       } else {
         accumulatedRevenue += (day.actual || 0);
         accumulatedTarget += day.target;
       }
     });
-
-    // Correction for today's target if editing
-    const todayItem = weeklyData.find(d => d.date === date);
-    if (todayItem) {
-        // If we have today in the list, we summed its target above. 
-        // Let's adjust to use the state `dailyTarget` which updates immediately on edit.
-        accumulatedTarget = accumulatedTarget - todayItem.target + dailyTarget;
-    }
 
     const percent = accumulatedTarget > 0 ? (accumulatedRevenue / accumulatedTarget) * 100 : 0;
 
@@ -148,7 +174,7 @@ export function DailyCashupForm({ sites }: Props) {
     };
   }, [weeklyData, cashCountedTotal, cardTotal, stripeTotal, date, dailyTarget]);
 
-  // Fetch events for notes
+  // Fetch events for notes (useCallback for memoization)
   useEffect(() => {
     if (date) {
       setDailyData(null);
@@ -170,29 +196,30 @@ export function DailyCashupForm({ sites }: Props) {
     return cashVar; 
   }, [cashExpected, cashCountedTotal]);
 
-  const getDTO = (): UpsertCashupSessionDTO => {
+  const getDTO = useCallback((): UpsertCashupSessionDTO => {
     // Reverse calculate quantities for the DB record (best effort)
     const cashCounts = DENOMINATIONS.map(denom => {
       const val = parseFloat(cashValues[denom.value] || '0');
+      const quantity = Math.round(val / denom.value); // Estimate count
       return {
         denomination: denom.value,
-        quantity: Math.round(val / denom.value) // Estimate count
+        quantity: quantity,
       };
     }).filter(c => c.quantity > 0);
 
     return {
       siteId,
       sessionDate: date,
-      status: 'draft',
+      status: initialSessionData?.status || 'draft', // Preserve existing status or default to draft
       notes: `${userNotes}\n\n--- SYSTEM GENERATED SUMMARY ---\n${autoNotes}`,
       paymentBreakdowns: [
-        { 
+        {
           paymentTypeCode: 'CASH', 
           paymentTypeLabel: 'Cash', 
           expectedAmount: parseFloat(cashExpected) || 0, 
           countedAmount: cashCountedTotal 
         },
-        { 
+        {
           paymentTypeCode: 'CARD', 
           paymentTypeLabel: 'Card', 
           expectedAmount: parseFloat(cardTotal) || 0, 
@@ -207,7 +234,7 @@ export function DailyCashupForm({ sites }: Props) {
       ],
       cashCounts,
     };
-  };
+  }, [siteId, date, cashValues, cashExpected, cardTotal, stripeTotal, userNotes, autoNotes, initialSessionData]);
 
   const handleSave = async (silent = false) => {
     if (!siteId) {
@@ -216,6 +243,12 @@ export function DailyCashupForm({ sites }: Props) {
     }
 
     const dto = getDTO();
+    
+    // Warn if saving a non-draft status
+    if (initialSessionData && initialSessionData.status !== 'draft' && !confirm(`This session is currently '${initialSessionData.status}'. Saving will modify a processed record. Are you sure?`)) {
+        return null; // User cancelled
+    }
+
     const res = await upsertSessionAction(dto, sessionId || undefined);
     
     if (res.success && res.data) {
@@ -267,6 +300,11 @@ export function DailyCashupForm({ sites }: Props) {
       alert('Invalid amount');
       return;
     }
+    
+    // Warn if target is being set for a locked form
+    if (isFormLocked && initialSessionData && initialSessionData.status !== 'draft' && !confirm(`This session is currently '${initialSessionData.status}'. Setting a new target will modify a processed record. Are you sure?`)) {
+        return; // User cancelled
+    }
 
     const res = await setDailyTargetAction(siteId, date, amount);
     if (res.success) {
@@ -278,7 +316,7 @@ export function DailyCashupForm({ sites }: Props) {
     }
   };
 
-  const refreshData = () => {
+  const refreshData = useCallback(() => {
     if (siteId && date) {
       getDailyTargetAction(siteId, date).then(res => {
         if (res.success) {
@@ -293,6 +331,13 @@ export function DailyCashupForm({ sites }: Props) {
         }
       });
     }
+  }, [siteId, date]);
+
+  // Handle date change from Date picker
+  const onDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newDate = e.target.value;
+    // Redirect to the same page with the new date as a search param
+    window.location.href = `/cashing-up/daily?date=${newDate}&siteId=${siteId}`;
   };
 
   return (
@@ -301,7 +346,7 @@ export function DailyCashupForm({ sites }: Props) {
         <WeeklyTargetsModal 
           siteId={siteId} 
           onClose={() => setShowTargetModal(false)} 
-          onSave={refreshData}
+          onSave={refreshData} 
         />
       )}
       <style dangerouslySetInnerHTML={{__html: `
@@ -316,11 +361,27 @@ export function DailyCashupForm({ sites }: Props) {
       `}} />
       
       <div className="space-y-6 bg-white p-6 rounded-lg shadow border w-full mx-auto">
+
+        {showWarningMessage && (
+            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded mb-4 flex justify-between items-center">
+                <div>
+                    <p className="font-bold text-sm">Warning: This is an {initialSessionData?.status || 'approved'} session.</p>
+                    <p className="text-xs">Editing this record may affect historical data. Proceed with caution.</p>
+                </div>
+                <button 
+                    onClick={() => { setIsFormLocked(false); setShowWarningMessage(false); }}
+                    className="bg-yellow-200 hover:bg-yellow-300 text-yellow-900 text-sm px-4 py-2 rounded font-medium"
+                >
+                    Edit Anyway
+                </button>
+            </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
           <div>
             <label className="block text-sm font-medium mb-1">Site</label>
             <div className="p-2 bg-gray-100 rounded border text-gray-600">
-              {sites.find(s => s.id === siteId)?.name || 'Default Site'}
+              {site.name}
             </div>
           </div>
 
@@ -330,9 +391,9 @@ export function DailyCashupForm({ sites }: Props) {
               <input 
                 type="date" 
                 value={date} 
-                onChange={e => setDate(e.target.value)}
+                onChange={onDateChange} // Changed to onDateChange for page navigation
                 className="flex-1 border rounded p-2"
-                disabled={!!sessionId}
+                disabled={isFormLocked} // Disabled if locked
               />
               <div className="text-sm bg-blue-50 text-blue-800 px-3 py-2 rounded border border-blue-200 flex items-center gap-2 min-w-[200px]">
                 <span className="font-semibold">Target:</span> 
@@ -343,9 +404,10 @@ export function DailyCashupForm({ sites }: Props) {
                       value={newTarget}
                       onChange={e => setNewTarget(e.target.value)}
                       className="w-20 p-1 text-sm border rounded"
+                      disabled={isFormLocked} // Disabled if locked
                     />
-                    <button onClick={handleSaveTarget} className="text-green-600 hover:text-green-800">✓</button>
-                    <button onClick={() => setIsEditingTarget(false)} className="text-red-600 hover:text-red-800">✕</button>
+                    <button onClick={handleSaveTarget} className="text-green-600 hover:text-green-800" disabled={isFormLocked}>✓</button>
+                    <button onClick={() => setIsEditingTarget(false)} className="text-red-600 hover:text-red-800" disabled={isFormLocked}>✕</button>
                   </div>
                 ) : (
                   <>
@@ -353,6 +415,7 @@ export function DailyCashupForm({ sites }: Props) {
                     <button 
                       onClick={() => setIsEditingTarget(true)}
                       className="text-xs text-blue-600 hover:underline ml-1"
+                      disabled={isFormLocked} // Disabled if locked
                     >
                       Edit
                     </button>
@@ -360,6 +423,7 @@ export function DailyCashupForm({ sites }: Props) {
                     <button 
                       onClick={() => setShowTargetModal(true)}
                       className="text-xs text-blue-600 hover:underline"
+                      disabled={isFormLocked} // Disabled if locked
                     >
                       Set Defaults
                     </button>
@@ -384,7 +448,7 @@ export function DailyCashupForm({ sites }: Props) {
               </div>
               <div className="w-full bg-blue-200 rounded-full h-2.5">
                 <div 
-                  className={`h-2.5 rounded-full ${weeklyStats.percent >= 100 ? 'bg-green-500' : 'bg-blue-600'}`} 
+                  className={`h-2.5 rounded-full ${weeklyStats.percent >= 100 ? 'bg-green-500' : 'bg-blue-600'}`}
                   style={{ width: `${Math.min(weeklyStats.percent, 100)}%` }}
                 ></div>
               </div>
@@ -419,6 +483,7 @@ export function DailyCashupForm({ sites }: Props) {
                             value={cashValues[denom.value] || ''}
                             onChange={e => handleCashValueChange(denom.value, e.target.value)}
                             className="w-20 p-1 text-right text-sm border-none focus:ring-0"
+                            disabled={isFormLocked} // Disabled if locked
                           />
                         </div>
                       </div>
@@ -443,15 +508,14 @@ export function DailyCashupForm({ sites }: Props) {
                       value={cashExpected} 
                       onChange={e => setCashExpected(e.target.value)}
                       className="border rounded p-2 pl-6 w-32 text-right font-medium"
+                      disabled={isFormLocked} // Disabled if locked
                     />
                   </div>
                 </div>
                 
                 <div className="flex justify-between items-center mt-2">
                   <span className="text-sm font-medium text-gray-600">Variance:</span>
-                  <span className={`font-mono font-bold ${
-                    (cashCountedTotal - (parseFloat(cashExpected)||0)) < 0 ? 'text-red-600' : 'text-green-600'
-                  }`}>
+                  <span className={`font-mono font-bold ${(cashCountedTotal - (parseFloat(cashExpected)||0)) < 0 ? 'text-red-600' : 'text-green-600'}`}>
                     £{(cashCountedTotal - (parseFloat(cashExpected)||0)).toFixed(2)}
                   </span>
                 </div>
@@ -473,6 +537,7 @@ export function DailyCashupForm({ sites }: Props) {
                       value={cardTotal} 
                       onChange={e => setCardTotal(e.target.value)}
                       className="border rounded p-2 pl-6 w-32 text-right font-medium"
+                      disabled={isFormLocked} // Disabled if locked
                     />
                   </div>
                 </div>
@@ -490,6 +555,7 @@ export function DailyCashupForm({ sites }: Props) {
                       value={stripeTotal} 
                       onChange={e => setStripeTotal(e.target.value)}
                       className="border rounded p-2 pl-6 w-32 text-right font-medium"
+                      disabled={isFormLocked} // Disabled if locked
                     />
                   </div>
                 </div>
@@ -510,6 +576,7 @@ export function DailyCashupForm({ sites }: Props) {
                   onChange={e => setUserNotes(e.target.value)}
                   className="w-full border rounded p-2 h-24 mb-2"
                   placeholder="Enter your notes here..."
+                  disabled={isFormLocked} // Disabled if locked
                 />
                  {autoNotes && (
                   <div className="bg-yellow-50 p-3 rounded border border-yellow-200 text-xs text-gray-700 whitespace-pre-wrap">
@@ -538,6 +605,7 @@ export function DailyCashupForm({ sites }: Props) {
                         <button 
                           onClick={() => setDate(d)}
                           className="text-xs bg-white border border-red-200 px-2 py-0.5 rounded text-red-600 hover:bg-red-50"
+                          disabled={isFormLocked} // Disabled if locked
                         >
                           Go
                         </button>
@@ -597,7 +665,7 @@ export function DailyCashupForm({ sites }: Props) {
                                   {tb.customer?.first_name} {tb.customer?.last_name}
                                 </div>
                                 <div className="text-xs text-emerald-700">
-                                  {tb.booking_time} • {tb.party_size} ppl
+                                  {tb.booking_time} • {tb.party_size}ppl
                                 </div>
                               </li>
                             ))}
@@ -618,14 +686,14 @@ export function DailyCashupForm({ sites }: Props) {
         <div className="flex justify-end gap-2 border-t pt-4">
            <button 
             onClick={onSaveClick}
-            disabled={isPending}
+            disabled={isPending || isFormLocked}
             className="bg-gray-100 text-gray-800 px-6 py-2 rounded hover:bg-gray-200 disabled:opacity-50 font-medium"
           >
             {isPending ? 'Saving...' : 'Save Draft'}
           </button>
           <button 
             onClick={onSubmitClick}
-            disabled={isPending}
+            disabled={isPending || isFormLocked}
             className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:opacity-50 font-medium"
           >
             Submit

@@ -16,24 +16,41 @@ export class AuthService {
     });
 
     if (error) {
-      // Log failed login attempt
-      const headersList = await headers();
-      const userAgent = headersList.get('user-agent') || 'Unknown';
-      const ip = headersList.get('x-forwarded-for')?.split(',')[0] || 
-                 headersList.get('x-real-ip') || 
-                 '127.0.0.1';
+      console.error('Supabase Auth Error:', error.message); // Log actual error for debugging
 
-      await AuditService.logAuditEvent({
-        user_email: email,
-        operation_type: 'login_failed',
-        resource_type: 'auth',
-        operation_status: 'failure',
-        additional_info: {
-          error: error.message,
-          ip_address: ip,
-          user_agent: userAgent
-        }
-      });
+      // Check for system/connection errors (e.g. Supabase returning 500 HTML instead of JSON)
+      const isSystemError = error.message.includes('Unexpected token') || 
+                           error.message.includes('fetch failed') ||
+                           error.message.includes('Load failed');
+
+      // Log failed login attempt
+      try {
+        const headersList = await headers();
+        const userAgent = headersList.get('user-agent') || 'Unknown';
+        const ip = headersList.get('x-forwarded-for')?.split(',')[0] || 
+                   headersList.get('x-real-ip') || 
+                   '127.0.0.1';
+
+        await AuditService.logAuditEvent({
+          user_email: email,
+          operation_type: 'login_failed',
+          resource_type: 'auth',
+          operation_status: 'failure',
+          additional_info: {
+            error: error.message,
+            ip_address: ip,
+            user_agent: userAgent,
+            is_system_error: isSystemError
+          }
+        });
+      } catch (auditError) {
+        console.error('Failed to log audit event:', auditError);
+        // Don't block the user response if audit logging fails
+      }
+
+      if (isSystemError) {
+        throw new Error('Authentication service unavailable. Please contact support.');
+      }
 
       throw new Error('Invalid email or password');
     }

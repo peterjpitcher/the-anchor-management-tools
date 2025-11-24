@@ -5,10 +5,9 @@ export const runtime = 'nodejs';
 
 import { createClient } from '@/lib/supabase/server';
 import { generatePDFFromHTML } from '@/lib/pdf-generator';
-import { generateWeeklyCashupHTML } from '@/lib/cashing-up-pdf-template';
+import { generateWeeklyCashupHTML, WeeklyReportRow } from '@/lib/cashing-up-pdf-template';
 import { CashingUpService } from '@/services/cashing-up.service';
 import { PermissionService } from '@/services/permission';
-import { CashupWeeklyView } from '@/types/cashing-up';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -35,11 +34,11 @@ export async function GET(request: NextRequest) {
     const siteName = site?.name || 'Unknown Site';
 
     // 2. Weekly Data
-    const weekData = await CashingUpService.getWeeklyData(supabase, siteId, weekStartDate);
+    const weekData = await CashingUpService.getWeeklyReportData(supabase, siteId, weekStartDate);
 
     // Generate HTML
     const html = generateWeeklyCashupHTML({
-      weekData: weekData as CashupWeeklyView[],
+      weekData: weekData as WeeklyReportRow[],
       siteName,
       weekStartDate,
       logoUrl: process.env.NEXT_PUBLIC_APP_URL 

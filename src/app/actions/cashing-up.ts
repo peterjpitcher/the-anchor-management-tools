@@ -6,7 +6,7 @@ import { CashingUpService } from '@/services/cashing-up.service';
 import { UpsertCashupSessionDTO } from '@/types/cashing-up';
 import { revalidatePath } from 'next/cache';
 
-export async function getSessionAction(id: string) {
+export async function getSessionByIdAction(id: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   
@@ -152,8 +152,37 @@ export async function getDashboardDataAction(siteId?: string, fromDate?: string,
   try {
     const data = await CashingUpService.getDashboardData(supabase, siteId, fromDate, toDate);
     return { data };
-  } catch (error: any) {
-    return { error: error.message };
+  } catch (error) {
+    console.error('Error fetching dashboard data:', error);
+    return { success: false, error: 'Failed to load dashboard data' };
+  }
+}
+
+export async function getInsightsDataAction(siteId?: string, year?: number) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { success: false, error: 'Unauthorized' };
+    }
+
+    // Default site if not provided
+    let targetSiteId = siteId;
+    if (!targetSiteId) {
+      const { data: site } = await supabase.from('sites').select('id').limit(1).single();
+      targetSiteId = site?.id;
+    }
+
+    if (!targetSiteId) {
+       return { success: false, error: 'No site found' };
+    }
+
+    const data = await CashingUpService.getInsightsData(supabase, targetSiteId, year);
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error fetching insights data:', error);
+    return { success: false, error: 'Failed to load insights data' };
   }
 }
 
