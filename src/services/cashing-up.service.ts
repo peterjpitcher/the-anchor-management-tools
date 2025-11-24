@@ -17,6 +17,22 @@ export class CashingUpService {
     return data;
   }
 
+  static async getSessionByDateAndSite(supabase: SupabaseClient, siteId: string, sessionDate: string) {
+    const { data, error } = await supabase
+      .from('cashup_sessions')
+      .select(`
+        *,
+        cashup_payment_breakdowns (*),
+        cashup_cash_counts (*)
+      `)
+      .eq('site_id', siteId)
+      .eq('session_date', sessionDate)
+      .maybeSingle(); // Use maybeSingle as a session might not exist
+    
+    if (error) throw error;
+    return data;
+  }
+
   static async upsertSession(supabase: SupabaseClient, data: UpsertCashupSessionDTO, userId: string, existingId?: string) {
     // Calculate totals
     const totalExpected = data.paymentBreakdowns.reduce((sum, item) => sum + item.expectedAmount, 0);
@@ -188,7 +204,7 @@ export class CashingUpService {
     // For Foundation/Discovery, returning mock structure or basic aggregations.
     
     // Example: Total Takings
-    let query = supabase.from('cashup_sessions').select('total_counted_amount, total_variance_amount, session_date, site_id, status');
+    let query = supabase.from('cashup_sessions').select('total_counted_amount, total_variance_amount, session_date, site_id, status, notes, cashup_payment_breakdowns(payment_type_code, counted_amount)');
     
     if (siteId) query = query.eq('site_id', siteId);
     if (fromDate) query = query.gte('session_date', fromDate);
@@ -204,28 +220,47 @@ export class CashingUpService {
     const sessionsWithTarget = await Promise.all(sessions.map(async (s) => {
       const target = await this.getDailyTarget(supabase, s.site_id, s.session_date);
       const varianceVsTarget = (s.total_counted_amount || 0) - target;
+
+      // Calculate breakdown totals
+      const breakdowns = s.cashup_payment_breakdowns || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const cashTotal = breakdowns.find((b: any) => b.payment_type_code === 'CASH')?.counted_amount || 0;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const cardTotal = breakdowns.find((b: any) => b.payment_type_code === 'CARD')?.counted_amount || 0;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const stripeTotal = breakdowns.find((b: any) => b.payment_type_code === 'STRIPE')?.counted_amount || 0;
+
       return {
         ...s,
         target,
-        varianceVsTarget
+        varianceVsTarget,
+        cashTotal,
+        cardTotal,
+        stripeTotal
       };
     }));
 
     const totalTakings = sessionsWithTarget.reduce((sum, s) => sum + (s.total_counted_amount || 0), 0);
-    const totalVariance = sessionsWithTarget.reduce((sum, s) => sum + s.varianceVsTarget, 0);
+    // Use stored total_variance_amount (Counted - Expected) instead of variance vs target
+    const totalVariance = sessionsWithTarget.reduce((sum, s) => sum + (s.total_variance_amount || 0), 0);
     
+    // Filter for days with actual takings to calculate meaningful average (excludes "Closed" days)
+    const sessionsWithTakings = sessionsWithTarget.filter(s => (s.total_counted_amount || 0) > 0);
+
     return {
       kpis: {
         totalTakings,
-        averageDailyTakings: sessions.length ? totalTakings / sessions.length : 0,
+        averageDailyTakings: sessionsWithTakings.length ? totalTakings / sessionsWithTakings.length : 0,
         totalVariance,
-        highVarianceDays: sessionsWithTarget.filter(s => Math.abs(s.varianceVsTarget) > 50).length, // threshold example > £50
+        // High variance days based on actual cash discrepancy, not target
+        highVarianceDays: sessionsWithTarget.filter(s => Math.abs(s.total_variance_amount || 0) > 50).length, 
         daysWithSubmittedSessions: sessions.length,
         expectedDays: 28 // Mock
       },
       charts: {
         dailyTakings: sessionsWithTarget.map(s => ({ date: s.session_date, siteId: s.site_id, totalTakings: s.total_counted_amount })),
-        dailyVariance: sessionsWithTarget.map(s => ({ date: s.session_date, totalVariance: s.varianceVsTarget })),
+        // Use stored variance (discrepancy)
+        dailyVariance: sessionsWithTarget.map(s => ({ date: s.session_date, totalVariance: s.total_variance_amount || 0 })),
         paymentMix: [], // Requires joining breakdowns
         topSitesByVariance: []
       },
@@ -235,10 +270,15 @@ export class CashingUpService {
           siteName: 'Site', // Need join
           sessionDate: s.session_date,
           totalTakings: s.total_counted_amount,
-          variance: s.varianceVsTarget,
-          variancePercent: s.target ? (s.varianceVsTarget / s.target) * 100 : 0,
+          // Use stored variance (discrepancy)
+          variance: s.total_variance_amount || 0,
+          // Percent of Taking? Or vs Expected? Let's do vs Counted for now or 0 if 0.
+          variancePercent: s.total_counted_amount ? ((s.total_variance_amount || 0) / s.total_counted_amount) * 100 : 0,
           status: s.status as any,
-          notes: null
+          notes: s.notes,
+          cashTotal: s.cashTotal,
+          cardTotal: s.cardTotal,
+          stripeTotal: s.stripeTotal
         })),
         compliance: []
       }
@@ -345,5 +385,158 @@ export class CashingUpService {
     }
 
     return { weekStart: weekStartStr, dailyProgress: progress };
+  }
+
+  static async getWeeklyReportData(supabase: SupabaseClient, siteId: string, weekStartDate: string) {
+    // 1. Generate all 7 dates for the week
+    const start = new Date(weekStartDate);
+    const dates: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      dates.push(d.toISOString().split('T')[0]);
+    }
+    const endDate = dates[6];
+    
+    // 2. Fetch sessions for the week
+    const { data: sessions, error } = await supabase
+      .from('cashup_sessions')
+      .select(`
+        session_date,
+        status,
+        notes,
+        total_expected_amount,
+        total_counted_amount,
+        total_variance_amount,
+        cashup_payment_breakdowns (
+          payment_type_code,
+          expected_amount,
+          counted_amount,
+          variance_amount
+        ),
+        cashup_cash_counts (
+          denomination,
+          quantity,
+          total_amount
+        )
+      `)
+      .eq('site_id', siteId)
+      .gte('session_date', weekStartDate)
+      .lte('session_date', endDate)
+      .order('session_date', { ascending: true });
+
+    if (error) throw error;
+
+    let accumulatedTarget = 0;
+    let accumulatedRevenue = 0;
+
+    // 3. Process each day
+    const reportRows = await Promise.all(dates.map(async (date) => {
+      const session = sessions?.find(s => s.session_date === date);
+      
+      // Get Target
+      const dailyTarget = await this.getDailyTarget(supabase, siteId, date);
+      
+      // Values
+      const cash = session?.cashup_payment_breakdowns.find(b => b.payment_type_code === 'CASH');
+      const card = session?.cashup_payment_breakdowns.find(b => b.payment_type_code === 'CARD');
+      const stripe = session?.cashup_payment_breakdowns.find(b => b.payment_type_code === 'STRIPE');
+
+      const totalActual = session?.total_counted_amount || 0;
+      
+      // Accumulate (only if day has passed? Or target accumulates regardless? 
+      // The image shows accumulation for future days? No, image dates are July 2025 (past). 
+      // Let's accumulate everything.)
+      accumulatedTarget += dailyTarget;
+      accumulatedRevenue += totalActual;
+
+      return {
+        date,
+        status: session?.status || 'missing',
+        notes: session?.notes || null,
+        
+        // Cash
+        cash_expected: cash?.expected_amount || 0,
+        cash_actual: cash?.counted_amount || 0,
+        
+        // Card
+        card_expected: card?.expected_amount || 0,
+        card_actual: card?.counted_amount || 0,
+        
+        // Stripe
+        stripe_actual: stripe?.counted_amount || 0,
+        
+        // Totals
+        total_expected: session?.total_expected_amount || 0,
+        total_actual: totalActual,
+        total_variance: session?.total_variance_amount || 0,
+        
+        // Targets
+        daily_target: dailyTarget,
+        accumulated_target: accumulatedTarget,
+        accumulated_revenue: accumulatedRevenue,
+        
+        // Breakdowns
+        cash_counts: session?.cashup_cash_counts.map(c => ({
+          denomination: c.denomination,
+          total: c.total_amount
+        })) || []
+      };
+    }));
+
+    // Re-calculate accumulation sequentially because Promise.all runs in parallel and order of completion isn't guaranteed, 
+    // BUT map maintains order of result array. 
+    // HOWEVER, the `accumulatedTarget +=` inside the callback is dangerous in Promise.all because of race conditions on the variable 
+    // if not careful? Actually JS is single threaded so `await` yields.
+    // Correct approach: Fetch targets first, then map synchronously to accumulate.
+    
+    // Revised Logic below:
+    
+    // A. Fetch all targets first to avoid async issues in loop or slow sequential awaits
+    const targets = await Promise.all(dates.map(d => this.getDailyTarget(supabase, siteId, d)));
+    
+    let runningTarget = 0;
+    let runningRevenue = 0;
+    
+    return dates.map((date, index) => {
+      const session = sessions?.find(s => s.session_date === date);
+      const dailyTarget = targets[index];
+      
+      const cash = session?.cashup_payment_breakdowns.find(b => b.payment_type_code === 'CASH');
+      const card = session?.cashup_payment_breakdowns.find(b => b.payment_type_code === 'CARD');
+      const stripe = session?.cashup_payment_breakdowns.find(b => b.payment_type_code === 'STRIPE');
+      
+      const totalActual = session?.total_counted_amount || 0;
+      
+      runningTarget += dailyTarget;
+      runningRevenue += totalActual;
+      
+      return {
+        date,
+        status: session?.status || 'missing',
+        notes: session?.notes || null,
+        
+        cash_expected: cash?.expected_amount || 0,
+        cash_actual: cash?.counted_amount || 0,
+        
+        card_expected: card?.expected_amount || 0,
+        card_actual: card?.counted_amount || 0,
+        
+        stripe_actual: stripe?.counted_amount || 0,
+        
+        total_expected: session?.total_expected_amount || 0,
+        total_actual: totalActual,
+        total_variance: session?.total_variance_amount || 0,
+        
+        daily_target: dailyTarget,
+        accumulated_target: runningTarget,
+        accumulated_revenue: runningRevenue,
+        
+        cash_counts: session?.cashup_cash_counts.map(c => ({
+          denomination: c.denomination,
+          total: c.total_amount
+        })) || []
+      };
+    });
   }
 }

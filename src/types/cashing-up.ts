@@ -17,6 +17,8 @@ export interface CashupSession {
   created_by_user_id: string;
   updated_at: string;
   updated_by_user_id: string;
+  cashup_payment_breakdowns: CashupPaymentBreakdown[]; // Added
+  cashup_cash_counts: CashupCashCount[]; // Added
 }
 
 export interface CashupPaymentBreakdown {
@@ -93,6 +95,9 @@ export interface CashupDashboardData {
       variancePercent: number;
       status: CashupStatus;
       notes: string | null;
+      cashTotal: number;
+      cardTotal: number;
+      stripeTotal: number;
     }[];
     compliance: {
       siteId: string;
