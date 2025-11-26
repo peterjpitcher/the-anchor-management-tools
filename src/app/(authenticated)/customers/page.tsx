@@ -15,19 +15,12 @@ import { createCustomer as createCustomerAction, updateCustomer as updateCustome
 import Link from 'next/link'
 import { ChatBubbleLeftIcon, XCircleIcon, PencilIcon, TrashIcon, PlusIcon } from '@heroicons/react/24/outline'
 
-// Define CustomerWithLoyalty locally as it was likely removed or missing
-type CustomerWithLoyalty = Customer & {
-  // Add any loyalty fields if they existed, otherwise just Customer
-  // loyalty_points?: number
-  // loyalty_tier?: string
-}
 // Loyalty removed
 // New UI components
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { Button, IconButton } from '@/components/ui-v2/forms/Button'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { SearchInput } from '@/components/ui-v2/forms/SearchInput'
 import { Badge, BadgeGroup } from '@/components/ui-v2/display/Badge'
 import { toast } from '@/components/ui-v2/feedback/Toast'
@@ -63,7 +56,7 @@ export default function CustomersPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
-  const [editingCustomer, setEditingCustomer] = useState<CustomerWithLoyalty | null>(null)
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
   // Loyalty removed: no regulars tracking
   const [customerPreferences, setCustomerPreferences] = useState<Record<string, CustomerCategoryStats[]>>({})
@@ -373,7 +366,7 @@ export default function CustomersPage() {
     setShowImport(true)
   }, [canManageCustomers])
 
-  const startEditCustomer = useCallback((customer: CustomerWithLoyalty) => {
+  const startEditCustomer = useCallback((customer: Customer) => {
     if (!canManageCustomers) {
       toast.error('You do not have permission to manage customers.')
       return
@@ -387,7 +380,7 @@ export default function CustomersPage() {
       {
         key: 'name',
         header: 'Name',
-        cell: (customer: CustomerWithLoyalty) => (
+        cell: (customer: Customer) => (
           <div className="space-y-2">
             <div className="flex items-center">
               <div className="font-medium text-gray-900">
@@ -409,7 +402,7 @@ export default function CustomersPage() {
       {
         key: 'mobile',
         header: 'Mobile',
-        cell: (customer: CustomerWithLoyalty) => (
+        cell: (customer: Customer) => (
           <div className="space-y-1">
             {customer.mobile_number ? (
               <a href={`tel:${customer.mobile_number}`} className="text-blue-600 hover:text-blue-700">
@@ -438,7 +431,7 @@ export default function CustomersPage() {
       {
         key: 'event_preferences',
         header: 'Event Preferences',
-        cell: (customer: CustomerWithLoyalty) => {
+        cell: (customer: Customer) => {
           if (customerPreferences[customer.id] && customerPreferences[customer.id].length > 0) {
             return (
               <BadgeGroup>
@@ -477,7 +470,7 @@ export default function CustomersPage() {
       {
         key: 'actions',
         header: '',
-        cell: (customer: CustomerWithLoyalty) => (
+        cell: (customer: Customer) => (
           <div className="flex items-center justify-end space-x-2">
             <IconButton
               onClick={() => startEditCustomer(customer)}
@@ -556,10 +549,10 @@ export default function CustomersPage() {
   const navActions = (
     <div className="flex items-center gap-2">
       {canManageCustomers && (
-        <LinkButton href="/customers/new" size="sm">
+        <Button onClick={openCreateCustomer} size="sm">
           <PlusIcon className="h-4 w-4 mr-2" />
           Add Customer
-        </LinkButton>
+        </Button>
       )}
     </div>
   )

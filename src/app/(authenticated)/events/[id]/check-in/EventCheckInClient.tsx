@@ -6,8 +6,10 @@ import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { CheckCircleIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { CheckCircleIcon, ArrowLeftIcon, MagnifyingGlassIcon, UserIcon, UserPlusIcon } from '@heroicons/react/24/outline'
 import { lookupEventGuest, registerKnownGuest, registerNewGuest } from '@/app/actions/event-check-in'
+import { formatPhoneForDisplay } from '@/lib/validation'
 
 interface EventRecord {
   id: string
@@ -25,9 +27,9 @@ interface EventCheckInClientProps {
   reviewLink: string
 }
 
-type FlowStep = 'lookup' | 'known' | 'unknown' | 'already' | 'success'
+type FlowStep = 'lookup' | 'match' | 'new_guest' | 'success'
 
-type KnownGuest = {
+type MatchedGuest = {
   customer: {
     id: string
     first_name: string
@@ -44,14 +46,14 @@ type KnownGuest = {
 
 export default function EventCheckInClient({ event, reviewLink }: EventCheckInClientProps) {
   const [step, setStep] = useState<FlowStep>('lookup')
-  const [phoneInput, setPhoneInput] = useState('')
-  const [normalizedPhone, setNormalizedPhone] = useState<string | null>(null)
-  const [knownGuest, setKnownGuest] = useState<KnownGuest | null>(null)
+  const [queryInput, setQueryInput] = useState('')
+  const [matches, setMatches] = useState<MatchedGuest[]>([])
+  const [selectedGuest, setSelectedGuest] = useState<MatchedGuest | null>(null)
   const [newGuestDetails, setNewGuestDetails] = useState({ firstName: '', lastName: '', email: '' })
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
-  const phoneInputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const eventDate = useMemo(() => {
     try {
@@ -62,19 +64,29 @@ export default function EventCheckInClient({ event, reviewLink }: EventCheckInCl
   }, [event.date])
 
   useEffect(() => {
-    if (step === 'lookup' && phoneInputRef.current) {
-      phoneInputRef.current.focus()
+    if (step === 'lookup' && inputRef.current) {
+      inputRef.current.focus()
+    }
+  }, [step])
+
+  // Auto-reset success screen
+  useEffect(() => {
+    if (step === 'success') {
+      const timer = setTimeout(() => {
+        resetFlow()
+      }, 5000)
+      return () => clearTimeout(timer)
     }
   }, [step])
 
   const resetFlow = () => {
     setStep('lookup')
-    setNormalizedPhone(null)
-    setKnownGuest(null)
+    setQueryInput('')
+    setMatches([])
+    setSelectedGuest(null)
     setStatusMessage(null)
     setError(null)
     setNewGuestDetails({ firstName: '', lastName: '', email: '' })
-    setPhoneInput('')
   }
 
   const handleLookup = (e: React.FormEvent) => {
@@ -82,270 +94,277 @@ export default function EventCheckInClient({ event, reviewLink }: EventCheckInCl
     setError(null)
     setStatusMessage(null)
 
+    if (!queryInput.trim()) return
+
     startTransition(async () => {
-      const result = await lookupEventGuest({ eventId: event.id, phone: phoneInput })
+      const result = await lookupEventGuest({ eventId: event.id, query: queryInput })
 
       if (!result.success) {
         setError(result.error ?? 'An unknown error occurred')
         return
       }
 
-      setNormalizedPhone(result.normalizedPhone ?? null)
-
-      if (result.status === 'unknown') {
-        setStep('unknown')
-        return
-      }
-
-      if (!result.data) return
-
-      setKnownGuest(result.data)
-
-      if (result.data.alreadyCheckedIn) {
-        const displayName = `${result.data.customer.first_name} ${result.data.customer.last_name ?? ''}`.trim() || 'there'
-        setStep('already')
-        setStatusMessage(`Hello ${displayName}! You're already checked in for ${event.name}. Enjoy the evening!`)
-        return
-      }
-
-      setStep('known')
+      setMatches(result.matches || [])
+      setStep('match')
     })
   }
 
-  const handleKnownCheckIn = () => {
-    if (!knownGuest || !normalizedPhone) return
+  const handleSelectGuest = (guest: MatchedGuest) => {
+    setSelectedGuest(guest)
+    handleKnownCheckIn(guest)
+  }
+
+  const handleKnownCheckIn = (guest: MatchedGuest) => {
     setError(null)
     setStatusMessage(null)
 
     startTransition(async () => {
+      // We use the mobile number from the customer record for registration
+      // If strict strict formatting is needed by backend, the action handles it, 
+      // but here we pass what we have.
       const result = await registerKnownGuest({
         eventId: event.id,
-        phone: normalizedPhone,
-        customerId: knownGuest.customer.id,
+        phone: guest.customer.mobile_number, // Use stored number
+        customerId: guest.customer.id,
       })
 
       if (!result.success) {
-        setError(result.error)
+        setError(result.error || 'Failed to check in')
         return
       }
 
-      const displayName =
-        result.data?.customerName || `${knownGuest.customer.first_name} ${knownGuest.customer.last_name ?? ''}`.trim() || 'there'
-
-      setStatusMessage(`Hello ${displayName}! Welcome to ${event.name}. Thank you for checking in.`)
+      const firstName = guest.customer.first_name
+      const seats = guest.booking?.seats ?? 1
+      
+      if (guest.alreadyCheckedIn) {
+         setStatusMessage(`Welcome back, ${firstName}! You are already checked in.`)
+      } else {
+         setStatusMessage(
+            guest.booking 
+              ? `Welcome, ${firstName}! We've checked in ${seats} guest${seats > 1 ? 's' : ''}.`
+              : `Welcome, ${firstName}! You're checked in.`
+         )
+      }
       setStep('success')
     })
   }
 
-  const handleNewCheckIn = (e: React.FormEvent) => {
+  const handleNewGuestCheckIn = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!normalizedPhone) return
     setError(null)
     setStatusMessage(null)
+
+    // If query was a phone number, use it as default
+    const potentialPhone = /^\+?[\d\s\-]+$/.test(queryInput) ? queryInput : ''
 
     startTransition(async () => {
       const result = await registerNewGuest({
         eventId: event.id,
-        phone: normalizedPhone,
+        phone: potentialPhone || '00000000000', // Fallback if name search, ideally UI asks for phone
         firstName: newGuestDetails.firstName,
         lastName: newGuestDetails.lastName,
         email: newGuestDetails.email || undefined,
       })
 
       if (!result.success) {
-        setError(result.error)
+        setError(result.error || 'Failed to check in')
         return
       }
 
-      const displayName = result.data?.customerName || newGuestDetails.firstName || 'there'
-      setStatusMessage(`Hello ${displayName}! Welcome to ${event.name}. Thank you for checking in.`)
+      setStatusMessage(`Welcome, ${newGuestDetails.firstName}! You're on the list.`)
       setStep('success')
     })
   }
-
-  const renderLookupForm = () => (
-    <form onSubmit={handleLookup} className="space-y-4">
-      <div className="space-y-3">
-        <label htmlFor="phone" className="block text-lg font-semibold text-gray-900">
-          Welcome! Pop your mobile number in to check in for tonight’s event
-        </label>
-        <Input
-          id="phone"
-          ref={phoneInputRef}
-          value={phoneInput}
-          onChange={(e) => setPhoneInput(e.target.value)}
-          placeholder="e.g. 07700 900123"
-          inputMode="tel"
-          autoComplete="tel"
-          required
-          className="text-lg"
-        />
-      </div>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <Button type="submit" variant="primary" disabled={isPending} className="sm:w-auto text-base px-6 py-3">
-          {isPending ? 'Checking…' : 'Check In'}
-        </Button>
-      </div>
-    </form>
-  )
-
-  const renderKnownGuest = () => {
-    if (!knownGuest) return null
-
-    const fullName = `${knownGuest.customer.first_name} ${knownGuest.customer.last_name ?? ''}`.trim()
-    const greetingName = fullName || 'there'
-
-    return (
-      <div className="space-y-5">
-        <div className="rounded-2xl bg-gray-50 border border-gray-200 p-5 text-gray-900">
-          <p className="text-sm font-semibold uppercase tracking-wide text-emerald-600">Great news</p>
-          <p className="text-2xl font-semibold mt-2">Hello {greetingName}!</p>
-          <p className="text-base mt-3">
-            {knownGuest.booking
-              ? `We have you down for ${knownGuest.booking.seats ?? 1} ticket${(knownGuest.booking.seats ?? 1) > 1 ? 's' : ''}. Tap below and we’ll mark you as arrived.`
-              : 'We could not see a booking, so we will pop you on the list now and mark you as arrived.'}
-          </p>
-        </div>
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-          <Button
-            type="button"
-            variant="primary"
-            onClick={handleKnownCheckIn}
-            disabled={isPending}
-            className="sm:w-auto text-base px-6 py-3"
-          >
-            {isPending ? 'Checking in…' : `Yes, check me in`}
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => setStep('lookup')}
-            className="sm:w-auto text-base px-6 py-3"
-          >
-            <ArrowLeftIcon className="h-5 w-5 mr-2" />
-            Search again
-          </Button>
-        </div>
-      </div>
-    )
+  
+  // Improved New Guest Flow if search was name-based or no match
+  const startNewGuestFlow = () => {
+    setStep('new_guest')
   }
 
-  const renderUnknownGuest = () => (
-    <form onSubmit={handleNewCheckIn} className="space-y-5">
-      <div className="rounded-2xl bg-gray-50 border border-gray-200 p-5 text-gray-900">
-        <p className="text-sm font-semibold uppercase tracking-wide text-emerald-600">Let’s get you on the list</p>
-        <p className="text-base mt-3">
-          We could not find a match for {normalizedPhone}. Add your name so we can welcome you properly this evening.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <label htmlFor="first-name" className="block text-lg font-semibold text-gray-900">
-            First name
-          </label>
-          <Input
-            id="first-name"
-            value={newGuestDetails.firstName}
-            onChange={(e) => setNewGuestDetails((prev) => ({ ...prev, firstName: e.target.value }))}
-            required
-            className="text-lg"
-          />
-        </div>
-        <div className="space-y-2">
-          <label htmlFor="last-name" className="block text-lg font-semibold text-gray-900">
-            Last name
-          </label>
-          <Input
-            id="last-name"
-            value={newGuestDetails.lastName}
-            onChange={(e) => setNewGuestDetails((prev) => ({ ...prev, lastName: e.target.value }))}
-            required
-            className="text-lg"
-          />
-        </div>
-        <div className="space-y-2 sm:col-span-2">
-          <label htmlFor="email" className="block text-lg font-semibold text-gray-900">
-            Email (optional)
-          </label>
-          <Input
-            id="email"
-            type="email"
-            value={newGuestDetails.email}
-            onChange={(e) => setNewGuestDetails((prev) => ({ ...prev, email: e.target.value }))}
-            placeholder="name@example.com"
-            className="text-lg"
-          />
-          <p className="text-sm text-gray-500">
-            Email is optional but helps us share highlights or offers if you fancy.
-          </p>
+  const renderLookupForm = () => (
+    <form onSubmit={handleLookup} className="space-y-6 max-w-xl mx-auto text-center">
+      <div className="space-y-4">
+        <label htmlFor="query" className="block text-2xl font-bold text-gray-900">
+          What is your mobile number?
+        </label>
+        <p className="text-gray-500">Or enter your name to search</p>
+        <div className="relative">
+            <Input
+            id="query"
+            ref={inputRef}
+            value={queryInput}
+            onChange={(e) => setQueryInput(e.target.value)}
+            placeholder="e.g. 07700 900123"
+            className="text-2xl py-4 text-center tracking-wide"
+            autoComplete="off"
+            />
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
+                <MagnifyingGlassIcon className="h-6 w-6" />
+            </div>
         </div>
       </div>
-
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-        <Button type="submit" variant="primary" disabled={isPending} className="sm:w-auto text-base px-6 py-3">
-          {isPending ? 'Checking in…' : 'All set – check me in'}
-        </Button>
-        <Button type="button" variant="secondary" onClick={() => setStep('lookup')} className="sm:w-auto text-base px-6 py-3">
-          <ArrowLeftIcon className="h-5 w-5 mr-2" />
-          Search again
-        </Button>
-      </div>
+      <Button 
+        type="submit" 
+        variant="primary" 
+        disabled={isPending || !queryInput.trim()} 
+        className="w-full sm:w-auto text-lg px-12 py-4"
+      >
+        {isPending ? 'Searching...' : 'Find Booking'}
+      </Button>
     </form>
   )
 
-  const renderAlreadyCheckedIn = () => (
-    <div className="space-y-5">
-      {statusMessage && (
-        <div className="rounded-2xl bg-gray-50 border border-gray-200 p-5 text-gray-900">
-          <p className="text-base font-semibold">{statusMessage}</p>
-          <p className="text-sm mt-2 text-gray-600">
-            If you pop back later just say hello again and we’ll double-check for you.
-          </p>
-        </div>
-      )}
-      <Button type="button" variant="primary" onClick={resetFlow} className="sm:w-auto text-base px-6 py-3">
-        Next guest
-      </Button>
+  const renderMatchList = () => (
+    <div className="space-y-6 max-w-2xl mx-auto">
+      <div className="text-center space-y-2">
+        <h2 className="text-xl font-semibold text-gray-900">Is this you?</h2>
+        <p className="text-gray-500">Tap your name to check in</p>
+      </div>
+
+      <div className="grid gap-4">
+        {matches.map((guest) => (
+          <button
+            key={guest.customer.id}
+            onClick={() => handleSelectGuest(guest)}
+            disabled={isPending}
+            className="w-full text-left group relative flex items-center gap-4 p-4 rounded-xl border-2 border-gray-100 bg-white hover:border-blue-500 hover:shadow-md transition-all"
+          >
+            <div className="h-12 w-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+              <UserIcon className="h-6 w-6" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {guest.customer.first_name} {guest.customer.last_name}
+                </h3>
+                {guest.alreadyCheckedIn && (
+                    <Badge variant="success" size="sm">Checked In</Badge>
+                )}
+              </div>
+              <p className="text-gray-500">
+                {formatPhoneForDisplay(guest.customer.mobile_number)}
+              </p>
+            </div>
+            <div className="text-right">
+              {guest.booking ? (
+                <div className="inline-flex flex-col items-end">
+                    <span className="text-lg font-bold text-gray-900">{guest.booking.seats} Ticket{guest.booking.seats !== 1 ? 's' : ''}</span>
+                    <span className="text-xs text-gray-500">Confirmed Booking</span>
+                </div>
+              ) : (
+                <span className="text-sm text-gray-500 italic">No booking found</span>
+              )}
+            </div>
+          </button>
+        ))}
+        
+        <button
+            onClick={startNewGuestFlow}
+            className="w-full text-left flex items-center gap-4 p-4 rounded-xl border-2 border-dashed border-gray-300 text-gray-500 hover:border-gray-400 hover:bg-gray-50 transition-all"
+        >
+            <div className="h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center">
+                <UserPlusIcon className="h-6 w-6" />
+            </div>
+            <span className="text-lg font-medium">Not on the list? Check in as new guest</span>
+        </button>
+      </div>
+
+      <div className="text-center pt-4">
+        <Button variant="secondary" onClick={() => setStep('lookup')}>
+          Search Again
+        </Button>
+      </div>
     </div>
+  )
+
+  const renderNewGuestForm = () => (
+    <form onSubmit={handleNewGuestCheckIn} className="space-y-6 max-w-lg mx-auto">
+        <div className="text-center space-y-2">
+            <h2 className="text-xl font-semibold text-gray-900">Welcome! Let&apos;s get you checked in.</h2>
+            <p className="text-gray-500">We&apos;ll just need a few details.</p>
+        </div>
+
+        <div className="space-y-4 bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">First Name</label>
+                    <Input 
+                        id="firstName"
+                        value={newGuestDetails.firstName}
+                        onChange={e => setNewGuestDetails(prev => ({ ...prev, firstName: e.target.value }))}
+                        required
+                        placeholder="Jane"
+                    />
+                </div>
+                <div className="space-y-2">
+                    <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">Last Name</label>
+                    <Input 
+                        id="lastName"
+                        value={newGuestDetails.lastName}
+                        onChange={e => setNewGuestDetails(prev => ({ ...prev, lastName: e.target.value }))}
+                        required
+                        placeholder="Doe"
+                    />
+                </div>
+            </div>
+            
+            <div className="space-y-2">
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email (Optional)</label>
+                <Input 
+                    id="email"
+                    type="email"
+                    value={newGuestDetails.email}
+                    onChange={e => setNewGuestDetails(prev => ({ ...prev, email: e.target.value }))}
+                    placeholder="jane@example.com"
+                />
+            </div>
+        </div>
+
+        <div className="flex gap-3 justify-center">
+            <Button type="button" variant="secondary" onClick={() => setStep('match')}>
+                Back
+            </Button>
+            <Button type="submit" variant="primary" disabled={isPending}>
+                {isPending ? 'Checking In...' : 'Check In'}
+            </Button>
+        </div>
+    </form>
   )
 
   const renderSuccess = () => (
-    <div className="space-y-5 text-center text-gray-900">
-      <div className="flex flex-col items-center space-y-3">
-        <CheckCircleIcon className="h-12 w-12 text-emerald-500" aria-hidden />
-        <p className="text-2xl font-semibold">You’re all checked in!</p>
-        {statusMessage && <p className="text-base text-gray-700">{statusMessage}</p>}
-        <p className="text-sm text-gray-500 max-w-sm">
-          We’ll send a friendly thank-you text tomorrow with a quick link to share a review: {reviewLink}
-        </p>
+    <div className="flex flex-col items-center justify-center py-12 space-y-6 text-center animate-in fade-in zoom-in duration-300">
+      <div className="h-24 w-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
+        <CheckCircleIcon className="h-12 w-12" />
       </div>
-      <Button type="button" variant="primary" onClick={resetFlow} className="sm:w-auto text-base px-6 py-3">
-        Check in next guest
-      </Button>
+      <h2 className="text-3xl font-bold text-gray-900">You&apos;re all set!</h2>
+      <p className="text-xl text-gray-600 max-w-md mx-auto">{statusMessage}</p>
+      
+      <div className="pt-8">
+          <Button onClick={resetFlow} variant="secondary">Check in next guest</Button>
+      </div>
+      
+      <p className="text-sm text-gray-400 pt-4">Screen will reset automatically in 5s</p>
     </div>
   )
 
-  const subtitleParts = [eventDate, event.time].filter(Boolean)
-  const headerSubtitle = subtitleParts.length > 0 ? subtitleParts.join(' · ') : undefined
-  const headerTitle = event.name || 'Event Check-In'
-
   return (
-    <PageLayout title={headerTitle} subtitle={headerSubtitle} backButton={{ label: 'Back to Event', href: `/events/${event.id}` }}>
-      <div className="space-y-6">
-        <div className="rounded-[32px] bg-white/95 px-6 py-6 text-gray-900 shadow-2xl sm:px-8 sm:py-8">
-          {/* Removed custom header content as PageLayout provides it */}
-          <div className="mt-4 space-y-5">
-            {error && <Alert variant="error" title="Unable to continue" description={error} />}
+    <PageLayout 
+        title={event.name} 
+        subtitle={formatDate(event.date)}
+        backButton={{ label: 'Exit Kiosk', href: `/events/${event.id}` }}
+        className="bg-gray-50/50 min-h-screen"
+    >
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        {error && (
+            <div className="mb-6">
+                <Alert variant="error" title="Something went wrong" description={error} />
+            </div>
+        )}
 
-            {step === 'lookup' && renderLookupForm()}
-            {step === 'known' && renderKnownGuest()}
-            {step === 'unknown' && renderUnknownGuest()}
-            {step === 'already' && renderAlreadyCheckedIn()}
-            {step === 'success' && renderSuccess()}
-          </div>
-        </div> {/* End of rounded-[32px] bg-white/95 ... */}
-        <p className="text-center text-sm text-emerald-100/80" />
+        {step === 'lookup' && renderLookupForm()}
+        {step === 'match' && renderMatchList()}
+        {step === 'new_guest' && renderNewGuestForm()}
+        {step === 'success' && renderSuccess()}
       </div>
     </PageLayout>
   )

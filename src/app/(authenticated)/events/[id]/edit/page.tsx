@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { EventFormGrouped } from '@/components/features/events/EventFormGrouped'
 import { updateEvent } from '@/app/actions/events'
 import { Event } from '@/types/database'
+import { EventCategory } from '@/types/event-categories'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { use } from 'react'
@@ -19,7 +20,7 @@ export default function EditEventPage({ params }: PageProps) {
   const router = useRouter()
   const resolvedParams = use(params)
   const [event, setEvent] = useState<Event | null>(null)
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
+  const [categories, setCategories] = useState<EventCategory[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -47,7 +48,7 @@ export default function EditEventPage({ params }: PageProps) {
       }
       
       setEvent(eventResult.data)
-      setCategories(categoriesResult.data || [])
+      setCategories(categoriesResult.data ? (categoriesResult.data as unknown as EventCategory[]) : [])
       setLoading(false)
     }
     
@@ -115,7 +116,7 @@ export default function EditEventPage({ params }: PageProps) {
       <Card>
         <EventFormGrouped
           event={event}
-          categories={categories as any}
+          categories={categories}
           onSubmit={handleSubmit}
           onCancel={handleCancel}
         />

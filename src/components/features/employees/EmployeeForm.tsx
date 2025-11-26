@@ -5,6 +5,7 @@ import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { toast } from '@/components/ui-v2/feedback/Toast';
 import type { ActionFormState } from '@/types/actions';
 import type { Employee } from '@/types/database';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
@@ -74,10 +75,9 @@ export default function EmployeeForm({
       // Only redirect if we're editing an existing employee
       // For new employees, the parent component handles navigation
       if (employee) {
-        router.push('/employees');
+        toast.success(state.message || 'Employee updated successfully.');
+        router.push(`/employees/${employee.employee_id}`);
       }
-      // Optionally, show a success toast message here using a library like react-hot-toast
-      // For example: toast.success(state.message);
     }
     // No changes needed for error states here as they are handled by displaying messages in the form
   }, [state, router, employee, draftMode]);

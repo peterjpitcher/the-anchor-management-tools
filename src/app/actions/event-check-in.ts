@@ -4,12 +4,11 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
-import { formatPhoneForStorage, sanitizeName } from '@/lib/validation'
 import { EventCheckInService } from '@/services/event-check-in'
 
 const lookupSchema = z.object({
   eventId: z.string().uuid(),
-  phone: z.string().min(3, 'Enter a phone number'),
+  query: z.string().min(1, 'Please enter a name or number'),
 })
 
 const registerExistingSchema = z.object({
@@ -23,16 +22,12 @@ const registerNewSchema = z.object({
   phone: z.string().min(3),
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
-  email: z.string().email().optional(),
+  email: z.string().email().optional().or(z.literal('')),
 })
 
 type LookupInput = z.infer<typeof lookupSchema>
 type RegisterExistingInput = z.infer<typeof registerExistingSchema>
 type RegisterNewInput = z.infer<typeof registerNewSchema>
-
-// ... (Lookup types and logic can remain or be moved to service read-only methods later)
-// For this refactor, I'll keep lookup logic here as it's read-only, 
-// but replace the write logic with the Service.
 
 async function ensureEventAccess(eventId: string): Promise<{ event: { id: string; name: string; date: string; time: string } } | { error: string }> {
   const hasPermission = await checkUserPermission('events', 'manage')
@@ -59,78 +54,118 @@ async function ensureEventAccess(eventId: string): Promise<{ event: { id: string
   return { event }
 }
 
+// Helper to clean phone search input
+function normalizeSearchQuery(query: string): { isPhone: boolean, cleanQuery: string } {
+  // Remove spaces, dashes, parens
+  const clean = query.replace(/[\s\-()]/g, '')
+  
+  // Check if it looks like a phone number (mostly digits, maybe a +)
+  const isPhone = /^[\d+]+$/.test(clean)
+  
+  if (isPhone) {
+    // If it starts with 07, treat as UK mobile
+    if (clean.startsWith('07')) {
+      return { isPhone: true, cleanQuery: clean } // Search for exact match or stored format?
+      // Stored format is +447... usually.
+      // We'll search partials in DB, so leaving as is might be okay if we OR it with +44 version
+    }
+  }
+  
+  return { isPhone, cleanQuery: query.trim() }
+}
+
 export async function lookupEventGuest(input: LookupInput) {
   const parsed = lookupSchema.safeParse(input)
   if (!parsed.success) {
     return { success: false, error: parsed.error.errors[0]?.message || 'Invalid request' }
   }
 
-  const { eventId, phone } = parsed.data
+  const { eventId, query } = parsed.data
 
   const access = await ensureEventAccess(eventId)
   if ('error' in access) {
     return { success: false, error: access.error }
   }
 
-  let normalizedPhone: string
-  try {
-    normalizedPhone = formatPhoneForStorage(phone)
-  } catch (e) {
-    return { success: false, error: 'Please enter a valid UK mobile number' }
-  }
+  const { isPhone, cleanQuery } = normalizeSearchQuery(query)
 
   try {
     const supabase = await createClient()
-
-    const { data: customer, error: customerError } = await supabase
+    
+    let customersQuery = supabase
       .from('customers')
-      .select('id, first_name, last_name, mobile_number, email')
-      .eq('mobile_number', normalizedPhone)
-      .maybeSingle()
+      .select(`
+        id, 
+        first_name, 
+        last_name, 
+        mobile_number, 
+        email,
+        bookings!left(id, seats, event_id),
+        event_check_ins!left(id, event_id)
+      `)
+      // Filter bookings and check-ins for THIS event only
+      .eq('bookings.event_id', eventId)
+      .eq('event_check_ins.event_id', eventId)
 
-    if (customerError) {
-      console.error('Lookup customer error:', customerError)
-      return { success: false, error: 'Failed to look up guest' }
+    if (isPhone) {
+      // Phone search: Try exact, local format, and international format
+      // DB stores as +447... usually
+      // User might type 07... or 7...
+      
+      // Construct a robust OR filter for phone
+      // 1. Exact match
+      // 2. Ends with cleanQuery (good for "last 4 digits" etc)
+      // 3. +44 + cleanQuery (without leading 0)
+      
+      let phoneSearch = `mobile_number.ilike.%${cleanQuery}%`
+      if (cleanQuery.startsWith('0')) {
+        const withoutZero = cleanQuery.substring(1)
+        phoneSearch += `,mobile_number.ilike.%+44${withoutZero}%`
+      }
+      
+      customersQuery = customersQuery.or(phoneSearch)
+    } else {
+      // Name/Email search
+      customersQuery = customersQuery.or(`first_name.ilike.%${cleanQuery}%,last_name.ilike.%${cleanQuery}%,email.ilike.%${cleanQuery}%`)
     }
 
-    if (!customer) {
-      return { success: true, status: 'unknown', normalizedPhone }
+    const { data: customers, error } = await customersQuery.limit(10)
+
+    if (error) {
+      console.error('Lookup error:', error)
+      return { success: false, error: 'Failed to search guests' }
     }
 
-    const { data: booking, error: bookingError } = await supabase
-      .from('bookings')
-      .select('id, seats')
-      .eq('event_id', eventId)
-      .eq('customer_id', customer.id)
-      .maybeSingle()
+    // Transform results for UI
+    const matches = customers?.map(c => {
+      // Because of the !left join and filter, bookings array might be empty or contain the booking for this event
+      // However, the .eq filter on left join in Supabase/PostgREST filters the *parent* rows if not careful, 
+      // OR it just filters the child rows. 
+      // Actually, strictly speaking, PostgREST embedding with filter applies to the embedded resource.
+      // So c.bookings will contain ONLY bookings for this event.
+      
+      const booking = c.bookings?.[0] // Should be 0 or 1 for a specific event usually
+      const checkIn = c.event_check_ins?.[0]
 
-    if (bookingError && bookingError.code !== 'PGRST116') {
-      console.error('Lookup booking error:', bookingError)
-      return { success: false, error: 'Failed to look up guest booking' }
-    }
-
-    const { data: checkIn, error: checkInError } = await supabase
-      .from('event_check_ins')
-      .select('id')
-      .eq('event_id', eventId)
-      .eq('customer_id', customer.id)
-      .maybeSingle()
-
-    if (checkInError && checkInError.code !== 'PGRST116') {
-      console.error('Lookup check-in error:', checkInError)
-      return { success: false, error: 'Failed to load check-in status' }
-    }
+      return {
+        customer: {
+          id: c.id,
+          first_name: c.first_name,
+          last_name: c.last_name,
+          mobile_number: c.mobile_number,
+          email: c.email
+        },
+        booking: booking ? { id: booking.id, seats: booking.seats } : undefined,
+        alreadyCheckedIn: !!checkIn
+      }
+    }) || []
 
     return {
       success: true,
-      status: 'known',
-      normalizedPhone,
-      data: {
-        customer,
-        booking: booking ?? undefined,
-        alreadyCheckedIn: Boolean(checkIn),
-      },
+      matches,
+      query: cleanQuery
     }
+
   } catch (error) {
     console.error('Unexpected lookup error:', error)
     return { success: false, error: 'Failed to look up guest' }
@@ -213,7 +248,7 @@ export async function registerNewGuest(input: RegisterNewInput) {
       phone,
       firstName,
       lastName,
-      email,
+      email: email || undefined,
       staffId: user.id
     })
 
