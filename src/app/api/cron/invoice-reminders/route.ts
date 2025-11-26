@@ -10,6 +10,7 @@ export const maxDuration = 60 // 1 minute max
 
 // Configuration for reminder intervals (days)
 const REMINDER_INTERVALS = {
+  DUE_TODAY: 0,         // On the due date
   FIRST_REMINDER: 7,    // 7 days after due date
   SECOND_REMINDER: 14,  // 14 days after due date
   FINAL_REMINDER: 30    // 30 days after due date
@@ -29,7 +30,7 @@ export async function GET(request: Request) {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    // Get all overdue invoices
+    // Get all overdue and due today invoices
     const { data: overdueInvoices, error: fetchError } = await supabase
       .from('invoices')
       .select(`
@@ -44,7 +45,7 @@ export async function GET(request: Request) {
         payments:invoice_payments(*)
       `)
       .in('status', ['sent', 'partially_paid', 'overdue'])
-      .lt('due_date', today.toISOString())
+      .lte('due_date', today.toISOString())
       .order('due_date', { ascending: true })
 
     if (fetchError) {
@@ -55,7 +56,7 @@ export async function GET(request: Request) {
       }, { status: 500 })
     }
 
-    console.log(`[Cron] Found ${overdueInvoices?.length || 0} overdue invoices`)
+    console.log(`[Cron] Found ${overdueInvoices?.length || 0} invoices to process`)
 
     const results = {
       processed: 0,
@@ -84,8 +85,8 @@ export async function GET(request: Request) {
         
         console.log(`[Cron] Invoice ${invoice.invoice_number} is ${daysOverdue} days overdue`)
 
-        // Update status to overdue if not already
-        if (invoice.status !== 'overdue') {
+        // Update status to overdue if not already and actually overdue
+        if (daysOverdue > 0 && invoice.status !== 'overdue') {
           await supabase
             .from('invoices')
             .update({ 
@@ -97,6 +98,7 @@ export async function GET(request: Request) {
 
         // Check if we should send a reminder based on intervals
         const shouldSendReminder = 
+          daysOverdue === REMINDER_INTERVALS.DUE_TODAY ||
           daysOverdue === REMINDER_INTERVALS.FIRST_REMINDER ||
           daysOverdue === REMINDER_INTERVALS.SECOND_REMINDER ||
           daysOverdue === REMINDER_INTERVALS.FINAL_REMINDER
@@ -107,7 +109,9 @@ export async function GET(request: Request) {
 
         // Determine reminder type
         let reminderType = 'First Reminder'
-        if (daysOverdue === REMINDER_INTERVALS.SECOND_REMINDER) {
+        if (daysOverdue === REMINDER_INTERVALS.DUE_TODAY) {
+          reminderType = 'Due Today'
+        } else if (daysOverdue === REMINDER_INTERVALS.SECOND_REMINDER) {
           reminderType = 'Second Reminder'
         } else if (daysOverdue === REMINDER_INTERVALS.FINAL_REMINDER) {
           reminderType = 'Final Reminder'
@@ -119,7 +123,8 @@ export async function GET(request: Request) {
         // Send internal notification
         if (emailConfigured) {
           try {
-            const internalSubject = `[${reminderType}] Invoice ${invoice.invoice_number} - ${invoice.vendor?.name || 'Unknown'} - £${outstandingAmount.toFixed(2)} overdue`
+            const statusText = daysOverdue > 0 ? 'overdue' : 'due'
+            const internalSubject = `[${reminderType}] Invoice ${invoice.invoice_number} - ${invoice.vendor?.name || 'Unknown'} - £${outstandingAmount.toFixed(2)} ${statusText}`
             
             const internalBody = `
 Invoice Reminder Alert
@@ -193,13 +198,19 @@ View invoice: ${process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejel
         // Send customer reminder if email available
         if (emailConfigured && invoice.vendor?.email) {
           try {
-            const customerSubject = `${reminderType}: Invoice ${invoice.invoice_number} from Orange Jelly Limited`
+            const customerSubject = daysOverdue === 0
+              ? `Payment Due Today: Invoice ${invoice.invoice_number} from Orange Jelly Limited`
+              : `${reminderType}: Invoice ${invoice.invoice_number} from Orange Jelly Limited`
             
-            let customerBody = `Dear ${invoice.vendor.contact_name || invoice.vendor.name},
+            let customerBody = `Dear ${invoice.vendor.contact_name || invoice.vendor.name},\n\n`
 
-This is a friendly reminder that invoice ${invoice.invoice_number} is now ${daysOverdue} days overdue.
+            if (daysOverdue === 0) {
+              customerBody += `This is a friendly reminder that invoice ${invoice.invoice_number} is due for payment today.\n\n`
+            } else {
+              customerBody += `This is a friendly reminder that invoice ${invoice.invoice_number} is now ${daysOverdue} days overdue.\n\n`
+            }
 
-Invoice Details:
+            customerBody += `Invoice Details:
 - Invoice Number: ${invoice.invoice_number}
 - Amount Due: £${outstandingAmount.toFixed(2)}
 - Due Date: ${dueDate.toLocaleDateString('en-GB')}
