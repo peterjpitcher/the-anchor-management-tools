@@ -7,7 +7,7 @@ import { EventCategory } from '@/types/event-categories'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Select } from '@/components/ui-v2/forms/Select'
-import { Textarea } from '@/components/ui-v2/forms/Textarea'
+import { DebouncedTextarea } from '@/components/ui-v2/forms/DebouncedTextarea'
 import { SquareImageUpload } from '@/components/features/shared/SquareImageUpload'
 import toast from 'react-hot-toast'
 import { 
@@ -411,11 +411,11 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               Event Brief
             </label>
             <div className="mt-2">
-              <Textarea
+              <DebouncedTextarea
                 id="brief"
                 rows={6}
                 value={brief}
-                onChange={(e) => setBrief(e.target.value)}
+                onValueChange={setBrief}
                 placeholder="Include positioning, audience, offers, and any must-have talking points."
                 fullWidth
               />
@@ -671,11 +671,11 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               Meta Description
             </label>
             <div className="mt-2">
-              <Textarea
+              <DebouncedTextarea
                 id="meta_description"
                 rows={2}
                 value={metaDescription}
-                onChange={(e) => setMetaDescription(e.target.value)}
+                onValueChange={setMetaDescription}
                 maxLength={160}
                 placeholder="SEO page description"
                 fullWidth
@@ -689,11 +689,11 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               Short Description
             </label>
             <div className="mt-2">
-              <Textarea
+              <DebouncedTextarea
                 id="short_description"
                 rows={2}
                 value={shortDescription}
-                onChange={(e) => setShortDescription(e.target.value)}
+                onValueChange={setShortDescription}
                 maxLength={500}
                 placeholder="Brief description for event listings"
                 fullWidth
@@ -707,11 +707,11 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               Long Description
             </label>
             <div className="mt-2">
-              <Textarea
+              <DebouncedTextarea
                 id="long_description"
                 rows={6}
                 value={longDescription}
-                onChange={(e) => setLongDescription(e.target.value)}
+                onValueChange={setLongDescription}
                 placeholder="Detailed description for the event page"
                 fullWidth
               />

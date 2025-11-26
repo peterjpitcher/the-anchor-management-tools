@@ -29,7 +29,12 @@ export class SmsQueueService {
       'final_payment_received',
       'payment_received',
       'booking_confirmed',
-      'date_changed'
+      'date_changed',
+      'booking_cancelled',
+      'booking_expired',
+      'deposit_reminder_7day',
+      'deposit_reminder_1day',
+      'balance_reminder_14day'
     ];
     
     if (!autoSendTriggers.includes(triggerType)) {

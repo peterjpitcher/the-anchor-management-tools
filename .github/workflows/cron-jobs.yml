@@ -24,6 +24,8 @@ on:
     - cron: '0 0 * * *'
     # Reconcile SMS (Hourly)
     - cron: '0 * * * *'
+    # Private Booking Monitor (10:30 AM daily)
+    - cron: '30 10 * * *'
 
   workflow_dispatch:
     inputs:
@@ -45,6 +47,7 @@ on:
           - generate-slots
           - cleanup-rate-limits
           - reconcile-sms
+          - private-booking-monitor
 
 jobs:
   cron-runner:
@@ -66,7 +69,7 @@ jobs:
             local endpoint=$1
             local name=$2
             echo "Running $name..."
-            response=$(curl -s -w "\n%{http_code}" -X GET "$BASE_URL$endpoint" -H "$AUTH_HEADER")
+            response=$(curl -sS --retry 3 --retry-delay 2 -4 -w "\n%{http_code}" -X GET "$BASE_URL$endpoint" -H "$AUTH_HEADER")
             http_code=$(echo "$response" | tail -n1)
             content=$(echo "$response" | sed '$d')
             
@@ -87,7 +90,7 @@ jobs:
              # The route handler supports both GET (health) and POST (process).
              # Let's use POST as per the previous github action.
              echo "Running Job Processor..."
-             curl -s -X POST "$BASE_URL/api/jobs/process" \
+             curl -sS --retry 3 --retry-delay 2 -4 -X POST "$BASE_URL/api/jobs/process" \
                -H "$AUTH_HEADER" \
                -H "Content-Type: application/json" \
                -H "x-vercel-cron: 1"
@@ -139,4 +142,9 @@ jobs:
           # 10. Cleanup Rate Limits (Midnight)
           if [ "${{ github.event.schedule }}" == "0 0 * * *" ] || [ "${{ inputs.job }}" == "cleanup-rate-limits" ] || [ "${{ inputs.job }}" == "all" ]; then
             run_job "/api/cron/cleanup-rate-limits" "Cleanup Rate Limits"
+          fi
+
+          # 11. Private Booking Monitor (10:30 AM)
+          if [ "${{ github.event.schedule }}" == "30 10 * * *" ] || [ "${{ inputs.job }}" == "private-booking-monitor" ] || [ "${{ inputs.job }}" == "all" ]; then
+            run_job "/api/cron/private-booking-monitor" "Private Booking Monitor"
           fi

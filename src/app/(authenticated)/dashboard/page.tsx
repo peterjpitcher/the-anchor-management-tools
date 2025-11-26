@@ -10,7 +10,8 @@ import {
   CheckCircleIcon,
   ClipboardDocumentListIcon,
   PlusIcon,
-  BellIcon
+  BellIcon,
+  BanknotesIcon
 } from '@heroicons/react/24/outline'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card, CardTitle } from '@/components/ui-v2/layout/Card'
@@ -228,6 +229,46 @@ export default async function DashboardPage() {
         
         {/* 1. Stats Overview Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Weekly Takings */}
+          {snapshot.cashingUp.permitted && (
+            <Link href="/cashing-up/dashboard" className="block">
+              <Card className="hover:shadow-md transition-shadow cursor-pointer h-full border-l-4 border-l-emerald-500">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Weekly Takings</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-1">
+                      {currencyFormatter.format(snapshot.cashingUp.thisWeekTotal)}
+                    </p>
+                  </div>
+                  <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
+                    <BanknotesIcon className="h-6 w-6" />
+                  </div>
+                </div>
+                <div className="mt-3 space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">vs Target</span>
+                    <span className={snapshot.cashingUp.thisWeekTotal >= snapshot.cashingUp.thisWeekTarget ? 'text-emerald-600 font-medium' : 'text-red-600 font-medium'}>
+                      {snapshot.cashingUp.thisWeekTotal >= snapshot.cashingUp.thisWeekTarget ? '+' : ''}
+                      {currencyFormatter.format(snapshot.cashingUp.thisWeekTotal - snapshot.cashingUp.thisWeekTarget)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                     <span className="text-gray-500">vs Last Week</span>
+                     <span className={snapshot.cashingUp.thisWeekTotal >= snapshot.cashingUp.lastWeekTotal ? 'text-emerald-600' : 'text-red-600'}>
+                       {snapshot.cashingUp.thisWeekTotal >= snapshot.cashingUp.lastWeekTotal ? '↑' : '↓'} {currencyFormatter.format(Math.abs(snapshot.cashingUp.thisWeekTotal - snapshot.cashingUp.lastWeekTotal))}
+                     </span>
+                  </div>
+                   <div className="flex justify-between text-xs">
+                     <span className="text-gray-500">vs Last Year</span>
+                     <span className={snapshot.cashingUp.thisWeekTotal >= snapshot.cashingUp.lastYearTotal ? 'text-emerald-600' : 'text-red-600'}>
+                       {snapshot.cashingUp.thisWeekTotal >= snapshot.cashingUp.lastYearTotal ? '↑' : '↓'} {currencyFormatter.format(Math.abs(snapshot.cashingUp.thisWeekTotal - snapshot.cashingUp.lastYearTotal))}
+                     </span>
+                  </div>
+                </div>
+              </Card>
+            </Link>
+          )}
+
           {/* New Customers */}
           {snapshot.customers.permitted && (
             <Link href="/customers" className="block">
