@@ -6,7 +6,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from './logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
-import { recordOutboundSmsMessage } from '@/lib/sms/logging'
 import { formatTime12Hour } from '@/lib/dateUtils'
 import { sendEventReminderById } from '@/lib/reminders/send-event-reminder'
 
@@ -325,30 +324,11 @@ export class UnifiedJobQueue {
           const { sendSMS } = await import('@/lib/twilio')
           const supportPhone = (payload.variables?.contact_phone as string | undefined) || process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
           const messageWithSupport = ensureReplyInstruction(messageText, supportPhone)
-          const result = await sendSMS(payload.to, messageWithSupport)
-
-          if (result.success) {
-            const customerId = payload.customer_id || payload.customerId
-            if (!customerId) {
-              logger.warn('send_sms job (template) missing customer id for logging', {
-                metadata: { to: payload.to, template: payload.template }
-              })
-            } else if (result.sid) {
-              const messageId = await recordOutboundSmsMessage({
-                supabase,
-                customerId,
-                to: payload.to,
-                body: messageWithSupport,
-                sid: result.sid,
-                fromNumber: result.fromNumber ?? undefined,
-                twilioStatus: result.status ?? 'queued',
-                metadata: payload.booking_id ? { booking_id: payload.booking_id } : null
-              })
-              if (!messageId) {
-                return { success: false, error: 'SMS sent but failed to log message' }
-              }
-            }
-          }
+          
+          const result = await sendSMS(payload.to, messageWithSupport, {
+            customerId: payload.customer_id || payload.customerId,
+            metadata: payload.booking_id ? { booking_id: payload.booking_id } : undefined
+          })
 
           return result
         } else {
@@ -356,31 +336,11 @@ export class UnifiedJobQueue {
           const { sendSMS } = await import('@/lib/twilio')
           const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
           const messageWithSupport = ensureReplyInstruction(payload.message || '', supportPhone)
-          const result = await sendSMS(payload.to, messageWithSupport)
-
-          if (result.success) {
-            const customerId = payload.customer_id || payload.customerId
-            if (!customerId) {
-              logger.warn('send_sms job missing customer id for logging', {
-                metadata: { to: payload.to }
-              })
-            } else if (result.sid) {
-              const supabase = await createAdminClient()
-              const messageId = await recordOutboundSmsMessage({
-                supabase,
-                customerId,
-                to: payload.to,
-                body: messageWithSupport,
-                sid: result.sid,
-                fromNumber: result.fromNumber ?? undefined,
-                twilioStatus: result.status ?? 'queued',
-                metadata: payload.booking_id ? { booking_id: payload.booking_id } : null
-              })
-              if (!messageId) {
-                return { success: false, error: 'SMS sent but failed to log message' }
-              }
-            }
-          }
+          
+          const result = await sendSMS(payload.to, messageWithSupport, {
+            customerId: payload.customer_id || payload.customerId,
+            metadata: payload.booking_id ? { booking_id: payload.booking_id } : undefined
+          })
 
           return result
         }

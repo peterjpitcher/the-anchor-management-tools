@@ -341,6 +341,7 @@ export class PrivateBookingService {
           message_body: smsMessage,
           customer_phone: updatedBooking.contact_phone,
           customer_name: updatedBooking.customer_name,
+          customer_id: updatedBooking.customer_id,
           created_by: undefined, // System triggered
           priority: 2,
           metadata: {
@@ -407,7 +408,7 @@ export class PrivateBookingService {
     // 1. Get Booking
     const { data: booking, error: fetchError } = await supabase
       .from('private_bookings')
-      .select('id, status, event_date, customer_first_name, customer_last_name, customer_name, contact_phone, calendar_event_id')
+      .select('id, status, event_date, customer_first_name, customer_last_name, customer_name, contact_phone, calendar_event_id, customer_id')
       .eq('id', id)
       .single();
 
@@ -478,6 +479,7 @@ export class PrivateBookingService {
         message_body: smsMessage,
         customer_phone: booking.contact_phone,
         customer_name: booking.customer_name || `${booking.customer_first_name} ${booking.customer_last_name || ''}`.trim(),
+        customer_id: booking.customer_id,
         created_by: performedByUserId,
         priority: 2,
         metadata: {
@@ -498,7 +500,7 @@ export class PrivateBookingService {
     // 1. Get Booking
     const { data: booking, error: fetchError } = await supabase
       .from('private_bookings')
-      .select('id, status, event_date, customer_first_name, customer_name, contact_phone, calendar_event_id')
+      .select('id, status, event_date, customer_first_name, customer_name, contact_phone, calendar_event_id, customer_id')
       .eq('id', id)
       .single();
 
@@ -546,6 +548,7 @@ export class PrivateBookingService {
         message_body: smsMessage,
         customer_phone: booking.contact_phone,
         customer_name: booking.customer_name,
+        customer_id: booking.customer_id,
         created_by: undefined,
         priority: 2,
         metadata: {
@@ -581,7 +584,7 @@ export class PrivateBookingService {
 
     const { data: booking, error: fetchError } = await supabase
         .from('private_bookings')
-        .select('customer_first_name, customer_last_name, customer_name, event_date, contact_phone')
+        .select('customer_first_name, customer_last_name, customer_name, event_date, contact_phone, customer_id')
         .eq('id', bookingId)
         .single();
 
@@ -616,6 +619,7 @@ export class PrivateBookingService {
         message_body: smsMessage,
         customer_phone: booking.contact_phone,
         customer_name: booking.customer_name || `${booking.customer_first_name} ${booking.customer_last_name || ''}`.trim(),
+        customer_id: booking.customer_id,
         created_by: performedByUserId,
         priority: 1,
         metadata: {
@@ -635,7 +639,7 @@ export class PrivateBookingService {
 
     const { data: booking, error: fetchError } = await supabase
         .from('private_bookings')
-        .select('customer_first_name, customer_last_name, customer_name, event_date, contact_phone')
+        .select('customer_first_name, customer_last_name, customer_name, event_date, contact_phone, customer_id')
         .eq('id', bookingId)
         .single();
 
@@ -667,6 +671,7 @@ export class PrivateBookingService {
         message_body: smsMessage,
         customer_phone: booking.contact_phone,
         customer_name: booking.customer_name || `${booking.customer_first_name} ${booking.customer_last_name || ''}`.trim(),
+        customer_id: booking.customer_id,
         created_by: performedByUserId,
         priority: 1,
         metadata: {
@@ -874,8 +879,7 @@ export class PrivateBookingService {
           performed_at,
           performed_by_profile:profiles!private_booking_audit_performed_by_profile_fkey(
             id,
-            first_name,
-            last_name,
+            full_name,
             email
           )
         )
@@ -1054,6 +1058,7 @@ export class PrivateBookingService {
       message_body: smsMessage,
       customer_phone: phone,
       customer_name: booking.customer_name,
+      customer_id: booking.customer_id,
       created_by: booking.created_by,
       priority: 2,
       metadata: {

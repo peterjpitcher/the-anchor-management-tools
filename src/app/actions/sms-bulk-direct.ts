@@ -169,7 +169,6 @@ async function sendBulkSMSImmediate(customerIds: string[], message: string, even
 
     const results: Array<{ customerId: string; messageSid: string; success: true }> = []
     const errors: Array<{ customerId: string; error: string }> = []
-    const messagesToInsert: Array<Record<string, unknown>> = []
 
     const concurrency = 5
     const delayBetweenBatchesMs = 500
@@ -180,40 +179,20 @@ async function sendBulkSMSImmediate(customerIds: string[], message: string, even
       await Promise.all(batch.map(async customer => {
         try {
           const personalizedMessage = personalizeMessage(message, customer)
-          const sendResult = await sendSMS(customer.mobile_number as string, personalizedMessage)
-
-          if (!sendResult.success || !sendResult.sid) {
-            const errorMessage = sendResult.error || 'Failed to send SMS'
-            errors.push({ customerId: customer.id, error: errorMessage })
-            return
-          }
-
-          const segments = personalizedMessage.length <= 160
-            ? 1
-            : Math.ceil(personalizedMessage.length / 153)
-          const costUsd = segments * 0.04
-
-          const fromNumber = sendResult.fromNumber ?? process.env.TWILIO_PHONE_NUMBER ?? null
-          messagesToInsert.push({
-            customer_id: customer.id,
-            direction: 'outbound',
-            message_sid: sendResult.sid,
-            twilio_message_sid: sendResult.sid,
-            body: personalizedMessage,
-            status: 'sent',
-            twilio_status: sendResult.status ?? 'queued',
-            from_number: fromNumber,
-            to_number: customer.mobile_number,
-            message_type: 'sms',
-            segments,
-            cost_usd: costUsd,
-            read_at: new Date().toISOString(),
+          const sendResult = await sendSMS(customer.mobile_number as string, personalizedMessage, {
+            customerId: customer.id,
             metadata: {
               bulk_sms: true,
               event_id: eventId,
               category_id: categoryId
             }
           })
+
+          if (!sendResult.success || !sendResult.sid) {
+            const errorMessage = sendResult.error || 'Failed to send SMS'
+            errors.push({ customerId: customer.id, error: errorMessage })
+            return
+          }
 
           results.push({
             customerId: customer.id,
@@ -234,27 +213,6 @@ async function sendBulkSMSImmediate(customerIds: string[], message: string, even
 
       if (i + concurrency < validCustomers.length) {
         await new Promise(resolve => setTimeout(resolve, delayBetweenBatchesMs))
-      }
-    }
-
-    // Batch insert all messages to the database
-    if (messagesToInsert.length > 0) {
-      const { error: insertError } = await supabase
-        .from('messages')
-        .insert(messagesToInsert)
-
-      if (insertError) {
-        logger.error('Failed to store messages in database', {
-          error: insertError,
-          metadata: { count: messagesToInsert.length }
-        })
-        return {
-          error: 'Bulk SMS sent but failed to record message history',
-          sent: results.length,
-          failed: errors.length,
-          results,
-          loggingError: insertError.message
-        }
       }
     }
 

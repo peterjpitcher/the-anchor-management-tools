@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "postinstall": "patch-package",
     "test": "VITE_CJS_IGNORE_WARNING=true vitest run"
   },
   "dependencies": {
@@ -63,6 +64,7 @@
     "eslint": "^8",
     "eslint-config-next": "15.3.3",
     "jsdom": "^25.0.0",
+    "patch-package": "^8.0.1",
     "postcss": "^8.4.38",
     "supabase": "^2.58.5",
     "tailwindcss": "^3.4.0",

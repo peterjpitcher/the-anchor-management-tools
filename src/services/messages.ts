@@ -1,9 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { ensureReplyInstruction } from '@/lib/sms/support';
-import { recordOutboundSmsMessage } from '@/lib/sms/logging';
-import { mapTwilioStatus } from '@/lib/sms-status';
-import { env, TWILIO_STATUS_CALLBACK, TWILIO_STATUS_CALLBACK_METHOD } from '@/lib/env';
-import twilio from 'twilio';
+import { env } from '@/lib/env';
+import { sendSMS } from '@/lib/twilio';
 
 export class MessageService {
   static async getUnreadCounts() {
@@ -84,58 +82,26 @@ export class MessageService {
       throw new Error('Customer has opted out of SMS messages');
     }
     
-    // Send SMS via Twilio
-    const accountSid = env.TWILIO_ACCOUNT_SID;
-    const authToken = env.TWILIO_AUTH_TOKEN;
-    const fromNumber = env.TWILIO_PHONE_NUMBER;
-    const messagingServiceSid = env.TWILIO_MESSAGING_SERVICE_SID;
-    const statusCallback = TWILIO_STATUS_CALLBACK;
-    const statusCallbackMethod = TWILIO_STATUS_CALLBACK_METHOD;
-
-    if (!accountSid || !authToken || (!fromNumber && !messagingServiceSid)) {
-      throw new Error('SMS service not configured');
-    }
-
-    const client = twilio(accountSid, authToken);
-    
     const supportPhone = env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || env.TWILIO_PHONE_NUMBER || null;
     const messageWithSupport = ensureReplyInstruction(message, supportPhone);
 
-    // Build message parameters with status callback
-    const messageParams: any = {
-      body: messageWithSupport,
-      to: customer.mobile_number,
-      statusCallback: statusCallback,
-      statusCallbackMethod: statusCallbackMethod,
-    };
-    
-    // Use messaging service if configured, otherwise use from number
-    if (messagingServiceSid) {
-      messageParams.messagingServiceSid = messagingServiceSid;
-    } else {
-      messageParams.from = fromNumber;
-    }
-    
-    const twilioMessage = await client.messages.create(messageParams);
-    const resolvedFromNumber = twilioMessage.from || fromNumber || '';
-    
-    await recordOutboundSmsMessage({
-      supabase,
+    // Send SMS via enhanced sendSMS which handles logging
+    const result = await sendSMS(customer.mobile_number, messageWithSupport, {
       customerId,
-      to: customer.mobile_number,
-      body: messageWithSupport,
-      sid: twilioMessage.sid,
-      fromNumber: resolvedFromNumber,
-      status: mapTwilioStatus(twilioMessage.status),
-      twilioStatus: twilioMessage.status,
-      sentAt: twilioMessage.status === 'sent' ? new Date().toISOString() : null,
-      readAt: new Date().toISOString()
+      metadata: {
+        type: 'reply',
+        source: 'message_thread'
+      }
     });
+
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to send SMS');
+    }
     
     return { 
       success: true, 
-      messageSid: twilioMessage.sid,
-      status: twilioMessage.status 
+      messageSid: result.sid,
+      status: result.status 
     };
   }
 

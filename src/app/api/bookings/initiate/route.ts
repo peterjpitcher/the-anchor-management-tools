@@ -6,11 +6,9 @@ import { ukPhoneRegex } from '@/lib/validation';
 import { formatPhoneForStorage, formatPhoneForDisplay } from '@/lib/validation';
 import { generatePhoneVariants } from '@/lib/utils';
 import { createShortLinkInternal } from '@/app/actions/short-links';
-import twilio from 'twilio';
 import { formatTime12Hour } from '@/lib/dateUtils';
 import { ensureReplyInstruction } from '@/lib/sms/support';
-import { ensureCustomerForPhone } from '@/lib/sms/customers';
-import { recordOutboundSmsMessage } from '@/lib/sms/logging';
+import { sendSMS } from '@/lib/twilio';
 
 const initiateBookingSchema = z.object({
   event_id: z.string().uuid(),
@@ -160,10 +158,7 @@ export async function POST(request: NextRequest) {
 
     // Prepare SMS message
     const displayPhone = formatPhoneForDisplay(standardizedPhone);
-    const customerName = existingCustomer 
-      ? `${existingCustomer.first_name} ${existingCustomer.last_name}`
-      : 'Guest';
-
+    
     const eventDateDisplay = new Date(event.date).toLocaleDateString('en-GB', {
       day: 'numeric',
       month: 'long',
@@ -180,102 +175,60 @@ export async function POST(request: NextRequest) {
     const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || null;
     const smsMessage = ensureReplyInstruction(`${baseMessage} ${confirmationSentence}`.trim(), supportPhone);
 
-    // Send SMS and store details for later recording
+    // Send SMS via enhanced helper
     let smsSent = false;
-    let smsDetails = null;
     
     try {
-      if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
-        debugInfo.warnings.push('Twilio credentials not configured');
-        smsSent = false;
-      } else if (!process.env.TWILIO_PHONE_NUMBER && !process.env.TWILIO_MESSAGING_SERVICE_SID) {
-        debugInfo.warnings.push('Twilio sender not configured');
-        smsSent = false;
-      } else {
-        const twilioClient = twilio(
-          process.env.TWILIO_ACCOUNT_SID,
-          process.env.TWILIO_AUTH_TOKEN
-        );
-
-        // Import webhook URL from centralized config
-        const webhookUrl = process.env.WEBHOOK_BASE_URL || 
-                          process.env.NEXT_PUBLIC_APP_URL || 
-                          'https://management.orangejelly.co.uk';
-        
-        const messageParams: any = {
-          body: smsMessage,
-          to: standardizedPhone,
-          statusCallback: `${webhookUrl}/api/webhooks/twilio`,
-          statusCallbackMethod: 'POST',
-        };
-
-        if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
-          messageParams.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
-        } else if (process.env.TWILIO_PHONE_NUMBER) {
-          messageParams.from = process.env.TWILIO_PHONE_NUMBER;
+      const smsResult = await sendSMS(standardizedPhone, smsMessage, {
+        customerId: existingCustomer?.id,
+        metadata: {
+          pending_booking_token: bookingToken,
+          context: 'booking_initiation'
         }
+      });
 
-        const twilioMessage = await twilioClient.messages.create(messageParams);
-        debugInfo.smsSid = twilioMessage.sid;
+      if (smsResult.success) {
         smsSent = true;
+        debugInfo.smsSid = smsResult.sid;
 
-        const ensured = await ensureCustomerForPhone(supabase, standardizedPhone);
-        const customerIdForLogging = ensured.customerId;
-
-        // Calculate segments and cost
+        // Calculate segments and cost for metadata storage
         const messageLength = smsMessage.length;
         const segments = messageLength <= 160 ? 1 : Math.ceil(messageLength / 153);
         const costUsd = segments * 0.04;
 
-        // Store SMS details in pending_bookings metadata for later recording
-        smsDetails = {
-          message_sid: twilioMessage.sid,
-          body: smsMessage,
-          from_number: twilioMessage.from || process.env.TWILIO_PHONE_NUMBER || '',
-          to_number: twilioMessage.to,
-          segments,
-          cost_usd: costUsd,
-          sent_at: new Date().toISOString(),
+        // Store SMS details in pending_bookings metadata
+        // And update customer_id if one was created during SMS sending
+        const updateData: any = {
+          metadata: {
+            initial_sms: {
+              message_sid: smsResult.sid,
+              body: smsMessage,
+              from_number: smsResult.fromNumber || process.env.TWILIO_PHONE_NUMBER || '',
+              to_number: standardizedPhone,
+              segments,
+              cost_usd: costUsd,
+              sent_at: new Date().toISOString(),
+            }
+          }
         };
+
+        if (smsResult.customerId && !existingCustomer) {
+          updateData.customer_id = smsResult.customerId;
+        }
 
         await supabase
           .from('pending_bookings')
-          .update({
-            metadata: {
-              initial_sms: smsDetails,
-            }
-          })
+          .update(updateData)
           .eq('token', bookingToken);
 
-        if (customerIdForLogging) {
-          const messageId = await recordOutboundSmsMessage({
-            supabase,
-            customerId: customerIdForLogging,
-            to: twilioMessage.to,
-            body: smsMessage,
-            sid: twilioMessage.sid,
-            fromNumber: twilioMessage.from || process.env.TWILIO_PHONE_NUMBER || null,
-            status: twilioMessage.status || 'queued',
-            twilioStatus: twilioMessage.status || 'queued',
-            metadata: {
-              pending_booking_token: bookingToken,
-              context: 'booking_initiation'
-            },
-            sentAt: smsDetails.sent_at
-          });
-
-          if (!messageId) {
-            debugInfo.warnings.push('SMS sent but not recorded in messages table');
-          }
-        } else {
-          debugInfo.warnings.push('SMS sent but customer record not resolved for logging');
-        }
+      } else {
+        debugInfo.errors.push(`SMS failed: ${smsResult.error}`);
+        debugInfo.smsError = smsResult.error;
       }
     } catch (smsError: any) {
       debugInfo.errors.push(`SMS error: ${smsError?.message || 'Unknown SMS error'}`);
       debugInfo.smsError = smsError?.message;
       smsSent = false;
-      // Don't fail the request if SMS fails - they can still use the link
     }
 
     // Log API event

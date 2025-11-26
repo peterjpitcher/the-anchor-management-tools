@@ -86,42 +86,38 @@ async function testSmsForNewCustomer() {
     }
     
     try {
-      const client = twilio(
-        process.env.TWILIO_ACCOUNT_SID,
-        process.env.TWILIO_AUTH_TOKEN
-      );
+      const { sendSMS } = await import('@/lib/twilio');
       
-      const messageParams: any = {
-        body: 'Test SMS from Anchor Management Tools - New Customer Booking Test',
-        to: testNumber,
-      };
+      console.log('   Sending SMS using integrated sendSMS function (with auto-logging)...');
+      const result = await sendSMS(testNumber, 'Test SMS from Anchor Management Tools - New Customer Booking Test', {
+        // Metadata to identify this test
+        metadata: {
+          test_script: 'test-sms-new-customer.ts',
+          timestamp: new Date().toISOString()
+        }
+      });
       
-      if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
-        messageParams.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
-        console.log('   Using Messaging Service SID:', process.env.TWILIO_MESSAGING_SERVICE_SID);
-      } else if (process.env.TWILIO_PHONE_NUMBER) {
-        messageParams.from = process.env.TWILIO_PHONE_NUMBER;
-        console.log('   Using Phone Number:', process.env.TWILIO_PHONE_NUMBER);
+      if (result.success) {
+        console.log('   ✓ SMS sent successfully!');
+        console.log('     Message SID:', result.sid);
+        console.log('     Status:', result.status);
+        console.log('     From:', result.fromNumber);
+        console.log('     Message ID (DB):', result.messageId || 'Not logged (or pending)');
+        
+        if (result.messageId) {
+          console.log('     ✅ SMS was successfully logged to the database.');
+        } else {
+          console.log('     ⚠️ SMS was sent but might not be logged (logging is async). Check logs for "Failed to automatically log outbound SMS" if it does not appear.');
+        }
+      } else {
+        console.log('   ❌ SMS send failed:', result.error);
+        if (result.code) {
+          console.log('     Error Code:', result.code);
+        }
       }
-      
-      console.log('   Sending SMS...');
-      const message = await client.messages.create(messageParams);
-      
-      console.log('   ✓ SMS sent successfully!');
-      console.log('     Message SID:', message.sid);
-      console.log('     Status:', message.status);
-      console.log('     From:', message.from);
-      console.log('     To:', message.to);
-      console.log('     Price:', message.price, message.priceUnit);
       
     } catch (error: any) {
-      console.log('   ❌ SMS send failed:', error.message);
-      if (error.code) {
-        console.log('     Error Code:', error.code);
-      }
-      if (error.moreInfo) {
-        console.log('     More Info:', error.moreInfo);
-      }
+      console.log('   ❌ SMS send exception:', error.message);
     }
   }
 
