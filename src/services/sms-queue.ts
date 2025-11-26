@@ -9,6 +9,7 @@ export type QueueSmsInput = {
   message_body: string;
   customer_phone: string;
   customer_name: string;
+  customer_id?: string;
   created_by?: string;
   priority?: number;
   metadata?: any;
@@ -20,7 +21,8 @@ export class SmsQueueService {
     bookingId: string,
     triggerType: string,
     phone: string,
-    messageBody: string
+    messageBody: string,
+    customerId?: string
   ) {
     // Only auto-send for specific trigger types
     const autoSendTriggers = [
@@ -43,21 +45,25 @@ export class SmsQueueService {
     }
     
     try {
-      const admin = createAdminClient();
+      let resolvedCustomerId = customerId;
 
-      // Look up customer for logging
-      const { data: booking } = await admin
-        .from('private_bookings')
-        .select('customer_id')
-        .eq('id', bookingId)
-        .single();
+      // If no customerId provided, look it up
+      if (!resolvedCustomerId) {
+        const admin = createAdminClient();
+        const { data: booking } = await admin
+          .from('private_bookings')
+          .select('customer_id')
+          .eq('id', bookingId)
+          .single();
+        resolvedCustomerId = booking?.customer_id || undefined;
+      }
 
       // Send the SMS immediately
       const result = await sendSms({
         to: phone,
         body: messageBody,
         bookingId: bookingId,
-        customerId: booking?.customer_id || undefined
+        customerId: resolvedCustomerId
       });
       
       if (result.error) {
@@ -113,7 +119,8 @@ export class SmsQueueService {
       data.booking_id,
       data.trigger_type,
       data.customer_phone,
-      data.message_body
+      data.message_body,
+      data.customer_id
     );
     
     if (autoSendResult.sent && autoSendResult.sid) {
@@ -134,6 +141,22 @@ export class SmsQueueService {
         })
         .eq('id', smsRecord.id);
       
+      // Log to audit trail
+      const admin = createAdminClient();
+      await admin.from('private_booking_audit').insert({
+        booking_id: data.booking_id,
+        action: 'sms_sent',
+        field_name: 'sms',
+        new_value: data.template_key,
+        metadata: {
+          trigger: data.trigger_type,
+          message: data.message_body,
+          recipient: data.customer_phone,
+          sid: autoSendResult.sid
+        },
+        performed_by: data.created_by || null, // System if undefined
+      });
+
       return { 
         success: true, 
         sent: true,
@@ -143,6 +166,22 @@ export class SmsQueueService {
       };
     } else if (autoSendResult.requiresApproval) {
       // Message requires manual approval
+      
+      // Log to audit trail
+      const admin = createAdminClient();
+      await admin.from('private_booking_audit').insert({
+        booking_id: data.booking_id,
+        action: 'sms_queued',
+        field_name: 'sms',
+        new_value: data.template_key,
+        metadata: {
+          trigger: data.trigger_type,
+          message: data.message_body,
+          recipient: data.customer_phone
+        },
+        performed_by: data.created_by || null,
+      });
+
       return { 
         success: true, 
         requiresApproval: true,
@@ -158,6 +197,22 @@ export class SmsQueueService {
         })
         .eq('id', smsRecord.id);
       
+      // Log to audit trail
+      const admin = createAdminClient();
+      await admin.from('private_booking_audit').insert({
+        booking_id: data.booking_id,
+        action: 'sms_failed',
+        field_name: 'sms',
+        new_value: data.template_key,
+        metadata: {
+          trigger: data.trigger_type,
+          message: data.message_body,
+          recipient: data.customer_phone,
+          error: autoSendResult.error
+        },
+        performed_by: data.created_by || null,
+      });
+
       return { 
         error: autoSendResult.error || 'Failed to send SMS',
         queueId: smsRecord.id
@@ -250,6 +305,22 @@ export class SmsQueueService {
         })
         .eq('id', smsId);
       
+      // Log to audit trail
+      await admin.from('private_booking_audit').insert({
+        booking_id: sms.booking_id,
+        action: 'sms_failed',
+        field_name: 'sms',
+        new_value: sms.template_key,
+        metadata: {
+          trigger: sms.trigger_type,
+          message: sms.message_body,
+          recipient: sms.recipient_phone,
+          error: result.error,
+          queue_id: smsId
+        },
+        performed_by: sms.approved_by || null,
+      });
+
       throw new Error(result.error);
     }
     
@@ -270,6 +341,22 @@ export class SmsQueueService {
       })
       .eq('id', smsId);
     
+    // Log to audit trail
+    await admin.from('private_booking_audit').insert({
+      booking_id: sms.booking_id,
+      action: 'sms_sent',
+      field_name: 'sms',
+      new_value: sms.template_key,
+      metadata: {
+        trigger: sms.trigger_type,
+        message: sms.message_body,
+        recipient: sms.recipient_phone,
+        sid: result.sid,
+        queue_id: smsId
+      },
+      performed_by: sms.approved_by || null,
+    });
+
     return { success: true };
   }
 

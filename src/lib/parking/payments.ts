@@ -6,8 +6,6 @@ import { logger } from '@/lib/logger'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { sendSMS } from '@/lib/twilio'
 import { ensureReplyInstruction } from '@/lib/sms/support'
-import { recordOutboundSmsMessage } from '@/lib/sms/logging'
-import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { sendEmail } from '@/lib/email/emailService'
 import {
   buildPaymentConfirmationSms,
@@ -142,39 +140,17 @@ export async function sendParkingPaymentRequest(
 
   try {
     const smsBody = ensureReplyInstruction(buildPaymentRequestSms(booking, paymentLink), replyNumber)
-    const smsResult = await sendSMS(booking.customer_mobile, smsBody)
-
-    let messageId: string | null = null
-    let customerIdForLog = booking.customer_id
-
-    if (!customerIdForLog && booking.customer_mobile) {
-      const ensured = await ensureCustomerForPhone(supabase, booking.customer_mobile, {
+    
+    const smsResult = await sendSMS(booking.customer_mobile, smsBody, {
+      customerId: booking.customer_id ?? undefined,
+      metadata: {
+        parking_booking_id: booking.id,
+        event_type: 'payment_request'
+      },
+      customerFallback: {
         email: (booking as any)?.customer_email ?? null
-      })
-      customerIdForLog = ensured.customerId ?? undefined
-    }
-
-    if (smsResult.success && smsResult.sid && customerIdForLog) {
-      messageId = await recordOutboundSmsMessage({
-        supabase,
-        customerId: customerIdForLog,
-        to: booking.customer_mobile,
-        body: smsBody,
-        sid: smsResult.sid,
-        fromNumber: smsResult.fromNumber ?? undefined,
-        metadata: {
-          parking_booking_id: booking.id,
-          event_type: 'payment_request'
-        },
-        twilioStatus: smsResult.status ?? 'queued'
-      })
-
-      if (!messageId) {
-        logger.warn('Parking payment request SMS sent but failed to record', {
-          metadata: { bookingId: booking.id }
-        })
       }
-    }
+    })
 
     await logParkingNotification({
       booking_id: booking.id,
@@ -183,7 +159,7 @@ export async function sendParkingPaymentRequest(
       status: smsResult.success ? 'sent' : 'failed',
       sent_at: smsResult.success ? new Date().toISOString() : null,
       message_sid: smsResult.success && smsResult.sid ? smsResult.sid : null,
-      payload: { sms: smsBody, message_id: messageId }
+      payload: { sms: smsBody }
     }, supabase)
 
     if (!smsResult.success) {
@@ -336,38 +312,17 @@ async function sendConfirmationNotifications(booking: ParkingBooking, supabase: 
   if (smsAllowed && booking.customer_mobile) {
     try {
       const smsBody = ensureReplyInstruction(buildPaymentConfirmationSms(booking), replyNumber)
-      const smsResult = await sendSMS(booking.customer_mobile, smsBody)
-
-      let messageId: string | null = null
-      let customerIdForLog = booking.customer_id
-
-      if (!customerIdForLog) {
-        const ensured = await ensureCustomerForPhone(supabase, booking.customer_mobile, {
+      
+      const smsResult = await sendSMS(booking.customer_mobile, smsBody, {
+        customerId: booking.customer_id ?? undefined,
+        metadata: {
+          parking_booking_id: booking.id,
+          event_type: 'payment_confirmation'
+        },
+        customerFallback: {
           email: (booking as any)?.customer_email ?? null
-        })
-        customerIdForLog = ensured.customerId ?? undefined
-      }
-
-      if (smsResult.success && smsResult.sid && customerIdForLog) {
-        messageId = await recordOutboundSmsMessage({
-          supabase,
-          customerId: customerIdForLog,
-          to: booking.customer_mobile,
-          body: smsBody,
-          sid: smsResult.sid,
-          fromNumber: smsResult.fromNumber ?? undefined,
-          twilioStatus: smsResult.status ?? 'queued',
-          metadata: {
-            parking_booking_id: booking.id,
-            event_type: 'payment_confirmation'
-          }
-        })
-        if (!messageId) {
-          logger.warn('Parking payment confirmation SMS failed to record', {
-            metadata: { bookingId: booking.id }
-          })
         }
-      }
+      })
 
       await logParkingNotification({
         booking_id: booking.id,
@@ -376,7 +331,7 @@ async function sendConfirmationNotifications(booking: ParkingBooking, supabase: 
         status: smsResult.success ? 'sent' : 'failed',
         sent_at: smsResult.success ? new Date().toISOString() : null,
         message_sid: smsResult.success && smsResult.sid ? smsResult.sid : null,
-        payload: { sms: smsBody, message_id: messageId }
+        payload: { sms: smsBody }
       }, supabase)
 
       if (!smsResult.success) {

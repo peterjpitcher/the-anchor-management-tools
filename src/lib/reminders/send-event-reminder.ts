@@ -1,32 +1,14 @@
-import twilio from 'twilio'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { getMessageTemplate } from '@/lib/smsTemplates'
 import { ensureReplyInstruction } from '@/lib/sms/support'
-import { recordOutboundSmsMessage } from '@/lib/sms/logging'
 import { formatDateInLondon } from '@/lib/dateUtils'
-import { ReminderRow, normalizeReminderRow, buildReminderTemplate } from './reminder-utils'
+import { normalizeReminderRow, buildReminderTemplate } from './reminder-utils'
+import { sendSMS } from '@/lib/twilio'
 
 type ReminderSendResult =
   | { success: true; reminderId: string; twilioSid: string | null }
   | { success: false; reminderId: string; error: string }
-
-let cachedTwilioClient: ReturnType<typeof twilio> | null = null
-
-function getTwilioClient() {
-  if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
-    throw new Error('Twilio credentials not configured')
-  }
-
-  if (!cachedTwilioClient) {
-    cachedTwilioClient = twilio(
-      process.env.TWILIO_ACCOUNT_SID,
-      process.env.TWILIO_AUTH_TOKEN
-    )
-  }
-
-  return cachedTwilioClient
-}
 
 async function loadReminder(reminderId: string) {
   const supabase = createAdminClient()
@@ -148,29 +130,10 @@ export async function sendEventReminderById(reminderId: string): Promise<Reminde
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   const messageWithSupport = ensureReplyInstruction(finalMessage, supportPhone)
 
-  const messageParams: { body: string; to: string; messagingServiceSid?: string; from?: string } = {
-    body: messageWithSupport,
-    to: targetPhone
-  }
-
-  if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
-    messageParams.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID
-  } else if (process.env.TWILIO_PHONE_NUMBER) {
-    messageParams.from = process.env.TWILIO_PHONE_NUMBER
-  }
-
   try {
-    const client = getTwilioClient()
-    const twilioMessage = await client.messages.create(messageParams)
-
-    const messageId = await recordOutboundSmsMessage({
-      supabase,
+    // Use sendSMS which now handles DB logging
+    const result = await sendSMS(targetPhone, messageWithSupport, {
       customerId: customer.id,
-      to: targetPhone,
-      body: messageWithSupport,
-      sid: twilioMessage.sid,
-      fromNumber: twilioMessage.from ?? undefined,
-      twilioStatus: twilioMessage.status || 'queued',
       metadata: {
         reminder_id: reminder.id,
         reminder_type: reminder.reminder_type,
@@ -179,6 +142,10 @@ export async function sendEventReminderById(reminderId: string): Promise<Reminde
       }
     })
 
+    if (!result.success || !result.sid) {
+      throw new Error(result.error || 'Failed to send SMS')
+    }
+
     await supabase
       .from('booking_reminders')
       .update({
@@ -186,7 +153,7 @@ export async function sendEventReminderById(reminderId: string): Promise<Reminde
         sent_at: nowIso,
         target_phone: targetPhone,
         event_id: event.id,
-        message_id: messageId,
+        message_id: result.messageId, // Use the ID returned from logging
         error_message: null
       })
       .eq('id', reminder.id)
@@ -201,11 +168,11 @@ export async function sendEventReminderById(reminderId: string): Promise<Reminde
         reminderId: reminder.id,
         bookingId: reminder.booking.id,
         eventId: event.id,
-        messageSid: twilioMessage.sid
+        messageSid: result.sid
       }
     })
 
-    return { success: true, reminderId: reminder.id, twilioSid: twilioMessage.sid }
+    return { success: true, reminderId: reminder.id, twilioSid: result.sid }
   } catch (sendError) {
     const errorMessage = sendError instanceof Error ? sendError.message : 'Failed to send reminder'
 

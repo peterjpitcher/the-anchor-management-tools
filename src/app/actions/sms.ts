@@ -1,84 +1,36 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import twilio from 'twilio'
 import { rateLimiters } from '@/lib/rate-limit'
 import { headers } from 'next/headers'
 import { sendSMS } from '@/lib/twilio'
 import { logger } from '@/lib/logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
-import { recordOutboundSmsMessage } from '@/lib/sms/logging'
 import { ensureCustomerForPhone, resolveCustomerIdForSms } from '@/lib/sms/customers'
-
-interface TwilioMessageCreateParams {
-  to: string
-  body: string
-  from?: string
-  messagingServiceSid?: string
-}
-
 
 export async function sendOTPMessage(params: { phoneNumber: string; message: string; customerId?: string }) {
   try {
     const { phoneNumber, message, customerId } = params
 
-    if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
-      throw new Error('Twilio credentials not configured')
-    }
-
     const supabase = createAdminClient()
-    let resolvedCustomerId = customerId ?? null
+    let resolvedCustomerId = customerId ?? undefined
 
     if (!resolvedCustomerId) {
       const ensured = await ensureCustomerForPhone(supabase, phoneNumber)
-      resolvedCustomerId = ensured.customerId
+      resolvedCustomerId = ensured.customerId ?? undefined
     }
 
-    const twilioClientInstance = twilio(
-      process.env.TWILIO_ACCOUNT_SID,
-      process.env.TWILIO_AUTH_TOKEN
-    )
+    const result = await sendSMS(phoneNumber, message, {
+      customerId: resolvedCustomerId,
+      metadata: { context: 'otp' },
+      createCustomerIfMissing: false // Don't create customer for OTP if not found
+    })
 
-    const messageParams: TwilioMessageCreateParams = {
-      body: message,
-      to: phoneNumber
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to send OTP SMS')
     }
 
-    if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
-      messageParams.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID
-    } else if (process.env.TWILIO_PHONE_NUMBER) {
-      messageParams.from = process.env.TWILIO_PHONE_NUMBER
-    } else {
-      throw new Error('No Twilio sender configured')
-    }
-
-    const twilioMessage = await twilioClientInstance.messages.create(messageParams)
-
-    if (resolvedCustomerId) {
-      try {
-        await recordOutboundSmsMessage({
-          supabase,
-          customerId: resolvedCustomerId,
-          to: twilioMessage.to,
-          body: message,
-          sid: twilioMessage.sid,
-          fromNumber: twilioMessage.from,
-          twilioStatus: twilioMessage.status || 'queued',
-          status: twilioMessage.status || 'queued',
-          metadata: {
-            context: 'otp'
-          }
-        })
-      } catch (error) {
-        console.error('Error recording OTP SMS message:', error)
-      }
-    } else {
-      logger.debug('OTP SMS sent but no customer record could be resolved', {
-        metadata: { to: phoneNumber, sid: twilioMessage.sid }
-      })
-    }
-
-    return { success: true, messageSid: twilioMessage.sid }
+    return { success: true, messageSid: result.sid }
   } catch (error) {
     console.error('Failed to send OTP SMS:', error)
     throw error
@@ -99,16 +51,6 @@ export async function sendSms(params: { to: string; body: string; bookingId?: st
       return { error: 'Too many SMS requests. Please wait before sending more messages.' }
     }
 
-    if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
-      console.log('Skipping SMS - Twilio not configured')
-      return { error: 'SMS service not configured' }
-    }
-
-    if (!process.env.TWILIO_PHONE_NUMBER && !process.env.TWILIO_MESSAGING_SERVICE_SID) {
-      console.log('Skipping SMS - No phone number or messaging service configured')
-      return { error: 'SMS service not configured' }
-    }
-
     const supabase = createAdminClient()
     const { customerId } = await resolveCustomerIdForSms(supabase, {
       bookingId: params.bookingId,
@@ -116,49 +58,26 @@ export async function sendSms(params: { to: string; body: string; bookingId?: st
       to: params.to
     })
 
-    const twilioClientInstance = twilio(
-      process.env.TWILIO_ACCOUNT_SID,
-      process.env.TWILIO_AUTH_TOKEN
-    )
-
     const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
     const messageBody = ensureReplyInstruction(params.body, supportPhone)
 
-    const messageParams: TwilioMessageCreateParams = {
-      body: messageBody,
-      to: params.to
-    }
-
-    if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
-      messageParams.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID
-    } else if (process.env.TWILIO_PHONE_NUMBER) {
-      messageParams.from = process.env.TWILIO_PHONE_NUMBER
-    }
-
-    const twilioMessage = await twilioClientInstance.messages.create(messageParams)
-
-    const messageRecordId = await recordOutboundSmsMessage({
-      supabase,
-      customerId,
-      to: twilioMessage.to,
-      body: messageBody,
-      sid: twilioMessage.sid,
-      fromNumber: twilioMessage.from,
-      twilioStatus: twilioMessage.status || 'queued',
-      status: twilioMessage.status || 'queued'
+    // Use the enhanced sendSMS which handles logging automatically
+    const result = await sendSMS(params.to, messageBody, {
+      customerId: customerId ?? undefined,
+      createCustomerIfMissing: true
     })
 
-    if (!messageRecordId) {
-      logger.warn('SMS sent but failed to log message', {
-        metadata: { to: params.to, sid: twilioMessage.sid }
-      })
+    if (!result.success) {
+      return { error: result.error || 'Failed to send SMS' }
     }
 
     return {
       success: true,
-      messageSid: twilioMessage.sid,
-      sid: twilioMessage.sid,
-      messageId: messageRecordId,
+      messageSid: result.sid,
+      sid: result.sid,
+      messageId: result.messageId ?? undefined,
+      // We don't have the DB ID immediately here because logging is async in sendSMS,
+      // but the caller mostly needs success/sid.
       customerId: customerId ?? undefined
     }
   } catch (error) {
@@ -169,16 +88,6 @@ export async function sendSms(params: { to: string; body: string; bookingId?: st
 
 export async function sendBulkSMSAsync(customerIds: string[], message: string) {
   try {
-    if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
-      logger.warn('Skipping bulk SMS - Twilio not configured')
-      return { error: 'SMS service not configured' }
-    }
-
-    if (!process.env.TWILIO_PHONE_NUMBER && !process.env.TWILIO_MESSAGING_SERVICE_SID) {
-      logger.warn('Skipping bulk SMS - No Twilio sender configured')
-      return { error: 'SMS service not configured' }
-    }
-
     const supabase = createAdminClient()
 
     const { data: customers, error } = await supabase
@@ -217,33 +126,15 @@ export async function sendBulkSMSAsync(customerIds: string[], message: string) {
 
     for (const customer of validCustomers) {
       try {
-        const messageWithSupport = messageWithSupportTemplate
-        const sendResult = await sendSMS(customer.mobile_number, messageWithSupport)
+        const sendResult = await sendSMS(customer.mobile_number!, messageWithSupportTemplate, {
+          customerId: customer.id,
+          metadata: { bulk_sms: true }
+        })
 
         if (!sendResult.success || !sendResult.sid) {
           errors.push({
             customerId: customer.id,
             error: sendResult.error || 'Failed to send message'
-          })
-          continue
-        }
-
-        const messageId = await recordOutboundSmsMessage({
-          supabase,
-          customerId: customer.id,
-          to: customer.mobile_number!,
-          body: messageWithSupport,
-          sid: sendResult.sid,
-          fromNumber: sendResult.fromNumber ?? undefined,
-          metadata: { bulk_sms: true },
-          status: 'sent',
-          twilioStatus: sendResult.status ?? 'queued'
-        })
-
-        if (!messageId) {
-          errors.push({
-            customerId: customer.id,
-            error: 'SMS sent but failed to record message'
           })
           continue
         }

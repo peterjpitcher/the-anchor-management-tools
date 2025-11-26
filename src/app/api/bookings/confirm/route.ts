@@ -110,60 +110,6 @@ export async function POST(request: NextRequest) {
     // Start transaction-like operations
     let customerId = pendingBooking.customer_id;
     
-    // Record the initial SMS for existing customers if not already recorded
-    if (customerId && pendingBooking.metadata?.initial_sms) {
-      const smsData = pendingBooking.metadata.initial_sms;
-      
-      // Check if this SMS was already recorded
-      const { data: existingMessage } = await supabase
-        .from('messages')
-        .select('id')
-        .eq('message_sid', smsData.message_sid)
-        .single();
-      
-      if (existingMessage) {
-        const { error: updateError } = await supabase
-          .from('messages')
-          .update({
-            status: 'delivered',
-            twilio_status: 'delivered',
-            read_at: new Date().toISOString(),
-            sent_at: smsData.sent_at,
-            delivered_at: new Date().toISOString(),
-            cost_usd: smsData.cost_usd,
-            segments: smsData.segments
-          })
-          .eq('id', existingMessage.id);
-
-        if (updateError) {
-          console.error('Failed to update initial SMS message for existing customer:', updateError);
-        }
-      } else {
-        const { error: messageError } = await supabase
-          .from('messages')
-          .insert({
-            customer_id: customerId,
-            direction: 'outbound',
-            message_sid: smsData.message_sid,
-            twilio_message_sid: smsData.message_sid,
-            body: smsData.body,
-            status: 'delivered',
-            twilio_status: 'delivered',
-            from_number: smsData.from_number,
-            to_number: smsData.to_number,
-            message_type: 'sms',
-            segments: smsData.segments,
-            cost_usd: smsData.cost_usd,
-            created_at: smsData.sent_at,
-            read_at: new Date().toISOString(),
-          });
-
-        if (messageError) {
-          console.error('Failed to record initial SMS message for existing customer:', messageError);
-        }
-      }
-    }
-    
     // Create customer if needed
     if (!customerId && firstName && lastName) {
       const { data: newCustomer, error: customerError } = await supabase
@@ -186,57 +132,6 @@ export async function POST(request: NextRequest) {
       }
 
       customerId = newCustomer.id;
-
-      // Record the initial SMS that was sent during booking initiation
-      if (pendingBooking.metadata?.initial_sms) {
-        const smsData = pendingBooking.metadata.initial_sms;
-        const { data: existingMessage } = await supabase
-          .from('messages')
-          .select('id')
-          .eq('message_sid', smsData.message_sid)
-          .single();
-
-        if (existingMessage) {
-          const { error: updateError } = await supabase
-            .from('messages')
-            .update({
-              customer_id: customerId,
-              status: 'delivered',
-              twilio_status: 'delivered',
-              read_at: new Date().toISOString(),
-              delivered_at: new Date().toISOString()
-            })
-            .eq('id', existingMessage.id);
-
-          if (updateError) {
-            console.error('Failed to update initial SMS message after customer creation:', updateError);
-          }
-        } else {
-          const { error: messageError } = await supabase
-            .from('messages')
-            .insert({
-              customer_id: customerId,
-              direction: 'outbound',
-              message_sid: smsData.message_sid,
-              twilio_message_sid: smsData.message_sid,
-              body: smsData.body,
-              status: 'delivered', // Assume delivered since they clicked the link
-              twilio_status: 'delivered',
-              from_number: smsData.from_number,
-              to_number: smsData.to_number,
-              message_type: 'sms',
-              segments: smsData.segments,
-              cost_usd: smsData.cost_usd,
-              created_at: smsData.sent_at,
-              read_at: new Date().toISOString(), // Mark as read since it's outbound
-            });
-
-          if (messageError) {
-            console.error('Failed to record initial SMS message:', messageError);
-            // Don't fail the booking if we can't record the message
-          }
-        }
-      }
     }
 
     if (!customerId) {
@@ -244,6 +139,86 @@ export async function POST(request: NextRequest) {
         { error: 'Customer information required' },
         { status: 400 }
       );
+    }
+
+    // If customer exists (from pending or just created), ensure name is up to date
+    // This handles the case where initiate created a placeholder "Unknown" customer
+    if (customerId && firstName && lastName) {
+      const { data: currentCustomer } = await supabase
+        .from('customers')
+        .select('first_name, last_name')
+        .eq('id', customerId)
+        .single();
+        
+      if (currentCustomer) {
+        const isPlaceholder = currentCustomer.first_name === 'Unknown' || 
+                              currentCustomer.last_name === 'Contact' || 
+                              (currentCustomer.last_name && /^\d+$/.test(currentCustomer.last_name));
+                              
+        if (isPlaceholder) {
+           await supabase
+             .from('customers')
+             .update({ first_name: firstName, last_name: lastName })
+             .eq('id', customerId);
+        }
+      }
+    }
+
+    // Record the initial SMS for existing customers if not already recorded
+    // This handles updating the message to 'delivered' and linking it properly
+    if (customerId && pendingBooking.metadata?.initial_sms) {
+      const smsData = pendingBooking.metadata.initial_sms;
+      
+      // Check if this SMS was already recorded
+      const { data: existingMessage } = await supabase
+        .from('messages')
+        .select('id')
+        .eq('message_sid', smsData.message_sid)
+        .single();
+      
+      if (existingMessage) {
+        const { error: updateError } = await supabase
+          .from('messages')
+          .update({
+            customer_id: customerId, // Ensure linked to correct customer
+            status: 'delivered',
+            twilio_status: 'delivered',
+            read_at: new Date().toISOString(),
+            sent_at: smsData.sent_at,
+            delivered_at: new Date().toISOString(),
+            cost_usd: smsData.cost_usd,
+            segments: smsData.segments
+          })
+          .eq('id', existingMessage.id);
+
+        if (updateError) {
+          console.error('Failed to update initial SMS message:', updateError);
+        }
+      } else {
+        // Fallback if message wasn't logged during initiate (should be rare now)
+        const { error: messageError } = await supabase
+          .from('messages')
+          .insert({
+            customer_id: customerId,
+            direction: 'outbound',
+            message_sid: smsData.message_sid,
+            twilio_message_sid: smsData.message_sid,
+            body: smsData.body,
+            status: 'delivered',
+            twilio_status: 'delivered',
+            from_number: smsData.from_number,
+            to_number: smsData.to_number,
+            message_type: 'sms',
+            segments: smsData.segments,
+            cost_usd: smsData.cost_usd,
+            created_at: smsData.sent_at,
+            read_at: new Date().toISOString(),
+          });
+
+        if (messageError) {
+          console.error('Failed to record initial SMS message:', messageError);
+        }
+      }
     }
 
     // Check if customer already has a booking for this event

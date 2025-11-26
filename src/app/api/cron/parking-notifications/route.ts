@@ -11,12 +11,10 @@ import {
   buildSessionStartSms,
 } from '@/lib/parking/notifications'
 import { logParkingNotification } from '@/lib/parking/repository'
-import { recordOutboundSmsMessage } from '@/lib/sms/logging'
 import type { ParkingBooking } from '@/types/parking'
 import { fromZonedTime, toZonedTime } from 'date-fns-tz'
 import { startOfDay, endOfDay } from 'date-fns'
 import { authorizeCronRequest } from '@/lib/cron-auth'
-import { ensureCustomerForPhone } from '@/lib/sms/customers'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -82,38 +80,16 @@ async function processPaymentReminders(supabase: ReturnType<typeof createAdminCl
       process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
     )
 
-    const smsResult = await sendSMS(booking.customer_mobile, smsWithReply)
-
-    let messageId: string | null = null
-    let customerIdForLog = booking.customer_id
-
-    if (!customerIdForLog && booking.customer_mobile) {
-      const ensured = await ensureCustomerForPhone(supabase, booking.customer_mobile, {
+    const smsResult = await sendSMS(booking.customer_mobile, smsWithReply, {
+      customerId: booking.customer_id ?? undefined,
+      metadata: {
+        parking_booking_id: booking.id,
+        event_type: 'payment_overdue'
+      },
+      customerFallback: {
         email: (booking as any)?.customer_email ?? null
-      })
-      customerIdForLog = ensured.customerId ?? undefined
-    }
-
-    if (smsResult.success && smsResult.sid && customerIdForLog) {
-      messageId = await recordOutboundSmsMessage({
-        supabase,
-        customerId: customerIdForLog,
-        to: booking.customer_mobile,
-        body: smsWithReply,
-        sid: smsResult.sid,
-        fromNumber: smsResult.fromNumber ?? undefined,
-        metadata: {
-          parking_booking_id: booking.id,
-          event_type: 'payment_overdue'
-        },
-        twilioStatus: smsResult.status ?? 'queued'
-      })
-      if (!messageId) {
-        console.warn('Parking payment reminder SMS failed to record', {
-          bookingId: booking.id
-        })
       }
-    }
+    })
 
     await logParkingNotification({
       booking_id: booking.id,
@@ -122,7 +98,7 @@ async function processPaymentReminders(supabase: ReturnType<typeof createAdminCl
       status: smsResult.success ? 'sent' : 'failed',
       sent_at: smsResult.success ? new Date().toISOString() : null,
       message_sid: smsResult.success && smsResult.sid ? smsResult.sid : null,
-      payload: { sms: smsWithReply, message_id: messageId }
+      payload: { sms: smsWithReply }
     }, supabase)
 
     if (!smsResult.success) {
@@ -191,38 +167,16 @@ async function processStartNotifications(supabase: ReturnType<typeof createAdmin
       process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
     )
 
-    const smsResult = await sendSMS(booking.customer_mobile, smsBody)
-
-    let messageId: string | null = null
-    let customerIdForLog = booking.customer_id
-
-    if (!customerIdForLog && booking.customer_mobile) {
-      const ensured = await ensureCustomerForPhone(supabase, booking.customer_mobile, {
+    const smsResult = await sendSMS(booking.customer_mobile, smsBody, {
+      customerId: booking.customer_id ?? undefined,
+      metadata: {
+        parking_booking_id: booking.id,
+        event_type: 'session_start'
+      },
+      customerFallback: {
         email: (booking as any)?.customer_email ?? null
-      })
-      customerIdForLog = ensured.customerId ?? undefined
-    }
-
-    if (smsResult.success && smsResult.sid && customerIdForLog) {
-      messageId = await recordOutboundSmsMessage({
-        supabase,
-        customerId: customerIdForLog,
-        to: booking.customer_mobile,
-        body: smsBody,
-        sid: smsResult.sid,
-        fromNumber: smsResult.fromNumber ?? undefined,
-        metadata: {
-          parking_booking_id: booking.id,
-          event_type: 'session_start'
-        },
-        twilioStatus: smsResult.status ?? 'queued'
-      })
-      if (!messageId) {
-        console.warn('Parking start notification SMS failed to record', {
-          bookingId: booking.id
-        })
       }
-    }
+    })
 
     await logParkingNotification({
       booking_id: booking.id,
@@ -231,7 +185,7 @@ async function processStartNotifications(supabase: ReturnType<typeof createAdmin
       status: smsResult.success ? 'sent' : 'failed',
       sent_at: smsResult.success ? new Date().toISOString() : null,
       message_sid: smsResult.success && smsResult.sid ? smsResult.sid : null,
-      payload: { sms: smsBody, message_id: messageId }
+      payload: { sms: smsBody }
     }, supabase)
 
     const managerEmail = buildSessionManagerEmail(booking, 'start')
@@ -293,38 +247,16 @@ async function processEndNotifications(supabase: ReturnType<typeof createAdminCl
       process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
     )
 
-    const smsResult = await sendSMS(booking.customer_mobile, smsBody)
-
-    let messageId: string | null = null
-    let customerIdForLog = booking.customer_id
-
-    if (!customerIdForLog && booking.customer_mobile) {
-      const ensured = await ensureCustomerForPhone(supabase, booking.customer_mobile, {
+    const smsResult = await sendSMS(booking.customer_mobile, smsBody, {
+      customerId: booking.customer_id ?? undefined,
+      metadata: {
+        parking_booking_id: booking.id,
+        event_type: 'session_end'
+      },
+      customerFallback: {
         email: (booking as any)?.customer_email ?? null
-      })
-      customerIdForLog = ensured.customerId ?? undefined
-    }
-
-    if (smsResult.success && smsResult.sid && customerIdForLog) {
-      messageId = await recordOutboundSmsMessage({
-        supabase,
-        customerId: customerIdForLog,
-        to: booking.customer_mobile,
-        body: smsBody,
-        sid: smsResult.sid,
-        fromNumber: smsResult.fromNumber ?? undefined,
-        metadata: {
-          parking_booking_id: booking.id,
-          event_type: 'session_end'
-        },
-        twilioStatus: smsResult.status ?? 'queued'
-      })
-      if (!messageId) {
-        console.warn('Parking end notification SMS failed to record', {
-          bookingId: booking.id
-        })
       }
-    }
+    })
 
     await logParkingNotification({
       booking_id: booking.id,
@@ -333,7 +265,7 @@ async function processEndNotifications(supabase: ReturnType<typeof createAdminCl
       status: smsResult.success ? 'sent' : 'failed',
       sent_at: smsResult.success ? new Date().toISOString() : null,
       message_sid: smsResult.success && smsResult.sid ? smsResult.sid : null,
-      payload: { sms: smsBody, message_id: messageId }
+      payload: { sms: smsBody }
     }, supabase)
 
     const managerEmail = buildSessionManagerEmail(booking, 'end')

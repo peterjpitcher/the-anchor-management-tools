@@ -3,7 +3,6 @@ import { Job, JobType, JobPayload, JobOptions } from './job-types'
 import { logger } from './logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { formatTime12Hour, formatDateInLondon } from '@/lib/dateUtils'
-import { recordOutboundSmsMessage } from '@/lib/sms/logging'
 
 export class JobQueue {
   private static instance: JobQueue
@@ -312,34 +311,13 @@ export class JobQueue {
     const supportPhone = (payload.variables?.contact_phone as string | undefined) || process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
     const messageWithSupport = ensureReplyInstruction(messageText, supportPhone)
 
-    const result = await sendSMS(payload.to, messageWithSupport)
+    const result = await sendSMS(payload.to, messageWithSupport, {
+      customerId: payload.customerId || payload.customer_id,
+      metadata: payload.booking_id ? { booking_id: payload.booking_id } : undefined
+    })
 
     if (!result.success || !result.sid) {
       throw new Error(result.error as string)
-    }
-
-    const customerId = payload.customerId || payload.customer_id
-    if (!customerId) {
-      logger.warn('send_sms job completed but no customer id supplied for logging', {
-        metadata: { to: payload.to, template: payload.template }
-      })
-      return { success: true, sid: result.sid }
-    }
-
-    const supabase = await createAdminClient()
-    const messageId = await recordOutboundSmsMessage({
-      supabase,
-      customerId,
-      to: payload.to,
-      body: messageWithSupport,
-      sid: result.sid,
-      fromNumber: result.fromNumber ?? undefined,
-      twilioStatus: result.status ?? 'queued',
-      metadata: payload.booking_id ? { booking_id: payload.booking_id } : null
-    })
-
-    if (!messageId) {
-      throw new Error('SMS sent but failed to record message for customer')
     }
     
     return { success: true, sid: result.sid }
@@ -432,35 +410,19 @@ export class JobQueue {
             process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
           )
 
-          const result = await sendSMS(customer.mobile_number!, personalizedWithSupport)
+          const result = await sendSMS(customer.mobile_number!, personalizedWithSupport, {
+            customerId: customer.id,
+            metadata: {
+              bulk_job: true,
+              event_id: eventId,
+              category_id: categoryId
+            }
+          })
           
           if (result.success) {
             if (!result.sid) {
               logger.error('send_sms bulk job succeeded without sid', {
                 metadata: { customerId: customer.id }
-              })
-              continue
-            }
-
-            const messageId = await recordOutboundSmsMessage({
-              supabase,
-              customerId: customer.id,
-              to: customer.mobile_number!,
-              body: personalizedWithSupport,
-              sid: result.sid,
-              fromNumber: result.fromNumber ?? undefined,
-              twilioStatus: result.status ?? 'queued',
-              metadata: {
-                bulk_job: true,
-                event_id: eventId,
-                category_id: categoryId
-              }
-            })
-
-            if (!messageId) {
-              errors.push({
-                customerId: customer.id,
-                error: 'SMS sent but failed to record message'
               })
               continue
             }

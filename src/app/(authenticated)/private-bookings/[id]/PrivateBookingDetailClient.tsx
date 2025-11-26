@@ -1568,11 +1568,8 @@ export default function PrivateBookingDetailClient({
   const getAuditActor = (entry: AuditEntry): string => {
     const profile = entry.performed_by_profile
     if (profile) {
-      const fullName = [profile.first_name, profile.last_name]
-        .filter((value) => value && value.trim().length > 0)
-        .join(' ')
-      if (fullName.trim().length > 0) {
-        return fullName
+      if (profile.full_name && profile.full_name.trim().length > 0) {
+        return profile.full_name
       }
       if (profile.email) {
         return profile.email

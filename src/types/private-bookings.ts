@@ -197,8 +197,7 @@ export interface PrivateBookingAudit {
 export interface PrivateBookingAuditWithUser extends PrivateBookingAudit {
   performed_by_profile?: {
     id: string
-    first_name?: string | null
-    last_name?: string | null
+    full_name?: string | null
     email?: string | null
   }
 }

@@ -179,35 +179,17 @@ export async function GET(request: NextRequest) {
               messageText,
               process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
             );
-            const smsResult = await sendSMS(booking.customer.mobile_number, messageWithSupport);
+            const smsResult = await sendSMS(booking.customer.mobile_number, messageWithSupport, {
+              customerId: booking.customer.id,
+              metadata: {
+                booking_id: bookingId,
+                template_key: templateKey,
+                source: 'payment_confirmation'
+              }
+            });
             
             if (smsResult.success && smsResult.sid) {
               console.log('[Payment Journey] SMS confirmation sent immediately:', smsResult.sid);
-              
-              const fromNumber = smsResult.fromNumber ?? process.env.TWILIO_PHONE_NUMBER ?? null;
-              const { error: messageInsertError } = await supabase
-                .from('messages')
-                .insert({
-                  customer_id: booking.customer.id,
-                  direction: 'outbound',
-                  message_sid: smsResult.sid,
-                  twilio_message_sid: smsResult.sid,
-                  body: messageWithSupport,
-                  status: 'sent',
-                  twilio_status: smsResult.status ?? 'queued',
-                  from_number: fromNumber,
-                  to_number: booking.customer.mobile_number,
-                  message_type: 'sms',
-                  metadata: { 
-                    booking_id: bookingId, 
-                    template_key: templateKey,
-                    source: 'payment_confirmation'
-                  }
-                });
-
-              if (messageInsertError) {
-                console.error('[Payment Journey] Failed to record SMS confirmation:', messageInsertError);
-              }
             } else {
               console.error('[Payment Journey] Failed to send SMS confirmation:', smsResult.error);
             }
