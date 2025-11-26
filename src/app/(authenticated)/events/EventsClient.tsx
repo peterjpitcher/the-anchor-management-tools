@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { CalendarIcon, ClipboardDocumentCheckIcon, PencilSquareIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, ClipboardDocumentCheckIcon, PencilSquareIcon, PlusIcon } from '@heroicons/react/24/outline'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
@@ -98,14 +98,20 @@ export default function EventsClient({ events, todos, initialError }: EventsClie
     { label: 'Overview', href: '/events' },
     { label: 'Checklist Todo', href: '/events/todo' },
     canManageEvents ? { label: 'Manage Categories', href: '/settings/event-categories' } : null,
-    canManageEvents ? { label: 'Create Event', href: '/events/new' } : null,
   ] as Array<HeaderNavItem | null>).filter((item): item is HeaderNavItem => Boolean(item))
   
+  const headerActions = canManageEvents ? (
+    <LinkButton href="/events/new" variant="primary" leftIcon={<PlusIcon className="h-5 w-5" />}>
+      New Event
+    </LinkButton>
+  ) : null
+
   return (
     <PageLayout
       title="Events"
       subtitle="Manage your events and track bookings"
       navItems={navItems}
+      headerActions={headerActions}
     >
       <div className="space-y-6">
         {pageError && (

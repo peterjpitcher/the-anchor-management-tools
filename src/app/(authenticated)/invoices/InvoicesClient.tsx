@@ -1,9 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { getInvoices, getInvoiceSummary } from '@/app/actions/invoices'
-import { Plus, Download, FileText, Calendar, Search } from 'lucide-react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { Plus, Download, FileText, Calendar, Search, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { InvoiceWithDetails, InvoiceStatus } from '@/types/invoices'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
@@ -16,6 +15,8 @@ import { Badge } from '@/components/ui-v2/display/Badge'
 import { DataTable, type Column } from '@/components/ui-v2/display/DataTable'
 import { usePermissions } from '@/contexts/PermissionContext'
 import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
+import { MobileInvoiceCard } from './MobileInvoiceCard'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 
 type InvoiceSummary = {
   total_outstanding: number
@@ -36,8 +37,12 @@ type PermissionSnapshot = {
 
 interface InvoicesClientProps {
   initialInvoices: InvoiceWithDetails[]
+  initialTotal: number
   initialSummary: InvoiceSummary
   initialStatus: StatusFilter
+  initialPage: number
+  initialSearch: string
+  initialLimit: number
   initialError: string | null
   permissions: PermissionSnapshot
 }
@@ -56,12 +61,18 @@ const formatNumber = (value: number) => numberFormatter.format(value)
 
 export default function InvoicesClient({
   initialInvoices,
+  initialTotal,
   initialSummary,
   initialStatus,
+  initialPage,
+  initialSearch,
+  initialLimit,
   initialError,
   permissions
 }: InvoicesClientProps) {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { hasPermission, loading: permissionsLoading } = usePermissions()
 
   const resolvedPermissions = useMemo<PermissionSnapshot>(() => {
@@ -88,85 +99,48 @@ export default function InvoicesClient({
     !resolvedPermissions.canExport &&
     !resolvedPermissions.canManageCatalog
 
+  // Local state for controlled inputs
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(initialStatus)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [invoices, setInvoices] = useState<InvoiceWithDetails[]>(initialInvoices)
-  const [summary, setSummary] = useState<InvoiceSummary>(initialSummary)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(initialError)
+  const [searchTerm, setSearchTerm] = useState(initialSearch)
+
+  // Sync local state with props (e.g. browser navigation)
+  useEffect(() => {
+    setStatusFilter(initialStatus)
+  }, [initialStatus])
 
   useEffect(() => {
-    if (permissionsLoading) {
-      return
-    }
+    setSearchTerm(initialSearch)
+  }, [initialSearch])
 
-    let active = true
-
-    async function loadData() {
-      setLoading(true)
-      setError(null)
-
-      try {
-        const [invoicesResult, summaryResult] = await Promise.all([
-          getInvoices(
-            statusFilter === 'all'
-              ? undefined
-              : statusFilter === 'unpaid'
-              ? 'unpaid'
-              : statusFilter
-          ),
-          getInvoiceSummary(),
-        ])
-
-        if (!active) {
-          return
-        }
-
-        if (invoicesResult.error || !invoicesResult.invoices) {
-          throw new Error(invoicesResult.error || 'Failed to load invoices')
-        }
-
-        if (summaryResult.error || !summaryResult.summary) {
-          throw new Error(summaryResult.error || 'Failed to load summary')
-        }
-
-        setInvoices(invoicesResult.invoices)
-        setSummary(summaryResult.summary)
-      } catch (err) {
-        if (!active) {
-          return
-        }
-        setError(err instanceof Error ? err.message : 'Failed to load data')
-      } finally {
-        if (active) {
-          setLoading(false)
-        }
+  // URL updates
+  const updateUrl = useCallback((newParams: Record<string, string | undefined>) => {
+    const params = new URLSearchParams(searchParams.toString())
+    
+    Object.entries(newParams).forEach(([key, value]) => {
+      if (value === undefined || value === '') {
+        params.delete(key)
+      } else {
+        params.set(key, value)
       }
+    })
+
+    // Reset page to 1 if filter or search changes, unless page is explicitly set
+    if (!newParams.page && (newParams.status !== undefined || newParams.search !== undefined)) {
+      params.set('page', '1')
     }
 
-    loadData()
+    router.push(`${pathname}?${params.toString()}`)
+  }, [searchParams, pathname, router])
 
-    return () => {
-      active = false
-    }
-  }, [statusFilter, permissionsLoading])
-
-  const filteredInvoices = useMemo(
-    () =>
-      invoices.filter((invoice) => {
-        if (!searchTerm) return true
-        const search = searchTerm.toLowerCase()
-        const invoiceNumber = invoice.invoice_number ? invoice.invoice_number.toLowerCase() : ''
-        const vendorName = invoice.vendor?.name ? invoice.vendor.name.toLowerCase() : ''
-        const reference = invoice.reference ? invoice.reference.toLowerCase() : ''
-        return (
-          invoiceNumber.includes(search) ||
-          vendorName.includes(search) ||
-          reference.includes(search)
-        )
-      }),
-    [invoices, searchTerm]
-  )
+  // Debounced search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchTerm !== initialSearch) {
+        updateUrl({ search: searchTerm })
+      }
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [searchTerm, initialSearch, updateUrl])
 
   function getStatusBadgeVariant(
     status: InvoiceStatus
@@ -204,25 +178,25 @@ export default function InvoicesClient({
             )}
           </div>
         ),
-        sortable: true,
+        sortable: false, // Server-side sort only (default date)
       },
       {
         key: 'vendor',
         header: 'Vendor',
         cell: (invoice) => invoice.vendor?.name || '-',
-        sortable: true,
+        sortable: false,
       },
       {
         key: 'invoice_date',
         header: 'Date',
         cell: (invoice) => new Date(invoice.invoice_date).toLocaleDateString('en-GB'),
-        sortable: true,
+        sortable: false,
       },
       {
         key: 'due_date',
         header: 'Due Date',
         cell: (invoice) => new Date(invoice.due_date).toLocaleDateString('en-GB'),
-        sortable: true,
+        sortable: false,
       },
       {
         key: 'status',
@@ -232,14 +206,14 @@ export default function InvoicesClient({
             {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1).replace('_', ' ')}
           </Badge>
         ),
-        sortable: true,
+        sortable: false,
       },
       {
         key: 'total_amount',
         header: 'Amount',
         align: 'right',
         cell: (invoice) => formatCurrency(invoice.total_amount),
-        sortable: true,
+        sortable: false,
       },
       {
         key: 'balance',
@@ -255,124 +229,58 @@ export default function InvoicesClient({
             </span>
           )
         },
-        sortable: true,
+        sortable: false,
       },
     ],
     []
   )
 
-    
-          const navItems = useMemo<HeaderNavItem[]>(() => {
+  const navItems = useMemo<HeaderNavItem[]>(() => {
+    const items: HeaderNavItem[] = []
 
-    
-          const items: HeaderNavItem[] = []
+    if (resolvedPermissions.canManageCatalog) {
+      items.push({ label: 'Catalog', href: '/invoices/catalog' })
+    }
 
-    
-      
+    if (canManageVendors) {
+      items.push({ label: 'Vendors', href: '/invoices/vendors' })
+    }
 
-    
-          if (resolvedPermissions.canManageCatalog) {
+    if (canAccessRecurring) {
+      items.push({ label: 'Recurring', href: '/invoices/recurring' })
+    }
 
-    
-            items.push({ label: 'Catalog', href: '/invoices/catalog' })
+    if (resolvedPermissions.canExport) {
+      items.push({ label: 'Export', href: '/invoices/export' })
+    }
 
-    
-          }
+    return items
+  }, [resolvedPermissions, canManageVendors, canAccessRecurring])
 
-    
-      
+  const headerActions = resolvedPermissions.canCreate ? (
+    <LinkButton href="/invoices/new" variant="primary" leftIcon={<Plus className="h-4 w-4" />}>
+      New Invoice
+    </LinkButton>
+  ) : null
 
-    
-          if (canManageVendors) {
+  // Pagination Logic
+  const totalPages = Math.ceil(initialTotal / initialLimit)
+  const hasNextPage = initialPage < totalPages
+  const hasPrevPage = initialPage > 1
 
-    
-            items.push({ label: 'Vendors', href: '/invoices/vendors' })
-
-    
-          }
-
-    
-      
-
-    
-          if (canAccessRecurring) {
-
-    
-            items.push({ label: 'Recurring', href: '/invoices/recurring' })
-
-    
-          }
-
-    
-      
-
-    
-          if (resolvedPermissions.canExport) {
-
-    
-            items.push({ label: 'Export', href: '/invoices/export' })
-
-    
-          }
-
-    
-      
-
-    
-          if (resolvedPermissions.canCreate) {
-
-    
-            items.push({ label: 'New Invoice', href: '/invoices/new' })
-
-    
-          }
-
-    
-      
-
-    
-          return items
-
-    
-        }, [resolvedPermissions, canManageVendors, canAccessRecurring])
-
-    
-      
-
-    
-        const showLoadingState = loading && filteredInvoices.length === 0
-
-    
-      
-
-    
-        return (
-
-    
-                    <PageLayout
-
-    
-                      title="Invoices"
-
-    
-                      subtitle="Manage invoices and payments"
-
-    
-                      navItems={navItems.length > 0 ? navItems : undefined}
-
-    
-                      loading={showLoadingState}
-
-    
-                      loadingLabel="Loading invoices..."
-
-    
-                    >      <div className="space-y-6">
-        {error && (
+  return (
+    <PageLayout
+      title="Invoices"
+      subtitle="Manage invoices and payments"
+      navItems={navItems.length > 0 ? navItems : undefined}
+      headerActions={headerActions}
+    >
+      <div className="space-y-6">
+        {initialError && (
           <Alert
             variant="error"
             title="We couldn’t refresh everything"
-            description={error}
+            description={initialError}
           />
         )}
         {isReadOnly && (
@@ -385,25 +293,25 @@ export default function InvoicesClient({
         <div className="hidden gap-4 sm:grid sm:grid-cols-2 lg:grid-cols-4">
           <Stat
             label="Outstanding"
-            value={formatCurrency(summary.total_outstanding)}
+            value={formatCurrency(initialSummary.total_outstanding)}
             description="Awaiting payment"
             icon={<FileText />}
           />
           <Stat
             label="Overdue"
-            value={formatCurrency(summary.total_overdue)}
+            value={formatCurrency(initialSummary.total_overdue)}
             description="Past due date"
             icon={<FileText />}
           />
           <Stat
             label="This Month"
-            value={formatCurrency(summary.total_this_month)}
+            value={formatCurrency(initialSummary.total_this_month)}
             description="Collected"
             icon={<FileText />}
           />
           <Stat
             label="Drafts"
-            value={formatNumber(summary.count_draft)}
+            value={formatNumber(initialSummary.count_draft)}
             description="Unsent invoices"
             icon={<FileText />}
           />
@@ -415,7 +323,11 @@ export default function InvoicesClient({
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Select
                   value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                  onChange={(e) => {
+                    const newStatus = e.target.value as StatusFilter
+                    setStatusFilter(newStatus)
+                    updateUrl({ status: newStatus })
+                  }}
                   className="w-full sm:w-auto"
                   fullWidth={false}
                 >
@@ -467,7 +379,7 @@ export default function InvoicesClient({
           </div>
 
           <DataTable
-            data={filteredInvoices}
+            data={initialInvoices}
             columns={columns}
             getRowKey={(invoice) => invoice.id}
             onRowClick={(invoice) => router.push(`/invoices/${invoice.id}`)}
@@ -483,71 +395,72 @@ export default function InvoicesClient({
                 </Button>
               ) : undefined
             }
-            renderMobileCard={(invoice) => {
-            const isOverdue = invoice.status === 'overdue'
-            const isPaid = invoice.status === 'paid'
-
-            return (
-              <Card className="cursor-pointer p-4 transition-shadow hover:shadow-md">
-                <div className="mb-3 flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="font-semibold text-gray-900">
-                      {invoice.invoice_number}
-                    </div>
-                    <div className="mt-1 text-sm text-gray-600">
-                      {invoice.vendor?.name || 'No vendor'}
-                    </div>
-                    {invoice.reference && (
-                      <div className="mt-1 text-xs text-gray-500">
-                        Ref: {invoice.reference}
-                      </div>
-                    )}
-                  </div>
-                  <Badge variant={getStatusBadgeVariant(invoice.status)} size="sm">
-                    {invoice.status.charAt(0).toUpperCase() +
-                      invoice.status.slice(1).replace('_', ' ')}
-                  </Badge>
-                </div>
-
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Invoice Date:</span>
-                    <span className="font-medium">
-                      {new Date(invoice.invoice_date).toLocaleDateString('en-GB')}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Due Date:</span>
-                    <span className={`font-medium ${isOverdue ? 'text-red-600' : ''}`}>
-                      {new Date(invoice.due_date).toLocaleDateString('en-GB')}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mt-3 flex items-center justify-between border-t pt-3">
-                  <div>
-                    <div className="text-xs text-gray-500">Total Amount</div>
-                    <div className="text-lg font-semibold">
-                      {formatCurrency(invoice.total_amount)}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs text-gray-500">Balance</div>
-                    {isPaid ? (
-                      <div className="font-semibold text-green-600">Paid</div>
-                    ) : (
-                      <div
-                        className={`font-semibold ${isOverdue ? 'text-red-600' : ''}`}
-                      >
-                        {formatCurrency(invoice.total_amount - invoice.paid_amount)}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </Card>
-            )
-          }}
+            renderMobileCard={(invoice) => (
+              <MobileInvoiceCard 
+                invoice={invoice} 
+                onClick={(inv) => router.push(`/invoices/${inv.id}`)} 
+              />
+            )}
           />
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between border-t px-4 py-3 sm:px-6">
+              <div className="flex flex-1 justify-between sm:hidden">
+                <Button
+                  variant="secondary"
+                  disabled={!hasPrevPage}
+                  onClick={() => updateUrl({ page: (initialPage - 1).toString() })}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="secondary"
+                  disabled={!hasNextPage}
+                  onClick={() => updateUrl({ page: (initialPage + 1).toString() })}
+                >
+                  Next
+                </Button>
+              </div>
+              <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm text-gray-700">
+                    Showing <span className="font-medium">{(initialPage - 1) * initialLimit + 1}</span> to{' '}
+                    <span className="font-medium">
+                      {Math.min(initialPage * initialLimit, initialTotal)}
+                    </span>{' '}
+                    of <span className="font-medium">{initialTotal}</span> results
+                  </p>
+                </div>
+                <div>
+                  <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                    <button
+                      onClick={() => updateUrl({ page: (initialPage - 1).toString() })}
+                      disabled={!hasPrevPage}
+                      className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <span className="sr-only">Previous</span>
+                      <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+                    </button>
+                    
+                    <button
+                        className="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 focus:outline-offset-0"
+                    >
+                        {initialPage}
+                    </button>
+
+                    <button
+                      onClick={() => updateUrl({ page: (initialPage + 1).toString() })}
+                      disabled={!hasNextPage}
+                      className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <span className="sr-only">Next</span>
+                      <ChevronRight className="h-5 w-5" aria-hidden="true" />
+                    </button>
+                  </nav>
+                </div>
+              </div>
+            </div>
+          )}
         </Card>
       </div>
     </PageLayout>

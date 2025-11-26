@@ -8,13 +8,15 @@ import {
   PhoneIcon,
   MapPinIcon,
   SparklesIcon,
-  MagnifyingGlassIcon
+  MagnifyingGlassIcon,
+  PlusIcon
 } from '@heroicons/react/24/outline'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
 import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Input } from '@/components/ui-v2/forms/Input'
@@ -267,13 +269,18 @@ export default function PrivateBookingsClient({
       <NavLink href="/private-bookings/calendar">
         Calendar View
       </NavLink>
-      {permissions.hasCreatePermission && (
-        <NavLink href="/private-bookings/new" className="font-semibold">
-          Add Booking
-        </NavLink>
-      )}
     </NavGroup>
   )
+
+  const headerActions = permissions.hasCreatePermission ? (
+    <LinkButton
+      href="/private-bookings/new"
+      variant="primary"
+      leftIcon={<PlusIcon className="h-5 w-5" />}
+    >
+      New Booking
+    </LinkButton>
+  ) : null
 
   useEffect(() => {
     const trimmed = debouncedSearch.trim()
@@ -289,6 +296,7 @@ export default function PrivateBookingsClient({
       title="Private Bookings"
       subtitle="Manage private venue bookings and events"
       navActions={navActions}
+      headerActions={headerActions}
     >
       <div className="space-y-6">
         <Card className="hidden sm:block">

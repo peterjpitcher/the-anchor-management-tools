@@ -11,7 +11,8 @@ import {
   DevicePhoneMobileIcon,
   ComputerDesktopIcon,
   GlobeAltIcon,
-  QrCodeIcon
+  QrCodeIcon,
+  PlusIcon
 } from '@heroicons/react/24/outline'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Section } from '@/components/ui-v2/layout/Section'
@@ -407,18 +408,18 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
       >
         View Volume Chart
       </NavLink>
-      {canManage && (
-        <NavLink
-          onClick={() => {
-            setShowCreateModal(true)
-          }}
-          className="font-semibold"
-        >
-          Create Short Link
-        </NavLink>
-      )}
     </NavGroup>
   )
+
+  const headerActions = canManage ? (
+    <Button
+      variant="primary"
+      onClick={() => setShowCreateModal(true)}
+      leftIcon={<PlusIcon className="h-5 w-5" />}
+    >
+      Create Short Link
+    </Button>
+  ) : null
 
   return (
     <PageLayout
@@ -429,6 +430,7 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
         href: '/settings'
       }}
       navActions={navActions}
+      headerActions={headerActions}
     >
       <div className="space-y-6">
         <Card id="links" variant="bordered">

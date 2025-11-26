@@ -54,6 +54,9 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
   const rawMonth = typeof resolvedParams?.month === 'string' ? resolvedParams.month : undefined
   const month = resolveMonthParam(rawMonth)
 
+  const rawPage = typeof resolvedParams?.page === 'string' ? resolvedParams.page : undefined
+  const page = rawPage ? parseInt(rawPage, 10) : 1
+
   let filters: ReceiptWorkspaceFilters = {
     status: status !== 'all' ? status : undefined,
     direction: direction !== 'all' ? direction : undefined,
@@ -64,6 +67,7 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
     month,
     sortBy,
     sortDirection,
+    page,
   }
 
   let data = await getReceiptWorkspaceData(filters)

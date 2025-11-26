@@ -188,7 +188,12 @@ export class InvoiceService {
     }
   }
 
-  static async getInvoices(status?: InvoiceStatus | 'unpaid') {
+  static async getInvoices(
+    status?: InvoiceStatus | 'unpaid',
+    page: number = 1,
+    limit: number = 20,
+    search?: string
+  ) {
     const supabase = await createClient();
     
     await this.persistOverdueInvoices(); // Ensure statuses are updated before fetching
@@ -198,9 +203,8 @@ export class InvoiceService {
       .select(`
         *,
         vendor:invoice_vendors(*)
-      `)
-      .is('deleted_at', null)
-      .order('invoice_date', { ascending: false });
+      `, { count: 'exact' })
+      .is('deleted_at', null);
 
     if (status === 'unpaid') {
       query = query.in('status', ['draft', 'sent', 'partially_paid', 'overdue']);
@@ -208,7 +212,18 @@ export class InvoiceService {
       query = query.eq('status', status);
     }
 
-    const { data: invoices, error } = await query;
+    if (search) {
+      query = query.or(`invoice_number.ilike.%${search}%,reference.ilike.%${search}%`);
+    }
+
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
+    query = query
+      .order('invoice_date', { ascending: false })
+      .range(from, to);
+
+    const { data: invoices, error, count } = await query;
 
     if (error) {
       console.error('Error fetching invoices:', error);
@@ -224,7 +239,10 @@ export class InvoiceService {
           : invoice.status,
     }));
 
-    return normalizedInvoices as InvoiceWithDetails[];
+    return {
+      invoices: normalizedInvoices as InvoiceWithDetails[],
+      total: count || 0
+    };
   }
 
   static async getInvoiceById(invoiceId: string) {

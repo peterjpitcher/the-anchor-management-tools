@@ -16,15 +16,20 @@ import { InvoiceService, CreateInvoiceSchema } from '@/services/invoices'
 
 type CreateInvoiceResult = { error: string } | { success: true; invoice: Invoice }
 
-export async function getInvoices(status?: InvoiceStatus | 'unpaid') {
+export async function getInvoices(
+  status?: InvoiceStatus | 'unpaid',
+  page: number = 1,
+  limit: number = 20,
+  search?: string
+) {
   try {
     const hasPermission = await checkUserPermission('invoices', 'view')
     if (!hasPermission) {
       return { error: 'You do not have permission to view invoices' }
     }
 
-    const invoices = await InvoiceService.getInvoices(status)
-    return { invoices }
+    const { invoices, total } = await InvoiceService.getInvoices(status, page, limit, search)
+    return { invoices, total }
   } catch (error: any) {
     console.error('Error in getInvoices:', error)
     return { error: error.message || 'An unexpected error occurred' }
