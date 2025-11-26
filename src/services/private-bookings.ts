@@ -56,6 +56,7 @@ export const privateBookingSchema = z.object({
   source: z.string().optional(),
   deposit_amount: z.number().min(0).optional(),
   balance_due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').optional().or(z.literal('')), 
+  hold_expiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').optional().or(z.literal('')),
   status: z.enum(['draft', 'confirmed', 'completed', 'cancelled']).optional()
 })
 
@@ -97,6 +98,7 @@ export type CreatePrivateBookingInput = {
   source?: string;
   deposit_amount?: number;
   balance_due_date?: string;
+  hold_expiry?: string;
   status?: string;
   created_by?: string;
   date_tbd?: boolean;
@@ -135,15 +137,41 @@ export class PrivateBookingService {
     }
 
     const currentDateTime = new Date();
-    const fourteenDaysFromNow = new Date(currentDateTime);
-    fourteenDaysFromNow.setDate(currentDateTime.getDate() + 14);
-
     const actualEventDate = new Date(finalEventDate);
 
-    // hold_expiry is the earlier of: event_date OR 14 days from now.
-    const holdExpiryMoment = actualEventDate.getTime() < fourteenDaysFromNow.getTime()
-      ? actualEventDate
-      : fourteenDaysFromNow;
+    let holdExpiryMoment: Date;
+
+    // Logic for Deposit Due Date (Hold Expiry)
+    const STANDARD_HOLD_DAYS = 14;
+    const SHORT_NOTICE_HOLD_DAYS = 2;
+    
+    if (input.hold_expiry) {
+        // User manually specified a date
+        holdExpiryMoment = new Date(input.hold_expiry);
+        
+        // Safety clamp: Cannot be after the event starts
+        if (holdExpiryMoment.getTime() > actualEventDate.getTime()) {
+            holdExpiryMoment = actualEventDate;
+        }
+    } else {
+        // Default auto-calculation
+        holdExpiryMoment = new Date(currentDateTime);
+        holdExpiryMoment.setDate(holdExpiryMoment.getDate() + STANDARD_HOLD_DAYS);
+
+        // If event is sooner than the standard 14-day hold window...
+        if (actualEventDate.getTime() < holdExpiryMoment.getTime()) {
+            // Calculate a tighter deadline (e.g. 48 hours)
+            const shortNoticeExpiry = new Date(currentDateTime);
+            shortNoticeExpiry.setDate(shortNoticeExpiry.getDate() + SHORT_NOTICE_HOLD_DAYS);
+
+            // Use the tighter deadline, but ensure we don't go past the actual event start
+            if (shortNoticeExpiry.getTime() > actualEventDate.getTime()) {
+                holdExpiryMoment = actualEventDate;
+            } else {
+                holdExpiryMoment = shortNoticeExpiry;
+            }
+        }
+    }
       
     const holdExpiryIso = holdExpiryMoment.toISOString();
 
@@ -239,14 +267,24 @@ export class PrivateBookingService {
     
     if (dateChanged && currentBooking.status === 'draft') {
         const currentDateTime = new Date();
-        const fourteenDaysFromNow = new Date(currentDateTime);
-        fourteenDaysFromNow.setDate(currentDateTime.getDate() + 14);
-
         const newEventDate = input.event_date ? new Date(input.event_date) : new Date(finalEventDate);
 
-        const holdExpiryMoment = newEventDate.getTime() < fourteenDaysFromNow.getTime()
-          ? newEventDate
-          : fourteenDaysFromNow;
+        const STANDARD_HOLD_DAYS = 14;
+        const SHORT_NOTICE_HOLD_DAYS = 2;
+
+        let holdExpiryMoment = new Date(currentDateTime);
+        holdExpiryMoment.setDate(holdExpiryMoment.getDate() + STANDARD_HOLD_DAYS);
+
+        if (newEventDate.getTime() < holdExpiryMoment.getTime()) {
+            const shortNoticeExpiry = new Date(currentDateTime);
+            shortNoticeExpiry.setDate(shortNoticeExpiry.getDate() + SHORT_NOTICE_HOLD_DAYS);
+
+            if (shortNoticeExpiry.getTime() > newEventDate.getTime()) {
+                holdExpiryMoment = newEventDate;
+            } else {
+                holdExpiryMoment = shortNoticeExpiry;
+            }
+        }
           
         holdExpiryIso = holdExpiryMoment.toISOString();
     }
@@ -332,7 +370,7 @@ export class PrivateBookingService {
           day: 'numeric', month: 'long' 
        });
        
-       const smsMessage = `Hi ${updatedBooking.customer_first_name}, we've moved your tentative booking to ${eventDateReadable}. We've refreshed your 14-day hold, so your deposit is now due by ${expiryReadable}.`;
+       const smsMessage = `Hi ${updatedBooking.customer_first_name}, we've moved your tentative booking to ${eventDateReadable}. We've updated the hold on this date, so your deposit is now due by ${expiryReadable}.`;
 
        await SmsQueueService.queueAndSend({
           booking_id: updatedBooking.id,
@@ -1048,7 +1086,7 @@ export class PrivateBookingService {
     });
 
     const smsMessage = depositAmount > 0
-      ? `Hi ${booking.customer_first_name}, thanks for your enquiry for ${eventDateReadable} at The Anchor. We are holding this date for you for 14 days. To secure it permanently, a deposit of £${formattedDeposit} is required by ${expiryReadable}. Reply to this message with any questions.`
+      ? `Hi ${booking.customer_first_name}, thanks for your enquiry for ${eventDateReadable} at The Anchor. We are holding this date for you until ${expiryReadable}. To secure it permanently, a deposit of £${formattedDeposit} is required by this date. Reply to this message with any questions.`
       : `Hi ${booking.customer_first_name}, thanks for your enquiry about private hire at The Anchor on ${eventDateReadable}. We normally require a deposit to secure the date, but we've waived it for you. Reply to this message with any questions.`;
 
     await SmsQueueService.queueAndSend({

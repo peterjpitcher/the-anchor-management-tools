@@ -139,6 +139,7 @@ export async function createPrivateBooking(formData: FormData) {
         return value ? parseFloat(value) : undefined
       })(),
       balance_due_date: getString(formData, 'balance_due_date'),
+      hold_expiry: getString(formData, 'deposit_due_date'),
     }
 
     // Validate data
@@ -173,6 +174,7 @@ export async function createPrivateBooking(formData: FormData) {
       source: bookingData.source || undefined,
       deposit_amount: bookingData.deposit_amount,
       balance_due_date: bookingData.balance_due_date || undefined,
+      hold_expiry: bookingData.hold_expiry || undefined,
       created_by: user?.id,
       date_tbd: isDateTbd
     } as CreatePrivateBookingInput);

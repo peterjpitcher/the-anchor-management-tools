@@ -86,6 +86,11 @@ export default function NewPrivateBookingPage() {
   tomorrow.setDate(tomorrow.getDate() + 1)
   const defaultDate = toLocalIsoDate(tomorrow)
   
+  // Default deposit due date (14 days from today)
+  const defaultDepositDate = new Date()
+  defaultDepositDate.setDate(defaultDepositDate.getDate() + 14)
+  const defaultDepositDateIso = toLocalIsoDate(defaultDepositDate)
+
   // Set min date to today and max to 1 year from now
   const today = getTodayIsoDate()
   const oneYearFromNow = new Date()
@@ -328,7 +333,7 @@ export default function NewPrivateBookingPage() {
             title="Financial Details (Optional)"
             icon={<CurrencyPoundIcon className="h-5 w-5" />}
           >
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-4">
               <FormGroup
                 label="Deposit Amount (£)"
                 help="Default is £250"
@@ -340,6 +345,17 @@ export default function NewPrivateBookingPage() {
                   step="0.01"
                   min="0"
                   defaultValue="250"
+                />
+              </FormGroup>
+              <FormGroup
+                label="Deposit Due Date"
+                help="Date deposit is required by"
+              >
+                <Input
+                  type="date"
+                  id="deposit_due_date"
+                  name="deposit_due_date"
+                  defaultValue={defaultDepositDateIso}
                 />
               </FormGroup>
               <FormGroup
