@@ -87,7 +87,7 @@ export class SmsQueueService {
 
   // Function to queue and auto-send private booking SMS
   static async queueAndSend(data: QueueSmsInput) {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     
     // Insert into queue for record keeping
     const { data: smsRecord, error: insertError } = await supabase
