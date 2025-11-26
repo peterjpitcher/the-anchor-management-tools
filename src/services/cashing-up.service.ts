@@ -333,7 +333,7 @@ export class CashingUpService {
     if (fromDate) query = query.gte('session_date', fromDate);
     if (toDate) query = query.lte('session_date', toDate);
     
-    const { data, error } = await query;
+    const { data, error } = await query.order('session_date', { ascending: false });
     
     if (error) throw error;
 

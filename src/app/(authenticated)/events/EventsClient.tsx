@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { CalendarIcon, ClipboardDocumentCheckIcon, PencilSquareIcon } from '@heroicons/react/24/outline'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
@@ -54,6 +55,7 @@ export default function EventsClient({ events, todos, initialError }: EventsClie
   const { hasPermission } = usePermissions()
   const canManageEvents = hasPermission('events', 'manage')
   const today = getTodayIsoDate()
+  const router = useRouter()
 
   const [todoItems, setTodoItems] = useState<ChecklistTodoItem[]>(() =>
     todos.filter((item) => item.dueDate <= today)
@@ -281,7 +283,7 @@ export default function EventsClient({ events, todos, initialError }: EventsClie
                     },
                   ]}
                   clickableRows
-                  onRowClick={(event) => window.location.href = `/events/${event.id}`}
+                  onRowClick={(event) => router.push(`/events/${event.id}`)}
                 />
               )}
             </Card>

@@ -325,9 +325,19 @@ export default function CustomerViewPage() {
 
 
   const showModal = !!editingBooking || isAddingBooking
-  const activeBookings = bookings.filter(booking => !booking.is_reminder_only)
+  const todayIso = getTodayIsoDate()
+  
   const reminders = bookings.filter(booking => booking.is_reminder_only)
-  const totalSeats = activeBookings.reduce((sum, booking) => sum + (booking.seats ?? 0), 0)
+  
+  const upcomingBookings = bookings.filter(booking => 
+    !booking.is_reminder_only && booking.event.date >= todayIso
+  ).sort((a, b) => a.event.date.localeCompare(b.event.date))
+  
+  const pastBookings = bookings.filter(booking => 
+    !booking.is_reminder_only && booking.event.date < todayIso
+  ).sort((a, b) => b.event.date.localeCompare(a.event.date)) // Most recent past first
+
+  const totalUpcomingSeats = upcomingBookings.reduce((sum, booking) => sum + (booking.seats ?? 0), 0)
 
   // Define columns for booking table
   const baseBookingColumns: Column<BookingWithEvent>[] = [
@@ -605,18 +615,18 @@ export default function CustomerViewPage() {
             className="xl:col-span-2"
             header={
               <div>
-                <CardTitle>Active Bookings ({activeBookings.length})</CardTitle>
+                <CardTitle>Upcoming Bookings ({upcomingBookings.length})</CardTitle>
                 <CardDescription>
-                  Total of {totalSeats} tickets booked across all events.
+                  Total of {totalUpcomingSeats} tickets booked for upcoming events.
                 </CardDescription>
               </div>
             }
           >
             <DataTable
-              data={activeBookings}
+              data={upcomingBookings}
               columns={bookingColumns}
               getRowKey={(booking) => booking.id}
-              emptyMessage="No bookings found"
+              emptyMessage="No upcoming bookings"
             />
           </Card>
 
@@ -624,7 +634,7 @@ export default function CustomerViewPage() {
             className={reminders.length > 0 ? '' : 'xl:col-span-2'}
             header={
               <div className="flex items-center justify-between">
-                <CardTitle>Booking History</CardTitle>
+                <CardTitle>Past Bookings</CardTitle>
                 <Button
                   variant="secondary"
                   onClick={() => router.push(`/events?customer=${customer.id}`)}
@@ -635,10 +645,10 @@ export default function CustomerViewPage() {
             }
           >
             <DataTable
-              data={bookings}
+              data={pastBookings}
               columns={bookingColumns}
               getRowKey={(booking) => booking.id}
-              emptyMessage="No booking history available"
+              emptyMessage="No past bookings"
             />
           </Card>
           

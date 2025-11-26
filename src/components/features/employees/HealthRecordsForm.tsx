@@ -4,7 +4,12 @@ import { useActionState, useEffect, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { upsertHealthRecord } from '@/app/actions/employeeActions';
 import type { EmployeeHealthRecord } from '@/types/database';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { toast } from '@/components/ui-v2/feedback/Toast';
+import { Input } from '@/components/ui-v2/forms/Input';
+import { Textarea } from '@/components/ui-v2/forms/Textarea';
+import { Checkbox } from '@/components/ui-v2/forms/Checkbox';
+import { Button } from '@/components/ui-v2/forms/Button';
 
 interface HealthRecordsFormProps {
   employeeId: string;
@@ -14,13 +19,13 @@ interface HealthRecordsFormProps {
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
-    <button
+    <Button
       type="submit"
-      disabled={pending}
-      className="rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500 disabled:opacity-50"
+      loading={pending}
+      variant="primary"
     >
       {pending ? 'Saving...' : 'Save Changes'}
-    </button>
+    </Button>
   );
 }
 
@@ -28,16 +33,17 @@ export default function HealthRecordsForm({ employeeId, healthRecord }: HealthRe
   const [state, formAction] = useActionState(upsertHealthRecord, null);
   const [isRegisteredDisabled, setIsRegisteredDisabled] = useState(healthRecord?.is_registered_disabled || false);
   const pathname = usePathname();
+  const router = useRouter();
   const isNewEmployee = pathname?.includes('/employees/new');
 
   useEffect(() => {
     if (state?.type === 'success') {
-      // Only redirect when editing an existing employee
       if (!isNewEmployee) {
-        window.location.href = '/employees';
+        toast.success(state.message || 'Health record updated successfully.');
+        router.push(`/employees/${employeeId}`);
       }
     }
-  }, [state, isNewEmployee]);
+  }, [state, isNewEmployee, router, employeeId]);
 
   interface FieldConfig {
     name: string;
@@ -61,34 +67,31 @@ export default function HealthRecordsForm({ employeeId, healthRecord }: HealthRe
         </label>
         <div className="mt-1 sm:col-span-3 sm:mt-0">
           {field.type === 'textarea' ? (
-            <textarea
+            <Textarea
               name={field.name}
               id={field.name}
               defaultValue={typeof field.defaultValue === 'string' ? field.defaultValue : ''}
               rows={3}
-              className="block w-full max-w-lg rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+              error={!!error}
             />
           ) : field.type === 'checkbox' ? (
             <div className="flex h-5 items-center">
-              <input
+              <Checkbox
                 id={field.name}
                 name={field.name}
-                type="checkbox"
-                defaultChecked={field.defaultChecked}
+                checked={field.defaultChecked}
                 onChange={field.onChange}
-                className="h-4 w-4 rounded border border-gray-300 text-green-600 focus:ring-green-500"
               />
             </div>
           ) : (
-            <input
+            <Input
               type={field.type || 'text'}
               name={field.name}
               id={field.name}
               defaultValue={field.defaultValue || ''}
-              className="block w-full max-w-lg rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+              error={!!error}
             />
           )}
-          {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
         </div>
       </div>
     );

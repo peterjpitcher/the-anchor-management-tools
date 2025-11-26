@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { EventFormGrouped } from '@/components/features/events/EventFormGrouped'
 import { createEvent } from '@/app/actions/events'
 import { Event } from '@/types/database'
+import { EventCategory } from '@/types/event-categories'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 // New UI components
@@ -14,7 +15,7 @@ type CreateEventActionResult = Awaited<ReturnType<typeof createEvent>>
 
 export default function NewEventPage() {
   const router = useRouter()
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
+  const [categories, setCategories] = useState<EventCategory[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -27,7 +28,7 @@ export default function NewEventPage() {
         .order('sort_order')
       
       if (!error && data) {
-        setCategories(data)
+        setCategories(data as unknown as EventCategory[])
       }
       setLoading(false)
     }
@@ -95,7 +96,7 @@ export default function NewEventPage() {
     >
       <Card>
         <EventFormGrouped
-          categories={categories as any}
+          categories={categories}
           onSubmit={handleSubmit}
           onCancel={handleCancel}
         />

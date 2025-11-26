@@ -5,7 +5,8 @@ import { useFormStatus } from 'react-dom';
 import { upsertFinancialDetails } from '@/app/actions/employeeActions';
 import type { ActionFormState } from '@/types/actions';
 import type { EmployeeFinancialDetails } from '@/types/database';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { toast } from '@/components/ui-v2/feedback/Toast';
 import { Input } from '@/components/ui-v2/forms/Input';
 import { Button } from '@/components/ui-v2/forms/Button';
 
@@ -32,16 +33,18 @@ function SubmitButton() {
 export default function FinancialDetailsForm({ employeeId, financialDetails, onSave, draftMode = false }: FinancialDetailsFormProps) {
   const [state, formAction] = useActionState(upsertFinancialDetails, null);
   const pathname = usePathname();
+  const router = useRouter();
   const isNewEmployee = pathname?.includes('/employees/new');
 
   useEffect(() => {
     if (state?.type === 'success' && !draftMode) {
       // Only redirect when editing an existing employee
       if (!isNewEmployee) {
-        window.location.href = '/employees';
+        toast.success(state.message || 'Financial details updated successfully.');
+        router.push(`/employees/${employeeId}`);
       }
     }
-  }, [state, isNewEmployee, draftMode]);
+  }, [state, isNewEmployee, draftMode, router, employeeId]);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     if (draftMode && onSave) {
