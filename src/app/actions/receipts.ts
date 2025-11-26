@@ -2234,7 +2234,7 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
     .filter((value) => monthRows.some((row) => row?.month_start?.startsWith(value)))
     .sort((a, b) => b.localeCompare(a))
 
-  const effectivePageSize = isMonthScoped ? shapedTransactions.length : pageSize
+  const effectivePageSize = isMonthScoped ? MAX_MONTH_PAGE_SIZE : pageSize
 
   return {
     transactions: shapedTransactions,

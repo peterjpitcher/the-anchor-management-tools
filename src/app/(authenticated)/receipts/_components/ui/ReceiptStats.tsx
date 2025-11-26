@@ -1,0 +1,69 @@
+import { Card } from '@/components/ui-v2/layout/Card'
+import type { ReceiptWorkspaceSummary } from '@/app/actions/receipts'
+
+interface SummaryCardProps {
+  title: string
+  value: number
+  tone: 'success' | 'warning' | 'info' | 'neutral' | 'danger'
+}
+
+function SummaryCard({ title, value, tone }: SummaryCardProps) {
+  const toneClasses: Record<SummaryCardProps['tone'], string> = {
+    success: 'bg-emerald-50 text-emerald-700',
+    warning: 'bg-amber-50 text-amber-700',
+    info: 'bg-blue-50 text-blue-700',
+    neutral: 'bg-gray-50 text-gray-700',
+    danger: 'bg-rose-50 text-rose-700',
+  }
+
+  return (
+    <Card variant="bordered" className="h-full">
+      <div className="space-y-2">
+        <p className="text-sm text-gray-500">{title}</p>
+        <p className="text-3xl font-semibold text-gray-900">{value}</p>
+        <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${toneClasses[tone]}`}>
+          {value === 0 ? 'All clear' : value === 1 ? '1 item' : `${value} items`}
+        </span>
+      </div>
+    </Card>
+  )
+}
+
+function formatCurrencyStrict(value: number) {
+  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(value ?? 0)
+}
+
+function CostSummaryCard({ cost }: { cost: number }) {
+  const badge = cost > 0
+    ? { label: 'Includes AI tagging', className: 'bg-blue-50 text-blue-700' }
+    : { label: 'No spend yet', className: 'bg-gray-100 text-gray-600' }
+
+  return (
+    <Card variant="bordered" className="h-full">
+      <div className="space-y-2">
+        <p className="text-sm text-gray-500">OpenAI spend</p>
+        <p className="text-3xl font-semibold text-gray-900">{formatCurrencyStrict(cost)}</p>
+        <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${badge.className}`}>
+          {badge.label}
+        </span>
+      </div>
+    </Card>
+  )
+}
+
+interface ReceiptStatsProps {
+  summary: ReceiptWorkspaceSummary
+}
+
+export function ReceiptStats({ summary }: ReceiptStatsProps) {
+  return (
+    <div className="hidden md:grid md:grid-cols-2 md:gap-4 xl:grid-cols-6">
+      <CostSummaryCard cost={summary.openAICost} />
+      <SummaryCard title="Pending" value={summary.totals.pending} tone="warning" />
+      <SummaryCard title="Completed" value={summary.totals.completed} tone="success" />
+      <SummaryCard title="Auto-matched" value={summary.totals.autoCompleted} tone="info" />
+      <SummaryCard title="No receipt required" value={summary.totals.noReceiptRequired} tone="neutral" />
+      <SummaryCard title="Can't find" value={summary.totals.cantFind} tone="danger" />
+    </div>
+  )
+}

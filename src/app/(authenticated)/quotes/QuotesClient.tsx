@@ -107,22 +107,14 @@ export default function QuotesClient({
         <span className="hidden sm:inline">Invoices</span>
         <span className="sm:hidden">Inv</span>
       </NavLink>
-      <NavLink
-        href="/quotes/new"
-        disabled={!resolvedPermissions.canCreate}
-        title={
-          resolvedPermissions.canCreate
-            ? undefined
-            : 'You need invoice create permission to add quotes.'
-        }
-        className="font-semibold"
-      >
-        <Plus className="h-4 w-4" />
-        <span className="hidden sm:inline">New Quote</span>
-        <span className="sm:hidden">New</span>
-      </NavLink>
     </NavGroup>
   )
+
+  const headerActions = resolvedPermissions.canCreate ? (
+    <LinkButton href="/quotes/new" variant="primary" leftIcon={<Plus className="h-4 w-4" />}>
+      New Quote
+    </LinkButton>
+  ) : null
 
   const loadData = useCallback(async () => {
     if (permissionsLoading) {
@@ -176,24 +168,25 @@ export default function QuotesClient({
 
   if (loading && quotes.length === 0) {
     return (
-      <PageLayout
-        title="Quotes"
-        subtitle="Manage quotes and estimates for your vendors"
-        navActions={navActions}
-        loading
-        loadingLabel="Loading quotes..."
-      />
-    )
-  }
-
-  return (
-    <PageLayout
-      title="Quotes"
-      subtitle="Manage quotes and estimates for your vendors"
-      navActions={navActions}
-    >
-      <div className="space-y-6">
-        {isReadOnly && (
+          <PageLayout
+            title="Quotes"
+            subtitle="Manage quotes and estimates for your vendors"
+            navActions={navActions}
+            headerActions={headerActions}
+            loading
+            loadingLabel="Loading quotes..."
+          />
+          )
+        }
+      
+        return (
+          <PageLayout
+            title="Quotes"
+            subtitle="Manage quotes and estimates for your vendors"
+            navActions={navActions}
+            headerActions={headerActions}
+          >
+            <div className="space-y-6">        {isReadOnly && (
           <Alert
             variant="info"
             description="You have read-only access to quotes. Creation, conversion, and status changes are disabled for your role."

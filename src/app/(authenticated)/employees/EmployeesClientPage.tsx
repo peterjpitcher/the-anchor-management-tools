@@ -3,7 +3,7 @@
 import { useCallback, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { ArrowDownTrayIcon } from '@heroicons/react/24/outline'
+import { ArrowDownTrayIcon, PlusIcon } from '@heroicons/react/24/outline'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
@@ -157,13 +157,14 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
           size="sm"
         />
       )}
-      {permissions.canCreate && (
-        <LinkButton href="/employees/new" size="sm" variant="primary">
-          Add Employee
-        </LinkButton>
-      )}
     </div>
   )
+
+  const headerActions = permissions.canCreate ? (
+    <LinkButton href="/employees/new" size="md" variant="primary" leftIcon={<PlusIcon className="h-5 w-5" />}>
+      Add Employee
+    </LinkButton>
+  ) : null
 
   return (
     <PageLayout
@@ -171,6 +172,7 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
       subtitle="Manage your staff and their information"
       navItems={navItems}
       navActions={navActions}
+      headerActions={headerActions}
     >
       <section id="filters">
         <Card>

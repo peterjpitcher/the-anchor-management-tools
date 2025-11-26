@@ -13,6 +13,7 @@ import {
   ArrowPathIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
+  PlusIcon
 } from '@heroicons/react/24/outline';
 import { ArrowUpIcon, ArrowDownIcon, MinusIcon } from '@heroicons/react/20/solid';
 import { TableBooking } from '@/types/table-bookings';
@@ -23,6 +24,7 @@ import { Section } from '@/components/ui-v2/layout/Section';
 import { Button } from '@/components/ui-v2/forms/Button';
 import { NavLink } from '@/components/ui-v2/navigation/NavLink';
 import { NavGroup } from '@/components/ui-v2/navigation/NavGroup';
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
 import { Stat, StatGroup } from '@/components/ui-v2/display/Stat';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
@@ -183,11 +185,6 @@ export default function TableBookingsDashboard() {
 
   const navActions = (
     <NavGroup>
-      {canCreate && (
-        <NavLink href="/table-bookings/new">
-          Add Booking
-        </NavLink>
-      )}
       <NavLink href="/table-bookings/calendar">
         Calendar View
       </NavLink>
@@ -198,6 +195,12 @@ export default function TableBookingsDashboard() {
       )}
     </NavGroup>
   )
+
+  const headerActions = canCreate ? (
+    <LinkButton href="/table-bookings/new" variant="primary" leftIcon={<PlusIcon className="h-5 w-5" />}>
+      New Booking
+    </LinkButton>
+  ) : null
 
   const layoutProps = {
     title: 'Table Bookings',
@@ -235,7 +238,7 @@ export default function TableBookingsDashboard() {
   }
 
   return (
-    <PageLayout {...layoutProps} navActions={navActions}>
+    <PageLayout {...layoutProps} navActions={navActions} headerActions={headerActions}>
       <div className="space-y-4 sm:space-y-6 px-0 sm:px-6">
         {/* Stats Grid - Hidden on mobile */}
         <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">

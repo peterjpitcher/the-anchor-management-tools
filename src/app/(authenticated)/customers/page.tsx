@@ -542,27 +542,23 @@ export default function CustomersPage() {
     ? [
         { label: 'Manage Labels', href: '/settings/customer-labels' },
         { label: 'Import', onClick: openImportCustomers },
-        { label: 'Add Customer', onClick: openCreateCustomer },
       ]
     : []
 
-  const navActions = (
-    <div className="flex items-center gap-2">
-      {canManageCustomers && (
-        <Button onClick={openCreateCustomer} size="sm">
-          <PlusIcon className="h-4 w-4 mr-2" />
-          Add Customer
-        </Button>
-      )}
-    </div>
-  )
+  const navActions = null
+
+  const headerActions = canManageCustomers ? (
+    <Button onClick={openCreateCustomer} variant="primary" leftIcon={<PlusIcon className="h-5 w-5" />}>
+      Add Customer
+    </Button>
+  ) : null
 
   return (
     <PageLayout
       title="Customers"
       subtitle="Manage your customer database and segments"
       navItems={navItems}
-      navActions={navActions}
+      headerActions={headerActions}
     >
       <Card>
         <div className="space-y-4">
