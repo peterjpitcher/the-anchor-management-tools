@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { PrivateBookingService } from '@/services/private-bookings'
 import { getTodayIsoDate } from '@/lib/dateUtils'
+import { startOfWeek, subWeeks, format, addDays } from 'date-fns'
 
 type EventSummary = {
   id: string
@@ -170,6 +171,16 @@ type LoyaltySnapshot = {
   permitted: boolean
 }
 
+type CashingUpSnapshot = {
+  permitted: boolean
+  thisWeekTotal: number
+  thisWeekTarget: number
+  lastWeekTotal: number
+  lastYearTotal: number
+  sessionsSubmittedCount: number
+  error?: string
+}
+
 type SystemHealthSnapshot = {
   permitted: boolean
   smsFailures24h: number
@@ -200,6 +211,7 @@ export type DashboardSnapshot = {
   shortLinks: ShortLinksSnapshot
   users: UsersSnapshot
   loyalty: LoyaltySnapshot
+  cashingUp: CashingUpSnapshot
   systemHealth: SystemHealthSnapshot
 }
 
@@ -367,6 +379,15 @@ const fetchDashboardSnapshot = unstable_cache(
       permitted: hasModuleAccess(permissionsMap, 'loyalty'),
     }
 
+    const cashingUp: CashingUpSnapshot = {
+      permitted: hasModuleAccess(permissionsMap, 'cashing_up'),
+      thisWeekTotal: 0,
+      thisWeekTarget: 0,
+      lastWeekTotal: 0,
+      lastYearTotal: 0,
+      sessionsSubmittedCount: 0,
+    }
+
     const systemHealth: SystemHealthSnapshot = {
       permitted: hasModuleAccess(permissionsMap, 'settings') || hasModuleAccess(permissionsMap, 'users'),
       smsFailures24h: 0,
@@ -375,6 +396,84 @@ const fetchDashboardSnapshot = unstable_cache(
 
     // Execute all permitted fetches in parallel
     const results = await Promise.allSettled([
+      cashingUp.permitted ? (async () => {
+        try {
+           // Get Site
+           const { data: site } = await supabase.from('sites').select('id').limit(1).single()
+           if (!site) return
+
+           const today = new Date()
+           const weekStart = startOfWeek(today, { weekStartsOn: 1 }) // Monday
+           
+           // Ranges (Strings YYYY-MM-DD)
+           const thisWeekStartStr = format(weekStart, 'yyyy-MM-dd')
+           const todayStr = format(today, 'yyyy-MM-dd')
+           
+           const lastWeekStart = subWeeks(weekStart, 1)
+           const lastWeekEnd = subWeeks(today, 1)
+           const lastWeekStartStr = format(lastWeekStart, 'yyyy-MM-dd')
+           const lastWeekEndStr = format(lastWeekEnd, 'yyyy-MM-dd')
+
+           const lastYearStart = subWeeks(weekStart, 52)
+           const lastYearEnd = subWeeks(today, 52)
+           const lastYearStartStr = format(lastYearStart, 'yyyy-MM-dd')
+           const lastYearEndStr = format(lastYearEnd, 'yyyy-MM-dd')
+
+           // Fetch Sessions (All 3 periods)
+           const [thisWeekRes, lastWeekRes, lastYearRes] = await Promise.all([
+             supabase.from('cashup_sessions')
+               .select('total_counted_amount, session_date, status')
+               .eq('site_id', site.id)
+               .gte('session_date', thisWeekStartStr)
+               .lte('session_date', todayStr),
+             supabase.from('cashup_sessions')
+               .select('total_counted_amount')
+               .eq('site_id', site.id)
+               .gte('session_date', lastWeekStartStr)
+               .lte('session_date', lastWeekEndStr),
+             supabase.from('cashup_sessions')
+               .select('total_counted_amount')
+               .eq('site_id', site.id)
+               .gte('session_date', lastYearStartStr)
+               .lte('session_date', lastYearEndStr)
+           ])
+           
+           // Sums
+           cashingUp.thisWeekTotal = thisWeekRes.data?.reduce((sum, s) => sum + (s.total_counted_amount || 0), 0) || 0
+           cashingUp.lastWeekTotal = lastWeekRes.data?.reduce((sum, s) => sum + (s.total_counted_amount || 0), 0) || 0
+           cashingUp.lastYearTotal = lastYearRes.data?.reduce((sum, s) => sum + (s.total_counted_amount || 0), 0) || 0
+           
+           // Count submitted
+           cashingUp.sessionsSubmittedCount = thisWeekRes.data?.filter(s => s.status !== 'draft').length || 0
+
+           // Targets
+           const { data: targets } = await supabase.from('cashup_targets')
+             .select('*')
+             .eq('site_id', site.id)
+             .order('effective_from', { ascending: false })
+
+           let targetSum = 0
+           let d = new Date(weekStart)
+           const end = new Date(today)
+           
+           while (d <= end) {
+             const dayIso = format(d, 'yyyy-MM-dd')
+             const dayOfWeek = d.getDay()
+             
+             const target = targets?.find(t => t.day_of_week === dayOfWeek && t.effective_from <= dayIso)
+             if (target) {
+               targetSum += target.target_amount
+             }
+             d = addDays(d, 1)
+           }
+           cashingUp.thisWeekTarget = targetSum
+
+        } catch (error) {
+          console.error('Failed to load cashing up metrics', error)
+          cashingUp.error = 'Failed'
+        }
+      })() : Promise.resolve(),
+
       events.permitted ? (async () => {
         try {
           const { data, error, count } = await supabase
@@ -891,6 +990,7 @@ const fetchDashboardSnapshot = unstable_cache(
       shortLinks,
       users: usersSnapshot,
       loyalty,
+      cashingUp,
       systemHealth,
     }
   },

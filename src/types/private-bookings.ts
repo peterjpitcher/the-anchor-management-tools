@@ -16,7 +16,23 @@ export type VendorServiceType =
   | 'equipment'
   | 'other'
 export type DocumentType = 'contract' | 'invoice' | 'receipt' | 'correspondence' | 'other'
-export type SmsTriggerType = 'status_change' | 'deposit_received' | 'payment_received' | 'reminder' | 'payment_due' | 'urgent' | 'manual'
+export type SmsTriggerType = 
+  | 'status_change' 
+  | 'deposit_received' 
+  | 'payment_received' 
+  | 'final_payment_received'
+  | 'reminder' 
+  | 'payment_due' 
+  | 'urgent' 
+  | 'manual'
+  | 'booking_created'
+  | 'booking_cancelled'
+  | 'booking_expired'
+  | 'date_changed'
+  | 'deposit_reminder_7day'
+  | 'deposit_reminder_1day'
+  | 'balance_reminder_14day'
+
 export type SmsStatus = 'pending' | 'approved' | 'sent' | 'cancelled' | 'failed'
 
 export interface PrivateBooking {
@@ -37,6 +53,9 @@ export interface PrivateBooking {
   guest_count?: number
   event_type?: string
   status: BookingStatus
+  hold_expiry?: string
+  cancellation_reason?: string
+  cancelled_at?: string
   deposit_amount: number
   deposit_paid_date?: string
   deposit_payment_method?: PaymentMethod

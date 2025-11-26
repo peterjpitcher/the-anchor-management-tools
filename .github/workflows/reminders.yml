@@ -28,7 +28,10 @@ jobs:
             -H "Content-Type: application/json" \
             -w "\n%{http_code}\n%{url_effective}\n%{time_total}\n%{size_download}\n%{speed_download}" \
             -L \
-            -s)
+            -sS \
+            --retry 3 \
+            --retry-delay 2 \
+            -4)
 
           # Extract the response components
           body=$(echo "$response" | sed 'N;$!N;$!N;$!N;$d')

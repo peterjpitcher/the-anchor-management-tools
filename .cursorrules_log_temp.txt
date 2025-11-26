@@ -1,0 +1,79 @@
+process-jobs	UNKNOWN STEP	﻿2025-11-24T21:53:44.4205919Z Current runner version: '2.329.0'
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4231974Z ##[group]Runner Image Provisioner
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4232870Z Hosted Compute Agent
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4233546Z Version: 20251016.436
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4234127Z Commit: 8ab8ac8bfd662a3739dab9fe09456aba92132568
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4234819Z Build Date: 2025-10-15T20:44:12Z
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4235482Z ##[endgroup]
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4236016Z ##[group]Operating System
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4236569Z Ubuntu
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4237064Z 24.04.3
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4237523Z LTS
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4237976Z ##[endgroup]
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4238498Z ##[group]Runner Image
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4239093Z Image: ubuntu-24.04
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4239590Z Version: 20251112.124.1
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4240645Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20251112.124/images/ubuntu/Ubuntu2404-Readme.md
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4242395Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20251112.124
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4243483Z ##[endgroup]
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4244561Z ##[group]GITHUB_TOKEN Permissions
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4246503Z Contents: read
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4247063Z Metadata: read
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4247539Z Packages: read
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4248172Z ##[endgroup]
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4250631Z Secret source: Actions
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4251901Z Prepare workflow directory
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4592509Z Prepare all required actions
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.4696102Z Complete job name: process-jobs
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.5476289Z ##[group]Run if [ -z "***" ]; then
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.5477424Z [36;1mif [ -z "***" ]; then[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.5478149Z [36;1m  echo "Error: CRON_SECRET secret is not set"[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.5478806Z [36;1m  exit 1[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.5479297Z [36;1mfi[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.5479788Z [36;1mecho "Required secrets are set"[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6056063Z shell: /usr/bin/bash -e {0}
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6057083Z ##[endgroup]
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6258701Z Required secrets are set
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6371358Z ##[group]Run # Use production URL directly
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6372258Z [36;1m# Use production URL directly[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6373065Z [36;1mVERCEL_URL="https://management.orangejelly.co.uk"[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6373888Z [36;1m[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6374517Z [36;1mecho "Processing SMS jobs at: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6375472Z [36;1mecho "Making request to: ${VERCEL_URL}/api/jobs/process"[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6376258Z [36;1m[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6376845Z [36;1mresponse=$(curl -X POST "${VERCEL_URL}/api/jobs/process" \[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6378117Z [36;1m  -H "Authorization: ***" \[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6378858Z [36;1m  -H "Content-Type: application/json" \[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6379488Z [36;1m  -H "x-vercel-cron: 1" \[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6380337Z [36;1m  -w "\n%{http_code}\n%{url_effective}\n%{time_total}\n%{size_download}\n%{speed_download}" \[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6381531Z [36;1m  -L \[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6382168Z [36;1m  -s)[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6382730Z [36;1m[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6383210Z [36;1m# Extract the response components[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6383937Z [36;1mbody=$(echo "$response" | sed 'N;$!N;$!N;$!N;$d')[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6384802Z [36;1mstatus_code=$(echo "$response" | tail -n5 | head -n1)[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6385600Z [36;1murl_effective=$(echo "$response" | tail -n4 | head -n1)[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6386404Z [36;1mtime_total=$(echo "$response" | tail -n3 | head -n1)[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6387277Z [36;1msize_download=$(echo "$response" | tail -n2 | head -n1)[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6388070Z [36;1mspeed_download=$(echo "$response" | tail -n1)[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6388810Z [36;1m[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6389282Z [36;1mecho "Response body: $body"[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6389914Z [36;1mecho "Status code: $status_code"[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6390589Z [36;1mecho "Final URL: $url_effective"[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6391585Z [36;1mecho "Request time: ${time_total}s"[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6392617Z [36;1mecho "Response size: ${size_download} bytes"[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6393527Z [36;1mecho "Download speed: ${speed_download} bytes/sec"[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6394191Z [36;1m[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6394690Z [36;1mif [ "$status_code" -ge 400 ]; then[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6395413Z [36;1m  echo "Error: Request failed with status $status_code"[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6396170Z [36;1m  echo "Full response: $response"[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6396810Z [36;1m  exit 1[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6397284Z [36;1mfi[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6397764Z [36;1m[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6398340Z [36;1mecho "Job processing completed successfully"[0m
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6432027Z shell: /usr/bin/bash -e {0}
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6432680Z ##[endgroup]
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6509203Z Processing SMS jobs at: 2025-11-24 21:53:44 UTC
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.6510129Z Making request to: https://management.orangejelly.co.uk/api/jobs/process
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.7152334Z ##[error]Process completed with exit code 35.
+process-jobs	UNKNOWN STEP	2025-11-24T21:53:44.7223199Z Cleaning up orphan processes

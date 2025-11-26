@@ -134,6 +134,19 @@ export class PrivateBookingService {
       balanceDueDate = toLocalIsoDate(d);
     }
 
+    const currentDateTime = new Date();
+    const fourteenDaysFromNow = new Date(currentDateTime);
+    fourteenDaysFromNow.setDate(currentDateTime.getDate() + 14);
+
+    const actualEventDate = new Date(finalEventDate);
+
+    // hold_expiry is the earlier of: event_date OR 14 days from now.
+    const holdExpiryMoment = actualEventDate.getTime() < fourteenDaysFromNow.getTime()
+      ? actualEventDate
+      : fourteenDaysFromNow;
+      
+    const holdExpiryIso = holdExpiryMoment.toISOString();
+
     // Customer Data for finding/creating
     let customerData = null;
     if (!input.customer_id && input.customer_first_name && input.contact_phone) {
@@ -153,6 +166,7 @@ export class PrivateBookingService {
       start_time: finalStartTime,
       internal_notes: internalNotes,
       balance_due_date: balanceDueDate,
+      hold_expiry: holdExpiryIso, // Use the calculated hold expiry
       customer_name: input.customer_last_name 
         ? `${input.customer_first_name} ${input.customer_last_name}`
         : input.customer_first_name,
@@ -176,7 +190,9 @@ export class PrivateBookingService {
     
     // SMS
     if (booking && input.contact_phone) {
-      this.sendCreationSms(booking, input.contact_phone).catch(console.error);
+      // Ensure booking object passed to sendCreationSms has the calculated hold_expiry
+      const bookingWithHoldExpiry = { ...booking, hold_expiry: holdExpiryIso };
+      this.sendCreationSms(bookingWithHoldExpiry, input.contact_phone).catch(console.error);
     }
 
     // Google Calendar Sync
@@ -206,7 +222,7 @@ export class PrivateBookingService {
     // 1. Get Current Booking
     const { data: currentBooking, error: fetchError } = await supabase
       .from('private_bookings')
-      .select('status, contact_phone, customer_first_name, event_date, start_time, end_time, end_time_next_day, customer_id, internal_notes, balance_due_date, calendar_event_id')
+      .select('status, contact_phone, customer_first_name, event_date, start_time, end_time, end_time_next_day, customer_id, internal_notes, balance_due_date, calendar_event_id, hold_expiry')
       .eq('id', id)
       .single();
 
@@ -216,6 +232,25 @@ export class PrivateBookingService {
 
     // 2. Prepare Updates
     const finalEventDate = input.event_date || currentBooking.event_date || toLocalIsoDate(new Date());
+    
+    // Check if event date changed and booking is in draft to reset hold
+    let holdExpiryIso = undefined;
+    const dateChanged = input.event_date && input.event_date !== currentBooking.event_date;
+    
+    if (dateChanged && currentBooking.status === 'draft') {
+        const currentDateTime = new Date();
+        const fourteenDaysFromNow = new Date(currentDateTime);
+        fourteenDaysFromNow.setDate(currentDateTime.getDate() + 14);
+
+        const newEventDate = input.event_date ? new Date(input.event_date) : new Date(finalEventDate);
+
+        const holdExpiryMoment = newEventDate.getTime() < fourteenDaysFromNow.getTime()
+          ? newEventDate
+          : fourteenDaysFromNow;
+          
+        holdExpiryIso = holdExpiryMoment.toISOString();
+    }
+
     const finalStartTime = input.start_time || currentBooking.start_time || DEFAULT_TBD_TIME;
 
     let endTimeNextDay = currentBooking.end_time_next_day ?? false;
@@ -260,6 +295,7 @@ export class PrivateBookingService {
       end_time: cleanedEndTime, // can be null to clear
       end_time_next_day: endTimeNextDay,
       internal_notes: internalNotes,
+      hold_expiry: holdExpiryIso,
       updated_at: new Date().toISOString()
     };
 
@@ -284,6 +320,36 @@ export class PrivateBookingService {
     }
 
     // 4. Side Effects
+    
+    // Send Date Change SMS if hold was reset
+    if (holdExpiryIso && updatedBooking.contact_phone && updatedBooking.status === 'draft') {
+       const eventDateReadable = new Date(updatedBooking.event_date).toLocaleDateString('en-GB', { 
+          day: 'numeric', month: 'long', year: 'numeric' 
+       });
+       
+       const expiryDate = new Date(holdExpiryIso);
+       const expiryReadable = expiryDate.toLocaleDateString('en-GB', {
+          day: 'numeric', month: 'long' 
+       });
+       
+       const smsMessage = `Hi ${updatedBooking.customer_first_name}, we've moved your tentative booking to ${eventDateReadable}. We've refreshed your 14-day hold, so your deposit is now due by ${expiryReadable}.`;
+
+       await SmsQueueService.queueAndSend({
+          booking_id: updatedBooking.id,
+          trigger_type: 'date_changed',
+          template_key: 'private_booking_date_changed',
+          message_body: smsMessage,
+          customer_phone: updatedBooking.contact_phone,
+          customer_name: updatedBooking.customer_name,
+          created_by: undefined, // System triggered
+          priority: 2,
+          metadata: {
+             template: 'private_booking_date_changed',
+             new_date: eventDateReadable,
+             new_expiry: expiryReadable
+          }
+       }).catch(console.error);
+    }
     
     // Calendar Sync
     if (isCalendarConfigured()) {
@@ -425,6 +491,73 @@ export class PrivateBookingService {
     return { success: true };
   }
 
+  static async expireBooking(id: string) {
+    const supabase = await createClient();
+    const nowIso = new Date().toISOString();
+
+    // 1. Get Booking
+    const { data: booking, error: fetchError } = await supabase
+      .from('private_bookings')
+      .select('id, status, event_date, customer_first_name, customer_name, contact_phone, calendar_event_id')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !booking) throw new Error('Booking not found');
+    if (booking.status !== 'draft') throw new Error('Only draft bookings can be expired');
+
+    // 2. Update Status
+    const { error: updateError } = await supabase
+      .from('private_bookings')
+      .update({
+        status: 'cancelled',
+        cancellation_reason: 'Hold period expired (14 days)',
+        cancelled_at: nowIso,
+        updated_at: nowIso
+      })
+      .eq('id', id);
+
+    if (updateError) throw new Error('Failed to expire booking');
+
+    // 3. Calendar Cleanup
+    if (booking.calendar_event_id && isCalendarConfigured()) {
+      try {
+        await deleteCalendarEvent(booking.calendar_event_id);
+        await supabase
+           .from('private_bookings')
+           .update({ calendar_event_id: null })
+           .eq('id', id);
+      } catch (error) {
+        console.error('Failed to delete calendar event:', error);
+      }
+    }
+
+    // 4. SMS Notification
+    if (booking.contact_phone) {
+      const eventDate = new Date(booking.event_date).toLocaleDateString('en-GB', {
+        day: 'numeric', month: 'long', year: 'numeric'
+      });
+
+      const smsMessage = `Hi ${booking.customer_first_name}, the 14-day hold on ${eventDate} has now expired and the date has been released. Please contact us if you'd like to re-book.`;
+
+      await SmsQueueService.queueAndSend({
+        booking_id: id,
+        trigger_type: 'booking_expired',
+        template_key: 'private_booking_expired',
+        message_body: smsMessage,
+        customer_phone: booking.contact_phone,
+        customer_name: booking.customer_name,
+        created_by: undefined,
+        priority: 2,
+        metadata: {
+          template: 'private_booking_expired',
+          event_date: eventDate
+        }
+      }).catch(console.error);
+    }
+
+    return { success: true };
+  }
+
   static async deletePrivateBooking(id: string) {
     const supabase = await createClient();
 
@@ -460,6 +593,8 @@ export class PrivateBookingService {
         deposit_paid_date: new Date().toISOString(),
         deposit_payment_method: method,
         deposit_amount: amount,
+        status: 'confirmed',
+        cancellation_reason: null,
         updated_at: new Date().toISOString()
       })
       .eq('id', bookingId);
@@ -472,7 +607,7 @@ export class PrivateBookingService {
         day: 'numeric', month: 'long', year: 'numeric' 
       });
       
-      const smsMessage = `Hi ${booking.customer_first_name}, we've received your deposit of £${amount}. Your private booking on ${eventDate} is now secured. Reply to this message with any questions.`;
+      const smsMessage = `Hi ${booking.customer_first_name}, deposit received! Your booking for ${eventDate} is now fully confirmed. We'll be in touch closer to the time for final details.`;
       
       await SmsQueueService.queueAndSend({
         booking_id: bookingId,
@@ -737,7 +872,7 @@ export class PrivateBookingService {
           metadata,
           performed_by,
           performed_at,
-          performed_by_profile:profiles!private_booking_audit_performed_by_fkey(
+          performed_by_profile:profiles!private_booking_audit_performed_by_profile_fkey(
             id,
             first_name,
             last_name,
@@ -901,9 +1036,16 @@ export class PrivateBookingService {
     const depositAmount = booking.deposit_amount || 0;
     const formattedDeposit = depositAmount.toFixed(2);
     
+    // Calculate hold expiry (14 days from creation)
+    const holdExpiryDate = booking.hold_expiry ? new Date(booking.hold_expiry) : new Date(); // Use actual hold_expiry from DB
+    const expiryReadable = holdExpiryDate.toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'long'
+    });
+
     const smsMessage = depositAmount > 0
-      ? `Hi ${booking.customer_first_name}, thank you for your enquiry about private hire at The Anchor on ${eventDateReadable}. To secure this date, a deposit of £${formattedDeposit} is required. Reply to this message with any questions.`
-      : `Hi ${booking.customer_first_name}, thank you for your enquiry about private hire at The Anchor on ${eventDateReadable}. We normally require a deposit to secure the date, but we've waived it for you. Reply to this message with any questions.`;
+      ? `Hi ${booking.customer_first_name}, thanks for your enquiry for ${eventDateReadable} at The Anchor. We are holding this date for you for 14 days. To secure it permanently, a deposit of £${formattedDeposit} is required by ${expiryReadable}. Reply to this message with any questions.`
+      : `Hi ${booking.customer_first_name}, thanks for your enquiry about private hire at The Anchor on ${eventDateReadable}. We normally require a deposit to secure the date, but we've waived it for you. Reply to this message with any questions.`;
 
     await SmsQueueService.queueAndSend({
       booking_id: booking.id,

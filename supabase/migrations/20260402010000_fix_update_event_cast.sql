@@ -1,0 +1,3 @@
+-- This migration was applied but then superseded by 20260402010500_fix_event_cast_v2.sql
+-- Original content was an incorrect fix for event updates.
+-- We restore this file to satisfy Supabase CLI history checks.
