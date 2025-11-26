@@ -145,30 +145,50 @@ export class PrivateBookingService {
     const STANDARD_HOLD_DAYS = 14;
     const SHORT_NOTICE_HOLD_DAYS = 2;
     
+    const sevenDaysBeforeEvent = new Date(actualEventDate);
+    sevenDaysBeforeEvent.setDate(sevenDaysBeforeEvent.getDate() - 7);
+    
     if (input.hold_expiry) {
         // User manually specified a date
         holdExpiryMoment = new Date(input.hold_expiry);
         
-        // Safety clamp: Cannot be after the event starts
-        if (holdExpiryMoment.getTime() > actualEventDate.getTime()) {
-            holdExpiryMoment = actualEventDate;
+        // Standard Rule: Deposit must be >= 7 days before event
+        // Exception: If booking is created < 7 days before event (Short Notice)
+        
+        const isShortNotice = currentDateTime.getTime() > sevenDaysBeforeEvent.getTime();
+        
+        if (!isShortNotice) {
+            // For normal bookings, clamp manual date to 7 days before event if it exceeds it
+            if (holdExpiryMoment.getTime() > sevenDaysBeforeEvent.getTime()) {
+                holdExpiryMoment = sevenDaysBeforeEvent;
+            }
+        } else {
+             // For short notice bookings, clamp to event date if it exceeds it
+             if (holdExpiryMoment.getTime() > actualEventDate.getTime()) {
+                 holdExpiryMoment = actualEventDate;
+             }
         }
     } else {
         // Default auto-calculation
-        holdExpiryMoment = new Date(currentDateTime);
-        holdExpiryMoment.setDate(holdExpiryMoment.getDate() + STANDARD_HOLD_DAYS);
-
-        // If event is sooner than the standard 14-day hold window...
-        if (actualEventDate.getTime() < holdExpiryMoment.getTime()) {
-            // Calculate a tighter deadline (e.g. 48 hours)
+        
+        // Check if we are in "Short Notice" territory (booking created less than 7 days before event)
+        if (currentDateTime.getTime() > sevenDaysBeforeEvent.getTime()) {
+             // Short Notice Logic: 48 hours from now, capped at event start
             const shortNoticeExpiry = new Date(currentDateTime);
             shortNoticeExpiry.setDate(shortNoticeExpiry.getDate() + SHORT_NOTICE_HOLD_DAYS);
 
-            // Use the tighter deadline, but ensure we don't go past the actual event start
             if (shortNoticeExpiry.getTime() > actualEventDate.getTime()) {
                 holdExpiryMoment = actualEventDate;
             } else {
                 holdExpiryMoment = shortNoticeExpiry;
+            }
+        } else {
+            // Normal Booking Logic: 14 days from now, but NEVER later than 7 days before event
+            holdExpiryMoment = new Date(currentDateTime);
+            holdExpiryMoment.setDate(holdExpiryMoment.getDate() + STANDARD_HOLD_DAYS);
+            
+            if (holdExpiryMoment.getTime() > sevenDaysBeforeEvent.getTime()) {
+                holdExpiryMoment = sevenDaysBeforeEvent;
             }
         }
     }
@@ -268,14 +288,17 @@ export class PrivateBookingService {
     if (dateChanged && currentBooking.status === 'draft') {
         const currentDateTime = new Date();
         const newEventDate = input.event_date ? new Date(input.event_date) : new Date(finalEventDate);
+        let holdExpiryMoment: Date;
 
         const STANDARD_HOLD_DAYS = 14;
         const SHORT_NOTICE_HOLD_DAYS = 2;
+        
+        const sevenDaysBeforeEvent = new Date(newEventDate);
+        sevenDaysBeforeEvent.setDate(sevenDaysBeforeEvent.getDate() - 7);
 
-        let holdExpiryMoment = new Date(currentDateTime);
-        holdExpiryMoment.setDate(holdExpiryMoment.getDate() + STANDARD_HOLD_DAYS);
-
-        if (newEventDate.getTime() < holdExpiryMoment.getTime()) {
+        // Check if we are in "Short Notice" territory
+        if (currentDateTime.getTime() > sevenDaysBeforeEvent.getTime()) {
+             // Short Notice Logic: 48 hours from now, capped at event start
             const shortNoticeExpiry = new Date(currentDateTime);
             shortNoticeExpiry.setDate(shortNoticeExpiry.getDate() + SHORT_NOTICE_HOLD_DAYS);
 
@@ -283,6 +306,14 @@ export class PrivateBookingService {
                 holdExpiryMoment = newEventDate;
             } else {
                 holdExpiryMoment = shortNoticeExpiry;
+            }
+        } else {
+            // Normal Booking Logic: 14 days from now, but NEVER later than 7 days before event
+            holdExpiryMoment = new Date(currentDateTime);
+            holdExpiryMoment.setDate(holdExpiryMoment.getDate() + STANDARD_HOLD_DAYS);
+            
+            if (holdExpiryMoment.getTime() > sevenDaysBeforeEvent.getTime()) {
+                holdExpiryMoment = sevenDaysBeforeEvent;
             }
         }
           
@@ -1085,9 +1116,24 @@ export class PrivateBookingService {
       month: 'long'
     });
 
-    const smsMessage = depositAmount > 0
-      ? `Hi ${booking.customer_first_name}, thanks for your enquiry for ${eventDateReadable} at The Anchor. We are holding this date for you until ${expiryReadable}. To secure it permanently, a deposit of £${formattedDeposit} is required by this date. Reply to this message with any questions.`
-      : `Hi ${booking.customer_first_name}, thanks for your enquiry about private hire at The Anchor on ${eventDateReadable}. We normally require a deposit to secure the date, but we've waived it for you. Reply to this message with any questions.`;
+    // Calculate time difference
+    const today = new Date();
+    const eventDate = new Date(booking.event_date);
+    const diffTime = eventDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+    const isShortNotice = diffDays < 7;
+
+    let smsMessage = "";
+
+    if (depositAmount > 0) {
+        if (isShortNotice) {
+             smsMessage = `Hi ${booking.customer_first_name}, thanks for your enquiry for ${eventDateReadable} at The Anchor. As this is a short-notice private booking, we need to secure the deposit of £${formattedDeposit} as soon as possible to confirm the date. Reply to this message to arrange payment.`;
+        } else {
+             smsMessage = `Hi ${booking.customer_first_name}, thanks for your enquiry for ${eventDateReadable} at The Anchor. We are holding this date for you until ${expiryReadable}. To secure it permanently, a deposit of £${formattedDeposit} is required by this date. Reply to this message with any questions.`;
+        }
+    } else {
+         smsMessage = `Hi ${booking.customer_first_name}, thanks for your enquiry about private hire at The Anchor on ${eventDateReadable}. We normally require a deposit to secure the date, but we've waived it for you. Reply to this message with any questions.`;
+    }
 
     await SmsQueueService.queueAndSend({
       booking_id: booking.id,
