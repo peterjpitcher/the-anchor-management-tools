@@ -88,8 +88,10 @@ export function ShortLinkVolumeModal({ open, onClose }: Props) {
             onChange={(e) => setVolumePeriod(e.target.value)}
             className="sm:w-auto"
           >
+            <option value="3">Last 3 days</option>
             <option value="7">Last 7 days</option>
             <option value="30">Last 30 days</option>
+            <option value="60">Last 60 days</option>
             <option value="90">Last 90 days</option>
           </Select>
 

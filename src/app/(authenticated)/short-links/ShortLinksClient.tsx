@@ -13,8 +13,6 @@ import {
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Button, IconButton } from '@/components/ui-v2/forms/Button'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import toast from 'react-hot-toast'
@@ -144,13 +142,16 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
   }
 
   const navActions = (
-    <NavGroup>
-      <NavLink
+    <div className="flex items-center gap-2">
+      <Button
+        variant="secondary"
+        size="sm"
         onClick={() => setShowInsightsModal(true)}
+        leftIcon={<ChartBarIcon className="h-4 w-4" />}
       >
         Insights
-      </NavLink>
-    </NavGroup>
+      </Button>
+    </div>
   )
 
   const headerActions = canManage ? (
