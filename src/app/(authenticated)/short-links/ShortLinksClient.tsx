@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  LinkIcon,
   ChartBarIcon,
   TrashIcon,
   ClipboardDocumentIcon,
@@ -21,7 +20,6 @@ import {
   deleteShortLink,
   getShortLinks
 } from '@/app/actions/short-links'
-import { ShortLinkVolumeModal } from './components/ShortLinkVolumeModal'
 import { ShortLinkAnalyticsModal } from './components/ShortLinkAnalyticsModal'
 import { ShortLinkFormModal } from './components/ShortLinkFormModal'
 
@@ -48,9 +46,7 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
   const [links, setLinks] = useState<ShortLink[]>(initialLinks)
   const [showFormModal, setShowFormModal] = useState(false)
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false)
-  const [showInsightsModal, setShowInsightsModal] = useState(false)
   const [selectedLink, setSelectedLink] = useState<ShortLink | null>(null)
-  const [activeNav, setActiveNav] = useState<'links' | 'insights'>('links')
 
   const refreshLinks = useCallback(async () => {
     const result = await getShortLinks()
@@ -145,28 +141,15 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
 
   const navItems: HeaderNavItem[] = [
     {
-      label: 'Links',
-      onClick: () => setActiveNav('links'),
-      active: activeNav === 'links'
+      label: 'Overview',
+      href: '/short-links',
+      active: true,
     },
     {
       label: 'Insights',
-      onClick: () => {
-        setActiveNav('insights')
-        setShowInsightsModal(true)
-      },
-      active: activeNav === 'insights'
+      href: '/short-links/insights',
     },
   ]
-
-  // Effect to manage Insights modal visibility based on activeNav
-  useEffect(() => {
-    if (activeNav === 'insights') {
-      setShowInsightsModal(true)
-    } else {
-      setShowInsightsModal(false)
-    }
-  }, [activeNav])
 
   const headerActions = canManage ? (
     <Button
@@ -385,15 +368,8 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
           onClose={() => setShowAnalyticsModal(false)}
           link={selectedLink}
         />
-
-        <ShortLinkVolumeModal
-          open={showInsightsModal}
-          onClose={() => {
-            setShowInsightsModal(false)
-            setActiveNav('links')
-          }}
-        />
       </div>
     </PageLayout>
   )
 }
+
