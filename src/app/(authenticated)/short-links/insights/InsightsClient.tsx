@@ -151,7 +151,7 @@ export function InsightsClient() {
                   />
                 </div>
 
-                <Section title="Link Performance Breakdown" variant="white" padding="none">
+                <Section title="Link Performance Breakdown" padding="none">
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {volumeData.map((item) => (
                       <div key={item.shortCode} className="border rounded-lg p-4 hover:border-blue-300 transition-colors">
