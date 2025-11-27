@@ -2547,7 +2547,7 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
       noReceiptRequired,
       cantFind,
     },
-    needsAttentionValue: pending + cantFind,
+    needsAttentionValue: pending,
     lastImport: lastBatch ?? null,
     openAICost,
   }

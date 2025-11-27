@@ -147,15 +147,15 @@ export async function GET(request: Request) {
     console.log('Starting private booking monitor...')
 
     const now = new Date()
-    const todayIso = toLocalIsoDate(now)
     const stats = { remindersSent: 0, expirationsProcessed: 0, balanceRemindersSent: 0 }
 
-    // --- PASS 1: REMINDERS (7 Days & 1 Day remaining) ---
-    // Find draft bookings where hold_expiry is approaching
+    // --- PASS 1: REMINDERS (Drafts - Catch-up Logic) ---
+    // Find draft bookings where hold_expiry is approaching (<= 7 days)
     const { data: drafts } = await supabase
       .from('private_bookings')
       .select('id, customer_first_name, customer_name, contact_phone, hold_expiry, event_date')
       .eq('status', 'draft')
+      .gt('hold_expiry', now.toISOString()) // Not expired yet
       .not('hold_expiry', 'is', null)
       .not('contact_phone', 'is', null)
     
@@ -167,41 +167,60 @@ export async function GET(request: Request) {
         const diffMs = expiry.getTime() - now.getTime();
         const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 
-        let triggerType: string | null = null;
-        let messageBody: string | null = null;
-
         const eventDateReadable = new Date(booking.event_date).toLocaleDateString('en-GB', { 
           day: 'numeric', month: 'long', year: 'numeric' 
         });
 
-        if (diffDays === 7) {
-          triggerType = 'deposit_reminder_7day';
-          messageBody = `Hi ${booking.customer_first_name}, just a quick reminder that your hold on ${eventDateReadable} expires in 1 week. Please pay the deposit soon to secure the booking.`;
-        } else if (diffDays === 1) {
-          triggerType = 'deposit_reminder_1day';
-          messageBody = `Hi ${booking.customer_first_name}, your hold on ${eventDateReadable} expires tomorrow! Please pay the deposit today to prevent the date being released.`;
+        // 1. Check 7-Day Reminder (Window: 2-7 days)
+        if (diffDays <= 7 && diffDays > 1) {
+            const triggerType = 'deposit_reminder_7day';
+            // Check if ALREADY sent
+            const { count } = await supabase
+                .from('private_booking_sms_queue')
+                .select('*', { count: 'exact', head: true })
+                .eq('booking_id', booking.id)
+                .eq('trigger_type', triggerType);
+            
+            if (count === 0) {
+                const messageBody = `Hi ${booking.customer_first_name}, just a quick reminder that your hold on ${eventDateReadable} expires in ${diffDays} days. Please pay the deposit soon to secure the booking.`;
+                
+                await SmsQueueService.queueAndSend({
+                    booking_id: booking.id,
+                    trigger_type: triggerType,
+                    template_key: `private_booking_${triggerType}`,
+                    message_body: messageBody,
+                    customer_phone: booking.contact_phone,
+                    customer_name: booking.customer_name,
+                    priority: 2
+                });
+                stats.remindersSent++;
+            }
         }
 
-        if (triggerType && messageBody) {
-           // Check if already sent
-           const { count } = await supabase
-             .from('private_booking_sms_queue')
-             .select('*', { count: 'exact', head: true })
-             .eq('booking_id', booking.id)
-             .eq('trigger_type', triggerType);
+        // 2. Check 1-Day Reminder (Window: <= 1 day)
+        if (diffDays <= 1 && diffDays > 0) {
+            const triggerType = 'deposit_reminder_1day';
+            // Check if ALREADY sent
+            const { count } = await supabase
+                .from('private_booking_sms_queue')
+                .select('*', { count: 'exact', head: true })
+                .eq('booking_id', booking.id)
+                .eq('trigger_type', triggerType);
 
-           if (count === 0) {
-             await SmsQueueService.queueAndSend({
-               booking_id: booking.id,
-               trigger_type: triggerType,
-               template_key: `private_booking_${triggerType}`,
-               message_body: messageBody,
-               customer_phone: booking.contact_phone,
-               customer_name: booking.customer_name,
-               priority: 2
-             });
-             stats.remindersSent++;
-           }
+            if (count === 0) {
+                const messageBody = `Hi ${booking.customer_first_name}, your hold on ${eventDateReadable} expires tomorrow! Please pay the deposit today to prevent the date being released.`;
+                
+                await SmsQueueService.queueAndSend({
+                    booking_id: booking.id,
+                    trigger_type: triggerType,
+                    template_key: `private_booking_${triggerType}`,
+                    message_body: messageBody,
+                    customer_phone: booking.contact_phone,
+                    customer_name: booking.customer_name,
+                    priority: 2
+                });
+                stats.remindersSent++;
+            }
         }
       }
     }
@@ -221,18 +240,14 @@ export async function GET(request: Request) {
       }
     }
 
-    // --- PASS 3: BALANCE REMINDERS (14 days before event) ---
-    // Find confirmed bookings where event is in 14 days and balance > 0
-    // We assume total_amount and deposit_amount are set. Need to check other payments?
-    // Ideally we query bookings and calculate balance. 
-    // For simplicity in SQL: total_amount > (deposit_amount + COALESCE(total_other_payments, 0))
-    // But 'other payments' aren't easily summed in a simple query unless we join. 
-    // Let's fetch candidates and check balance in code.
+    // --- PASS 3: BALANCE REMINDERS (Confirmed - Catch-up Logic) ---
+    // Find confirmed bookings where event is <= 14 days away and balance > 0
     
     const fourteenDaysFromNow = new Date(now);
     fourteenDaysFromNow.setDate(now.getDate() + 14);
-    const targetDateIso = toLocalIsoDate(fourteenDaysFromNow);
-
+    // Reset time to end of day to ensure we catch events on the 14th day fully? 
+    // Actually, simplest is just strict ISO string comparison.
+    
     const { data: confirmedBookings } = await supabase
       .from('private_bookings')
       .select(`
@@ -241,7 +256,8 @@ export async function GET(request: Request) {
          final_payment_date
       `)
       .eq('status', 'confirmed')
-      .eq('event_date', targetDateIso)
+      .gt('event_date', now.toISOString()) // Future events only
+      .lte('event_date', fourteenDaysFromNow.toISOString()) // <= 14 days away
       .not('contact_phone', 'is', null);
 
     if (confirmedBookings) {
@@ -249,16 +265,11 @@ export async function GET(request: Request) {
         if (!booking.contact_phone) continue;
 
         // Simple balance check: if final payment date is set, assume paid.
-        // Or check amounts.
         const isPaid = !!booking.final_payment_date;
         
         if (!isPaid) {
            const triggerType = 'balance_reminder_14day';
-           const eventDateReadable = new Date(booking.event_date).toLocaleDateString('en-GB', { 
-              day: 'numeric', month: 'long', year: 'numeric' 
-           });
-           const messageBody = `Hi ${booking.customer_first_name}, your event on ${eventDateReadable} is coming up soon! Just a reminder that the final balance is due today. Can you please arrange payment?`;
-
+           
            // Check duplicate
            const { count } = await supabase
              .from('private_booking_sms_queue')
@@ -267,6 +278,12 @@ export async function GET(request: Request) {
              .eq('trigger_type', triggerType);
 
            if (count === 0) {
+             const eventDateReadable = new Date(booking.event_date).toLocaleDateString('en-GB', { 
+                day: 'numeric', month: 'long', year: 'numeric' 
+             });
+             
+             const messageBody = `Hi ${booking.customer_first_name}, your event on ${eventDateReadable} is coming up soon! Just a reminder that the final balance is due. Can you please arrange payment?`;
+
              await SmsQueueService.queueAndSend({
                booking_id: booking.id,
                trigger_type: triggerType,

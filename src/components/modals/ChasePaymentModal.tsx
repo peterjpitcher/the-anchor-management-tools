@@ -1,13 +1,13 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { sendChasePaymentEmail } from '@/app/actions/email'
+import { sendChasePaymentEmail, getInvoiceEmailLogs } from '@/app/actions/email'
 import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { Send, Clock } from 'lucide-react'
+import { Send, Clock, AlertTriangle } from 'lucide-react'
 import type { InvoiceWithDetails } from '@/types/invoices'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 
@@ -25,6 +25,8 @@ export function ChasePaymentModal({ invoice, isOpen, onClose, onSuccess }: Chase
   const [ccEmails, setCcEmails] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [lastChaseDate, setLastChaseDate] = useState<string | null>(null)
+  const [recentChaseWarning, setRecentChaseWarning] = useState<boolean>(false)
   
   // Calculate days overdue
   const dueDate = new Date(invoice.due_date)
@@ -51,6 +53,27 @@ Orange Jelly Limited
 
 P.S. I've attached a copy of the invoice for your reference.`
   )
+
+  // Load email logs
+  useEffect(() => {
+    if (!isOpen) return
+    
+    async function checkLogs() {
+      const result = await getInvoiceEmailLogs(invoice.id)
+      if (result.logs && result.logs.length > 0) {
+        const lastLog = result.logs[0]
+        setLastChaseDate(lastLog.created_at)
+        
+        // Check if less than 48 hours
+        const lastDate = new Date(lastLog.created_at)
+        const diffHours = (new Date().getTime() - lastDate.getTime()) / (1000 * 60 * 60)
+        if (diffHours < 48) {
+          setRecentChaseWarning(true)
+        }
+      }
+    }
+    checkLogs()
+  }, [isOpen, invoice.id])
 
   // Prefill To with Primary contact, CC with all other contacts + vendor default emails (excluding Primary)
   useEffect(() => {
@@ -148,6 +171,15 @@ P.S. I've attached a copy of the invoice for your reference.`
             <p className="text-sm text-gray-600">Invoice is {daysOverdue} {daysOverdue === 1 ? 'day' : 'days'} overdue</p>
           </div>
         </div>
+
+        {recentChaseWarning && lastChaseDate && (
+          <Alert 
+            variant="warning" 
+            title="Recent Reminder Sent"
+            description={`A payment reminder was already sent on ${new Date(lastChaseDate).toLocaleDateString('en-GB')} at ${new Date(lastChaseDate).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}. Sending another one so soon might be aggressive.`}
+            className="mb-4"
+          />
+        )}
 
         {error && (
           <Alert variant="error">{error}</Alert>

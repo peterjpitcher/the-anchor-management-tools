@@ -1595,7 +1595,9 @@ export default function PrivateBookingDetailClient({
     const labels: Record<string, string> = {
       note_added: 'Added a note',
       contract_generated: 'Generated contract',
-      status_updated: 'Updated status'
+      status_updated: 'Updated status',
+      sms_sent: 'Sent SMS',
+      email_sent: 'Sent Email'
     }
 
     if (labels[action]) {
@@ -1609,7 +1611,18 @@ export default function PrivateBookingDetailClient({
   }
 
   const getAuditDetails = (entry: AuditEntry): string | null => {
-    const metadata = (entry.metadata ?? {}) as Record<string, unknown>
+    let metadata = (entry.metadata ?? {}) as Record<string, unknown>
+
+    // Handle stringified JSON
+    if (typeof metadata === 'string') {
+      try {
+        metadata = JSON.parse(metadata)
+      } catch {
+        // If parsing fails, treat it as an empty object or log error
+        console.error('Failed to parse metadata JSON:', metadata)
+        metadata = {}
+      }
+    }
 
     if (entry.action === 'note_added') {
       if (typeof metadata.note_text === 'string' && metadata.note_text.trim().length > 0) {
@@ -1626,6 +1639,26 @@ export default function PrivateBookingDetailClient({
         return `Generated contract version ${metadata.contract_version}.`
       }
       return 'Generated updated contract.'
+    }
+
+    if (entry.action === 'sms_sent' || entry.action === 'sms_failed' || entry.action === 'sms_queued') {
+      const parts = [];
+      
+      const recipient = metadata.recipient || metadata.to || metadata.customer_phone;
+      if (recipient) {
+        parts.push(`To: ${recipient}`);
+      }
+
+      const messageBody = metadata.message || metadata.message_body || metadata.body;
+      if (messageBody) {
+        parts.push(`"${messageBody}"`);
+      }
+
+      if (entry.action === 'sms_failed' && metadata.error) {
+        parts.push(`Error: ${metadata.error}`);
+      }
+      
+      return parts.length > 0 ? parts.join('\n') : 'SMS details unavailable.'
     }
 
     if (entry.field_name && entry.old_value && entry.new_value) {

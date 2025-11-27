@@ -17,7 +17,7 @@ interface ReceiptFiltersProps {
     missingVendorOnly: boolean
     missingExpenseOnly: boolean
     search: string
-    month: string
+    month?: string
   }
   availableMonths: string[]
 }
@@ -142,6 +142,15 @@ export function ReceiptFilters({ filters, availableMonths }: ReceiptFiltersProps
           className="flex w-full flex-nowrap items-center gap-2 overflow-x-auto pb-1"
           style={{ WebkitOverflowScrolling: 'touch' }}
         >
+          <Button
+            variant="ghost"
+            size="xs"
+            active={!filters.month}
+            onClick={() => updateQuery({ month: null })}
+            className="whitespace-nowrap flex-shrink-0"
+          >
+            All time
+          </Button>
           {monthOptions.map((monthValue) => {
             const isActive = monthValue === filters.month
             return (

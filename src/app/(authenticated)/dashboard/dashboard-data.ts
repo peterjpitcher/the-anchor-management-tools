@@ -831,7 +831,7 @@ const fetchDashboardSnapshot = unstable_cache(
 
           receipts.pendingCount = pending
           receipts.cantFindCount = cantFind
-          receipts.needsAttention = pending + cantFind
+          receipts.needsAttention = pending
           receipts.lastImportAt = lastBatchResult.data?.uploaded_at ?? null
 
           if (openAiResult.error) {

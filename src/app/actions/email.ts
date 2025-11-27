@@ -7,6 +7,7 @@ import { sendInvoiceEmail, sendQuoteEmail, testEmailConnection, isGraphConfigure
 import { getInvoice } from './invoices'
 import { getQuote } from './quotes'
 import { z } from 'zod'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 // Email validation schema
 const SendInvoiceEmailSchema = z.object({
@@ -22,6 +23,38 @@ const SendQuoteEmailSchema = z.object({
   subject: z.string().optional(),
   body: z.string().optional()
 })
+
+// Get email logs for an invoice
+export async function getInvoiceEmailLogs(invoiceId: string) {
+  try {
+    // Check permissions
+    const hasPermission = await checkUserPermission('invoices', 'view')
+    if (!hasPermission) {
+      return { error: 'You do not have permission to view email logs' }
+    }
+
+    // Use admin client to bypass restrictive RLS on logs table if necessary,
+    // or standard client if policy allows. Given the investigation findings,
+    // we should use admin client for reading logs but ensure we validate access first.
+    const supabase = createAdminClient()
+
+    const { data: logs, error } = await supabase
+      .from('invoice_email_logs')
+      .select('*')
+      .eq('invoice_id', invoiceId)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Error fetching email logs:', error)
+      return { error: 'Failed to fetch email logs' }
+    }
+
+    return { logs }
+  } catch (error) {
+    console.error('Error in getInvoiceEmailLogs:', error)
+    return { error: 'An unexpected error occurred' }
+  }
+}
 
 // Send invoice via email
 export async function sendInvoiceViaEmail(formData: FormData) {
@@ -378,7 +411,7 @@ export async function sendQuoteViaEmail(formData: FormData) {
     const subjectQ = validatedData.subject || `Quote ${quote.quote_number} from Orange Jelly Limited`
     const bodyQ = validatedData.body || 'Default quote email template used'
     await supabase.from('invoice_email_logs').insert({
-      invoice_id: validatedData.quoteId,
+      invoice_id: validatedData.quoteId, // NOTE: This column likely refers to a generic 'resource_id' or the schema is shared. If 'quote_id' exists it should be used, but based on existing code it seems shared or reused.
       sent_to: toAddress,
       sent_by: senderIdQ,
       subject: subjectQ,
