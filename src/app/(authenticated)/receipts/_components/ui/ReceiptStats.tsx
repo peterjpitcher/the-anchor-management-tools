@@ -63,7 +63,7 @@ export function ReceiptStats({ summary }: ReceiptStatsProps) {
       <SummaryCard title="Completed" value={summary.totals.completed} tone="success" />
       <SummaryCard title="Auto-matched" value={summary.totals.autoCompleted} tone="info" />
       <SummaryCard title="No receipt required" value={summary.totals.noReceiptRequired} tone="neutral" />
-      <SummaryCard title="Can't find" value={summary.totals.cantFind} tone="danger" />
+      <SummaryCard title="Can't find" value={summary.totals.cantFind} tone="neutral" />
     </div>
   )
 }

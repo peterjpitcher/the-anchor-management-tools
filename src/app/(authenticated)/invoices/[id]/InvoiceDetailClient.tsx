@@ -171,9 +171,10 @@ export default function InvoiceDetailClient({
   const { totals: invoiceTotals, lineTotals } = invoiceMath
 
   const navActions = (
-    <NavGroup>
+    <NavGroup variant="light">
       {invoice.status === 'draft' && canEdit && (
         <NavLink
+          variant="light"
           onClick={actionLoading || !canEdit ? undefined : () => handleStatusChange('sent')}
           disabled={actionLoading || !canEdit}
         >
@@ -184,14 +185,15 @@ export default function InvoiceDetailClient({
       )}
 
       {invoice.status === 'draft' && canEdit && (
-        <NavLink href={`/invoices/${invoice.id}/edit`}>
+        <NavLink variant="light" href={`/invoices/${invoice.id}/edit`}>
           <Edit className="h-4 w-4" />
           Edit
         </NavLink>
       )}
 
-      {invoice.status === 'sent' && canEdit && (
+      {(invoice.status === 'sent' || invoice.status === 'overdue' || invoice.status === 'partially_paid') && canEdit && (
         <NavLink
+          variant="light"
           onClick={actionLoading || !canEdit ? undefined : () => handleStatusChange('paid')}
           disabled={actionLoading || !canEdit}
         >
@@ -203,6 +205,7 @@ export default function InvoiceDetailClient({
 
       {emailConfigured && canEdit && (
         <NavLink
+          variant="light"
           onClick={actionLoading || !canEdit ? undefined : () => setShowEmailModal(true)}
           disabled={actionLoading || !canEdit}
         >
@@ -214,6 +217,7 @@ export default function InvoiceDetailClient({
 
       {emailConfigured && canEdit && (invoice.status === 'overdue' || (invoice.status === 'sent' && new Date(invoice.due_date) < new Date())) && (
         <NavLink
+          variant="light"
           onClick={actionLoading || !canEdit ? undefined : () => setShowChaseModal(true)}
           disabled={actionLoading || !canEdit}
         >
@@ -224,6 +228,7 @@ export default function InvoiceDetailClient({
       )}
 
       <NavLink
+        variant="light"
         onClick={actionLoading ? undefined : () => window.open(`/api/invoices/${invoice.id}/pdf`, '_blank')}
         disabled={actionLoading}
       >
@@ -234,9 +239,10 @@ export default function InvoiceDetailClient({
 
       {invoice.status === 'draft' && canDelete && (
         <NavLink
+          variant="light"
           onClick={actionLoading ? undefined : () => setShowDeleteConfirm(true)}
           disabled={actionLoading}
-          className="text-red-200"
+          className="text-red-600 hover:text-red-700 hover:border-red-300"
         >
           <Trash2 className="h-4 w-4" />
           Delete

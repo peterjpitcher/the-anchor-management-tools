@@ -52,7 +52,13 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
   const sortDirection = rawSortDirection === 'asc' ? 'asc' : 'desc'
 
   const rawMonth = typeof resolvedParams?.month === 'string' ? resolvedParams.month : undefined
-  const month = resolveMonthParam(rawMonth)
+  
+  let month: string | undefined
+  if (rawMonth) {
+    month = resolveMonthParam(rawMonth)
+  } else if (!showOnlyOutstanding) {
+    month = resolveMonthParam(undefined)
+  }
 
   const rawPage = typeof resolvedParams?.page === 'string' ? resolvedParams.page : undefined
   const page = rawPage ? parseInt(rawPage, 10) : 1
@@ -74,6 +80,7 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
 
   if (
     !rawMonth &&
+    month &&
     data.transactions.length === 0 &&
     data.availableMonths.length > 0 &&
     !data.availableMonths.includes(month)

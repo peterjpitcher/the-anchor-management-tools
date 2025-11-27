@@ -27,7 +27,7 @@ interface ReceiptsClientProps {
     missingVendorOnly: boolean
     missingExpenseOnly: boolean
     search: string
-    month: string
+    month?: string
     sortBy?: ReceiptWorkspaceFilters['sortBy']
     sortDirection?: 'asc' | 'desc'
   }
