@@ -15,6 +15,7 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { Button, IconButton } from '@/components/ui-v2/forms/Button'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { Badge } from '@/components/ui-v2/display/Badge'
+import { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 import toast from 'react-hot-toast'
 import {
   deleteShortLink,
@@ -49,6 +50,7 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false)
   const [showInsightsModal, setShowInsightsModal] = useState(false)
   const [selectedLink, setSelectedLink] = useState<ShortLink | null>(null)
+  const [activeNav, setActiveNav] = useState<'links' | 'insights'>('links')
 
   const refreshLinks = useCallback(async () => {
     const result = await getShortLinks()
@@ -141,18 +143,30 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
     }
   }
 
-  const navActions = (
-    <div className="flex items-center gap-2">
-      <Button
-        variant="secondary"
-        size="sm"
-        onClick={() => setShowInsightsModal(true)}
-        leftIcon={<ChartBarIcon className="h-4 w-4" />}
-      >
-        Insights
-      </Button>
-    </div>
-  )
+  const navItems: HeaderNavItem[] = [
+    {
+      label: 'Links',
+      onClick: () => setActiveNav('links'),
+      active: activeNav === 'links'
+    },
+    {
+      label: 'Insights',
+      onClick: () => {
+        setActiveNav('insights')
+        setShowInsightsModal(true)
+      },
+      active: activeNav === 'insights'
+    },
+  ]
+
+  // Effect to manage Insights modal visibility based on activeNav
+  useEffect(() => {
+    if (activeNav === 'insights') {
+      setShowInsightsModal(true)
+    } else {
+      setShowInsightsModal(false)
+    }
+  }, [activeNav])
 
   const headerActions = canManage ? (
     <Button
@@ -172,7 +186,7 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
         label: 'Back to Settings',
         href: '/settings'
       }}
-      navActions={navActions}
+      navItems={navItems}
       headerActions={headerActions}
     >
       <div className="space-y-6">
@@ -374,7 +388,10 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
 
         <ShortLinkVolumeModal
           open={showInsightsModal}
-          onClose={() => setShowInsightsModal(false)}
+          onClose={() => {
+            setShowInsightsModal(false)
+            setActiveNav('links')
+          }}
         />
       </div>
     </PageLayout>
