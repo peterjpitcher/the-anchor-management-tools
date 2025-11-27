@@ -39,8 +39,13 @@ function isPublicPath(pathname: string) {
   return false;
 }
 
-function isVipHost(hostname: string) {
-  return hostname === 'vip-club.uk' || hostname.endsWith('.vip-club.uk')
+function isShortLinkHost(hostname: string) {
+  return (
+    hostname === 'vip-club.uk' || 
+    hostname.endsWith('.vip-club.uk') ||
+    hostname === 'the-anchor.pub' ||
+    hostname.endsWith('.the-anchor.pub')
+  )
 }
 
 function sanitizeRedirectTarget(url: URL) {
@@ -57,7 +62,7 @@ function sanitizeRedirectTarget(url: URL) {
 
 export async function middleware(request: NextRequest) {
   const hostname = request.headers.get('host') || ''
-  if (isVipHost(hostname)) {
+  if (isShortLinkHost(hostname)) {
     return NextResponse.next()
   }
 

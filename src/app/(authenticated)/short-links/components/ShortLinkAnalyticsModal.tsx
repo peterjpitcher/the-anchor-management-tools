@@ -45,7 +45,7 @@ interface Props {
   onClose: () => void
 }
 
-const SHORT_LINK_BASE_URL = 'https://vip-club.uk'
+const SHORT_LINK_BASE_URL = 'https://the-anchor.pub/l'
 
 export function ShortLinkAnalyticsModal({ link, open, onClose }: Props) {
   const [analytics, setAnalytics] = useState<ShortLinkAnalytics | null>(null)

@@ -1,6 +1,26 @@
 {
   "rewrites": [
     {
+      "source": "/l/:code",
+      "destination": "/api/redirect/:code",
+      "has": [
+        {
+          "type": "host",
+          "value": "the-anchor.pub"
+        }
+      ]
+    },
+    {
+      "source": "/l/:code",
+      "destination": "/api/redirect/:code",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.the-anchor.pub"
+        }
+      ]
+    },
+    {
       "source": "/",
       "destination": "/api/redirect",
       "has": [

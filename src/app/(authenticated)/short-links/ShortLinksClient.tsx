@@ -40,7 +40,7 @@ interface Props {
   canManage: boolean
 }
 
-const SHORT_LINK_BASE_URL = 'https://vip-club.uk'
+const SHORT_LINK_BASE_URL = 'https://the-anchor.pub/l'
 
 export default function ShortLinksClient({ initialLinks, canManage }: Props) {
   const [links, setLinks] = useState<ShortLink[]>(initialLinks)
