@@ -27,6 +27,7 @@ export type AiParsedIngredient = {
 export type AiParsingResult = {
   success: boolean
   data?: AiParsedIngredient
+  warnings?: string[]
   error?: string
   usage?: {
     promptTokens: number
@@ -60,16 +61,10 @@ function calculateOpenAICost(model: string, promptTokens: number, completionToke
   return Number((promptCost + completionCost).toFixed(6))
 }
 
-type SanityCheckResult = {
-  ok: boolean
-  issues: string[]
-  aiNotes?: string[]
-}
-
 function validateIngredientLocally(ing: AiParsedIngredient): string[] {
   const issues: string[] = []
 
-  if (!ing.name?.trim()) issues.push('Missing name')
+  if (!ing.name?.trim()) issues.push('Product name is missing')
   if (ing.pack_cost != null && ing.pack_cost < 0) issues.push('Pack cost cannot be negative')
   if (ing.portions_per_pack != null && ing.portions_per_pack <= 0) issues.push('Portions per pack must be greater than zero')
   if (ing.wastage_pct < 0 || ing.wastage_pct > 100) issues.push('Wastage percentage must be between 0 and 100')
@@ -77,75 +72,12 @@ function validateIngredientLocally(ing: AiParsedIngredient): string[] {
   if (ing.pack_cost != null && ing.portions_per_pack) {
     const unitCost = ing.pack_cost / ing.portions_per_pack
     if (Number.isFinite(unitCost)) {
-      if (unitCost > 200) issues.push(`Unit cost (£${unitCost.toFixed(2)}) looks very high`)
-      if (unitCost < 0.001) issues.push(`Unit cost (£${unitCost.toFixed(4)}) looks too low`)
+      if (unitCost > 200) issues.push(`Warning: High unit cost detected (£${unitCost.toFixed(2)} per portion)`)
+      if (unitCost < 0.001) issues.push(`Warning: Extremely low unit cost detected (£${unitCost.toFixed(4)} per portion)`)
     }
   }
 
   return issues
-}
-
-export async function sanityCheckIngredient(ing: AiParsedIngredient): Promise<SanityCheckResult> {
-  const issues = validateIngredientLocally(ing)
-
-  if (issues.length > 0) {
-    return { ok: false, issues }
-  }
-
-  const { apiKey, baseUrl } = await getOpenAIConfig()
-  if (!apiKey) {
-    return { ok: true, issues, aiNotes: ['AI check skipped: no API key configured'] }
-  }
-
-  const systemPrompt = `You are validating a restaurant ingredient record.
-Return strict JSON with: ok (boolean) and issues (array of short strings).
-Flag only obvious mistakes (impossible prices, missing essentials, inconsistent dietary flags, missing allergens when obvious).
-If vegan => also vegetarian and dairy_free. Be concise.`
-
-  const trimmedPayload = JSON.stringify(ing).slice(0, 4000)
-
-  const response = await retry(
-    () =>
-      fetch(`${baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          max_tokens: 200,
-          response_format: { type: 'json_object' },
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Ingredient JSON:\n${trimmedPayload}` },
-          ],
-        }),
-      }),
-    { maxAttempts: 3, delay: 300, backoff: 'linear' }
-  )
-
-  if (!response.ok) {
-    return { ok: true, issues, aiNotes: ['AI check skipped: request failed'] }
-  }
-
-  let aiResult: { ok?: boolean; issues?: string[] } = {}
-  try {
-    const payload = await response.json()
-    const content = payload?.choices?.[0]?.message?.content
-    if (content) {
-      aiResult = JSON.parse(content)
-    }
-  } catch (error) {
-    console.error('AI sanity parse error:', error)
-    return { ok: true, issues, aiNotes: ['AI check returned unparsable response'] }
-  }
-
-  const aiIssues = Array.isArray(aiResult.issues) ? aiResult.issues.filter(Boolean) : []
-  const combinedIssues = [...issues, ...aiIssues]
-  const ok = Boolean(aiResult.ok ?? combinedIssues.length === 0)
-
-  return { ok, issues: combinedIssues, aiNotes: aiIssues }
 }
 
 export async function parseIngredientWithAI(rawData: string): Promise<AiParsingResult> {
@@ -175,6 +107,7 @@ Also, use your general knowledge about food to populate dietary flags (vegan, ve
 For allergens, generally be conservative, BUT if the product clearly contains or IS a common allergen, mark it.
 - Example: "Plain Flour" -> Contains Gluten.
 - Example: "Double Cream" -> Contains Milk.
+- CRITICAL: If the text says "Gluten Free", do NOT mark 'gluten' as an allergen. If it says "Dairy Free", do NOT mark 'milk'.
 
 IMPORTANT: Enforce logical hierarchy for dietary flags:
 - If an item is "vegan", it is AUTOMATICALLY "vegetarian" and "dairy_free".
@@ -195,7 +128,7 @@ If the input is HTML from a supplier website, look for 'ingredients', 'nutrition
           model,
           messages: [
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Here is the raw product data:\n\n${rawData.slice(0, 100000)}` }, // Increased limit to 100k chars
+            { role: 'user', content: `Here is the raw product data:\n\n<input>\n${rawData.slice(0, 100000)}\n</input>` },
           ],
           response_format: {
             type: 'json_schema',
@@ -277,6 +210,9 @@ If the input is HTML from a supplier website, look for 'ingredients', 'nutrition
       return { success: false, error: 'Failed to parse AI response' }
     }
 
+    // Run local validation
+    const warnings = validateIngredientLocally(parsedData)
+
     // Calculate usage stats
     const usage = payload.usage ? {
       promptTokens: payload.usage.prompt_tokens,
@@ -287,11 +223,102 @@ If the input is HTML from a supplier website, look for 'ingredients', 'nutrition
     return {
       success: true,
       data: parsedData,
+      warnings,
       usage
     }
 
   } catch (err: any) {
     console.error('parseIngredientWithAI error:', err)
     return { success: false, error: err.message || 'Internal server error' }
+  }
+}
+
+export type ReviewSuggestion = {
+  field: keyof AiParsedIngredient
+  suggestedValue: any
+  reason: string
+}
+
+export type ReviewResult = {
+  valid: boolean
+  issues: string[]
+  suggestions: ReviewSuggestion[]
+}
+
+export async function reviewIngredientWithAI(ingredient: AiParsedIngredient): Promise<ReviewResult> {
+  try {
+    const { apiKey, baseUrl } = await getOpenAIConfig()
+
+    if (!apiKey) {
+      return { valid: true, issues: ['AI review skipped: No API key'], suggestions: [] }
+    }
+
+    const systemPrompt = `You are a strict logic checker for restaurant ingredient data. 
+Review the provided JSON for logical contradictions, impossible values, or missing critical information.
+
+If you find an error that can be fixed, provide a 'suggestion' to correct the specific field.
+If there is a general issue that cannot be fixed by changing a field, add it to 'issues'.
+
+CRITICAL: Check for missing dietary flags based on general food knowledge.
+- If the product is inherently Vegan (e.g. "Carrots", "Rice", "Apple"), suggest adding ["vegan", "vegetarian", "dairy_free"] if they are missing.
+- If the product is inherently Gluten Free (e.g. "Potato", "Rice", "Meat"), suggest adding "gluten_free" if missing.
+- If the product is "Milk" or "Cream", suggest adding "dairy_free" flag removal (if present) and ensure "Milk" is in allergens.
+
+Examples of corrections:
+- If Name is "Beef" but marked Vegan -> Suggest removing Vegan flag.
+- If Name is "Flour" but not marked Gluten -> Suggest adding Gluten allergen.
+- If Name is "Carrots" and dietary_flags is empty -> Suggest adding ["vegan", "vegetarian", "gluten_free", "dairy_free"].
+- If Wastage is 0 but product is fresh produce -> Suggest a typical wastage (e.g. 10%).
+- If Unit Cost is calculated to be near 0 -> Suggest checking Pack Cost or Portions.
+
+Return valid JSON object with this structure:
+{
+  "valid": boolean,
+  "issues": string[],
+  "suggestions": [
+    { 
+      "field": "string (must match input key)", 
+      "suggestedValue": "any (string, number, array, etc)", 
+      "reason": "string" 
+    }
+  ]
+}
+
+Be concise.`
+
+    const response = await retry(
+      async () => fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: JSON.stringify(ingredient) },
+          ],
+          response_format: { type: 'json_object' }
+        }),
+      }),
+      RetryConfigs.api
+    )
+
+    if (!response.ok) {
+      console.error(`AI Review API Error: ${response.status} ${response.statusText}`)
+      return { valid: true, issues: ['AI review failed (API error)'], suggestions: [] }
+    }
+
+    const payload = await response.json()
+    const content = payload.choices?.[0]?.message?.content
+
+    if (!content) return { valid: true, issues: [], suggestions: [] }
+
+    return JSON.parse(content)
+
+  } catch (error) {
+    console.error('reviewIngredientWithAI error:', error)
+    return { valid: true, issues: ['AI review failed (System error)'], suggestions: [] }
   }
 }

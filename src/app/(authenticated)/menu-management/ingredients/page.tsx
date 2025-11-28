@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { Card } from '@/components/ui-v2/layout/Card';
@@ -20,6 +20,7 @@ import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { toast } from '@/components/ui-v2/feedback/Toast';
 import { usePermissions } from '@/contexts/PermissionContext';
 import { SmartImportModal } from '@/components/features/menu/SmartImportModal';
+import { reviewIngredientWithAI, type ReviewResult, type ReviewSuggestion } from '@/app/actions/ai-menu-parsing';
 
 const UNITS = [
   { value: 'each', label: 'Each' },
@@ -238,6 +239,8 @@ export default function MenuIngredientsPage() {
   const [priceHistory, setPriceHistory] = useState<IngredientPriceEntry[]>([]);
   const [priceHistoryLoading, setPriceHistoryLoading] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [reviewResult, setReviewResult] = useState<ReviewResult | null>(null);
   const canManage = hasPermission('menu_management', 'manage');
   const [quickFilter, setQuickFilter] = useState('');
   const unknownAllergens = useMemo(
@@ -248,6 +251,8 @@ export default function MenuIngredientsPage() {
     () => formState.dietary_flags.filter(value => !DIETARY_VALUES.includes(value)),
     [formState.dietary_flags],
   );
+
+  const modalTopRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadIngredients();
@@ -350,6 +355,7 @@ export default function MenuIngredientsPage() {
   function openCreateModal() {
     setEditingIngredient(null);
     setFormState(createDefaultFormState());
+    setReviewResult(null);
     setShowModal(true);
   }
 
@@ -374,7 +380,86 @@ export default function MenuIngredientsPage() {
       notes: ingredient.notes || '',
       is_active: ingredient.is_active,
     });
+    setReviewResult(null);
     setShowModal(true);
+  }
+
+  async function handleReview() {
+    setReviewing(true);
+    setReviewResult(null);
+    try {
+      const payload = {
+        name: formState.name,
+        description: formState.description || null,
+        supplier_name: formState.supplier_name || null,
+        supplier_sku: formState.supplier_sku || null,
+        brand: formState.brand || null,
+        pack_size: parseFloat(formState.pack_size) || null,
+        pack_size_unit: formState.pack_size_unit,
+        pack_cost: parseFloat(formState.pack_cost) || null,
+        portions_per_pack: parseFloat(formState.portions_per_pack) || null,
+        wastage_pct: parseFloat(formState.wastage_pct) || 0,
+        storage_type: formState.storage_type,
+        allergens: formState.allergens,
+        dietary_flags: formState.dietary_flags,
+        notes: formState.notes || null,
+      };
+
+      const result = await reviewIngredientWithAI(payload);
+      setReviewResult(result);
+      
+      if (result.valid && result.issues.length === 0 && result.suggestions.length === 0) {
+        toast.success('AI Review passed: No logical issues found.');
+      } else {
+        toast.error('AI Review found potential issues.');
+      }
+      
+      // Scroll to top to show alerts
+      setTimeout(() => {
+        modalTopRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+
+    } catch (err) {
+      console.error(err);
+      toast.error('Review failed');
+    } finally {
+      setReviewing(false);
+    }
+  }
+
+  function applySuggestion(suggestion: ReviewSuggestion) {
+    setFormState((prev) => {
+      const next = { ...prev };
+      const val = suggestion.suggestedValue;
+      
+      // Handle specific conversions if needed (e.g. array to string, number to string)
+      if (suggestion.field === 'allergens' || suggestion.field === 'dietary_flags') {
+        (next as any)[suggestion.field] = Array.isArray(val) ? val : [];
+      } else if (typeof val === 'number') {
+        (next as any)[suggestion.field] = val.toString();
+      } else {
+        (next as any)[suggestion.field] = val ?? '';
+      }
+      
+      return next;
+    });
+
+    // Remove applied suggestion from the list
+    setReviewResult((prev) => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        suggestions: prev.suggestions.filter((s) => s !== suggestion),
+      };
+    });
+    
+    toast.success(`Applied change to ${suggestion.field}`);
+  }
+
+  function formatValue(val: any): string {
+    if (Array.isArray(val)) return val.join(', ');
+    if (val === null || val === undefined) return '—';
+    return val.toString();
   }
 
   async function handleSave() {
@@ -733,6 +818,7 @@ export default function MenuIngredientsPage() {
         size="xl"
         className="sm:max-w-5xl"
       >
+        <div ref={modalTopRef} />
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -740,12 +826,53 @@ export default function MenuIngredientsPage() {
           }}
           className="space-y-8"
         >
-          <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-            Capture supplier, costing, and allergen information here so every dish uses accurate data. Update pack costs
-            whenever invoices change to keep GP alerts reliable.
-          </div>
+          {reviewResult && (
+            <div className="space-y-4 mb-6">
+              {reviewResult.issues.length > 0 && (
+                <Alert variant="warning" title="AI Review Findings">
+                  <ul className="list-disc list-inside text-sm space-y-1">
+                    {reviewResult.issues.map((issue, idx) => (
+                      <li key={idx}>{issue}</li>
+                    ))}
+                  </ul>
+                </Alert>
+              )}
 
-          <div className="space-y-4">
+              {reviewResult.suggestions.length > 0 && (
+                <Alert variant="info" title="Suggested Corrections">
+                  <div className="mt-2 space-y-2">
+                    {reviewResult.suggestions.map((suggestion, idx) => (
+                      <div key={idx} className="flex items-start justify-between gap-4 bg-white p-2 rounded border border-blue-100">
+                        <div className="text-sm">
+                          <div className="font-medium text-gray-900">
+                            {suggestion.field}: <span className="text-gray-500 line-through">{formatValue((formState as any)[suggestion.field])}</span> <span className="text-blue-600">→ {formatValue(suggestion.suggestedValue)}</span>
+                          </div>
+                          <div className="text-gray-600 text-xs mt-0.5">{suggestion.reason}</div>
+                        </div>
+                        <Button size="xs" variant="secondary" onClick={() => applySuggestion(suggestion)}>
+                          Apply
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </Alert>
+              )}
+
+              {!reviewResult.valid && reviewResult.issues.length === 0 && reviewResult.suggestions.length === 0 && (
+                <Alert variant="error" title="Review Failed">
+                  The AI marked this data as invalid but provided no specific reasons. Please check the fields manually.
+                </Alert>
+              )}
+
+              {reviewResult.valid && reviewResult.issues.length === 0 && reviewResult.suggestions.length === 0 && (
+                <Alert variant="success" title="AI Review Passed">
+                  No logical inconsistencies found.
+                </Alert>
+              )}
+            </div>
+          )}
+
+          <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Ingredient basics</h3>
               <p className="text-sm text-gray-600">
@@ -987,6 +1114,14 @@ export default function MenuIngredientsPage() {
             <Button
               type="button"
               variant="secondary"
+              onClick={handleReview}
+              disabled={reviewing || saving}
+            >
+              {reviewing ? 'Reviewing...' : 'Review Data'}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
               onClick={() => {
                 setShowModal(false);
                 setEditingIngredient(null);
@@ -994,7 +1129,7 @@ export default function MenuIngredientsPage() {
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={saving}>
+            <Button type="submit" disabled={saving || reviewing}>
               {saving ? 'Saving...' : editingIngredient ? 'Update Ingredient' : 'Add Ingredient'}
             </Button>
           </div>
