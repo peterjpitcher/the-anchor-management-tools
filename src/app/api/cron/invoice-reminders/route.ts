@@ -39,7 +39,11 @@ export async function GET(request: Request) {
           id,
           name,
           email,
-          contact_name
+          contact_name,
+          contacts:invoice_vendor_contacts(
+            email,
+            is_primary
+          )
         ),
         line_items:invoice_line_items(*),
         payments:invoice_payments(*)
@@ -78,6 +82,12 @@ export async function GET(request: Request) {
       results.processed++
       let internalReminderSent = false
       let customerReminderSent = false
+
+      // Resolve vendor email: prefers vendor.email, then primary contact, then first contact
+      const vendorEmail = invoice.vendor?.email || 
+        (Array.isArray(invoice.vendor?.contacts) 
+          ? (invoice.vendor.contacts.find((c: any) => c.is_primary)?.email || invoice.vendor.contacts[0]?.email)
+          : null)
 
       try {
         const dueDate = new Date(invoice.due_date)
@@ -132,14 +142,14 @@ Invoice Reminder Alert
 Invoice: ${invoice.invoice_number}
 Vendor: ${invoice.vendor?.name || 'Unknown'}
 Contact: ${invoice.vendor?.contact_name || 'N/A'}
-Email: ${invoice.vendor?.email || 'No email'}
+Email: ${vendorEmail || 'No email'}
 
 Amount Due: £${outstandingAmount.toFixed(2)}
 Days Overdue: ${daysOverdue}
 Due Date: ${dueDate.toLocaleDateString('en-GB')}
 Reminder Type: ${reminderType}
 
-${invoice.vendor?.email ? 'Customer reminder has been sent.' : 'No vendor email on file - manual follow-up required.'}
+${vendorEmail ? 'Customer reminder has been sent.' : 'No vendor email on file - manual follow-up required.'}
 
 View invoice: ${process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'}/invoices/${invoice.id}
             `.trim()
@@ -196,7 +206,7 @@ View invoice: ${process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejel
         }
 
         // Send customer reminder if email available
-        if (emailConfigured && invoice.vendor?.email) {
+        if (emailConfigured && vendorEmail) {
           try {
             const customerSubject = daysOverdue === 0
               ? `Payment Due Today: Invoice ${invoice.invoice_number} from Orange Jelly Limited`
@@ -249,10 +259,15 @@ Orange Jelly Limited
               console.log(`[Cron] Customer reminder already sent for invoice ${invoice.invoice_number} (${reminderType}); skipping duplicate`)
             } else {
               // Support multiple recipients — first as To, others as CC
-              const raw = String(invoice.vendor.email)
+              const raw = String(vendorEmail)
               const recipients = raw.split(/[;,]/).map(s => s.trim()).filter(Boolean)
               const toAddress = recipients[0] || raw
               const ccAddresses = (recipients[0] ? recipients.slice(1) : []).filter(Boolean)
+
+              // We need to ensure we pass the resolved email, so we construct a modified invoice object
+              // or pass it explicitly if sendInvoiceEmail supported it. 
+              // Looking at sendInvoiceEmail signature: (invoice: InvoiceWithDetails, to: string, ...)
+              // It takes 'to' separately, so we are good!
 
               const customerResult = await sendInvoiceEmail(
                 invoice as InvoiceWithDetails,
