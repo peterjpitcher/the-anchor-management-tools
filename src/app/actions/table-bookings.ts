@@ -5,7 +5,6 @@ import { checkUserPermission } from '@/app/actions/rbac';
 import { logAuditEvent } from './audit';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { generatePhoneVariants } from '@/lib/utils';
 import { sendSameDayBookingAlertIfNeeded, TableBookingNotificationRecord } from '@/lib/table-bookings/managerNotifications';
 import { startOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addMonths, format as formatDate, subDays, isWithinInterval, parseISO } from 'date-fns';
 import type { TableBooking } from '@/types/table-bookings';
@@ -26,29 +25,9 @@ function formatTime12Hour(time24: string): string {
   }
 }
 
-// Validation schemas (Keeping these in the action as they are used for input parsing directly)
-const CreateTableBookingSchema = z.object({
-  customer_id: z.string().uuid().optional(),
-  booking_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  booking_time: z.string().regex(/^\d{2}:\d{2}$/),
-  party_size: z.number().min(1).max(20),
-  booking_type: z.enum(['regular', 'sunday_lunch']),
-  special_requirements: z.string().optional(),
-  dietary_requirements: z.array(z.string()).optional(),
-  allergies: z.array(z.string()).optional(),
-  celebration_type: z.string().optional(),
-  duration_minutes: z.number().default(120),
-  source: z.string().default('phone'),
-  cash_payment_received: z.boolean().default(false),
-});
+import { CreateTableBookingSchema, type CreateTableBookingInput } from '@/lib/schemas/table-bookings';
 
-const CreateCustomerSchema = z.object({ // This schema is not directly used after service refactoring
-  first_name: z.string().min(1),
-  last_name: z.string().optional(),
-  mobile_number: z.string().min(10),
-  email: z.string().email().optional(),
-  sms_opt_in: z.boolean().default(true),
-});
+// ... (formatTime12Hour remains unchanged)
 
 const UpdateTableBookingSchema = z.object({
   booking_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -129,7 +108,7 @@ export async function checkTableAvailability(
 }
 
 // Create table booking
-export async function createTableBooking(formData: FormData) {
+export async function createTableBooking(input: CreateTableBookingInput) {
   try {
     // Check permissions
     const hasPermission = await checkUserPermission('table_bookings', 'create');
@@ -138,48 +117,19 @@ export async function createTableBooking(formData: FormData) {
     }
     
     // Parse and validate booking data
-    const bookingData = CreateTableBookingSchema.parse({
-      customer_id: formData.get('customer_id') || undefined,
-      booking_date: formData.get('booking_date'),
-      booking_time: formData.get('booking_time'),
-      party_size: parseInt(formData.get('party_size') as string),
-      booking_type: formData.get('booking_type'),
-      special_requirements: formData.get('special_requirements') || undefined,
-      dietary_requirements: formData.get('dietary_requirements') 
-        ? JSON.parse(formData.get('dietary_requirements') as string) 
-        : undefined,
-      allergies: formData.get('allergies')
-        ? JSON.parse(formData.get('allergies') as string)
-        : undefined,
-      celebration_type: formData.get('celebration_type') || undefined,
-      duration_minutes: parseInt(formData.get('duration_minutes') as string) || 120,
-      source: formData.get('source') || 'phone',
-      cash_payment_received: formData.get('cash_payment_received') === 'true',
-    });
-
-    // Extract menu items if present
-    let menuItems = undefined;
-    const menuItemsData = formData.get('menu_items');
-    if (menuItemsData) {
-      try {
-        menuItems = JSON.parse(menuItemsData as string);
-      } catch (err) {
-        console.error('Menu items parsing error:', err);
-      }
-    }
+    const bookingData = CreateTableBookingSchema.parse(input);
 
     // Call Service
     const booking = await TableBookingService.createBooking({
       ...bookingData,
-      customer_first_name: (formData.get('customer_first_name') as string | null)?.trim() || undefined,
-      customer_last_name: (formData.get('customer_last_name') as string | null)?.trim() || undefined,
-      customer_mobile_number: (formData.get('customer_mobile_number') as string | null)?.trim() || undefined,
-      customer_email: (formData.get('customer_email') as string | null)?.trim() || undefined,
-      customer_sms_opt_in: formData.get('customer_sms_opt_in') === 'true',
-      menu_items: menuItems,
+      // Ensure strings are trimmed if they exist
+      customer_first_name: bookingData.customer_first_name?.trim(),
+      customer_last_name: bookingData.customer_last_name?.trim(),
+      customer_mobile_number: bookingData.customer_mobile_number?.trim(),
+      customer_email: bookingData.customer_email?.trim() || undefined,
     });
     
-    // Send same day alert (this might also be queued eventually, but is not part of this refactor)
+    // Send same day alert
     await sendSameDayBookingAlertIfNeeded(booking as TableBookingNotificationRecord);
 
     // Log audit event
@@ -204,6 +154,9 @@ export async function createTableBooking(formData: FormData) {
     return { success: true, data: booking };
   } catch (error: any) {
     console.error('Create booking error:', error);
+    if (error instanceof z.ZodError) {
+       return { error: error.errors[0].message };
+    }
     return { error: error.message || 'An unexpected error occurred' };
   }
 }

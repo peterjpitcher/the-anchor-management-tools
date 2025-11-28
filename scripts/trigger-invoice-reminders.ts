@@ -1,31 +1,33 @@
-import { NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { sendInvoiceEmail } from '@/lib/microsoft-graph'
-import { isGraphConfigured } from '@/lib/microsoft-graph'
-import type { InvoiceWithDetails } from '@/types/invoices'
-import { authorizeCronRequest } from '@/lib/cron-auth'
 
-export const dynamic = 'force-dynamic'
-export const maxDuration = 60 // 1 minute max
+import {
+  createAdminClient
+} from '@/lib/supabase/admin'
+import {
+  sendInvoiceEmail
+} from '@/lib/microsoft-graph'
+import {
+  isGraphConfigured
+} from '@/lib/microsoft-graph'
+import type {
+  InvoiceWithDetails
+} from '@/types/invoices'
+import dotenv from 'dotenv'
+import path from 'path'
 
-// Configuration for reminder intervals (days)
+// Load environment variables
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+
 const REMINDER_INTERVALS = {
-  DUE_TODAY: 0,         // On the due date
-  FIRST_REMINDER: 7,    // 7 days after due date
-  SECOND_REMINDER: 14,  // 14 days after due date
-  FINAL_REMINDER: 30    // 30 days after due date
+  DUE_TODAY: 0, // On the due date
+  FIRST_REMINDER: 7, // 7 days after due date
+  SECOND_REMINDER: 14, // 14 days after due date
+  FINAL_REMINDER: 30 // 30 days after due date
 }
 
-export async function GET(request: Request) {
-  const authResult = authorizeCronRequest(request)
-
-  if (!authResult.authorized) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
+async function main() {
   try {
-    console.log('[Cron] Starting invoice reminders processing')
-    
+    console.log('[Cron] Starting invoice reminders processing (Script Mode)')
+
     const supabase = createAdminClient()
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -33,7 +35,8 @@ export async function GET(request: Request) {
     // Get all overdue and due today invoices
     const { data: overdueInvoices, error: fetchError } = await supabase
       .from('invoices')
-      .select(`
+      .select(
+        `
         *,
         vendor:invoice_vendors(
           id,
@@ -47,17 +50,15 @@ export async function GET(request: Request) {
         ),
         line_items:invoice_line_items(*),
         payments:invoice_payments(*)
-      `)
+      `
+      )
       .in('status', ['sent', 'partially_paid', 'overdue'])
       .lte('due_date', today.toISOString())
       .order('due_date', { ascending: true })
 
     if (fetchError) {
       console.error('[Cron] Error fetching overdue invoices:', fetchError)
-      return NextResponse.json({ 
-        error: 'Failed to fetch overdue invoices',
-        details: fetchError 
-      }, { status: 500 })
+      process.exit(1)
     }
 
     console.log(`[Cron] Found ${overdueInvoices?.length || 0} invoices to process`)
@@ -67,10 +68,10 @@ export async function GET(request: Request) {
       reminders_sent: 0,
       internal_notifications: 0,
       errors: [] as Array<{
-      invoice_number: string
-      vendor?: string
-      error: string
-    }>
+        invoice_number: string
+        vendor?: string
+        error: string
+      }>
     }
 
     // Check if email is configured
@@ -99,7 +100,7 @@ export async function GET(request: Request) {
         if (daysOverdue > 0 && invoice.status !== 'overdue') {
           await supabase
             .from('invoices')
-            .update({ 
+            .update({
               status: 'overdue',
               updated_at: new Date().toISOString()
             })
@@ -212,12 +213,18 @@ View invoice: ${process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejel
               ? `Payment Due Today: Invoice ${invoice.invoice_number} from Orange Jelly Limited`
               : `${reminderType}: Invoice ${invoice.invoice_number} from Orange Jelly Limited`
             
-            let customerBody = `Dear ${invoice.vendor.contact_name || invoice.vendor.name},\n\n`
+            let customerBody = `Dear ${invoice.vendor.contact_name || invoice.vendor.name},
+
+`
 
             if (daysOverdue === 0) {
-              customerBody += `This is a friendly reminder that invoice ${invoice.invoice_number} is due for payment today.\n\n`
+              customerBody += `This is a friendly reminder that invoice ${invoice.invoice_number} is due for payment today.
+
+`
             } else {
-              customerBody += `This is a friendly reminder that invoice ${invoice.invoice_number} is now ${daysOverdue} days overdue.\n\n`
+              customerBody += `This is a friendly reminder that invoice ${invoice.invoice_number} is now ${daysOverdue} days overdue.
+
+`
             }
 
             customerBody += `Invoice Details:
@@ -263,11 +270,6 @@ Orange Jelly Limited
               const recipients = raw.split(/[;,]/).map(s => s.trim()).filter(Boolean)
               const toAddress = recipients[0] || raw
               const ccAddresses = (recipients[0] ? recipients.slice(1) : []).filter(Boolean)
-
-              // We need to ensure we pass the resolved email, so we construct a modified invoice object
-              // or pass it explicitly if sendInvoiceEmail supported it. 
-              // Looking at sendInvoiceEmail signature: (invoice: InvoiceWithDetails, to: string, ...)
-              // It takes 'to' separately, so we are good!
 
               const customerResult = await sendInvoiceEmail(
                 invoice as InvoiceWithDetails,
@@ -350,18 +352,10 @@ Orange Jelly Limited
     }
 
     console.log('[Cron] Invoice reminders processing completed:', results)
-
-    return NextResponse.json({
-      success: true,
-      message: 'Invoice reminders processed',
-      results
-    })
-
   } catch (error) {
     console.error('[Cron] Fatal error in invoice reminders cron:', error)
-    return NextResponse.json({ 
-      error: 'Failed to process invoice reminders',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 })
+    process.exit(1)
   }
 }
+
+main()

@@ -2,15 +2,17 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { format } from 'date-fns';
 import { useSupabase } from '@/components/providers/SupabaseProvider';
 import { usePermissions } from '@/contexts/PermissionContext';
-import { format, addDays } from 'date-fns';
 import { createTableBooking } from '@/app/actions/table-bookings';
 import { checkAvailability } from '@/app/actions/table-booking-availability';
 import { generatePhoneVariants, formatPhoneForStorage } from '@/lib/utils';
-import Link from 'next/link';
-import { ArrowLeftIcon } from '@heroicons/react/24/outline';
-// New UI components
+import { CreateTableBookingSchema, type CreateTableBookingInput } from '@/lib/schemas/table-bookings';
+
+// UI Components
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
@@ -24,7 +26,8 @@ import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
 import { Checkbox } from '@/components/ui-v2/forms/Checkbox';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { Spinner } from '@/components/ui-v2/feedback/Spinner';
-import { toast } from '@/components/ui-v2/feedback/Toast';
+
+// Types
 interface TimeSlot {
   time: string;
   available_capacity: number;
@@ -54,6 +57,7 @@ type SundayLunchGuestSelection = {
   extra_side_ids: string[];
 };
 
+// Helpers
 function getNextSunday(fromDate: Date = new Date()): Date {
   const baseDate = new Date(fromDate);
   const dayOfWeek = baseDate.getDay();
@@ -67,17 +71,14 @@ function resolveMenuDate(dateString?: string): Date {
   if (!dateString) {
     return getNextSunday();
   }
-
   const parsed = new Date(dateString);
   if (Number.isNaN(parsed.getTime())) {
     return getNextSunday();
   }
-
   if (parsed.getDay() === 0) {
     parsed.setHours(0, 0, 0, 0);
     return parsed;
   }
-
   return getNextSunday(parsed);
 }
 
@@ -85,25 +86,56 @@ export default function NewTableBookingPage() {
   const router = useRouter();
   const supabase = useSupabase();
   const { hasPermission } = usePermissions();
-  const [loading, setLoading] = useState(false);
-  const [checkingAvailability, setCheckingAvailability] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [availabilityNotice, setAvailabilityNotice] = useState<string | null>(null);
   
-  // Form state
-  const [bookingType, setBookingType] = useState<'regular' | 'sunday_lunch'>('regular');
-  const [bookingDate, setBookingDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [partySize, setPartySize] = useState(2);
+  // Local State
   const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([]);
-  const [selectedTime, setSelectedTime] = useState('');
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
+  const [availabilityNotice, setAvailabilityNotice] = useState<string | null>(null);
   const [menuData, setMenuData] = useState<SundayLunchMenuData | null>(null);
   const [menuLoading, setMenuLoading] = useState(false);
   const [menuError, setMenuError] = useState<string | null>(null);
-  const [cashPaymentReceived, setCashPaymentReceived] = useState(false);
-  
-  // Sunday lunch menu state
   const [sundayLunchItems, setSundayLunchItems] = useState<SundayLunchGuestSelection[]>([]);
+  const [existingCustomer, setExistingCustomer] = useState<any>(null);
+
+  const canCreate = hasPermission('table_bookings', 'create');
+
+  // Form Setup
+  const {
+    register,
+    control,
+    handleSubmit,
+    watch,
+    setValue,
+    formState: { errors, isSubmitting },
+    setError,
+    clearErrors,
+  } = useForm<CreateTableBookingInput>({
+    resolver: zodResolver(CreateTableBookingSchema) as any,
+    defaultValues: {
+      booking_date: format(new Date(), 'yyyy-MM-dd'),
+      party_size: 2,
+      booking_type: 'regular',
+      duration_minutes: 120,
+      source: 'phone',
+      customer_sms_opt_in: true,
+      cash_payment_received: false,
+      // Initialize optional fields to undefined or empty strings to avoid uncontrolled/controlled warnings if mapped to inputs
+      customer_first_name: '',
+      customer_last_name: '',
+      customer_email: '',
+      special_requirements: '',
+    },
+  });
+
+  // Watchers
+  const bookingDate = watch('booking_date');
+  const bookingType = watch('booking_type');
+  const partySize = watch('party_size');
+  const phoneNumber = watch('customer_mobile_number');
+  const selectedTime = watch('booking_time');
+  const cashPaymentReceived = watch('cash_payment_received');
+
+  // Derived State for Menu
   const includedSideOptions = useMemo(
     () => (menuData?.sides || []).filter((item) => item.included),
     [menuData]
@@ -113,457 +145,271 @@ export default function NewTableBookingPage() {
     [menuData]
   );
   const sundayLunchCutoffDisplay = useMemo(() => {
-    if (!menuData?.cutoffTime) {
-      return null;
-    }
+    if (!menuData?.cutoffTime) return null;
     try {
       return format(new Date(menuData.cutoffTime), 'EEEE d MMM yyyy, h:mmaaa');
     } catch (err) {
-      console.error('Failed to format Sunday lunch cutoff time:', err);
       return null;
     }
   }, [menuData]);
-  
-  // Customer state
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [existingCustomer, setExistingCustomer] = useState<any>(null);
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
-  const [smsOptIn, setSmsOptIn] = useState(true);
-  
-  // Booking details
-  const [specialRequirements, setSpecialRequirements] = useState('');
-  const [dietaryRequirements, setDietaryRequirements] = useState('');
-  const [allergies, setAllergies] = useState('');
-  const [celebrationType, setCelebrationType] = useState('');
 
-  const canCreate = hasPermission('table_bookings', 'create');
-
-  // Calculate Sunday lunch total based on selections
-  function calculateSundayLunchTotal(): string {
-    if (!menuData) {
-      return '0.00';
-    }
-
-    const mainsById = new Map(menuData.mains.map((item) => [item.id, item]));
-    const extrasById = new Map(
-      menuData.sides
-        .filter((item) => !item.included && item.price > 0)
-        .map((item) => [item.id, item])
-    );
-
-    let total = 0;
-    
-    sundayLunchItems.forEach(item => {
-      const selectedMain = mainsById.get(item.main_course_id);
-      if (selectedMain) {
-        total += selectedMain.price;
-      }
-
-      item.extra_side_ids.forEach((sideId) => {
-        const side = extrasById.get(sideId);
-        if (side) {
-          total += side.price;
-        }
-      });
-    });
-    
-    return total.toFixed(2);
-  }
-
+  // 1. Check Availability
   useEffect(() => {
-    if (!bookingDate || Number.isNaN(partySize) || partySize < 1) {
+    if (!bookingDate || !partySize || partySize < 1) {
       setAvailableSlots([]);
-      setSelectedTime('');
+      setValue('booking_time', ''); // Reset time if invalid inputs
       setAvailabilityNotice(null);
-      return;
-    }
-
-    checkBookingAvailability();
-  }, [bookingDate, partySize, bookingType]);
-
-  // Initialize Sunday lunch items when party size changes
-  useEffect(() => {
-    if (
-      bookingType !== 'sunday_lunch' ||
-      Number.isNaN(partySize) ||
-      partySize < 1
-    ) {
-      setSundayLunchItems([]);
-      return;
-    }
-
-    setSundayLunchItems((prev) => {
-      const next = Array.from({ length: partySize }, (_, index) => {
-        const existing = prev[index];
-        if (existing) {
-          return { ...existing };
-        }
-        return {
-          guest_name: `Guest ${index + 1}`,
-          main_course_id: '',
-          extra_side_ids: [],
-        };
-      });
-
-      return next;
-    });
-  }, [partySize, bookingType]);
-
-  useEffect(() => {
-    if (phoneNumber.length >= 10) {
-      searchCustomer();
-    } else {
-      setExistingCustomer(null);
-      setFirstName('');
-      setLastName('');
-      setEmail('');
-    }
-  }, [phoneNumber]);
-
-  useEffect(() => {
-    if (bookingType !== 'sunday_lunch') {
-      setMenuData(null);
-      setMenuError(null);
-      setMenuLoading(false);
       return;
     }
 
     let isActive = true;
-
-    async function loadMenu() {
+    const check = async () => {
       try {
-        setMenuLoading(true);
-        setMenuError(null);
+        setCheckingAvailability(true);
+        clearErrors('booking_time'); // Clear manual errors
+        setAvailabilityNotice(null);
 
-        const targetMenuDate = resolveMenuDate(bookingDate);
-        const cutoffDate = new Date(targetMenuDate);
-        cutoffDate.setDate(targetMenuDate.getDate() - 1);
-        cutoffDate.setHours(13, 0, 0, 0);
-
-        const response = await fetch(`/api/table-bookings/menu/sunday-lunch?date=${format(targetMenuDate, 'yyyy-MM-dd')}`);
-        const result = await response.json();
-
-        if (!response.ok || result?.success === false) {
-          throw new Error(result?.error?.message || 'Failed to load menu');
+        if (bookingType === 'sunday_lunch') {
+          const selectedDay = new Date(bookingDate).getDay();
+          if (selectedDay !== 0) {
+            setError('booking_date', { message: 'Sunday lunch bookings are only available on Sundays' });
+            setAvailableSlots([]);
+            setValue('booking_time', '');
+            setCheckingAvailability(false);
+            return;
+          } else {
+            clearErrors('booking_date');
+          }
         }
 
-        if (!isActive) {
-          return;
-        }
-
-        const menuPayload = result.data;
-
-        setMenuData({
-          menuDate: menuPayload.menu_date,
-          mains: (menuPayload.mains || []).map((item: any) => ({
-            id: item.id,
-            name: item.name,
-            description: item.description,
-            price: Number(item.price ?? 0),
-            dietary_info: item.dietary_info || [],
-            allergens: item.allergens || [],
-          })),
-          sides: (menuPayload.sides || []).map((item: any) => ({
-            id: item.id,
-            name: item.name,
-            description: item.description,
-            price: Number(item.price ?? 0),
-            dietary_info: item.dietary_info || [],
-            allergens: item.allergens || [],
-            included: Boolean(item.included),
-          })),
-          cutoffTime: menuPayload.cutoff_time || cutoffDate.toISOString(),
-        });
-      } catch (err: any) {
-        console.error('Sunday lunch menu load error:', err);
-        if (!isActive) {
-          return;
-        }
-        setMenuData(null);
-        setMenuError(
-          err?.message || 'Failed to load Sunday lunch menu. Please try again.'
-        );
-      } finally {
-        if (isActive) {
-          setMenuLoading(false);
-        }
-      }
-    }
-
-    loadMenu();
-
-    return () => {
-      isActive = false;
-    };
-  }, [bookingType, bookingDate]);
-
-  useEffect(() => {
-    if (bookingType !== 'sunday_lunch' && cashPaymentReceived) {
-      setCashPaymentReceived(false);
-    }
-  }, [bookingType, cashPaymentReceived]);
-
-  async function checkBookingAvailability() {
-    try {
-      setCheckingAvailability(true);
-      setError(null);
-      setAvailabilityNotice(null);
-      
-      // Validate Sunday lunch bookings
-      if (bookingType === 'sunday_lunch') {
-        const selectedDay = new Date(bookingDate).getDay();
-        if (selectedDay !== 0) { // 0 is Sunday
-          setError('Sunday lunch bookings are only available on Sundays');
-          setAvailableSlots([]);
-          setSelectedTime('');
-          return;
-        }
-      }
-      
-      const availabilityOptions =
-        bookingType === 'sunday_lunch'
+        const availabilityOptions = bookingType === 'sunday_lunch'
           ? { allowSundayLunchCutoffOverride: true }
           : undefined;
 
-      const result = await checkAvailability(
-        bookingDate,
-        partySize,
-        bookingType,
-        undefined,
-        availabilityOptions
-      );
-      
-      if (result.error) {
-        setError(result.error);
-        setAvailableSlots([]);
-        setSelectedTime('');
-      } else if (result.data) {
-        setAvailableSlots(result.data.time_slots);
-        setAvailabilityNotice(result.data.special_notes || null);
-        if (!result.data.time_slots.some(slot => slot.time === selectedTime)) {
-          setSelectedTime('');
-        }
-      }
-    } catch (err: any) {
-      console.error('Availability check error:', err);
-      setError('Failed to check availability');
-    } finally {
-      setCheckingAvailability(false);
-    }
-  }
-
-  async function searchCustomer() {
-    try {
-      const standardizedPhone = formatPhoneForStorage(phoneNumber);
-      const phoneVariants = Array.from(
-        new Set([
-          ...generatePhoneVariants(standardizedPhone),
-          standardizedPhone,
-        ])
-      );
-      const orConditions = [
-        ...phoneVariants.map((v) => `mobile_number.eq.${v}`),
-        `mobile_e164.eq.${standardizedPhone}`,
-      ];
-
-      const { data, error } = await supabase
-        .from('customers')
-        .select('*')
-        .or(orConditions.join(','))
-        .order('created_at', { ascending: true })
-        .limit(1);
-
-      if (error) {
-        console.error('Customer lookup error:', error);
-        setExistingCustomer(null);
-        return;
-      }
-
-      const match = Array.isArray(data) ? data[0] : data;
-
-      if (match) {
-        setExistingCustomer(match);
-        setFirstName((match as any).first_name);
-        setLastName((match as any).last_name);
-        setEmail((match as any).email || '');
-        setSmsOptIn((match as any).sms_opt_in);
-      }
-    } catch (err) {
-      // No existing customer found
-      setExistingCustomer(null);
-    }
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    
-    if (!selectedTime) {
-      setError('Please select a time slot');
-      return;
-    }
-    if (Number.isNaN(partySize) || partySize < 1) {
-      setError('Please enter a valid party size before submitting.');
-      return;
-    }
-    
-    let mainsById: Map<string, SundayLunchMenuOption> | null = null;
-    let extrasById: Map<string, SundayLunchMenuOption> | null = null;
-
-    // Validate Sunday lunch selections
-    if (bookingType === 'sunday_lunch') {
-      if (!menuData) {
-        setError('Sunday lunch menu is unavailable. Please reload the page.');
-        return;
-      }
-
-      mainsById = new Map(menuData.mains.map((item) => [item.id, item]));
-      extrasById = new Map(
-        menuData.sides
-          .filter((item) => !item.included && item.price > 0)
-          .map((item) => [item.id, item])
-      );
-
-      for (let i = 0; i < sundayLunchItems.length; i++) {
-        const item = sundayLunchItems[i];
-        if (!item.main_course_id || !mainsById.has(item.main_course_id)) {
-          setError(`Please select a main course for Guest ${i + 1}`);
-          return;
-        }
-
-        const invalidExtra = item.extra_side_ids.find(
-          (sideId) => !extrasById!.has(sideId)
+        const result = await checkAvailability(
+          bookingDate,
+          partySize,
+          bookingType,
+          undefined,
+          availabilityOptions
         );
 
-        if (invalidExtra) {
-          setError(
-            'An extra side that was selected is no longer available. Please review the Sunday lunch selections.'
-          );
-          return;
+        if (!isActive) return;
+
+        if (result.error) {
+          // General availability error
+           setAvailableSlots([]);
+           setAvailabilityNotice(result.error); // Show as notice instead of field error potentially
+        } else if (result.data) {
+          setAvailableSlots(result.data.time_slots);
+          setAvailabilityNotice(result.data.special_notes || null);
+          
+          // Check if current selected time is still valid
+          if (selectedTime && !result.data.time_slots.some(s => s.time === selectedTime)) {
+             setValue('booking_time', '');
+          }
         }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (isActive) setCheckingAvailability(false);
       }
+    };
+
+    check();
+    return () => { isActive = false; };
+  }, [bookingDate, partySize, bookingType, setValue, setError, clearErrors, selectedTime]);
+
+  // 2. Customer Search
+  useEffect(() => {
+    const searchCustomer = async () => {
+        if (!phoneNumber || phoneNumber.length < 10) {
+            setExistingCustomer(null);
+            return;
+        }
+
+        try {
+            const standardizedPhone = formatPhoneForStorage(phoneNumber);
+            const phoneVariants = Array.from(new Set([...generatePhoneVariants(standardizedPhone), standardizedPhone]));
+            const orConditions = [
+                ...phoneVariants.map((v) => `mobile_number.eq.${v}`),
+                `mobile_e164.eq.${standardizedPhone}`,
+            ];
+
+            const { data, error } = await supabase
+                .from('customers')
+                .select('*')
+                .or(orConditions.join(','))
+                .order('created_at', { ascending: true })
+                .limit(1);
+
+            if (!error && data && data.length > 0) {
+                const match = data[0] as any; // Explicit cast to allow property access
+                setExistingCustomer(match);
+                setValue('customer_id', match.id);
+                setValue('customer_first_name', match.first_name);
+                setValue('customer_last_name', match.last_name || '');
+                setValue('customer_email', match.email || '');
+                setValue('customer_sms_opt_in', match.sms_opt_in);
+            } else {
+                setExistingCustomer(null);
+                setValue('customer_id', undefined);
+                // Do not clear name/email fields as user might be typing new customer
+            }
+        } catch (err) {
+            setExistingCustomer(null);
+        }
+    };
+
+    const debounce = setTimeout(searchCustomer, 500);
+    return () => clearTimeout(debounce);
+  }, [phoneNumber, supabase, setValue]);
+
+  // 3. Load Sunday Lunch Menu
+  useEffect(() => {
+    if (bookingType !== 'sunday_lunch') {
+      setMenuData(null);
+      setMenuError(null);
+      return;
+    }
+
+    let isActive = true;
+    const loadMenu = async () => {
+        try {
+            setMenuLoading(true);
+            setMenuError(null);
+            const targetMenuDate = resolveMenuDate(bookingDate);
+            const response = await fetch(`/api/table-bookings/menu/sunday-lunch?date=${format(targetMenuDate, 'yyyy-MM-dd')}`);
+            const result = await response.json();
+
+            if (!isActive) return;
+
+            if (!response.ok || result?.success === false) {
+                throw new Error(result?.error?.message || 'Failed to load menu');
+            }
+
+            const menuPayload = result.data;
+            const cutoffDate = new Date(targetMenuDate);
+            cutoffDate.setDate(targetMenuDate.getDate() - 1);
+            cutoffDate.setHours(13, 0, 0, 0);
+
+            setMenuData({
+                menuDate: menuPayload.menu_date,
+                mains: (menuPayload.mains || []).map((item: any) => ({
+                    id: item.id,
+                    name: item.name,
+                    description: item.description,
+                    price: Number(item.price ?? 0),
+                    dietary_info: item.dietary_info || [],
+                    allergens: item.allergens || [],
+                })),
+                sides: (menuPayload.sides || []).map((item: any) => ({
+                    id: item.id,
+                    name: item.name,
+                    description: item.description,
+                    price: Number(item.price ?? 0),
+                    dietary_info: item.dietary_info || [],
+                    allergens: item.allergens || [],
+                    included: Boolean(item.included),
+                })),
+                cutoffTime: menuPayload.cutoff_time || cutoffDate.toISOString(),
+            });
+        } catch (err: any) {
+            if (isActive) setMenuError(err.message);
+        } finally {
+            if (isActive) setMenuLoading(false);
+        }
+    };
+
+    loadMenu();
+    return () => { isActive = false; };
+  }, [bookingType, bookingDate]);
+
+  // 4. Manage Sunday Lunch Selections State
+  useEffect(() => {
+    if (bookingType !== 'sunday_lunch') {
+        setSundayLunchItems([]);
+        return;
     }
     
-    try {
-      setSubmitting(true);
-      setError(null);
-      
-      const formData = new FormData();
-      
-      // Booking data
-      formData.append('booking_date', bookingDate);
-      formData.append('booking_time', selectedTime);
-      formData.append('party_size', partySize.toString());
-      formData.append('booking_type', bookingType);
-      formData.append('source', 'phone');
-      formData.append(
-        'cash_payment_received',
-        bookingType === 'sunday_lunch' && cashPaymentReceived ? 'true' : 'false'
-      );
-      
-      // Customer data
-      if (existingCustomer) {
-        formData.append('customer_id', existingCustomer.id);
-      } else {
-        formData.append('customer_first_name', firstName);
-        formData.append('customer_last_name', lastName);
-        formData.append('customer_mobile_number', phoneNumber);
-        formData.append('customer_email', email);
-        formData.append('customer_sms_opt_in', smsOptIn.toString());
-      }
-      
-      // Optional fields
-      if (specialRequirements) formData.append('special_requirements', specialRequirements);
-      const dietaryList = dietaryRequirements
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (dietaryList.length > 0) {
-        formData.append('dietary_requirements', JSON.stringify(dietaryList));
-      }
-
-      const allergyList = allergies
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (allergyList.length > 0) {
-        formData.append('allergies', JSON.stringify(allergyList));
-      }
-      if (celebrationType) formData.append('celebration_type', celebrationType);
-      
-      // Sunday lunch menu items
-      if (bookingType === 'sunday_lunch' && mainsById && extrasById) {
-        const menuItems = sundayLunchItems.flatMap((item, index) => {
-          const selections = [];
-          const guestLabel = item.guest_name || `Guest ${index + 1}`;
-
-          const selectedMain = mainsById!.get(item.main_course_id);
-          if (selectedMain) {
-            selections.push({
-              custom_item_name: selectedMain.name,
-              item_type: 'main',
-              quantity: 1,
-              guest_name: guestLabel,
-              price_at_booking: selectedMain.price,
-            });
-          }
-
-          item.extra_side_ids.forEach((sideId) => {
-            const extra = extrasById!.get(sideId);
-            if (extra) {
-              selections.push({
-                custom_item_name: extra.name,
-                item_type: 'extra',
-                quantity: 1,
-                guest_name: guestLabel,
-                price_at_booking: extra.price,
-              });
-            }
-          });
-
-          return selections;
+    setSundayLunchItems(prev => {
+        const next = Array.from({ length: partySize || 0 }, (_, index) => {
+            return prev[index] || {
+                guest_name: `Guest ${index + 1}`,
+                main_course_id: '',
+                extra_side_ids: [],
+            };
         });
+        return next;
+    });
+  }, [partySize, bookingType]);
 
-        formData.append('menu_items', JSON.stringify(menuItems));
-      }
-      
-      const result = await createTableBooking(formData);
-      
-      if (result.error) {
-        setError(result.error);
-      } else if (result.data?.status === 'pending_payment' && result.data.booking_reference) {
-        router.push(`/table-booking/${result.data.booking_reference}/payment`);
-      } else if (result.data?.id) {
-        router.push(`/table-bookings/${result.data.id}`);
-      } else {
-        router.push('/table-bookings');
-      }
-    } catch (err: any) {
-      console.error('Booking creation error:', err);
-      setError('Failed to create booking');
-    } finally {
-      setSubmitting(false);
+
+  const onSubmit = async (data: CreateTableBookingInput) => {
+    // Validate Sunday Lunch Selections
+    let finalMenuItems: NonNullable<CreateTableBookingInput['menu_items']> | undefined = undefined;
+
+    if (data.booking_type === 'sunday_lunch') {
+        if (!menuData) {
+            setMenuError('Menu data missing');
+            return;
+        }
+
+        const mainsById = new Map(menuData.mains.map((item) => [item.id, item]));
+        const extrasById = new Map(menuData.sides.map((item) => [item.id, item]));
+
+        finalMenuItems = [];
+
+        for (let i = 0; i < sundayLunchItems.length; i++) {
+            const item = sundayLunchItems[i];
+            if (!item.main_course_id) {
+                setError('root', { message: `Please select a main course for Guest ${i + 1}` });
+                return;
+            }
+            const main = mainsById.get(item.main_course_id);
+            if (main) {
+                finalMenuItems!.push({
+                    custom_item_name: main.name,
+                    item_type: 'main',
+                    quantity: 1,
+                    guest_name: item.guest_name,
+                    price_at_booking: main.price,
+                });
+            }
+
+            item.extra_side_ids.forEach(sideId => {
+                const side = extrasById.get(sideId);
+                if (side) {
+                     finalMenuItems!.push({
+                        custom_item_name: side.name,
+                        item_type: 'extra',
+                        quantity: 1,
+                        guest_name: item.guest_name,
+                        price_at_booking: side.price,
+                    });
+                }
+            });
+        }
+        data.menu_items = finalMenuItems;
     }
-  }
+
+    const result = await createTableBooking(data);
+
+    if (result.error) {
+        setError('root', { message: result.error });
+    } else if (result.data) {
+        if (result.data.status === 'pending_payment' && result.data.booking_reference) {
+            router.push(`/table-booking/${result.data.booking_reference}/payment`);
+        } else {
+            router.push(`/table-bookings/${result.data.id}`);
+        }
+    }
+  };
 
   if (!canCreate) {
     return (
-      <PageLayout
-        title="New Table Booking"
-        subtitle="Create a new restaurant table reservation"
-        backButton={{
-          label: 'Back to Table Bookings',
-          href: '/table-bookings',
-        }}
-      >
-        <Card>
-          <Alert
-            variant="error"
-            title="Access Denied"
-            description="You do not have permission to create bookings."
-          />
-        </Card>
+      <PageLayout title="New Table Booking" subtitle="Access Denied" backButton={{ label: 'Back', href: '/table-bookings' }}>
+        <Card><Alert variant="error" title="Access Denied" description="You do not have permission." /></Card>
       </PageLayout>
     );
   }
@@ -572,405 +418,193 @@ export default function NewTableBookingPage() {
     <PageLayout
       title="New Table Booking"
       subtitle="Create a new restaurant table reservation"
-      backButton={{
-        label: 'Back to Table Bookings',
-        href: '/table-bookings',
-      }}
+      backButton={{ label: 'Back to Table Bookings', href: '/table-bookings' }}
     >
-      {error && (
-        <Alert variant="error" title="Error" description={error} />
-      )}
-      {availabilityNotice && !error && (
-        <Alert variant="info" title="Availability Notice" description={availabilityNotice} />
-      )}
+      {errors.root && <Alert variant="error" title="Error" description={errors.root.message} className="mb-4" />}
+      {availabilityNotice && !errors.root && <Alert variant="info" title="Availability Notice" description={availabilityNotice} className="mb-4" />}
 
-      <Form onSubmit={handleSubmit} className="space-y-6">
-        {/* Booking Type */}
+      <Form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        
+        {/* Type Selection */}
         <Card>
-          <FormGroup label="Booking Type">
-            <div className="flex gap-4">
-              <label className="flex items-center">
-                <input
-                  type="radio"
-                  value="regular"
-                  checked={bookingType === 'regular'}
-                  onChange={(e) => setBookingType(e.target.value as 'regular')}
-                  className="mr-2"
-                />
-                Regular Dining
-              </label>
-              <label className="flex items-center">
-                <input
-                  type="radio"
-                  value="sunday_lunch"
-                  checked={bookingType === 'sunday_lunch'}
-                  onChange={(e) => setBookingType(e.target.value as 'sunday_lunch')}
-                  className="mr-2"
-                />
-                Sunday Lunch
-              </label>
-            </div>
-            {bookingType === 'sunday_lunch' && (
-              <Alert variant="warning" 
-                description="Sunday lunch bookings require pre-order at the bar by 1pm on Saturday. Payment required to confirm booking."
-                className="mt-2"
-              />
-            )}
-          </FormGroup>
+            <FormGroup label="Booking Type">
+                <div className="flex gap-4">
+                    <label className="flex items-center">
+                        <input type="radio" value="regular" {...register('booking_type')} className="mr-2" />
+                        Regular Dining
+                    </label>
+                    <label className="flex items-center">
+                        <input type="radio" value="sunday_lunch" {...register('booking_type')} className="mr-2" />
+                        Sunday Lunch
+                    </label>
+                </div>
+                {bookingType === 'sunday_lunch' && (
+                     <Alert variant="warning" description="Sunday lunch bookings require pre-order and payment." className="mt-2" />
+                )}
+            </FormGroup>
         </Card>
 
-        {/* Date and Party Size */}
+        {/* Date & Size */}
         <Card>
-          <div className="grid grid-cols-2 gap-4">
-            <FormGroup label="Date">
-              <Input
-                type="date"
-                value={bookingDate}
-                onChange={(e) => setBookingDate(e.target.value)}
-                min={format(new Date(), 'yyyy-MM-dd')}
-                max={format(addDays(new Date(), 56), 'yyyy-MM-dd')}
-                required
-              />
-            </FormGroup>
-            
-            <FormGroup label="Party Size">
-              <Input
-                type="number"
-                value={Number.isNaN(partySize) ? '' : partySize}
-                onChange={(e) => {
-                  const nextValue = parseInt(e.target.value, 10);
-                  if (Number.isNaN(nextValue)) {
-                    setPartySize(Number.NaN);
-                  } else {
-                    setPartySize(nextValue);
-                  }
-                }}
-                min={1}
-                max={20}
-                required
-              />
-            </FormGroup>
-          </div>
+            <div className="grid grid-cols-2 gap-4">
+                <FormGroup label="Date" error={errors.booking_date?.message}>
+                    <Input type="date" {...register('booking_date')} min={format(new Date(), 'yyyy-MM-dd')} />
+                </FormGroup>
+                <FormGroup label="Party Size" error={errors.party_size?.message}>
+                    <Input type="number" {...register('party_size', { valueAsNumber: true })} min={1} max={20} />
+                </FormGroup>
+            </div>
         </Card>
 
         {/* Time Slots */}
         <Card>
-          <FormGroup label="Time Slot">
-            {checkingAvailability ? (
-              <div className="flex items-center gap-2 text-gray-600">
-                <Spinner size="sm" />
-                Checking availability...
-              </div>
-            ) : availableSlots.length === 0 ? (
-              <p className="text-gray-500">No available slots for this date</p>
-            ) : (
-              <div className="grid grid-cols-4 gap-2">
-                {availableSlots.map((slot) => (
-                  <label
-                    key={slot.time}
-                    className={`border rounded-md p-2 text-center cursor-pointer transition-colors ${
-                      selectedTime === slot.time
-                        ? 'bg-blue-500 text-white border-blue-500'
-                        : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      value={slot.time}
-                      checked={selectedTime === slot.time}
-                      onChange={(e) => setSelectedTime(e.target.value)}
-                      className="sr-only"
-                    />
-                    <div>{slot.time}</div>
-                    <div className="text-xs opacity-75">
-                      {slot.available_capacity} seats
+            <FormGroup label="Time Slot" error={errors.booking_time?.message}>
+                {checkingAvailability ? (
+                     <div className="flex items-center gap-2 text-gray-600"><Spinner size="sm" /> Checking...</div>
+                ) : availableSlots.length === 0 ? (
+                    <p className="text-gray-500">No available slots</p>
+                ) : (
+                    <div className="grid grid-cols-4 gap-2">
+                        {availableSlots.map(slot => (
+                             <label key={slot.time} className={`border rounded-md p-2 text-center cursor-pointer transition-colors ${selectedTime === slot.time ? 'bg-blue-500 text-white border-blue-500' : 'hover:bg-gray-50'}`}>
+                                <input type="radio" value={slot.time} {...register('booking_time')} className="sr-only" />
+                                <div>{slot.time}</div>
+                                <div className="text-xs opacity-75">{slot.available_capacity} seats</div>
+                             </label>
+                        ))}
                     </div>
-                  </label>
-                ))}
-              </div>
-            )}
-          </FormGroup>
+                )}
+            </FormGroup>
         </Card>
 
-        {/* Customer Information */}
+        {/* Customer */}
         <Section title="Customer Information">
-          <Card>
-            <FormGroup label="Phone Number">
-              <Input
-                type="tel"
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                required
-                placeholder="07700900000"
-              />
-              {existingCustomer && (
-                <p className="text-sm text-green-600 mt-1">
-                  ✓ Existing customer found
-                </p>
-              )}
-            </FormGroup>
-
-            <div className="grid grid-cols-2 gap-4">
-              <FormGroup label="First Name">
-                <Input
-                  type="text"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  required
-                  disabled={!!existingCustomer}
-                />
-              </FormGroup>
-              
-              <FormGroup label="Last Name">
-                <Input
-                  type="text"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  disabled={!!existingCustomer}
-                />
-              </FormGroup>
-            </div>
-
-            <FormGroup label="Email (Optional)">
-              <Input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={!!existingCustomer}
-              />
-            </FormGroup>
-
-            <Checkbox
-              checked={smsOptIn}
-              onChange={(e) => setSmsOptIn(e.target.checked)}
-              disabled={!!existingCustomer}
-              label="Customer consents to receive SMS notifications"
-            />
-          </Card>
-        </Section>
-
-        {/* Additional Details */}
-        <Section title="Additional Details">
-          <Card>
-            <FormGroup label="Special Requirements">
-              <Textarea
-                value={specialRequirements}
-                onChange={(e) => setSpecialRequirements(e.target.value)}
-                rows={2}
-                placeholder="Window table, high chair needed, etc."
-              />
-            </FormGroup>
-
-            <FormGroup label="Dietary Requirements">
-              <Input
-                type="text"
-                value={dietaryRequirements}
-                onChange={(e) => setDietaryRequirements(e.target.value)}
-                placeholder="Vegetarian, Vegan, Gluten-free (comma separated)"
-              />
-            </FormGroup>
-
-            <FormGroup label="Allergies">
-              <Input
-                type="text"
-                value={allergies}
-                onChange={(e) => setAllergies(e.target.value)}
-                placeholder="Nuts, Shellfish, Dairy (comma separated)"
-              />
-            </FormGroup>
-
-            <FormGroup label="Celebration Type">
-              <Select
-                value={celebrationType}
-                onChange={(e) => setCelebrationType(e.target.value)}
-              >
-                <option value="">None</option>
-                <option value="birthday">Birthday</option>
-                <option value="anniversary">Anniversary</option>
-                <option value="engagement">Engagement</option>
-                <option value="other">Other Celebration</option>
-              </Select>
-            </FormGroup>
-          </Card>
-        </Section>
-
-        {bookingType === 'sunday_lunch' && (
-          <Section
-            title="Payment"
-            description="Sunday lunch bookings require a £5 per guest deposit. Mark it as paid if you've already collected cash."
-          >
             <Card>
-              <Checkbox
-                checked={cashPaymentReceived}
-                onChange={(e) => setCashPaymentReceived(e.target.checked)}
-                label="Deposit paid in cash (skip payment link)"
-                description="We'll confirm the booking without sending the automated payment link."
-              />
-            </Card>
-          </Section>
-        )}
-
-        {/* Sunday Lunch Menu Selection */}
-        {bookingType === 'sunday_lunch' && selectedTime && (
-          <Section 
-            title="Sunday Lunch Pre-Order"
-            description="Please select main course and extras for each guest. Payment will be required to confirm the booking unless you've marked the deposit as paid in cash."
-          >
-            {menuLoading && (
-              <Card className="mb-4">
-                <div className="flex items-center gap-2 text-gray-600">
-                  <Spinner size="sm" />
-                  Loading Sunday lunch menu...
+                <FormGroup label="Phone Number" error={errors.customer_mobile_number?.message}>
+                    <Input type="tel" {...register('customer_mobile_number')} placeholder="07700900000" />
+                    {existingCustomer && <p className="text-sm text-green-600 mt-1">✓ Existing customer found</p>}
+                </FormGroup>
+                <div className="grid grid-cols-2 gap-4">
+                    <FormGroup label="First Name" error={errors.customer_first_name?.message}>
+                        <Input {...register('customer_first_name')} disabled={!!existingCustomer} />
+                    </FormGroup>
+                    <FormGroup label="Last Name">
+                         <Input {...register('customer_last_name')} disabled={!!existingCustomer} />
+                    </FormGroup>
                 </div>
-              </Card>
-            )}
-
-            {menuError && !menuLoading && (
-              <Card className="mb-4">
-                <Alert variant="error" title="Menu unavailable" description={menuError} />
-              </Card>
-            )}
-
-            {!menuLoading && !menuError && !menuData && (
-              <Card className="mb-4">
-                <Alert
-                  variant="warning"
-                  title="Menu unavailable"
-                  description="We were unable to load the Sunday lunch menu. Please refresh the page or try again later."
+                <FormGroup label="Email (Optional)" error={errors.customer_email?.message}>
+                    <Input type="email" {...register('customer_email')} disabled={!!existingCustomer} />
+                </FormGroup>
+                <Controller
+                    name="customer_sms_opt_in"
+                    control={control}
+                    render={({ field }) => (
+                        <Checkbox checked={field.value} onChange={field.onChange} disabled={!!existingCustomer} label="Customer consents to SMS notifications" />
+                    )}
                 />
-              </Card>
-            )}
+            </Card>
+        </Section>
 
-            {!menuLoading && menuData && (
-              <>
-                {sundayLunchCutoffDisplay && (
-                  <Alert
-                    variant="warning"
-                    title="Pre-order deadline"
-                    description={`Orders must be confirmed by ${sundayLunchCutoffDisplay}. Unpaid bookings will be cancelled after this time.`}
-                    className="mb-4"
-                  />
-                )}
-
-                {includedSideOptions.length > 0 && (
-                  <Alert
-                    variant="info"
-                    title="Included Sides"
-                    description={`Each main includes: ${includedSideOptions
-                      .map((side) => side.name)
-                      .join(', ')}`}
-                    className="mb-4"
-                  />
-                )}
-
-                {sundayLunchItems.map((item, index) => (
-                  <Card key={index} className="mb-4">
-                    <h3 className="font-medium mb-3">Guest {index + 1}</h3>
-                    
-                    <div className="space-y-3">
-                      <FormGroup label="Guest Name (Optional)">
-                        <Input
-                          type="text"
-                          value={item.guest_name}
-                          onChange={(e) => {
-                            const newItems = [...sundayLunchItems];
-                            newItems[index] = {
-                              ...newItems[index],
-                              guest_name: e.target.value,
-                            };
-                            setSundayLunchItems(newItems);
-                          }}
-                          placeholder={`Guest ${index + 1}`}
-                        />
-                      </FormGroup>
-                      
-                      <FormGroup label="Main Course *">
-                        <Select
-                          value={item.main_course_id}
-                          onChange={(e) => {
-                            const newItems = [...sundayLunchItems];
-                            newItems[index] = {
-                              ...newItems[index],
-                              main_course_id: e.target.value,
-                            };
-                            setSundayLunchItems(newItems);
-                          }}
-                          required
-                        >
-                          <option value="">Select main course</option>
-                          {menuData.mains.map((main) => (
-                            <option key={main.id} value={main.id}>
-                              {`${main.name} - £${main.price.toFixed(2)}`}
-                            </option>
-                          ))}
-                        </Select>
-                      </FormGroup>
-                      
-                      <FormGroup label="Optional Extras">
-                        {extraSideOptions.length === 0 ? (
-                          <p className="text-sm text-gray-500">No paid extras available for this date.</p>
-                        ) : (
-                          <div className="space-y-2">
-                            {extraSideOptions.map((side) => (
-                              <Checkbox
-                                key={side.id}
-                                checked={item.extra_side_ids.includes(side.id)}
-                                onChange={(e) => {
-                                  const newItems = [...sundayLunchItems];
-                                  const updatedExtras = e.target.checked
-                                    ? Array.from(
-                                        new Set([
-                                          ...newItems[index].extra_side_ids,
-                                          side.id,
-                                        ])
-                                      )
-                                    : newItems[index].extra_side_ids.filter((id) => id !== side.id);
-                                  newItems[index] = {
-                                    ...newItems[index],
-                                    extra_side_ids: updatedExtras,
-                                  };
-                                  setSundayLunchItems(newItems);
-                                }}
-                                label={`${side.name} - £${side.price.toFixed(2)}`}
-                              />
-                            ))}
-                          </div>
+        {/* Details */}
+        <Section title="Additional Details">
+            <Card>
+                <FormGroup label="Special Requirements">
+                    <Textarea {...register('special_requirements')} rows={2} placeholder="High chair, etc." />
+                </FormGroup>
+                <FormGroup label="Dietary Requirements">
+                    <Input placeholder="Vegetarian, etc." onChange={(e) => setValue('dietary_requirements', e.target.value ? e.target.value.split(',').map(s => s.trim()) : [])} />
+                </FormGroup>
+                <FormGroup label="Allergies">
+                     <Input placeholder="Nuts, etc." onChange={(e) => setValue('allergies', e.target.value ? e.target.value.split(',').map(s => s.trim()) : [])} />
+                </FormGroup>
+                <FormGroup label="Celebration">
+                    <Select {...register('celebration_type')}>
+                        <option value="">None</option>
+                        <option value="birthday">Birthday</option>
+                        <option value="anniversary">Anniversary</option>
+                        <option value="engagement">Engagement</option>
+                        <option value="other">Other</option>
+                    </Select>
+                </FormGroup>
+            </Card>
+        </Section>
+        
+        {/* Payment for Sunday Lunch */}
+        {bookingType === 'sunday_lunch' && (
+             <Section title="Payment">
+                <Card>
+                    <Controller
+                        name="cash_payment_received"
+                        control={control}
+                        render={({ field }) => (
+                             <Checkbox checked={field.value} onChange={field.onChange} label="Deposit paid in cash" description="Skip automated payment link" />
                         )}
-                      </FormGroup>
-                    </div>
-                  </Card>
-                ))}
-
-                <Alert
-                  variant="warning"
-                  description='Main course pricing updates automatically based on your selections. "Optional extras" are added per guest.'
-                  className="mt-2"
-                />
-              </>
-            )}
-          </Section>
+                    />
+                </Card>
+             </Section>
         )}
 
-        {/* Submit Buttons */}
+        {/* Sunday Lunch Menu */}
+        {bookingType === 'sunday_lunch' && selectedTime && (
+            <Section title="Sunday Lunch Pre-Order">
+                {menuLoading && <Card><Spinner size="sm" /> Loading menu...</Card>}
+                {menuError && <Card><Alert variant="error" title="Menu Error" description={menuError} /></Card>}
+                {!menuLoading && menuData && (
+                    <>
+                        {sundayLunchCutoffDisplay && <Alert variant="warning" title="Pre-order deadline" description={sundayLunchCutoffDisplay} className="mb-4" />}
+                        {includedSideOptions.length > 0 && <Alert variant="info" title="Included Sides" description={includedSideOptions.map(s => s.name).join(', ')} className="mb-4" />}
+                        
+                        {sundayLunchItems.map((item, index) => (
+                            <Card key={index} className="mb-4">
+                                <h3 className="font-medium mb-3">Guest {index + 1}</h3>
+                                <div className="space-y-3">
+                                    <FormGroup label="Guest Name">
+                                        <Input value={item.guest_name} onChange={(e) => {
+                                            const newItems = [...sundayLunchItems];
+                                            newItems[index] = { ...newItems[index], guest_name: e.target.value };
+                                            setSundayLunchItems(newItems);
+                                        }} />
+                                    </FormGroup>
+                                    <FormGroup label="Main Course *">
+                                        <Select value={item.main_course_id} onChange={(e) => {
+                                            const newItems = [...sundayLunchItems];
+                                            newItems[index] = { ...newItems[index], main_course_id: e.target.value };
+                                            setSundayLunchItems(newItems);
+                                        }} required>
+                                            <option value="">Select main course</option>
+                                            {menuData.mains.map(main => (
+                                                <option key={main.id} value={main.id}>{`${main.name} - £${main.price.toFixed(2)}`}</option>
+                                            ))}
+                                        </Select>
+                                    </FormGroup>
+                                    <FormGroup label="Optional Extras">
+                                        <div className="space-y-2">
+                                            {extraSideOptions.map(side => (
+                                                <Checkbox key={side.id} checked={item.extra_side_ids.includes(side.id)} onChange={(e) => {
+                                                     const newItems = [...sundayLunchItems];
+                                                     if (e.target.checked) {
+                                                         newItems[index].extra_side_ids = [...newItems[index].extra_side_ids, side.id];
+                                                     } else {
+                                                         newItems[index].extra_side_ids = newItems[index].extra_side_ids.filter(id => id !== side.id);
+                                                     }
+                                                     setSundayLunchItems(newItems);
+                                                }} label={`${side.name} - £${side.price.toFixed(2)}`} />
+                                            ))}
+                                        </div>
+                                    </FormGroup>
+                                </div>
+                            </Card>
+                        ))}
+                    </>
+                )}
+            </Section>
+        )}
+
         <div className="flex gap-4">
-          <Button
-            type="submit"
-            disabled={!selectedTime || checkingAvailability}
-            loading={submitting}
-          >
-            {bookingType === 'sunday_lunch'
-              ? cashPaymentReceived
-                ? 'Create Booking'
-                : 'Create & Request Payment'
-              : 'Create Booking'}
-          </Button>
-          
-          <LinkButton
-            href="/table-bookings"
-            variant="secondary"
-          >
-            Cancel
-          </LinkButton>
+            <Button type="submit" disabled={isSubmitting || !selectedTime} loading={isSubmitting}>
+                {bookingType === 'sunday_lunch' && !cashPaymentReceived ? 'Create & Request Payment' : 'Create Booking'}
+            </Button>
+            <LinkButton href="/table-bookings" variant="secondary">Cancel</LinkButton>
         </div>
       </Form>
     </PageLayout>
