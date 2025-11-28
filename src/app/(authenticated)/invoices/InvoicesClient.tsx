@@ -332,14 +332,6 @@ export default function InvoicesClient({
                   fullWidth={false}
                 >
                   <option value="unpaid">Unpaid</option>
-                  <option value="all">All Invoices</option>
-                  <option value="draft">Draft</option>
-                  <option value="sent">Sent</option>
-                  <option value="partially_paid">Partially Paid</option>
-                  <option value="paid">Paid</option>
-                  <option value="overdue">Overdue</option>
-                  <option value="void">Void</option>
-                  <option value="written_off">Written Off</option>
                 </Select>
 
                 <Input

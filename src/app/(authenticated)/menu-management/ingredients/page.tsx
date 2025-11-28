@@ -19,6 +19,7 @@ import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { toast } from '@/components/ui-v2/feedback/Toast';
 import { usePermissions } from '@/contexts/PermissionContext';
+import { SmartImportModal } from '@/components/features/menu/SmartImportModal';
 
 const UNITS = [
   { value: 'each', label: 'Each' },
@@ -236,6 +237,7 @@ export default function MenuIngredientsPage() {
   const [priceHistoryModal, setPriceHistoryModal] = useState<{ open: boolean; ingredient: Ingredient | null }>({ open: false, ingredient: null });
   const [priceHistory, setPriceHistory] = useState<IngredientPriceEntry[]>([]);
   const [priceHistoryLoading, setPriceHistoryLoading] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const canManage = hasPermission('menu_management', 'manage');
   const [quickFilter, setQuickFilter] = useState('');
   const unknownAllergens = useMemo(
@@ -472,9 +474,40 @@ export default function MenuIngredientsPage() {
     }
   }
 
+  function handleImport(data: any) {
+    const newState = createDefaultFormState();
+    newState.name = data.name || '';
+    newState.supplier_name = data.supplier_name || '';
+    newState.supplier_sku = data.supplier_sku || '';
+    newState.brand = data.brand || '';
+    newState.pack_cost = data.pack_cost ? data.pack_cost.toString() : '0';
+    newState.storage_type = data.storage_type || 'ambient';
+    newState.description = data.description || '';
+    newState.notes = data.notes || '';
+    newState.pack_size = data.pack_size ? data.pack_size.toString() : '';
+    newState.pack_size_unit = data.pack_size_unit || 'each';
+    newState.portions_per_pack = data.portions_per_pack ? data.portions_per_pack.toString() : '';
+    newState.wastage_pct = data.wastage_pct ? data.wastage_pct.toString() : '0';
+    
+    if (data.allergens) {
+        newState.allergens = normalizeSelection(data.allergens, ALLERGEN_VALUES);
+    }
+
+    if (data.dietary_flags) {
+      newState.dietary_flags = normalizeSelection(data.dietary_flags, DIETARY_VALUES);
+    }
+
+    setFormState(newState);
+    setEditingIngredient(null);
+    setShowModal(true);
+  }
+
   const navActions = canManage ? (
-    <NavGroup>
-      <NavLink onClick={openCreateModal} className="font-semibold">
+    <NavGroup variant="light">
+      <NavLink variant="light" onClick={() => setShowImportModal(true)}>
+        Smart Import
+      </NavLink>
+      <NavLink variant="light" onClick={openCreateModal} className="font-semibold">
         Add Ingredient
       </NavLink>
     </NavGroup>
@@ -1014,6 +1047,12 @@ export default function MenuIngredientsPage() {
           )}
         </div>
       </Modal>
+
+      <SmartImportModal
+        open={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImport={handleImport}
+      />
     </PageLayout>
   );
 }
