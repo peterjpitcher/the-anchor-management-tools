@@ -7,6 +7,7 @@ import { usePermissions } from '@/contexts/PermissionContext'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import type { ModuleName, ActionType } from '@/types/rbac'
 import { useUnreadMessageCount } from '@/hooks/useUnreadMessageCount'
+import { useOutstandingCounts } from '@/hooks/useOutstandingCounts'
 import { Sidebar, SidebarGroup, SidebarItem } from '@/components/ui-v2/navigation'
 
 type NavigationItemWithPermission = {
@@ -54,6 +55,7 @@ export function AppNavigation({ onQuickAddNoteClick, onNavigate }: AppNavigation
   const [isMobile, setIsMobile] = useState(false)
   const { hasPermission, loading: permissionsLoading } = usePermissions()
   const unreadCount = useUnreadMessageCount()
+  const { counts: outstandingCounts } = useOutstandingCounts()
 
   useEffect(() => {
     // Check if mobile on mount and window resize
@@ -100,16 +102,42 @@ export function AppNavigation({ onQuickAddNoteClick, onNavigate }: AppNavigation
     );
   }, [hasPermission, permissionsLoading]);
 
+  const getOutstandingCount = (name: string) => {
+    if (!outstandingCounts) return 0
+    switch (name) {
+      case 'Menu Management': return outstandingCounts.menu_management
+      case 'Private Bookings': return outstandingCounts.private_bookings
+      case 'Parking': return outstandingCounts.parking
+      case 'Cashing Up': return outstandingCounts.cashing_up
+      case 'Invoices': return outstandingCounts.invoices
+      case 'Receipts': return outstandingCounts.receipts
+      default: return 0
+    }
+  }
+
   const renderNavItem = (item: NavigationItemWithPermission) => {
     const isActive = !item.action && item.href === '/' 
       ? pathname === '/'
       : !item.action && pathname.startsWith(item.href);
 
-    const badge = item.name === 'Messages' && unreadCount > 0 ? (
-      <Badge variant="error" className="ml-auto">
-        {unreadCount}
-      </Badge>
-    ) : null;
+    let badge = null
+
+    if (item.name === 'Messages' && unreadCount > 0) {
+      badge = (
+        <Badge variant="error" className="ml-auto">
+          {unreadCount}
+        </Badge>
+      )
+    } else {
+      const count = getOutstandingCount(item.name)
+      if (count > 0) {
+        badge = (
+          <Badge variant="warning" className="ml-auto">
+            {count}
+          </Badge>
+        )
+      }
+    }
 
     if (item.action && item.name === 'Quick Add Note') {
       return (

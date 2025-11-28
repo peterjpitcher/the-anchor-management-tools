@@ -701,7 +701,87 @@ export async function queuePaymentRequestSMS(
     
     return { success: true, message: 'Payment request SMS queued' };
   } catch (error) {
-    console.error('Queue payment request error:', error);
+    return { error: 'An unexpected error occurred' };
+  }
+}
+
+// Queue booking review request SMS
+export async function queueBookingReviewRequestSMS(
+  bookingId: string,
+  options: { requirePermission?: boolean } = { requirePermission: true }
+) {
+  try {
+    const { requirePermission = true } = options;
+
+    if (requirePermission) {
+      // This check might need to be adjusted based on whether this is called from a cron job (admin) or user action
+      // For now, assuming system/admin context often calls this, permissions might be skipped by passing requirePermission: false
+      const hasPermission = await checkUserPermission('table_bookings', 'manage');
+      if (!hasPermission) {
+        return { error: 'You do not have permission to send review request SMS messages' };
+      }
+    }
+
+    const supabase = createAdminClient();
+    
+    const { data: booking } = await supabase
+      .from('table_bookings')
+      .select(`*, customer:customers(*)`)
+      .eq('id', bookingId)
+      .single();
+      
+    if (!booking) {
+      return { error: 'Booking not found' };
+    }
+
+    if (!booking.customer?.sms_opt_in) {
+      return { message: 'Customer has opted out of SMS' };
+    }
+    
+    const templateKey = 'review_request';
+      
+    const { data: template } = await supabase
+      .from('table_booking_sms_templates')
+      .select('*')
+      .eq('template_key', templateKey)
+      .eq('is_active', true)
+      .single();
+      
+    if (!template) {
+      return { error: 'Template not found' };
+    }
+    
+    // Get Google Review Link from env
+    const reviewLink = process.env.NEXT_PUBLIC_GOOGLE_REVIEW_LINK || 'https://g.page/r/example';
+    
+    const variables = {
+      customer_name: booking.customer.first_name,
+      review_link: reviewLink,
+      contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707',
+    };
+    
+    const { error } = await supabase
+      .from('jobs')
+      .insert({
+        type: 'send_sms',
+        payload: {
+          to: booking.customer.mobile_number,
+          template: templateKey,
+          variables,
+          booking_id: bookingId,
+          customer_id: booking.customer.id,
+        },
+        scheduled_for: new Date().toISOString(),
+      });
+    
+    if (error) {
+      console.error('Queue review request error:', error);
+      return { error: 'Failed to queue review request SMS' };
+    }
+    
+    return { success: true, message: 'Review request SMS queued' };
+  } catch (error) {
+    console.error('Queue review request error:', error);
     return { error: 'An unexpected error occurred' };
   }
 }
