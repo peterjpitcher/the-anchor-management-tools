@@ -184,7 +184,7 @@ export async function GET(request: Request) {
             if (count === 0) {
                 const messageBody = `Hi ${booking.customer_first_name}, just a quick reminder that your hold on ${eventDateReadable} expires in ${diffDays} days. Please pay the deposit soon to secure the booking.`;
                 
-                await SmsQueueService.queueAndSend({
+                const result = await SmsQueueService.queueAndSend({
                     booking_id: booking.id,
                     trigger_type: triggerType,
                     template_key: `private_booking_${triggerType}`,
@@ -193,34 +193,44 @@ export async function GET(request: Request) {
                     customer_name: booking.customer_name,
                     priority: 2
                 });
-                stats.remindersSent++;
+
+                if (result.error) {
+                    console.error(`Failed to queue 7-day reminder for booking ${booking.id}:`, result.error);
+                } else {
+                    stats.remindersSent++;
+                }
             }
         }
 
         // 2. Check 1-Day Reminder (Window: <= 1 day)
         if (diffDays <= 1 && diffDays > 0) {
-            const triggerType = 'deposit_reminder_1day';
-            // Check if ALREADY sent
-            const { count } = await supabase
-                .from('private_booking_sms_queue')
-                .select('*', { count: 'exact', head: true })
-                .eq('booking_id', booking.id)
-                .eq('trigger_type', triggerType);
+          const triggerType = 'deposit_reminder_1day'
+          // Check if ALREADY sent
+          const { count } = await supabase
+            .from('private_booking_sms_queue')
+            .select('*', { count: 'exact', head: true })
+            .eq('booking_id', booking.id)
+            .eq('trigger_type', triggerType)
 
-            if (count === 0) {
-                const messageBody = `Hi ${booking.customer_first_name}, your hold on ${eventDateReadable} expires tomorrow! Please pay the deposit today to prevent the date being released.`;
-                
-                await SmsQueueService.queueAndSend({
-                    booking_id: booking.id,
-                    trigger_type: triggerType,
-                    template_key: `private_booking_${triggerType}`,
-                    message_body: messageBody,
-                    customer_phone: booking.contact_phone,
-                    customer_name: booking.customer_name,
-                    priority: 2
-                });
-                stats.remindersSent++;
+          if (count === 0) {
+            const messageBody = `Hi ${booking.customer_first_name}, your hold on ${eventDateReadable} expires tomorrow! Please pay the deposit today to prevent the date being released.`
+
+            const result = await SmsQueueService.queueAndSend({
+              booking_id: booking.id,
+              trigger_type: triggerType,
+              template_key: `private_booking_${triggerType}`,
+              message_body: messageBody,
+              customer_phone: booking.contact_phone,
+              customer_name: booking.customer_name,
+              priority: 2
+            })
+
+            if (result.error) {
+              console.error(`Failed to queue 1-day reminder for booking ${booking.id}:`, result.error)
+            } else {
+              stats.remindersSent++
             }
+          }
         }
       }
     }
@@ -284,7 +294,7 @@ export async function GET(request: Request) {
              
              const messageBody = `Hi ${booking.customer_first_name}, your event on ${eventDateReadable} is coming up soon! Just a reminder that the final balance is due. Can you please arrange payment?`;
 
-             await SmsQueueService.queueAndSend({
+             const result = await SmsQueueService.queueAndSend({
                booking_id: booking.id,
                trigger_type: triggerType,
                template_key: `private_booking_${triggerType}`,
@@ -293,7 +303,12 @@ export async function GET(request: Request) {
                customer_name: booking.customer_name,
                priority: 1
              });
-             stats.balanceRemindersSent++;
+
+             if (result.error) {
+               console.error(`Failed to queue balance reminder for booking ${booking.id}:`, result.error);
+             } else {
+               stats.balanceRemindersSent++;
+             }
            }
         }
       }
