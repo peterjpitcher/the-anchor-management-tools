@@ -1,6 +1,6 @@
 'use server'
 
-import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
 import { format, subDays } from 'date-fns'
 
 export type OutstandingCounts = {
@@ -13,14 +13,11 @@ export type OutstandingCounts = {
 }
 
 export async function getOutstandingCounts(): Promise<OutstandingCounts> {
-  const supabase = await createAdminClient()
+  const supabase = await createClient()
 
   const queries = [
-    // Menu Management: Items to fix
-    supabase
-      .from('menu_dishes_with_costs')
-      .select('*', { count: 'exact', head: true })
-      .or('is_gp_alert.eq.true,missing_ingredients.eq.true,missing_assignments.eq.true'),
+    // Menu Management: Use RPC
+    supabase.rpc('get_menu_outstanding_count'),
 
     // Private Bookings: Drafts
     supabase
@@ -58,12 +55,14 @@ export async function getOutstandingCounts(): Promise<OutstandingCounts> {
       .from('cashup_sessions')
       .select('session_date')
       .gte('session_date', format(subDays(new Date(), 7), 'yyyy-MM-dd'))
-      .lte('session_date', format(subDays(new Date(), 1), 'yyyy-MM-dd')) // Exclude today? Or include? Usually cashing up is for previous day. Let's say up to yesterday.
+      .lte('session_date', format(subDays(new Date(), 1), 'yyyy-MM-dd'))
   ]
 
   const results = await Promise.all(queries)
 
-  const menuCount = results[0].count ?? 0
+  // RPC result
+  const menuCount = typeof results[0].data === 'number' ? results[0].data : 0
+  
   const privateBookingsCount = results[1].count ?? 0
   const parkingCount = results[2].count ?? 0
   const invoicesCount = results[3].count ?? 0
@@ -71,9 +70,8 @@ export async function getOutstandingCounts(): Promise<OutstandingCounts> {
   const cashingUpDrafts = results[5].count ?? 0
   
   // Calculate missing cashing up days
-  // We checked last 7 days up to yesterday.
   const existingSessions = (results[6].data as { session_date: string }[] | null) ?? []
-  const existingDates = new Set(existingSessions.map(s => s.session_date))
+  const existingDates = new Set(existingSessions.map((s: any) => s.session_date))
   
   let missingDaysCount = 0
   for (let i = 1; i <= 7; i++) {
