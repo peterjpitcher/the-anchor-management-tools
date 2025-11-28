@@ -60,6 +60,94 @@ function calculateOpenAICost(model: string, promptTokens: number, completionToke
   return Number((promptCost + completionCost).toFixed(6))
 }
 
+type SanityCheckResult = {
+  ok: boolean
+  issues: string[]
+  aiNotes?: string[]
+}
+
+function validateIngredientLocally(ing: AiParsedIngredient): string[] {
+  const issues: string[] = []
+
+  if (!ing.name?.trim()) issues.push('Missing name')
+  if (ing.pack_cost != null && ing.pack_cost < 0) issues.push('Pack cost cannot be negative')
+  if (ing.portions_per_pack != null && ing.portions_per_pack <= 0) issues.push('Portions per pack must be greater than zero')
+  if (ing.wastage_pct < 0 || ing.wastage_pct > 100) issues.push('Wastage percentage must be between 0 and 100')
+
+  if (ing.pack_cost != null && ing.portions_per_pack) {
+    const unitCost = ing.pack_cost / ing.portions_per_pack
+    if (Number.isFinite(unitCost)) {
+      if (unitCost > 200) issues.push(`Unit cost (£${unitCost.toFixed(2)}) looks very high`)
+      if (unitCost < 0.001) issues.push(`Unit cost (£${unitCost.toFixed(4)}) looks too low`)
+    }
+  }
+
+  return issues
+}
+
+export async function sanityCheckIngredient(ing: AiParsedIngredient): Promise<SanityCheckResult> {
+  const issues = validateIngredientLocally(ing)
+
+  if (issues.length > 0) {
+    return { ok: false, issues }
+  }
+
+  const { apiKey, baseUrl } = await getOpenAIConfig()
+  if (!apiKey) {
+    return { ok: true, issues, aiNotes: ['AI check skipped: no API key configured'] }
+  }
+
+  const systemPrompt = `You are validating a restaurant ingredient record.
+Return strict JSON with: ok (boolean) and issues (array of short strings).
+Flag only obvious mistakes (impossible prices, missing essentials, inconsistent dietary flags, missing allergens when obvious).
+If vegan => also vegetarian and dairy_free. Be concise.`
+
+  const trimmedPayload = JSON.stringify(ing).slice(0, 4000)
+
+  const response = await retry(
+    () =>
+      fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          max_tokens: 200,
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Ingredient JSON:\n${trimmedPayload}` },
+          ],
+        }),
+      }),
+    { maxAttempts: 3, delay: 300, backoff: 'linear' }
+  )
+
+  if (!response.ok) {
+    return { ok: true, issues, aiNotes: ['AI check skipped: request failed'] }
+  }
+
+  let aiResult: { ok?: boolean; issues?: string[] } = {}
+  try {
+    const payload = await response.json()
+    const content = payload?.choices?.[0]?.message?.content
+    if (content) {
+      aiResult = JSON.parse(content)
+    }
+  } catch (error) {
+    console.error('AI sanity parse error:', error)
+    return { ok: true, issues, aiNotes: ['AI check returned unparsable response'] }
+  }
+
+  const aiIssues = Array.isArray(aiResult.issues) ? aiResult.issues.filter(Boolean) : []
+  const combinedIssues = [...issues, ...aiIssues]
+  const ok = Boolean(aiResult.ok ?? combinedIssues.length === 0)
+
+  return { ok, issues: combinedIssues, aiNotes: aiIssues }
+}
+
 export async function parseIngredientWithAI(rawData: string): Promise<AiParsingResult> {
   try {
     const { apiKey, baseUrl } = await getOpenAIConfig()
