@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server';
 import { checkAvailability } from '@/app/actions/table-booking-availability';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 
+export const dynamic = 'force-dynamic';
+
 // Handle CORS preflight
 export async function OPTIONS(request: NextRequest) {
   return new Response(null, {
@@ -57,7 +59,9 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      return createApiResponse(result.data);
+      return createApiResponse(result.data, 200, {
+        'Cache-Control': 'no-store, max-age=0'
+      });
     } catch (error) {
       console.error('Availability API error:', error);
       return createErrorResponse(
