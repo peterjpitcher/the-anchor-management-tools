@@ -50,7 +50,8 @@ export async function GET(_request: NextRequest) {
     try {
       const { data, error } = await supabase
         .from('service_statuses')
-        .select('service_code, display_name, is_enabled, message, updated_at');
+        .select('service_code, display_name, is_enabled, message, updated_at')
+        .order('updated_at', { ascending: true });
 
       if (error) {
         console.error('Service status query failed:', error);
@@ -167,6 +168,12 @@ export async function GET(_request: NextRequest) {
   const sundayLunchStatus = serviceStatus['sunday_lunch'];
   const sundayOverrides = serviceOverrides['sunday_lunch'] || [];
   const sundayLunchEnabled = sundayLunchStatus ? sundayLunchStatus.isEnabled : true;
+
+  console.log('[BusinessHours API] Sunday Lunch Status:', {
+    status: sundayLunchStatus,
+    enabled: sundayLunchEnabled,
+    overridesCount: sundayOverrides.length
+  });
 
   // Calculate current status in London timezone
   const timeZone = 'Europe/London';
@@ -295,6 +302,9 @@ export async function GET(_request: NextRequest) {
     });
   }
 
+  const todayConfig = todayHoursData?.schedule_config || [];
+  const sundayLunchConfig = todayConfig.find((c: any) => c.booking_type === 'sunday_lunch');
+
   // Calculate service information
   const services = {
     venue: {
@@ -305,6 +315,19 @@ export async function GET(_request: NextRequest) {
       open: currentStatus.kitchenOpen,
       closesIn: currentStatus.kitchenOpen ? 
         (todayHoursData?.kitchen_closes ? calculateTimeUntil(currentTime, todayHoursData.kitchen_closes) : null) : null,
+    },
+    sundayLunch: sundayLunchConfig ? {
+      enabled: sundayLunchEnabledToday,
+      startsAt: sundayLunchConfig.starts_at || null,
+      endsAt: sundayLunchConfig.ends_at || null,
+      capacity: sundayLunchConfig.capacity || null,
+      message: sundayLunchMessage,
+    } : {
+      enabled: sundayLunchEnabledToday,
+      startsAt: null,
+      endsAt: null,
+      capacity: null,
+      message: sundayLunchMessage,
     },
     bookings: {
       accepting: currentStatus.isOpen && currentStatus.kitchenOpen,
