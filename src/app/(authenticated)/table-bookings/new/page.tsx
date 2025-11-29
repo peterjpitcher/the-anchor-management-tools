@@ -155,9 +155,11 @@ export default function NewTableBookingPage() {
 
   // 1. Check Availability
   useEffect(() => {
+    // Prevent running if critical dependencies are missing
     if (!bookingDate || !partySize || partySize < 1) {
       setAvailableSlots([]);
-      setValue('booking_time', ''); // Reset time if invalid inputs
+      // Only reset time if we had one and inputs became invalid
+      if (selectedTime) setValue('booking_time', '');
       setAvailabilityNotice(null);
       return;
     }
@@ -165,6 +167,7 @@ export default function NewTableBookingPage() {
     let isActive = true;
     const check = async () => {
       try {
+        console.log('Checking availability for:', { bookingDate, partySize, bookingType });
         setCheckingAvailability(true);
         clearErrors('booking_time'); // Clear manual errors
         setAvailabilityNotice(null);
@@ -197,10 +200,11 @@ export default function NewTableBookingPage() {
         if (!isActive) return;
 
         if (result.error) {
-          // General availability error
+           console.error('Availability check error:', result.error);
            setAvailableSlots([]);
            setAvailabilityNotice(result.error); // Show as notice instead of field error potentially
         } else if (result.data) {
+          console.log('Availability check success:', result.data);
           setAvailableSlots(result.data.time_slots);
           setAvailabilityNotice(result.data.special_notes || null);
           
@@ -210,7 +214,9 @@ export default function NewTableBookingPage() {
           }
         }
       } catch (err) {
-        console.error(err);
+        console.error('Unexpected error in availability check:', err);
+        // Do not reset booking_type here, just show error
+        setAvailabilityNotice('Failed to check availability. Please try again.');
       } finally {
         if (isActive) setCheckingAvailability(false);
       }

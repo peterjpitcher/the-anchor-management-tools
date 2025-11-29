@@ -45,7 +45,14 @@ export async function checkAvailability(
   options?: AvailabilityOptions
 ): Promise<{ data?: BookingAvailability; error?: string }> {
   try {
-    const supabase = supabaseClient || await createClient();
+    let supabase;
+    try {
+      supabase = supabaseClient || await createClient();
+    } catch (clientError) {
+      console.error('Failed to initialize Supabase client:', clientError);
+      return { error: 'Authentication error. Please refresh the page.' };
+    }
+
     const bookingDate = new Date(date);
     const dayOfWeek = bookingDate.getDay();
 
@@ -67,11 +74,14 @@ export async function checkAvailability(
     };
 
     if (bookingType === 'sunday_lunch') {
-      const { data: serviceStatus } = await supabase
+      const { data: serviceStatusRows } = await supabase
         .from('service_statuses')
         .select('is_enabled, message')
         .eq('service_code', 'sunday_lunch')
-        .single();
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      
+      const serviceStatus = serviceStatusRows && serviceStatusRows.length > 0 ? serviceStatusRows[0] : null;
 
       const { data: overrideRows } = await supabase
         .from('service_status_overrides')
@@ -130,6 +140,10 @@ export async function checkAvailability(
       
     const activeHours = specialHours || businessHours;
     
+    console.log('[Availability] Checking for', date, 'Type:', bookingType);
+    console.log('[Availability] Active Hours ID:', activeHours?.id);
+    console.log('[Availability] Schedule Config:', JSON.stringify(activeHours?.schedule_config));
+
     // Check if closed
     if (!activeHours || activeHours.is_closed) {
       return {
@@ -147,10 +161,31 @@ export async function checkAvailability(
         }
       };
     }
+
+    // Determine effective kitchen hours from schedule_config if available
+    let effectiveOpen = activeHours.kitchen_opens;
+    let effectiveClose = activeHours.kitchen_closes;
+
+    if (activeHours.schedule_config && Array.isArray(activeHours.schedule_config) && activeHours.schedule_config.length > 0) {
+      const configs = activeHours.schedule_config.filter((c: any) => 
+        !bookingType || c.booking_type === bookingType
+      );
+
+      if (configs.length > 0) {
+        // Sort times to find range
+        const starts = configs.map((c: any) => c.starts_at).sort();
+        const ends = configs.map((c: any) => c.ends_at).sort();
+        
+        if (starts.length > 0) effectiveOpen = starts[0];
+        if (ends.length > 0) effectiveClose = ends[ends.length - 1];
+      }
+    }
+
+    console.log('[Availability] Effective Open:', effectiveOpen, 'Close:', effectiveClose);
     
     // Check if kitchen is explicitly closed or has no hours
     const kitchenClosed = activeHours.is_kitchen_closed || 
-                         (!activeHours.kitchen_opens || !activeHours.kitchen_closes);
+                         (!effectiveOpen || !effectiveClose);
     
     if (kitchenClosed) {
       return {
@@ -158,8 +193,8 @@ export async function checkAvailability(
           available: false,
           time_slots: [],
           kitchen_hours: {
-            opens: activeHours.opens || '00:00',
-            closes: activeHours.closes || '00:00',
+            opens: effectiveOpen || '00:00',
+            closes: effectiveClose || '00:00',
             source: specialHours ? 'special_hours' : 'business_hours',
           },
           special_notes: buildSpecialNotes(
@@ -171,8 +206,8 @@ export async function checkAvailability(
     
     // Generate time slots from kitchen hours
     const allSlots = generateTimeSlots(
-      activeHours.kitchen_opens,
-      activeHours.kitchen_closes,
+      effectiveOpen,
+      effectiveClose,
       30 // 30-minute intervals
     );
     
