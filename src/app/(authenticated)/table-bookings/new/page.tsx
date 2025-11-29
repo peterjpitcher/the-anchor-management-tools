@@ -531,17 +531,53 @@ export default function NewTableBookingPage() {
         
         {/* Payment for Sunday Lunch */}
         {bookingType === 'sunday_lunch' && (
-             <Section title="Payment">
-                <Card>
-                    <Controller
-                        name="cash_payment_received"
-                        control={control}
-                        render={({ field }) => (
-                             <Checkbox checked={field.value} onChange={field.onChange} label="Deposit paid in cash" description="Skip automated payment link" />
-                        )}
-                    />
-                </Card>
-             </Section>
+          <Section title="Payment">
+            <Card>
+              <Controller
+                name="cash_payment_received"
+                control={control}
+                render={({ field }) => {
+                  const selectOption = (value: boolean) => field.onChange(value)
+                  const optionClass = (active: boolean) =>
+                    `w-full rounded-lg border px-4 py-3 text-left transition ${
+                      active
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`
+
+                  return (
+                    <div className="space-y-3">
+                      <p className="text-sm text-gray-700">
+                        Choose how you’ll collect the £5/guest deposit.
+                      </p>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <button
+                          type="button"
+                          className={optionClass(!field.value)}
+                          onClick={() => selectOption(false)}
+                        >
+                          <div className="font-medium text-gray-900">Send payment link</div>
+                          <div className="text-sm text-gray-600">
+                            Customer receives an SMS payment link; booking stays pending until paid.
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          className={optionClass(field.value)}
+                          onClick={() => selectOption(true)}
+                        >
+                          <div className="font-medium text-gray-900">Cash collected</div>
+                          <div className="text-sm text-gray-600">
+                            Mark deposit as paid now and confirm the booking immediately.
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+                  )
+                }}
+              />
+            </Card>
+          </Section>
         )}
 
         {/* Sunday Lunch Menu */}

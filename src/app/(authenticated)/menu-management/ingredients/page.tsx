@@ -7,7 +7,7 @@ import { Card } from '@/components/ui-v2/layout/Card';
 import { Button } from '@/components/ui-v2/forms/Button';
 import { NavGroup } from '@/components/ui-v2/navigation/NavGroup';
 import { NavLink } from '@/components/ui-v2/navigation/NavLink';
-import { DataTable } from '@/components/ui-v2/display/DataTable';
+import { DataTable, type Column } from '@/components/ui-v2/display/DataTable';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { Input } from '@/components/ui-v2/forms/Input';
 import { Select } from '@/components/ui-v2/forms/Select';
@@ -614,10 +614,11 @@ export default function MenuIngredientsPage() {
     });
   }, [ingredients, quickFilter]);
 
-  const columns = [
+  const columns: Column<Ingredient>[] = [
     {
       key: 'name',
       header: 'Name',
+      sortable: true,
       cell: (ingredient: Ingredient) => (
         <div>
           <div className="font-medium">{ingredient.name}</div>
@@ -628,6 +629,8 @@ export default function MenuIngredientsPage() {
     {
       key: 'supplier',
       header: 'Supplier',
+      sortable: true,
+      sortFn: (a, b) => (a.supplier_name || '').localeCompare(b.supplier_name || ''),
       cell: (ingredient: Ingredient) =>
         ingredient.supplier_name ? (
           <div className="text-sm">
@@ -655,6 +658,8 @@ export default function MenuIngredientsPage() {
     {
       key: 'costs',
       header: 'Costs',
+      sortable: true,
+      sortFn: (a, b) => Number(a.latest_pack_cost ?? a.pack_cost) - Number(b.latest_pack_cost ?? b.pack_cost),
       cell: (ingredient: Ingredient) => (
         <div className="text-sm">
           <div>Pack: £{Number(ingredient.latest_pack_cost ?? ingredient.pack_cost).toFixed(2)}</div>
@@ -664,6 +669,12 @@ export default function MenuIngredientsPage() {
     {
       key: 'portionCost',
       header: 'Portion cost',
+      sortable: true,
+      sortFn: (a, b) => {
+        const costA = calculatePortionCost(a) ?? -1;
+        const costB = calculatePortionCost(b) ?? -1;
+        return costA - costB;
+      },
       cell: (ingredient: Ingredient) => {
         const portionCost = calculatePortionCost(ingredient);
         return <span className="text-sm">{formatRoundedCost(portionCost)}</span>;
@@ -672,6 +683,8 @@ export default function MenuIngredientsPage() {
     {
       key: 'usage',
       header: 'Dishes',
+      sortable: true,
+      sortFn: (a, b) => a.dishes.length - b.dishes.length,
       cell: (ingredient: Ingredient) => (
         <Badge variant="secondary">{ingredient.dishes.length}</Badge>
       ),
@@ -679,6 +692,8 @@ export default function MenuIngredientsPage() {
     {
       key: 'status',
       header: 'Status',
+      sortable: true,
+      sortFn: (a, b) => (a.is_active === b.is_active ? 0 : a.is_active ? -1 : 1),
       cell: (ingredient: Ingredient) => (
         <Badge variant={ingredient.is_active ? 'success' : 'error'}>
           {ingredient.is_active ? 'Active' : 'Inactive'}
