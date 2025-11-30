@@ -13,7 +13,8 @@ import {
   ArrowPathIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
-  PlusIcon
+  PlusIcon,
+  PrinterIcon
 } from '@heroicons/react/24/outline';
 import { ArrowUpIcon, ArrowDownIcon, MinusIcon } from '@heroicons/react/20/solid';
 import { TableBooking } from '@/types/table-bookings';
@@ -30,7 +31,9 @@ import { Badge } from '@/components/ui-v2/display/Badge';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { Spinner } from '@/components/ui-v2/feedback/Spinner';
 import { EmptyState } from '@/components/ui-v2/display/EmptyState';
+import { toast } from '@/components/ui-v2/feedback/Toast';
 import { getTableBookingsDashboardData } from '@/app/actions/table-bookings';
+import { generateSundayLunchCookSheet } from '@/app/actions/sunday-lunch-cook-sheet';
 
 interface GrowthMetric {
   bookings: number;
@@ -120,6 +123,7 @@ export default function TableBookingsDashboard() {
   const [stats, setStats] = useState<DashboardStats>(DEFAULT_STATS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [downloadingCookSheet, setDownloadingCookSheet] = useState(false);
 
   const canView = hasPermission('table_bookings', 'view');
   const canCreate = hasPermission('table_bookings', 'create');
@@ -183,6 +187,52 @@ export default function TableBookingsDashboard() {
     return `${displayHours}:${minutes.toString().padStart(2, '0')}${period}`;
   };
 
+  const handleDownloadSundayLunchSheet = async () => {
+    // Use selectedDate if it's a Sunday, otherwise alert user
+    if (selectedDate.getDay() !== 0) {
+      toast.error('Please select a Sunday date to print the cook sheet.');
+      return;
+    }
+
+    const dateStr = format(selectedDate, 'yyyy-MM-dd');
+    const loadingToast = toast.loading('Generating cook sheet...');
+    setDownloadingCookSheet(true);
+
+    try {
+      const result = await generateSundayLunchCookSheet(dateStr);
+
+      if (!result || 'error' in result) {
+        toast.error(result?.error || 'Failed to generate cook sheet.', { id: loadingToast });
+        return;
+      }
+
+      if (result.success && result.pdf && result.filename) {
+        const binary = atob(result.pdf);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        const pdfBlob = new Blob([bytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(pdfBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = result.filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        toast.success('Cook sheet downloaded.', { id: loadingToast });
+      } else {
+        toast.error('Failed to generate cook sheet.', { id: loadingToast });
+      }
+    } catch (err) {
+      console.error('Error downloading Sunday lunch cook sheet:', err);
+      toast.error('Failed to generate cook sheet.', { id: loadingToast });
+    } finally {
+      setDownloadingCookSheet(false);
+    }
+  };
+
   const navActions = (
     <NavGroup>
       <NavLink href="/table-bookings/calendar">
@@ -196,11 +246,24 @@ export default function TableBookingsDashboard() {
     </NavGroup>
   )
 
-  const headerActions = canCreate ? (
-    <LinkButton href="/table-bookings/new" variant="primary" leftIcon={<PlusIcon className="h-5 w-5" />}>
-      New Booking
-    </LinkButton>
-  ) : null
+  const headerActions = (
+    <>
+      <Button 
+        variant="secondary" 
+        onClick={handleDownloadSundayLunchSheet}
+        loading={downloadingCookSheet}
+        disabled={downloadingCookSheet}
+        leftIcon={<PrinterIcon className="h-5 w-5" />}
+      >
+        Print Cook Sheet
+      </Button>
+      {canCreate && (
+        <LinkButton href="/table-bookings/new" variant="primary" leftIcon={<PlusIcon className="h-5 w-5" />}>
+          New Booking
+        </LinkButton>
+      )}
+    </>
+  );
 
   const layoutProps = {
     title: 'Table Bookings',
