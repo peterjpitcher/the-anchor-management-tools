@@ -371,12 +371,42 @@ export async function GET(_request: NextRequest) {
   };
 
   // Sunday lunch info
+  let sundaySlots = ['12:00', '12:30', '13:00', '13:30', '14:00'];
+  let lastOrderTime = '14:00';
+
+  if (sundayLunchConfig && sundayLunchConfig.starts_at && sundayLunchConfig.ends_at) {
+    const start = sundayLunchConfig.starts_at.substring(0, 5);
+    const end = sundayLunchConfig.ends_at.substring(0, 5);
+    
+    // Generate slots: start time until (end time - 60 mins)
+    // Allowed last seating 1 hour before service ends
+    const [endH, endM] = end.split(':').map(Number);
+    const endMinutes = endH * 60 + endM;
+    const lastSeatingMinutes = endMinutes - 60; 
+    
+    const generatedSlots = [];
+    const [startH, startM] = start.split(':').map(Number);
+    let currentMinutes = startH * 60 + startM;
+    
+    while (currentMinutes <= lastSeatingMinutes) {
+        const h = Math.floor(currentMinutes / 60);
+        const m = currentMinutes % 60;
+        generatedSlots.push(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`);
+        currentMinutes += 30; // 30 min interval
+    }
+    
+    if (generatedSlots.length > 0) {
+        sundaySlots = generatedSlots;
+        lastOrderTime = generatedSlots[generatedSlots.length - 1];
+    }
+  }
+
   const sundayInfo = currentDay === 0
     ? {
         available: sundayLunchEnabledToday,
-        slots: sundayLunchEnabledToday ? ['12:00', '12:30', '13:00', '13:30', '14:00'] : [],
+        slots: sundayLunchEnabledToday ? sundaySlots : [],
         bookingRequired: true,
-        lastOrderTime: '14:00',
+        lastOrderTime: lastOrderTime,
         message: sundayLunchMessage,
       }
     : null;
