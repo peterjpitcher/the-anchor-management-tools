@@ -153,15 +153,28 @@ export async function GET(request: Request) {
     // Find draft bookings where hold_expiry is approaching (<= 7 days)
     const { data: drafts } = await supabase
       .from('private_bookings')
-      .select('id, customer_first_name, customer_name, contact_phone, hold_expiry, event_date')
+      .select('id, customer_first_name, customer_name, contact_phone, hold_expiry, event_date, customer_id')
       .eq('status', 'draft')
       .gt('hold_expiry', now.toISOString()) // Not expired yet
       .not('hold_expiry', 'is', null)
-      .not('contact_phone', 'is', null)
+      // Removed .not('contact_phone', 'is', null) to support fallback to customer record
     
     if (drafts) {
       for (const booking of drafts) {
-        if (!booking.hold_expiry || !booking.contact_phone) continue;
+        if (!booking.hold_expiry) continue;
+
+        // Resolve phone number (fallback to customer record)
+        let contactPhone = booking.contact_phone;
+        if (!contactPhone && booking.customer_id) {
+            const { data: customer } = await supabase
+                .from('customers')
+                .select('mobile_number')
+                .eq('id', booking.customer_id)
+                .single();
+            contactPhone = customer?.mobile_number;
+        }
+
+        if (!contactPhone) continue;
 
         const expiry = new Date(booking.hold_expiry);
         const diffMs = expiry.getTime() - now.getTime();
@@ -189,7 +202,7 @@ export async function GET(request: Request) {
                     trigger_type: triggerType,
                     template_key: `private_booking_${triggerType}`,
                     message_body: messageBody,
-                    customer_phone: booking.contact_phone,
+                    customer_phone: contactPhone,
                     customer_name: booking.customer_name,
                     priority: 2
                 });
@@ -220,7 +233,7 @@ export async function GET(request: Request) {
               trigger_type: triggerType,
               template_key: `private_booking_${triggerType}`,
               message_body: messageBody,
-              customer_phone: booking.contact_phone,
+              customer_phone: contactPhone,
               customer_name: booking.customer_name,
               priority: 2
             })
@@ -263,16 +276,27 @@ export async function GET(request: Request) {
       .select(`
          id, customer_first_name, customer_name, contact_phone, event_date, 
          total_amount, deposit_amount, deposit_paid_date,
-         final_payment_date
+         final_payment_date, customer_id
       `)
       .eq('status', 'confirmed')
       .gt('event_date', now.toISOString()) // Future events only
       .lte('event_date', fourteenDaysFromNow.toISOString()) // <= 14 days away
-      .not('contact_phone', 'is', null);
+      // Removed .not('contact_phone', 'is', null) to allow fallback
 
     if (confirmedBookings) {
       for (const booking of confirmedBookings) {
-        if (!booking.contact_phone) continue;
+        // Resolve phone number (fallback to customer record)
+        let contactPhone = booking.contact_phone;
+        if (!contactPhone && booking.customer_id) {
+            const { data: customer } = await supabase
+                .from('customers')
+                .select('mobile_number')
+                .eq('id', booking.customer_id)
+                .single();
+            contactPhone = customer?.mobile_number;
+        }
+
+        if (!contactPhone) continue;
 
         // Simple balance check: if final payment date is set, assume paid.
         const isPaid = !!booking.final_payment_date;
@@ -299,7 +323,7 @@ export async function GET(request: Request) {
                trigger_type: triggerType,
                template_key: `private_booking_${triggerType}`,
                message_body: messageBody,
-               customer_phone: booking.contact_phone,
+               customer_phone: contactPhone,
                customer_name: booking.customer_name,
                priority: 1
              });
