@@ -25,7 +25,7 @@ function formatTime12Hour(time24: string): string {
   }
 }
 
-import { CreateTableBookingSchema, type CreateTableBookingInput } from '@/lib/schemas/table-bookings';
+import { CreateTableBookingSchema, type CreateTableBookingInput, TableBookingPaymentMethodSchema, TableBookingPaymentStatusSchema } from '@/lib/schemas/table-bookings';
 
 // ... (formatTime12Hour remains unchanged)
 
@@ -39,6 +39,8 @@ const UpdateTableBookingSchema = z.object({
   celebration_type: z.string().optional(),
   tables_assigned: z.any().optional(),
   internal_notes: z.string().optional(),
+  payment_method: TableBookingPaymentMethodSchema.optional(),
+  payment_status: TableBookingPaymentStatusSchema.optional(),
 });
 
 type GrowthMetric = {
