@@ -36,7 +36,8 @@ export class SmsQueueService {
       'booking_expired',
       'deposit_reminder_7day',
       'deposit_reminder_1day',
-      'balance_reminder_14day'
+      'balance_reminder_14day',
+      'manual'
     ];
     
     if (!autoSendTriggers.includes(triggerType)) {

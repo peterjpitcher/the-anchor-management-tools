@@ -33,7 +33,9 @@ export type CreateTableBookingInput = {
   celebration_type?: string;
   duration_minutes?: number;
   source?: string;
-  cash_payment_received?: boolean;
+  // New payment fields
+  payment_method?: 'payment_link' | 'cash';
+  payment_status?: 'pending' | 'completed' | 'failed' | 'refunded' | 'partial_refund';
   // Customer details for creation if ID not provided
   customer_first_name?: string;
   customer_last_name?: string;
@@ -61,6 +63,9 @@ export type UpdateTableBookingInput = {
   celebration_type?: string;
   tables_assigned?: any;
   internal_notes?: string;
+  // New payment fields
+  payment_method?: 'payment_link' | 'cash';
+  payment_status?: 'pending' | 'completed' | 'failed' | 'refunded' | 'partial_refund';
 };
 
 export type DashboardViewMode = 'day' | 'week' | 'month' | 'next-month';
@@ -1062,15 +1067,10 @@ export class TableBookingService {
     const policyErrorMessage = policyResult?.error_message;
     const isPolicyValid = Boolean(policyResult?.is_valid);
     const isStaffSource = input.source && input.source !== 'website';
-    const cashPaymentReceived = Boolean(input.cash_payment_received);
 
-    if (cashPaymentReceived) {
-      if (input.booking_type !== 'sunday_lunch') {
-        throw new Error('Cash payment option is only available for Sunday lunch bookings');
-      }
-      if (!isStaffSource) {
-        throw new Error('Cash payment option is only available for staff bookings');
-      }
+    // Staff can override policies for cash payments directly or payment_link with override
+    if (input.payment_method === 'cash' && !isStaffSource) {
+      throw new Error('Cash payment option is only available for staff bookings');
     }
 
     if (policyError || !isPolicyValid) {
@@ -1113,10 +1113,16 @@ export class TableBookingService {
     );
 
     // 5. Prepare Transaction Data
-    const initialStatus =
-      input.booking_type === 'sunday_lunch' && !cashPaymentReceived
-        ? 'pending_payment'
-        : 'confirmed';
+    let initialStatus: 'pending_payment' | 'confirmed' | 'cancelled' | 'no_show' | 'completed' = 'pending_payment';
+    if (input.booking_type === 'sunday_lunch') {
+      if (input.payment_method === 'cash') {
+        initialStatus = 'confirmed';
+      } else {
+        initialStatus = 'pending_payment'; // Payment link will lead to pending status
+      }
+    } else {
+      initialStatus = 'confirmed'; // Regular bookings are confirmed by default
+    }
 
     const bookingData = {
       customer_id: customerId,
@@ -1131,24 +1137,37 @@ export class TableBookingService {
       duration_minutes: input.duration_minutes || 120,
       source: input.source || 'phone',
       status: initialStatus,
+      payment_method: input.payment_method,
+      payment_status: input.payment_status,
     };
 
     let paymentData = null;
-    if (input.booking_type === 'sunday_lunch' && cashPaymentReceived) {
-      const depositAmount = input.party_size * 5;
+    if (input.booking_type === 'sunday_lunch' && input.payment_method) {
+      const depositAmount = input.party_size * 5; // Assuming deposit based on party size for now
       const recordedAt = new Date().toISOString();
-      paymentData = {
-        amount: depositAmount,
-        payment_method: 'cash',
-        status: 'completed',
-        paid_at: recordedAt,
-        payment_metadata: {
-          recorded_via: 'manual_cash',
-          recorded_at: recordedAt,
-          recorded_in_app: true,
-          deposit_amount: depositAmount,
-        },
-      };
+      if (input.payment_method === 'cash') {
+        paymentData = {
+          amount: depositAmount,
+          payment_method: 'cash',
+          status: 'completed',
+          paid_at: recordedAt,
+          payment_metadata: {
+            recorded_via: 'manual_cash',
+            recorded_at: recordedAt,
+            recorded_in_app: true,
+            deposit_amount: depositAmount,
+          },
+        };
+      } else if (input.payment_method === 'payment_link') {
+        paymentData = {
+          amount: depositAmount,
+          payment_method: 'payment_link',
+          status: 'pending', // Initial status for payment link
+          payment_metadata: {
+            deposit_amount: depositAmount,
+          },
+        };
+      }
     }
 
     // 6. Execute Atomic Transaction

@@ -118,7 +118,6 @@ export default function NewTableBookingPage() {
       duration_minutes: 120,
       source: 'phone',
       customer_sms_opt_in: true,
-      cash_payment_received: false,
       // Initialize optional fields to undefined or empty strings to avoid uncontrolled/controlled warnings if mapped to inputs
       customer_first_name: '',
       customer_last_name: '',
@@ -133,7 +132,7 @@ export default function NewTableBookingPage() {
   const partySize = watch('party_size');
   const phoneNumber = watch('customer_mobile_number');
   const selectedTime = watch('booking_time');
-  const cashPaymentReceived = watch('cash_payment_received');
+  const paymentMethod = watch('payment_method');
 
   // Derived State for Menu
   const includedSideOptions = useMemo(
@@ -350,6 +349,25 @@ export default function NewTableBookingPage() {
     });
   }, [partySize, bookingType]);
 
+  // Ensure payment fields stay in sync with booking type and selection
+  useEffect(() => {
+    if (bookingType !== 'sunday_lunch') {
+      setValue('payment_method', undefined);
+      setValue('payment_status', undefined);
+      return;
+    }
+
+    // Default to payment link for Sunday lunch if nothing selected
+    if (!paymentMethod) {
+      setValue('payment_method', 'payment_link');
+      setValue('payment_status', 'pending');
+    } else if (paymentMethod === 'cash') {
+      setValue('payment_status', 'completed');
+    } else {
+      setValue('payment_status', 'pending');
+    }
+  }, [bookingType, paymentMethod, setValue]);
+
 
   const onSubmit = async (data: CreateTableBookingInput) => {
     // Validate Sunday Lunch Selections
@@ -397,6 +415,18 @@ export default function NewTableBookingPage() {
             });
         }
         data.menu_items = finalMenuItems;
+    }
+
+    // Ensure payment fields are aligned before submit
+    if (data.booking_type === 'sunday_lunch') {
+      if (!data.payment_method) {
+        setError('root', { message: 'Please select how the deposit will be collected' });
+        return;
+      }
+      data.payment_status = data.payment_method === 'cash' ? 'completed' : 'pending';
+    } else {
+      data.payment_method = undefined;
+      data.payment_status = undefined;
     }
 
     const result = await createTableBooking(data);
@@ -540,10 +570,13 @@ export default function NewTableBookingPage() {
           <Section title="Payment">
             <Card>
               <Controller
-                name="cash_payment_received"
+                name="payment_method"
                 control={control}
                 render={({ field }) => {
-                  const selectOption = (value: boolean) => field.onChange(value)
+                  const selectOption = (value: 'payment_link' | 'cash') => {
+                    field.onChange(value);
+                    setValue('payment_status', value === 'cash' ? 'completed' : 'pending');
+                  };
                   const optionClass = (active: boolean) =>
                     `w-full rounded-lg border px-4 py-3 text-left transition ${
                       active
@@ -559,8 +592,8 @@ export default function NewTableBookingPage() {
                       <div className="grid gap-3 md:grid-cols-2">
                         <button
                           type="button"
-                          className={optionClass(!field.value)}
-                          onClick={() => selectOption(false)}
+                          className={optionClass(field.value !== 'cash')}
+                          onClick={() => selectOption('payment_link')}
                         >
                           <div className="font-medium text-gray-900">Send payment link</div>
                           <div className="text-sm text-gray-600">
@@ -569,8 +602,8 @@ export default function NewTableBookingPage() {
                         </button>
                         <button
                           type="button"
-                          className={optionClass(field.value)}
-                          onClick={() => selectOption(true)}
+                          className={optionClass(field.value === 'cash')}
+                          onClick={() => selectOption('cash')}
                         >
                           <div className="font-medium text-gray-900">Cash collected</div>
                           <div className="text-sm text-gray-600">
@@ -644,7 +677,7 @@ export default function NewTableBookingPage() {
 
         <div className="flex gap-4">
             <Button type="submit" disabled={isSubmitting || !selectedTime} loading={isSubmitting}>
-                {bookingType === 'sunday_lunch' && !cashPaymentReceived ? 'Create & Request Payment' : 'Create Booking'}
+                {bookingType === 'sunday_lunch' && paymentMethod !== 'cash' ? 'Create & Request Payment' : 'Create Booking'}
             </Button>
             <LinkButton href="/table-bookings" variant="secondary">Cancel</LinkButton>
         </div>

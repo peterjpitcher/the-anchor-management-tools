@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 export const BookingTypeSchema = z.enum(['regular', 'sunday_lunch']);
 export const ItemTypeSchema = z.enum(['main', 'side', 'extra']);
+export const TableBookingPaymentMethodSchema = z.enum(['payment_link', 'cash']);
+export const TableBookingPaymentStatusSchema = z.enum(['pending', 'completed', 'failed', 'refunded', 'partial_refund']);
 
 export const MenuItemSchema = z.object({
   custom_item_name: z.string().optional(),
@@ -32,7 +34,9 @@ export const CreateTableBookingSchema = z.object({
   duration_minutes: z.number().default(120),
   source: z.string().default('phone'),
   
-  cash_payment_received: z.boolean().default(false),
+  payment_method: TableBookingPaymentMethodSchema.optional(),
+  payment_status: TableBookingPaymentStatusSchema.optional(),
+
   menu_items: z.array(MenuItemSchema).optional(),
 }).refine((data) => {
   if (!data.customer_id) {
@@ -42,6 +46,14 @@ export const CreateTableBookingSchema = z.object({
 }, {
   message: "Customer details are required if no existing customer is selected",
   path: ["customer_first_name"], // Highlight first name field
+}).refine((data) => {
+  if (data.booking_type === 'sunday_lunch') {
+    return !!data.payment_method && !!data.payment_status;
+  }
+  return true;
+}, {
+  message: "Payment method and status are required for Sunday Lunch bookings",
+  path: ["payment_method"],
 });
 
 export type CreateTableBookingInput = z.infer<typeof CreateTableBookingSchema>;
