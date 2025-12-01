@@ -66,7 +66,6 @@ export default async function WeeklyCashupPage({ searchParams }: { searchParams:
           <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b">
             <tr>
               <th className="px-6 py-3">Date</th>
-              <th className="px-6 py-3">Status</th>
               <th className="px-6 py-3 text-right">Target</th>
               <th className="px-6 py-3 text-right">Counted</th>
               <th className="px-6 py-3 text-right">Variance</th>
@@ -78,20 +77,18 @@ export default async function WeeklyCashupPage({ searchParams }: { searchParams:
             ) : (
               weeklyData.map((row: any) => (
                 <tr key={row.session_date} className="bg-white border-b hover:bg-gray-50">
-                  <td className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">{row.session_date}</td>
-                  <td className="px-6 py-4 capitalize">
-                    <span className={`px-2 py-1 rounded text-xs ${
-                      row.status === 'approved' ? 'bg-green-100 text-green-800' :
-                      row.status === 'submitted' ? 'bg-blue-100 text-blue-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {row.status}
-                    </span>
+                  <td className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">
+                    {row.session_date}
+                    {row.status === 'draft' && (
+                      <span className="ml-2 px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600 border border-gray-200">
+                        Draft
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4 text-right font-mono">£{row.target_amount?.toFixed(2) || '0.00'}</td>
                   <td className="px-6 py-4 text-right font-mono">£{row.total_counted_amount?.toFixed(2)}</td>
-                  <td className={`px-6 py-4 text-right font-mono font-bold ${row.variance_vs_target < 0 ? 'text-red-600' : row.variance_vs_target > 0 ? 'text-green-600' : 'text-gray-600'}`}>
-                    £{row.variance_vs_target?.toFixed(2)}
+                  <td className={`px-6 py-4 text-right font-mono font-bold ${row.total_variance_amount < 0 ? 'text-red-600' : row.total_variance_amount > 0 ? 'text-green-600' : 'text-gray-600'}`}>
+                    £{row.total_variance_amount?.toFixed(2)}
                   </td>
                 </tr>
               ))

@@ -253,7 +253,12 @@ export class CashingUpService {
     // validations can be added here
     const { error } = await supabase
       .from('cashup_sessions')
-      .update({ status: 'submitted', updated_by_user_id: userId, updated_at: new Date().toISOString() })
+      .update({ 
+        status: 'approved', 
+        approved_by_user_id: userId,
+        updated_by_user_id: userId, 
+        updated_at: new Date().toISOString() 
+      })
       .eq('id', id)
       .eq('status', 'draft'); // Can only submit drafts
     
