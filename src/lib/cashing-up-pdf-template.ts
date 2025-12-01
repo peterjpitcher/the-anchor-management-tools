@@ -90,7 +90,7 @@ export function generateWeeklyCashupHTML({ weekData, siteName, weekStartDate, lo
         <td class="border border-black p-1 text-center">${percentDelivery}%</td>
         
         <!-- NOTES -->
-        <td class="border border-black p-1 text-left">${row.notes || ''}</td>
+        <td class="border border-black p-1 text-left" style="font-size: 7px;">${row.notes || ''}</td>
       </tr>
     `;
   }).join('');

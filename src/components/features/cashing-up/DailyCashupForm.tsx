@@ -393,7 +393,7 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props
                 value={date} 
                 onChange={onDateChange} // Changed to onDateChange for page navigation
                 className="flex-1 border rounded p-2"
-                disabled={isFormLocked} // Disabled if locked
+                // Date picker is always enabled to allow navigation
               />
               <div className="text-sm bg-blue-50 text-blue-800 px-3 py-2 rounded border border-blue-200 flex items-center gap-2 min-w-[200px]">
                 <span className="font-semibold">Target:</span> 
@@ -403,6 +403,7 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props
                       type="number" 
                       value={newTarget}
                       onChange={e => setNewTarget(e.target.value)}
+                      onWheel={(e) => e.currentTarget.blur()}
                       className="w-20 p-1 text-sm border rounded"
                       disabled={isFormLocked} // Disabled if locked
                     />
@@ -482,6 +483,7 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props
                             placeholder="0.00"
                             value={cashValues[denom.value] || ''}
                             onChange={e => handleCashValueChange(denom.value, e.target.value)}
+                            onWheel={(e) => e.currentTarget.blur()}
                             className="w-20 p-1 text-right text-sm border-none focus:ring-0"
                             disabled={isFormLocked} // Disabled if locked
                           />
@@ -507,6 +509,7 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props
                       type="number" step="0.01"
                       value={cashExpected} 
                       onChange={e => setCashExpected(e.target.value)}
+                      onWheel={(e) => e.currentTarget.blur()}
                       className="border rounded p-2 pl-6 w-32 text-right font-medium"
                       disabled={isFormLocked} // Disabled if locked
                     />
@@ -536,6 +539,7 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props
                       type="number" step="0.01"
                       value={cardTotal} 
                       onChange={e => setCardTotal(e.target.value)}
+                      onWheel={(e) => e.currentTarget.blur()}
                       className="border rounded p-2 pl-6 w-32 text-right font-medium"
                       disabled={isFormLocked} // Disabled if locked
                     />
@@ -554,6 +558,7 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props
                       type="number" step="0.01"
                       value={stripeTotal} 
                       onChange={e => setStripeTotal(e.target.value)}
+                      onWheel={(e) => e.currentTarget.blur()}
                       className="border rounded p-2 pl-6 w-32 text-right font-medium"
                       disabled={isFormLocked} // Disabled if locked
                     />
@@ -603,9 +608,8 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props
                           {format(parseISO(d), 'EEE dd MMM')}
                         </span>
                         <button 
-                          onClick={() => setDate(d)}
+                          onClick={() => window.location.href = `/cashing-up/daily?date=${d}&siteId=${siteId}`}
                           className="text-xs bg-white border border-red-200 px-2 py-0.5 rounded text-red-600 hover:bg-red-50"
-                          disabled={isFormLocked} // Disabled if locked
                         >
                           Go
                         </button>
