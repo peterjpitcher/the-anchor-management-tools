@@ -5,7 +5,7 @@ import { BusinessHoursService } from '@/services/business-hours';
 import { createClient } from '@/lib/supabase/server';
 import { eachDayOfInterval, subDays, format, isSameDay } from 'date-fns';
 
-export async function getMissingCashupDatesAction(siteId: string, daysBack = 14) {
+export async function getMissingCashupDatesAction(siteId: string, daysBack = 365) {
   const supabase = await createClient();
   const today = new Date();
   const fromDate = subDays(today, daysBack);

@@ -52,10 +52,20 @@ export default async function CashupDashboardPage({ searchParams }: { searchPara
     value: t.totalTakings
   }));
 
-  const varianceData = data.charts.dailyVariance.map(v => ({
-    label: v.date.substring(5), // MM-DD
-    value: v.totalVariance,
-    color: v.totalVariance >= 0 ? '#10B981' : '#EF4444'
+  // Aggregate Variance Data by Month
+  const monthlyVariance = new Array(12).fill(0);
+
+  data.charts.dailyVariance.forEach(v => {
+    const monthIndex = parseInt(v.date.substring(5, 7)) - 1;
+    if (monthIndex >= 0 && monthIndex < 12) {
+      monthlyVariance[monthIndex] += v.totalVariance;
+    }
+  });
+
+  const varianceData = monthlyVariance.map((total, index) => ({
+    label: new Date(year, index, 1).toLocaleString('default', { month: 'short' }),
+    value: total,
+    color: total >= 0 ? '#10B981' : '#EF4444'
   }));
 
   // Helper for formatting
@@ -135,7 +145,7 @@ export default async function CashupDashboardPage({ searchParams }: { searchPara
           </div>
         </div>
         <div className="bg-white p-6 rounded-lg shadow border">
-          <h3 className="font-semibold mb-4">Daily Variance Trend</h3>
+          <h3 className="font-semibold mb-4">Monthly Variance Trend</h3>
           <div className="h-64">
              {varianceData.length > 0 ? (
                 <BarChart data={varianceData} formatType="currency" />
@@ -185,7 +195,7 @@ export default async function CashupDashboardPage({ searchParams }: { searchPara
                         <td className={`px-6 py-4 text-right font-mono font-bold ${row.variance < 0 ? 'text-red-600' : 'text-green-600'}`}>
                             £{fmt(row.variance)}
                         </td>
-                        <td className="px-6 py-4 text-gray-400 italic truncate max-w-xs">{row.notes || '-'}</td>
+                        <td className="px-6 py-4 text-gray-400 italic">{row.notes || '-'}</td>
                     </tr>
                 ))
             )}
