@@ -42,8 +42,8 @@ export async function getMissingCashupDatesAction(siteId: string, daysBack = 365
       }
     }
 
-    // Sort descending (newest first)
-    return { success: true, dates: missingDates.reverse() };
+    // Sort descending (newest first) -> Changed to Ascending (Earliest first)
+    return { success: true, dates: missingDates };
 
   } catch (error: any) {
     console.error('Error checking missing dates:', error);

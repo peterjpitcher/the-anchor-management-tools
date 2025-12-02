@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition, useMemo, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { upsertSessionAction, submitSessionAction, getDailyTargetAction, setDailyTargetAction, getWeeklyProgressAction } from '@/app/actions/cashing-up';
 import { getDailySummaryAction } from '@/app/actions/daily-summary';
 import { getMissingCashupDatesAction } from '@/app/actions/missing-cashups';
@@ -29,6 +30,7 @@ const DENOMINATIONS = [
 ];
 
 export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   
   // States derived from props or initial data
@@ -37,10 +39,11 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props
   
   const [siteId] = useState(site.id);
   
-  const [cashExpected, setCashExpected] = useState('0');
+  // Changed defaults from '0' to '' to avoid needing to clear the field
+  const [cashExpected, setCashExpected] = useState('');
   const [cashValues, setCashValues] = useState<Record<string, string>>({});
-  const [cardTotal, setCardTotal] = useState('0');
-  const [stripeTotal, setStripeTotal] = useState('0');
+  const [cardTotal, setCardTotal] = useState('');
+  const [stripeTotal, setStripeTotal] = useState('');
   const [userNotes, setUserNotes] = useState('');
   const [autoNotes, setAutoNotes] = useState('');
   
@@ -62,6 +65,20 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props
   const [isFormLocked, setIsFormLocked] = useState(isInitialLocked);
   const [showWarningMessage, setShowWarningMessage] = useState(isInitialLocked);
 
+  // Helper for keyboard navigation
+  const handleKeyDown = (e: React.KeyboardEvent, nextId: string) => {
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      const nextElement = document.getElementById(nextId);
+      if (nextElement) {
+        nextElement.focus();
+        if (nextElement instanceof HTMLInputElement) {
+          nextElement.select();
+        }
+      }
+    }
+  };
+
   // Effect to initialize form with data
   useEffect(() => {
     if (initialSessionData) {
@@ -70,7 +87,7 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props
 
       // Set cash expected
       const cashExpectedBreakdown = initialSessionData.cashup_payment_breakdowns?.find(b => b.payment_type_code === 'CASH');
-      setCashExpected(cashExpectedBreakdown?.expected_amount?.toString() || '0');
+      setCashExpected(cashExpectedBreakdown?.expected_amount?.toString() || '');
 
       // Set cash values (from cash_counts total_amount)
       const initialCashValues: Record<string, string> = {};
@@ -81,10 +98,10 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props
 
       // Set card and stripe totals
       const cardBreakdown = initialSessionData.cashup_payment_breakdowns?.find(b => b.payment_type_code === 'CARD');
-      setCardTotal(cardBreakdown?.counted_amount?.toString() || '0');
+      setCardTotal(cardBreakdown?.counted_amount?.toString() || '');
 
       const stripeBreakdown = initialSessionData.cashup_payment_breakdowns?.find(b => b.payment_type_code === 'STRIPE');
-      setStripeTotal(stripeBreakdown?.counted_amount?.toString() || '0');
+      setStripeTotal(stripeBreakdown?.counted_amount?.toString() || '');
 
       // Set notes
       setUserNotes(initialSessionData.notes || '');
@@ -97,10 +114,10 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props
       // For new entries or if no session data found for the date
       setSessionId(null);
       setDate(sessionDate); // Ensure date is set from prop for new entries
-      setCashExpected('0');
+      setCashExpected('');
       setCashValues({});
-      setCardTotal('0');
-      setStripeTotal('0');
+      setCardTotal('');
+      setStripeTotal('');
       setUserNotes('');
       setIsFormLocked(false);
       setShowWarningMessage(false);
@@ -211,7 +228,13 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props
       siteId,
       sessionDate: date,
       status: initialSessionData?.status || 'draft', // Preserve existing status or default to draft
-      notes: `${userNotes}\n\n--- SYSTEM GENERATED SUMMARY ---\n${autoNotes}`,
+      // Conditionally build the notes field
+      notes: (() => {
+        const parts = [];
+        if (userNotes) parts.push(userNotes);
+        if (autoNotes) parts.push(autoNotes);
+        return parts.join('\n\n').trim(); // Trim any leading/trailing whitespace
+      })(),
       paymentBreakdowns: [
         {
           paymentTypeCode: 'CASH', 
@@ -271,14 +294,18 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props
   };
 
   const onSubmitClick = () => {
-    if (!confirm('Are you sure you want to submit? This will approve and lock the session.')) return;
-    
     startTransition(async () => {
       const id = await handleSave(true);
       if (id) {
         const res = await submitSessionAction(id);
         if (res.success) {
-          alert('Submitted successfully!');
+          // Find next missing date
+          const nextDate = missingDates.find(d => d !== date);
+          if (nextDate) {
+            router.push(`/cashing-up/daily?date=${nextDate}&siteId=${siteId}`);
+          } else {
+            router.push('/cashing-up/dashboard');
+          }
         } else {
           alert('Error submitting: ' + res.error);
         }
@@ -395,6 +422,11 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props
                 className="flex-1 border rounded p-2"
                 // Date picker is always enabled to allow navigation
               />
+              {date && ( // Only show if date is set
+                <span className="text-sm font-medium text-gray-700 bg-gray-100 px-3 py-2 rounded border">
+                  {format(parseISO(date), 'EEE')}
+                </span>
+              )}
               <div className="text-sm bg-blue-50 text-blue-800 px-3 py-2 rounded border border-blue-200 flex items-center gap-2 min-w-[200px]">
                 <span className="font-semibold">Target:</span> 
                 {isEditingTarget ? (
@@ -472,24 +504,31 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props
                 <div className="mb-4">
                   <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">Cash Drawer Count (Total Value)</label>
                   <div className="grid grid-cols-2 gap-2">
-                    {DENOMINATIONS.map(denom => (
-                      <div key={denom.value} className="flex items-center justify-between bg-white p-1 rounded border">
-                        <span className="text-xs font-medium w-8 text-center text-gray-600">{denom.label}</span>
-                        <div className="flex items-center gap-1">
-                          <span className="text-gray-400 text-xs">£</span>
-                          <input
-                            type="number"
-                            step="0.01"
-                            placeholder="0.00"
-                            value={cashValues[denom.value] || ''}
-                            onChange={e => handleCashValueChange(denom.value, e.target.value)}
-                            onWheel={(e) => e.currentTarget.blur()}
-                            className="w-20 p-1 text-right text-sm border-none focus:ring-0"
-                            disabled={isFormLocked} // Disabled if locked
-                          />
+                    {DENOMINATIONS.map((denom, index) => {
+                      const nextDenom = DENOMINATIONS[index + 1];
+                      const nextId = nextDenom ? `input-denom-${nextDenom.value}` : 'input-cash-expected';
+                      
+                      return (
+                        <div key={denom.value} className="flex items-center justify-between bg-white p-1 rounded border">
+                          <span className="text-xs font-medium w-8 text-center text-gray-600">{denom.label}</span>
+                          <div className="flex items-center gap-1">
+                            <span className="text-gray-400 text-xs">£</span>
+                            <input
+                              id={`input-denom-${denom.value}`}
+                              type="number"
+                              step="0.01"
+                              placeholder="0.00"
+                              value={cashValues[denom.value] || ''}
+                              onChange={e => handleCashValueChange(denom.value, e.target.value)}
+                              onKeyDown={(e) => handleKeyDown(e, nextId)}
+                              onWheel={(e) => e.currentTarget.blur()}
+                              className="w-20 p-1 text-right text-sm border-none focus:ring-0"
+                              disabled={isFormLocked} // Disabled if locked
+                            />
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -506,9 +545,11 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props
                   <div className="relative">
                     <span className="absolute left-2 top-2 text-gray-400">£</span>
                     <input 
+                      id="input-cash-expected"
                       type="number" step="0.01"
                       value={cashExpected} 
                       onChange={e => setCashExpected(e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(e, 'input-card-total')}
                       onWheel={(e) => e.currentTarget.blur()}
                       className="border rounded p-2 pl-6 w-32 text-right font-medium"
                       disabled={isFormLocked} // Disabled if locked
@@ -536,9 +577,11 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props
                   <div className="relative">
                     <span className="absolute left-2 top-2 text-gray-400">£</span>
                     <input 
+                      id="input-card-total"
                       type="number" step="0.01"
                       value={cardTotal} 
                       onChange={e => setCardTotal(e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(e, 'input-stripe-total')}
                       onWheel={(e) => e.currentTarget.blur()}
                       className="border rounded p-2 pl-6 w-32 text-right font-medium"
                       disabled={isFormLocked} // Disabled if locked
@@ -555,9 +598,11 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props
                   <div className="relative">
                     <span className="absolute left-2 top-2 text-gray-400">£</span>
                     <input 
+                      id="input-stripe-total"
                       type="number" step="0.01"
                       value={stripeTotal} 
                       onChange={e => setStripeTotal(e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(e, 'input-notes')}
                       onWheel={(e) => e.currentTarget.blur()}
                       className="border rounded p-2 pl-6 w-32 text-right font-medium"
                       disabled={isFormLocked} // Disabled if locked
@@ -577,6 +622,7 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props
               <div>
                 <label className="block text-sm font-medium mb-1">Notes / Variance Reason</label>
                 <textarea 
+                  id="input-notes"
                   value={userNotes} 
                   onChange={e => setUserNotes(e.target.value)}
                   className="w-full border rounded p-2 h-24 mb-2"

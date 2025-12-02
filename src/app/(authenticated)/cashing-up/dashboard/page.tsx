@@ -1,3 +1,4 @@
+import { format, parseISO } from 'date-fns';
 import Link from 'next/link';
 import { getDashboardDataAction } from '@/app/actions/cashing-up';
 import { LineChart } from '@/components/charts/LineChart';
@@ -185,7 +186,7 @@ export default async function CashupDashboardPage({ searchParams }: { searchPara
                                 className="text-blue-600 hover:underline font-medium"
                                 title="View/Edit Daily Entry"
                             >
-                                {row.sessionDate}
+                                {format(parseISO(row.sessionDate), 'EEEE, MMMM d, yyyy')}
                             </Link>
                         </td>
                         <td className="px-6 py-4 text-right font-mono">£{fmt(row.cashTotal)}</td>
