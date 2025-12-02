@@ -787,6 +787,11 @@ export default function MenuIngredientsPage() {
       title="Menu Ingredients"
       subtitle="Maintain ingredient costs, suppliers, and allergen information"
       backButton={{ label: 'Back to Menu Management', href: '/menu-management' }}
+      navItems={[
+        { label: 'Dishes', href: '/menu-management/dishes' },
+        { label: 'Recipes', href: '/menu-management/recipes' },
+        { label: 'Ingredients', href: '/menu-management/ingredients' },
+      ]}
       navActions={navActions}
       loading={loading}
       loadingLabel="Loading ingredients..."
