@@ -8,7 +8,7 @@ interface NavGroupProps {
   variant?: 'dark' | 'light';
 }
 
-export function NavGroup({ children, separator, variant = 'dark' }: NavGroupProps) {
+export function NavGroup({ children, separator, variant = 'light' }: NavGroupProps) {
   const items = React.Children.toArray(children).filter(Boolean);
   const defaultSeparator = variant === 'dark' 
     ? <span className="text-white/40">|</span> 
