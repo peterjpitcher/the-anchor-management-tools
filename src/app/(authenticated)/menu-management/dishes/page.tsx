@@ -1000,6 +1000,11 @@ export default function MenuDishesPage() {
       title="Menu Dishes"
       subtitle="Build dishes from ingredients, manage GP%, and configure menu placement"
       backButton={{ label: 'Back to Menu Management', href: '/menu-management' }}
+      navItems={[
+        { label: 'Dishes', href: '/menu-management/dishes' },
+        { label: 'Recipes', href: '/menu-management/recipes' },
+        { label: 'Ingredients', href: '/menu-management/ingredients' },
+      ]}
       navActions={navActions}
       loading={loading}
       loadingLabel="Loading dishes..."
