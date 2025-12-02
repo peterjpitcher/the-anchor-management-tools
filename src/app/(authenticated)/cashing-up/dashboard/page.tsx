@@ -28,7 +28,16 @@ export default async function CashupDashboardPage({ searchParams }: { searchPara
   let comparisonData = null;
   if (compareYear && siteId) {
     const compareFrom = `${compareYear}-01-01`;
-    const compareTo = `${compareYear}-12-31`;
+    let compareTo = `${compareYear}-12-31`;
+
+    // If we are viewing the current year, limit the comparison year to the same date (YTD)
+    if (year === currentYear) {
+      const today = new Date();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      compareTo = `${compareYear}-${month}-${day}`;
+    }
+
     const compareRes = await getDashboardDataAction(siteId, compareFrom, compareTo);
     comparisonData = compareRes.data;
   }
@@ -165,7 +174,7 @@ export default async function CashupDashboardPage({ searchParams }: { searchPara
         <table className="w-full text-sm text-left text-gray-500">
           <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b">
             <tr>
-              <th className="px-6 py-3">Date</th>
+              <th className="px-6 py-3 w-80">Date</th>
               <th className="px-6 py-3 text-right">Cash Total</th>
               <th className="px-6 py-3 text-right">Card Total</th>
               <th className="px-6 py-3 text-right">Stripe Total</th>
@@ -180,7 +189,7 @@ export default async function CashupDashboardPage({ searchParams }: { searchPara
             ) : (
                 data.tables.variance.map((row, idx) => (
                     <tr key={idx} className="bg-white border-b hover:bg-gray-50">
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 w-80">
                             <Link 
                                 href={`/cashing-up/daily?date=${row.sessionDate}&siteId=${row.siteId}`}
                                 className="text-blue-600 hover:underline font-medium"
