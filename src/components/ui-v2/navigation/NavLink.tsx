@@ -23,7 +23,7 @@ export function NavLink({
   active = false,
   disabled = false,
   title,
-  variant = 'dark',
+  variant = 'light',
 }: NavLinkProps) {
   const isDark = variant === 'dark';
 
