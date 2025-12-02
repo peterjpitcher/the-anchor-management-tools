@@ -377,11 +377,10 @@ export default function MenuRecipesPage() {
   const computedPortionCost = yieldQuantityNumber > 0 ? computedTotalCost / yieldQuantityNumber : computedTotalCost;
 
   const navActions = canManage ? (
-    <NavGroup>
-      <NavLink onClick={openCreateModal} className="font-semibold">
+    <NavGroup variant="light">
+      <NavLink variant="light" onClick={openCreateModal} className="font-semibold">
         Add Recipe
       </NavLink>
-      <NavLink href="/menu-management/dishes">Go to Dishes</NavLink>
     </NavGroup>
   ) : undefined;
 
@@ -519,6 +518,11 @@ export default function MenuRecipesPage() {
       title="Menu Recipes"
       subtitle="Build prep recipes from ingredients once, then reuse them across multiple dishes."
       backButton={{ label: 'Back to Menu Management', href: '/menu-management' }}
+      navItems={[
+        { label: 'Dishes', href: '/menu-management/dishes' },
+        { label: 'Recipes', href: '/menu-management/recipes' },
+        { label: 'Ingredients', href: '/menu-management/ingredients' },
+      ]}
       navActions={navActions}
     >
       <Section>

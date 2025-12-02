@@ -734,11 +734,10 @@ export default function MenuDishesPage() {
   const addDishLabel = selectedMenu ? `Add ${selectedMenu.name} Dish` : 'Add Dish';
 
   const navActions = canManage ? (
-    <NavGroup>
-      <NavLink onClick={openCreateModal} className="font-semibold">
+    <NavGroup variant="light">
+      <NavLink variant="light" onClick={openCreateModal} className="font-semibold">
         {addDishLabel}
       </NavLink>
-      <NavLink href="/menu-management/recipes">Manage Recipes</NavLink>
     </NavGroup>
   ) : undefined;
 
