@@ -70,6 +70,7 @@ export interface UpsertCashupSessionDTO {
 
 export interface CashupDashboardStats {
   totalTakings: number;
+  totalTarget: number;
   averageDailyTakings: number;
   totalVariance: number;
   highVarianceDays: number;
@@ -80,7 +81,7 @@ export interface CashupDashboardStats {
 export interface CashupDashboardData {
   kpis: CashupDashboardStats;
   charts: {
-    dailyTakings: { date: string; siteId: string; totalTakings: number }[];
+    dailyTakings: { date: string; siteId: string; totalTakings: number; target: number }[];
     dailyVariance: { date: string; totalVariance: number }[];
     paymentMix: { paymentTypeCode: string; amount: number }[];
     topSitesByVariance: { siteId: string; siteName: string; totalVariance: number }[];

@@ -369,6 +369,7 @@ export class CashingUpService {
     }));
 
     const totalTakings = sessionsWithTarget.reduce((sum, s) => sum + (s.total_counted_amount || 0), 0);
+    const totalTarget = sessionsWithTarget.reduce((sum, s) => sum + (s.target || 0), 0);
     // Use stored total_variance_amount (Counted - Expected) instead of variance vs target
     const totalVariance = sessionsWithTarget.reduce((sum, s) => sum + (s.total_variance_amount || 0), 0);
     
@@ -378,6 +379,7 @@ export class CashingUpService {
     return {
       kpis: {
         totalTakings,
+        totalTarget,
         averageDailyTakings: sessionsWithTakings.length ? totalTakings / sessionsWithTakings.length : 0,
         totalVariance,
         // High variance days based on actual cash discrepancy, not target
@@ -386,7 +388,7 @@ export class CashingUpService {
         expectedDays: 28 // Mock
       },
       charts: {
-        dailyTakings: sessionsWithTarget.map(s => ({ date: s.session_date, siteId: s.site_id, totalTakings: s.total_counted_amount })),
+        dailyTakings: sessionsWithTarget.map(s => ({ date: s.session_date, siteId: s.site_id, totalTakings: s.total_counted_amount, target: s.target })),
         // Use stored variance (discrepancy)
         dailyVariance: sessionsWithTarget.map(s => ({ date: s.session_date, totalVariance: s.total_variance_amount || 0 })),
         paymentMix: [], // Requires joining breakdowns

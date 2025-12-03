@@ -6,6 +6,7 @@ interface DataPoint {
   label: string;
   value: number;
   color?: string;
+  targetLineValue?: number; // New: Target value for a watermark line
 }
 
 interface BarChartProps {
@@ -15,7 +16,7 @@ interface BarChartProps {
   showGrid?: boolean;
   showValues?: boolean;
   horizontal?: boolean;
-  formatType?: 'number' | 'currency' | 'shorthandCurrency'; // Added 'shorthandCurrency'
+  formatType?: 'number' | 'currency' | 'shorthandCurrency';
 }
 
 export function BarChart({ 
@@ -81,8 +82,12 @@ export function BarChart({
 
     // Find min/max value, considering negative values for variance
     const allValues = data.map(d => d.value);
-    const minValue = Math.min(0, ...allValues); 
-    const maxValue = Math.max(...allValues, 1);
+    // Include targetLineValues in the range calculation to ensure target lines are visible
+    const allTargetValues = data.map(d => d.targetLineValue).filter(Boolean) as number[];
+    const combinedValues = [...allValues, ...allTargetValues];
+
+    const minValue = Math.min(0, ...combinedValues); 
+    const maxValue = Math.max(...combinedValues, 1);
     
     // Adjust total range for proper scaling when negatives are present
     // Add headroom to maxValue so bars don't hit the very top
@@ -182,11 +187,11 @@ export function BarChart({
       });
     }
 
-    // Draw bars
     // Auto-hide values if too dense to be readable
     const shouldShowValues = showValues && data.length < 30;
 
     data.forEach((item, index) => {
+      // Draw bars
       const barColor = item.color || color;
       ctx.fillStyle = barColor;
 
@@ -220,6 +225,21 @@ export function BarChart({
             y + actualBarHeight / 2
           );
         }
+
+        // Draw target line
+        if (item.targetLineValue !== undefined && item.targetLineValue !== null) {
+          ctx.strokeStyle = '#9CA3AF'; // Light grey
+          ctx.lineWidth = 1;
+          ctx.setLineDash([2, 2]); // Dashed line
+          
+          const targetX = padding.left + ((item.targetLineValue - minValue) / valueRange) * chartWidth;
+          
+          ctx.beginPath();
+          ctx.moveTo(targetX, y);
+          ctx.lineTo(targetX, y + actualBarHeight);
+          ctx.stroke();
+          ctx.setLineDash([]); // Reset line dash
+        }
       } else {
         const barWidth = chartWidth / data.length;
         const barPadding = barWidth * 0.2;
@@ -251,6 +271,21 @@ export function BarChart({
             x + actualBarWidth / 2, 
             item.value < 0 ? y + 5 : y - 5
           );
+        }
+
+        // Draw target line
+        if (item.targetLineValue !== undefined && item.targetLineValue !== null) {
+          ctx.strokeStyle = '#9CA3AF'; // Light grey
+          ctx.lineWidth = 1;
+          ctx.setLineDash([2, 2]); // Dashed line
+          
+          const targetY = padding.top + chartHeight - ((item.targetLineValue - minValue) / valueRange) * chartHeight;
+          
+          ctx.beginPath();
+          ctx.moveTo(x, targetY);
+          ctx.lineTo(x + actualBarWidth, targetY);
+          ctx.stroke();
+          ctx.setLineDash([]); // Reset line dash
         }
       }
     });
