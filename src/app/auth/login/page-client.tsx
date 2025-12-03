@@ -106,7 +106,6 @@ export default function LoginForm() {
       toast.success('Logged in successfully')
 
       router.replace(redirectTo)
-      router.refresh()
     } catch (error: unknown) {
       console.error('Error:', error)
       const message = error instanceof Error ? error.message : ''

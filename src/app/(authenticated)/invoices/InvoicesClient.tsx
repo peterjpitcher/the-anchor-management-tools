@@ -331,7 +331,15 @@ export default function InvoicesClient({
                   className="w-full sm:w-auto"
                   fullWidth={false}
                 >
+                  <option value="all">All</option>
                   <option value="unpaid">Unpaid</option>
+                  <option value="draft">Draft</option>
+                  <option value="sent">Sent</option>
+                  <option value="partially_paid">Partially Paid</option>
+                  <option value="paid">Paid</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="void">Void</option>
+                  <option value="written_off">Written Off</option>
                 </Select>
 
                 <Input

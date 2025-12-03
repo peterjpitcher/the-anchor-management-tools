@@ -57,10 +57,34 @@ export default async function CashupDashboardPage({ searchParams }: { searchPara
   }
 
   // Map data for charts
-  const takingsData = data.charts.dailyTakings.map(t => ({
-    date: t.date,
-    value: t.totalTakings
-  }));
+  const weeklyTakingsMap = new Map<string, { totalTakings: number; target: number }>();
+
+  data.charts.dailyTakings.forEach(t => {
+    const date = parseISO(t.date);
+    const day = date.getDay();
+    const diff = date.getDate() - day + (day === 0 ? -6 : 1); // Adjust to Monday
+    const monday = new Date(date);
+    monday.setDate(diff);
+    const key = format(monday, 'yyyy-MM-dd');
+
+    const current = weeklyTakingsMap.get(key) || { totalTakings: 0, target: 0 };
+    weeklyTakingsMap.set(key, {
+        totalTakings: current.totalTakings + t.totalTakings,
+        target: current.target + (t.target || 0)
+    });
+  });
+
+  const sortedWeeks = Array.from(weeklyTakingsMap.keys()).sort();
+  
+  const takingsData = sortedWeeks.map(weekStart => {
+      const d = weeklyTakingsMap.get(weekStart)!;
+      return {
+          label: format(parseISO(weekStart), 'dd MMM'),
+          value: d.totalTakings,
+          color: d.totalTakings >= d.target ? '#10B981' : '#EF4444',
+          targetLineValue: d.target, // Add target value for the watermark line
+      };
+  });
 
   // Aggregate Variance Data by Month
   const monthlyVariance = new Array(12).fill(0);
@@ -121,6 +145,15 @@ export default async function CashupDashboardPage({ searchParams }: { searchPara
                 </div>
             )}
           </div>
+          <div className="mt-1">
+             <p className="text-xs text-gray-500">Target: £{fmt(data.kpis.totalTarget)}</p>
+             {data.kpis.totalTarget > 0 && (
+                 <p className={`text-xs font-medium ${data.kpis.totalTakings >= data.kpis.totalTarget ? 'text-green-600' : 'text-red-600'}`}>
+                     {data.kpis.totalTakings >= data.kpis.totalTarget ? '+' : ''}
+                     {((data.kpis.totalTakings - data.kpis.totalTarget) / data.kpis.totalTarget * 100).toFixed(1)}% vs Target
+                 </p>
+             )}
+          </div>
           {comparisonData && <p className="text-xs text-gray-400 mt-1">vs £{fmt(comparisonData.kpis.totalTakings)} ({compareYear})</p>}
         </div>
         <div className="bg-white p-6 rounded-lg shadow border">
@@ -145,10 +178,10 @@ export default async function CashupDashboardPage({ searchParams }: { searchPara
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         <div className="bg-white p-6 rounded-lg shadow border">
-          <h3 className="font-semibold mb-4">Daily Takings Trend</h3>
+          <h3 className="font-semibold mb-4">Weekly Takings Performance</h3>
           <div className="h-64">
             {takingsData.length > 0 ? (
-              <LineChart data={takingsData} label="Takings (£)" />
+              <BarChart data={takingsData} formatType="currency" />
             ) : (
               <div className="h-full flex items-center justify-center text-gray-400">No data available</div>
             )}
