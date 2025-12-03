@@ -64,3 +64,6 @@ playwright-report/
 tests/screenshots/
 tests/auth.json
 *tests*playwright/.auth
+
+.gemini/
+gha-creds-*.json
