@@ -1158,15 +1158,6 @@ export class TableBookingService {
             deposit_amount: depositAmount,
           },
         };
-      } else if (input.payment_method === 'payment_link') {
-        paymentData = {
-          amount: depositAmount,
-          payment_method: 'payment_link',
-          status: 'pending', // Initial status for payment link
-          payment_metadata: {
-            deposit_amount: depositAmount,
-          },
-        };
       }
     }
 
