@@ -43,14 +43,39 @@ export async function createTableBookingPayment(bookingId: string) {
       .select('*')
       .eq('booking_id', bookingId)
       .eq('status', 'pending')
-      .single();
+      .maybeSingle();
       
     if (existingPayment) {
-      console.log('[Payment Journey] Found existing pending payment:', existingPayment.transaction_id);
-      return { 
-        orderId: existingPayment.transaction_id,
-        approveUrl: existingPayment.payment_metadata?.approve_url 
-      };
+      const hasApproveUrl = Boolean(existingPayment.payment_metadata?.approve_url);
+      const hasTransactionId = Boolean(existingPayment.transaction_id);
+      const isPayPal = existingPayment.payment_method === 'paypal';
+
+      if (isPayPal && hasApproveUrl && hasTransactionId) {
+        console.log('[Payment Journey] Reusing existing pending payment:', existingPayment.transaction_id);
+        return { 
+          orderId: existingPayment.transaction_id,
+          approveUrl: existingPayment.payment_metadata?.approve_url 
+        };
+      }
+
+      console.warn('[Payment Journey] Retiring invalid pending payment record before creating new one', {
+        paymentId: existingPayment.id,
+        paymentMethod: existingPayment.payment_method,
+        hasApproveUrl,
+        hasTransactionId,
+      });
+
+      await supabase
+        .from('table_booking_payments')
+        .update({
+          status: 'failed',
+          payment_metadata: {
+            ...existingPayment.payment_metadata,
+            retired_at: new Date().toISOString(),
+            retired_reason: 'invalid_pending_missing_approval',
+          },
+        })
+        .eq('id', existingPayment.id);
     }
     
     // Calculate amounts

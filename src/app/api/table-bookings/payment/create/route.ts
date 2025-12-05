@@ -91,6 +91,7 @@ export async function GET(request: NextRequest) {
       .insert({
         booking_id: bookingId,
         payment_method: 'paypal',
+        transaction_id: orderId,
         amount: depositAmount, // Only charge deposit
         currency: 'GBP',
         status: 'pending',
@@ -99,7 +100,8 @@ export async function GET(request: NextRequest) {
           payment_type: 'deposit',
           total_amount: totalAmount,
           deposit_amount: depositAmount,
-          outstanding_amount: totalAmount - depositAmount
+          outstanding_amount: totalAmount - depositAmount,
+          approve_url: approveUrl,
         },
       });
     
