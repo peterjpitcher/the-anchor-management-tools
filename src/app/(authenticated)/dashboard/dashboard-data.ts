@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { PrivateBookingService } from '@/services/private-bookings'
 import { getTodayIsoDate } from '@/lib/dateUtils'
-import { startOfWeek, subWeeks, format, addDays } from 'date-fns'
+import { startOfWeek, subWeeks, format, addDays, differenceInCalendarDays } from 'date-fns'
 
 type EventSummary = {
   id: string
@@ -178,6 +178,7 @@ type CashingUpSnapshot = {
   lastWeekTotal: number
   lastYearTotal: number
   sessionsSubmittedCount: number
+  completedThrough: string | null
   error?: string
 }
 
@@ -379,14 +380,15 @@ const fetchDashboardSnapshot = unstable_cache(
       permitted: hasModuleAccess(permissionsMap, 'loyalty'),
     }
 
-    const cashingUp: CashingUpSnapshot = {
-      permitted: hasModuleAccess(permissionsMap, 'cashing_up'),
-      thisWeekTotal: 0,
-      thisWeekTarget: 0,
-      lastWeekTotal: 0,
-      lastYearTotal: 0,
-      sessionsSubmittedCount: 0,
-    }
+  const cashingUp: CashingUpSnapshot = {
+    permitted: hasModuleAccess(permissionsMap, 'cashing_up'),
+    thisWeekTotal: 0,
+    thisWeekTarget: 0,
+    lastWeekTotal: 0,
+    lastYearTotal: 0,
+    sessionsSubmittedCount: 0,
+    completedThrough: null,
+  }
 
     const systemHealth: SystemHealthSnapshot = {
       permitted: hasModuleAccess(permissionsMap, 'settings') || hasModuleAccess(permissionsMap, 'users'),
@@ -402,71 +404,89 @@ const fetchDashboardSnapshot = unstable_cache(
            const { data: site } = await supabase.from('sites').select('id').limit(1).single()
            if (!site) return
 
-           const today = new Date()
-           const weekStart = startOfWeek(today, { weekStartsOn: 1 }) // Monday
-           
-           // Ranges (Strings YYYY-MM-DD)
-           const thisWeekStartStr = format(weekStart, 'yyyy-MM-dd')
-           const todayStr = format(today, 'yyyy-MM-dd')
-           
-           const lastWeekStart = subWeeks(weekStart, 1)
-           const lastWeekEnd = subWeeks(today, 1)
-           const lastWeekStartStr = format(lastWeekStart, 'yyyy-MM-dd')
-           const lastWeekEndStr = format(lastWeekEnd, 'yyyy-MM-dd')
+          const today = new Date()
+          const todayStr = format(today, 'yyyy-MM-dd')
+          const weekStart = startOfWeek(today, { weekStartsOn: 1 }) // Monday
+          
+          // Pull this week's sessions up to today to find the latest completed cash-up
+          const { data: thisWeekData } = await supabase.from('cashup_sessions')
+            .select('total_counted_amount, session_date, status')
+            .eq('site_id', site.id)
+            .gte('session_date', format(weekStart, 'yyyy-MM-dd'))
+            .lte('session_date', todayStr)
 
-           const lastYearStart = subWeeks(weekStart, 52)
-           const lastYearEnd = subWeeks(today, 52)
-           const lastYearStartStr = format(lastYearStart, 'yyyy-MM-dd')
-           const lastYearEndStr = format(lastYearEnd, 'yyyy-MM-dd')
+          const completedSessions = (thisWeekData ?? []).filter(s => s.status && s.status !== 'draft')
+          const lastCompletedIso = completedSessions.length
+            ? completedSessions.reduce((latest, s) => (s.session_date > latest ? s.session_date : latest), completedSessions[0].session_date)
+            : null
 
-           // Fetch Sessions (All 3 periods)
-           const [thisWeekRes, lastWeekRes, lastYearRes] = await Promise.all([
-             supabase.from('cashup_sessions')
-               .select('total_counted_amount, session_date, status')
-               .eq('site_id', site.id)
-               .gte('session_date', thisWeekStartStr)
-               .lte('session_date', todayStr),
-             supabase.from('cashup_sessions')
-               .select('total_counted_amount')
-               .eq('site_id', site.id)
-               .gte('session_date', lastWeekStartStr)
-               .lte('session_date', lastWeekEndStr),
-             supabase.from('cashup_sessions')
-               .select('total_counted_amount')
-               .eq('site_id', site.id)
-               .gte('session_date', lastYearStartStr)
-               .lte('session_date', lastYearEndStr)
-           ])
-           
-           // Sums
-           cashingUp.thisWeekTotal = thisWeekRes.data?.reduce((sum, s) => sum + (s.total_counted_amount || 0), 0) || 0
-           cashingUp.lastWeekTotal = lastWeekRes.data?.reduce((sum, s) => sum + (s.total_counted_amount || 0), 0) || 0
-           cashingUp.lastYearTotal = lastYearRes.data?.reduce((sum, s) => sum + (s.total_counted_amount || 0), 0) || 0
-           
-           // Count submitted
-           cashingUp.sessionsSubmittedCount = thisWeekRes.data?.filter(s => s.status !== 'draft').length || 0
+          const lastCompletedDay = lastCompletedIso ? new Date(lastCompletedIso) : null
+          const completedDaysThisWeek = lastCompletedDay && lastCompletedDay >= weekStart
+            ? differenceInCalendarDays(lastCompletedDay, weekStart) + 1
+            : 0
+          cashingUp.completedThrough = completedDaysThisWeek > 0 ? format(lastCompletedDay!, 'EEEE') : null
+          
+          // Ranges (Strings YYYY-MM-DD)
+          const thisWeekStartStr = format(weekStart, 'yyyy-MM-dd')
+          const thisWeekEnd = completedDaysThisWeek > 0 ? lastCompletedDay! : addDays(weekStart, -1)
+          const thisWeekEndStr = format(thisWeekEnd, 'yyyy-MM-dd')
+          
+          const lastWeekStart = subWeeks(weekStart, 1)
+          const lastWeekEnd = addDays(lastWeekStart, completedDaysThisWeek - 1)
+          const lastWeekStartStr = format(lastWeekStart, 'yyyy-MM-dd')
+          const lastWeekEndStr = format(lastWeekEnd, 'yyyy-MM-dd')
 
-           // Targets
-           const { data: targets } = await supabase.from('cashup_targets')
-             .select('*')
-             .eq('site_id', site.id)
-             .order('effective_from', { ascending: false })
+          const lastYearStart = subWeeks(weekStart, 52)
+          const lastYearEnd = addDays(lastYearStart, completedDaysThisWeek - 1)
+          const lastYearStartStr = format(lastYearStart, 'yyyy-MM-dd')
+          const lastYearEndStr = format(lastYearEnd, 'yyyy-MM-dd')
 
-           let targetSum = 0
-           let d = new Date(weekStart)
-           const end = new Date(today)
-           
-           while (d <= end) {
-             const dayIso = format(d, 'yyyy-MM-dd')
-             const dayOfWeek = d.getDay()
-             
-             const target = targets?.find(t => t.day_of_week === dayOfWeek && t.effective_from <= dayIso)
-             if (target) {
-               targetSum += target.target_amount
-             }
-             d = addDays(d, 1)
-           }
-           cashingUp.thisWeekTarget = targetSum
+          // Slice this week's data to the completed cutoff
+          const thisWeekCompleted = (thisWeekData ?? []).filter(s => s.session_date <= thisWeekEndStr)
+
+          // Fetch comparisons for the same number of completed days
+          const [lastWeekRes, lastYearRes] = await Promise.all([
+            supabase.from('cashup_sessions')
+              .select('total_counted_amount')
+              .eq('site_id', site.id)
+              .gte('session_date', lastWeekStartStr)
+              .lte('session_date', lastWeekEndStr),
+            supabase.from('cashup_sessions')
+              .select('total_counted_amount')
+              .eq('site_id', site.id)
+              .gte('session_date', lastYearStartStr)
+              .lte('session_date', lastYearEndStr)
+          ])
+          
+          // Sums
+          cashingUp.thisWeekTotal = thisWeekCompleted.reduce((sum, s) => sum + (s.total_counted_amount || 0), 0)
+          cashingUp.lastWeekTotal = lastWeekRes.data?.reduce((sum, s) => sum + (s.total_counted_amount || 0), 0) || 0
+          cashingUp.lastYearTotal = lastYearRes.data?.reduce((sum, s) => sum + (s.total_counted_amount || 0), 0) || 0
+          
+          // Count submitted (only completed range)
+          cashingUp.sessionsSubmittedCount = thisWeekCompleted.filter(s => s.status !== 'draft').length
+
+          // Targets
+          const { data: targets } = await supabase.from('cashup_targets')
+            .select('*')
+            .eq('site_id', site.id)
+            .order('effective_from', { ascending: false })
+
+          let targetSum = 0
+          if (completedDaysThisWeek > 0) {
+            let d = new Date(weekStart)
+            while (d <= thisWeekEnd) {
+              const dayIso = format(d, 'yyyy-MM-dd')
+              const dayOfWeek = d.getDay()
+              
+              const target = targets?.find(t => t.day_of_week === dayOfWeek && t.effective_from <= dayIso)
+              if (target) {
+                targetSum += target.target_amount
+              }
+              d = addDays(d, 1)
+            }
+          }
+          cashingUp.thisWeekTarget = targetSum
 
         } catch (error) {
           console.error('Failed to load cashing up metrics', error)
