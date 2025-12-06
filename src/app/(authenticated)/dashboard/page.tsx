@@ -239,6 +239,9 @@ export default async function DashboardPage() {
                     <p className="text-2xl font-bold text-gray-900 mt-1">
                       {currencyFormatter.format(snapshot.cashingUp.thisWeekTotal)}
                     </p>
+                    <p className="text-xs text-gray-500">
+                      {snapshot.cashingUp.completedThrough ? `(up to ${snapshot.cashingUp.completedThrough})` : '(no days cashed yet)'}
+                    </p>
                   </div>
                   <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
                     <BanknotesIcon className="h-6 w-6" />

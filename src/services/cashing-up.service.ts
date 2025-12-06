@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { UpsertCashupSessionDTO, CashupSession, CashupDashboardData, CashupInsightsData } from '@/types/cashing-up';
+import { subDays } from 'date-fns';
 
 export class CashingUpService {
   static async getInsightsData(supabase: SupabaseClient, siteId: string, year?: number): Promise<CashupInsightsData> {
@@ -477,16 +478,23 @@ export class CashingUpService {
   }
 
   static async getWeeklyProgress(supabase: SupabaseClient, siteId: string, date: string) {
-    const current = new Date(date);
-    const day = current.getDay();
-    const diff = current.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
-    const weekStart = new Date(current.setDate(diff));
+    const requestedDate = new Date(date);
+    const day = requestedDate.getDay();
+    const diff = requestedDate.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+    const weekStart = new Date(requestedDate);
+    weekStart.setDate(diff);
     const weekStartStr = weekStart.toISOString().split('T')[0];
 
-    // Generate dates from Monday to Current Date
+    const latestCompleted = subDays(new Date(), 1);
+    const targetDate = requestedDate > latestCompleted ? latestCompleted : requestedDate;
+
+    if (targetDate < weekStart) {
+      return { weekStart: weekStartStr, dailyProgress: [] };
+    }
+
+    // Generate dates from Monday to the latest completed date for this week
     const dates: string[] = [];
     const d = new Date(weekStart);
-    const targetDate = new Date(date);
     
     while (d <= targetDate) {
       dates.push(d.toISOString().split('T')[0]);
