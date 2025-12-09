@@ -4,6 +4,7 @@ import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/a
 import { z } from 'zod';
 import { ukPhoneRegex } from '@/lib/validation';
 import { generatePhoneVariants } from '@/lib/utils';
+import { scheduleAndProcessBookingReminders } from '@/app/actions/event-sms-scheduler';
 
 const createBookingSchema = z.object({
   event_id: z.string().uuid(),
@@ -141,7 +142,12 @@ export async function POST(request: NextRequest) {
     // Generate confirmation number
     const confirmationNumber = `ANH-${new Date().getFullYear()}-${booking.id.slice(0, 8).toUpperCase()}`;
 
-    // Note: SMS confirmation will be sent asynchronously via job queue if customer opted in
+    // Schedule SMS reminders/confirmation
+    try {
+      await scheduleAndProcessBookingReminders(booking.id);
+    } catch (err) {
+      console.error('Failed to schedule booking reminders for API booking', err);
+    }
 
     // Log API event
     await supabase.from('audit_logs').insert({

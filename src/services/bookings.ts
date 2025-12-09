@@ -166,8 +166,8 @@ export class BookingService {
     }
 
     // 4. Side Effects
-    // SMS Reminders
-    scheduleAndProcessBookingReminders(booking.id).catch(console.error);
+    // SMS Reminders (await to ensure scheduling isn't cancelled on serverless)
+    await scheduleAndProcessBookingReminders(booking.id).catch(console.error);
 
     // Invalidate Cache
     await invalidateEventCache(input.eventId);
