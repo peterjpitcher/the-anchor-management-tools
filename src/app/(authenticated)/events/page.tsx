@@ -4,15 +4,45 @@ import { buildEventChecklist, EVENT_CHECKLIST_TOTAL_TASKS, ChecklistTodoItem } f
 import { getTodayIsoDate, getLocalIsoDateDaysAgo, getLocalIsoDateDaysAhead } from '@/lib/dateUtils'
 import { checkUserPermission } from '@/app/actions/rbac'
 import EventsClient from './EventsClient'
+import { EventChecklistItem } from '@/lib/event-checklist'
 
-async function getEvents(): Promise<{ events: any[]; todos: ChecklistTodoItem[]; error?: string }> {
+interface EventQueryResult {
+  id: string
+  name: string
+  date: string
+  time: string
+  capacity: number | null
+  category: { id: string; name: string; color: string } | null
+  bookings: { seats: number | null }[]
+}
+
+// This matches the shape expected by EventsClient
+interface PageEvent {
+  id: string
+  name: string
+  date: string
+  time: string
+  capacity: number | null
+  booked_seats: number
+  category: { id: string; name: string; color: string } | null
+  checklist?: {
+    completed: number
+    total: number
+    overdueCount: number
+    dueTodayCount: number
+    nextTask: EventChecklistItem | null
+    outstanding: EventChecklistItem[]
+  }
+}
+
+async function getEvents(): Promise<{ events: PageEvent[]; todos: ChecklistTodoItem[]; error?: string }> {
   const supabase = createAdminClient()
   const errors: string[] = []
-  const PAST_WINDOW_DAYS = 90
-  const FUTURE_WINDOW_DAYS = 180
+  // We want to see all future events, so we only restrict the past history.
+  // const FUTURE_WINDOW_DAYS = 180 (Removed to allow all future events)
+  const PAST_WINDOW_DAYS = 30 // Reduced past window to keep query lighter, assuming "Upcoming" is priority
   const earliestDate = getLocalIsoDateDaysAgo(PAST_WINDOW_DAYS)
-  const latestDate = getLocalIsoDateDaysAhead(FUTURE_WINDOW_DAYS)
-  
+
   const { data: events, error } = await supabase
     .from('events')
     .select(`
@@ -25,16 +55,16 @@ async function getEvents(): Promise<{ events: any[]; todos: ChecklistTodoItem[];
       bookings (seats)
     `)
     .gte('date', earliestDate)
-    .lte('date', latestDate)
+    // .lte('date', latestDate) // Removed to show unlimited future events
     .order('date', { ascending: true })
     .order('time', { ascending: true })
-  
+    .returns<EventQueryResult[]>()
+
   if (error) {
     console.error('Error fetching events:', error)
     errors.push('We were unable to load events. Please try again.')
   }
-  // ... rest of the function
-  
+
   const safeEvents = events ?? []
   const eventIds = safeEvents.map(event => event.id).filter(Boolean) as string[]
   let statusMap = new Map<string, { task_key: string; completed_at: string | null }[]>()
@@ -64,11 +94,10 @@ async function getEvents(): Promise<{ events: any[]; todos: ChecklistTodoItem[];
     return { events: [], todos: [], error: errors.join(' ') || 'No events found.' }
   }
 
-  type BookingSeat = { seats: number | null }
   const todos: ChecklistTodoItem[] = []
 
   const eventsWithChecklist = safeEvents.map(event => {
-    const bookedSeats = event.bookings?.reduce((sum: number, booking: BookingSeat) => sum + (booking.seats || 0), 0) || 0
+    const bookedSeats = event.bookings?.reduce((sum: number, booking: { seats: number | null }) => sum + (booking.seats || 0), 0) || 0
 
     if (!event.date) {
       return {
@@ -156,6 +185,6 @@ export default async function EventsPage() {
   }
 
   const { events, todos, error } = await getEvents()
-  
+
   return <EventsClient events={events} todos={todos} initialError={error} />
 }
