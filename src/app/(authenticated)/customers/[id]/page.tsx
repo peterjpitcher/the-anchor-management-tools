@@ -13,10 +13,13 @@ import { Button } from '@/components/ui-v2/forms/Button'
 import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
 import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { toggleCustomerSmsOptIn, getCustomerSmsStats, getCustomerMessages } from '@/app/actions/customerSmsActions'
+import { updateCustomer as updateCustomerAction } from '@/app/actions/customers'
+
 import { markMessagesAsRead } from '@/app/actions/messageActions'
 import { MessageThread } from '@/components/features/messages/MessageThread'
 import { CustomerCategoryPreferences } from '@/components/features/customers/CustomerCategoryPreferences'
 import { CustomerLabelSelector } from '@/components/features/customers/CustomerLabelSelector'
+import { CustomerForm } from '@/components/features/customers/CustomerForm'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card, CardTitle, CardDescription } from '@/components/ui-v2/layout/Card'
@@ -42,6 +45,7 @@ export default function CustomerViewPage() {
   const { hasPermission } = usePermissions()
   const canManageEvents = hasPermission('events', 'manage')
   const canViewMessages = hasPermission('messages', 'view')
+  const canManageCustomers = hasPermission('customers', 'manage')
 
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [bookings, setBookings] = useState<BookingWithEvent[]>([])
@@ -73,6 +77,7 @@ export default function CustomerViewPage() {
   const [editingBooking, setEditingBooking] = useState<BookingWithEvent | undefined>(undefined)
   const [isAddingBooking, setIsAddingBooking] = useState(false)
   const [eventForNewBooking, setEventForNewBooking] = useState<Event | undefined>(undefined)
+  const [isEditingCustomer, setIsEditingCustomer] = useState(false)
 
   const loadMessages = useCallback(async () => {
     if (!customerId) {
@@ -195,19 +200,19 @@ export default function CustomerViewPage() {
 
   const handleToggleSms = async () => {
     if (!customer) return
-    
+
     setTogglingSmsSetting(true)
     const newOptIn = customer.sms_opt_in === false
     const result = await toggleCustomerSmsOptIn(customer.id, newOptIn)
-    
+
     if ('error' in result) {
       toast.error(`Failed to update SMS settings: ${result.error}`)
     } else {
       toast.success(`SMS ${newOptIn ? 'activated' : 'deactivated'} for customer`)
-      
+
       // Update customer state locally
       setCustomer({ ...customer, sms_opt_in: newOptIn })
-      
+
       // Reload SMS stats only
       const stats = await getCustomerSmsStats(customer.id)
       if (!('error' in stats)) {
@@ -323,17 +328,50 @@ export default function CustomerViewPage() {
     }
   }
 
+  const handleUpdateCustomer = async (data: Omit<Customer, 'id' | 'created_at'>) => {
+    if (!customer) return
+
+    try {
+      const formData = new FormData()
+      formData.append('first_name', data.first_name)
+      if (data.last_name) formData.append('last_name', data.last_name)
+      if (data.email) formData.append('email', data.email)
+      if (data.mobile_number) formData.append('mobile_number', data.mobile_number)
+      // Preserving sms_opt_in from current state as the form might not handle it or we want to keep it
+      // Note: CustomerForm doesn't currently include sms_opt_in toggle, it's handled separately on this page.
+      // But updateCustomer action expects it or defaults to false if not present? 
+      // Checking updateCustomer action:
+      // sms_opt_in: formData.get('sms_opt_in') === 'on'
+      // Ideally we should pass the current value if we don't want to reset it.
+      if (customer.sms_opt_in) formData.append('sms_opt_in', 'on')
+
+      const result = await updateCustomerAction(customer.id, formData)
+
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
+
+      toast.success('Customer updated successfully')
+      setIsEditingCustomer(false)
+      loadData()
+    } catch (error) {
+      console.error('Error updating customer:', error)
+      toast.error('Failed to update customer')
+    }
+  }
+
 
   const showModal = !!editingBooking || isAddingBooking
   const todayIso = getTodayIsoDate()
-  
+
   const reminders = bookings.filter(booking => booking.is_reminder_only)
-  
-  const upcomingBookings = bookings.filter(booking => 
+
+  const upcomingBookings = bookings.filter(booking =>
     !booking.is_reminder_only && booking.event.date >= todayIso
   ).sort((a, b) => a.event.date.localeCompare(b.event.date))
-  
-  const pastBookings = bookings.filter(booking => 
+
+  const pastBookings = bookings.filter(booking =>
     !booking.is_reminder_only && booking.event.date < todayIso
   ).sort((a, b) => b.event.date.localeCompare(a.event.date)) // Most recent past first
 
@@ -372,31 +410,31 @@ export default function CustomerViewPage() {
 
   const bookingColumns: Column<BookingWithEvent>[] = canManageEvents
     ? [
-        ...baseBookingColumns,
-        {
-          key: 'actions',
-          header: '',
-          align: 'right',
-          cell: (booking) => (
-            <div className="flex justify-end space-x-2">
-              <button
-                onClick={() => startEditBooking(booking)}
-                className="text-blue-600 hover:text-blue-700"
-              >
-                <PencilIcon className="h-5 w-5" />
-                <span className="sr-only">Edit</span>
-              </button>
-              <button
-                onClick={() => handleDeleteBooking(booking.id)}
-                className="text-red-600 hover:text-red-900"
-              >
-                <TrashIcon className="h-5 w-5" />
-                <span className="sr-only">Delete</span>
-              </button>
-            </div>
-          ),
-        },
-      ]
+      ...baseBookingColumns,
+      {
+        key: 'actions',
+        header: '',
+        align: 'right',
+        cell: (booking) => (
+          <div className="flex justify-end space-x-2">
+            <button
+              onClick={() => startEditBooking(booking)}
+              className="text-blue-600 hover:text-blue-700"
+            >
+              <PencilIcon className="h-5 w-5" />
+              <span className="sr-only">Edit</span>
+            </button>
+            <button
+              onClick={() => handleDeleteBooking(booking.id)}
+              className="text-red-600 hover:text-red-900"
+            >
+              <TrashIcon className="h-5 w-5" />
+              <span className="sr-only">Delete</span>
+            </button>
+          </div>
+        ),
+      },
+    ]
     : baseBookingColumns
 
   // Define columns for reminder table (without seats)
@@ -429,14 +467,21 @@ export default function CustomerViewPage() {
     )
   }
 
-  const customerName = `${customer.first_name} ${customer.last_name}`.trim()
-  const navActions = canManageEvents ? (
+  const customerName = `${customer.first_name} ${customer.last_name || ''}`.trim()
+  const navActions = (
     <NavGroup>
-      <NavLink onClick={openAddBookingModal} className="font-semibold">
-        Add Booking
-      </NavLink>
+      {canManageCustomers && (
+        <NavLink onClick={() => setIsEditingCustomer(true)}>
+          Edit Details
+        </NavLink>
+      )}
+      {canManageEvents && (
+        <NavLink onClick={openAddBookingModal} className="font-semibold">
+          Add Booking
+        </NavLink>
+      )}
     </NavGroup>
-  ) : undefined
+  )
 
   return (
     <PageLayout
@@ -483,6 +528,19 @@ export default function CustomerViewPage() {
               onCancel={closeModal}
             />
           )}
+        </Modal>
+
+        {/* Edit Customer Modal */}
+        <Modal
+          open={isEditingCustomer}
+          onClose={() => setIsEditingCustomer(false)}
+          title="Edit Customer Details"
+        >
+          <CustomerForm
+            customer={customer}
+            onSubmit={handleUpdateCustomer}
+            onCancel={() => setIsEditingCustomer(false)}
+          />
         </Modal>
 
         <div className="grid gap-6 xl:grid-cols-3">
@@ -651,7 +709,7 @@ export default function CustomerViewPage() {
               emptyMessage="No past bookings"
             />
           </Card>
-          
+
           {reminders.length > 0 && (
             <Card
               header={
