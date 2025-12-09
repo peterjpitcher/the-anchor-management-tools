@@ -56,17 +56,25 @@ export default function BookingConfirmationClient({
   const [pendingBooking] = useState(initialPendingBooking)
   const [error] = useState(initialError)
   const [seats, setSeats] = useState(1)
+  const isPlaceholderName = !pendingBooking?.customer ||
+    pendingBooking.customer.first_name === 'Unknown' ||
+    pendingBooking.customer.last_name === 'Contact' ||
+    (!!pendingBooking.customer.last_name && /^\d+$/.test(pendingBooking.customer.last_name))
+
+  const needsCustomerDetails = !pendingBooking?.customer_id || isPlaceholderName
+
+  // Initialize with existing details if we have them, even if it's a placeholder (so user can see what's there)
+  // or empty string if it's a new customer
   const [customerDetails, setCustomerDetails] = useState({
-    first_name: '',
-    last_name: '',
+    first_name: pendingBooking?.customer?.first_name && pendingBooking.customer.first_name !== 'Unknown' ? pendingBooking.customer.first_name : '',
+    last_name: pendingBooking?.customer?.last_name && pendingBooking.customer.last_name !== 'Contact' && !/^\d+$/.test(pendingBooking.customer.last_name ?? '') ? pendingBooking.customer.last_name : '',
   })
   const [confirming, setConfirming] = useState(false)
   const [confirmed, setConfirmed] = useState(false)
   const [confirmationError, setConfirmationError] = useState<string | null>(null)
 
-  const needsCustomerDetails = !pendingBooking?.customer_id
   const trimmedFirstName = customerDetails.first_name.trim()
-  const trimmedLastName = customerDetails.last_name.trim()
+  const trimmedLastName = customerDetails.last_name?.trim() || ''
 
   async function confirmBooking() {
     if (!token || !pendingBooking) return
@@ -215,15 +223,15 @@ export default function BookingConfirmationClient({
                       required
                     />
                   </FormGroup>
-                <FormGroup label="Last Name">
-                  <Input
-                    type="text"
-                    id="last_name"
-                    value={customerDetails.last_name}
-                    onChange={(e) => setCustomerDetails((prev) => ({ ...prev, last_name: e.target.value }))}
-                  />
-                </FormGroup>
-              </div>
+                  <FormGroup label="Last Name">
+                    <Input
+                      type="text"
+                      id="last_name"
+                      value={customerDetails.last_name}
+                      onChange={(e) => setCustomerDetails((prev) => ({ ...prev, last_name: e.target.value }))}
+                    />
+                  </FormGroup>
+                </div>
                 <p className="text-sm text-gray-600">
                   Phone Number: {formatPhoneForDisplay(pendingBooking.mobile_number)}
                 </p>
