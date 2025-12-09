@@ -19,6 +19,7 @@ import { EventPromotionContentCard } from '@/components/features/events/EventPro
 
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
+import { Modal } from '@/components/ui-v2/overlay/Modal'
 import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { DataTable, Column } from '@/components/ui-v2/display/DataTable'
@@ -64,10 +65,10 @@ export default function EventDetailClient({
   const router = useRouter()
   const { hasPermission } = usePermissions()
   const canManageEvents = hasPermission('events', 'manage')
-  
+
   const [showBookingForm, setShowBookingForm] = useState(false)
   const [showAddAttendeesModal, setShowAddAttendeesModal] = useState(false)
-  
+
   const [marketingLinks, setMarketingLinks] = useState<EventMarketingLink[]>(initialMarketingLinks)
   const [marketingLoading, setMarketingLoading] = useState(false)
   const [marketingError, setMarketingError] = useState<string | null>(null)
@@ -81,7 +82,7 @@ export default function EventDetailClient({
       toast.error('You do not have permission to refresh marketing links.')
       return
     }
-    
+
     try {
       setMarketingLoading(true)
       setMarketingError(null)
@@ -124,12 +125,12 @@ export default function EventDetailClient({
 
     try {
       const result = await addAttendeesWithScheduledSMS(event.id, customerIds)
-      
+
       if ('error' in result && result.error) {
         toast.error(result.error)
         return
       }
-      
+
       if (result.success) {
         let successMessage = `${result.added} attendee(s) added successfully!`
         if (result.skipped && result.skipped > 0) {
@@ -219,22 +220,22 @@ export default function EventDetailClient({
       toast.error('You do not have permission to download reservation posters.')
       return
     }
-    
+
     if (activeBookings.length === 0) {
       toast.error('No active bookings to generate posters for')
       return
     }
 
     const loadingToast = toast.loading('Generating reservation posters...')
-    
+
     try {
       const result = await generateEventReservationPosters(event.id)
-      
+
       if (result.error) {
         toast.error(result.error, { id: loadingToast })
         return
       }
-      
+
       if (result.success && result.pdf && result.filename) {
         const binaryString = atob(result.pdf)
         const bytes = new Uint8Array(binaryString.length)
@@ -242,17 +243,17 @@ export default function EventDetailClient({
           bytes[i] = binaryString.charCodeAt(i)
         }
         const pdfBlob = new Blob([bytes], { type: 'application/pdf' })
-        
+
         const url = URL.createObjectURL(pdfBlob)
         const link = document.createElement('a')
         link.href = url
         link.download = result.filename
         document.body.appendChild(link)
         link.click()
-        
+
         document.body.removeChild(link)
         URL.revokeObjectURL(url)
-        
+
         toast.success('Reservation posters downloaded!', { id: loadingToast })
       }
     } catch (error) {
@@ -341,21 +342,21 @@ export default function EventDetailClient({
 
   const bookingActionsColumn: Column<BookingWithCustomer> | null = canManageEvents
     ? {
-        key: 'actions',
-        header: '',
-        cell: (booking) => (
-          <button
-            onClick={() => handleDeleteBooking(booking.id)}
+      key: 'actions',
+      header: '',
+      cell: (booking) => (
+        <button
+          onClick={() => handleDeleteBooking(booking.id)}
           className="text-red-600 hover:text-red-900"
           title="Delete Booking"
         >
           <TrashIcon className="h-5 w-5" />
           <span className="sr-only">Delete Booking</span>
         </button>
-        ),
-        align: 'right',
-        width: 'auto',
-      }
+      ),
+      align: 'right',
+      width: 'auto',
+    }
     : null
 
   const bookingColumns: Column<BookingWithCustomer>[] = bookingActionsColumn
@@ -504,13 +505,15 @@ export default function EventDetailClient({
       }}
       navItems={navItems}
     >
-      {showBookingForm && canManageEvents && (
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
-            <BookingForm event={event} onSubmit={handleCreateBooking} onCancel={() => setShowBookingForm(false)} />
-          </div>
-        </div>
-      )}
+      <Modal
+        open={showBookingForm && canManageEvents}
+        onClose={() => setShowBookingForm(false)}
+        title={`New Booking for ${event.name}`}
+        description={`${formatDate(event.date)} at ${event.time}`}
+        size="lg"
+      >
+        <BookingForm event={event} onSubmit={handleCreateBooking} onCancel={() => setShowBookingForm(false)} />
+      </Modal>
 
       {showAddAttendeesModal && canManageEvents && (
         <AddAttendeesModalWithCategories

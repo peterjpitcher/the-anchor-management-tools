@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { Checkbox } from '@/components/ui-v2/forms/Checkbox'
 import { createBooking } from '@/app/actions/bookings'
 import CustomerSearchInput from '@/components/features/customers/CustomerSearchInput'
+import { ConfirmModal } from '@/components/ui-v2/overlay/Modal'
 
 interface BookingFormProps {
   booking?: Booking
@@ -138,7 +139,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
       // If editing, add back the original seats to available capacity
       const originalSeats = booking?.seats || 0
       const actualAvailable = availableCapacity + originalSeats
-      
+
       if (seatCount > actualAvailable) {
         toast.error(`Only ${actualAvailable} tickets available for this event`)
         return
@@ -218,7 +219,7 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
         )
 
         toast.success(overwrite ? 'Booking updated successfully' : 'Booking created successfully with new customer')
-        
+
         if (addAnother) {
           // Reset form for next booking
           setCustomerId('')
@@ -311,53 +312,31 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
   return (
     <>
       {/* Overwrite Confirmation Dialog */}
-      {showOverwriteConfirm && existingBookingInfo && (
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-          <div className="bg-white rounded-t-2xl sm:rounded-lg p-6 max-w-md w-full max-h-[90vh] sm:max-h-[80vh] overflow-y-auto">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">
-              Existing Booking Found
-            </h3>
-            <p className="text-sm text-gray-600 mb-4">
-              {existingBookingInfo.isReminderOnly ? (
-                <>This customer currently has a reminder for this event. Converting it will create a full booking.</>
-              ) : (
-                <>This customer already has a booking for this event with {existingBookingInfo.seats || 0} ticket{existingBookingInfo.seats !== 1 ? 's' : ''}. Overwrite the existing booking?</>
-              )}
-            </p>
-            <div className="mt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  setShowOverwriteConfirm(false)
-                  setExistingBookingInfo(null)
-                  setIsSubmitting(false)
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault()
-                  setShowOverwriteConfirm(false)
-                  const syntheticEvent = { preventDefault: () => {} } as React.FormEvent
-                  handleSubmit(syntheticEvent, false, true)
-                }}
-              >
-                Overwrite
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Overwrite Confirmation Dialog */}
+      <ConfirmModal
+        open={showOverwriteConfirm && !!existingBookingInfo}
+        onClose={() => {
+          setShowOverwriteConfirm(false)
+          setExistingBookingInfo(null)
+          setIsSubmitting(false)
+        }}
+        onConfirm={async () => {
+          const syntheticEvent = { preventDefault: () => { } } as React.FormEvent
+          await handleSubmit(syntheticEvent, false, true)
+          setShowOverwriteConfirm(false)
+        }}
+        title="Existing Booking Found"
+        message={existingBookingInfo ? (
+          existingBookingInfo.isReminderOnly
+            ? "This customer currently has a reminder for this event. Converting it will create a full booking."
+            : `This customer already has a booking for this event with ${existingBookingInfo.seats || 0} ticket${existingBookingInfo.seats !== 1 ? 's' : ''}. Overwrite the existing booking?`
+        ) : ''}
+        confirmLabel="Overwrite"
+        variant="primary"
+      />
 
       <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-6">
-        <div>
-          <h2 className="text-lg font-medium text-gray-900 mb-4">
-            New Booking for {event.name} on {formatDate(event.date)} at {event.time}
-          </h2>
-        </div>
+
 
         <Checkbox
           id="reminder-only"
@@ -372,199 +351,199 @@ export function BookingForm({ booking, event, customer: preselectedCustomer, onS
           label="Treat this as a reminder (no tickets reserved). Uncheck to allocate seats."
         />
 
-      {!preselectedCustomer && (
-        <>
-          {!showNewCustomerForm && (
-            <div className="space-y-2">
-              <label
-                htmlFor="customer-search"
-                className="block text-sm font-medium text-gray-900 mb-2"
-              >
-                Search Customer
-              </label>
-              <CustomerSearchInput
-                onCustomerSelect={(customer) => {
-                  if (customer) {
-                    setCustomerId(customer.id)
-                    setShowNewCustomerForm(false)
-                  } else {
-                    setCustomerId('')
-                  }
+        {!preselectedCustomer && (
+          <>
+            {!showNewCustomerForm && (
+              <div className="space-y-2">
+                <label
+                  htmlFor="customer-search"
+                  className="block text-sm font-medium text-gray-900 mb-2"
+                >
+                  Search Customer
+                </label>
+                <CustomerSearchInput
+                  onCustomerSelect={(customer) => {
+                    if (customer) {
+                      setCustomerId(customer.id)
+                      setShowNewCustomerForm(false)
+                    } else {
+                      setCustomerId('')
+                    }
+                  }}
+                  selectedCustomerId={customerId || undefined}
+                  placeholder="Search by name or mobile number"
+                  excludeCustomerIds={blockedCustomerIds}
+                  highlightCustomerIds={loyalCustomerIds}
+                  highlightLabel="Loyal customer"
+                />
+              </div>
+            )}
+
+            {!showNewCustomerForm && (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setShowNewCustomerForm(true)
+                  setCustomerId('')
                 }}
-                selectedCustomerId={customerId || undefined}
-                placeholder="Search by name or mobile number"
-                excludeCustomerIds={blockedCustomerIds}
-                highlightCustomerIds={loyalCustomerIds}
-                highlightLabel="Loyal customer"
-              />
-            </div>
-          )}
+                leftIcon={<UserPlusIcon className="h-4 w-4" />}
+                className="mt-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+              >
+                Create new customer
+              </Button>
+            )}
 
-          {!showNewCustomerForm && (
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                setShowNewCustomerForm(true)
-                setCustomerId('')
-              }}
-              leftIcon={<UserPlusIcon className="h-4 w-4" />}
-              className="mt-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50"
-            >
-              Create new customer
-            </Button>
-          )}
-
-          {showNewCustomerForm && (
-            <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
-              <h3 className="text-sm font-medium text-gray-900">New Customer Details</h3>
-              <div className="grid grid-cols-1 gap-6 sm:gap-4 sm:grid-cols-2">
+            {showNewCustomerForm && (
+              <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
+                <h3 className="text-sm font-medium text-gray-900">New Customer Details</h3>
+                <div className="grid grid-cols-1 gap-6 sm:gap-4 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-1">
+                      First Name
+                    </label>
+                    <Input
+                      type="text"
+                      id="firstName"
+                      name="firstName"
+                      value={newCustomer.firstName}
+                      onChange={(e) => setNewCustomer(prev => ({ ...prev, firstName: e.target.value }))}
+                      required={showNewCustomerForm}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-1">
+                      Last Name
+                    </label>
+                    <Input
+                      type="text"
+                      id="lastName"
+                      name="lastName"
+                      value={newCustomer.lastName}
+                      onChange={(e) => setNewCustomer(prev => ({ ...prev, lastName: e.target.value }))}
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label htmlFor="emailAddress" className="block text-sm font-medium text-gray-700 mb-1">
+                      Email
+                    </label>
+                    <Input
+                      type="email"
+                      id="emailAddress"
+                      name="emailAddress"
+                      value={newCustomer.email}
+                      onChange={(e) => setNewCustomer(prev => ({ ...prev, email: e.target.value }))}
+                      placeholder="name@example.com"
+                    />
+                  </div>
+                </div>
                 <div>
-                  <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-1">
-                    First Name
+                  <label htmlFor="mobileNumber" className="block text-sm font-medium text-gray-700 mb-1">
+                    Mobile Number
                   </label>
                   <Input
-                    type="text"
-                    id="firstName"
-                    name="firstName"
-                    value={newCustomer.firstName}
-                    onChange={(e) => setNewCustomer(prev => ({ ...prev, firstName: e.target.value }))}
+                    type="tel"
+                    id="mobileNumber"
+                    name="mobileNumber"
+                    value={newCustomer.mobileNumber}
+                    onChange={(e) => setNewCustomer(prev => ({ ...prev, mobileNumber: e.target.value }))}
+                    placeholder="07XXX XXXXXX"
                     required={showNewCustomerForm}
                   />
                 </div>
-              <div>
-                <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-1">
-                  Last Name
-                </label>
-                <Input
-                  type="text"
-                  id="lastName"
-                  name="lastName"
-                  value={newCustomer.lastName}
-                  onChange={(e) => setNewCustomer(prev => ({ ...prev, lastName: e.target.value }))}
-                />
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setShowNewCustomerForm(false)
+                      setNewCustomer({ firstName: '', lastName: '', email: '', mobileNumber: '' })
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
               </div>
-              <div className="sm:col-span-2">
-                <label htmlFor="emailAddress" className="block text-sm font-medium text-gray-700 mb-1">
-                  Email
-                </label>
-                <Input
-                  type="email"
-                  id="emailAddress"
-                  name="emailAddress"
-                  value={newCustomer.email}
-                  onChange={(e) => setNewCustomer(prev => ({ ...prev, email: e.target.value }))}
-                  placeholder="name@example.com"
-                />
-              </div>
-            </div>
-              <div>
-                <label htmlFor="mobileNumber" className="block text-sm font-medium text-gray-700 mb-1">
-                  Mobile Number
-                </label>
-                <Input
-                  type="tel"
-                  id="mobileNumber"
-                  name="mobileNumber"
-                  value={newCustomer.mobileNumber}
-                  onChange={(e) => setNewCustomer(prev => ({ ...prev, mobileNumber: e.target.value }))}
-                  placeholder="07XXX XXXXXX"
-                  required={showNewCustomerForm}
-                />
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setShowNewCustomerForm(false)
-                    setNewCustomer({ firstName: '', lastName: '', email: '', mobileNumber: '' })
-                  }}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      <div>
-        <label
-          htmlFor="seats"
-          className="block text-sm font-medium text-gray-900 mb-2"
-        >
-          Number of Tickets {isReminderOnly ? '(disabled for reminders)' : ''}
-        </label>
-        <Input
-          type="number"
-          id="seats"
-          name="seats"
-          min="0"
-          max={event.capacity ? (availableCapacity !== null ? availableCapacity + (booking?.seats || 0) : event.capacity) : undefined}
-          value={seats}
-          onChange={(e) => setSeats(e.target.value)}
-          inputMode="numeric"
-          disabled={isReminderOnly}
-          required={!isReminderOnly}
-        />
-        <p className="mt-2 text-sm text-gray-500">
-          {isReminderOnly ? 'Reminders do not reserve tickets.' : 'Enter the number of tickets to reserve.'}
-        </p>
-        {event.capacity && availableCapacity !== null && (
-          <p className="mt-1 text-sm text-gray-600">
-            Available: {availableCapacity + (booking?.seats || 0)} of {event.capacity} tickets
-          </p>
+            )}
+          </>
         )}
-      </div>
 
-      <div>
-        <label
-          htmlFor="notes"
-          className="block text-sm font-medium text-gray-900 mb-2"
-        >
-          Notes (Optional)
-        </label>
-        <Textarea
-          id="notes"
-          name="notes"
-          rows={4}
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-        />
-        <p className="mt-2 text-sm text-gray-500">Add any notes about this booking...</p>
-      </div>
-      <div className="flex flex-col gap-3 sm:flex-row-reverse sm:gap-3 sm:justify-start pt-6 sm:pt-4">
-        <Button
-          type="submit"
-          disabled={isSubmitting}
-          fullWidth
-          className="sm:w-auto"
-        >
-          {isSubmitting ? 'Saving...' : 'Save'}
-        </Button>
-        <Button
-          type="button"
-          disabled={isSubmitting}
-          onClick={(e) => handleSubmit(e, true)}
-          fullWidth
-          className="sm:w-auto"
-        >
-          Save and Add Another
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={onCancel}
-          disabled={isSubmitting}
-          fullWidth
-          className="sm:w-auto"
-        >
-          Cancel
-        </Button>
-      </div>
-    </form>
+        <div>
+          <label
+            htmlFor="seats"
+            className="block text-sm font-medium text-gray-900 mb-2"
+          >
+            Number of Tickets {isReminderOnly ? '(disabled for reminders)' : ''}
+          </label>
+          <Input
+            type="number"
+            id="seats"
+            name="seats"
+            min="0"
+            max={event.capacity ? (availableCapacity !== null ? availableCapacity + (booking?.seats || 0) : event.capacity) : undefined}
+            value={seats}
+            onChange={(e) => setSeats(e.target.value)}
+            inputMode="numeric"
+            disabled={isReminderOnly}
+            required={!isReminderOnly}
+          />
+          <p className="mt-2 text-sm text-gray-500">
+            {isReminderOnly ? 'Reminders do not reserve tickets.' : 'Enter the number of tickets to reserve.'}
+          </p>
+          {event.capacity && availableCapacity !== null && (
+            <p className="mt-1 text-sm text-gray-600">
+              Available: {availableCapacity + (booking?.seats || 0)} of {event.capacity} tickets
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label
+            htmlFor="notes"
+            className="block text-sm font-medium text-gray-900 mb-2"
+          >
+            Notes (Optional)
+          </label>
+          <Textarea
+            id="notes"
+            name="notes"
+            rows={4}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
+          <p className="mt-2 text-sm text-gray-500">Add any notes about this booking...</p>
+        </div>
+        <div className="flex flex-col gap-3 sm:flex-row-reverse sm:gap-3 sm:justify-start pt-6 sm:pt-4">
+          <Button
+            type="submit"
+            disabled={isSubmitting}
+            fullWidth
+            className="sm:w-auto"
+          >
+            {isSubmitting ? 'Saving...' : 'Save'}
+          </Button>
+          <Button
+            type="button"
+            disabled={isSubmitting}
+            onClick={(e) => handleSubmit(e, true)}
+            fullWidth
+            className="sm:w-auto"
+          >
+            Save and Add Another
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onCancel}
+            disabled={isSubmitting}
+            fullWidth
+            className="sm:w-auto"
+          >
+            Cancel
+          </Button>
+        </div>
+      </form>
     </>
   )
 } 

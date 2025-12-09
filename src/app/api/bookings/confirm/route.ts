@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { z } from 'zod';
 import { scheduleAndProcessBookingReminders } from '@/app/actions/event-sms-scheduler';
 import { logAuditEvent } from '@/app/actions/audit';
+import { getEventAvailableCapacity } from '@/lib/events';
 
 const confirmBookingSchema = z.object({
   token: z.string().uuid(),
@@ -20,7 +21,7 @@ const confirmBookingSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    
+
     // Validate input
     const validation = confirmBookingSchema.safeParse(body);
     if (!validation.success) {
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
     const firstName = rawFirstName?.trim();
     const lastName = rawLastName?.trim();
     const supabase = createAdminClient();
-    
+
     // Get pending booking with metadata
     const { data: pendingBooking, error: pendingError } = await supabase
       .from('pending_bookings')
@@ -93,23 +94,24 @@ export async function POST(request: NextRequest) {
     }
 
     // Check capacity
-    const { count: currentBookings } = await supabase
-      .from('bookings')
-      .select('*', { count: 'exact', head: true })
-      .eq('event_id', pendingBooking.event_id);
+    const availableSeats = await getEventAvailableCapacity(pendingBooking.event_id);
 
-    const availableSeats = (pendingBooking.event.capacity || 100) - (currentBookings || 0);
-    
-    if (availableSeats < seats) {
-      return NextResponse.json(
-        { error: `Only ${availableSeats} tickets available` },
-        { status: 400 }
-      );
+    // If availableSeats is null, capacity is unlimited. 
+    // If it's a number, check if we have enough seats.
+    if (availableSeats !== null) {
+      if (availableSeats < seats) {
+        // Ensure we don't show negative numbers to the user
+        const displaySeats = Math.max(0, availableSeats);
+        return NextResponse.json(
+          { error: `Only ${displaySeats} tickets available` },
+          { status: 400 }
+        );
+      }
     }
 
     // Start transaction-like operations
     let customerId = pendingBooking.customer_id;
-    
+
     // Create customer if needed
     if (!customerId && firstName && lastName) {
       const { data: newCustomer, error: customerError } = await supabase
@@ -149,17 +151,17 @@ export async function POST(request: NextRequest) {
         .select('first_name, last_name')
         .eq('id', customerId)
         .single();
-        
+
       if (currentCustomer) {
-        const isPlaceholder = currentCustomer.first_name === 'Unknown' || 
-                              currentCustomer.last_name === 'Contact' || 
-                              (currentCustomer.last_name && /^\d+$/.test(currentCustomer.last_name));
-                              
+        const isPlaceholder = currentCustomer.first_name === 'Unknown' ||
+          currentCustomer.last_name === 'Contact' ||
+          (currentCustomer.last_name && /^\d+$/.test(currentCustomer.last_name));
+
         if (isPlaceholder) {
-           await supabase
-             .from('customers')
-             .update({ first_name: firstName, last_name: lastName })
-             .eq('id', customerId);
+          await supabase
+            .from('customers')
+            .update({ first_name: firstName, last_name: lastName })
+            .eq('id', customerId);
         }
       }
     }
@@ -168,14 +170,14 @@ export async function POST(request: NextRequest) {
     // This handles updating the message to 'delivered' and linking it properly
     if (customerId && pendingBooking.metadata?.initial_sms) {
       const smsData = pendingBooking.metadata.initial_sms;
-      
+
       // Check if this SMS was already recorded
       const { data: existingMessage } = await supabase
         .from('messages')
         .select('id')
         .eq('message_sid', smsData.message_sid)
         .single();
-      
+
       if (existingMessage) {
         const { error: updateError } = await supabase
           .from('messages')
@@ -230,7 +232,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     let booking;
-    
+
     if (existingBooking) {
       // Update existing booking with new seat count
       const { data: updatedBooking, error: updateError } = await supabase
@@ -250,7 +252,7 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
-      
+
       booking = updatedBooking;
     } else {
       // Create new booking
@@ -272,7 +274,7 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
-      
+
       booking = newBooking;
     }
 

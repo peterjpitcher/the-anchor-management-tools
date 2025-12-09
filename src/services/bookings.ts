@@ -33,12 +33,12 @@ export type UpdateBookingInput = {
 export class BookingService {
   static async createBooking(input: CreateBookingInput) {
     const supabase = await createClient();
-    
+
     // 1. Handle Customer
     let customerId = input.customerId;
     if (input.createCustomer) {
       const { firstName, lastName, email, mobileNumber } = input.createCustomer;
-      
+
       let formattedPhone: string;
       try {
         formattedPhone = formatPhoneForStorage(mobileNumber);
@@ -55,9 +55,25 @@ export class BookingService {
 
       if (existingCustomer) {
         customerId = existingCustomer.id;
-        // Basic updates if needed
+
+        // Update customer details if provided (always update names if explicitly provided)
+        const updatePayload: any = {};
+
         if (email && email.toLowerCase() !== existingCustomer.email) {
-          await supabase.from('customers').update({ email: email.toLowerCase() }).eq('id', customerId);
+          updatePayload.email = email.toLowerCase();
+        }
+
+        if (firstName) {
+          updatePayload.first_name = firstName;
+        }
+
+        // Only update last name if it's provided (not undefined)
+        if (lastName !== undefined && lastName !== null) {
+          updatePayload.last_name = lastName;
+        }
+
+        if (Object.keys(updatePayload).length > 0) {
+          await supabase.from('customers').update(updatePayload).eq('id', customerId);
         }
       } else {
         const { data: newCustomer, error } = await supabase
@@ -128,7 +144,7 @@ export class BookingService {
         .eq('id', existingBooking.id)
         .select()
         .single();
-      
+
       if (error) throw new Error('Failed to update booking');
       booking = updated;
     } else {
@@ -152,7 +168,7 @@ export class BookingService {
     // 4. Side Effects
     // SMS Reminders
     scheduleAndProcessBookingReminders(booking.id).catch(console.error);
-    
+
     // Invalidate Cache
     await invalidateEventCache(input.eventId);
 
