@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { jobQueue } from '@/lib/background-jobs'
+import { jobQueue } from '@/lib/unified-job-queue'
 import { logger } from '@/lib/logger'
 
 export const runtime = 'nodejs'
