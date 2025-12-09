@@ -15,10 +15,10 @@ type BookingWithCustomer = Omit<Booking, 'customer'> & {
 
 export const dynamic = 'force-dynamic'
 
-export default async function EventViewPage({ 
-  params 
-}: { 
-  params: Promise<{ id: string }> 
+export default async function EventViewPage({
+  params
+}: {
+  params: Promise<{ id: string }>
 }) {
   const { id: eventId } = await params
   const supabase = await createClient()
@@ -36,12 +36,12 @@ export default async function EventViewPage({
       .single(),
     supabase
       .from('bookings')
-      .select('id, event_id, customer_id, seats, is_reminder_only, notes, created_at, customer:customers!inner(id, first_name, last_name)')
+      .select('id, event_id, customer_id, seats, is_reminder_only, notes, created_at, customer:customers(id, first_name, last_name)')
       .eq('event_id', eventId)
       .order('created_at', { ascending: true }),
     supabase
       .from('event_check_ins')
-      .select('id, check_in_time, check_in_method, customer:customers!inner(id, first_name, last_name, mobile_number)')
+      .select('id, check_in_time, check_in_method, customer:customers(id, first_name, last_name, mobile_number)')
       .eq('event_id', eventId)
       .order('check_in_time', { ascending: false }),
     getEventMarketingLinks(eventId)
@@ -53,7 +53,7 @@ export default async function EventViewPage({
 
   if (eventError || !eventData) {
     if (eventError && eventError.code !== 'PGRST116') {
-       console.error('Error loading event:', eventError)
+      console.error('Error loading event:', eventError)
     }
     notFound()
   }
@@ -68,22 +68,43 @@ export default async function EventViewPage({
 
   // Cast types and handle nulls
   const event = eventData as EventWithCategory
-  const bookings = (bookingsData || []).map((booking: any) => ({
-    ...booking,
-    customer: Array.isArray(booking.customer) ? booking.customer[0] : booking.customer
-  })) as BookingWithCustomer[]
-  // Transform check-ins to match the expected type (specifically handling potentially null fields from join)
-  const checkIns = (checkInsData || []).map((record: any) => ({
-    id: record.id,
-    check_in_time: record.check_in_time,
-    check_in_method: record.check_in_method,
-    customer: {
-      id: record.customer.id,
-      first_name: record.customer.first_name,
-      last_name: record.customer.last_name,
-      mobile_number: record.customer.mobile_number
+  const bookings = (bookingsData || []).map((booking: any) => {
+    const rawCustomer = Array.isArray(booking.customer) ? booking.customer[0] : booking.customer
+
+    // Provide a fallback if customer is null (e.g. deleted or RLS hidden)
+    const customer = rawCustomer || {
+      id: booking.customer_id,
+      first_name: 'Unknown',
+      last_name: 'Customer'
     }
-  })) as EventCheckInRecord[]
+
+    return {
+      ...booking,
+      customer
+    }
+  }) as BookingWithCustomer[]
+
+  // Transform check-ins to match the expected type (specifically handling potentially null fields from join)
+  const checkIns = (checkInsData || []).map((record: any) => {
+    const customerData = record.customer
+
+    return {
+      id: record.id,
+      check_in_time: record.check_in_time,
+      check_in_method: record.check_in_method,
+      customer: customerData ? {
+        id: customerData.id,
+        first_name: customerData.first_name,
+        last_name: customerData.last_name,
+        mobile_number: customerData.mobile_number
+      } : {
+        id: 'unknown',
+        first_name: 'Unknown',
+        last_name: 'Guest',
+        mobile_number: null
+      }
+    }
+  }) as EventCheckInRecord[]
 
   const marketingLinks = marketingLinksResult.success ? (marketingLinksResult.links || []) : []
 

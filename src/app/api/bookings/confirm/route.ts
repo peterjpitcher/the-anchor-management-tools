@@ -239,6 +239,7 @@ export async function POST(request: NextRequest) {
         .from('bookings')
         .update({
           seats,
+          is_reminder_only: false,
           notes: 'Booking updated via SMS link',
         })
         .eq('id', existingBooking.id)
@@ -262,6 +263,7 @@ export async function POST(request: NextRequest) {
           event_id: pendingBooking.event_id,
           customer_id: customerId,
           seats,
+          is_reminder_only: false,
           notes: 'Booking confirmed via SMS link',
         })
         .select('id')
