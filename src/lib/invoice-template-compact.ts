@@ -11,9 +11,9 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
   const { invoice, logoUrl } = data
 
   // Check if any line items have discounts or if there's an invoice discount
-  const hasDiscounts = invoice.invoice_discount_percentage > 0 || 
+  const hasDiscounts = invoice.invoice_discount_percentage > 0 ||
     (invoice.line_items?.some(item => item.discount_percentage > 0) ?? false)
-  
+
   // Helper functions
   const formatDate = (date: string | null) => {
     return formatDateFull(date)
@@ -429,7 +429,7 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
           <tr>
             <td>
               <div class="item-description">${item.description}</div>
-              ${hasDiscounts && item.discount_percentage > 0 ? `<div class="item-line-discount">Line disbadge: ${item.discount_percentage}%</div>` : ''}
+              ${hasDiscounts && item.discount_percentage > 0 ? `<div class="item-line-discount">Line discount: ${item.discount_percentage}%</div>` : ''}
             </td>
             <td class="text-right">${item.quantity}</td>
             <td class="text-right">${formatCurrency(item.unit_price)}</td>
@@ -471,7 +471,7 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
         <p><strong>Bank:</strong> ${COMPANY_DETAILS.bank.name}</p>
         <p><strong>Account Name:</strong> ${COMPANY_DETAILS.bank.accountName}</p>
         <p><strong>Sort Code:</strong> ${COMPANY_DETAILS.bank.sortCode}</p>
-        <p><strong>Acbadge: </strong> ${COMPANY_DETAILS.bank.accountNumber}</p>
+        <p><strong>Account: </strong> ${COMPANY_DETAILS.bank.accountNumber}</p>
         <p><strong>Reference:</strong> ${invoice.invoice_number}</p>
       </div>
       <div class="payment-method">
