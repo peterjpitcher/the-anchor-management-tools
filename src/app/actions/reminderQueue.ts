@@ -44,12 +44,12 @@ export async function getReminderQueueSummary() {
     supabase
       .from('booking_reminders')
       .select('id', { head: true, count: 'exact' })
-      .eq('status', 'pending')
+      .in('status', ['pending', 'queued', 'sending'])
       .lte('scheduled_for', nowIso),
     supabase
       .from('booking_reminders')
       .select('id', { head: true, count: 'exact' })
-      .eq('status', 'pending')
+      .in('status', ['pending', 'queued'])
       .gt('scheduled_for', nowIso),
     supabase
       .from('booking_reminders')

@@ -13,7 +13,7 @@ interface EventQueryResult {
   time: string
   capacity: number | null
   category: { id: string; name: string; color: string } | null
-  bookings: { seats: number | null }[]
+  booking_totals: { sum: number | null }[]
 }
 
 // This matches the shape expected by EventsClient
@@ -42,6 +42,7 @@ async function getEvents(): Promise<{ events: PageEvent[]; todos: ChecklistTodoI
   // const FUTURE_WINDOW_DAYS = 180 (Removed to allow all future events)
   const PAST_WINDOW_DAYS = 30 // Reduced past window to keep query lighter, assuming "Upcoming" is priority
   const earliestDate = getLocalIsoDateDaysAgo(PAST_WINDOW_DAYS)
+  const MAX_EVENTS = 500
 
   const { data: events, error } = await supabase
     .from('events')
@@ -52,12 +53,13 @@ async function getEvents(): Promise<{ events: PageEvent[]; todos: ChecklistTodoI
       time,
       capacity,
       category:event_categories(id, name, color),
-      bookings (seats)
+      booking_totals:bookings(sum:seats)
     `)
     .gte('date', earliestDate)
     // .lte('date', latestDate) // Removed to show unlimited future events
     .order('date', { ascending: true })
     .order('time', { ascending: true })
+    .limit(MAX_EVENTS)
     .returns<EventQueryResult[]>()
 
   if (error) {
@@ -97,13 +99,13 @@ async function getEvents(): Promise<{ events: PageEvent[]; todos: ChecklistTodoI
   const todos: ChecklistTodoItem[] = []
 
   const eventsWithChecklist = safeEvents.map(event => {
-    const bookedSeats = event.bookings?.reduce((sum: number, booking: { seats: number | null }) => sum + (booking.seats || 0), 0) || 0
+    const bookedSeats = (event.booking_totals?.[0]?.sum || 0) || 0
 
     if (!event.date) {
       return {
         ...event,
         booked_seats: bookedSeats,
-        bookings: undefined,
+        booking_totals: undefined,
         checklist: {
           completed: 0,
           total: EVENT_CHECKLIST_TOTAL_TASKS,
@@ -149,7 +151,7 @@ async function getEvents(): Promise<{ events: PageEvent[]; todos: ChecklistTodoI
     return {
       ...event,
       booked_seats: bookedSeats,
-      bookings: undefined,
+      booking_totals: undefined,
       checklist: {
         completed: checklist.filter(item => item.completed).length,
         total: EVENT_CHECKLIST_TOTAL_TASKS,

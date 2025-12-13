@@ -5,12 +5,10 @@
 
 import { jobQueue } from '@/lib/background-jobs'
 import { logger } from '@/lib/logger'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { headers } from 'next/headers'
 import { rateLimiters } from '@/lib/rate-limit'
 import { checkUserPermission } from './rbac'
-import { sendSMS } from '@/lib/twilio'
-import { formatDateInLondon } from '@/lib/dateUtils'
+import { sendBulkSms } from '@/lib/sms/bulk'
 
 // This is the corrected bulk SMS function that sends directly for small batches
 export async function sendBulkSMSDirect(customerIds: string[], message: string, eventId?: string, categoryId?: string) {
@@ -42,7 +40,7 @@ export async function sendBulkSMSDirect(customerIds: string[], message: string, 
       }
     }
     
-    // For smaller batches, send directly
+    // For smaller batches, send directly via shared bulk helper
     return await sendBulkSMSImmediate(customerIds, message, eventId, categoryId)
     
   } catch (error) {
@@ -80,168 +78,32 @@ async function sendBulkSMSImmediate(customerIds: string[], message: string, even
       return { error: 'SMS service not configured' }
     }
 
-    const supabase = await createAdminClient()
-
-    // Get customer details for all provided IDs
-    const { data: customers, error: customerError } = await supabase
-      .from('customers')
-      .select('id, first_name, last_name, mobile_number, sms_opt_in')
-      .in('id', customerIds)
-
-    if (customerError || !customers || customers.length === 0) {
-      return { error: 'No valid customers found' }
-    }
-
-    // Get event and category details if provided for personalization
-    let eventDetails: { id: string; name: string; date: string; time: string } | null = null
-    let categoryDetails: { id: string; name: string } | null = null
-
-    if (eventId) {
-      const { data: event } = await supabase
-        .from('events')
-        .select('id, name, date, time')
-        .eq('id', eventId)
-        .single()
-      eventDetails = event
-    }
-
-    if (categoryId) {
-      const { data: category } = await supabase
-        .from('event_categories')
-        .select('id, name')
-        .eq('id', categoryId)
-        .single()
-      categoryDetails = category
-    }
-
-    const contactPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'
-
-    // Filter out customers who have not explicitly opted in or lack a mobile number
-    const validCustomers = customers.filter(customer => {
-      if (!customer.mobile_number) {
-        logger.debug('Skipping customer with no mobile number', {
-          metadata: { customerId: customer.id }
-        })
-        return false
-      }
-      if (customer.sms_opt_in !== true) {
-        logger.debug('Skipping customer without SMS opt-in', {
-          metadata: { customerId: customer.id }
-        })
-        return false
-      }
-      return true
+    const result = await sendBulkSms({
+      customerIds,
+      message,
+      eventId,
+      categoryId,
+      bulkJobId: 'direct'
     })
 
-    if (validCustomers.length === 0) {
-      return { error: 'No customers with valid mobile numbers and SMS opt-in' }
+    if (!result.success) {
+      return { error: result.error }
     }
 
-    const personalizeMessage = (baseMessage: string, customer: (typeof validCustomers)[number]) => {
-      const fullName = [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim()
-      let personalized = baseMessage
-      personalized = personalized.replace(/{{customer_name}}/g, fullName || customer.first_name)
-      personalized = personalized.replace(/{{first_name}}/g, customer.first_name)
-      personalized = personalized.replace(/{{last_name}}/g, customer.last_name || '')
-      personalized = personalized.replace(/{{venue_name}}/g, 'The Anchor')
-      personalized = personalized.replace(/{{contact_phone}}/g, contactPhone)
-
-      if (eventDetails) {
-        personalized = personalized.replace(/{{event_name}}/g, eventDetails.name)
-        personalized = personalized.replace(
-          /{{event_date}}/g,
-          formatDateInLondon(eventDetails.date, {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-          })
-        )
-        personalized = personalized.replace(/{{event_time}}/g, eventDetails.time)
-      }
-
-      if (categoryDetails) {
-        personalized = personalized.replace(/{{category_name}}/g, categoryDetails.name)
-      }
-
-      return personalized
-    }
-
-    const results: Array<{ customerId: string; messageSid: string; success: true }> = []
-    const errors: Array<{ customerId: string; error: string }> = []
-
-    const concurrency = 5
-    const delayBetweenBatchesMs = 500
-
-    for (let i = 0; i < validCustomers.length; i += concurrency) {
-      const batch = validCustomers.slice(i, i + concurrency)
-
-      await Promise.all(batch.map(async customer => {
-        try {
-          const personalizedMessage = personalizeMessage(message, customer)
-          const sendResult = await sendSMS(customer.mobile_number as string, personalizedMessage, {
-            customerId: customer.id,
-            metadata: {
-              bulk_sms: true,
-              event_id: eventId,
-              category_id: categoryId
-            }
-          })
-
-          if (!sendResult.success || !sendResult.sid) {
-            const errorMessage = sendResult.error || 'Failed to send SMS'
-            errors.push({ customerId: customer.id, error: errorMessage })
-            return
-          }
-
-          results.push({
-            customerId: customer.id,
-            messageSid: sendResult.sid,
-            success: true
-          })
-        } catch (error) {
-          logger.error('Failed to send SMS to customer', {
-            error: error as Error,
-            metadata: { customerId: customer.id }
-          })
-          errors.push({
-            customerId: customer.id,
-            error: error instanceof Error ? error.message : 'Unknown error'
-          })
-        }
-      }))
-
-      if (i + concurrency < validCustomers.length) {
-        await new Promise(resolve => setTimeout(resolve, delayBetweenBatchesMs))
-      }
-    }
-
-    logger.info('Bulk SMS sent directly', {
-      metadata: {
-        total: validCustomers.length,
-        success: results.length,
-        failed: errors.length
-      }
-    })
-
-    if (results.length === 0) {
-      return { error: 'Failed to send any messages', errors }
-    }
-
-    if (errors.length > 0) {
+    if (result.errors && result.errors.length > 0) {
       return {
         success: true,
-        sent: results.length,
-        failed: errors.length,
-        results,
-        errors
+        sent: result.sent,
+        failed: result.failed,
+        results: result.results,
+        errors: result.errors
       }
     }
 
     return {
       success: true,
-      sent: results.length,
-      results
+      sent: result.sent,
+      results: result.results
     }
   } catch (error) {
     logger.error('Bulk SMS operation failed', {

@@ -38,7 +38,7 @@ export async function POST(
         time,
         capacity,
         event_status,
-        bookings(seats)
+        booking_totals:bookings(sum:seats)
       `)
       .eq('id', params.id)
       .single();
@@ -66,10 +66,10 @@ export async function POST(
       );
     }
 
-    const bookedSeats = event.bookings?.reduce((sum, booking) => sum + (booking.seats || 0), 0) || 0;
-    const capacity = event.capacity || 100; // Default capacity
-    const availableSeats = capacity - bookedSeats;
-    const isAvailable = availableSeats >= seats;
+    const bookedSeats = (event.booking_totals?.[0]?.sum as number | null) ?? 0;
+    const capacity = event.capacity; // null means uncapped
+    const availableSeats = capacity === null ? null : (capacity || 0) - bookedSeats;
+    const isAvailable = capacity === null ? true : (availableSeats !== null && availableSeats >= seats);
 
     return createApiResponse({
       available: isAvailable,

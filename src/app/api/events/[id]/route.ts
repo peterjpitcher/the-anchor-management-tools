@@ -27,7 +27,7 @@ export async function GET(
           icon,
           slug
         ),
-        bookings(seats),
+        booking_totals:bookings(sum:seats),
         event_faqs(
           id,
           question,
@@ -53,7 +53,7 @@ export async function GET(
       return createErrorResponse('Event not found', 'NOT_FOUND', 404);
     }
 
-    const bookedSeats = event.bookings?.reduce((sum: number, booking: any) => sum + (booking.seats || 0), 0) || 0;
+    const bookedSeats = (event.booking_totals?.[0]?.sum as number | null) ?? 0;
     
     // Sort FAQs by sort_order
     const faqs = event.event_faqs?.sort((a: any, b: any) => a.sort_order - b.sort_order) || [];

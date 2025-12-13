@@ -125,6 +125,28 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
       error,
       metadata: { to, errorCode: error.code }
     });
+
+    // Record failed attempt so downstream logic can enforce failure limits
+    try {
+      const failureSid = `local-fail-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      await recordOutboundSmsMessage({
+        to,
+        body,
+        sid: failureSid,
+        customerId: options.customerId,
+        status: 'failed',
+        twilioStatus: String(error.code ?? 'failed'),
+        metadata: {
+          error_code: error.code,
+          error_message: error.message
+        }
+      })
+    } catch (logError: unknown) {
+      logger.error('Failed to log outbound SMS failure', {
+        error: logError instanceof Error ? logError : new Error(String(logError)),
+        metadata: { to }
+      })
+    }
     
     // Provide user-friendly error messages
     let userMessage = 'Failed to send message';

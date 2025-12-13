@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger'
 const JOB_NAME = 'event-reminders'
 const LONDON_TZ = 'Europe/London'
 const STALE_RUN_WINDOW_MINUTES = 30
+const DEFAULT_SEND_HOUR = 10
 
 function getLondonRunKey(now: Date = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', {
@@ -156,6 +157,14 @@ export async function GET(request: Request) {
     }
 
     console.log('Starting reminder check (scheduled pipeline only by default)...')
+
+    // Warn if the cron fires before the intended send hour to avoid missing same-day reminders
+    const londonNow = new Date(new Date().toLocaleString('en-GB', { timeZone: LONDON_TZ }))
+    if (londonNow.getHours() < DEFAULT_SEND_HOUR) {
+      logger.warn('Reminder cron ran before default send hour; consider scheduling after 10:00 London', {
+        metadata: { runKey, londonHour: londonNow.getHours() }
+      })
+    }
 
     // Process new scheduled reminders from booking_reminders table (single source of truth)
     const scheduledResult = await processScheduledEventReminders()
