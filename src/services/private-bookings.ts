@@ -5,27 +5,27 @@ import { toLocalIsoDate } from '@/lib/dateUtils';
 import { SmsQueueService } from '@/services/sms-queue';
 import { syncCalendarEvent, deleteCalendarEvent, isCalendarConfigured } from '@/lib/google-calendar';
 import { logAuditEvent } from '@/app/actions/audit'; // Audit logging will be in action, but helper types needed
-import type { 
-  BookingStatus, 
-  PrivateBookingWithDetails, 
-  PrivateBookingAuditWithUser 
+import type {
+  BookingStatus,
+  PrivateBookingWithDetails,
+  PrivateBookingAuditWithUser
 } from '@/types/private-bookings';
 import { z } from 'zod'; // Import z for schemas
 
 // Helper function to format time to HH:MM
 export function formatTimeToHHMM(time: string | undefined): string | undefined {
   if (!time) return undefined
-  
+
   // If time is already in correct format, return it
   if (/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/.test(time)) {
     return time
   }
-  
+
   // Parse and format time
   const [hours, minutes] = time.split(':')
   const formattedHours = hours.padStart(2, '0')
   const formattedMinutes = (minutes || '00').padStart(2, '0')
-  
+
   return `${formattedHours}:${formattedMinutes}`
 }
 
@@ -41,12 +41,12 @@ export const privateBookingSchema = z.object({
   customer_last_name: z.string().optional(),
   customer_id: z.string().uuid().optional().nullable(),
   contact_phone: z.string().optional(),
-  contact_email: z.string().email('Invalid email format').optional().or(z.literal('')), 
+  contact_email: z.string().email('Invalid email format').optional().or(z.literal('')),
   event_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').optional(),
   start_time: timeSchema.optional(),
-  setup_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').optional().or(z.literal('')), 
-  setup_time: timeSchema.optional().or(z.literal('')), 
-  end_time: timeSchema.optional().or(z.literal('')), 
+  setup_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').optional().or(z.literal('')),
+  setup_time: timeSchema.optional().or(z.literal('')),
+  end_time: timeSchema.optional().or(z.literal('')),
   guest_count: z.number().min(0, 'Guest count cannot be negative').optional(),
   event_type: z.string().optional(),
   internal_notes: z.string().optional(),
@@ -55,7 +55,7 @@ export const privateBookingSchema = z.object({
   accessibility_needs: z.string().optional(),
   source: z.string().optional(),
   deposit_amount: z.number().min(0).optional(),
-  balance_due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').optional().or(z.literal('')), 
+  balance_due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').optional().or(z.literal('')),
   hold_expiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').optional().or(z.literal('')),
   status: z.enum(['draft', 'confirmed', 'completed', 'cancelled']).optional()
 })
@@ -111,14 +111,14 @@ export type UpdatePrivateBookingInput = Partial<CreatePrivateBookingInput> & {
 export class PrivateBookingService {
   static async createBooking(input: CreatePrivateBookingInput) {
     const supabase = await createClient();
-    
+
     const DATE_TBD_NOTE = 'Event date/time to be confirmed';
     const DEFAULT_TBD_TIME = '12:00';
 
     // 1. Prepare Data
     const finalEventDate = input.event_date || toLocalIsoDate(new Date());
     const finalStartTime = input.start_time || DEFAULT_TBD_TIME;
-    
+
     let internalNotes = input.internal_notes;
     if (input.date_tbd) {
       if (!internalNotes) {
@@ -144,55 +144,55 @@ export class PrivateBookingService {
     // Logic for Deposit Due Date (Hold Expiry)
     const STANDARD_HOLD_DAYS = 14;
     const SHORT_NOTICE_HOLD_DAYS = 2;
-    
+
     const sevenDaysBeforeEvent = new Date(actualEventDate);
     sevenDaysBeforeEvent.setDate(sevenDaysBeforeEvent.getDate() - 7);
-    
-    if (input.hold_expiry) {
-        // User manually specified a date
-        holdExpiryMoment = new Date(input.hold_expiry);
-        
-        // Standard Rule: Deposit must be >= 7 days before event
-        // Exception: If booking is created < 7 days before event (Short Notice)
-        
-        const isShortNotice = currentDateTime.getTime() > sevenDaysBeforeEvent.getTime();
-        
-        if (!isShortNotice) {
-            // For normal bookings, clamp manual date to 7 days before event if it exceeds it
-            if (holdExpiryMoment.getTime() > sevenDaysBeforeEvent.getTime()) {
-                holdExpiryMoment = sevenDaysBeforeEvent;
-            }
-        } else {
-             // For short notice bookings, clamp to event date if it exceeds it
-             if (holdExpiryMoment.getTime() > actualEventDate.getTime()) {
-                 holdExpiryMoment = actualEventDate;
-             }
-        }
-    } else {
-        // Default auto-calculation
-        
-        // Check if we are in "Short Notice" territory (booking created less than 7 days before event)
-        if (currentDateTime.getTime() > sevenDaysBeforeEvent.getTime()) {
-             // Short Notice Logic: 48 hours from now, capped at event start
-            const shortNoticeExpiry = new Date(currentDateTime);
-            shortNoticeExpiry.setDate(shortNoticeExpiry.getDate() + SHORT_NOTICE_HOLD_DAYS);
 
-            if (shortNoticeExpiry.getTime() > actualEventDate.getTime()) {
-                holdExpiryMoment = actualEventDate;
-            } else {
-                holdExpiryMoment = shortNoticeExpiry;
-            }
-        } else {
-            // Normal Booking Logic: 14 days from now, but NEVER later than 7 days before event
-            holdExpiryMoment = new Date(currentDateTime);
-            holdExpiryMoment.setDate(holdExpiryMoment.getDate() + STANDARD_HOLD_DAYS);
-            
-            if (holdExpiryMoment.getTime() > sevenDaysBeforeEvent.getTime()) {
-                holdExpiryMoment = sevenDaysBeforeEvent;
-            }
+    if (input.hold_expiry) {
+      // User manually specified a date
+      holdExpiryMoment = new Date(input.hold_expiry);
+
+      // Standard Rule: Deposit must be >= 7 days before event
+      // Exception: If booking is created < 7 days before event (Short Notice)
+
+      const isShortNotice = currentDateTime.getTime() > sevenDaysBeforeEvent.getTime();
+
+      if (!isShortNotice) {
+        // For normal bookings, clamp manual date to 7 days before event if it exceeds it
+        if (holdExpiryMoment.getTime() > sevenDaysBeforeEvent.getTime()) {
+          holdExpiryMoment = sevenDaysBeforeEvent;
         }
+      } else {
+        // For short notice bookings, clamp to event date if it exceeds it
+        if (holdExpiryMoment.getTime() > actualEventDate.getTime()) {
+          holdExpiryMoment = actualEventDate;
+        }
+      }
+    } else {
+      // Default auto-calculation
+
+      // Check if we are in "Short Notice" territory (booking created less than 7 days before event)
+      if (currentDateTime.getTime() > sevenDaysBeforeEvent.getTime()) {
+        // Short Notice Logic: 48 hours from now, capped at event start
+        const shortNoticeExpiry = new Date(currentDateTime);
+        shortNoticeExpiry.setDate(shortNoticeExpiry.getDate() + SHORT_NOTICE_HOLD_DAYS);
+
+        if (shortNoticeExpiry.getTime() > actualEventDate.getTime()) {
+          holdExpiryMoment = actualEventDate;
+        } else {
+          holdExpiryMoment = shortNoticeExpiry;
+        }
+      } else {
+        // Normal Booking Logic: 14 days from now, but NEVER later than 7 days before event
+        holdExpiryMoment = new Date(currentDateTime);
+        holdExpiryMoment.setDate(holdExpiryMoment.getDate() + STANDARD_HOLD_DAYS);
+
+        if (holdExpiryMoment.getTime() > sevenDaysBeforeEvent.getTime()) {
+          holdExpiryMoment = sevenDaysBeforeEvent;
+        }
+      }
     }
-      
+
     const holdExpiryIso = holdExpiryMoment.toISOString();
 
     // Customer Data for finding/creating
@@ -215,7 +215,7 @@ export class PrivateBookingService {
       internal_notes: internalNotes,
       balance_due_date: balanceDueDate,
       hold_expiry: holdExpiryIso, // Use the calculated hold expiry
-      customer_name: input.customer_last_name 
+      customer_name: input.customer_last_name
         ? `${input.customer_first_name} ${input.customer_last_name}`
         : input.customer_first_name,
       deposit_amount: input.deposit_amount ?? 250,
@@ -235,7 +235,7 @@ export class PrivateBookingService {
     }
 
     // 3. Side Effects (Fire and Forget / Non-blocking mostly) 
-    
+
     // SMS
     if (booking && input.contact_phone) {
       // Ensure booking object passed to sendCreationSms has the calculated hold_expiry
@@ -280,44 +280,44 @@ export class PrivateBookingService {
 
     // 2. Prepare Updates
     const finalEventDate = input.event_date || currentBooking.event_date || toLocalIsoDate(new Date());
-    
+
     // Check if event date changed and booking is in draft to reset hold
     let holdExpiryIso = undefined;
     const dateChanged = input.event_date && input.event_date !== currentBooking.event_date;
-    
+
     if (dateChanged && currentBooking.status === 'draft') {
-        const currentDateTime = new Date();
-        const newEventDate = input.event_date ? new Date(input.event_date) : new Date(finalEventDate);
-        let holdExpiryMoment: Date;
+      const currentDateTime = new Date();
+      const newEventDate = input.event_date ? new Date(input.event_date) : new Date(finalEventDate);
+      let holdExpiryMoment: Date;
 
-        const STANDARD_HOLD_DAYS = 14;
-        const SHORT_NOTICE_HOLD_DAYS = 2;
-        
-        const sevenDaysBeforeEvent = new Date(newEventDate);
-        sevenDaysBeforeEvent.setDate(sevenDaysBeforeEvent.getDate() - 7);
+      const STANDARD_HOLD_DAYS = 14;
+      const SHORT_NOTICE_HOLD_DAYS = 2;
 
-        // Check if we are in "Short Notice" territory
-        if (currentDateTime.getTime() > sevenDaysBeforeEvent.getTime()) {
-             // Short Notice Logic: 48 hours from now, capped at event start
-            const shortNoticeExpiry = new Date(currentDateTime);
-            shortNoticeExpiry.setDate(shortNoticeExpiry.getDate() + SHORT_NOTICE_HOLD_DAYS);
+      const sevenDaysBeforeEvent = new Date(newEventDate);
+      sevenDaysBeforeEvent.setDate(sevenDaysBeforeEvent.getDate() - 7);
 
-            if (shortNoticeExpiry.getTime() > newEventDate.getTime()) {
-                holdExpiryMoment = newEventDate;
-            } else {
-                holdExpiryMoment = shortNoticeExpiry;
-            }
+      // Check if we are in "Short Notice" territory
+      if (currentDateTime.getTime() > sevenDaysBeforeEvent.getTime()) {
+        // Short Notice Logic: 48 hours from now, capped at event start
+        const shortNoticeExpiry = new Date(currentDateTime);
+        shortNoticeExpiry.setDate(shortNoticeExpiry.getDate() + SHORT_NOTICE_HOLD_DAYS);
+
+        if (shortNoticeExpiry.getTime() > newEventDate.getTime()) {
+          holdExpiryMoment = newEventDate;
         } else {
-            // Normal Booking Logic: 14 days from now, but NEVER later than 7 days before event
-            holdExpiryMoment = new Date(currentDateTime);
-            holdExpiryMoment.setDate(holdExpiryMoment.getDate() + STANDARD_HOLD_DAYS);
-            
-            if (holdExpiryMoment.getTime() > sevenDaysBeforeEvent.getTime()) {
-                holdExpiryMoment = sevenDaysBeforeEvent;
-            }
+          holdExpiryMoment = shortNoticeExpiry;
         }
-          
-        holdExpiryIso = holdExpiryMoment.toISOString();
+      } else {
+        // Normal Booking Logic: 14 days from now, but NEVER later than 7 days before event
+        holdExpiryMoment = new Date(currentDateTime);
+        holdExpiryMoment.setDate(holdExpiryMoment.getDate() + STANDARD_HOLD_DAYS);
+
+        if (holdExpiryMoment.getTime() > sevenDaysBeforeEvent.getTime()) {
+          holdExpiryMoment = sevenDaysBeforeEvent;
+        }
+      }
+
+      holdExpiryIso = holdExpiryMoment.toISOString();
     }
 
     const finalStartTime = input.start_time || currentBooking.start_time || DEFAULT_TBD_TIME;
@@ -333,17 +333,17 @@ export class PrivateBookingService {
 
       endTimeNextDay = endMinutes <= startMinutes;
     } else if (cleanedEndTime === null) {
-       endTimeNextDay = false;
+      endTimeNextDay = false;
     }
 
     let internalNotes = input.internal_notes ?? currentBooking.internal_notes ?? null;
     if (internalNotes && internalNotes.includes(DATE_TBD_NOTE) && !input.internal_notes) {
-        // specific logic to preserve TBD note if not explicitly overwritten? 
-        // actually if input.internal_notes is undefined, we keep existing. 
-        // If it is provided (even empty), we replace.
-        // But here we are coalescing. 
+      // specific logic to preserve TBD note if not explicitly overwritten? 
+      // actually if input.internal_notes is undefined, we keep existing. 
+      // If it is provided (even empty), we replace.
+      // But here we are coalescing. 
     }
-    
+
     if (input.date_tbd) {
       if (!internalNotes) {
         internalNotes = DATE_TBD_NOTE;
@@ -352,7 +352,7 @@ export class PrivateBookingService {
       }
     }
 
-    const customer_name = input.customer_last_name 
+    const customer_name = input.customer_last_name
       ? `${input.customer_first_name} ${input.customer_last_name}`
       : input.customer_first_name || undefined;
 
@@ -369,9 +369,9 @@ export class PrivateBookingService {
     };
 
     if (input.date_tbd) {
-        updatePayload.balance_due_date = null;
+      updatePayload.balance_due_date = null;
     }
-    
+
     // Clean up undefined values
     Object.keys(updatePayload).forEach(key => updatePayload[key] === undefined && delete updatePayload[key]);
 
@@ -389,44 +389,44 @@ export class PrivateBookingService {
     }
 
     // 4. Side Effects
-    
+
     // Send Date Change SMS if hold was reset
     if (holdExpiryIso && updatedBooking.contact_phone && updatedBooking.status === 'draft') {
-       const eventDateReadable = new Date(updatedBooking.event_date).toLocaleDateString('en-GB', { 
-          day: 'numeric', month: 'long', year: 'numeric' 
-       });
-       
-       const expiryDate = new Date(holdExpiryIso);
-       const expiryReadable = expiryDate.toLocaleDateString('en-GB', {
-          day: 'numeric', month: 'long' 
-       });
-       
-       const smsMessage = `Hi ${updatedBooking.customer_first_name}, we've moved your tentative booking to ${eventDateReadable}. We've updated the hold on this date, so your deposit is now due by ${expiryReadable}.`;
+      const eventDateReadable = new Date(updatedBooking.event_date).toLocaleDateString('en-GB', {
+        day: 'numeric', month: 'long', year: 'numeric'
+      });
 
-       await SmsQueueService.queueAndSend({
-          booking_id: updatedBooking.id,
-          trigger_type: 'date_changed',
-          template_key: 'private_booking_date_changed',
-          message_body: smsMessage,
-          customer_phone: updatedBooking.contact_phone,
-          customer_name: updatedBooking.customer_name,
-          customer_id: updatedBooking.customer_id,
-          created_by: undefined, // System triggered
-          priority: 2,
-          metadata: {
-             template: 'private_booking_date_changed',
-             new_date: eventDateReadable,
-             new_expiry: expiryReadable
-          }
-       }).catch(console.error);
+      const expiryDate = new Date(holdExpiryIso);
+      const expiryReadable = expiryDate.toLocaleDateString('en-GB', {
+        day: 'numeric', month: 'long'
+      });
+
+      const smsMessage = `Hi ${updatedBooking.customer_first_name}, we've moved your tentative booking to ${eventDateReadable}. We've updated the hold on this date, so your deposit is now due by ${expiryReadable}.`;
+
+      await SmsQueueService.queueAndSend({
+        booking_id: updatedBooking.id,
+        trigger_type: 'date_changed',
+        template_key: 'private_booking_date_changed',
+        message_body: smsMessage,
+        customer_phone: updatedBooking.contact_phone,
+        customer_name: updatedBooking.customer_name,
+        customer_id: updatedBooking.customer_id,
+        created_by: undefined, // System triggered
+        priority: 2,
+        metadata: {
+          template: 'private_booking_date_changed',
+          new_date: eventDateReadable,
+          new_expiry: expiryReadable
+        }
+      }).catch(console.error);
     }
-    
+
     // Calendar Sync
     if (isCalendarConfigured()) {
       try {
         const eventId = await syncCalendarEvent(updatedBooking);
         if (eventId && !updatedBooking.calendar_event_id) {
-           await supabase
+          await supabase
             .from('private_bookings')
             .update({ calendar_event_id: eventId })
             .eq('id', id);
@@ -594,9 +594,9 @@ export class PrivateBookingService {
       try {
         await deleteCalendarEvent(booking.calendar_event_id);
         await supabase
-           .from('private_bookings')
-           .update({ calendar_event_id: null })
-           .eq('id', id);
+          .from('private_bookings')
+          .update({ calendar_event_id: null })
+          .eq('id', id);
       } catch (error) {
         console.error('Failed to delete calendar event:', error);
       }
@@ -633,6 +633,24 @@ export class PrivateBookingService {
   static async deletePrivateBooking(id: string) {
     const supabase = await createClient();
 
+    // Calendar Cleanup
+    if (isCalendarConfigured()) {
+      try {
+        // Get the booking first to find calendar event id
+        const { data: bookingDetails } = await supabase
+          .from('private_bookings')
+          .select('calendar_event_id')
+          .eq('id', id)
+          .single();
+
+        if (bookingDetails?.calendar_event_id) {
+          await deleteCalendarEvent(bookingDetails.calendar_event_id);
+        }
+      } catch (error) {
+        console.error('Failed to delete calendar event during booking deletion:', error);
+      }
+    }
+
     const { data, error } = await supabase
       .from('private_bookings')
       .delete()
@@ -652,14 +670,14 @@ export class PrivateBookingService {
     const supabase = await createClient();
 
     const { data: booking, error: fetchError } = await supabase
-        .from('private_bookings')
-        .select('customer_first_name, customer_last_name, customer_name, event_date, contact_phone, customer_id')
-        .eq('id', bookingId)
-        .single();
+      .from('private_bookings')
+      .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date')
+      .eq('id', bookingId)
+      .single();
 
     if (fetchError || !booking) throw new Error('Booking not found');
 
-    const { error } = await supabase
+    const { data: updatedBooking, error } = await supabase
       .from('private_bookings')
       .update({
         deposit_paid_date: new Date().toISOString(),
@@ -669,18 +687,20 @@ export class PrivateBookingService {
         cancellation_reason: null,
         updated_at: new Date().toISOString()
       })
-      .eq('id', bookingId);
+      .eq('id', bookingId)
+      .select()
+      .single();
 
     if (error) throw new Error('Failed to record deposit');
 
     // SMS
     if (booking.contact_phone) {
-      const eventDate = new Date(booking.event_date).toLocaleDateString('en-GB', { 
-        day: 'numeric', month: 'long', year: 'numeric' 
+      const eventDate = new Date(booking.event_date).toLocaleDateString('en-GB', {
+        day: 'numeric', month: 'long', year: 'numeric'
       });
-      
+
       const smsMessage = `Hi ${booking.customer_first_name}, deposit received! Your booking for ${eventDate} is now fully confirmed. We'll be in touch closer to the time for final details.`;
-      
+
       await SmsQueueService.queueAndSend({
         booking_id: bookingId,
         trigger_type: 'deposit_received',
@@ -699,7 +719,27 @@ export class PrivateBookingService {
         }
       });
     }
-    
+
+    // Calendar Sync
+    if (updatedBooking && isCalendarConfigured()) {
+      try {
+        const fullBookingForSync = {
+          ...booking, // original
+          ...updatedBooking, // updated
+        } as PrivateBookingWithDetails;
+
+        const eventId = await syncCalendarEvent(fullBookingForSync);
+        if (eventId && !booking.calendar_event_id && booking.status !== 'confirmed') {
+          await supabase
+            .from('private_bookings')
+            .update({ calendar_event_id: eventId })
+            .eq('id', bookingId);
+        }
+      } catch (error) {
+        console.error('Calendar sync failed during deposit record:', error);
+      }
+    }
+
     return { success: true };
   }
 
@@ -707,32 +747,34 @@ export class PrivateBookingService {
     const supabase = await createClient();
 
     const { data: booking, error: fetchError } = await supabase
-        .from('private_bookings')
-        .select('customer_first_name, customer_last_name, customer_name, event_date, contact_phone, customer_id')
-        .eq('id', bookingId)
-        .single();
+      .from('private_bookings')
+      .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date')
+      .eq('id', bookingId)
+      .single();
 
     if (fetchError || !booking) throw new Error('Booking not found');
 
-    const { error } = await supabase
+    const { data: updatedBooking, error } = await supabase
       .from('private_bookings')
       .update({
         final_payment_date: new Date().toISOString(),
         final_payment_method: method,
         updated_at: new Date().toISOString()
       })
-      .eq('id', bookingId);
+      .eq('id', bookingId)
+      .select()
+      .single();
 
     if (error) throw new Error('Failed to record final payment');
 
     // SMS
     if (booking.contact_phone) {
-      const eventDate = new Date(booking.event_date).toLocaleDateString('en-GB', { 
-        day: 'numeric', month: 'long', year: 'numeric' 
+      const eventDate = new Date(booking.event_date).toLocaleDateString('en-GB', {
+        day: 'numeric', month: 'long', year: 'numeric'
       });
-      
+
       const smsMessage = `Hi ${booking.customer_first_name}, thank you for your final payment. Your private booking on ${eventDate} is fully paid. Reply to this message with any questions.`;
-      
+
       await SmsQueueService.queueAndSend({
         booking_id: bookingId,
         trigger_type: 'final_payment_received',
@@ -749,6 +791,20 @@ export class PrivateBookingService {
           event_date: eventDate
         }
       });
+    }
+
+    // Calendar Sync
+    if (updatedBooking && isCalendarConfigured()) {
+      try {
+        const fullBookingForSync = {
+          ...booking,
+          ...updatedBooking,
+        } as PrivateBookingWithDetails;
+
+        await syncCalendarEvent(fullBookingForSync);
+      } catch (error) {
+        console.error('Calendar sync failed during final payment record:', error);
+      }
     }
 
     return { success: true };
@@ -794,7 +850,7 @@ export class PrivateBookingService {
     useAdmin?: boolean;
   }) {
     const supabase = filters?.useAdmin ? createAdminClient() : await createClient();
-    
+
     let query = supabase
       .from('private_bookings')
       .select(`
@@ -813,16 +869,16 @@ export class PrivateBookingService {
     if (filters?.status) {
       query = query.eq('status', filters.status);
     }
-    
+
     if (filters?.fromDate) {
       // Include future dates OR dates that are to be determined (null)
       query = query.or(`event_date.gte.${filters.fromDate},event_date.is.null`);
     }
-    
+
     if (filters?.toDate) {
       query = query.lte('event_date', filters.toDate);
     }
-    
+
     if (filters?.customerId) {
       query = query.eq('customer_id', filters.customerId);
     }
@@ -839,14 +895,14 @@ export class PrivateBookingService {
     }
 
     const bookingsWithDetails: PrivateBookingWithDetails[] = (data || []).map(booking => {
-      const calculatedTotal = booking.items?.reduce((sum: number, item: any) => 
+      const calculatedTotal = booking.items?.reduce((sum: number, item: any) =>
         sum + (item.line_total || 0), 0) || 0;
-      
+
       const eventDate = new Date(booking.event_date);
       const today = new Date();
       const daysUntilEvent = Math.ceil((eventDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-      
-      const depositStatus = booking.deposit_paid_date ? 'Paid' : 
+
+      const depositStatus = booking.deposit_paid_date ? 'Paid' :
         booking.deposit_amount > 0 ? 'Required' : 'Not Required';
 
       return {
@@ -922,7 +978,7 @@ export class PrivateBookingService {
 
   static async getBookingById(id: string) {
     const supabase = await createClient();
-    
+
     const { data, error } = await supabase
       .from('private_bookings')
       .select(`
@@ -972,14 +1028,14 @@ export class PrivateBookingService {
 
     const items = bookingCore.items ?? [];
 
-    const calculatedTotal = items?.reduce((sum: number, item: any) => 
+    const calculatedTotal = items?.reduce((sum: number, item: any) =>
       sum + (item.line_total || 0), 0) || 0;
-    
+
     const eventDate = new Date(data.event_date);
     const today = new Date();
     const daysUntilEvent = Math.ceil((eventDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    
-    const depositStatus = data.deposit_paid_date ? 'Paid' : 
+
+    const depositStatus = data.deposit_paid_date ? 'Paid' :
       data.deposit_amount > 0 ? 'Required' : 'Not Required';
 
     const auditTrail = ((auditsData ?? []) as PrivateBookingAuditWithUser[]).slice().sort(
@@ -1000,7 +1056,7 @@ export class PrivateBookingService {
 
   static async getVenueSpaces(activeOnly = true) {
     const supabase = await createClient();
-    
+
     let query = supabase
       .from('venue_spaces')
       .select('*')
@@ -1026,7 +1082,7 @@ export class PrivateBookingService {
 
   static async getCateringPackages(activeOnly = true) {
     const supabase = await createClient();
-    
+
     let query = supabase
       .from('catering_packages')
       .select('*')
@@ -1052,7 +1108,7 @@ export class PrivateBookingService {
 
   static async getVendors(serviceType?: string, activeOnly = true) {
     const supabase = await createClient();
-    
+
     let query = supabase
       .from('vendors')
       .select('*')
@@ -1073,7 +1129,7 @@ export class PrivateBookingService {
       console.error('Error fetching vendors:', error);
       throw new Error(error.message || 'An error occurred');
     }
-    
+
     // Note: Normalization of rates happens here or in UI, keeping raw data here for now unless strictly needed
     return data;
   }
@@ -1100,15 +1156,15 @@ export class PrivateBookingService {
   }
 
   private static async sendCreationSms(booking: any, phone: string) {
-    const eventDateReadable = new Date(booking.event_date).toLocaleDateString('en-GB', { 
-      day: 'numeric', 
-      month: 'long', 
-      year: 'numeric' 
+    const eventDateReadable = new Date(booking.event_date).toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
     });
 
     const depositAmount = booking.deposit_amount || 0;
     const formattedDeposit = depositAmount.toFixed(2);
-    
+
     // Calculate hold expiry (14 days from creation)
     const holdExpiryDate = booking.hold_expiry ? new Date(booking.hold_expiry) : new Date(); // Use actual hold_expiry from DB
     const expiryReadable = holdExpiryDate.toLocaleDateString('en-GB', {
@@ -1120,19 +1176,19 @@ export class PrivateBookingService {
     const today = new Date();
     const eventDate = new Date(booking.event_date);
     const diffTime = eventDate.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     const isShortNotice = diffDays < 7;
 
     let smsMessage = "";
 
     if (depositAmount > 0) {
-        if (isShortNotice) {
-             smsMessage = `Hi ${booking.customer_first_name}, thanks for your enquiry for ${eventDateReadable} at The Anchor. As this is a short-notice private booking, we need to secure the deposit of £${formattedDeposit} as soon as possible to confirm the date. Reply to this message to arrange payment.`;
-        } else {
-             smsMessage = `Hi ${booking.customer_first_name}, thanks for your enquiry for ${eventDateReadable} at The Anchor. We are holding this date for you until ${expiryReadable}. To secure it permanently, a deposit of £${formattedDeposit} is required by this date. Reply to this message with any questions.`;
-        }
+      if (isShortNotice) {
+        smsMessage = `Hi ${booking.customer_first_name}, thanks for your enquiry for ${eventDateReadable} at The Anchor. As this is a short-notice private booking, we need to secure the deposit of £${formattedDeposit} as soon as possible to confirm the date. Reply to this message to arrange payment.`;
+      } else {
+        smsMessage = `Hi ${booking.customer_first_name}, thanks for your enquiry for ${eventDateReadable} at The Anchor. We are holding this date for you until ${expiryReadable}. To secure it permanently, a deposit of £${formattedDeposit} is required by this date. Reply to this message with any questions.`;
+      }
     } else {
-         smsMessage = `Hi ${booking.customer_first_name}, thanks for your enquiry about private hire at The Anchor on ${eventDateReadable}. We normally require a deposit to secure the date, but we've waived it for you. Reply to this message with any questions.`;
+      smsMessage = `Hi ${booking.customer_first_name}, thanks for your enquiry about private hire at The Anchor on ${eventDateReadable}. We normally require a deposit to secure the date, but we've waived it for you. Reply to this message with any questions.`;
     }
 
     await SmsQueueService.queueAndSend({
@@ -1201,12 +1257,12 @@ export class PrivateBookingService {
         notes: data.notes,
         display_order: nextDisplayOrder
       });
-    
+
     if (error) {
       console.error('Error adding booking item:', error);
       throw new Error(error.message || 'Failed to add booking item');
     }
-    
+
     return { success: true };
   }
 
@@ -1225,30 +1281,30 @@ export class PrivateBookingService {
       .select('booking_id')
       .eq('id', itemId)
       .single();
-    
+
     if (fetchError || !currentItem) {
       throw new Error('Item not found');
     }
-    
+
     // Build update object - only include fields that are provided
     const updateData: any = {};
-    
+
     if (data.quantity !== undefined) updateData.quantity = data.quantity;
     if (data.unit_price !== undefined) updateData.unit_price = data.unit_price;
     if (data.discount_value !== undefined) updateData.discount_value = data.discount_value;
     if (data.discount_type !== undefined) updateData.discount_type = data.discount_type;
     if (data.notes !== undefined) updateData.notes = data.notes;
-    
+
     const { error } = await supabase
       .from('private_booking_items')
       .update(updateData)
       .eq('id', itemId);
-    
+
     if (error) {
       console.error('Error updating booking item:', error);
       throw new Error(error.message || 'Failed to update booking item');
     }
-    
+
     return { success: true, bookingId: currentItem.booking_id };
   }
 
@@ -1261,21 +1317,21 @@ export class PrivateBookingService {
       .select('booking_id')
       .eq('id', itemId)
       .single();
-    
+
     if (fetchError || !item) {
       throw new Error('Item not found');
     }
-    
+
     const { error } = await supabase
       .from('private_booking_items')
       .delete()
       .eq('id', itemId);
-    
+
     if (error) {
       console.error('Error deleting booking item:', error);
       throw new Error(error.message || 'Failed to delete booking item');
     }
-    
+
     return { success: true, bookingId: item.booking_id };
   }
 
@@ -1344,13 +1400,13 @@ export class PrivateBookingService {
       setup_fee: 0,
       display_order: 0
     };
-    
+
     const { data: inserted, error } = await admin
       .from('venue_spaces')
       .insert(dbData)
       .select()
       .single();
-    
+
     if (error) {
       console.error('Error creating venue space:', error);
       throw new Error(error.message || 'Failed to create venue space');
@@ -1373,7 +1429,7 @@ export class PrivateBookingService {
         }
       });
     }
-    
+
     return inserted;
   }
 
@@ -1403,14 +1459,14 @@ export class PrivateBookingService {
       description: data.description,
       active: data.is_active
     };
-    
+
     const { data: updated, error } = await admin
       .from('venue_spaces')
       .update(dbData)
       .eq('id', id)
       .select()
       .single();
-    
+
     if (error) {
       console.error('Error updating venue space:', error);
       throw new Error(error.message || 'Failed to update venue space');
@@ -1440,7 +1496,7 @@ export class PrivateBookingService {
         }
       });
     }
-    
+
     return updated;
   }
 
@@ -1461,7 +1517,7 @@ export class PrivateBookingService {
       .from('venue_spaces')
       .delete()
       .eq('id', id);
-    
+
     if (error) {
       console.error('Error deleting venue space:', error);
       throw new Error(error.message || 'Failed to delete venue space');
@@ -1482,7 +1538,7 @@ export class PrivateBookingService {
         active: existing.active
       }
     });
-    
+
     return { success: true };
   }
 
@@ -1510,13 +1566,13 @@ export class PrivateBookingService {
       active: data.is_active,
       display_order: 0
     };
-    
+
     const { data: inserted, error } = await admin
       .from('catering_packages')
       .insert(dbData)
       .select()
       .single();
-    
+
     if (error) {
       console.error('Error creating catering package:', error);
       if (error.code === '23505') {
@@ -1545,7 +1601,7 @@ export class PrivateBookingService {
         }
       });
     }
-    
+
     return inserted;
   }
 
@@ -1581,14 +1637,14 @@ export class PrivateBookingService {
       dietary_notes: data.includes,
       active: data.is_active
     };
-    
+
     const { data: updated, error } = await admin
       .from('catering_packages')
       .update(dbData)
       .eq('id', id)
       .select()
       .single();
-    
+
     if (error) {
       console.error('Error updating catering package:', error);
       if (error.code === '23505') {
@@ -1627,7 +1683,7 @@ export class PrivateBookingService {
         }
       });
     }
-    
+
     return updated;
   }
 
@@ -1648,7 +1704,7 @@ export class PrivateBookingService {
       .from('catering_packages')
       .delete()
       .eq('id', id);
-    
+
     if (error) {
       console.error('Error deleting catering package:', error);
       throw new Error(error.message || 'Failed to delete catering package');
@@ -1672,7 +1728,7 @@ export class PrivateBookingService {
         active: existing.active
       }
     });
-    
+
     return { success: true };
   }
 
@@ -1704,7 +1760,7 @@ export class PrivateBookingService {
       preferred: data.is_preferred,
       active: data.is_active
     };
-    
+
     const { data: inserted, error } = await admin
       .from('vendors')
       .insert({
@@ -1713,7 +1769,7 @@ export class PrivateBookingService {
       })
       .select()
       .single();
-    
+
     if (error) {
       console.error('Error creating vendor:', error);
       throw new Error(error.message || 'Failed to create vendor');
@@ -1740,7 +1796,7 @@ export class PrivateBookingService {
         }
       });
     }
-    
+
     return inserted;
   }
 
@@ -1782,14 +1838,14 @@ export class PrivateBookingService {
       preferred: data.is_preferred,
       active: data.is_active
     };
-    
+
     const { data: updated, error } = await admin
       .from('vendors')
       .update(dbData)
       .eq('id', id)
       .select()
       .single();
-    
+
     if (error) {
       console.error('Error updating vendor:', error);
       throw new Error(error.message || 'Failed to update vendor');
@@ -1827,7 +1883,7 @@ export class PrivateBookingService {
         }
       });
     }
-    
+
     return updated;
   }
 
@@ -1848,7 +1904,7 @@ export class PrivateBookingService {
       .from('vendors')
       .delete()
       .eq('id', id);
-    
+
     if (error) {
       console.error('Error deleting vendor:', error);
       throw new Error(error.message || 'Failed to delete vendor');
@@ -1873,7 +1929,7 @@ export class PrivateBookingService {
         active: existing.active
       }
     });
-    
+
     return { success: true };
   }
 }
