@@ -205,7 +205,7 @@ export class EventService {
       .from('events')
       .select('id')
       .eq('slug', slug)
-      .single();
+      .maybeSingle();
 
     if (existingSlug) {
       throw new Error('An event with this URL slug already exists');
@@ -236,11 +236,9 @@ export class EventService {
     // Trigger side effect (marketing links) - fire and forget or await?
     // In service, we usually just return data. Side effects can be here or in action.
     // Let's do it here as it's closely tied to event creation success.
-    try {
-      await generateEventMarketingLinks(event.id);
-    } catch (e) {
+    void generateEventMarketingLinks(event.id).catch((e) => {
       console.error('Failed to generate marketing links:', e);
-    }
+    });
 
     return event;
   }
@@ -250,16 +248,20 @@ export class EventService {
 
     // 1. Validation: Check capacity constraint
     if (input.capacity !== undefined && input.capacity !== null) {
-      const { data: bookings } = await supabase
+      const { data: bookingSum, error: bookingSumError } = await supabase
         .from('bookings')
-        .select('seats')
-        .eq('event_id', id);
+        .select('sum:seats')
+        .eq('event_id', id)
+        .single();
 
-      if (bookings) {
-        const totalSeats = bookings.reduce((sum, b) => sum + (b.seats || 0), 0);
-        if (totalSeats > input.capacity) {
-          throw new Error(`Cannot reduce capacity below current bookings (${totalSeats} tickets booked)`);
-        }
+      if (bookingSumError) {
+        console.error('Failed to validate capacity against bookings:', bookingSumError);
+        throw new Error('Unable to validate capacity');
+      }
+
+      const totalSeats = (bookingSum?.sum as number | null) ?? 0;
+      if (totalSeats > input.capacity) {
+        throw new Error(`Cannot reduce capacity below current bookings (${totalSeats} tickets booked)`);
       }
     }
 
@@ -297,7 +299,7 @@ export class EventService {
         .select('id')
         .eq('slug', slug)
         .neq('id', id)
-        .single();
+        .maybeSingle();
 
       if (existing) {
         throw new Error('An event with this URL slug already exists');
@@ -322,11 +324,9 @@ export class EventService {
       throw new Error('Failed to update event');
     }
 
-    try {
-      await generateEventMarketingLinks(event.id);
-    } catch (e) {
+    void generateEventMarketingLinks(event.id).catch((e) => {
       console.error('Failed to refresh marketing links:', e);
-    }
+    });
 
     return event;
   }
@@ -403,7 +403,7 @@ export class EventService {
     const supabase = await createClient();
     const { data, error } = await supabase
       .from('events')
-      .select('*, category:event_categories(*), bookings(seats)')
+      .select('*, category:event_categories(*), booking_totals:bookings(sum:seats)')
       .eq('date', date)
       .neq('event_status', 'cancelled')
       .order('time', { ascending: true });
@@ -416,7 +416,8 @@ export class EventService {
     // Calculate total booked count for each event
     return data.map(event => ({
       ...event,
-      booked_count: event.bookings?.reduce((sum: number, b: any) => sum + (b.seats || 0), 0) || 0
+      booked_count: (event.booking_totals?.[0]?.sum as number | null) || 0,
+      booking_totals: undefined
     }));
   }
 

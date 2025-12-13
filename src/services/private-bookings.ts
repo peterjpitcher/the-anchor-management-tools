@@ -1519,6 +1519,9 @@ export class PrivateBookingService {
     
     if (error) {
       console.error('Error creating catering package:', error);
+      if (error.code === '23505') {
+        throw new Error('A catering package with this name already exists. Please choose a different name.');
+      }
       throw new Error(error.message || 'Failed to create catering package');
     }
 
@@ -1588,6 +1591,9 @@ export class PrivateBookingService {
     
     if (error) {
       console.error('Error updating catering package:', error);
+      if (error.code === '23505') {
+        throw new Error('A catering package with this name already exists. Please choose a different name.');
+      }
       throw new Error(error.message || 'Failed to update catering package');
     }
 

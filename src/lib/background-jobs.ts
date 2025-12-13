@@ -145,13 +145,16 @@ export class JobQueue {
         })
         .eq('id', job.id)
       
-      // Process based on job type with timeout (max 30 seconds per job)
-      const result = await Promise.race([
-        this.executeJob(job.type, job.payload),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Job execution timeout (30s)')), 30000)
-        )
-      ])
+      // Process job; bulk SMS can legitimately take longer, so skip the 30s timeout there
+      const execution = this.executeJob(job.type, job.payload, job.id)
+      const result = job.type === 'send_bulk_sms'
+        ? await execution
+        : await Promise.race([
+            execution,
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Job execution timeout (30s)')), 30000)
+            )
+          ])
       
       // Mark as completed
       await supabase
@@ -205,13 +208,13 @@ export class JobQueue {
   /**
    * Execute job based on type
    */
-  private async executeJob(type: JobType, payload: any): Promise<any> {
+  private async executeJob(type: JobType, payload: any, jobId?: string): Promise<any> {
     switch (type) {
       case 'send_sms':
         return this.processSendSms(payload)
       
       case 'send_bulk_sms':
-        return this.processBulkSms(payload)
+        return this.processBulkSms(payload, jobId)
       
       case 'sync_customer_stats':
         return this.syncCustomerStats(payload)
@@ -323,153 +326,21 @@ export class JobQueue {
     return { success: true, sid: result.sid }
   }
   
-  private async processBulkSms(payload: JobPayload['send_bulk_sms']) {
-    const { customerIds, message, eventId, categoryId } = payload
-    const results = []
-    const errors = []
-    const supabase = await createAdminClient()
-    const { sendSMS } = await import('./twilio')
-    
-    // Process in larger batches for efficiency
-    const batchSize = 50 // Increased from 10 for better performance
-    
-    // Get event and category details if provided for personalization
-    let eventDetails = null
-    let categoryDetails = null
-    
-    if (eventId) {
-        const { data: event } = await supabase
-        .from('events')
-        .select('id, name, date, time')
-        .eq('id', eventId)
-        .single()
-      eventDetails = event
-    }
-    
-    if (categoryId) {
-      const { data: category } = await supabase
-        .from('event_categories')
-        .select('id, name')
-        .eq('id', categoryId)
-        .single()
-      categoryDetails = category
-    }
-    
-    for (let i = 0; i < customerIds.length; i += batchSize) {
-      const batch = customerIds.slice(i, i + batchSize)
-      
-      // Get customer details with all fields needed for personalization
-      const { data: customers } = await supabase
-        .from('customers')
-        .select('id, first_name, last_name, mobile_number, sms_opt_in')
-        .in('id', batch)
-        .eq('sms_opt_in', true)
-        .not('mobile_number', 'is', null)
-      
-      if (!customers) continue
-      
-      // Send SMS to each customer with personalization
-      for (const customer of customers) {
-        try {
-          // Personalize the message for this customer
-          let personalizedMessage = message
-          const customerLastName = customer.last_name ?? ''
-          const customerFullName = [customer.first_name, customerLastName].filter(Boolean).join(' ')
-          personalizedMessage = personalizedMessage.replace(/{{customer_name}}/g, customerFullName)
-          personalizedMessage = personalizedMessage.replace(/{{first_name}}/g, customer.first_name)
-          personalizedMessage = personalizedMessage.replace(/{{last_name}}/g, customer.last_name || '')
-          personalizedMessage = personalizedMessage.replace(/{{venue_name}}/g, 'The Anchor')
-          personalizedMessage = personalizedMessage.replace(/{{contact_phone}}/g, process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707')
-          
-          // Add event-specific variables if available
-          if (eventDetails) {
-            personalizedMessage = personalizedMessage.replace(/{{event_name}}/g, eventDetails.name)
-            personalizedMessage = personalizedMessage.replace(
-              /{{event_date}}/g,
-              formatDateInLondon(eventDetails.date, {
-                weekday: 'long',
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-              })
-            )
-            personalizedMessage = personalizedMessage.replace(
-              /{{event_time}}/g,
-              eventDetails.time ? formatTime12Hour(eventDetails.time) : 'TBC'
-            )
-          }
-          
-          // Add category-specific variables if available
-          if (categoryDetails) {
-            personalizedMessage = personalizedMessage.replace(/{{category_name}}/g, categoryDetails.name)
-          }
-          
-          // Send the personalized SMS directly (no more job multiplication)
-          const personalizedWithSupport = ensureReplyInstruction(
-            personalizedMessage,
-            process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
-          )
-
-          const result = await sendSMS(customer.mobile_number!, personalizedWithSupport, {
-            customerId: customer.id,
-            metadata: {
-              bulk_job: true,
-              event_id: eventId,
-              category_id: categoryId
-            }
-          })
-          
-          if (result.success) {
-            if (!result.sid) {
-              logger.error('send_sms bulk job succeeded without sid', {
-                metadata: { customerId: customer.id }
-              })
-              continue
-            }
-
-            results.push({
-              customerId: customer.id,
-              success: true,
-              messageSid: result.sid
-            })
-          } else {
-            errors.push({
-              customerId: customer.id,
-              error: result.error || 'Failed to send SMS'
-            })
-          }
-        } catch (error) {
-          logger.error('Failed to send SMS to customer', {
-            error: error as Error,
-            metadata: { customerId: customer.id }
-          })
-          errors.push({
-            customerId: customer.id,
-            error: error instanceof Error ? error.message : 'Unknown error'
-          })
-        }
-      }
-      
-      // Add a small delay between batches to avoid overwhelming Twilio
-      if (i + batchSize < customerIds.length) {
-        await new Promise(resolve => setTimeout(resolve, 1000)) // 1 second delay between batches
-      }
-    }
-    
-    logger.info('Bulk SMS job completed', {
-      metadata: {
-        total: customerIds.length,
-        sent: results.length,
-        failed: errors.length
-      }
+  private async processBulkSms(payload: JobPayload['send_bulk_sms'], jobId?: string) {
+    const { sendBulkSms } = await import('@/lib/sms/bulk')
+    const result = await sendBulkSms({
+      customerIds: payload.customerIds,
+      message: payload.message,
+      eventId: payload.eventId,
+      categoryId: payload.categoryId,
+      bulkJobId: jobId || 'job_queue'
     })
-    
-    return { 
-      sent: results.length,
-      failed: errors.length,
-      results,
-      errors
+
+    if (!result.success) {
+      throw new Error(result.error)
     }
+
+    return result
   }
   
   private async syncCustomerStats(payload: JobPayload['sync_customer_stats']) {

@@ -27,6 +27,7 @@ export async function GET(_request: NextRequest) {
     const availableOnly = searchParams.get('available_only') === 'true';
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100);
     const offset = parseInt(searchParams.get('offset') || '0');
+    const fetchLimit = availableOnly ? limit * 3 : limit; // Over-fetch when filtering to reduce empty pages
 
     const supabase = createAdminClient();
     
@@ -42,18 +43,18 @@ export async function GET(_request: NextRequest) {
           color,
           icon
         ),
-        bookings(seats),
+        booking_totals:bookings(sum:seats),
         event_faqs(
           id,
           question,
           answer,
           sort_order
         )
-      `)
+      `, { count: 'exact' })
       .eq('event_status', 'scheduled')
       .order('date', { ascending: true })
       .order('time', { ascending: true })
-      .range(offset, offset + limit - 1);
+      .range(offset, offset + fetchLimit - 1);
 
     // Apply filters
     if (fromDate) {
@@ -78,13 +79,15 @@ export async function GET(_request: NextRequest) {
     }
 
     // Transform events to Schema.org format with FAQs
-    const schemaEvents = events?.map(event => {
-      const bookedSeats = event.bookings?.reduce((sum: number, booking: any) => sum + (booking.seats || 0), 0) || 0;
-      
-      // Filter out sold out events if requested
-      if (availableOnly && event.capacity && bookedSeats >= event.capacity) {
-        return null;
-      }
+    const filtered = (events || []).filter((event) => {
+      const bookedSeats = (event.booking_totals?.[0]?.sum as number | null) ?? 0;
+      if (!availableOnly) return true;
+      if (event.capacity === null) return true; // uncapped events are always available
+      return bookedSeats < event.capacity;
+    });
+
+    const schemaEvents = filtered.slice(0, limit).map(event => {
+      const bookedSeats = (event.booking_totals?.[0]?.sum as number | null) ?? 0;
       
       // Sort FAQs by sort_order
       const faqs = event.event_faqs?.sort((a: any, b: any) => a.sort_order - b.sort_order) || [];
@@ -95,15 +98,17 @@ export async function GET(_request: NextRequest) {
         highlights: event.highlights || [],
         ...eventToSchema(event, bookedSeats, faqs),
       };
-    }).filter(Boolean) || [];
+    });
 
     return createApiResponse({
       events: schemaEvents,
       meta: {
-        total: count || 0,
+        total: availableOnly ? Math.max(filtered.length + offset, schemaEvents.length) : (count || 0),
         limit,
         offset,
-        has_more: (count || 0) > offset + limit,
+        has_more: availableOnly
+          ? filtered.length > limit || (count || 0) > offset + fetchLimit
+          : (count || 0) > offset + limit,
         lastUpdated: new Date().toISOString(),
       },
     });

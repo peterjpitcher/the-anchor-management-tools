@@ -195,8 +195,8 @@ export function eventToSchema(event: any, bookingCount: number = 0, faqs?: any[]
     ? `${event.date}T${event.end_time}+00:00`
     : undefined;
   
-  const capacity = event.capacity || 100; // Default capacity
-  const remainingSeats = capacity - bookingCount;
+  const capacity: number | null = event.capacity === undefined ? null : event.capacity;
+  const remainingSeats = capacity === null ? null : capacity - bookingCount;
   
   // Build image array from multiple image fields
   const images: string[] = []
@@ -237,19 +237,21 @@ export function eventToSchema(event: any, bookingCount: number = 0, faqs?: any[]
       url: event.booking_url || `${process.env.NEXT_PUBLIC_APP_URL}/events/${event.slug || event.id}`,
       price: event.price?.toString() || '0',
       priceCurrency: 'GBP',
-      availability: remainingSeats > 0 
-        ? (remainingSeats < 10 ? SCHEMA_AVAILABILITY.LIMITED : SCHEMA_AVAILABILITY.IN_STOCK)
-        : SCHEMA_AVAILABILITY.SOLD_OUT,
+      availability: remainingSeats === null
+        ? SCHEMA_AVAILABILITY.IN_STOCK
+        : remainingSeats > 0 
+          ? (remainingSeats < 10 ? SCHEMA_AVAILABILITY.LIMITED : SCHEMA_AVAILABILITY.IN_STOCK)
+          : SCHEMA_AVAILABILITY.SOLD_OUT,
       validFrom: new Date().toISOString(),
-      inventoryLevel: capacity ? {
+      inventoryLevel: remainingSeats !== null ? {
         '@type': 'QuantitativeValue',
         value: remainingSeats,
       } : undefined,
     },
     organizer: createOrganizer(),
     isAccessibleForFree: event.is_free === true,
-    maximumAttendeeCapacity: capacity,
-    remainingAttendeeCapacity: remainingSeats,
+    maximumAttendeeCapacity: capacity === null ? undefined : capacity,
+    remainingAttendeeCapacity: remainingSeats === null ? undefined : remainingSeats,
     // Enhanced SEO fields
     url: `${process.env.NEXT_PUBLIC_APP_URL}/events/${event.slug || event.id}`,
     identifier: event.id,

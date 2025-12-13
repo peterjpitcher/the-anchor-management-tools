@@ -19,6 +19,7 @@ import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
 import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { checkUserPermission } from '@/app/actions/rbac'
 
 async function handleCreatePackage(formData: FormData) {
@@ -39,8 +40,10 @@ async function handleCreatePackage(formData: FormData) {
     if (result.error === 'Insufficient permissions' || result.error === 'Not authenticated') {
       redirect('/unauthorized')
     }
-    throw new Error(result.error)
+    redirect(`/private-bookings/settings/catering?error=${encodeURIComponent(result.error)}`)
   }
+
+  redirect('/private-bookings/settings/catering')
 }
 
 async function handleUpdatePackage(formData: FormData) {
@@ -62,8 +65,10 @@ async function handleUpdatePackage(formData: FormData) {
     if (result.error === 'Insufficient permissions' || result.error === 'Not authenticated') {
       redirect('/unauthorized')
     }
-    throw new Error(result.error)
+    redirect(`/private-bookings/settings/catering?error=${encodeURIComponent(result.error)}`)
   }
+
+  redirect('/private-bookings/settings/catering')
 }
 
 async function handleDeletePackage(formData: FormData) {
@@ -76,11 +81,17 @@ async function handleDeletePackage(formData: FormData) {
     if (result.error === 'Insufficient permissions' || result.error === 'Not authenticated') {
       redirect('/unauthorized')
     }
-    throw new Error(result.error)
+    redirect(`/private-bookings/settings/catering?error=${encodeURIComponent(result.error)}`)
   }
+
+  redirect('/private-bookings/settings/catering')
 }
 
-export default async function CateringPackagesPage() {
+export default async function CateringPackagesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>
+}) {
   const canManageCatering = await checkUserPermission('private_bookings', 'manage_catering')
 
   if (!canManageCatering) {
@@ -94,6 +105,9 @@ export default async function CateringPackagesPage() {
   }
 
   const packages = packagesResult.data ?? []
+
+  const resolvedSearchParams = searchParams ? await searchParams : {}
+  const errorMessage = typeof resolvedSearchParams?.error === 'string' ? resolvedSearchParams.error : null
 
   // Group packages by type
   const packagesByType = packages?.reduce((acc: Record<string, CateringPackage[]>, pkg: CateringPackage) => {
@@ -136,6 +150,14 @@ export default async function CateringPackagesPage() {
       }
     >
       <div className="space-y-6">
+        {errorMessage && (
+          <Alert
+            variant="error"
+            title="Could not save catering package"
+            description={errorMessage}
+          />
+        )}
+
 {/* Add New Package Form */}
       <Card>
         <Section 

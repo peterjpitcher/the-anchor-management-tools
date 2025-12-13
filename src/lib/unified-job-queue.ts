@@ -346,8 +346,20 @@ export class UnifiedJobQueue {
         }
       
       case 'send_bulk_sms':
-        const { sendBulkSMSAsync } = await import('@/app/actions/sms')
-        return await sendBulkSMSAsync(payload.customerIds, payload.message)
+        {
+          const { sendBulkSms } = await import('@/lib/sms/bulk')
+          const result = await sendBulkSms({
+            customerIds: payload.customerIds,
+            message: payload.message,
+            eventId: payload.eventId,
+            categoryId: payload.categoryId,
+            bulkJobId: payload?.jobId || 'unified_queue'
+          })
+          if (!result.success) {
+            throw new Error(result.error)
+          }
+          return result
+        }
       
       case 'export_employees':
         const { exportEmployees } = await import('@/app/actions/employeeExport')

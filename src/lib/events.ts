@@ -21,18 +21,23 @@ export async function getEventAvailableCapacity(eventId: string): Promise<number
         .eq('id', eventId)
         .single()
       
-      if (!event || !event.capacity) {
-        return null
-      }
+      if (!event) return null
+      if (event.capacity === null) return null
       
       // Get current bookings
-      const { data: bookings } = await supabase
+      const { data: bookingSum, error: bookingSumError } = await supabase
         .from('bookings')
-        .select('seats')
+        .select('sum:seats')
         .eq('event_id', eventId)
-      
-      const bookedSeats = bookings?.reduce((sum, b) => sum + (b.seats || 0), 0) || 0
-      const available = event.capacity - bookedSeats
+        .single()
+
+      if (bookingSumError) {
+        logger.error('Failed to calculate booking sum', { error: bookingSumError, metadata: { eventId } })
+        return null
+      }
+
+      const bookedSeats = (bookingSum?.sum as number | null) ?? 0
+      const available = (event.capacity || 0) - bookedSeats
       
       logger.debug('Calculated event capacity', {
         metadata: { eventId, capacity: event.capacity, booked: bookedSeats, available }

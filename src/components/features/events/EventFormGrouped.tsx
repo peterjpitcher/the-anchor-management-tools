@@ -251,10 +251,12 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
     try {
       const selectedCategory = categoryId ? categories.find(cat => cat.id === categoryId) : undefined
       const result = await generateEventSeoContent({
+        eventId: event?.id ?? null,
         name: name.trim(),
         date: date || null,
         time: time || null,
         categoryName: selectedCategory?.name ?? null,
+        capacity: capacity ? Number(capacity) : null,
         brief: brief.trim() ? brief.trim() : null,
         performerName: performerName.trim() || null,
         performerType: performerType.trim() || null,

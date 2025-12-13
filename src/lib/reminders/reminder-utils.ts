@@ -2,9 +2,16 @@ import { ReminderType } from '@/app/actions/event-sms-scheduler'
 import { formatTime12Hour } from '@/lib/dateUtils'
 import { smsTemplates } from '@/lib/smsTemplates';
 
+export type ReminderStatus = 'pending' | 'queued' | 'sending' | 'sent' | 'failed' | 'cancelled'
+
+function isReminderStatus(value: any): value is ReminderStatus {
+  return ['pending', 'queued', 'sending', 'sent', 'failed', 'cancelled'].includes(value)
+}
+
 export type ReminderRow = {
   id: string
   reminder_type: ReminderType
+  status: ReminderStatus
   scheduled_for: string
   target_phone: string | null
   event_id: string | null
@@ -32,9 +39,12 @@ export function normalizeReminderRow(raw: any): ReminderRow {
   const customerRecord = Array.isArray(bookingRecord?.customer) ? bookingRecord.customer[0] : bookingRecord?.customer
   const eventRecord = Array.isArray(bookingRecord?.event) ? bookingRecord.event[0] : bookingRecord?.event
 
+  const status: ReminderStatus = isReminderStatus(raw?.status) ? raw.status : 'pending'
+
   return {
     id: raw?.id,
     reminder_type: raw?.reminder_type,
+    status,
     scheduled_for: raw?.scheduled_for,
     target_phone: raw?.target_phone ?? null,
     event_id: raw?.event_id ?? null,

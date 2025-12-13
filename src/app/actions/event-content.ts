@@ -5,10 +5,12 @@ import { createClient } from '@/lib/supabase/server'
 import { getOpenAIConfig } from '@/lib/openai/config'
 
 type EventSeoContentInput = {
+  eventId?: string | null
   name: string
   date?: string | null
   time?: string | null
   categoryName?: string | null
+  capacity?: number | null
   brief?: string | null
   performerName?: string | null
   performerType?: string | null
@@ -59,34 +61,25 @@ type EventPromotionContentResult = {
 }
 
 function buildEventSummary(input: EventSeoContentInput): string {
-  const lines: string[] = []
-  lines.push(`Event name: ${input.name}`)
-  if (input.date) lines.push(`Event date: ${input.date}`)
-  if (input.time) lines.push(`Event time: ${input.time}`)
-  if (input.categoryName) lines.push(`Category: ${input.categoryName}`)
-  if (input.performerName) lines.push(`Performer: ${input.performerName}`)
-  if (input.performerType) lines.push(`Performer type: ${input.performerType}`)
-  if (input.isFree !== undefined) {
-    if (input.isFree) {
-      lines.push('Pricing: Free entry (tickets still required)')
-    } else if (typeof input.price === 'number') {
-      lines.push(`Pricing: £${input.price.toFixed(2)} per ticket`)
-    }
+  const payload = {
+    name: input.name,
+    date: input.date || null,
+    start_time: input.time || null,
+    category: input.categoryName || null,
+    capacity: input.capacity ?? null,
+    pricing: input.isFree ? 'Free' : (typeof input.price === 'number' ? `£${input.price.toFixed(2)}` : null),
+    performer_name: input.performerName || null,
+    performer_type: input.performerType || null,
+    booking_url: input.bookingUrl || null,
+    brief: input.brief || null,
+    existing_short_description: input.existingShortDescription || null,
+    existing_long_description: input.existingLongDescription || null,
+    existing_meta_title: input.existingMetaTitle || null,
+    existing_meta_description: input.existingMetaDescription || null,
+    existing_highlights: input.existingHighlights && input.existingHighlights.length > 0 ? input.existingHighlights : [],
+    existing_keywords: input.existingKeywords && input.existingKeywords.length > 0 ? input.existingKeywords : []
   }
-  if (input.bookingUrl) lines.push(`Ticket URL: ${input.bookingUrl}`)
-  if (input.existingShortDescription) lines.push(`Existing short description: ${input.existingShortDescription}`)
-  if (input.existingLongDescription) lines.push(`Existing long description: ${input.existingLongDescription}`)
-  if (input.existingHighlights && input.existingHighlights.length > 0) {
-    lines.push(`Existing highlights: ${input.existingHighlights.join('; ')}`)
-  }
-  if (input.existingKeywords && input.existingKeywords.length > 0) {
-    lines.push(`Existing keywords: ${input.existingKeywords.join(', ')}`)
-  }
-  if (input.brief) {
-    lines.push('Campaign brief:')
-    lines.push(input.brief)
-  }
-  return lines.join('\n')
+  return JSON.stringify(payload, null, 2)
 }
 
 export async function generateEventSeoContent(input: EventSeoContentInput): Promise<EventSeoContentResult> {
@@ -101,7 +94,66 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
     return { success: false, error: 'OpenAI is not configured. Add an API key in Settings.' }
   }
 
-  const summary = buildEventSummary(input)
+  const supabase = await createClient()
+
+  let dbEvent: Partial<EventSeoContentInput> = {}
+  if (input.eventId) {
+    const { data } = await supabase
+      .from('events')
+      .select(`
+        id,
+        name,
+        date,
+        time,
+        capacity,
+        category:category_id,
+        category_details:event_categories(name),
+        performer_name,
+        performer_type,
+        price,
+        is_free,
+        booking_url,
+        brief
+      `)
+      .eq('id', input.eventId)
+      .maybeSingle()
+
+    if (data) {
+      dbEvent = {
+        name: data.name,
+        date: data.date,
+        time: data.time,
+        capacity: data.capacity,
+        categoryName: Array.isArray((data as any).category_details)
+          ? (data as any).category_details[0]?.name
+          : (data as any).category_details?.name,
+        performerName: data.performer_name || undefined,
+        performerType: data.performer_type || undefined,
+        price: data.price ?? undefined,
+        isFree: data.is_free ?? undefined,
+        bookingUrl: data.booking_url ?? undefined,
+        brief: data.brief ?? undefined,
+      }
+    }
+  }
+
+  const mergedInput: EventSeoContentInput = {
+    ...input,
+    ...dbEvent,
+    name: dbEvent.name ?? input.name,
+    date: dbEvent.date ?? input.date,
+    time: dbEvent.time ?? input.time,
+    capacity: dbEvent.capacity ?? input.capacity,
+    categoryName: dbEvent.categoryName ?? input.categoryName,
+    performerName: dbEvent.performerName ?? input.performerName,
+    performerType: dbEvent.performerType ?? input.performerType,
+    price: dbEvent.price ?? input.price,
+    isFree: dbEvent.isFree ?? input.isFree,
+    bookingUrl: dbEvent.bookingUrl ?? input.bookingUrl,
+    brief: dbEvent.brief ?? input.brief,
+  }
+
+  const summary = buildEventSummary(mergedInput)
 
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
@@ -116,24 +168,25 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
         {
           role: 'system',
           content:
-            'You are an expert hospitality marketer crafting SEO-friendly website content for events. Keep outputs concise, engaging, and aligned with UK English.',
+            'You are an expert hospitality marketer crafting SEO-friendly website content for events. Keep outputs concise, engaging, and aligned with UK English. Use only the supplied event fields and never invent venue, price, capacity, time, performer, or category details. If a field is missing, leave the corresponding output empty.',
         },
         {
           role: 'user',
           content: [
-            'Create fresh SEO copy for this event based on the details below.',
+            'Create fresh SEO copy for this event based on the details JSON below.',
             'Priorities:',
             '- Position the experience vividly for a night out.',
             '- Highlight any unique draws from the brief.',
             '- Build urgency to secure tickets immediately.',
+            '- If booking_url is provided, you may reference booking in general but do not include raw URLs.',
             '- Do NOT use Markdown formatting (no bold **, italics _, or links []()). Return clean plain text.',
-            '- Do NOT include raw URLs or "Click here" links in the descriptions. The content will be displayed on the event page itself where a booking button already exists.',
+            '- Do NOT invent missing details; if absent, leave that field blank.',
             '- Keep the meta description under 155 characters and focus on urgency.',
             '- Provide 3-5 highlights and 6-10 keyword phrases.',
             '',
             summary,
             '',
-            'Return JSON with keys metaTitle, metaDescription, shortDescription, longDescription, highlights (string array), keywords (string array).',
+            'Return JSON with keys metaTitle, metaDescription, shortDescription, longDescription, highlights (string array), keywords (string array). All fields must be strings (or arrays of strings); use "" for missing values.',
           ].join('\n'),
         },
       ],

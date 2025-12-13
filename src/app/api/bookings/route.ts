@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
         time,
         capacity,
         event_status,
-        bookings(seats)
+        booking_totals:bookings(sum:seats)
       `)
       .eq('id', event_id)
       .single();
@@ -65,11 +65,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Check capacity
-    const bookedSeats = event.bookings?.reduce((sum: number, booking: any) => sum + (booking.seats || 0), 0) || 0;
-    const capacity = event.capacity || 100;
-    const availableSeats = capacity - bookedSeats;
+    const bookedSeats = (event.booking_totals?.[0]?.sum as number | null) ?? 0;
+    const capacity = event.capacity; // null means uncapped
+    const availableSeats = capacity === null ? null : (capacity || 0) - bookedSeats;
 
-    if (availableSeats < seats) {
+    if (availableSeats !== null && availableSeats < seats) {
       return createErrorResponse(
         'Not enough tickets available',
         'INSUFFICIENT_CAPACITY',

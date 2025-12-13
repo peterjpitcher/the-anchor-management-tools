@@ -7,6 +7,7 @@ import { sendSMS } from '@/lib/twilio'
 import { logger } from '@/lib/logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { ensureCustomerForPhone, resolveCustomerIdForSms } from '@/lib/sms/customers'
+import { sendBulkSms } from '@/lib/sms/bulk'
 
 export async function sendOTPMessage(params: { phoneNumber: string; message: string; customerId?: string }) {
   try {
@@ -88,81 +89,23 @@ export async function sendSms(params: { to: string; body: string; bookingId?: st
 
 export async function sendBulkSMSAsync(customerIds: string[], message: string) {
   try {
-    const supabase = createAdminClient()
-
-    const { data: customers, error } = await supabase
-      .from('customers')
-      .select('id, mobile_number, sms_opt_in')
-      .in('id', customerIds)
-
-    if (error || !customers || customers.length === 0) {
-      return { error: 'No valid customers found' }
-    }
-
-    const validCustomers = customers.filter(customer => {
-      if (!customer.mobile_number) {
-        logger.debug('Skipping customer with no mobile number', {
-          metadata: { customerId: customer.id }
-        })
-        return false
-      }
-      if (customer.sms_opt_in !== true) {
-        logger.debug('Skipping customer without SMS opt-in', {
-          metadata: { customerId: customer.id }
-        })
-        return false
-      }
-      return true
+    const result = await sendBulkSms({
+      customerIds,
+      message,
+      bulkJobId: 'unified'
     })
 
-    if (validCustomers.length === 0) {
-      return { error: 'No customers with valid mobile numbers and SMS opt-in' }
-    }
-
-    const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
-    const messageWithSupportTemplate = ensureReplyInstruction(message, supportPhone)
-    const results: Array<{ customerId: string; success: boolean; messageSid?: string; error?: string }> = []
-    const errors: Array<{ customerId: string; error: string }> = []
-
-    for (const customer of validCustomers) {
-      try {
-        const sendResult = await sendSMS(customer.mobile_number!, messageWithSupportTemplate, {
-          customerId: customer.id,
-          metadata: { bulk_sms: true }
-        })
-
-        if (!sendResult.success || !sendResult.sid) {
-          errors.push({
-            customerId: customer.id,
-            error: sendResult.error || 'Failed to send message'
-          })
-          continue
-        }
-
-        results.push({
-          customerId: customer.id,
-          success: true,
-          messageSid: sendResult.sid
-        })
-      } catch (sendError) {
-        logger.error('Failed to send SMS to customer', {
-          error: sendError as Error,
-          metadata: { customerId: customer.id }
-        })
-        errors.push({
-          customerId: customer.id,
-          error: sendError instanceof Error ? sendError.message : 'Failed to send message'
-        })
-      }
+    if (!result.success) {
+      return { error: result.error }
     }
 
     return {
       success: true,
-      sent: results.length,
-      failed: errors.length,
-      total: customerIds.length,
-      results,
-      errors: errors.length > 0 ? errors : undefined
+      sent: result.sent,
+      failed: result.failed,
+      total: result.total,
+      results: result.results,
+      errors: result.errors
     }
   } catch (error) {
     logger.error('Error in sendBulkSMSAsync', {
