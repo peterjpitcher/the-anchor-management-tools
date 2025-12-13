@@ -16,7 +16,7 @@ export interface ContractData {
 
 export function generateContractHTML(data: ContractData): string {
   const { booking, logoUrl, companyDetails } = data
-  
+
   // Helper functions
   const formatDate = (date: string | null) => {
     return formatDateFull(date)
@@ -55,7 +55,7 @@ export function generateContractHTML(data: ContractData): string {
         const qty = typeof item.quantity === 'string' ? parseFloat(item.quantity) : item.quantity
         const price = typeof item.unit_price === 'string' ? parseFloat(item.unit_price) : item.unit_price
         const originalPrice = qty * price
-        
+
         if (item.discount_type === 'percent') {
           return sum + (originalPrice * (item.discount_value / 100))
         } else {
@@ -69,7 +69,7 @@ export function generateContractHTML(data: ContractData): string {
   const calculateDiscountAmount = () => {
     const subtotal = calculateSubtotal()
     if (!booking.discount_amount || booking.discount_amount === 0) return 0
-    
+
     if (booking.discount_type === 'percent') {
       return subtotal * (booking.discount_amount / 100)
     } else {
@@ -97,7 +97,7 @@ export function generateContractHTML(data: ContractData): string {
   const total = calculateTotal()
   // Balance due is the total event cost (deposit is separate and refundable)
   const balanceDue = booking.final_payment_date ? 0 : total
-  
+
   // Calculate balance due date (7 days before event)
   let balanceDueDate = 'To be confirmed'
   if (booking.event_date) {
@@ -442,32 +442,32 @@ export function generateContractHTML(data: ContractData): string {
       </thead>
       <tbody>
         ${spaceItems.map((item: PrivateBookingItem) => {
-          const originalPrice = item.quantity * item.unit_price;
-          const hasDiscount = item.discount_value && item.discount_value > 0;
-          
-          return `
+    const originalPrice = item.quantity * item.unit_price;
+    const hasDiscount = item.discount_value && item.discount_value > 0;
+
+    return `
           <tr>
             <td>
               ${item.description}
               ${hasDiscount ? `
                 <br/><small class="discount-note">
-                  <strong>✓ Disbadge: ${item.discount_type === 'percent' ? `${item.discount_value}% off` : `£${item.discount_value} off`}</strong>
+                  <strong>✓ Discount: ${item.discount_type === 'percent' ? `${item.discount_value}% off` : `£${item.discount_value} off`}</strong>
                   ${item.notes ? ` - ${item.notes}` : ''}
                 </small>
               ` : ''}
             </td>
             <td>${item.quantity}</td>
             <td>
-              ${hasDiscount && item.discount_type === 'percent' && item.discount_value === 100 ? 
-                `<s style="color: #999;">${formatCurrency(item.unit_price)}/hour</s><br/><strong>FREE</strong>` : 
-                `${formatCurrency(item.unit_price)}/hour`
-              }
+              ${hasDiscount && item.discount_type === 'percent' && item.discount_value === 100 ?
+        `<s style="color: #999;">${formatCurrency(item.unit_price)}/hour</s><br/><strong>FREE</strong>` :
+        `${formatCurrency(item.unit_price)}/hour`
+      }
             </td>
             <td>
-              ${hasDiscount && originalPrice !== item.line_total ? 
-                `<s style="color: #999;">${formatCurrency(originalPrice)}</s><br/><strong>${formatCurrency(item.line_total)}</strong>` : 
-                formatCurrency(item.line_total)
-              }
+              ${hasDiscount && originalPrice !== item.line_total ?
+        `<s style="color: #999;">${formatCurrency(originalPrice)}</s><br/><strong>${formatCurrency(item.line_total)}</strong>` :
+        formatCurrency(item.line_total)
+      }
             </td>
           </tr>
         `}).join('')}
@@ -488,37 +488,37 @@ export function generateContractHTML(data: ContractData): string {
       </thead>
       <tbody>
         ${cateringItems.map((item: PrivateBookingItem) => {
-          const originalPrice = item.quantity * item.unit_price;
-          const hasDiscount = item.discount_value && item.discount_value > 0;
-          
-          return `
+        const originalPrice = item.quantity * item.unit_price;
+        const hasDiscount = item.discount_value && item.discount_value > 0;
+
+        return `
           <tr>
             <td>
               ${item.description}
               ${hasDiscount ? `
                 <br/><small class="discount-note">
-                  <strong>✓ Disbadge: ${item.discount_type === 'percent' ? `${item.discount_value}% off` : `£${item.discount_value} off`}</strong>
+                  <strong>✓ Discount: ${item.discount_type === 'percent' ? `${item.discount_value}% off` : `£${item.discount_value} off`}</strong>
                   ${item.notes ? ` - ${item.notes}` : ''}
                 </small>
               ` : ''}
             </td>
             <td>
-              ${item.package?.pricing_model === 'total_value' 
-                ? 'Total Package' 
-                : `${item.quantity} guests`
-              }
+              ${item.package?.pricing_model === 'total_value'
+            ? 'Total Package'
+            : `${item.quantity} guests`
+          }
             </td>
             <td>
               ${item.package?.pricing_model === 'total_value'
-                ? 'See total'
-                : `${formatCurrency(item.unit_price)} per head`
-              }
+            ? 'See total'
+            : `${formatCurrency(item.unit_price)} per head`
+          }
             </td>
             <td>
-              ${hasDiscount && originalPrice !== item.line_total ? 
-                `<s style="color: #999;">${formatCurrency(originalPrice)}</s><br/><strong>${formatCurrency(item.line_total)}</strong>` : 
-                formatCurrency(item.line_total)
-              }
+              ${hasDiscount && originalPrice !== item.line_total ?
+            `<s style="color: #999;">${formatCurrency(originalPrice)}</s><br/><strong>${formatCurrency(item.line_total)}</strong>` :
+            formatCurrency(item.line_total)
+          }
             </td>
           </tr>
         `}).join('')}

@@ -13,7 +13,7 @@ function parseServiceAccountKey(jsonString: string): any {
   try {
     // First attempt: try parsing as-is
     const parsed = JSON.parse(jsonString)
-    
+
     // Fix escaped newlines in private key if needed
     if (parsed.private_key && typeof parsed.private_key === 'string') {
       // Check if the private key has escaped newlines that need to be converted
@@ -22,7 +22,7 @@ function parseServiceAccountKey(jsonString: string): any {
         parsed.private_key = parsed.private_key.replace(/\\n/g, '\n')
       }
     }
-    
+
     return parsed
   } catch (firstError) {
     try {
@@ -32,9 +32,9 @@ function parseServiceAccountKey(jsonString: string): any {
         .replace(/\n/g, '\\n')
         .replace(/\r/g, '\\r')
         .replace(/\t/g, '\\t')
-      
+
       const parsed = JSON.parse(escapedJson)
-      
+
       // Fix escaped newlines in private key if needed
       if (parsed.private_key && typeof parsed.private_key === 'string') {
         if (parsed.private_key.includes('\\n') && !parsed.private_key.includes('\n')) {
@@ -42,7 +42,7 @@ function parseServiceAccountKey(jsonString: string): any {
           parsed.private_key = parsed.private_key.replace(/\\n/g, '\n')
         }
       }
-      
+
       return parsed
     } catch (secondError) {
       // Third attempt: handle private key format issues
@@ -60,9 +60,9 @@ function parseServiceAccountKey(jsonString: string): any {
             return `"private_key":"${escapedKey}"`
           }
         )
-        
+
         const parsed = JSON.parse(fixedJson)
-        
+
         // Fix escaped newlines in private key if needed
         if (parsed.private_key && typeof parsed.private_key === 'string') {
           if (parsed.private_key.includes('\\n') && !parsed.private_key.includes('\n')) {
@@ -70,7 +70,7 @@ function parseServiceAccountKey(jsonString: string): any {
             parsed.private_key = parsed.private_key.replace(/\\n/g, '\n')
           }
         }
-        
+
         return parsed
       } catch (thirdError) {
         // If all attempts fail, provide helpful error message
@@ -86,7 +86,7 @@ function parseServiceAccountKey(jsonString: string): any {
         console.error('')
         console.error('Example format:')
         console.error('{"type":"service_account","private_key":"-----BEGIN PRIVATE KEY-----\\nMIIE...\\n-----END PRIVATE KEY-----\\n",...}')
-        
+
         const errorMessage = firstError instanceof Error ? firstError.message : 'Unknown error'
         throw new Error(`Invalid Google Service Account Key format: ${errorMessage}`)
       }
@@ -97,7 +97,7 @@ function parseServiceAccountKey(jsonString: string): any {
 // Initialize OAuth2 client
 export async function getOAuth2Client() {
   console.log('[Google Calendar] Getting OAuth2 client...')
-  
+
   try {
     // Check for OAuth2 configuration first
     const oauth2Client = new google.auth.OAuth2(
@@ -111,34 +111,34 @@ export async function getOAuth2Client() {
       console.log('[Google Calendar] Using service account authentication')
       try {
         const serviceAccount = parseServiceAccountKey(process.env.GOOGLE_SERVICE_ACCOUNT_KEY)
-        
+
         // Validate required fields
         if (!serviceAccount.type || serviceAccount.type !== 'service_account') {
-          throw new Error('Invalid service acbadge: type must be "service_account"')
+          throw new Error('Invalid service account: type must be "service_account"')
         }
         if (!serviceAccount.private_key) {
-          throw new Error('Invalid service acbadge: missing private_key')
+          throw new Error('Invalid service account: missing private_key')
         }
         if (!serviceAccount.client_email) {
-          throw new Error('Invalid service acbadge: missing client_email')
+          throw new Error('Invalid service account: missing client_email')
         }
-        
+
         const auth = new google.auth.GoogleAuth({
           credentials: serviceAccount,
           scopes: ['https://www.googleapis.com/auth/calendar']
         })
-        
+
         console.log('[Google Calendar] Service account initialized:', {
           clientEmail: serviceAccount.client_email,
           projectId: serviceAccount.project_id
         })
-        
+
         const client = await auth.getClient()
         console.log('[Google Calendar] Auth client obtained successfully')
         return client
       } catch (error: any) {
-        console.error('Error initializing Google Service Acbadge: ', error)
-        throw new Error(`Failed to initialize Google Calendar with service acbadge: ${error.message || error}`)
+        console.error('Error initializing Google Service Account: ', error)
+        throw new Error(`Failed to initialize Google Calendar with service account: ${error.message || error}`)
       }
     }
 
@@ -207,7 +207,7 @@ function formatBookingDetails(booking: PrivateBooking): string {
     '',
     'View booking: ' + process.env.NEXT_PUBLIC_APP_URL + '/private-bookings/' + booking.id
   ].filter(Boolean).join('\n')
-  
+
   return details
 }
 
@@ -221,7 +221,7 @@ export async function syncCalendarEvent(booking: PrivateBooking): Promise<string
     endTime: booking.end_time,
     existingEventId: booking.calendar_event_id
   })
-  
+
   try {
     // Check if calendar is configured before attempting to sync
     if (!isCalendarConfigured()) {
@@ -248,7 +248,7 @@ export async function syncCalendarEvent(booking: PrivateBooking): Promise<string
       : addHours(startUtc, 1)
     const startDateTime = formatForCalendar(startUtc)
     const endDateTime = formatForCalendar(endUtc)
-    
+
     const event = {
       summary: formatEventTitle(booking),
       description: formatBookingDetails(booking),
@@ -270,7 +270,7 @@ export async function syncCalendarEvent(booking: PrivateBooking): Promise<string
         ],
       },
     }
-    
+
     console.log('[Google Calendar] Event object prepared:', {
       summary: event.summary,
       startDateTime,
@@ -279,7 +279,7 @@ export async function syncCalendarEvent(booking: PrivateBooking): Promise<string
     })
 
     let response
-    
+
     if (booking.calendar_event_id) {
       // Update existing event
       console.log('[Google Calendar] Updating existing event:', booking.calendar_event_id)
@@ -313,7 +313,7 @@ export async function syncCalendarEvent(booking: PrivateBooking): Promise<string
       errorDetails: error.errors,
       stack: error.stack
     })
-    
+
     if (error.message?.includes('authentication')) {
       console.error('[Google Calendar] Authentication error:', error.message)
       console.error('Please check your Google Calendar configuration in environment variables.')
@@ -333,7 +333,7 @@ export async function syncCalendarEvent(booking: PrivateBooking): Promise<string
     } else {
       console.error('[Google Calendar] Unexpected error:', error.message || error)
     }
-    
+
     // Don't throw the error, just return null to allow the booking to proceed
     return null
   }
@@ -350,13 +350,13 @@ export async function deleteCalendarEvent(eventId: string): Promise<boolean> {
 
     const auth = await getOAuth2Client()
     const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary'
-    
+
     await calendar.events.delete({
       auth: auth as any,
       calendarId,
       eventId,
     })
-    
+
     return true
   } catch (error: any) {
     // Handle specific errors
@@ -373,7 +373,7 @@ export async function deleteCalendarEvent(eventId: string): Promise<boolean> {
     } else {
       console.error('Error deleting calendar event:', error.message || error)
     }
-    
+
     // Return false for actual errors, but don't throw to avoid blocking operations
     return false
   }
@@ -395,11 +395,11 @@ export function isCalendarConfigured(): boolean {
   const hasCalendarId = !!process.env.GOOGLE_CALENDAR_ID
   const hasServiceAccount = !!process.env.GOOGLE_SERVICE_ACCOUNT_KEY
   const hasOAuth = !!(
-    process.env.GOOGLE_CLIENT_ID && 
-    process.env.GOOGLE_CLIENT_SECRET && 
+    process.env.GOOGLE_CLIENT_ID &&
+    process.env.GOOGLE_CLIENT_SECRET &&
     process.env.GOOGLE_REFRESH_TOKEN
   )
-  
+
   console.log('[Google Calendar] Configuration check:', {
     hasCalendarId,
     calendarId: process.env.GOOGLE_CALENDAR_ID ? `${process.env.GOOGLE_CALENDAR_ID.substring(0, 10)}...` : 'NOT SET',
@@ -407,7 +407,7 @@ export function isCalendarConfigured(): boolean {
     hasOAuth,
     isConfigured: hasCalendarId && (hasServiceAccount || hasOAuth)
   })
-  
+
   return hasCalendarId && (hasServiceAccount || hasOAuth)
 }
 
@@ -416,8 +416,8 @@ export function isCalendarConfigured(): boolean {
 export function formatServiceAccountForEnv(serviceAccountJson: string | object): string {
   try {
     // Parse if string, otherwise use as is
-    const serviceAccount = typeof serviceAccountJson === 'string' 
-      ? JSON.parse(serviceAccountJson) 
+    const serviceAccount = typeof serviceAccountJson === 'string'
+      ? JSON.parse(serviceAccountJson)
       : serviceAccountJson
 
     // Convert back to string with proper escaping
@@ -430,7 +430,7 @@ export function formatServiceAccountForEnv(serviceAccountJson: string | object):
     console.log('GOOGLE_SERVICE_ACCOUNT_KEY=' + formatted)
     console.log('')
     console.log('Copy the line above to your .env.local file')
-    
+
     return formatted
   } catch (error) {
     console.error('Error formatting service account key:', error)
@@ -445,7 +445,7 @@ export async function testCalendarConnection(): Promise<{
   details?: any
 }> {
   console.log('[Google Calendar] Testing calendar connection...')
-  
+
   try {
     if (!isCalendarConfigured()) {
       return {
@@ -453,34 +453,34 @@ export async function testCalendarConnection(): Promise<{
         message: 'Google Calendar is not configured. Please check environment variables.',
         details: {
           hasCalendarId: !!process.env.GOOGLE_CALENDAR_ID,
-          hasAuth: !!(process.env.GOOGLE_SERVICE_ACCOUNT_KEY || 
-                     (process.env.GOOGLE_CLIENT_ID && 
-                      process.env.GOOGLE_CLIENT_SECRET && 
-                      process.env.GOOGLE_REFRESH_TOKEN))
+          hasAuth: !!(process.env.GOOGLE_SERVICE_ACCOUNT_KEY ||
+            (process.env.GOOGLE_CLIENT_ID &&
+              process.env.GOOGLE_CLIENT_SECRET &&
+              process.env.GOOGLE_REFRESH_TOKEN))
         }
       }
     }
 
     const auth = await getOAuth2Client()
     const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary'
-    
+
     console.log('[Google Calendar] Testing calendar access for:', calendarId)
-    
+
     // Try to get calendar details
     try {
       const calendarResponse = await calendar.calendars.get({
         auth: auth as any,
         calendarId: calendarId
       })
-      
+
       console.log('[Google Calendar] Calendar access successful:', {
         summary: calendarResponse.data.summary,
         timeZone: calendarResponse.data.timeZone
       })
-      
+
       // Since we can access the calendar, we assume we have appropriate permissions
       // The calendar.calendars.get() would fail if we didn't have access
-      
+
       return {
         success: true,
         message: 'Calendar connection successful',
@@ -489,7 +489,7 @@ export async function testCalendarConnection(): Promise<{
           timeZone: calendarResponse.data.timeZone
         }
       }
-      
+
       // Try to list recent events to verify read access
       const eventsResponse = await calendar.events.list({
         auth: auth as any,
@@ -499,11 +499,11 @@ export async function testCalendarConnection(): Promise<{
         singleEvents: true,
         timeMin: new Date().toISOString()
       })
-      
+
       console.log('[Google Calendar] Successfully listed events:', {
-        badge: eventsResponse.data.items?.length || 0
+        count: eventsResponse.data.items?.length || 0
       })
-      
+
       return {
         success: true,
         message: 'Calendar connection successful with write access',
@@ -519,7 +519,7 @@ export async function testCalendarConnection(): Promise<{
         message: calendarError.message,
         errors: calendarError.errors
       })
-      
+
       if (calendarError.code === 404) {
         return {
           success: false,
@@ -530,7 +530,7 @@ export async function testCalendarConnection(): Promise<{
         return {
           success: false,
           message: 'Permission denied. Please share the calendar with the service account.',
-          details: { 
+          details: {
             calendarId,
             errorCode: 403,
             hint: 'Share your calendar with the service account email and grant "Make changes to events" permission'
@@ -540,10 +540,10 @@ export async function testCalendarConnection(): Promise<{
         return {
           success: false,
           message: `Calendar error: ${calendarError.message}`,
-          details: { 
+          details: {
             calendarId,
             errorCode: calendarError.code,
-            errorDetails: calendarError.errors 
+            errorDetails: calendarError.errors
           }
         }
       }

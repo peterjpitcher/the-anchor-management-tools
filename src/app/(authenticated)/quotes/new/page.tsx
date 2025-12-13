@@ -74,16 +74,16 @@ export default function NewQuotePage() {
         getVendors(),
         getLineItemCatalog()
       ])
-      
+
       if (vendorResult.error || !vendorResult.vendors) {
         throw new Error(vendorResult.error || 'Failed to load vendors')
       }
       setVendors(vendorResult.vendors)
-      
+
       if (catalogResult.error || !catalogResult.items) {
         throw new Error(catalogResult.error || 'Failed to load catalog items')
       }
-      
+
       setCatalogItems(catalogResult.items)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data')
@@ -134,7 +134,7 @@ export default function NewQuotePage() {
   }
 
   function updateLineItem(id: string, updates: Partial<LineItem>) {
-    setLineItems(lineItems.map(item => 
+    setLineItems(lineItems.map(item =>
       item.id === id ? { ...item, ...updates } : item
     ))
   }
@@ -197,7 +197,7 @@ export default function NewQuotePage() {
       formData.append('quote_discount_percentage', quoteDiscountPercentage.toString())
       formData.append('notes', notes)
       formData.append('internal_notes', internalNotes)
-      
+
       const lineItemsData: InvoiceLineItemInput[] = lineItems.map(item => ({
         catalog_item_id: item.catalog_item_id,
         description: item.description,
@@ -206,7 +206,7 @@ export default function NewQuotePage() {
         discount_percentage: item.discount_percentage,
         vat_rate: item.vat_rate
       }))
-      
+
       formData.append('line_items', JSON.stringify(lineItemsData))
 
       const result = await createQuote(formData)
@@ -299,7 +299,7 @@ export default function NewQuotePage() {
           </Card>
         </Section>
 
-        <Section 
+        <Section
           title="Line Items"
           actions={
             <div className="flex gap-2">
@@ -333,8 +333,8 @@ export default function NewQuotePage() {
             {lineItems.length === 0 ? (
               <EmptyState title="No line items added yet"
                 action={
-                  <Button type="button" 
-                    onClick={addLineItem} 
+                  <Button type="button"
+                    onClick={addLineItem}
                     leftIcon={<PlusCircle className="h-4 w-4" />}
                   >
                     Add Line Item
@@ -475,7 +475,7 @@ export default function NewQuotePage() {
                   </div>
                   {totals.discount > 0 && (
                     <div className="flex justify-between text-green-600 text-sm sm:text-base">
-                      <span>Quote Disbadge: </span>
+                      <span>Quote Discount: </span>
                       <span>-£{totals.discount.toFixed(2)}</span>
                     </div>
                   )}

@@ -9,11 +9,11 @@ export interface QuoteTemplateData {
 
 export function generateCompactQuoteHTML(data: QuoteTemplateData): string {
   const { quote, logoUrl } = data
-  
+
   // Check if any line items have discounts or if there's a quote discount
-  const hasDiscounts = quote.quote_discount_percentage > 0 || 
+  const hasDiscounts = quote.quote_discount_percentage > 0 ||
     (quote.line_items?.some(item => item.discount_percentage > 0) ?? false)
-  
+
   // Helper functions
   const formatDate = (date: string | null) => {
     return formatDateFull(date)
@@ -406,7 +406,7 @@ export function generateCompactQuoteHTML(data: QuoteTemplateData): string {
           <tr>
             <td>
               <div class="item-description">${item.description}</div>
-              ${hasDiscounts && item.discount_percentage > 0 ? `<div class="item-line-discount">Line disbadge: ${item.discount_percentage}%</div>` : ''}
+              ${hasDiscounts && item.discount_percentage > 0 ? `<div class="item-line-discount">Line discount: ${item.discount_percentage}%</div>` : ''}
             </td>
             <td class="text-right">${item.quantity}</td>
             <td class="text-right">${formatCurrency(item.unit_price)}</td>
