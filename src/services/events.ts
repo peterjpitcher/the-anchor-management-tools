@@ -45,24 +45,24 @@ function generateSlug(name: string, date: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .substring(0, 100);
-  
+
   const dateStr = toLocalIsoDate(new Date(date));
-  
+
   return `${nameSlug}-${dateStr}`;
 }
 
 // Helper function to format time to HH:MM
 function formatTimeToHHMM(time: string | undefined | null): string | undefined | null {
   if (!time) return time
-  
+
   if (/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/.test(time)) {
     return time
   }
-  
+
   const [hours, minutes] = time.split(':')
   const formattedHours = hours.padStart(2, '0')
   const formattedMinutes = (minutes || '00').padStart(2, '0')
-  
+
   return `${formattedHours}:${formattedMinutes}`
 }
 
@@ -72,7 +72,7 @@ export const eventSchema = z.object({
   date: z.string()
     .min(1, 'Date is required')
     .refine((val) => {
-      return true 
+      return true
     }, 'Date must be valid'),
   time: z.string()
     .min(1, 'Time is required')
@@ -196,8 +196,8 @@ export class EventService {
     const supabase = await createClient();
 
     // Determine slug: use provided or generate
-    const slug = input.slug && input.slug.trim() !== '' 
-      ? input.slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-') 
+    const slug = input.slug && input.slug.trim() !== ''
+      ? input.slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-')
       : generateSlug(input.name, input.date);
 
     // Check for duplicate slug
@@ -248,18 +248,17 @@ export class EventService {
 
     // 1. Validation: Check capacity constraint
     if (input.capacity !== undefined && input.capacity !== null) {
-      const { data: bookingSum, error: bookingSumError } = await supabase
+      const { data: bookings, error: bookingsError } = await supabase
         .from('bookings')
-        .select('sum:seats')
+        .select('seats')
         .eq('event_id', id)
-        .single();
 
-      if (bookingSumError) {
-        console.error('Failed to validate capacity against bookings:', bookingSumError);
+      if (bookingsError) {
+        console.error('Failed to validate capacity against bookings:', bookingsError);
         throw new Error('Unable to validate capacity');
       }
 
-      const totalSeats = (bookingSum?.sum as number | null) ?? 0;
+      const totalSeats = bookings?.reduce((sum, booking) => sum + (booking.seats || 0), 0) ?? 0;
       if (totalSeats > input.capacity) {
         throw new Error(`Cannot reduce capacity below current bookings (${totalSeats} tickets booked)`);
       }
@@ -273,21 +272,21 @@ export class EventService {
       // But for updates, usually we keep the slug unless explicitly changed.
       // Let's check if slug was passed as empty string (cleared)
       if (input.slug === '') {
-         // Regenerate
-         // Need current name/date if not provided
-         let name = input.name;
-         let date = input.date;
-         
-         if (!name || !date) {
-            const { data: current } = await supabase.from('events').select('name, date').eq('id', id).single();
-            if (current) {
-              name = name || current.name;
-              date = date || current.date;
-            }
-         }
-         if (name && date) {
-           slug = generateSlug(name, date);
-         }
+        // Regenerate
+        // Need current name/date if not provided
+        let name = input.name;
+        let date = input.date;
+
+        if (!name || !date) {
+          const { data: current } = await supabase.from('events').select('name, date').eq('id', id).single();
+          if (current) {
+            name = name || current.name;
+            date = date || current.date;
+          }
+        }
+        if (name && date) {
+          slug = generateSlug(name, date);
+        }
       }
     }
 
@@ -370,7 +369,7 @@ export class EventService {
 
   static async getEventFAQs(eventId: string) {
     const supabase = await createClient();
-    
+
     const { data, error } = await supabase
       .from('event_faqs')
       .select('*')
@@ -412,11 +411,11 @@ export class EventService {
       console.error('Error fetching events by date:', error);
       throw new Error('Failed to fetch events');
     }
-    
+
     // Calculate total booked count for each event
     return data.map(event => ({
       ...event,
-      booked_count: (event.booking_totals?.[0]?.sum as number | null) || 0,
+      booked_count: event.booking_totals?.reduce((sum: number, booking: any) => sum + (booking.sum || 0), 0) || 0,
       booking_totals: undefined
     }));
   }
