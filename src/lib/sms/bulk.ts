@@ -145,7 +145,7 @@ export async function sendBulkSms(request: BulkSmsRequest): Promise<BulkSmsResul
                 categoryDetails ?? undefined,
                 contactPhone
               )
-              const messageWithSupport = ensureReplyInstruction(personalized, contactPhone)
+              const messageWithSupport = personalized
               const sendResult = await sendSMS(customer.mobile_number as string, messageWithSupport, {
                 customerId: customer.id,
                 metadata: {

@@ -17,19 +17,24 @@ export function authorizeCronRequest(request: CronRequest): CronAuthResult {
   const authHeader = request.headers.get('authorization')?.trim() ?? null
   const vercelCronHeader = request.headers.get('x-vercel-cron')
 
-  if (!cronSecret && process.env.NODE_ENV !== 'production') {
-    // In non-production environments allow cron execution without auth for convenience
-    return { authorized: true }
-  }
-
-  if (cronSecret) {
-    const bearerSecret = `Bearer ${cronSecret}`
-    if (headerEquals(authHeader, bearerSecret) || headerEquals(authHeader, cronSecret)) {
+  if (!cronSecret) {
+    if (process.env.NODE_ENV !== 'production') {
+      // In non-production environments allow cron execution without auth for convenience
       return { authorized: true }
+    }
+
+    if (vercelCronHeader) {
+      return { authorized: true }
+    }
+
+    return {
+      authorized: false,
+      reason: 'Missing cron credentials'
     }
   }
 
-  if (vercelCronHeader) {
+  const bearerSecret = `Bearer ${cronSecret}`
+  if (headerEquals(authHeader, bearerSecret) || headerEquals(authHeader, cronSecret)) {
     return { authorized: true }
   }
 
