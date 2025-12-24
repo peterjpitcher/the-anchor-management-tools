@@ -99,7 +99,7 @@ async function getEvents(): Promise<{ events: PageEvent[]; todos: ChecklistTodoI
   const todos: ChecklistTodoItem[] = []
 
   const eventsWithChecklist = safeEvents.map(event => {
-    const bookedSeats = (event.booking_totals?.[0]?.sum || 0) || 0
+    const bookedSeats = (event.booking_totals || []).reduce((acc: number, curr: { sum: number | null }) => acc + (curr.sum || 0), 0)
 
     if (!event.date) {
       return {

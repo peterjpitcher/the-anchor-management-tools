@@ -8,6 +8,8 @@ const JOB_NAME = 'event-reminders'
 const LONDON_TZ = 'Europe/London'
 const STALE_RUN_WINDOW_MINUTES = 30
 const DEFAULT_SEND_HOUR = 10
+const eventSmsPaused = () =>
+  process.env.SUSPEND_EVENT_SMS === 'true' || process.env.SUSPEND_ALL_SMS === 'true'
 
 function getLondonRunKey(now: Date = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', {
@@ -138,6 +140,45 @@ export async function GET(request: Request) {
     }
 
     const runKey = getLondonRunKey()
+
+    if (eventSmsPaused()) {
+      logger.warn('Event SMS paused, skipping reminder cron', {
+        metadata: { runKey }
+      })
+      return new NextResponse(
+        JSON.stringify({
+          success: true,
+          skipped: true,
+          reason: 'sms_paused',
+          runKey
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
+    const londonNow = new Date(new Date().toLocaleString('en-GB', { timeZone: LONDON_TZ }))
+    if (process.env.NODE_ENV === 'production' && londonNow.getHours() < DEFAULT_SEND_HOUR) {
+      logger.warn('Reminder cron ran before default send hour; skipping until after 10:00 London', {
+        metadata: { runKey, londonHour: londonNow.getHours() }
+      })
+      return new NextResponse(
+        JSON.stringify({
+          success: true,
+          skipped: true,
+          reason: 'before_send_hour',
+          runKey,
+          londonHour: londonNow.getHours()
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
     const { supabase, runId, skip } = await acquireCronRun(runKey)
     runContext = { supabase, runId, runKey }
 
@@ -158,17 +199,40 @@ export async function GET(request: Request) {
 
     console.log('Starting reminder check (scheduled pipeline only by default)...')
 
-    // Warn if the cron fires before the intended send hour to avoid missing same-day reminders
-    const londonNow = new Date(new Date().toLocaleString('en-GB', { timeZone: LONDON_TZ }))
-    if (londonNow.getHours() < DEFAULT_SEND_HOUR) {
-      logger.warn('Reminder cron ran before default send hour; consider scheduling after 10:00 London', {
-        metadata: { runKey, londonHour: londonNow.getHours() }
-      })
-    }
-
     // Process new scheduled reminders from booking_reminders table (single source of truth)
     const scheduledResult = await processScheduledEventReminders()
     console.log('Scheduled reminders processed:', scheduledResult)
+
+    if ('error' in scheduledResult) {
+      await resolveCronRunResult(supabase, runId, 'failed', scheduledResult.error)
+      return new NextResponse(
+        JSON.stringify({
+          success: false,
+          error: scheduledResult.error,
+          runKey
+        }),
+        {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
+    if (scheduledResult.message === 'Event SMS paused') {
+      await resolveCronRunResult(supabase, runId, 'failed', 'Event SMS paused')
+      return new NextResponse(
+        JSON.stringify({
+          success: true,
+          skipped: true,
+          reason: 'sms_paused',
+          runKey
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      )
+    }
 
     // Legacy path has been removed to prevent duplicate or early sends.
     console.log('Legacy reminder sender removed — only scheduled pipeline runs')

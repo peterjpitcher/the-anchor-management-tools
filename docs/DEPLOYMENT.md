@@ -238,7 +238,7 @@ module.exports = {
   "crons": [
     {
       "path": "/api/cron/reminders",
-      "schedule": "0 9 * * *"
+      "schedule": "0 10 * * *"
     },
     {
       "path": "/api/jobs/process",
@@ -247,6 +247,8 @@ module.exports = {
   ]
 }
 ```
+
+Note: the reminder cron must run **after 10:00 Europe/London**. If `CRON_SECRET` is set, the endpoint requires an `Authorization: Bearer <CRON_SECRET>` header.
 
 ### Custom Domain Setup
 
@@ -361,9 +363,9 @@ END $$;
    # .github/workflows/reminders.yml
    name: Send Event Reminders
    on:
-     schedule:
-       - cron: '0 9 * * *'  # 9 AM UTC daily
-     workflow_dispatch:  # Manual trigger
+    schedule:
+       - cron: '0 10 * * *'  # 10 AM UTC daily (after 10:00 London)
+    workflow_dispatch:  # Manual trigger
    
    jobs:
      send-reminders:

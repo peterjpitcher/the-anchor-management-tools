@@ -11,7 +11,19 @@ const authToken = env.TWILIO_AUTH_TOKEN;
 const fromNumber = env.TWILIO_PHONE_NUMBER;
 const messagingServiceSid = env.TWILIO_MESSAGING_SERVICE_SID;
 
-export const twilioClient = twilio(accountSid, authToken);
+let cachedTwilioClient: ReturnType<typeof twilio> | null = null;
+
+function getTwilioClient() {
+  if (!accountSid || !authToken) {
+    throw new Error('SMS not configured');
+  }
+
+  if (!cachedTwilioClient) {
+    cachedTwilioClient = twilio(accountSid, authToken);
+  }
+
+  return cachedTwilioClient;
+}
 
 export type SendSMSOptions = {
   customerId?: string;
@@ -44,7 +56,8 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
     // Send SMS with retry logic
     const message = await retry(
       async () => {
-        return await twilioClient.messages.create(messageParams);
+        const client = getTwilioClient();
+        return await client.messages.create(messageParams);
       },
       {
         ...RetryConfigs.sms,
