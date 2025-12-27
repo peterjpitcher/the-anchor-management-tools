@@ -8,9 +8,9 @@ import { PrivateBookingService } from '@/services/private-bookings';
 export async function GET() {
   try {
     const [spaces, packages, vendors] = await Promise.all([
-      PrivateBookingService.getVenueSpaces(true),
-      PrivateBookingService.getCateringPackages(true),
-      PrivateBookingService.getVendors(undefined, true)
+      PrivateBookingService.getVenueSpaces(true, true),
+      PrivateBookingService.getCateringPackages(true, true),
+      PrivateBookingService.getVendors(undefined, true, true)
     ]);
 
     return NextResponse.json({

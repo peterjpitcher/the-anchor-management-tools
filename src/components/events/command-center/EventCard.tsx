@@ -1,5 +1,6 @@
 'use client'
 
+import { toast } from 'react-hot-toast'
 import React from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -155,7 +156,7 @@ export default function EventCard({ event }: EventCardProps) {
                             e.stopPropagation()
                             navigator.clipboard.writeText(`${window.location.origin}/events/${event.id}`) // Simplistic
                             // Would ideally trigger a toast
-                            alert('Link copied!')
+                            toast.success('Link copied!')
                         }}
                     >
                         <ShareIcon className="w-4 h-4" /> Share
