@@ -1056,8 +1056,8 @@ export class PrivateBookingService {
     return bookingWithDetails;
   }
 
-  static async getVenueSpaces(activeOnly = true) {
-    const supabase = await createClient();
+  static async getVenueSpaces(activeOnly = true, useAdmin = false) {
+    const supabase = useAdmin ? createAdminClient() : await createClient();
 
     let query = supabase
       .from('venue_spaces')
@@ -1082,8 +1082,8 @@ export class PrivateBookingService {
     return this.getVenueSpaces(false);
   }
 
-  static async getCateringPackages(activeOnly = true) {
-    const supabase = await createClient();
+  static async getCateringPackages(activeOnly = true, useAdmin = false) {
+    const supabase = useAdmin ? createAdminClient() : await createClient();
 
     let query = supabase
       .from('catering_packages')
@@ -1108,8 +1108,8 @@ export class PrivateBookingService {
     return this.getCateringPackages(false);
   }
 
-  static async getVendors(serviceType?: string, activeOnly = true) {
-    const supabase = await createClient();
+  static async getVendors(serviceType?: string, activeOnly = true, useAdmin = false) {
+    const supabase = useAdmin ? createAdminClient() : await createClient();
 
     let query = supabase
       .from('vendors')
