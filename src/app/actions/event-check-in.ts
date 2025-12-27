@@ -58,10 +58,10 @@ async function ensureEventAccess(eventId: string): Promise<{ event: { id: string
 function normalizeSearchQuery(query: string): { isPhone: boolean, cleanQuery: string } {
   // Remove spaces, dashes, parens
   const clean = query.replace(/[\s\-()]/g, '')
-  
+
   // Check if it looks like a phone number (mostly digits, maybe a +)
   const isPhone = /^[\d+]+$/.test(clean)
-  
+
   if (isPhone) {
     // If it starts with 07, treat as UK mobile
     if (clean.startsWith('07')) {
@@ -70,7 +70,7 @@ function normalizeSearchQuery(query: string): { isPhone: boolean, cleanQuery: st
       // We'll search partials in DB, so leaving as is might be okay if we OR it with +44 version
     }
   }
-  
+
   return { isPhone, cleanQuery: query.trim() }
 }
 
@@ -91,7 +91,8 @@ export async function lookupEventGuest(input: LookupInput) {
 
   try {
     const supabase = await createClient()
-    
+
+    // 1. Strict Search (Exact or Standard Formats)
     let customersQuery = supabase
       .from('customers')
       .select(`
@@ -103,51 +104,66 @@ export async function lookupEventGuest(input: LookupInput) {
         bookings!left(id, seats, event_id),
         event_check_ins!left(id, event_id)
       `)
-      // Filter bookings and check-ins for THIS event only
       .eq('bookings.event_id', eventId)
       .eq('event_check_ins.event_id', eventId)
 
+    let matchType: 'exact' | 'fuzzy' = 'exact'
+
     if (isPhone) {
-      // Phone search: Try exact, local format, and international format
-      // DB stores as +447... usually
-      // User might type 07... or 7...
-      
-      // Construct a robust OR filter for phone
-      // 1. Exact match
-      // 2. Ends with cleanQuery (good for "last 4 digits" etc)
-      // 3. +44 + cleanQuery (without leading 0)
-      
+      // Strict Phone Search
       let phoneSearch = `mobile_number.ilike.%${cleanQuery}%`
       if (cleanQuery.startsWith('0')) {
         const withoutZero = cleanQuery.substring(1)
         phoneSearch += `,mobile_number.ilike.%+44${withoutZero}%`
       }
-      
       customersQuery = customersQuery.or(phoneSearch)
     } else {
-      // Name/Email search
       customersQuery = customersQuery.or(`first_name.ilike.%${cleanQuery}%,last_name.ilike.%${cleanQuery}%,email.ilike.%${cleanQuery}%`)
     }
 
-    const { data: customers, error } = await customersQuery.limit(10)
+    const { data: initialCustomers, error } = await customersQuery.limit(5)
+    let customers = initialCustomers
+
+    // 2. Fuzzy Fallback (Phone Only)
+    // If no strict match, and input is phone length > 6
+    if ((!customers || customers.length === 0) && isPhone && cleanQuery.length >= 6) {
+      const last6 = cleanQuery.slice(-6)
+
+      const { data: fuzzyCustomers, error: fuzzyError } = await supabase
+        .from('customers')
+        .select(`
+                id, 
+                first_name, 
+                last_name, 
+                mobile_number, 
+                email,
+                bookings!left(id, seats, event_id),
+                event_check_ins!left(id, event_id)
+            `)
+        .eq('bookings.event_id', eventId)
+        .eq('event_check_ins.event_id', eventId)
+        // Match suffix
+        .ilike('mobile_number', `%${last6}`)
+        .limit(5)
+
+      if (!fuzzyError && fuzzyCustomers && fuzzyCustomers.length > 0) {
+        customers = fuzzyCustomers
+        matchType = 'fuzzy'
+      }
+    }
 
     if (error) {
       console.error('Lookup error:', error)
       return { success: false, error: 'Failed to search guests' }
     }
 
-    // Transform results for UI
+    // Transform results
     const matches = customers?.map(c => {
-      // Because of the !left join and filter, bookings array might be empty or contain the booking for this event
-      // However, the .eq filter on left join in Supabase/PostgREST filters the *parent* rows if not careful, 
-      // OR it just filters the child rows. 
-      // Actually, strictly speaking, PostgREST embedding with filter applies to the embedded resource.
-      // So c.bookings will contain ONLY bookings for this event.
-      
-      const booking = c.bookings?.[0] // Should be 0 or 1 for a specific event usually
+      const booking = c.bookings?.[0]
       const checkIn = c.event_check_ins?.[0]
 
       return {
+        matchType, // Pass this back
         customer: {
           id: c.id,
           first_name: c.first_name,
@@ -273,5 +289,70 @@ export async function registerNewGuest(input: RegisterNewInput) {
   } catch (error: any) {
     console.error('Failed to register new guest:', error)
     return { success: false, error: error.message || 'Failed to complete check-in' }
+  }
+}
+
+const undoCheckInSchema = z.object({
+  checkInId: z.string().uuid(),
+})
+
+export async function undoEventCheckIn(checkInId: string) {
+  const parsed = undoCheckInSchema.safeParse({ checkInId })
+  if (!parsed.success) {
+    return { success: false, error: 'Invalid check-in ID' }
+  }
+
+  const supabase = await createClient()
+
+  // Verify permission
+  const hasPermission = await checkUserPermission('events', 'manage')
+  if (!hasPermission) {
+    return { success: false, error: 'Permission denied' }
+  }
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: 'Not authenticated' }
+
+  try {
+    // Get check-in details for audit before deleting
+    const { data: checkIn, error: fetchError } = await supabase
+      .from('event_check_ins')
+      .select('event_id, customer_id, booking_id')
+      .eq('id', checkInId)
+      .single()
+
+    if (fetchError || !checkIn) {
+      return { success: false, error: 'Check-in record not found' }
+    }
+
+    // Delete the record
+    const { error: deleteError } = await supabase
+      .from('event_check_ins')
+      .delete()
+      .eq('id', checkInId)
+
+    if (deleteError) {
+      throw deleteError
+    }
+
+    // Audit log
+    await logAuditEvent({
+      user_id: user.id,
+      user_email: user.email ?? undefined,
+      operation_type: 'delete',
+      resource_type: 'event_check_in',
+      resource_id: checkInId,
+      operation_status: 'success',
+      old_values: {
+        event_id: checkIn.event_id,
+        customer_id: checkIn.customer_id,
+        booking_id: checkIn.booking_id
+      }
+    })
+
+    return { success: true }
+  } catch (error) {
+    console.error('Failed to undo check-in:', error)
+    return { success: false, error: 'Failed to undo check-in' }
   }
 }

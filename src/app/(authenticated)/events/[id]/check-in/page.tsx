@@ -35,6 +35,8 @@ export default async function EventCheckInPage({
     .eq('id', id)
     .maybeSingle()
 
+
+
   if (error) {
     console.error('Failed to load event for check-in:', error)
   }

@@ -1,5 +1,5 @@
 // Define all job types for type safety
-export type JobType = 
+export type JobType =
   | 'send_sms'
   | 'send_bulk_sms'
   | 'sync_customer_stats'
@@ -9,6 +9,7 @@ export type JobType =
   | 'update_sms_health'
   | 'send_welcome_email'
   | 'send_email'
+  | 'process_event_reminder'
 
 export interface JobPayload {
   send_sms: {
@@ -20,6 +21,9 @@ export interface JobPayload {
     customer_id?: string
     booking_id?: string
     type?: 'booking_confirmation' | 'reminder' | 'custom'
+  }
+  process_event_reminder: {
+    reminderId: string
   }
   send_bulk_sms: {
     customerIds: string[]

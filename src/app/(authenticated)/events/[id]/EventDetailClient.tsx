@@ -504,6 +504,8 @@ export default function EventDetailClient({
         href: '/events',
       }}
       navItems={navItems}
+      containerSize="xl"
+      className="bg-gray-50/50"
     >
       <Modal
         open={showBookingForm && canManageEvents}

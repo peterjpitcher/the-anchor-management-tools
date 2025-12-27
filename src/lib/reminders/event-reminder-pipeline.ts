@@ -74,7 +74,8 @@ export async function queueDueEventReminders(options: QueueOptions = {}): Promis
       cancelled: 0,
       failed: 0,
       duplicates: 0,
-      skipped: 0
+      skipped: 0,
+      queued: 0
     }
 
     const seenKeys = new Set<string>()
@@ -264,7 +265,8 @@ export async function queueDueEventReminders(options: QueueOptions = {}): Promis
       }
 
       let suppressed = 0
-      let cancelledBySend = 0
+      let jobQueueErrors = 0
+      const { jobQueue } = await import('@/lib/background-jobs')
 
       for (const { reminder, phone } of validReminders) {
         const key = buildKey(reminder, phone)
@@ -275,26 +277,39 @@ export async function queueDueEventReminders(options: QueueOptions = {}): Promis
         }
 
         try {
-          const sendResult = await sendEventReminderById(reminder.id)
-          if (!sendResult.success) {
-            if (sendResult.cancelled) {
-              cancelledBySend += 1
-              continue
-            }
-            totals.failed += 1
-            await failReminder(supabase, reminder.id, sendResult.error || 'Failed to send reminder')
-            continue
+          // Changed: Instead of sending directly, we enqueue a background job.
+          // We mark the status as 'queued' immediately to prevent re-processing in the next tick.
+
+          await jobQueue.enqueue('process_event_reminder', { reminderId: reminder.id })
+
+          const { error: updateError } = await supabase
+            .from('booking_reminders')
+            .update({
+              status: 'queued',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', reminder.id)
+
+          if (updateError) {
+            // If we can't update status, we log it but the job will likely still run.
+            // This is a rare edge case.
+            logger.error('Failed to update reminder status to queued', {
+              error: updateError,
+              metadata: { reminderId: reminder.id }
+            })
           }
 
-          totals.sent += 1
+          totals.queued += 1
           existingKeys.add(key)
         } catch (err) {
+          jobQueueErrors += 1
           totals.failed += 1
+          // If queueing fails, we mark as failed so it can be retried or investigated later
           await failReminder(supabase, reminder.id, err instanceof Error ? err.message : 'Failed to enqueue reminder job')
         }
       }
 
-      totals.cancelled += suppressed + cancelledBySend
+      totals.cancelled += suppressed
       totals.duplicates += suppressed
 
       // Carry over dedupe keys so later batches remain idempotent within this run
@@ -308,7 +323,7 @@ export async function queueDueEventReminders(options: QueueOptions = {}): Promis
       // Safety to prevent unbounded loops
       if (batchCount > 50) {
         logger.warn('Stopping reminder drain after 50 batches to avoid runaway loop', {
-          metadata: { sent: totals.sent, failed: totals.failed, cancelled: totals.cancelled }
+          metadata: { queued: totals.queued, failed: totals.failed, cancelled: totals.cancelled }
         })
         break
       }
@@ -316,13 +331,13 @@ export async function queueDueEventReminders(options: QueueOptions = {}): Promis
 
     return {
       success: true,
-      sent: totals.sent,
+      sent: 0, // No longer sending synchronously
       cancelled: totals.cancelled,
       failed: totals.failed,
       duplicates: totals.duplicates,
       skipped: totals.skipped,
-      queued: 0,
-      message: `Sent ${totals.sent}, cancelled ${totals.cancelled}, failed ${totals.failed}, duplicates ${totals.duplicates}`
+      queued: totals.queued,
+      message: `Queued ${totals.queued}, cancelled ${totals.cancelled}, failed ${totals.failed}`
     }
   } catch (error) {
     logger.error('queueDueEventReminders error', { error: error as Error })

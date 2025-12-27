@@ -28,6 +28,7 @@ export interface EventChecklistItem extends EventChecklistDefinition {
 }
 
 export const EVENT_CHECKLIST_DEFINITIONS: EventChecklistDefinition[] = [
+  { key: 'update_event_details', label: 'Update all event details', offsetDays: -42, channel: 'Website', required: true, order: 0 },
   { key: 'write_event_brief', label: 'Write event brief', offsetDays: -28, channel: 'Admin', required: true, order: 1 },
   { key: 'publish_event_page', label: 'Build & publish event web page', offsetDays: -28, channel: 'Website', required: true, order: 2 },
   { key: 'create_short_link', label: 'Create short link & QR code', offsetDays: -28, channel: 'Website', required: true, order: 3 },

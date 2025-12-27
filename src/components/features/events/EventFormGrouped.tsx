@@ -384,6 +384,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 fullWidth
               >
                 <option value="scheduled">Scheduled</option>
+                <option value="draft">Draft</option>
                 <option value="cancelled">Cancelled</option>
                 <option value="postponed">Postponed</option>
                 <option value="sold_out">Sold Out</option>

@@ -7,6 +7,7 @@ import { syncCalendarEvent, deleteCalendarEvent, isCalendarConfigured } from '@/
 import { logAuditEvent } from '@/app/actions/audit'; // Audit logging will be in action, but helper types needed
 import type {
   BookingStatus,
+  BookingItemFormData,
   PrivateBookingWithDetails,
   PrivateBookingAuditWithUser
 } from '@/types/private-bookings';
@@ -102,6 +103,7 @@ export type CreatePrivateBookingInput = {
   status?: string;
   created_by?: string;
   date_tbd?: boolean;
+  items?: BookingItemFormData[];
 };
 
 export type UpdatePrivateBookingInput = Partial<CreatePrivateBookingInput> & {
@@ -225,7 +227,7 @@ export class PrivateBookingService {
     // 2. Atomic Transaction
     const { data: booking, error } = await supabase.rpc('create_private_booking_transaction', {
       p_booking_data: bookingPayload,
-      p_items: [], // Items not supported in initial creation form usually
+      p_items: input.items || [],
       p_customer_data: customerData
     });
 

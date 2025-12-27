@@ -285,6 +285,8 @@ function getEventStatus(status: string): string {
       return SCHEMA_EVENT_STATUS.POSTPONED;
     case 'rescheduled':
       return SCHEMA_EVENT_STATUS.RESCHEDULED;
+    case 'draft':
+      return SCHEMA_EVENT_STATUS.SCHEDULED;
     default:
       return SCHEMA_EVENT_STATUS.SCHEDULED;
   }
