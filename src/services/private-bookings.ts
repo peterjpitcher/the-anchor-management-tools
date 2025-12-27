@@ -204,13 +204,14 @@ export class PrivateBookingService {
         first_name: input.customer_first_name,
         last_name: input.customer_last_name,
         mobile_number: formatPhoneForStorage(input.contact_phone),
-        email: input.contact_email?.toLowerCase(),
+        email: input.contact_email?.toLowerCase() || null,
         sms_opt_in: true
       };
     }
 
     const bookingPayload = {
       ...input,
+      contact_email: input.contact_email || null, // Sanitize empty string to null
       customer_id: input.customer_id,
       event_date: finalEventDate,
       start_time: finalStartTime,
