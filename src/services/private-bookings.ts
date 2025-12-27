@@ -1547,7 +1547,8 @@ export class PrivateBookingService {
   // Catering Package Management
   static async createCateringPackage(data: {
     name: string;
-    package_type: string;
+    serving_style: string;
+    category: 'food' | 'drink' | 'addon';
     per_head_cost: number;
     pricing_model?: 'per_head' | 'total_value';
     minimum_order?: number | null;
@@ -1559,7 +1560,8 @@ export class PrivateBookingService {
 
     const dbData = {
       name: data.name,
-      package_type: data.package_type,
+      serving_style: data.serving_style,
+      category: data.category,
       cost_per_head: data.per_head_cost,
       pricing_model: data.pricing_model || 'per_head',
       minimum_guests: data.minimum_order,
@@ -1593,7 +1595,8 @@ export class PrivateBookingService {
         operation_status: 'success',
         new_values: {
           name: inserted.name,
-          package_type: inserted.package_type,
+          serving_style: inserted.serving_style,
+          category: inserted.category,
           cost_per_head: inserted.cost_per_head,
           pricing_model: inserted.pricing_model,
           minimum_guests: inserted.minimum_guests,
@@ -1609,7 +1612,8 @@ export class PrivateBookingService {
 
   static async updateCateringPackage(id: string, data: {
     name: string;
-    package_type: string;
+    serving_style: string;
+    category: 'food' | 'drink' | 'addon';
     per_head_cost: number;
     pricing_model?: 'per_head' | 'total_value';
     minimum_order?: number | null;
@@ -1631,7 +1635,8 @@ export class PrivateBookingService {
 
     const dbData = {
       name: data.name,
-      package_type: data.package_type,
+      serving_style: data.serving_style,
+      category: data.category,
       cost_per_head: data.per_head_cost,
       pricing_model: data.pricing_model || 'per_head',
       minimum_guests: data.minimum_order,
