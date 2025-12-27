@@ -17,7 +17,8 @@ export async function GET() {
       success: true,
       data: {
         spaces,
-        packages,
+
+        packages: packages || [],
         vendors
       }
     });

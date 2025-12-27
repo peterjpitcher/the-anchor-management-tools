@@ -3,7 +3,7 @@ export type PaymentMethod = 'cash' | 'card' | 'invoice'
 export type ItemType = 'space' | 'catering' | 'vendor' | 'other'
 export type DiscountType = 'percent' | 'fixed'
 export type PackageType = 'buffet' | 'sit-down' | 'canapes' | 'drinks' | 'pizza' | 'other'
-export type PricingModel = 'per_head' | 'total_value'
+export type PricingModel = 'per_head' | 'total_value' | 'variable' | 'per_jar' | 'per_tray' | 'menu_priced' | 'free'
 export type VendorServiceType =
   | 'dj'
   | 'band'
@@ -16,14 +16,14 @@ export type VendorServiceType =
   | 'equipment'
   | 'other'
 export type DocumentType = 'contract' | 'invoice' | 'receipt' | 'correspondence' | 'other'
-export type SmsTriggerType = 
-  | 'status_change' 
-  | 'deposit_received' 
-  | 'payment_received' 
+export type SmsTriggerType =
+  | 'status_change'
+  | 'deposit_received'
+  | 'payment_received'
   | 'final_payment_received'
-  | 'reminder' 
-  | 'payment_due' 
-  | 'urgent' 
+  | 'reminder'
+  | 'payment_due'
+  | 'urgent'
   | 'manual'
   | 'booking_created'
   | 'booking_cancelled'
@@ -97,7 +97,8 @@ export interface CateringPackage {
   id: string
   name: string
   description?: string
-  package_type?: PackageType
+  serving_style?: PackageType
+  category: 'food' | 'drink' | 'addon'
   pricing_model?: PricingModel
   cost_per_head: number
   minimum_guests: number
