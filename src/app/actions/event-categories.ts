@@ -67,7 +67,7 @@ const categorySchema = z.object({
     (val) => (!val || val === '' ? undefined : val),
     z.enum(['MusicGroup', 'Person', 'TheaterGroup', 'DanceGroup', 'ComedyGroup', 'Organization']).optional()
   ),
-  default_event_status: z.enum(['scheduled', 'cancelled', 'postponed', 'rescheduled']).optional(),
+  default_event_status: z.enum(['scheduled', 'cancelled', 'postponed', 'rescheduled', 'draft']).optional(),
   default_image_url: z.preprocess(
     (val) => (!val || val === '' ? undefined : val),
     z.string().optional()

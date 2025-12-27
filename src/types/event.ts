@@ -17,7 +17,7 @@ export interface Event {
   keywords: string[] | null
   meta_title: string | null
   meta_description: string | null
-  event_status: 'scheduled' | 'cancelled' | 'postponed' | 'rescheduled'
+  event_status: 'scheduled' | 'cancelled' | 'postponed' | 'rescheduled' | 'draft'
   performer_name: string | null
   performer_type: string | null
   price: number
@@ -89,7 +89,7 @@ export interface EventFormData {
   keywords?: string[]
   meta_title?: string
   meta_description?: string
-  event_status?: 'scheduled' | 'cancelled' | 'postponed' | 'rescheduled'
+  event_status?: 'scheduled' | 'cancelled' | 'postponed' | 'rescheduled' | 'draft'
   performer_name?: string
   performer_type?: string
   price?: number

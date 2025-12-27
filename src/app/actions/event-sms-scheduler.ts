@@ -470,22 +470,14 @@ export async function addAttendeesWithScheduledSMS(
       for (const result of results) {
         if (result.success) {
           scheduledCount += result.scheduled
-          if (result.dueNowReminderIds.length > 0) {
-            allDueNowReminderIds.push(...result.dueNowReminderIds)
-          }
         }
       }
     }
 
-    // Process all due reminders in a single batch at the end
-    if (allDueNowReminderIds.length > 0) {
-      // Process in chunks of 50 (default limit of processScheduledEventReminders logic usually matches this)
-      const PROCESS_CHUNK_SIZE = 50
-      for (let i = 0; i < allDueNowReminderIds.length; i += PROCESS_CHUNK_SIZE) {
-        const chunk = allDueNowReminderIds.slice(i, i + PROCESS_CHUNK_SIZE)
-        await processScheduledEventReminders({ reminderIds: chunk })
-      }
-    }
+    // Optimization: We no longer process "due now" reminders synchronously here.
+    // They are inserted with status='pending' and have a scheduled_for time.
+    // The background cron job (running every minute) will pick them up via queueDueEventReminders
+    // which now enqueues them into the robust JobQueue system.
 
     const addedCount = inserted.length
     const skippedCount = uniqueCustomerIds.length - inserted.length

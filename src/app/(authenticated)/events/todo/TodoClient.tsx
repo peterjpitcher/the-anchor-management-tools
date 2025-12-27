@@ -153,6 +153,8 @@ export default function TodoClient({ initialItems, initialError }: TodoClientPro
         href: '/events',
       }}
       navItems={navItems}
+      containerSize="xl"
+      className="bg-gray-50/50"
       headerActions={
         <Button
           size="sm"

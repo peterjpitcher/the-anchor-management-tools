@@ -223,6 +223,7 @@ export function EventCategoryForm({ category, onSuccess, onCancel }: EventCatego
             fullWidth
           >
             <option value="scheduled">Scheduled</option>
+            <option value="draft">Draft</option>
             <option value="cancelled">Cancelled</option>
             <option value="postponed">Postponed</option>
             <option value="rescheduled">Rescheduled</option>

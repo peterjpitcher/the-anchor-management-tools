@@ -110,7 +110,7 @@ export const eventSchema = z.object({
     if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(val)) return null
     return val
   }),
-  event_status: z.enum(['scheduled', 'cancelled', 'postponed', 'rescheduled', 'sold_out']).default('scheduled'),
+  event_status: z.enum(['scheduled', 'cancelled', 'postponed', 'rescheduled', 'sold_out', 'draft']).default('scheduled'),
   performer_name: z.string().max(255).nullable().optional(),
   performer_type: z.string().max(50).nullable().optional(),
   price: z.preprocess(

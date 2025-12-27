@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from './rbac'
 
 export async function enqueueBulkSMSJob(
-  customerIds: string[], 
+  customerIds: string[],
   message: string,
   eventId?: string,
   categoryId?: string
@@ -19,23 +19,32 @@ export async function enqueueBulkSMSJob(
   // Get current user
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  
+
   if (!user) {
     return { error: 'User not authenticated' }
   }
 
   try {
-    const jobId = await jobQueue.enqueue(
-      'send_bulk_sms',
-      { 
-        customerIds, 
-        message,
-        eventId,
-        categoryId
-      }
-    )
-    
-    return { success: true, jobId }
+    const BATCH_SIZE = 50
+    const jobIds: string[] = []
+
+    // Split customers into batches
+    for (let i = 0; i < customerIds.length; i += BATCH_SIZE) {
+      const batch = customerIds.slice(i, i + BATCH_SIZE)
+
+      const jobId = await jobQueue.enqueue(
+        'send_bulk_sms',
+        {
+          customerIds: batch,
+          message,
+          eventId,
+          categoryId
+        }
+      )
+      jobIds.push(jobId)
+    }
+
+    return { success: true, jobId: jobIds[0] } // Return first job ID for reference
   } catch (error) {
     console.error('Error enqueueing bulk SMS job:', error)
     return { error: 'Failed to queue bulk SMS job' }

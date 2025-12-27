@@ -1,126 +1,52 @@
-'use client'
-
-import { useRouter } from 'next/navigation'
-import { EventFormGrouped } from '@/components/features/events/EventFormGrouped'
-import { updateEvent } from '@/app/actions/events'
-import { Event } from '@/types/database'
+import { createClient } from '@/lib/supabase/server'
+import { checkUserPermission } from '@/app/actions/rbac'
+import { redirect, notFound } from 'next/navigation'
 import { EventCategory } from '@/types/event-categories'
-import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { use } from 'react'
-// New UI components
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { Card } from '@/components/ui-v2/layout/Card'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import EditEventClient from './EditEventClient'
+
 interface PageProps {
   params: Promise<{ id: string }>
 }
 
-export default function EditEventPage({ params }: PageProps) {
-  const router = useRouter()
-  const resolvedParams = use(params)
-  const [event, setEvent] = useState<Event | null>(null)
-  const [categories, setCategories] = useState<EventCategory[]>([])
-  const [loading, setLoading] = useState(true)
+export const metadata = {
+  title: 'Edit Event',
+}
 
-  useEffect(() => {
-    async function loadData() {
-      const supabase = createClient()
-      
-      // Load event and categories in parallel
-      const [eventResult, categoriesResult] = await Promise.all([
-        supabase
-          .from('events')
-          .select('*')
-          .eq('id', resolvedParams.id)
-          .single(),
-        supabase
-          .from('event_categories')
-          .select('*')
-          .eq('is_active', true)
-          .order('sort_order')
-      ])
-      
-      if (eventResult.error) {
-        toast.error('Event not found')
-        router.push('/events')
-        return
-      }
-      
-      setEvent(eventResult.data)
-      setCategories(categoriesResult.data ? (categoriesResult.data as unknown as EventCategory[]) : [])
-      setLoading(false)
-    }
-    
-    loadData()
-  }, [resolvedParams.id, router])
+export default async function EditEventPage({ params }: PageProps) {
+  const { id } = await params
 
-  const handleSubmit = async (data: Partial<Event>) => {
-    if (!event) return
-
-    try {
-      const formData = new FormData()
-      
-      // Add all fields to formData
-      Object.entries(data).forEach(([key, value]) => {
-        if (value !== null && value !== undefined) {
-          if (typeof value === 'object') {
-            formData.append(key, JSON.stringify(value))
-          } else {
-            formData.append(key, value.toString())
-          }
-        }
-      })
-
-      const result = await updateEvent(event.id, formData)
-      
-      if (result.error) {
-        toast.error(result.error)
-      } else {
-        toast.success('Event updated successfully')
-        router.push(`/events/${event.id}`)
-      }
-    } catch (error) {
-      console.error('Error updating event:', error)
-      toast.error('Failed to update event')
-    }
+  const canManageEvents = await checkUserPermission('events', 'manage')
+  if (!canManageEvents) {
+    redirect('/unauthorized')
   }
 
-  const handleCancel = () => {
-    router.push(`/events/${resolvedParams.id}`)
-  }
+  const supabase = await createClient()
 
-  if (loading || !event) {
-    return (
-      <PageLayout
-        title="Edit Event"
-        backButton={{
-          label: 'Back to Event',
-          onBack: () => router.back(),
-        }}
-        loading
-        loadingLabel="Loading event..."
-      />
-    )
+  // Load event and categories in parallel
+  const [eventResult, categoriesResult] = await Promise.all([
+    supabase
+      .from('events')
+      .select('*')
+      .eq('id', id)
+      .single(),
+    supabase
+      .from('event_categories')
+      .select('*')
+      .eq('is_active', true)
+      .order('sort_order')
+  ])
+
+  if (eventResult.error || !eventResult.data) {
+    if (eventResult.error?.code !== 'PGRST116') {
+      console.error('Error loading event for edit:', eventResult.error)
+    }
+    return notFound()
   }
 
   return (
-    <PageLayout
-      title="Edit Event"
-      subtitle={`Update the details for ${event.name}`}
-      backButton={{
-        label: 'Back to Event',
-        href: `/events/${event.id}`,
-      }}
-    >
-      <Card>
-        <EventFormGrouped
-          event={event}
-          categories={categories}
-          onSubmit={handleSubmit}
-          onCancel={handleCancel}
-        />
-      </Card>
-    </PageLayout>
+    <EditEventClient
+      event={eventResult.data}
+      categories={(categoriesResult.data as unknown as EventCategory[]) || []}
+    />
   )
 }
