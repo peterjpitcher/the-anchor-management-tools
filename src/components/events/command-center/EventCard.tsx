@@ -1,14 +1,11 @@
 'use client'
 
-import { toast } from 'react-hot-toast'
 import React from 'react'
 import Image from 'next/image'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { EventOverview } from '@/app/(authenticated)/events/get-events-command-center'
 // Assuming these exist or we use standard HTML/Tailwind
 import { format } from 'date-fns'
-import { CheckCircleIcon, ExclamationCircleIcon, TagIcon, PencilIcon, TicketIcon, ShareIcon } from '@heroicons/react/24/outline'
 
 interface EventCardProps {
     event: EventOverview
@@ -48,7 +45,7 @@ export default function EventCard({ event }: EventCardProps) {
             className="group relative bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col h-full cursor-pointer"
         >
             {/* Hero Image Section */}
-            <div className="relative h-32 w-full bg-gray-100 overflow-hidden">
+            <div className="relative aspect-square w-full bg-gray-100 overflow-hidden">
                 {event.heroImageUrl ? (
                     <Image
                         src={event.heroImageUrl}
@@ -139,30 +136,7 @@ export default function EventCard({ event }: EventCardProps) {
                 </div>
             </div>
 
-            {/* Hover Actions Overlay */}
-            <div className="absolute inset-0 bg-white/95 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-3 p-4 pointer-events-none group-hover:pointer-events-auto">
-                <Link
-                    href={`/events/${event.id}/check-in`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="w-full py-2 bg-black text-white rounded-md text-sm font-medium text-center hover:bg-gray-800 transition-colors"
-                >
-                    Check-in Guest
-                </Link>
-                <div className="flex w-full gap-2">
-                    <button
-                        className="flex-1 py-2 border border-gray-300 bg-white text-gray-700 rounded-md text-sm font-medium text-center hover:bg-gray-50 transition-colors flex items-center justify-center gap-1"
-                        onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            navigator.clipboard.writeText(`${window.location.origin}/events/${event.id}`) // Simplistic
-                            // Would ideally trigger a toast
-                            toast.success('Link copied!')
-                        }}
-                    >
-                        <ShareIcon className="w-4 h-4" /> Share
-                    </button>
-                </div>
-            </div>
+
         </div>
     )
 }

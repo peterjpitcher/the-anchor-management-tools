@@ -12,7 +12,7 @@ interface CommandCenterShellProps {
 }
 
 export default function CommandCenterShell({ initialData }: CommandCenterShellProps) {
-    const [viewMode, setViewMode] = useState<ViewMode>('grid')
+    const [viewMode, setViewMode] = useState<ViewMode>('list')
     const [filter, setFilter] = useState<FilterType>('all')
     const [searchQuery, setSearchQuery] = useState('')
     const [isSidebarOpen, setIsSidebarOpen] = useState(true)
@@ -46,7 +46,7 @@ export default function CommandCenterShell({ initialData }: CommandCenterShellPr
 
 
     return (
-        <div className="flex h-[calc(100vh-140px)]">
+        <div className="flex flex-1 min-h-0 overflow-hidden">
             {/* Main Content Area */}
             <div className="flex-1 flex flex-col min-w-0 pr-0 md:pr-4 overflow-hidden">
                 <ControlBar

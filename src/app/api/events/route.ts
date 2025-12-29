@@ -24,13 +24,14 @@ export async function GET(_request: NextRequest) {
     const fromDate = searchParams.get('from_date');
     const toDate = searchParams.get('to_date');
     const categoryId = searchParams.get('category_id');
+    const status = searchParams.get('status');
     const availableOnly = searchParams.get('available_only') === 'true';
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100);
     const offset = parseInt(searchParams.get('offset') || '0');
     const fetchLimit = availableOnly ? limit * 3 : limit; // Over-fetch when filtering to reduce empty pages
 
     const supabase = createAdminClient();
-    
+
     // Build query with all enhanced fields
     let query = supabase
       .from('events')
@@ -51,23 +52,30 @@ export async function GET(_request: NextRequest) {
           sort_order
         )
       `, { count: 'exact' })
-      .eq('event_status', 'scheduled')
+      // Removed hardcoded .eq('event_status', 'scheduled')
       .order('date', { ascending: true })
       .order('time', { ascending: true })
       .range(offset, offset + fetchLimit - 1);
 
     // Apply filters
+    if (status && status !== 'all') {
+      // Allow comma-separated statuses e.g. "scheduled,sold_out"
+      const statuses = status.split(',').map(s => s.trim());
+      query = query.in('event_status', statuses);
+    }
+    // If status is omitted or "all", apply no status filter (returns drafts, cancelled, etc.).
+
     if (fromDate) {
       query = query.gte('date', fromDate);
     } else {
       // Default to today
       query = query.gte('date', getTodayIsoDate());
     }
-    
+
     if (toDate) {
       query = query.lte('date', toDate);
     }
-    
+
     if (categoryId) {
       query = query.eq('category_id', categoryId);
     }
@@ -88,14 +96,15 @@ export async function GET(_request: NextRequest) {
 
     const schemaEvents = filtered.slice(0, limit).map(event => {
       const bookedSeats = (event.booking_totals?.[0]?.sum as number | null) ?? 0;
-      
+
       // Sort FAQs by sort_order
       const faqs = event.event_faqs?.sort((a: any, b: any) => a.sort_order - b.sort_order) || [];
-      
+
       return {
         id: event.id,
         slug: event.slug,
         highlights: event.highlights || [],
+        event_status: event.event_status, // Expose raw status
         ...eventToSchema(event, bookedSeats, faqs),
       };
     });
