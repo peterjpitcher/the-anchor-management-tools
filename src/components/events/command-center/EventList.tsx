@@ -2,6 +2,7 @@ import React from 'react'
 import { EventOverview } from '@/app/(authenticated)/events/get-events-command-center'
 import Link from 'next/link'
 import { format } from 'date-fns'
+import { Badge } from '@/components/ui-v2/display/Badge'
 
 interface EventListProps {
     events: EventOverview[]
@@ -37,8 +38,24 @@ export default function EventList({ events }: EventListProps) {
                                 <span className="text-xs text-gray-400">{event.time}</span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm font-medium text-gray-900">{event.name}</div>
-                                <div className="text-xs text-gray-500">{event.category?.name}</div>
+                                <div className="text-sm font-medium text-gray-900">
+                                    <Link href={`/events/${event.id}`} className="hover:text-indigo-600">
+                                        {event.name}
+                                    </Link>
+                                </div>
+                                {event.category && (
+                                    <div className="mt-1">
+                                        <Badge
+                                            size="sm"
+                                            style={{
+                                                backgroundColor: `${event.category.color}20`,
+                                                color: event.category.color
+                                            }}
+                                        >
+                                            {event.category.name}
+                                        </Badge>
+                                    </div>
+                                )}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                 {event.capacity ? (

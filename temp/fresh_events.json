@@ -1,0 +1,594 @@
+{
+  "categories": [
+    {
+      "id": "65bf6647-3d76-4bb8-a719-572acbb6fb5a",
+      "name": "Quiz",
+      "slug": "quiz-night-stanwell-moor",
+      "description": "Monthly quiz nights at The Anchor, where teams put their knowledge to the test across a mix of fun and challenging categories. A traditional pub quiz format with plenty of laughs, friendly competition, and great prizes up for grabs."
+    },
+    {
+      "id": "6c12979d-a6ae-428f-8a71-e64f4a006404",
+      "name": "Tastings",
+      "slug": "tasting-nights",
+      "description": "Premium spirit tasting experiences combining education, entertainment, and culinary pairings. Each event focuses on a specific spirit category with guided tastings and expert hosting."
+    },
+    {
+      "id": "715cc457-a90c-48e8-a774-da13addf19ed",
+      "name": "Bingo",
+      "slug": "bingo-night",
+      "description": "Traditional cash bingo with a modern pub twist. Monthly events featuring 10 games with varying prize structures, creating an exciting and social atmosphere for all ages."
+    },
+    {
+      "id": "f192afe3-ca45-4c53-980a-9653ed8711d7",
+      "name": "Nikki's Games Night",
+      "slug": "nikkis-games-night",
+      "description": "Classic TV gameshows with a drag twist! Join Nikki Manfadge for Blankety Blank, Name That Tune, Play Your Cards Right, and more. Interactive entertainment with prizes and laughs. Wednesdays 7-10pm."
+    },
+    {
+      "id": "cd28081e-7840-47a6-b5ea-fdec561147c1",
+      "name": "Karaoke",
+      "slug": "karaoke-night",
+      "description": "Weekly karaoke sessions with professional equipment, extensive song library, and a supportive crowd. All abilities welcome!"
+    },
+    {
+      "id": "422d262b-f20d-40a6-845f-1565c52425ec",
+      "name": "Nikki's Karaoke Night",
+      "slug": "nikkis-karaoke-night",
+      "description": "Interactive singing with drag entertainment! Two microphones, 50,000+ songs, duets with Nikki, lip sync battles, and group singalongs. Props and costumes provided. Fridays 8-11pm."
+    },
+    {
+      "id": "a3e13e87-816b-48cb-ba8f-ef6f9ae68b36",
+      "name": "Parties",
+      "slug": "parties",
+      "description": "Hosted parties and events"
+    },
+    {
+      "id": "b119adc2-a4d5-465e-a064-713e921fe94b",
+      "name": "Live Music",
+      "slug": "live-music",
+      "description": null
+    }
+  ],
+  "events": [
+    {
+      "id": "f1df1c24-747a-404e-a283-3db14b6bb1ec",
+      "name": "New Years Eve 2026!",
+      "short_description": "Celebrate New Year's Eve 2026 at The Anchor! Join us for a night of great music with DJ Jermaine. Free tickets – grab yours now!",
+      "long_description": "Join us for an unforgettable New Year’s Eve at The Anchor, Stanwell Moor Village, on 31st December 2025! Doors open at 12 PM, with the party kicking off at 8 PM and running until 1 AM. Experience a vibrant atmosphere as DJ Jermaine takes to the decks, spinning your favourite tunes all night long. \r\n\r\nThis is your chance to ring in 2026 at your favourite local pub, surrounded by good company and great music. Whether you’re a loyal regular or just fancy a festive night out, this event promises to deliver the best vibes. Don’t miss out – free tickets are available for the first 75 guests, so grab yours now!\r\n\r\nMake the most of your evening by arriving early to enjoy drinks with friends before the party starts. And if you get hungry later, we’ve got you covered with tasty takeaway-style food options to keep you dancing until midnight. \r\n\r\nWith limited tickets available, be sure to secure your spot for this proper local celebration. Stay local, stay safe, and let’s celebrate together – the Anchor way!",
+      "category_id": "a3e13e87-816b-48cb-ba8f-ef6f9ae68b36",
+      "date": "2025-12-31",
+      "event_status": "scheduled"
+    },
+    {
+      "id": "69cc1530-44a6-4120-b168-f9c8f2661bdf",
+      "name": "Pub Quiz",
+      "short_description": "Monthly pub quiz in Stanwell Moor. £3 entry, £25 bar voucher first prize. Fun, friendly competition for friends, families, and teams.",
+      "long_description": "Join us at The Anchor in Stanwell Moor for our monthly Pub Quiz Night — the ultimate midweek highlight near Heathrow. Gather your friends, family, or workmates and put your knowledge to the test in a fun, traditional pub quiz setting.\r\n\r\nHosted by resident quizmaster Peter Pitcher, our quiz features rounds on general knowledge, music, film, sport, and more, with something to challenge everyone. The atmosphere is lively, welcoming, and perfect for both serious trivia buffs and casual teams just looking for a good laugh.\r\n\r\nEntry is only £3 per person, and the winning team takes home a £25 bar voucher — a prize worth playing for! With the quiz running from 7pm to 9.30pm, there’s plenty of time to enjoy a drink, share some food, and soak up the community spirit.\r\n\r\nFamily-friendly until 9pm and set in our cosy, dog-friendly pub, Pub Quiz Night at The Anchor is ideal for locals and travellers alike. Just minutes from Heathrow, it’s the perfect spot for a fun night out filled with trivia, teamwork, and great company.",
+      "category_id": "65bf6647-3d76-4bb8-a719-572acbb6fb5a",
+      "date": "2026-02-04",
+      "event_status": "draft"
+    },
+    {
+      "id": "d21c5e61-1931-4bd1-a007-703a12ef6be2",
+      "name": "Live at The Anchor - Valentines Special",
+      "short_description": null,
+      "long_description": null,
+      "category_id": "b119adc2-a4d5-465e-a064-713e921fe94b",
+      "date": "2026-02-14",
+      "event_status": "draft"
+    },
+    {
+      "id": "01cb7669-d24b-4881-a863-796896145e4c",
+      "name": "Bingo",
+      "short_description": "Traditional cash bingo with 10 games, prizes, and progressive jackpot. Family-friendly monthly event.",
+      "long_description": "Join us for traditional cash bingo at The Anchor, where classic gameplay meets modern pub atmosphere. Our monthly bingo nights feature 10 exciting games with varying prize structures, including a progressive snowball jackpot that builds each month. With just £10 for a full book covering all games, it's affordable entertainment for the whole family. Games run from 6pm to 9pm with a 15-minute break halfway through. Cash prizes, food vouchers, and event tickets up for grabs. Children welcome with supervision. A perfect midweek social event bringing together players of all ages in a friendly, inclusive atmosphere.",
+      "category_id": "715cc457-a90c-48e8-a774-da13addf19ed",
+      "date": "2026-02-18",
+      "event_status": "draft"
+    },
+    {
+      "id": "4539848d-b9ca-48a0-a7a7-5d882c0ffaca",
+      "name": "Karaoke",
+      "short_description": "Weekly karaoke with professional setup and extensive song library. FREE entry, all welcome!",
+      "long_description": "Thursday nights at The Anchor come alive with our popular karaoke sessions! Whether you're a shower singer or seasoned performer, our welcoming crowd and professional setup create the perfect environment to shine. With state-of-the-art equipment, an extensive song library covering all genres and decades, and experienced hosts to support you, it's the highlight of the week for many regulars. FREE entry means you can spend more on Dutch courage! From power ballads to rap battles, duets to group performances, anything goes. Join our supportive community of music lovers every Thursday from 8pm.",
+      "category_id": "cd28081e-7840-47a6-b5ea-fdec561147c1",
+      "date": "2026-02-28",
+      "event_status": "draft"
+    },
+    {
+      "id": "e139fe49-28c6-4285-bc94-c1084691ce1b",
+      "name": "Quiz Night",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-03-04",
+      "event_status": "draft"
+    },
+    {
+      "id": "55dc762f-aa94-4f78-b0f5-4b0260986e78",
+      "name": "Mother's Day Brunch & Bottomless Prosecco",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-03-14",
+      "event_status": "draft"
+    },
+    {
+      "id": "7060aacd-63af-406e-9240-e43836f08ce5",
+      "name": "Mother's Day Lunch / Free Glass of Prosecco for Mum's Eating",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-03-15",
+      "event_status": "draft"
+    },
+    {
+      "id": "c007588e-e542-4412-b220-7d25e146f14a",
+      "name": "St Patrick's Day / Free Jamesons with First Guinness",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-03-17",
+      "event_status": "draft"
+    },
+    {
+      "id": "2586f782-3f7c-4845-bed1-32a49c098a6c",
+      "name": "Bingo",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-03-18",
+      "event_status": "draft"
+    },
+    {
+      "id": "7d203887-3212-4b43-b73a-61fca9917eb7",
+      "name": "Live at The Anchor",
+      "short_description": null,
+      "long_description": null,
+      "category_id": "b119adc2-a4d5-465e-a064-713e921fe94b",
+      "date": "2026-03-21",
+      "event_status": "draft"
+    },
+    {
+      "id": "8ee9a933-613f-48ab-a4cf-c4fd2c421c52",
+      "name": "Quiz Night",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-04-15",
+      "event_status": "draft"
+    },
+    {
+      "id": "c9ca0afe-79c3-4ee0-85c0-98e43d3562de",
+      "name": "Free Mixer with English Gins / Inches and Aspall Offer",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-04-23",
+      "event_status": "draft"
+    },
+    {
+      "id": "31932ac9-72a1-4b4a-bea2-d17c0069405d",
+      "name": "Live at The Anchor / Open Mic Night",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-04-25",
+      "event_status": "draft"
+    },
+    {
+      "id": "bb1fe4c4-7065-4247-8fa6-8ee2fcac5e87",
+      "name": "Bingo",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-04-29",
+      "event_status": "draft"
+    },
+    {
+      "id": "cc244d35-b579-4d79-a994-53d50874cc85",
+      "name": "Karaoke",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-05-02",
+      "event_status": "draft"
+    },
+    {
+      "id": "8d016e56-587e-44d2-98b1-63a149060586",
+      "name": "Quiz Night",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-05-06",
+      "event_status": "draft"
+    },
+    {
+      "id": "69260c19-76ca-4eaa-a784-34ba7150fc74",
+      "name": "Mama Mia Sing Along / Bottomless Brunch / Nikki?",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-05-09",
+      "event_status": "draft"
+    },
+    {
+      "id": "660e2b11-9abc-4154-917a-bcdff89e9b61",
+      "name": "Bingo",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-05-20",
+      "event_status": "draft"
+    },
+    {
+      "id": "9cab9f59-cfe0-4731-8320-62f9ca428c75",
+      "name": "Live at The Anchor",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-05-23",
+      "event_status": "draft"
+    },
+    {
+      "id": "eed7e555-33f9-44e1-9b5a-10dafb9f537e",
+      "name": "Quiz Night",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-06-03",
+      "event_status": "draft"
+    },
+    {
+      "id": "f1bd04f4-02e0-4f50-8f9e-7b79b611b501",
+      "name": "World Cup 2026: Opening Match",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-06-11",
+      "event_status": "draft"
+    },
+    {
+      "id": "f92b7b78-d9ee-4b40-bb8f-ce91447df987",
+      "name": "World Cup 2026: Group Stage",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-06-11",
+      "event_status": "draft"
+    },
+    {
+      "id": "3175e77f-de5c-4fb6-a530-a65741b91dd1",
+      "name": "Live at The Anchor",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-06-13",
+      "event_status": "draft"
+    },
+    {
+      "id": "525a4829-ece4-4c0f-b60f-052f67e51c9e",
+      "name": "World Cup 2026: England vs Croatia (Group Stage)",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-06-17",
+      "event_status": "draft"
+    },
+    {
+      "id": "70bd94f6-1117-4e22-9e2f-13251820fece",
+      "name": "Father's Day / Free Pint for Dad's Eating",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-06-21",
+      "event_status": "draft"
+    },
+    {
+      "id": "b6af638f-2a96-45f7-8e7f-65af2c51c3c6",
+      "name": "World Cup 2026: England vs Ghana (Group Stage)",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-06-23",
+      "event_status": "draft"
+    },
+    {
+      "id": "c22ba56b-a162-413f-afc0-04fcc6877f38",
+      "name": "World Cup 2026: Panama vs England (Group Stage)",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-06-27",
+      "event_status": "draft"
+    },
+    {
+      "id": "9f1aaaba-a37e-45a1-b99e-0aa16b91fe6c",
+      "name": "World Cup 2026: Round of 32",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-06-28",
+      "event_status": "draft"
+    },
+    {
+      "id": "cde46d87-d659-42aa-b8c8-c1add6bb8cdb",
+      "name": "Wimbledon - Pimm's Deal",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-06-29",
+      "event_status": "draft"
+    },
+    {
+      "id": "ce6ad2bf-f5b5-4862-8408-22e3ea246257",
+      "name": "Bingo",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-07-01",
+      "event_status": "draft"
+    },
+    {
+      "id": "cfaabb32-8c21-4bb1-95cc-832742ec0531",
+      "name": "World Cup 2026: Round of 16",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-07-04",
+      "event_status": "draft"
+    },
+    {
+      "id": "dfef6cfd-243b-48d9-81c9-69e8e9776c01",
+      "name": "World Cup 2026: Rest Day",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-07-08",
+      "event_status": "draft"
+    },
+    {
+      "id": "35d5a319-db2e-4003-9ea0-325d874611fd",
+      "name": "World Cup 2026: Quarter-finals",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-07-09",
+      "event_status": "draft"
+    },
+    {
+      "id": "05987328-feae-4597-8fae-55ff27207082",
+      "name": "World Cup 2026: Rest Days",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-07-12",
+      "event_status": "draft"
+    },
+    {
+      "id": "71c5da97-7479-4abb-96bc-23b29af2a9ee",
+      "name": "World Cup 2026: Semi-finals",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-07-14",
+      "event_status": "draft"
+    },
+    {
+      "id": "39881f94-d652-407b-8075-ae371a295c6f",
+      "name": "Quiz Night",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-07-15",
+      "event_status": "draft"
+    },
+    {
+      "id": "4894bcce-865c-433c-8508-66b1729567a9",
+      "name": "World Cup 2026: Rest Days",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-07-16",
+      "event_status": "draft"
+    },
+    {
+      "id": "f45b2977-3f8a-45d1-99dd-9dca3576bbf3",
+      "name": "World Cup 2026: Third-place Play-off",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-07-18",
+      "event_status": "draft"
+    },
+    {
+      "id": "2b3e0ddd-d0c9-465e-b960-30edfd7061f1",
+      "name": "World Cup 2026: Final",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-07-19",
+      "event_status": "draft"
+    },
+    {
+      "id": "cdfbeb33-29b1-4b99-bf8e-12d28707725b",
+      "name": "Movie Night - Greace Singalong",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-07-25",
+      "event_status": "draft"
+    },
+    {
+      "id": "50997319-dae7-45f1-ad0f-8ad55002d5af",
+      "name": "Bingo",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-07-29",
+      "event_status": "draft"
+    },
+    {
+      "id": "17f9b7f1-2244-42d2-be58-f4083592fe0e",
+      "name": "Quiz Night",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-08-05",
+      "event_status": "draft"
+    },
+    {
+      "id": "b232e0a2-12db-4ffd-802c-aa5d688ec17c",
+      "name": "Live at The Anchor",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-08-15",
+      "event_status": "draft"
+    },
+    {
+      "id": "15269bd7-037c-4634-8520-48bf8ac44906",
+      "name": "Bingo",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-09-02",
+      "event_status": "draft"
+    },
+    {
+      "id": "9b78f364-7712-4c92-9b09-ffa9132e37e5",
+      "name": "Quiz Night",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-09-16",
+      "event_status": "draft"
+    },
+    {
+      "id": "9d03a427-d331-45bd-91af-142b396b82ae",
+      "name": "Karaoke",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-09-19",
+      "event_status": "draft"
+    },
+    {
+      "id": "995ebad1-aa0b-4325-9f2b-202538668916",
+      "name": "Live at The Anchor",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-09-26",
+      "event_status": "draft"
+    },
+    {
+      "id": "d81512e7-5e99-48fd-a153-3400c2f6f009",
+      "name": "Bingo",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-09-30",
+      "event_status": "draft"
+    },
+    {
+      "id": "76ec328b-48f8-47c0-b041-cc405e085deb",
+      "name": "Quiz Night",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-10-07",
+      "event_status": "draft"
+    },
+    {
+      "id": "aba24f5a-f8f7-45a8-ae25-782ec14148ef",
+      "name": "Live at The Anchor - Open Mic Night",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-10-17",
+      "event_status": "draft"
+    },
+    {
+      "id": "c432ea44-e23a-4e5f-92db-59fcb14488fa",
+      "name": "Bingo",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-10-21",
+      "event_status": "draft"
+    },
+    {
+      "id": "d52cbd18-d293-4516-beca-e151eaa90180",
+      "name": "Halloween Party",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-10-31",
+      "event_status": "draft"
+    },
+    {
+      "id": "8acfe965-ade6-4a9f-a666-e90ecdea2b7b",
+      "name": "Quiz Night",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-11-04",
+      "event_status": "draft"
+    },
+    {
+      "id": "6e761f65-8b17-4bc9-8a01-d032b77f6a66",
+      "name": "Bingo",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-11-18",
+      "event_status": "draft"
+    },
+    {
+      "id": "5057498d-348a-4818-8971-fda0df5ba8c3",
+      "name": "Live at The Anchor",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-11-28",
+      "event_status": "draft"
+    },
+    {
+      "id": "ccbe8b82-15b0-4261-b58e-2ac4d7210e25",
+      "name": "Quiz Night",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-12-02",
+      "event_status": "draft"
+    },
+    {
+      "id": "5bd854ce-48e7-4ca8-8e7c-c52cc7ec1e65",
+      "name": "Tasting Night",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-12-11",
+      "event_status": "draft"
+    },
+    {
+      "id": "adf540f1-fe2e-4b05-a3fc-11bf40a41b0f",
+      "name": "Nikki / Christmas Movie Night?",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-12-12",
+      "event_status": "draft"
+    },
+    {
+      "id": "b9334958-76b4-4504-a64a-0d47145bd75e",
+      "name": "Bingo",
+      "short_description": null,
+      "long_description": null,
+      "category_id": null,
+      "date": "2026-12-16",
+      "event_status": "draft"
+    }
+  ]
+}
