@@ -58,6 +58,8 @@ export async function GET(
     // Sort FAQs by sort_order
     const faqs = event.event_faqs?.sort((a: any, b: any) => a.sort_order - b.sort_order) || [];
 
+    const lastUpdated = event.updated_at || event.created_at;
+
     // Add extended details with all SEO fields
     const extendedEvent = {
       id: event.id,
@@ -95,14 +97,12 @@ export async function GET(
         acc[template.template_type] = template.custom_content;
         return acc;
       }, {}),
+      _meta: {
+        lastUpdated,
+      },
     };
 
-    return createApiResponse({
-      event: extendedEvent,
-      meta: {
-        lastUpdated: event.updated_at || event.created_at,
-      }
-    });
+    return createApiResponse(extendedEvent);
   }, ['read:events'], _request);
 }
 

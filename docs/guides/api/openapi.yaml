@@ -310,6 +310,121 @@ components:
         html:
           type: string
           description: HTML content of the contract
+    EventDetail:
+      type: object
+      description: Normalized event payload for public website integrations.
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        eventStatus:
+          type: string
+        eventAttendanceMode:
+          type: string
+        remainingAttendeeCapacity:
+          type: integer
+        maximumAttendeeCapacity:
+          type: integer
+        _meta:
+          type: object
+          properties:
+            lastUpdated:
+              type: string
+              format: date-time
+    EventAvailability:
+      type: object
+      properties:
+        available:
+          type: boolean
+        event_id:
+          type: string
+          format: uuid
+        capacity:
+          type: integer
+        booked:
+          type: integer
+        remaining:
+          type: integer
+        percentage_full:
+          type: integer
+        available_seats:
+          type: integer
+          nullable: true
+        requested_seats:
+          type: integer
+        event:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            date:
+              type: string
+              format: date
+            time:
+              type: string
+    EventCategory:
+      type: object
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        event_count:
+          type: integer
+        is_active:
+          type: boolean
+    TableBookingAvailability:
+      type: object
+      properties:
+        available:
+          type: boolean
+        time_slots:
+          type: array
+          items:
+            type: object
+            properties:
+              time:
+                type: string
+              available_capacity:
+                type: integer
+              booking_type:
+                type: string
+              requires_prepayment:
+                type: boolean
+        kitchen_hours:
+          type: object
+          nullable: true
+          properties:
+            opens:
+              type: string
+            closes:
+              type: string
+            source:
+              type: string
+        message:
+          type: string
+          nullable: true
+        special_notes:
+          type: string
+          nullable: true
 paths:
   # Webhook Endpoints
   /webhooks/twilio:
@@ -508,3 +623,196 @@ paths:
           description: Unauthorized
         '500':
           description: Health check failed
+
+  /events/{id}:
+    get:
+      tags:
+        - Events
+      summary: Get event details
+      description: Returns the normalized event payload for website consumers.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Event details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/EventDetail'
+        '401':
+          description: Unauthorized
+        '404':
+          description: Event not found
+
+  /events/{id}/check-availability:
+    post:
+      tags:
+        - Events
+      summary: Check event availability
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                seats:
+                  type: integer
+                  minimum: 1
+                  maximum: 10
+      responses:
+        '200':
+          description: Availability details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/EventAvailability'
+        '400':
+          description: Validation error
+        '404':
+          description: Event not found
+
+  /event-categories:
+    get:
+      tags:
+        - Events
+      summary: List event categories
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Event categories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      categories:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/EventCategory'
+                      meta:
+                        type: object
+                        properties:
+                          total:
+                            type: integer
+                          lastUpdated:
+                            type: string
+                            format: date-time
+
+  /table-bookings/availability:
+    get:
+      tags:
+        - Bookings
+      summary: Check table availability
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: date
+          required: true
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: party_size
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+        - in: query
+          name: booking_type
+          required: false
+          schema:
+            type: string
+            enum: [regular, sunday_lunch]
+      responses:
+        '200':
+          description: Availability slots
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/TableBookingAvailability'
+        '400':
+          description: Validation error
+
+  /table-bookings/{booking_reference}/cancel:
+    post:
+      tags:
+        - Bookings
+      summary: Cancel a table booking
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: booking_reference
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - customer_email
+                - reason
+              properties:
+                customer_email:
+                  type: string
+                  format: email
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Cancellation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    additionalProperties: true
+        '400':
+          description: Validation error
+        '403':
+          description: Unauthorized

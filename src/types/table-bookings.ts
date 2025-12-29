@@ -183,6 +183,7 @@ export interface BookingAvailability {
     source: 'business_hours' | 'special_hours';
   };
   special_notes?: string;
+  message?: string;
 }
 
 export interface CreateBookingData {

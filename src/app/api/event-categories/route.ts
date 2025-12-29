@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
+import { getTodayIsoDate } from '@/lib/dateUtils';
 
 export async function GET(_request: NextRequest) {
   return withApiAuth(async (_req, _apiKey) => {
@@ -15,6 +16,26 @@ export async function GET(_request: NextRequest) {
     if (error) {
       return createErrorResponse('Failed to fetch event categories', 'DATABASE_ERROR', 500);
     }
+
+    const today = getTodayIsoDate();
+    const activeStatuses = ['scheduled', 'draft', 'postponed', 'rescheduled'];
+
+    const { data: eventRows, error: eventError } = await supabase
+      .from('events')
+      .select('category_id')
+      .gte('date', today)
+      .in('event_status', activeStatuses);
+
+    if (eventError) {
+      return createErrorResponse('Failed to fetch event counts', 'DATABASE_ERROR', 500);
+    }
+
+    const eventCounts = (eventRows || []).reduce((acc: Record<string, number>, row: any) => {
+      if (row.category_id) {
+        acc[row.category_id] = (acc[row.category_id] || 0) + 1;
+      }
+      return acc;
+    }, {});
 
     const formattedCategories = categories?.map(category => ({
       id: category.id,
@@ -55,6 +76,7 @@ export async function GET(_request: NextRequest) {
       faqs: category.faqs || [],
       sort_order: category.sort_order,
       is_active: category.is_active,
+      event_count: eventCounts[category.id] || 0,
     })) || [];
 
     return createApiResponse({

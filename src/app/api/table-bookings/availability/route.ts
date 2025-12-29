@@ -59,7 +59,14 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      return createApiResponse(result.data, 200, {
+      const responseData = result.data
+        ? {
+            ...result.data,
+            message: result.data.special_notes || result.data.message,
+          }
+        : result.data;
+
+      return createApiResponse(responseData, 200, {
         'Cache-Control': 'no-store, max-age=0'
       });
     } catch (error) {
