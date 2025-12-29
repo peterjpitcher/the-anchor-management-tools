@@ -25,6 +25,13 @@ The Anchor Management Tools exposes a set of authenticated API routes under `/ap
 
 All endpoints live in `src/app/api/`. Consult the corresponding route file for request/response handling, required permissions, and server runtime.
 
+## Response Conventions (Website Integrations)
+- `GET /events/{id}` returns the event object as `data` (no nested `event` wrapper); `_meta.lastUpdated` is included for cache diagnostics.
+- `POST /events/{id}/check-availability` includes both legacy fields (`available_seats`, `requested_seats`) and normalized capacity fields (`capacity`, `remaining`, `percentage_full`).
+- `GET /event-categories` includes `event_count` for upcoming active events (scheduled/draft/rescheduled/postponed).
+- `GET /table-bookings/availability` includes `message` as an alias for `special_notes` when present.
+- `POST /table-bookings/{reference}/cancel` requires `customer_email` and a non-empty `reason`.
+
 ## OpenAPI Specification
 - `docs/guides/api/openapi.yaml` contains the full OpenAPI 3.0 spec. Import it into Postman/Insomnia/Swagger UI for schema validation, example payloads, and response codes.
 - Regenerate the spec whenever you ship new endpoints or change request/response models.
