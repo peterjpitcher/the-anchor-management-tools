@@ -1,5 +1,5 @@
-import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { getActiveEventCategories } from '@/app/actions/event-categories'
 import { redirect } from 'next/navigation'
 import { EventCategory } from '@/types/event-categories'
 import NewEventClient from './NewEventClient'
@@ -14,16 +14,14 @@ export default async function NewEventPage() {
     redirect('/unauthorized')
   }
 
-  const supabase = await createClient()
-  const { data: categories } = await supabase
-    .from('event_categories')
-    .select('*')
-    .eq('is_active', true)
-    .order('sort_order')
+  const categoriesResult = await getActiveEventCategories()
+  if (categoriesResult.error) {
+    console.error('Error loading event categories:', categoriesResult.error)
+  }
 
   return (
     <NewEventClient
-      categories={(categories as unknown as EventCategory[]) || []}
+      categories={(categoriesResult.data as EventCategory[]) || []}
     />
   )
 }

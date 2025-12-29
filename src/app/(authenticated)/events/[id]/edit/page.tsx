@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { getActiveEventCategories } from '@/app/actions/event-categories'
 import { redirect, notFound } from 'next/navigation'
 import { EventCategory } from '@/types/event-categories'
 import EditEventClient from './EditEventClient'
@@ -29,11 +30,7 @@ export default async function EditEventPage({ params }: PageProps) {
       .select('*')
       .eq('id', id)
       .single(),
-    supabase
-      .from('event_categories')
-      .select('*')
-      .eq('is_active', true)
-      .order('sort_order')
+    getActiveEventCategories()
   ])
 
   if (eventResult.error || !eventResult.data) {
@@ -43,10 +40,14 @@ export default async function EditEventPage({ params }: PageProps) {
     return notFound()
   }
 
+  if (categoriesResult.error) {
+    console.error('Error loading event categories:', categoriesResult.error)
+  }
+
   return (
     <EditEventClient
       event={eventResult.data}
-      categories={(categoriesResult.data as unknown as EventCategory[]) || []}
+      categories={(categoriesResult.data as EventCategory[]) || []}
     />
   )
 }

@@ -121,6 +121,8 @@ const categorySchema = z.object({
   })).optional()
 })
 
+const ACTIVE_CATEGORY_FILTER = 'is_active.eq.true,is_active.is.null'
+
 type EventsManagePermissionResult =
   | { error: string }
   | { user: SupabaseUser; admin: ReturnType<typeof createAdminClient> }
@@ -185,7 +187,7 @@ export async function getActiveEventCategories(): Promise<{ data?: EventCategory
     const { data, error } = await supabase
       .from('event_categories')
       .select('*')
-      .eq('is_active', true)
+      .or(ACTIVE_CATEGORY_FILTER)
       .order('sort_order', { ascending: true })
       .order('name', { ascending: true })
 
