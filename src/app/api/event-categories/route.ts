@@ -9,7 +9,7 @@ export async function GET(_request: NextRequest) {
     const { data: categories, error } = await supabase
       .from('event_categories')
       .select('*')
-      .eq('is_active', true)
+      .or('is_active.eq.true,is_active.is.null')
       .order('sort_order', { ascending: true });
 
     if (error) {
