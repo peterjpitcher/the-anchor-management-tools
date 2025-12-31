@@ -202,8 +202,11 @@ export async function updateBooking(id: string, formData: FormData) {
 
 export async function deleteBooking(id: string) {
   try {
-    const hasPermission = await checkUserPermission('events', 'manage')
-    if (!hasPermission) return { error: 'Insufficient permissions' }
+    const [canManageEvents, canDeleteBookings] = await Promise.all([
+      checkUserPermission('events', 'manage'),
+      checkUserPermission('bookings', 'delete')
+    ])
+    if (!canManageEvents && !canDeleteBookings) return { error: 'Insufficient permissions' }
 
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()

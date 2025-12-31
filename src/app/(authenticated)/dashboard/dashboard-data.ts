@@ -706,6 +706,17 @@ const fetchDashboardSnapshot = unstable_cache(
 
       invoices.permitted ? (async () => {
         try {
+          const unpaidStatuses: Array<InvoiceSummary['status']> = [
+            'draft',
+            'sent',
+            'partially_paid',
+            'overdue',
+          ]
+          const scheduleStatuses: Array<InvoiceSummary['status']> = [
+            'sent',
+            'partially_paid',
+            'overdue',
+          ]
           const [unpaidResult, overdueCountResult, allUnpaidResult, overdueListResult, dueTodayListResult] = await Promise.all([
             // Limited unpaid for display in lists
             supabase
@@ -721,20 +732,20 @@ const fetchDashboardSnapshot = unstable_cache(
                 `,
                 { count: 'exact' }
               )
-              .neq('status', 'paid')
+              .in('status', unpaidStatuses)
               .order('due_date', { ascending: true })
               .range(0, 4),
             // Overdue count (already there)
             supabase
               .from('invoices')
               .select('id', { count: 'exact', head: true })
-              .neq('status', 'paid')
+              .in('status', scheduleStatuses)
               .lt('due_date', todayIso),
             // Total unpaid value (already there)
             supabase
               .from('invoices')
               .select('total_amount')
-              .neq('status', 'paid'),
+              .in('status', unpaidStatuses),
             // NEW: Overdue invoices list (up to 5 for display in today's schedule)
             supabase
               .from('invoices')
@@ -748,7 +759,7 @@ const fetchDashboardSnapshot = unstable_cache(
                   vendor:invoice_vendors(name)
                 `
               )
-              .neq('status', 'paid')
+              .in('status', scheduleStatuses)
               .lt('due_date', todayIso)
               .order('due_date', { ascending: true })
               .range(0, 4),
@@ -765,7 +776,7 @@ const fetchDashboardSnapshot = unstable_cache(
                   vendor:invoice_vendors(name)
                 `
               )
-              .neq('status', 'paid')
+              .in('status', scheduleStatuses)
               .eq('due_date', todayIso)
               .order('due_date', { ascending: true })
               .range(0, 4),

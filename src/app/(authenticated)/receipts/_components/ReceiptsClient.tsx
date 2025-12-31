@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useMemo, useState, useEffect, ChangeEvent } from 'react'
+import { useMemo, useState, useEffect, ChangeEvent, type Dispatch, type SetStateAction } from 'react'
 import { toast } from 'react-hot-toast'
 import {
   type ReceiptWorkspaceData,
@@ -41,6 +41,26 @@ const summaryStatusTotalsKey: Record<ReceiptTransaction['status'], 'pending' | '
   cant_find: 'cantFind',
 }
 
+function updateSummaryForStatusChange(
+  update: Dispatch<SetStateAction<ReceiptWorkspaceData['summary']>>,
+  previousStatus?: ReceiptTransaction['status'],
+  nextStatus?: ReceiptTransaction['status']
+) {
+  if (!previousStatus || !nextStatus || previousStatus === nextStatus) return
+  const prevKey = summaryStatusTotalsKey[previousStatus]
+  const nextKey = summaryStatusTotalsKey[nextStatus]
+  if (prevKey === nextKey) return
+
+  update(prev => ({
+    ...prev,
+    totals: {
+      ...prev.totals,
+      [prevKey]: Math.max(0, prev.totals[prevKey] - 1),
+      [nextKey]: prev.totals[nextKey] + 1,
+    },
+  }))
+}
+
 export default function ReceiptsClient({ initialData, initialFilters }: ReceiptsClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -77,7 +97,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
     })
     // If we are not explicitly setting the page, reset it when filters change
     if (!next.page) {
-        params.delete('page')
+      params.delete('page')
     }
     const query = params.toString()
     router.replace(`/receipts${query ? `?${query}` : ''}`, { scroll: false })
@@ -113,39 +133,19 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   // Optimistic State Updates
   function handleTransactionChange(updated: typeof transactions[number], previousStatus?: ReceiptTransaction['status']) {
     setTransactions(prev => prev.map(tx => tx.id === updated.id ? updated : tx))
-    
-    if (previousStatus && previousStatus !== updated.status) {
-        setSummary(prev => {
-            const prevKey = summaryStatusTotalsKey[previousStatus]
-            const nextKey = summaryStatusTotalsKey[updated.status]
-            if (prevKey === nextKey) return prev
-            
-            return {
-                ...prev,
-                totals: {
-                    ...prev.totals,
-                    [prevKey]: Math.max(0, prev.totals[prevKey] - 1),
-                    [nextKey]: prev.totals[nextKey] + 1
-                }
-            }
-        })
-    }
+
+    updateSummaryForStatusChange(setSummary, previousStatus, updated.status)
   }
 
-  function handleTransactionRemove(id: string, previousStatus: ReceiptTransaction['status']) {
-      setTransactions(prev => prev.filter(tx => tx.id !== id))
-      setSummary(prev => {
-          const key = summaryStatusTotalsKey[previousStatus]
-          return {
-              ...prev,
-              totals: {
-                  ...prev.totals,
-                  [key]: Math.max(0, prev.totals[key] - 1)
-              }
-          }
-      })
+  function handleTransactionRemove(
+    id: string,
+    previousStatus: ReceiptTransaction['status'],
+    nextStatus?: ReceiptTransaction['status']
+  ) {
+    setTransactions(prev => prev.filter(tx => tx.id !== id))
+    updateSummaryForStatusChange(setSummary, previousStatus, nextStatus ?? previousStatus)
   }
-  
+
   const totalPages = Math.ceil(pagination.total / pagination.pageSize)
   const hasNextPage = pagination.page < totalPages
   const hasPrevPage = pagination.page > 1
@@ -153,8 +153,8 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   return (
     <div className="space-y-6">
       <ReceiptStats summary={summary} />
-      
-      <div className="hidden md:grid md:gap-4 lg:grid-cols-5">
+
+      <div className="hidden md:grid md:gap-4 md:grid-cols-5">
         <ReceiptUpload lastImport={summary.lastImport} />
         <ReceiptExport />
       </div>
@@ -164,15 +164,17 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
           filters={initialFilters}
           availableMonths={availableMonths}
         />
-        
-        <ReceiptList 
+
+        <ReceiptList
           transactions={transactions}
           knownVendors={knownVendors}
           filters={{
               sortBy: currentSortBy,
               sortDirection: currentSortDirection,
               status: initialFilters.status,
-              showOnlyOutstanding: initialFilters.showOnlyOutstanding
+              showOnlyOutstanding: initialFilters.showOnlyOutstanding,
+              missingVendorOnly: initialFilters.missingVendorOnly,
+              missingExpenseOnly: initialFilters.missingExpenseOnly,
           }}
           onSort={handleSort}
           onMobileSort={handleMobileSortChange}
@@ -182,35 +184,35 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
         />
 
         {totalPages > 1 && (
-           <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-4">
-              <p className="text-sm text-gray-500">
-                 Page {pagination.page} of {totalPages} <span className="hidden sm:inline">({pagination.total} items)</span>
-              </p>
-              <div className="flex gap-2">
-                 <Button 
-                    variant="secondary" 
-                    size="sm" 
-                    disabled={!hasPrevPage} 
-                    onClick={() => handlePageChange(pagination.page - 1)}
-                 >
-                    Previous
-                 </Button>
-                 <Button 
-                    variant="secondary" 
-                    size="sm" 
-                    disabled={!hasNextPage} 
-                    onClick={() => handlePageChange(pagination.page + 1)}
-                 >
-                    Next
-                 </Button>
-              </div>
-           </div>
+          <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-4">
+            <p className="text-sm text-gray-500">
+              Page {pagination.page} of {totalPages} <span className="hidden sm:inline">({pagination.total} items)</span>
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={!hasPrevPage}
+                onClick={() => handlePageChange(pagination.page - 1)}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={!hasNextPage}
+                onClick={() => handlePageChange(pagination.page + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
         )}
       </div>
 
-      <ReceiptRules 
-        rules={rules} 
-        pendingSuggestion={pendingRuleSuggestion} 
+      <ReceiptRules
+        rules={rules}
+        pendingSuggestion={pendingRuleSuggestion}
         onApplySuggestion={() => setPendingRuleSuggestion(null)}
         onDismissSuggestion={() => setPendingRuleSuggestion(null)}
       />

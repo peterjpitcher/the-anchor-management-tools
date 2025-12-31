@@ -214,22 +214,37 @@ export class BookingService {
   }
 
   static async deleteBooking(id: string) {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
 
-    const { data: booking } = await supabase
+    const { data: booking, error: bookingError } = await supabase
       .from('bookings')
       .select('event_id, customer_id, seats, events(name), customers(first_name, last_name)')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
-    if (booking) {
-      await cancelBookingReminders(id);
+    if (bookingError) {
+      throw new Error(bookingError.message || 'Failed to load booking');
     }
 
-    const { error } = await supabase.from('bookings').delete().eq('id', id);
-    if (error) throw new Error('Failed to delete booking');
+    if (!booking) {
+      throw new Error('Booking not found');
+    }
 
-    if (booking?.event_id) {
+    await cancelBookingReminders(id);
+
+    const { error: checkInError } = await supabase
+      .from('event_check_ins')
+      .update({ booking_id: null })
+      .eq('booking_id', id);
+
+    if (checkInError) {
+      throw new Error(checkInError.message || 'Failed to update event check-ins');
+    }
+
+    const { error: deleteError } = await supabase.from('bookings').delete().eq('id', id);
+    if (deleteError) throw new Error(deleteError.message || 'Failed to delete booking');
+
+    if (booking.event_id) {
       await invalidateEventCache(booking.event_id);
     }
 

@@ -13,10 +13,10 @@ function formatTime12Hour(time24: string): string {
   // Remove seconds if present
   const timeWithoutSeconds = time24.split(':').slice(0, 2).join(':');
   const [hours, minutes] = timeWithoutSeconds.split(':').map(Number);
-  
+
   const period = hours >= 12 ? 'pm' : 'am';
   const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
-  
+
   // Format with or without minutes
   if (minutes === 0) {
     return `${hours12}${period}`;
@@ -43,17 +43,17 @@ export async function getSMSTemplates() {
     }
 
     const supabase = createAdminClient();
-    
+
     const { data, error } = await supabase
       .from('table_booking_sms_templates')
       .select('*')
       .order('template_key');
-      
+
     if (error) {
       console.error('Fetch templates error:', error);
       return { error: 'Failed to fetch SMS templates' };
     }
-    
+
     return { data };
   } catch (error) {
     console.error('Get templates error:', error);
@@ -68,18 +68,18 @@ export async function updateSMSTemplate(
 ) {
   try {
     const supabase = await createClient();
-    
+
     // Check permissions
     const hasPermission = await checkUserPermission('table_bookings', 'manage');
     if (!hasPermission) {
       return { error: 'You do not have permission to manage SMS templates' };
     }
-    
+
     // Extract variables from template text
     const templateText = formData.get('template_text') as string;
     const variableMatches = templateText.match(/\{\{(\w+)\}\}/g) || [];
     const variables = variableMatches.map(match => match.replace(/[{}]/g, ''));
-    
+
     // Validate data
     const validatedData = SMSTemplateSchema.parse({
       template_key: formData.get('template_key'),
@@ -88,7 +88,7 @@ export async function updateSMSTemplate(
       variables,
       is_active: formData.get('is_active') === 'true',
     });
-    
+
     // Update template
     const { data, error } = await supabase
       .from('table_booking_sms_templates')
@@ -96,26 +96,26 @@ export async function updateSMSTemplate(
       .eq('id', templateId)
       .select()
       .single();
-      
+
     if (error) {
       console.error('Template update error:', error);
       return { error: 'Failed to update SMS template' };
     }
-    
+
     // Log audit event
     await logAuditEvent({
       operation_type: 'update',
       resource_type: 'sms_template',
       resource_id: templateId,
       operation_status: 'success',
-      additional_info: { 
+      additional_info: {
         template_key: data.template_key,
         character_badge: templateText.length,
       }
     });
-    
+
     revalidatePath('/table-bookings/settings/sms-templates');
-    
+
     return { success: true, data };
   } catch (error) {
     console.error('Update template error:', error);
@@ -130,24 +130,24 @@ export async function testSMSTemplate(
 ) {
   try {
     const supabase = await createClient();
-    
+
     // Check permissions
     const hasPermission = await checkUserPermission('table_bookings', 'manage');
     if (!hasPermission) {
       return { error: 'You do not have permission to test SMS templates' };
     }
-    
+
     // Get template
     const { data: template } = await supabase
       .from('table_booking_sms_templates')
       .select('*')
       .eq('id', templateId)
       .single();
-      
+
     if (!template) {
       return { error: 'Template not found' };
     }
-    
+
     // Replace variables with sample data
     const sampleData: Record<string, string> = {
       customer_name: 'John Smith',
@@ -166,13 +166,13 @@ export async function testSMSTemplate(
       deadline: 'Saturday 1pm',
       payment_link: 'https://example.com/pay',
     };
-    
+
     let messageText = template.template_text;
     template.variables?.forEach((variable: string) => {
       const value = sampleData[variable] || `{{${variable}}}`;
       messageText = messageText.replace(new RegExp(`{{${variable}}}`, 'g'), value);
     });
-    
+
     // Queue test SMS
     const { error } = await supabase
       .from('jobs')
@@ -185,26 +185,26 @@ export async function testSMSTemplate(
         },
         scheduled_for: new Date().toISOString(),
       });
-      
+
     if (error) {
       console.error('Test SMS error:', error);
       return { error: error.message || 'Failed to send test SMS' };
     }
-    
+
     // Log audit event
     await logAuditEvent({
       operation_type: 'test',
       resource_type: 'sms_template',
       resource_id: templateId,
       operation_status: 'success',
-      additional_info: { 
+      additional_info: {
         template_key: template.template_key,
         test_phone: testPhone,
       }
     });
-    
-    return { 
-      success: true, 
+
+    return {
+      success: true,
       message: 'Test SMS queued for sending',
       preview: messageText,
     };
@@ -221,7 +221,7 @@ export async function queueBookingConfirmationSMS(bookingId: string, useAdminCli
     const { createClient } = await import('@/lib/supabase/server');
     const { createAdminClient } = await import('@/lib/supabase/admin');
     const supabase = useAdminClient ? createAdminClient() : await createClient();
-    
+
     // Get booking with customer and payment details
     const { data: booking } = await supabase
       .from('table_bookings')
@@ -233,31 +233,31 @@ export async function queueBookingConfirmationSMS(bookingId: string, useAdminCli
       `)
       .eq('id', bookingId)
       .single();
-      
+
     if (!booking) {
       return { error: 'Booking not found' };
     }
-    
+
     if (!booking.customer?.sms_opt_in) {
       return { message: 'Customer has opted out of SMS' };
     }
-    
+
     // Get appropriate template
     const templateKey = booking.booking_type === 'sunday_lunch'
       ? 'booking_confirmation_sunday_lunch'
       : 'booking_confirmation_regular';
-      
+
     const { data: template } = await supabase
       .from('table_booking_sms_templates')
       .select('*')
       .eq('template_key', templateKey)
       .eq('is_active', true)
       .single();
-      
+
     if (!template) {
       return { error: 'SMS template not found' };
     }
-    
+
     // Prepare variables
     const variables: Record<string, string> = {
       customer_name: booking.customer.first_name,
@@ -271,18 +271,18 @@ export async function queueBookingConfirmationSMS(bookingId: string, useAdminCli
       reference: booking.booking_reference,
       contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707',
     };
-    
+
     // Add deposit information for Sunday lunch bookings
     if (booking.booking_type === 'sunday_lunch' && booking.table_booking_payments?.length > 0) {
       const payment = booking.table_booking_payments[0];
       const depositAmount = payment.payment_metadata?.deposit_amount || payment.amount;
       const totalAmount = payment.payment_metadata?.total_amount || 0;
       const outstandingAmount = payment.payment_metadata?.outstanding_amount || (totalAmount - depositAmount);
-      
+
       variables.deposit_amount = depositAmount.toFixed(2);
       variables.outstanding_amount = outstandingAmount.toFixed(2);
     }
-    
+
     // Queue SMS
     const { error } = await supabase
       .from('jobs')
@@ -297,12 +297,12 @@ export async function queueBookingConfirmationSMS(bookingId: string, useAdminCli
         },
         scheduled_for: new Date().toISOString(),
       });
-      
+
     if (error) {
       console.error('Queue SMS error:', error);
       return { error: 'Failed to queue SMS' };
     }
-    
+
     return { success: true, message: 'Confirmation SMS queued' };
   } catch (error) {
     console.error('Queue confirmation error:', error);
@@ -314,7 +314,7 @@ export async function queueBookingConfirmationSMS(bookingId: string, useAdminCli
 export async function queueBookingUpdateSMS(bookingId: string) {
   try {
     const supabase = await createClient();
-    
+
     // Fetch booking with customer details
     const { data: booking } = await supabase
       .from('table_bookings')
@@ -324,34 +324,34 @@ export async function queueBookingUpdateSMS(bookingId: string) {
       `)
       .eq('id', bookingId)
       .single();
-      
+
     if (!booking) {
       return { error: 'Booking not found' };
     }
-    
+
     if (booking.status !== 'confirmed') {
       return { message: 'Booking is not confirmed. Skipping update SMS.' };
     }
-    
+
     if (!booking.customer?.sms_opt_in || !booking.customer?.mobile_number) {
       return { message: 'Customer has opted out of SMS' };
     }
-    
+
     const templateKey = booking.booking_type === 'sunday_lunch'
       ? 'booking_update_sunday_lunch'
       : 'booking_update_regular';
-      
+
     const { data: template } = await supabase
       .from('table_booking_sms_templates')
       .select('*')
       .eq('template_key', templateKey)
       .eq('is_active', true)
       .single();
-      
+
     if (!template) {
       return { error: 'SMS template not found' };
     }
-    
+
     const variables: Record<string, string> = {
       customer_name: booking.customer.first_name,
       party_size: booking.party_size.toString(),
@@ -364,7 +364,7 @@ export async function queueBookingUpdateSMS(bookingId: string) {
       reference: booking.booking_reference,
       contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707',
     };
-    
+
     const { error } = await supabase
       .from('jobs')
       .insert({
@@ -378,12 +378,12 @@ export async function queueBookingUpdateSMS(bookingId: string) {
         },
         scheduled_for: new Date().toISOString(),
       });
-      
+
     if (error) {
       console.error('Queue booking update SMS error:', error);
       return { error: 'Failed to queue booking update SMS' };
     }
-    
+
     return { success: true, message: 'Booking update SMS queued' };
   } catch (error) {
     console.error('Queue booking update SMS error:', error);
@@ -407,7 +407,7 @@ export async function queueBookingReminderSMS(
     }
 
     const supabase = createAdminClient();
-    
+
     // Get booking with customer, items and payments
     const { data: booking } = await supabase
       .from('table_bookings')
@@ -419,31 +419,31 @@ export async function queueBookingReminderSMS(
       `)
       .eq('id', bookingId)
       .single();
-      
+
     if (!booking) {
       return { error: 'Booking not found' };
     }
-    
+
     if (!booking.customer?.sms_opt_in) {
       return { message: 'Customer has opted out of SMS' };
     }
-    
+
     // Get appropriate template
     const templateKey = booking.booking_type === 'sunday_lunch'
       ? 'reminder_sunday_lunch'
       : 'reminder_regular';
-      
+
     const { data: template } = await supabase
       .from('table_booking_sms_templates')
       .select('*')
       .eq('template_key', templateKey)
       .eq('is_active', true)
       .single();
-      
+
     if (!template) {
       return { error: 'SMS template not found' };
     }
-    
+
     // Prepare variables
     const variables: Record<string, string> = {
       customer_name: booking.customer.first_name,
@@ -451,16 +451,16 @@ export async function queueBookingReminderSMS(
       time: formatTime12Hour(booking.booking_time),
       reference: booking.booking_reference,
     };
-    
+
     // Add Sunday lunch specific variables
     if (booking.booking_type === 'sunday_lunch' && booking.table_booking_items) {
       const roastSummary = booking.table_booking_items
         .filter((item: any) => item.item_type === 'main')
         .map((item: any) => `${item.quantity}x ${item.custom_item_name || 'Roast'}`)
         .join(', ');
-        
+
       variables.roast_summary = roastSummary || 'Your roast selections';
-      
+
       // Add outstanding balance if payment exists
       if (booking.table_booking_payments?.length > 0) {
         const payment = booking.table_booking_payments[0];
@@ -468,7 +468,7 @@ export async function queueBookingReminderSMS(
         variables.outstanding_amount = outstandingAmount.toFixed(2);
       }
     }
-    
+
     // Queue SMS
     const { error } = await supabase
       .from('jobs')
@@ -483,12 +483,12 @@ export async function queueBookingReminderSMS(
         },
         scheduled_for: new Date().toISOString(),
       });
-      
+
     if (error) {
       console.error('Queue reminder error:', error);
       return { error: 'Failed to queue reminder SMS' };
     }
-    
+
     return { success: true, message: 'Reminder SMS queued' };
   } catch (error) {
     console.error('Queue reminder error:', error);
@@ -503,7 +503,7 @@ export async function queueCancellationSMS(
 ) {
   try {
     const supabase = await createClient();
-    
+
     // Get booking with customer
     const { data: booking } = await supabase
       .from('table_bookings')
@@ -513,15 +513,15 @@ export async function queueCancellationSMS(
       `)
       .eq('id', bookingId)
       .single();
-      
+
     if (!booking) {
       return { error: 'Booking not found' };
     }
-    
+
     if (!booking.customer?.sms_opt_in) {
       return { message: 'Customer has opted out of SMS' };
     }
-    
+
     // Get cancellation template
     const { data: template } = await supabase
       .from('table_booking_sms_templates')
@@ -529,18 +529,18 @@ export async function queueCancellationSMS(
       .eq('template_key', 'cancellation')
       .eq('is_active', true)
       .single();
-      
+
     if (!template) {
       return { error: 'SMS template not found' };
     }
-    
+
     // Prepare variables
     const variables = {
       reference: booking.booking_reference,
       refund_message: refundMessage,
       contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '',
     };
-    
+
     // Queue SMS
     const { error } = await supabase
       .from('jobs')
@@ -555,12 +555,12 @@ export async function queueCancellationSMS(
         },
         scheduled_for: new Date().toISOString(),
       });
-      
+
     if (error) {
       console.error('Queue cancellation error:', error);
       return { error: 'Failed to queue cancellation SMS' };
     }
-    
+
     return { success: true, message: 'Cancellation SMS queued' };
   } catch (error) {
     console.error('Queue cancellation error:', error);
@@ -594,7 +594,7 @@ export async function queuePaymentRequestSMS(
     }
 
     const supabase = createAdminClient();
-    
+
     // Get booking with customer and items
     const { data: booking } = await supabase
       .from('table_bookings')
@@ -605,15 +605,15 @@ export async function queuePaymentRequestSMS(
       `)
       .eq('id', bookingId)
       .single();
-      
+
     if (!booking) {
       return { error: 'Booking not found' };
     }
-    
+
     if (!booking.customer?.sms_opt_in) {
       return { message: 'Customer has opted out of SMS' };
     }
-    
+
     // Get payment request template
     const { data: template } = await supabase
       .from('table_booking_sms_templates')
@@ -621,11 +621,11 @@ export async function queuePaymentRequestSMS(
       .eq('template_key', 'payment_request')
       .eq('is_active', true)
       .single();
-      
+
     if (!template) {
       return { error: 'SMS template not found' };
     }
-    
+
     // Calculate amounts
     let totalAmount = 0;
     if (booking.table_booking_items) {
@@ -636,39 +636,39 @@ export async function queuePaymentRequestSMS(
       // Fallback if no items (shouldn't happen)
       totalAmount = booking.party_size * 25; // £25 average per person
     }
-    
+
     // Calculate deposit amount (£5 per person)
     const depositAmount = booking.party_size * 5;
-    
+
     // Calculate payment deadline (Saturday 1pm before the Sunday booking)
     const bookingDate = new Date(booking.booking_date);
     const deadlineDate = new Date(bookingDate);
     deadlineDate.setDate(bookingDate.getDate() - 1); // Saturday before
     deadlineDate.setHours(13, 0, 0, 0); // 1pm
-    
+
     const deadlineFormatted = formatDateWithTimeForSms(
       deadlineDate,
       `${deadlineDate.getHours().toString().padStart(2, '0')}:${deadlineDate.getMinutes().toString().padStart(2, '0')}`
     );
-    
+
     // Generate payment link with shortening
     const longPaymentUrl = `/table-booking/${booking.booking_reference}/payment`;
     const { createShortLinkInternal } = await import('@/app/actions/short-links');
     const shortLinkResult = await createShortLinkInternal({
       destination_url: `${process.env.NEXT_PUBLIC_APP_URL}${longPaymentUrl}`,
       link_type: 'custom',
-      metadata: { 
+      metadata: {
         booking_id: booking.id,
         booking_reference: booking.booking_reference,
         type: 'sunday_lunch_payment_reminder'
       },
       expires_at: deadlineDate.toISOString()
     });
-    
-    const paymentLink = shortLinkResult.success 
-      ? shortLinkResult.data.full_url 
+
+    const paymentLink = shortLinkResult.success
+      ? shortLinkResult.data.full_url
       : `${process.env.NEXT_PUBLIC_APP_URL}${longPaymentUrl}`;
-    
+
     // Prepare variables
     const variables = {
       customer_name: booking.customer.first_name,
@@ -678,7 +678,7 @@ export async function queuePaymentRequestSMS(
       payment_link: paymentLink,
       deadline: deadlineFormatted,
     };
-    
+
     // Queue SMS
     const { error } = await supabase
       .from('jobs')
@@ -693,12 +693,12 @@ export async function queuePaymentRequestSMS(
         },
         scheduled_for: new Date().toISOString(),
       });
-      
+
     if (error) {
       console.error('Queue payment request error:', error);
       return { error: 'Failed to queue payment request SMS' };
     }
-    
+
     return { success: true, message: 'Payment request SMS queued' };
   } catch (error) {
     return { error: 'An unexpected error occurred' };
@@ -723,13 +723,13 @@ export async function queueBookingReviewRequestSMS(
     }
 
     const supabase = createAdminClient();
-    
+
     const { data: booking } = await supabase
       .from('table_bookings')
       .select(`*, customer:customers(*)`)
       .eq('id', bookingId)
       .single();
-      
+
     if (!booking) {
       return { error: 'Booking not found' };
     }
@@ -737,48 +737,113 @@ export async function queueBookingReviewRequestSMS(
     if (!booking.customer?.sms_opt_in) {
       return { message: 'Customer has opted out of SMS' };
     }
-    
-    const templateKey = 'review_request';
-      
-    const { data: template } = await supabase
-      .from('table_booking_sms_templates')
-      .select('*')
-      .eq('template_key', templateKey)
-      .eq('is_active', true)
-      .single();
-      
-    if (!template) {
-      return { error: 'Template not found' };
+
+    // ----------------------------------------------------------------------
+    // Attempt to resolve an EVENT-SPECIFIC review template first.
+    // This allows unique review messages for special events (e.g. NYE, Mother's Day).
+    // ----------------------------------------------------------------------
+    let finalTemplateText: string | null = null;
+    let templateSource = 'global';
+
+    try {
+      // 1. Check if there is an event on this booking date
+      const { data: events } = await supabase
+        .from('events')
+        .select('id, name')
+        .eq('date', booking.booking_date)
+        .limit(1);
+
+      if (events && events.length > 0) {
+        const eventId = events[0].id;
+
+        // 2. Check for a specific 'review_request' template for this event
+        const { data: eventTemplate } = await supabase
+          .from('event_message_templates')
+          .select('content')
+          .eq('event_id', eventId)
+          .eq('template_type', 'review_request') // Requires migration to allow this type
+          .eq('is_active', true)
+          .single();
+
+        if (eventTemplate) {
+          finalTemplateText = eventTemplate.content;
+          templateSource = 'event_specific';
+          console.log(`[Review Request] Using event-specific template for booking ${booking.booking_reference} (Event: ${events[0].name})`);
+        }
+      }
+    } catch (err) {
+      console.warn('[Review Request] Error checking for event template override:', err);
+      // Proceed to fallback
     }
-    
+
+    // ----------------------------------------------------------------------
+    // Fallback: Use Global Template if no specific event template found
+    // ----------------------------------------------------------------------
+    const templateKey = 'review_request';
+
+    if (!finalTemplateText) {
+      const { data: globalTemplate } = await supabase
+        .from('table_booking_sms_templates')
+        .select('*')
+        .eq('template_key', templateKey)
+        .eq('is_active', true)
+        .single();
+
+      if (!globalTemplate) {
+        return { error: 'Global SMS template not found' };
+      }
+
+      finalTemplateText = globalTemplate.template_text;
+
+      // Retain the Legacy Safety Check (Double-Bagging)
+      // Just in case the global template itself was updated prematurely.
+      const hasNyeContent = /new year|nye/i.test(finalTemplateText || '');
+      const isNyeBooking = booking.booking_date.endsWith('-12-31') || booking.booking_date.endsWith('-01-01');
+
+      if (hasNyeContent && !isNyeBooking) {
+        console.warn(`[Review Request Safety] Blocked NYE content in GLOBAL template for non-NYE booking ${booking.booking_reference}`);
+        finalTemplateText = "Hi {{customer_name}}, thanks for dining with us! We'd love your feedback: {{review_link}}. The Anchor";
+      }
+    }
+
     // Get Google Review Link from env
     const reviewLink = process.env.NEXT_PUBLIC_GOOGLE_REVIEW_LINK || 'https://g.page/r/example';
-    
+    const contactPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707';
+
+    // Resolve variables manually to support dynamic content
+    let resolvedBody = finalTemplateText || ''; // Should never be null here
+    resolvedBody = resolvedBody.replace(/{{customer_name}}/g, booking.customer.first_name || 'Customer');
+    resolvedBody = resolvedBody.replace(/{{review_link}}/g, reviewLink);
+    resolvedBody = resolvedBody.replace(/{{contact_phone}}/g, contactPhone);
+
+    // Variables object for logging/reference
     const variables = {
-      customer_name: booking.customer.first_name,
+      customer_name: booking.customer.first_name || 'Customer',
       review_link: reviewLink,
-      contact_phone: process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707',
+      contact_phone: contactPhone,
     };
-    
+
     const { error } = await supabase
       .from('jobs')
       .insert({
         type: 'send_sms',
         payload: {
           to: booking.customer.mobile_number,
-          template: templateKey,
+          body: resolvedBody, // Use the resolved text
+          template: templateKey, // Keep key for reference
+          template_source: templateSource,
           variables,
           booking_id: bookingId,
           customer_id: booking.customer.id,
         },
         scheduled_for: new Date().toISOString(),
       });
-    
+
     if (error) {
       console.error('Queue review request error:', error);
       return { error: 'Failed to queue review request SMS' };
     }
-    
+
     return { success: true, message: 'Review request SMS queued' };
   } catch (error) {
     console.error('Queue review request error:', error);

@@ -45,11 +45,11 @@ export function ReceiptFilters({ filters, availableMonths }: ReceiptFiltersProps
   const monthOptions = useMemo(() => {
     const result: string[] = []
     const seen = new Set<string>()
-    ;(availableMonths ?? []).forEach((value) => {
-      if (!value || seen.has(value)) return
-      seen.add(value)
-      result.push(value)
-    })
+      ; (availableMonths ?? []).forEach((value) => {
+        if (!value || seen.has(value)) return
+        seen.add(value)
+        result.push(value)
+      })
     if (filters.month && !seen.has(filters.month)) {
       result.push(filters.month)
     }
@@ -124,7 +124,7 @@ export function ReceiptFilters({ filters, availableMonths }: ReceiptFiltersProps
 
   return (
     <div className="mb-4 space-y-3">
-      <div className="flex flex-wrap items-end justify-end gap-2">
+      <div className="flex items-center justify-end gap-2">
         <Select value={filters.status ?? 'all'} onChange={handleStatusChange} className="w-40">
           {statusOptions.map((option) => (
             <option key={option.value} value={option.value}>{option.label}</option>

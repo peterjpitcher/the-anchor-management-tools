@@ -4,6 +4,8 @@ import { logger } from '@/lib/logger'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60 // 60 seconds max execution time
+export const dynamic = 'force-dynamic'
+export const fetchCache = 'force-no-store'
 
 function isAuthorized(request: NextRequest): boolean {
   const authHeader = request.headers.get('authorization')

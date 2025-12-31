@@ -19,11 +19,11 @@ export function formatBytes(bytes: number, decimals = 2): string {
 
 export function generatePhoneVariants(phone: string): string[] {
   const variants = [phone];
-  
+
   // Clean the phone number - remove all non-digits except leading +
   const cleaned = phone.replace(/[^\d+]/g, '').replace(/\+/g, (match, offset) => offset === 0 ? match : '');
   const digitsOnly = cleaned.replace(/^\+/, '');
-  
+
   // UK number handling
   if (cleaned.startsWith('+44') && digitsOnly.length >= 12) {
     const ukNumber = digitsOnly.substring(2); // Remove 44 from the digits
@@ -41,12 +41,12 @@ export function generatePhoneVariants(phone: string): string[] {
     variants.push('44' + ukNumber);
     variants.push('0' + ukNumber);
   }
-  
+
   // Also add the cleaned version if different from original
   if (cleaned !== phone) {
     variants.push(cleaned);
   }
-  
+
   return [...new Set(variants)];
 }
 
@@ -62,7 +62,7 @@ export function formatPhoneForStorage(phone: string): string {
   // Clean the phone number - remove all non-digits except leading +
   const cleaned = phone.replace(/[^\d+]/g, '').replace(/\+/g, (match, offset) => offset === 0 ? match : '');
   const digitsOnly = cleaned.replace(/^\+/, '');
-  
+
   // Convert UK numbers to E164 format
   if (digitsOnly.startsWith('44') && digitsOnly.length >= 12) {
     return '+' + digitsOnly;
@@ -85,4 +85,13 @@ export function sanitizeMoneyString(value: unknown): string | null {
   const normalised = trimmed.replace(/,/g, '')
   const match = normalised.match(/-?\d+(?:\.\d+)?/)
   return match ? match[0] : null
+}
+
+export function formatDate(date: string | Date | null): string {
+  if (!date) return '-'
+  return new Date(date).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  })
 }

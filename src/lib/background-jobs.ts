@@ -4,6 +4,13 @@ import { logger } from './logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { formatTime12Hour, formatDateInLondon } from '@/lib/dateUtils'
 
+const LEGACY_JOB_TYPES: JobType[] = [
+  'sync_customer_stats',
+  'cleanup_old_messages',
+  'update_sms_health',
+  'send_email',
+]
+
 export class JobQueue {
   private static instance: JobQueue
 
@@ -87,12 +94,14 @@ export class JobQueue {
       })
       .eq('status', 'processing')
       .lt('started_at', twoMinutesAgo)
+      .in('type', LEGACY_JOB_TYPES)
 
     const { data: jobs, error } = await supabase
       .from('jobs')
       .select('*')
       .eq('status', 'pending')
       .lte('scheduled_for', new Date().toISOString())
+      .in('type', LEGACY_JOB_TYPES)
       .order('priority', { ascending: false })
       .order('created_at', { ascending: true })
       .limit(limit)
