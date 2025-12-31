@@ -47,6 +47,10 @@ type ScreeningOutcome = {
 }
 
 const MAX_PROMPT_CHARS = 12000
+const DEFAULT_SCORE_THRESHOLDS = {
+    invite: 8,
+    clarify: 6,
+}
 
 function calculateOpenAICost(model: string, promptTokens: number, completionTokens: number): number {
     const pricing = MODEL_PRICING_PER_1K_TOKENS[model] ?? MODEL_PRICING_PER_1K_TOKENS['gpt-4o-mini']
@@ -132,6 +136,69 @@ function normalizeScreeningResult(raw: ScreeningResult): ScreeningResult {
         experience_analysis: (raw?.experience_analysis || '').toString().slice(0, 1200) || undefined,
         draft_replies: draftReplies,
     }
+}
+
+function clampScore(value: number) {
+    if (!Number.isFinite(value)) return 0
+    return Math.max(0, Math.min(10, Math.round(value)))
+}
+
+function resolveRubric(value: unknown): Record<string, unknown> | null {
+    if (!value) return null
+    if (typeof value === 'string') {
+        try {
+            const parsed = JSON.parse(value)
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                return parsed as Record<string, unknown>
+            }
+        } catch {
+            return null
+        }
+    }
+    if (typeof value === 'object' && !Array.isArray(value)) {
+        return value as Record<string, unknown>
+    }
+    return null
+}
+
+function parseThreshold(value: unknown, fallback: number) {
+    if (typeof value === 'number') return clampScore(value)
+    if (typeof value === 'string' && value.trim().length > 0) {
+        const parsed = Number(value)
+        if (Number.isFinite(parsed)) return clampScore(parsed)
+    }
+    return fallback
+}
+
+function getScoreThresholds(rubric: unknown) {
+    const resolved = resolveRubric(rubric)
+    const thresholds = resolved?.score_thresholds as Record<string, unknown> | undefined
+    const inviteRaw = parseThreshold(thresholds?.invite, DEFAULT_SCORE_THRESHOLDS.invite)
+    const clarifyRaw = parseThreshold(thresholds?.clarify, DEFAULT_SCORE_THRESHOLDS.clarify)
+    const invite = Math.max(inviteRaw, clarifyRaw)
+    const clarify = Math.min(inviteRaw, clarifyRaw)
+    return { invite, clarify }
+}
+
+function alignScoreWithRecommendation(result: ScreeningResult, rubric: unknown): ScreeningResult {
+    const { invite, clarify } = getScoreThresholds(rubric)
+    const rejectMax = Math.max(0, clarify - 1)
+    const maxClarify = Math.max(clarify, invite - 1)
+    let score = result.score
+
+    // Clamp the score into the band implied by the recommendation.
+    if (result.recommendation === 'invite') {
+        if (score < invite) score = invite
+    } else if (result.recommendation === 'clarify' || result.recommendation === 'hold') {
+        if (score < clarify) score = clarify
+        if (score > maxClarify) score = maxClarify
+    } else if (result.recommendation === 'reject') {
+        if (score > rejectMax) score = rejectMax
+    }
+
+    score = clampScore(score)
+    if (score === result.score) return result
+    return { ...result, score }
 }
 
 export async function screenApplicationWithAI(input: {
@@ -289,7 +356,8 @@ Keep the rationale concise and manager-friendly.`
         throw new Error('Failed to parse OpenAI screening response')
     }
 
-    const result = normalizeScreeningResult(parsed)
+    const normalized = normalizeScreeningResult(parsed)
+    const result = alignScoreWithRecommendation(normalized, jobSnapshot.screening_rubric)
     const usagePayload = payload?.usage
     const usage: ScreeningUsage | undefined = usagePayload
         ? {
