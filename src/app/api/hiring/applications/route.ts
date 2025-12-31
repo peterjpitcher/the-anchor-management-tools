@@ -39,7 +39,10 @@ export async function POST(request: NextRequest) {
             const body = await req.json()
             const valid = ApplicationSchema.parse(body)
 
-            const result = await submitApplication(valid)
+            const result = await submitApplication({
+                ...valid,
+                origin: 'api',
+            })
 
             // Check for success/failure in result object if it returns one
             if (typeof result === 'object' && 'success' in result && !result.success) {

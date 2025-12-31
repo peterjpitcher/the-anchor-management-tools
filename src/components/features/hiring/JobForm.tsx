@@ -19,37 +19,37 @@ const JSON_FIELDS = [
         name: 'prerequisites',
         label: 'Prerequisites (JSON)',
         expected: 'array',
-        help: 'Array of essential checks and scored signals.',
+        help: 'Essential checks and scored signals used by AI screening and re-engagement. Array of strings or objects (key, label, question, prompt, essential, type, weight). Example: [{"key":"weekend_availability","label":"Available weekends","essential":true,"question":"Can you work weekends?"}].',
     },
     {
         name: 'screening_questions',
         label: 'Screening Questions (JSON)',
         expected: 'array',
-        help: 'Candidate-facing screening questions for this job.',
+        help: 'Candidate-facing questions; answers are stored on applications and used in screening. Array of strings or objects (question/label/prompt/key). Example: ["Right to work in the UK?", {"key":"availability","question":"What shifts can you cover?"}].',
     },
     {
         name: 'interview_questions',
         label: 'Interview Questions (JSON)',
         expected: 'array',
-        help: 'Job-specific questions to include in interview packs.',
+        help: 'Used in interview packs. Array of strings or objects (question/label/prompt). Example: ["Tell us about a busy service.", {"question":"What does great service mean to you?"}].',
     },
     {
         name: 'screening_rubric',
         label: 'Screening Rubric (JSON)',
         expected: 'object',
-        help: 'Scoring guidance and thresholds for AI screening.',
+        help: 'Free-form JSON object to steer AI scoring. Include thresholds, weights, or notes. Example: {"score_thresholds":{"invite":7,"clarify":5},"notes":"Prioritize bar experience and weekends."}.',
     },
     {
         name: 'message_templates',
         label: 'Message Templates (JSON)',
         expected: 'object',
-        help: 'Overrides for invite/clarify/reject templates.',
+        help: 'Keys: invite, clarify, reject, feedback. Value can be a string body or object with subject/body. Variables: {{first_name}}, {{last_name}}, {{full_name}}, {{job_title}}, {{location}}, {{company}}. Example: {"invite":{"subject":"Next steps for {{job_title}}","body":"Hi {{first_name}}, ..."}}.',
     },
     {
         name: 'compliance_lines',
         label: 'Compliance Lines (JSON)',
         expected: 'array',
-        help: 'Lines that must appear in outbound messages.',
+        help: 'Lines appended to outbound emails; write them exactly. Array of strings. Example: ["We can only proceed with candidates who have the right to work in the UK."].',
     },
 ] as const
 
@@ -290,6 +290,17 @@ export function JobForm({ initialData, mode = 'create', templates = [] }: JobFor
                 <div>
                     <h3 className="text-sm font-semibold text-gray-900">Advanced configuration (optional)</h3>
                     <p className="text-xs text-gray-500">Override template defaults for this job.</p>
+                    <div className="mt-2 space-y-2 text-xs text-gray-500">
+                        <p>Use this section only when you need to fine-tune screening, interview packs, or message drafts for this specific job.</p>
+                        <p>Each field must be valid JSON (double quotes, no trailing commas). Leave a field empty or keep []/{} to inherit the template defaults.</p>
+                        <p>Arrays can be strings or objects. Objects can include key, label, question, prompt, essential, type, and weight to give the AI more structure.</p>
+                        <p>Prerequisites, screening questions, and the rubric guide AI screening. Interview questions appear in interview packs. Message templates and compliance lines shape candidate emails.</p>
+                        <p>
+                            Message template keys: invite, clarify, reject, feedback. Variables:{' '}
+                            {'{{first_name}}'}, {'{{last_name}}'}, {'{{full_name}}'}, {'{{job_title}}'}, {'{{location}}'}, {'{{company}}'}.
+                        </p>
+                        <p>Tip: Each field below includes a copy/paste example.</p>
+                    </div>
                 </div>
                 {JSON_FIELDS.map((field) => (
                     <FormGroup
