@@ -80,6 +80,7 @@ export async function createCandidateAction(formData: any) {
         const result = await submitApplication({
             jobId: parse.data.jobId || null,
             source: parse.data.source || 'walk_in',
+            origin: 'internal',
             candidate: {
                 firstName: parse.data.firstName,
                 lastName: parse.data.lastName,
@@ -160,6 +161,7 @@ async function processResumeUpload(
         const result = await submitApplication({
             jobId,
             source,
+            origin: 'internal',
             candidate: {
                 firstName: 'Parsing',
                 lastName: 'CV...',

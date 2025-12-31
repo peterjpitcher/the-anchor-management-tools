@@ -1031,15 +1031,38 @@ export class UnifiedJobQueue {
           }
         }
 
+        let shouldNotifyManager = false
         try {
-          await sendNewApplicationNotification({
-            application,
-            candidate,
-            job,
-            screening: screeningResult,
-          })
-        } catch (notificationError) {
-          logger.warn('Failed to send hiring notification', { error: notificationError as Error })
+          const { data: submissionEvent, error: submissionError } = await supabase
+            .from('hiring_candidate_events')
+            .select('metadata')
+            .eq('application_id', applicationId)
+            .eq('event_type', 'application_submitted')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+          if (submissionError) {
+            logger.warn('Failed to load application origin', { error: submissionError })
+          } else {
+            const origin = (submissionEvent as any)?.metadata?.origin
+            shouldNotifyManager = origin === 'api'
+          }
+        } catch (originError) {
+          logger.warn('Failed to resolve application origin', { error: originError as Error })
+        }
+
+        if (shouldNotifyManager) {
+          try {
+            await sendNewApplicationNotification({
+              application,
+              candidate,
+              job,
+              screening: screeningResult,
+            })
+          } catch (notificationError) {
+            logger.warn('Failed to send hiring notification', { error: notificationError as Error })
+          }
         }
 
         return screeningResult

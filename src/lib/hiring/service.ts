@@ -454,6 +454,7 @@ function resolveFileName(inputName?: string, storagePath?: string, resumeUrl?: s
 export type ApplicationInput = {
     jobId?: string | null
     source?: 'website' | 'indeed' | 'linkedin' | 'referral' | 'walk_in' | 'agency' | 'other'
+    origin?: 'api' | 'internal'
     candidate: {
         firstName: string
         lastName: string
@@ -475,6 +476,7 @@ export async function submitApplication(input: ApplicationInput) {
     const rawPhone = input.candidate.phone?.trim()
     const candidatePhone = normalizePhone(rawPhone)
     const fallbackPhone = rawPhone || null
+    const origin = input.origin === 'api' ? 'api' : 'internal'
 
     let candidateId: string | null = null
     let existingCandidate: HiringCandidate | null = null
@@ -695,6 +697,7 @@ export async function submitApplication(input: ApplicationInput) {
             metadata: {
                 resume_url: input.candidate.resumeUrl,
                 storage_path: resumeStoragePath,
+                origin,
             },
         })
     }

@@ -55,37 +55,37 @@ const JSON_FIELDS: Array<{
     key: 'prerequisites',
     label: 'Prerequisites (JSON)',
     expected: 'array',
-    help: 'Array of prerequisite objects for essential checks and scored signals.',
+    help: 'Essential checks and scored signals used by AI screening and re-engagement. Array of strings or objects (key, label, question, prompt, essential, type, weight). Example: [{"key":"weekend_availability","label":"Available weekends","essential":true,"question":"Can you work weekends?"}].',
   },
   {
     key: 'screening_questions',
     label: 'Screening Questions (JSON)',
     expected: 'array',
-    help: 'Array of candidate-facing screening questions.',
+    help: 'Candidate-facing questions; answers are stored on applications and used in screening. Array of strings or objects (question/label/prompt/key). Example: ["Right to work in the UK?", {"key":"availability","question":"What shifts can you cover?"}].',
   },
   {
     key: 'interview_questions',
     label: 'Interview Questions (JSON)',
     expected: 'array',
-    help: 'Standard questions to include on interview packs.',
+    help: 'Used in interview packs. Array of strings or objects (question/label/prompt). Example: ["Tell us about a busy service.", {"question":"What does great service mean to you?"}].',
   },
   {
     key: 'screening_rubric',
     label: 'Screening Rubric (JSON)',
     expected: 'object',
-    help: 'Object describing scoring guidance and thresholds.',
+    help: 'Free-form JSON object to steer AI scoring. Include thresholds, weights, or notes. Example: {"score_thresholds":{"invite":7,"clarify":5},"notes":"Prioritize bar experience and weekends."}.',
   },
   {
     key: 'message_templates',
     label: 'Message Templates (JSON)',
     expected: 'object',
-    help: 'Object keyed by message type with template content.',
+    help: 'Keys: invite, clarify, reject, feedback. Value can be a string body or object with subject/body. Variables: {{first_name}}, {{last_name}}, {{full_name}}, {{job_title}}, {{location}}, {{company}}. Example: {"invite":{"subject":"Next steps for {{job_title}}","body":"Hi {{first_name}}, ..."}}.',
   },
   {
     key: 'compliance_lines',
     label: 'Compliance Lines (JSON)',
     expected: 'array',
-    help: 'Array of lines that must appear in certain messages.',
+    help: 'Lines appended to outbound emails; write them exactly. Array of strings. Example: ["We can only proceed with candidates who have the right to work in the UK."].',
   },
 ]
 
@@ -328,9 +328,19 @@ export function HiringTemplatesPanel({ initialTemplates }: HiringTemplatesPanelP
         <div className="space-y-5">
           <Alert
             variant="info"
-            title="JSON required"
-            description="Use valid JSON arrays or objects in the fields below. Empty values reset to defaults."
-          />
+            title="How template JSON works"
+            description="Templates provide defaults for jobs that select them. Jobs can override any field in the job's Advanced configuration."
+          >
+            <div className="space-y-2">
+              <p>Each field must be valid JSON (double quotes, no trailing commas). Leave a field empty or keep []/{} if you do not want to set a default.</p>
+              <p>Arrays can contain strings or objects. Objects can include key, label, question, prompt, essential, type, and weight to give the AI more structure.</p>
+              <p>
+                Message template keys: invite, clarify, reject, feedback. Variables:{' '}
+                {'{{first_name}}'}, {'{{last_name}}'}, {'{{full_name}}'}, {'{{job_title}}'}, {'{{location}}'}, {'{{company}}'}.
+              </p>
+              <p>Tip: Each field below includes a copy/paste example.</p>
+            </div>
+          </Alert>
 
           <FormGroup label="Template title" error={formErrors.title} required>
             <Input
