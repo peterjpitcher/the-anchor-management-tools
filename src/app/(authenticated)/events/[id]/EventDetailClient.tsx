@@ -65,6 +65,7 @@ export default function EventDetailClient({
   const router = useRouter()
   const { hasPermission } = usePermissions()
   const canManageEvents = hasPermission('events', 'manage')
+  const canDeleteBookings = canManageEvents || hasPermission('bookings', 'delete')
 
   const [showBookingForm, setShowBookingForm] = useState(false)
   const [showAddAttendeesModal, setShowAddAttendeesModal] = useState(false)
@@ -152,7 +153,7 @@ export default function EventDetailClient({
   }
 
   const handleDeleteBooking = async (bookingId: string) => {
-    if (!canManageEvents) {
+    if (!canDeleteBookings) {
       toast.error('You do not have permission to delete bookings.')
       return
     }
@@ -340,7 +341,7 @@ export default function EventDetailClient({
     }
   ]
 
-  const bookingActionsColumn: Column<BookingWithCustomer> | null = canManageEvents
+  const bookingActionsColumn: Column<BookingWithCustomer> | null = canDeleteBookings
     ? {
       key: 'actions',
       header: '',

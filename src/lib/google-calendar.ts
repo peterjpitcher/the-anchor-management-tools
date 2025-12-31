@@ -557,3 +557,109 @@ export async function testCalendarConnection(): Promise<{
     }
   }
 }
+// Helper to get interview specific color (e.g. Lavender/Purple for interviews)
+function getInterviewEventColor(): string {
+  return '3'; // Grape
+}
+
+export interface InterviewEventOptions {
+  summary?: string
+  candidateName?: string
+  jobTitle?: string
+  start: Date
+  end?: Date
+  durationMinutes?: number
+  description?: string
+  location?: string
+  attendees?: Array<{ email: string; name?: string }>
+}
+
+export async function createInterviewEvent(options: InterviewEventOptions): Promise<{ id: string | null; htmlLink: string | null } | null> {
+  const {
+    candidateName,
+    jobTitle,
+    start: startTime,
+    durationMinutes = 60,
+    description,
+    location = 'The Anchor Pub',
+    summary,
+    end,
+    attendees = []
+  } = options
+
+  console.log('[Google Calendar] Creating interview event:', {
+    candidateName,
+    jobTitle,
+    startTime,
+    durationMinutes
+  })
+
+  try {
+    if (!isCalendarConfigured()) {
+      console.warn('[Google Calendar] Not configured. Skipping interview creation.')
+      return null
+    }
+
+    const auth = await getOAuth2Client()
+    const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary'
+
+    // Determine end time: explicit end > duration > default 60m
+    let endUtc: Date
+    if (end) {
+      endUtc = end
+    } else {
+      endUtc = addHours(startTime, durationMinutes / 60)
+    }
+
+    const startDateTime = formatForCalendar(startTime)
+    const endDateTime = formatForCalendar(endUtc)
+
+    const finalSummary = summary || `Interview: ${candidateName} - ${jobTitle}`
+    const finalDescription = description || `Interview for ${jobTitle} position.\nCandidate: ${candidateName}`
+
+    const event: any = {
+      summary: finalSummary,
+      description: finalDescription,
+      start: {
+        dateTime: startDateTime,
+        timeZone: CALENDAR_TIME_ZONE,
+      },
+      end: {
+        dateTime: endDateTime,
+        timeZone: CALENDAR_TIME_ZONE,
+      },
+      location: location,
+      colorId: getInterviewEventColor(),
+      reminders: {
+        useDefault: false,
+        overrides: [
+          { method: 'popup', minutes: 30 },
+        ],
+      },
+    }
+
+    if (attendees.length > 0) {
+      event.attendees = attendees.map((attendee) => ({
+        email: attendee.email,
+        ...(attendee.name ? { displayName: attendee.name } : {}),
+      }))
+    }
+
+    const response = await calendar.events.insert({
+      auth: auth as any,
+      calendarId,
+      requestBody: event,
+      sendUpdates: attendees.length > 0 ? 'all' : 'none',
+    })
+
+    console.log('[Google Calendar] Interview event created:', response.data.id)
+    return {
+      id: response.data.id || null,
+      htmlLink: response.data.htmlLink || null,
+    }
+
+  } catch (error: any) {
+    console.error('[Google Calendar] Interview creation failed:', error)
+    return null
+  }
+}

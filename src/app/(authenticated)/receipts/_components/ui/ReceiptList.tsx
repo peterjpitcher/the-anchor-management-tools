@@ -22,11 +22,13 @@ interface ReceiptListProps {
     sortDirection?: 'asc' | 'desc'
     status?: string
     showOnlyOutstanding?: boolean
+    missingVendorOnly?: boolean
+    missingExpenseOnly?: boolean
   }
   onSort: (column: SortColumn) => void
   onMobileSort: (event: ChangeEvent<HTMLSelectElement>) => void
   onTransactionChange: (updated: WorkspaceTransaction, previousStatus?: ReceiptTransaction['status']) => void
-  onTransactionRemove: (id: string, previousStatus: ReceiptTransaction['status']) => void
+  onTransactionRemove: (id: string, previousStatus: ReceiptTransaction['status'], nextStatus?: ReceiptTransaction['status']) => void
   onRuleSuggestion: (suggestion: ClassificationRuleSuggestion) => void
 }
 
@@ -55,17 +57,28 @@ export function ReceiptList({
     { value: 'amount_in:asc', label: 'Money in · low to high' },
   ]
 
+  const isVendorMissing = (value: string | null | undefined) => !value || value.trim().length === 0
+  const isExpenseMissing = (value: string | null | undefined) => !value || value.trim().length === 0
+
   // Filter check to immediately remove items that no longer match strict filters
   // This logic was previously in the `handleStatusUpdate` of the monolithic component
   const handleUpdate = (updated: WorkspaceTransaction, previousStatus: ReceiptTransaction['status']) => {
       // If we are filtering by a specific status and the status changed, remove it
       if (filters.status && filters.status !== 'all' && filters.status !== updated.status) {
-          onTransactionRemove(updated.id, previousStatus)
+          onTransactionRemove(updated.id, previousStatus, updated.status)
           return
       }
       // If we show only outstanding and it's no longer pending, remove it
       if (filters.showOnlyOutstanding && updated.status !== 'pending') {
-          onTransactionRemove(updated.id, previousStatus)
+          onTransactionRemove(updated.id, previousStatus, updated.status)
+          return
+      }
+      if (filters.missingVendorOnly && !isVendorMissing(updated.vendor_name)) {
+          onTransactionRemove(updated.id, previousStatus, updated.status)
+          return
+      }
+      if (filters.missingExpenseOnly && !isExpenseMissing(updated.expense_category)) {
+          onTransactionRemove(updated.id, previousStatus, updated.status)
           return
       }
       

@@ -59,7 +59,7 @@ export function ReceiptUpload({ lastImport }: ReceiptUploadProps) {
 
   if (!canManageReceipts) {
     return (
-      <Card className="lg:col-span-3">
+      <Card className="md:col-span-3">
         <div className="space-y-2">
           <h2 className="text-lg font-semibold text-gray-900">Upload bank statement</h2>
           <p className="text-sm text-gray-500">You have view-only access. Ask a receipts manager to upload statements.</p>
@@ -69,7 +69,7 @@ export function ReceiptUpload({ lastImport }: ReceiptUploadProps) {
   }
 
   return (
-    <Card className="lg:col-span-3" header={<div className="flex items-center justify-between">
+    <Card className="md:col-span-3" header={<div className="flex items-center justify-between">
       <div>
         <h2 className="text-lg font-semibold text-gray-900">Upload bank statement</h2>
         <p className="text-sm text-gray-500">Import CSV statements and auto-match recurring items.</p>

@@ -8,6 +8,9 @@ Use this index to find the canonical documentation for The Anchor Management Too
 - [Features](./FEATURES.md) – functional overview of every major module.
 - [Security](./SECURITY.md) – RBAC, auth hardening, compliance, and operational safeguards.
 
+## Plans & Proposals
+- [Hiring workflow requirements](./plans/hiring-workflow.md) – jobs, candidates, and hiring workflow requirements with discovery notes.
+
 ## Development Workflow
 - [Contributing](./CONTRIBUTING.md) – project structure, coding standards, branch strategy, and PR expectations.
 - [Testing](./TESTING.md) – current automated test status, manual smoke checks, and how to add new coverage.

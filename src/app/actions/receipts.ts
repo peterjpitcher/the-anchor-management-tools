@@ -4,7 +4,9 @@ import { revalidatePath } from 'next/cache'
 import { checkUserPermission } from './rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
+import { recordAIUsage } from '@/lib/receipts/ai-classification'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { jobQueue } from '@/lib/unified-job-queue'
 import {
   receiptRuleSchema,
   receiptMarkSchema,
@@ -25,13 +27,14 @@ import type {
 import Papa from 'papaparse'
 import { createHash } from 'crypto'
 import { z } from 'zod'
-import { classifyReceiptTransaction, type ClassificationUsage } from '@/lib/openai'
+import { classifyReceiptTransaction } from '@/lib/openai'
 import { getOpenAIConfig } from '@/lib/openai/config'
 
 const RECEIPT_BUCKET = 'receipts'
 const MAX_RECEIPT_UPLOAD_SIZE = 15 * 1024 * 1024 // 15 MB safety limit
 const DEFAULT_PAGE_SIZE = 25
 const MAX_MONTH_PAGE_SIZE = 5000
+const RECEIPT_AI_JOB_CHUNK_SIZE = 10
 const EXPENSE_CATEGORY_OPTIONS = receiptExpenseCategorySchema.options
 const BULK_STATUS_OPTIONS = receiptTransactionStatusSchema.options
 type BulkStatus = (typeof BULK_STATUS_OPTIONS)[number]
@@ -546,6 +549,15 @@ function createTransactionHash(input: {
   const hash = createHash('sha256')
   hash.update([input.transactionDate, input.details, input.transactionType ?? '', input.amountIn ?? '', input.amountOut ?? '', input.balance ?? ''].join('|'))
   return hash.digest('hex')
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  if (size <= 0) return []
+  const chunks: T[][] = []
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size))
+  }
+  return chunks
 }
 
 function isParsedTransactionRow(tx: ParsedTransactionRow | ReceiptTransaction): tx is ParsedTransactionRow {
@@ -1109,146 +1121,6 @@ export async function finalizeReceiptRuleRetroRun(input: {
   return { success: true }
 }
 
-async function recordAIUsage(
-  supabase: AdminClient,
-  usage: ClassificationUsage | undefined,
-  context: string
-) {
-  if (!usage) return
-
-  const { error } = await (supabase.from('ai_usage_events') as any).insert([
-    {
-      context,
-      model: usage.model,
-      prompt_tokens: usage.promptTokens,
-      completion_tokens: usage.completionTokens,
-      total_tokens: usage.totalTokens,
-      cost: usage.cost,
-    },
-  ])
-
-  if (error) {
-    console.error('Failed to record OpenAI usage', error)
-  }
-}
-
-async function classifyTransactionsWithAI(
-  supabase: AdminClient,
-  transactionIds: string[]
-): Promise<void> {
-  if (!transactionIds.length) return
-
-  const { apiKey } = await getOpenAIConfig()
-  if (!apiKey) {
-    return
-  }
-
-  const client = supabase as any
-
-  const { data: transactions, error } = await client
-    .from('receipt_transactions')
-    .select(
-      'id, details, transaction_type, amount_in, amount_out, vendor_name, vendor_source, vendor_rule_id, expense_category, expense_category_source, expense_rule_id, status'
-    )
-    .in('id', transactionIds)
-
-  if (error) {
-    console.error('Failed to load transactions for AI classification', error)
-    return
-  }
-
-  const transactionRows = (transactions ?? []) as ReceiptTransaction[]
-
-  if (!transactionRows.length) return
-
-  const logs: Array<Omit<ReceiptTransactionLog, 'id'>> = []
-
-  for (const transaction of transactionRows) {
-    const vendorLocked = transaction.vendor_source === 'manual' || transaction.vendor_source === 'rule'
-    const expenseLocked = transaction.expense_category_source === 'manual'
-
-    const needsVendor = !vendorLocked && !transaction.vendor_name
-    const needsExpense = !expenseLocked && !transaction.expense_category
-
-    if (!needsVendor && !needsExpense) {
-      continue
-    }
-
-    const direction = getTransactionDirection(transaction)
-
-    const outcome = await classifyReceiptTransaction({
-      details: transaction.details,
-      amountIn: transaction.amount_in,
-      amountOut: transaction.amount_out,
-      transactionType: transaction.transaction_type,
-      categories: EXPENSE_CATEGORY_OPTIONS,
-      direction,
-      existingVendor: transaction.vendor_name ?? undefined,
-      existingExpenseCategory: transaction.expense_category ?? undefined,
-    })
-
-    if (!outcome?.result) {
-      continue
-    }
-
-    await recordAIUsage(supabase, outcome.usage, `receipt_classification:${transaction.id}`)
-
-    const { vendorName, expenseCategory, reasoning } = outcome.result
-    const updatePayload: Record<string, unknown> = {}
-    const changeNotes: string[] = []
-    const now = new Date().toISOString()
-
-    if (needsVendor && vendorName) {
-      updatePayload.vendor_name = vendorName
-      updatePayload.vendor_source = 'ai'
-      updatePayload.vendor_rule_id = null
-      updatePayload.vendor_updated_at = now
-      changeNotes.push(`Vendor → ${vendorName}`)
-    }
-
-    if (needsExpense && expenseCategory) {
-      updatePayload.expense_category = expenseCategory
-      updatePayload.expense_category_source = 'ai'
-      updatePayload.expense_rule_id = null
-      updatePayload.expense_updated_at = now
-      changeNotes.push(`Expense → ${expenseCategory}`)
-    }
-
-    if (!Object.keys(updatePayload).length) {
-      continue
-    }
-
-    updatePayload.updated_at = now
-
-    const { error: updateError } = await client
-      .from('receipt_transactions')
-      .update(updatePayload)
-      .eq('id', transaction.id)
-
-    if (updateError) {
-      console.error('Failed to persist AI classification', updateError)
-      continue
-    }
-
-    logs.push({
-      transaction_id: transaction.id,
-      previous_status: transaction.status,
-      new_status: transaction.status,
-      action_type: 'ai_classification',
-      note: reasoning
-        ? `AI suggestion applied: ${changeNotes.join(' | ')} (Reason: ${reasoning})`
-        : `AI suggestion applied: ${changeNotes.join(' | ')}`,
-      performed_by: null,
-      rule_id: null,
-      performed_at: now,
-    })
-  }
-
-  if (logs.length) {
-    await client.from('receipt_transaction_logs').insert(logs)
-  }
-}
-
 type RuleSuggestion = {
   suggestedName: string
   matchDescription: string | null
@@ -1299,6 +1171,35 @@ function buildRuleSuggestion(
     setExpenseCategory: updates.expenseCategory ?? null,
   }
 }
+
+async function enqueueReceiptAiClassificationJobs(transactionIds: string[], batchId: string) {
+  if (!transactionIds.length) {
+    return { queued: 0, failed: 0 }
+  }
+
+  const chunks = chunkArray(transactionIds, RECEIPT_AI_JOB_CHUNK_SIZE)
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      jobQueue.enqueue('classify_receipt_transactions', {
+        transactionIds: chunk,
+        batchId,
+      })
+    )
+  )
+
+  const failed = results.filter((result) => !result.success).length
+
+  if (failed > 0) {
+    console.error('Failed to enqueue receipt AI classification jobs', {
+      failed,
+      total: results.length,
+      batchId,
+    })
+  }
+
+  return { queued: results.length - failed, failed }
+}
+
 export async function importReceiptStatement(formData: FormData) {
   const canManage = await checkUserPermission('receipts', 'manage')
   if (!canManage) {
@@ -1380,6 +1281,17 @@ export async function importReceiptStatement(formData: FormData) {
   const { statusAutoUpdated: autoApplied, classificationUpdated: autoClassified } =
     await applyAutomationRules(insertedIds)
 
+  let aiJobsQueued = 0
+  let aiJobsFailed = 0
+
+  try {
+    const queuedResult = await enqueueReceiptAiClassificationJobs(insertedIds, batch.id)
+    aiJobsQueued = queuedResult.queued
+    aiJobsFailed = queuedResult.failed
+  } catch (error) {
+    console.error('Failed to enqueue receipt AI classification jobs', error)
+  }
+
   if (insertedIds.length) {
     const logs = insertedIds.map<Omit<ReceiptTransactionLog, 'id'>>((transactionId) => ({
       transaction_id: transactionId,
@@ -1395,8 +1307,6 @@ export async function importReceiptStatement(formData: FormData) {
     await supabase.from('receipt_transaction_logs').insert(logs)
   }
 
-  await classifyTransactionsWithAI(supabase, insertedIds)
-
   await logAuditEvent({
     operation_type: 'create',
     resource_type: 'receipt_batch',
@@ -1409,6 +1319,8 @@ export async function importReceiptStatement(formData: FormData) {
       skipped: rows.length - insertedIds.length,
       auto_applied: autoApplied,
       auto_classified: autoClassified,
+      ai_jobs_queued: aiJobsQueued,
+      ai_jobs_failed: aiJobsFailed,
     },
   })
 

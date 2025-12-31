@@ -661,6 +661,290 @@ export interface Database {
         Insert: Omit<PLManualActual, 'updated_at'> & { updated_at?: string };
         Update: Partial<Omit<PLManualActual, 'metric_key' | 'timeframe'>>;
       };
+      hiring_job_templates: {
+        Row: HiringJobTemplate;
+        Insert: Omit<HiringJobTemplate, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<HiringJobTemplate, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      hiring_jobs: {
+        Row: HiringJob;
+        Insert: Omit<HiringJob, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<HiringJob, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      hiring_candidates: {
+        Row: HiringCandidate;
+        Insert: Omit<HiringCandidate, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<HiringCandidate, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      hiring_applications: {
+        Row: HiringApplication;
+        Insert: Omit<HiringApplication, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<HiringApplication, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      hiring_notes: {
+        Row: HiringNote;
+        Insert: Omit<HiringNote, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<HiringNote, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      hiring_candidate_documents: {
+        Row: HiringCandidateDocument;
+        Insert: Omit<HiringCandidateDocument, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<HiringCandidateDocument, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      hiring_candidate_profile_versions: {
+        Row: HiringCandidateProfileVersion;
+        Insert: Omit<HiringCandidateProfileVersion, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<HiringCandidateProfileVersion, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      hiring_candidate_events: {
+        Row: HiringCandidateEvent;
+        Insert: Omit<HiringCandidateEvent, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<HiringCandidateEvent, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      hiring_application_messages: {
+        Row: HiringApplicationMessage;
+        Insert: Omit<HiringApplicationMessage, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<HiringApplicationMessage, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      hiring_outreach_messages: {
+        Row: HiringOutreachMessage;
+        Insert: Omit<HiringOutreachMessage, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<HiringOutreachMessage, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      hiring_application_overrides: {
+        Row: HiringApplicationOverride;
+        Insert: Omit<HiringApplicationOverride, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<HiringApplicationOverride, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      hiring_interviews: {
+        Row: HiringInterview;
+        Insert: Omit<HiringInterview, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<HiringInterview, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      hiring_interview_attendees: {
+        Row: HiringInterviewAttendee;
+        Insert: Omit<HiringInterviewAttendee, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<HiringInterviewAttendee, 'id' | 'created_at' | 'updated_at'>>;
+      };
     };
   };
-} 
+}
+
+export type HiringJobStatus = 'draft' | 'open' | 'closed' | 'archived' | 'expired';
+export type HiringApplicationStage = 'new' | 'screening' | 'screened' | 'in_conversation' | 'interview_scheduled' | 'interviewed' | 'offer' | 'hired' | 'rejected' | 'withdrawn';
+export type HiringCandidateSource = 'website' | 'indeed' | 'linkedin' | 'referral' | 'walk_in' | 'agency' | 'other';
+export type HiringApplicationOutcomeStatus = 'hired' | 'rejected' | 'withdrawn' | 'offer_declined' | 'no_show';
+export type HiringApplicationOutcomeCategory = 'experience' | 'skills' | 'availability' | 'right_to_work' | 'culture_fit' | 'communication' | 'compensation' | 'role_closed' | 'other';
+export type HiringMessageDirection = 'outbound' | 'inbound';
+export type HiringMessageStatus = 'draft' | 'sent' | 'failed' | 'cancelled';
+export type HiringInterviewAttendeeRole = 'candidate' | 'interviewer' | 'observer';
+
+export interface HiringJobTemplate {
+  id: string;
+  title: string;
+  description: string | null;
+  prerequisites: any;
+  screening_config: any;
+  screening_questions: any;
+  interview_questions: any;
+  screening_rubric: any;
+  email_templates: any;
+  message_templates: any;
+  compliance_lines: any;
+  created_at: string;
+  updated_at: string;
+  created_by?: string | null;
+}
+
+export interface HiringJob {
+  id: string;
+  slug: string | null;
+  title: string;
+  status: HiringJobStatus;
+  location: string | null;
+  employment_type: string | null;
+  salary_range: string | null;
+  description: string | null;
+  requirements: any;
+  prerequisites: any;
+  screening_questions: any;
+  interview_questions: any;
+  screening_rubric: any;
+  message_templates: any;
+  compliance_lines: any;
+  posting_date?: string | null;
+  closing_date?: string | null;
+  template_id?: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by?: string | null;
+}
+
+export interface HiringCandidate {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  secondary_emails: string[];
+  phone?: string | null;
+  location?: string | null;
+  resume_url?: string | null;
+  parsed_data: any;
+  search_vector?: any;
+  current_profile_version_id?: string | null;
+  anonymized_at?: string | null;
+  retention_exempt: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HiringApplication {
+  id: string;
+  job_id: string;
+  candidate_id: string;
+  stage: HiringApplicationStage;
+  source: HiringCandidateSource;
+  ai_score?: number | null;
+  ai_recommendation?: string | null;
+  ai_screening_result: any;
+  screener_answers: any;
+  interview_date?: string | null;
+  outcome_status?: HiringApplicationOutcomeStatus | null;
+  outcome_reason_category?: HiringApplicationOutcomeCategory | null;
+  outcome_reason?: string | null;
+  outcome_notes?: string | null;
+  outcome_recorded_at?: string | null;
+  outcome_recorded_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HiringNote {
+  id: string;
+  entity_type: 'candidate' | 'application';
+  entity_id: string;
+  content: string;
+  author_id: string;
+  is_private: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HiringCandidateDocument {
+  id: string;
+  candidate_id: string;
+  storage_path: string;
+  file_name: string;
+  mime_type?: string | null;
+  file_size_bytes?: number | null;
+  source?: string | null;
+  uploaded_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HiringCandidateProfileVersion {
+  id: string;
+  candidate_id: string;
+  document_id?: string | null;
+  version_number: number;
+  parsed_data: any;
+  diff_summary?: string | null;
+  diff_data: any;
+  created_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HiringCandidateEvent {
+  id: string;
+  candidate_id: string;
+  application_id?: string | null;
+  job_id?: string | null;
+  event_type: string;
+  source?: string | null;
+  metadata: any;
+  created_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HiringApplicationMessage {
+  id: string;
+  application_id: string;
+  candidate_id: string;
+  channel: string;
+  direction: HiringMessageDirection;
+  status: HiringMessageStatus;
+  subject?: string | null;
+  body?: string | null;
+  template_key?: string | null;
+  sent_via?: string | null;
+  sent_at?: string | null;
+  sent_by?: string | null;
+  external_reference?: string | null;
+  error_message?: string | null;
+  metadata: any;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HiringOutreachMessage {
+  id: string;
+  job_id: string;
+  candidate_id: string;
+  channel: string;
+  direction: HiringMessageDirection;
+  status: HiringMessageStatus;
+  subject?: string | null;
+  body?: string | null;
+  template_key?: string | null;
+  sent_via?: string | null;
+  sent_at?: string | null;
+  sent_by?: string | null;
+  external_reference?: string | null;
+  error_message?: string | null;
+  metadata: any;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HiringApplicationOverride {
+  id: string;
+  application_id: string;
+  override_type: string;
+  previous_score?: number | null;
+  new_score?: number | null;
+  previous_recommendation?: string | null;
+  new_recommendation?: string | null;
+  reason?: string | null;
+  metadata: any;
+  created_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HiringInterview {
+  id: string;
+  application_id: string;
+  scheduled_at: string;
+  end_at?: string | null;
+  duration_minutes?: number | null;
+  location?: string | null;
+  calendar_event_id?: string | null;
+  calendar_event_url?: string | null;
+  created_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HiringInterviewAttendee {
+  id: string;
+  interview_id: string;
+  role: HiringInterviewAttendeeRole;
+  name?: string | null;
+  email?: string | null;
+  user_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}

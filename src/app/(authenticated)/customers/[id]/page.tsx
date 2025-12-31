@@ -44,6 +44,7 @@ export default function CustomerViewPage() {
   const searchParams = useSearchParams()
   const { hasPermission } = usePermissions()
   const canManageEvents = hasPermission('events', 'manage')
+  const canDeleteBookings = canManageEvents || hasPermission('bookings', 'delete')
   const canViewMessages = hasPermission('messages', 'view')
   const canManageCustomers = hasPermission('customers', 'manage')
 
@@ -309,8 +310,8 @@ export default function CustomerViewPage() {
   }
 
   const handleDeleteBooking = async (bookingId: string) => {
-    if (!canManageEvents) {
-      toast.error('You do not have permission to manage bookings.')
+    if (!canDeleteBookings) {
+      toast.error('You do not have permission to delete bookings.')
       return
     }
     if (!window.confirm('Are you sure you want to delete this booking?')) return
@@ -408,7 +409,7 @@ export default function CustomerViewPage() {
     },
   ]
 
-  const bookingColumns: Column<BookingWithEvent>[] = canManageEvents
+  const bookingColumns: Column<BookingWithEvent>[] = (canManageEvents || canDeleteBookings)
     ? [
       ...baseBookingColumns,
       {
@@ -417,20 +418,24 @@ export default function CustomerViewPage() {
         align: 'right',
         cell: (booking) => (
           <div className="flex justify-end space-x-2">
-            <button
-              onClick={() => startEditBooking(booking)}
-              className="text-blue-600 hover:text-blue-700"
-            >
-              <PencilIcon className="h-5 w-5" />
-              <span className="sr-only">Edit</span>
-            </button>
-            <button
-              onClick={() => handleDeleteBooking(booking.id)}
-              className="text-red-600 hover:text-red-900"
-            >
-              <TrashIcon className="h-5 w-5" />
-              <span className="sr-only">Delete</span>
-            </button>
+            {canManageEvents && (
+              <button
+                onClick={() => startEditBooking(booking)}
+                className="text-blue-600 hover:text-blue-700"
+              >
+                <PencilIcon className="h-5 w-5" />
+                <span className="sr-only">Edit</span>
+              </button>
+            )}
+            {canDeleteBookings && (
+              <button
+                onClick={() => handleDeleteBooking(booking.id)}
+                className="text-red-600 hover:text-red-900"
+              >
+                <TrashIcon className="h-5 w-5" />
+                <span className="sr-only">Delete</span>
+              </button>
+            )}
           </div>
         ),
       },

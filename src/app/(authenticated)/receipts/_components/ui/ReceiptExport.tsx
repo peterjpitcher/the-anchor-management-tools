@@ -25,7 +25,7 @@ export function ReceiptExport() {
   }
 
   return (
-    <Card className="lg:col-span-2" header={<div className="flex items-center justify-between">
+    <Card className="md:col-span-2" header={<div className="flex items-center justify-between">
       <div>
         <h2 className="text-lg font-semibold text-gray-900">Quarterly export</h2>
         <p className="text-sm text-gray-500">Download a PDF summary and all receipts as a ZIP.</p>

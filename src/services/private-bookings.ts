@@ -1015,11 +1015,15 @@ export class PrivateBookingService {
       .order('display_order', { ascending: true, foreignTable: 'private_booking_items' })
       .order('performed_at', { ascending: false, foreignTable: 'private_booking_audit' })
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error fetching private booking:', error);
       throw new Error(error.message || 'An error occurred');
+    }
+
+    if (!data) {
+      throw new Error('Booking not found');
     }
 
     const {

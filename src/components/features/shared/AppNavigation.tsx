@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, BuildingOfficeIcon, DocumentTextIcon, LinkIcon, QueueListIcon, ReceiptRefundIcon, TruckIcon, Squares2X2Icon, BanknotesIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, BuildingOfficeIcon, DocumentTextIcon, LinkIcon, QueueListIcon, ReceiptRefundIcon, TruckIcon, Squares2X2Icon, BanknotesIcon, BriefcaseIcon } from '@heroicons/react/24/outline'
 import { useEffect, useState, useMemo } from 'react'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { Badge } from '@/components/ui-v2/display/Badge'
@@ -33,6 +33,7 @@ const secondaryNavigation: NavigationItemWithPermission[] = [
 ];
 
 const tertiaryNavigation: NavigationItemWithPermission[] = [
+  { name: 'Hiring', href: '/hiring', icon: BriefcaseIcon, permission: { module: 'hiring', action: 'view' } },
   { name: 'Employees', href: '/employees', icon: IdentificationIcon, permission: { module: 'employees', action: 'view' } },
   { name: 'Quick Add Note', href: '#', icon: PencilSquareIcon, action: true },
 ];
@@ -62,17 +63,17 @@ export function AppNavigation({ onQuickAddNoteClick, onNavigate }: AppNavigation
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 640) // 640px is Tailwind's 'sm' breakpoint
     }
-    
+
     checkMobile()
     window.addEventListener('resize', checkMobile)
-    
+
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
 
   // Filter navigation items based on permissions
   const filteredPrimaryNav = useMemo(() => {
     if (permissionsLoading) return [];
-    return primaryNavigation.filter(item => 
+    return primaryNavigation.filter(item =>
       !item.permission || hasPermission(item.permission.module, item.permission.action)
     );
   }, [hasPermission, permissionsLoading]);
@@ -90,14 +91,14 @@ export function AppNavigation({ onQuickAddNoteClick, onNavigate }: AppNavigation
 
   const filteredTertiaryNav = useMemo(() => {
     if (permissionsLoading) return [];
-    return tertiaryNavigation.filter(item => 
+    return tertiaryNavigation.filter(item =>
       !item.permission || hasPermission(item.permission.module, item.permission.action)
     );
   }, [hasPermission, permissionsLoading]);
 
   const filteredQuaternaryNav = useMemo(() => {
     if (permissionsLoading) return [];
-    return quaternaryNavigation.filter(item => 
+    return quaternaryNavigation.filter(item =>
       !item.permission || hasPermission(item.permission.module, item.permission.action)
     );
   }, [hasPermission, permissionsLoading]);
@@ -116,7 +117,7 @@ export function AppNavigation({ onQuickAddNoteClick, onNavigate }: AppNavigation
   }
 
   const renderNavItem = (item: NavigationItemWithPermission) => {
-    const isActive = !item.action && item.href === '/' 
+    const isActive = !item.action && item.href === '/'
       ? pathname === '/'
       : !item.action && pathname.startsWith(item.href);
 
@@ -182,19 +183,19 @@ export function AppNavigation({ onQuickAddNoteClick, onNavigate }: AppNavigation
       <SidebarGroup>
         {filteredPrimaryNav.map(renderNavItem)}
       </SidebarGroup>
-      
+
       {filteredSecondaryNav.length > 0 && (
         <SidebarGroup showDivider={filteredPrimaryNav.length > 0}>
           {filteredSecondaryNav.map(renderNavItem)}
         </SidebarGroup>
       )}
-      
+
       {filteredTertiaryNav.length > 0 && (
         <SidebarGroup showDivider={filteredSecondaryNav.length > 0}>
           {filteredTertiaryNav.map(renderNavItem)}
         </SidebarGroup>
       )}
-      
+
       {filteredQuaternaryNav.length > 0 && (
         <SidebarGroup showDivider={filteredTertiaryNav.length > 0}>
           {filteredQuaternaryNav.map(renderNavItem)}
