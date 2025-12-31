@@ -63,7 +63,7 @@
   ],
   "crons": [
     {
-      "path": "/api/jobs/process?batch=30",
+      "path": "/api/jobs/process?process=true&batch=30",
       "schedule": "* * * * *"
     },
     {

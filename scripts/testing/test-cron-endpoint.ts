@@ -51,7 +51,7 @@ async function testCronEndpoint() {
     
     // Also test the health check
     console.log('\nTesting health check endpoint...')
-    const healthResponse = await fetch(`${appUrl}/api/jobs/process`, {
+    const healthResponse = await fetch(`${appUrl}/api/jobs/process?health=true`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${cronSecret}`,
@@ -75,8 +75,8 @@ async function checkVercelCronConfig() {
   console.log(`{
   "crons": [
     {
-      "path": "/api/jobs/process",
-      "schedule": "*/5 * * * *"
+      "path": "/api/jobs/process?process=true&batch=30",
+      "schedule": "* * * * *"
     }
   ]
 }`)

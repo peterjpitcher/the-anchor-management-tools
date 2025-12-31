@@ -10,6 +10,7 @@ export const fetchCache = 'force-no-store'
 function isAuthorized(request: NextRequest): boolean {
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
+  const vercelCron = request.headers.get('x-vercel-cron')
 
   if (!cronSecret && process.env.NODE_ENV === 'development') {
     return true
@@ -19,15 +20,17 @@ function isAuthorized(request: NextRequest): boolean {
   return (
     authHeader === bearerSecret ||
     authHeader === cronSecret ||
-    request.headers.get('x-vercel-cron') === '1'
+    Boolean(vercelCron)
   )
 }
 
-function shouldProcessJobs(request: NextRequest): boolean {
-  return (
-    request.headers.get('x-vercel-cron') === '1' ||
-    request.nextUrl.searchParams.get('process') === 'true'
-  )
+function isHealthCheck(request: NextRequest): boolean {
+  const processParam = request.nextUrl.searchParams.get('process')
+  if (processParam === 'false') {
+    return true
+  }
+
+  return request.nextUrl.searchParams.get('health') === 'true'
 }
 
 async function handleProcessing(request: NextRequest, method: 'GET' | 'POST') {
@@ -84,15 +87,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    if (shouldProcessJobs(request)) {
-      return await handleProcessing(request, 'GET')
+    if (isHealthCheck(request)) {
+      return NextResponse.json({
+        status: 'ok',
+        service: 'job-processor',
+        timestamp: new Date().toISOString()
+      })
     }
 
-    return NextResponse.json({
-      status: 'ok',
-      service: 'job-processor',
-      timestamp: new Date().toISOString()
-    })
+    return await handleProcessing(request, 'GET')
   } catch (error) {
     logger.error('Job processor GET error', {
       error: error as Error,
