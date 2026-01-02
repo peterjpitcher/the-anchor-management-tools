@@ -39,6 +39,7 @@ export function ApplicationScreeningPanel({
     const router = useRouter()
     const [rerunOpen, setRerunOpen] = useState(false)
     const [rerunReason, setRerunReason] = useState('')
+    const [rerunType, setRerunType] = useState<'manual' | 'second_opinion'>('manual')
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isSettingActive, setIsSettingActive] = useState<string | null>(null)
 
@@ -68,19 +69,57 @@ export function ApplicationScreeningPanel({
     const confidenceLabel = confidence != null ? `${Math.round(confidence * 100)}%` : 'N/A'
     const showError = Boolean(screeningError) && screeningStatus !== 'success'
     const showInProgress = !showError && (screeningStatus === 'processing' || screeningStatus === 'pending')
+    const diagnostics = screeningResult?.diagnostics
+    const overrideLabels = Array.isArray(diagnostics?.overrides) ? diagnostics.overrides : []
 
     const evidenceItems = useMemo(() => {
-        if (Array.isArray(screeningResult?.evidence)) return screeningResult.evidence
-        if (Array.isArray(screeningResult?.eligibility)) {
-            return screeningResult.eligibility.map((item: any) => ({
-                key: item.key ?? null,
-                label: item.label ?? null,
-                status: item.status ?? 'unclear',
-                evidence: item.justification ?? '',
-                confidence: 'low'
-            }))
-        }
-        return []
+        const raw = Array.isArray(screeningResult?.evidence)
+            ? screeningResult.evidence
+            : Array.isArray(screeningResult?.eligibility)
+                ? screeningResult.eligibility
+                : []
+
+        return raw.map((item: any) => {
+            const statusRaw = (item?.status || 'unclear').toString().toLowerCase()
+            const status = ['yes', 'no', 'unclear', 'not_stated', 'contradictory'].includes(statusRaw)
+                ? statusRaw
+                : 'unclear'
+            const quotes = Array.isArray(item?.evidence_quotes)
+                ? item.evidence_quotes.map((quote: any) => quote?.toString()).filter(Boolean)
+                : item?.evidence
+                    ? [item.evidence.toString()]
+                    : item?.justification
+                        ? [item.justification.toString()]
+                        : []
+            const anchors = Array.isArray(item?.evidence_anchors)
+                ? item.evidence_anchors.map((anchor: any) => anchor?.toString()).filter(Boolean)
+                : []
+            const source = item?.evidence_source?.toString() || ''
+            const confidenceRaw = item?.confidence
+            const confidence = typeof confidenceRaw === 'number'
+                ? confidenceRaw
+                : typeof confidenceRaw === 'string'
+                    ? confidenceRaw.toLowerCase() === 'high'
+                        ? 0.9
+                        : confidenceRaw.toLowerCase() === 'medium'
+                            ? 0.6
+                            : 0.3
+                    : null
+            const pageRefs = Array.isArray(item?.page_refs)
+                ? item.page_refs.map((value: any) => Number(value)).filter((value: number) => Number.isFinite(value))
+                : null
+
+            return {
+                key: item?.key ?? null,
+                label: item?.label ?? null,
+                status,
+                evidence_quotes: quotes.slice(0, 3),
+                evidence_anchors: anchors.slice(0, 3),
+                evidence_source: source,
+                confidence,
+                page_refs: pageRefs && pageRefs.length ? pageRefs : null,
+            }
+        })
     }, [screeningResult])
 
     const handleRerun = async () => {
@@ -90,12 +129,13 @@ export function ApplicationScreeningPanel({
             const result = await rerunApplicationScreeningAction({
                 applicationId,
                 reason: rerunReason.trim() || undefined,
+                runType: rerunType,
             })
             if (!result.success) {
                 toast.error(result.error || 'Failed to rerun screening')
                 return
             }
-            toast.success('Screening rerun queued')
+            toast.success(rerunType === 'second_opinion' ? 'Second opinion queued' : 'Screening rerun queued')
             setRerunOpen(false)
             setRerunReason('')
         } finally {
@@ -131,9 +171,28 @@ export function ApplicationScreeningPanel({
                         <Badge variant={recommendationVariant}>{recommendationLabel}</Badge>
                         <Badge variant="secondary">Confidence {confidenceLabel}</Badge>
                         {canEdit && (
-                            <Button size="sm" variant="ghost" onClick={() => setRerunOpen(true)}>
-                                Re-screen
-                            </Button>
+                            <>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                        setRerunType('manual')
+                                        setRerunOpen(true)
+                                    }}
+                                >
+                                    Re-screen
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                        setRerunType('second_opinion')
+                                        setRerunOpen(true)
+                                    }}
+                                >
+                                    Second opinion
+                                </Button>
+                            </>
                         )}
                     </div>
                 </div>
@@ -166,26 +225,136 @@ export function ApplicationScreeningPanel({
                         <div className="space-y-2">
                             {evidenceItems.map((item: any, index: number) => {
                                 const status = item?.status || 'unclear'
-                                const badgeVariant = status === 'yes' ? 'success' : status === 'no' ? 'error' : 'warning'
+                                const badgeVariant = status === 'yes'
+                                    ? 'success'
+                                    : status === 'no'
+                                        ? 'error'
+                                        : status === 'not_stated'
+                                            ? 'neutral'
+                                            : 'warning'
+                                const statusLabel = status.replace('_', ' ').toUpperCase()
+                                const quotes = Array.isArray(item.evidence_quotes) ? item.evidence_quotes : []
+                                const anchors = Array.isArray(item.evidence_anchors) ? item.evidence_anchors : []
+                                const confidenceLabel = typeof item.confidence === 'number'
+                                    ? `${Math.round(item.confidence * 100)}%`
+                                    : item.confidence
+                                        ? String(item.confidence)
+                                        : null
+                                const sourceLabel = item.evidence_source
+                                    ? item.evidence_source === 'resume_chunk'
+                                        ? 'Resume'
+                                        : item.evidence_source === 'application_answer'
+                                            ? 'Answers'
+                                            : 'Mixed'
+                                    : null
                                 return (
                                     <div key={index} className="flex items-start gap-3">
                                         <Badge variant={badgeVariant} size="sm">
-                                            {status.toUpperCase()}
+                                            {statusLabel}
                                         </Badge>
                                         <div>
                                             <div className="text-sm font-medium text-gray-900">
                                                 {item?.label || item?.key || 'Requirement'}
                                             </div>
-                                            {item?.evidence && (
-                                                <div className="text-xs text-gray-600">{item.evidence}</div>
+                                            {quotes.length > 0 && (
+                                                <div className="text-xs text-gray-600 space-y-1">
+                                                    {quotes.map((quote: string, quoteIndex: number) => (
+                                                        <div key={quoteIndex}>
+                                                            &quot;{quote}&quot;
+                                                            {anchors[quoteIndex] ? ` (${anchors[quoteIndex]})` : ''}
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             )}
-                                            {item?.confidence && (
-                                                <div className="text-xs text-gray-400">Confidence: {String(item.confidence)}</div>
+                                            {(sourceLabel || item.page_refs || confidenceLabel) && (
+                                                <div className="text-xs text-gray-400">
+                                                    {sourceLabel ? `Source: ${sourceLabel}` : ''}
+                                                    {sourceLabel && item.page_refs ? ' • ' : ''}
+                                                    {item.page_refs ? `Pages: ${item.page_refs.join(', ')}` : ''}
+                                                    {(sourceLabel || item.page_refs) && confidenceLabel ? ' • ' : ''}
+                                                    {confidenceLabel ? `Confidence: ${confidenceLabel}` : ''}
+                                                </div>
                                             )}
                                         </div>
                                     </div>
                                 )
                             })}
+                        </div>
+                    </div>
+                )}
+
+                {diagnostics && (
+                    <div className="text-sm text-gray-700 space-y-2">
+                        <h4 className="text-sm font-semibold text-gray-900">Scoring details</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <div className="text-xs text-gray-500">Thresholds</div>
+                                <div className="text-sm text-gray-700">
+                                    Invite {'>='} {diagnostics.thresholds?.invite ?? 'n/a'}, Clarify {'>='} {diagnostics.thresholds?.clarify ?? 'n/a'}, Hold {'>='} {diagnostics.thresholds?.hold ?? 'n/a'}, Reject {'>='} {diagnostics.thresholds?.reject ?? 'n/a'}
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-gray-500">Base vs Final</div>
+                                <div className="text-sm text-gray-700">
+                                    {diagnostics.score?.base ?? 'n/a'} base - {diagnostics.score?.penalty ?? 'n/a'} penalty = {diagnostics.score?.final ?? score ?? 'n/a'}
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-gray-500">Evidence counts</div>
+                                <div className="text-sm text-gray-700">
+                                    Yes {diagnostics.evidenceCounts?.yes ?? 0}, No {diagnostics.evidenceCounts?.no ?? 0}, Unclear {diagnostics.evidenceCounts?.unclear ?? 0}, Not stated {diagnostics.evidenceCounts?.not_stated ?? 0}, Contradictory {diagnostics.evidenceCounts?.contradictory ?? 0}
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-gray-500">Weights</div>
+                                <div className="text-sm text-gray-700">
+                                    Yes {diagnostics.weights?.yes ?? 0}, No {diagnostics.weights?.no ?? 0}, Unclear {diagnostics.weights?.unclear ?? 0} (Total {diagnostics.weights?.total ?? 0})
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-gray-500">Overrides</div>
+                                <div className="text-sm text-gray-700">
+                                    {overrideLabels.length ? overrideLabels.join(', ') : 'None'}
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-gray-500">Recommendation path</div>
+                                <div className="text-sm text-gray-700">
+                                    {diagnostics.baseRecommendation ?? 'n/a'} {'->'} {diagnostics.finalRecommendation ?? recommendation ?? 'n/a'}
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-gray-500">Essential failed</div>
+                                <div className="text-sm text-gray-700">
+                                    {diagnostics.essentialFailed ? 'Yes' : 'No'}
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-gray-500">Essentials missing</div>
+                                <div className="text-sm text-gray-700">
+                                    {diagnostics.essentialMissing ? 'Yes' : 'No'} ({diagnostics.essentialMissingCount ?? 0})
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-gray-500">Raw model</div>
+                                <div className="text-sm text-gray-700">
+                                    {screeningResult?.model_score ?? 'n/a'}/10, {screeningResult?.model_recommendation ?? 'n/a'}
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-gray-500">Resume text length</div>
+                                <div className="text-sm text-gray-700">
+                                    {diagnostics.resumeTextLength ?? 'n/a'}
+                                </div>
+                            </div>
+                            {screeningResult?.computed_signals && (
+                                <div>
+                                    <div className="text-xs text-gray-500">Computed signals</div>
+                                    <div className="text-sm text-gray-700">
+                                        Bar months {screeningResult.computed_signals.bar_experience_months ?? 'n/a'}, Bar roles {Array.isArray(screeningResult.computed_signals.bar_roles_detected) ? screeningResult.computed_signals.bar_roles_detected.join(', ') || 'n/a' : 'n/a'}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -206,6 +375,16 @@ export function ApplicationScreeningPanel({
                             <h4 className="text-sm font-semibold text-gray-900 mb-2">Concerns / Missing info</h4>
                             <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
                                 {screeningResult.concerns.map((item: string, index: number) => (
+                                    <li key={index}>{item}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                    {Array.isArray(screeningResult?.clarify_questions) && screeningResult.clarify_questions.length > 0 && (
+                        <div>
+                            <h4 className="text-sm font-semibold text-gray-900 mb-2">Questions to clarify</h4>
+                            <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
+                                {screeningResult.clarify_questions.map((item: string, index: number) => (
                                     <li key={index}>{item}</li>
                                 ))}
                             </ul>
@@ -259,8 +438,11 @@ export function ApplicationScreeningPanel({
             <Modal
                 open={rerunOpen}
                 onClose={() => setRerunOpen(false)}
-                title="Re-screen application"
-                description="Optionally add a reason for re-screening."
+                title={rerunType === 'second_opinion' ? 'Run second opinion' : 'Re-screen application'}
+                description={rerunType === 'second_opinion'
+                    ? 'Runs a full-CV pass with the timeline context. Optionally add a reason.'
+                    : 'Optionally add a reason for re-screening.'
+                }
                 size="md"
             >
                 <FormGroup label="Reason (optional)">
@@ -276,7 +458,7 @@ export function ApplicationScreeningPanel({
                         Cancel
                     </Button>
                     <Button variant="primary" onClick={handleRerun} loading={isSubmitting}>
-                        Queue re-screen
+                        {rerunType === 'second_opinion' ? 'Queue second opinion' : 'Queue re-screen'}
                     </Button>
                 </div>
             </Modal>

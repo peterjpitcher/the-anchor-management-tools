@@ -21,10 +21,10 @@ const JobSchema = z.object({
     salary_range: z.string().optional(),
     description: z.string().optional(),
     requirements: z.array(z.string()).optional(), // Handled as JSON normally, but array for UI convenience? Or just accept JSON
-    prerequisites: z.array(z.any()).optional(),
+    prerequisites: z.union([z.array(z.any()), z.string()]).optional(),
     screening_questions: z.array(z.any()).optional(),
     interview_questions: z.array(z.any()).optional(),
-    screening_rubric: z.record(z.any()).optional(),
+    screening_rubric: z.union([z.record(z.any()), z.string()]).optional(),
     message_templates: z.record(z.any()).optional(),
     compliance_lines: z.array(z.any()).optional(),
     template_id: z.string().uuid().nullable().optional(),
@@ -882,6 +882,7 @@ export async function updateApplicationOutcomeAction(input: {
 const MessageDraftSchema = z.object({
     applicationId: z.string().uuid(),
     messageType: z.enum(['invite', 'clarify', 'reject', 'feedback']),
+    rejectionReason: z.string().optional(),
 })
 
 const MessageUpdateSchema = z.object({
@@ -938,6 +939,7 @@ function getMissingComplianceLines(body: string, lines: unknown) {
 export async function generateApplicationMessageDraftAction(input: {
     applicationId: string
     messageType: HiringMessageType
+    rejectionReason?: string
 }) {
     const allowed = await checkUserPermission('hiring', 'send')
     if (!allowed) return { success: false, error: 'Unauthorized' }
@@ -975,6 +977,7 @@ export async function generateApplicationMessageDraftAction(input: {
             application,
             candidate,
             job,
+            rejectionReason: parse.data.rejectionReason,
         })
 
         if (draft.usage) {

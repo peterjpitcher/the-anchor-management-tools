@@ -70,6 +70,9 @@ function collectJobKeywords(job: HiringJob | null): Set<string> {
   }
 
   const prerequisites = (job as any).prerequisites
+  if (typeof prerequisites === 'string') {
+    rawPieces.push(prerequisites)
+  }
   if (Array.isArray(prerequisites)) {
     prerequisites.forEach((item: any) => {
       if (typeof item === 'string') {
