@@ -74,7 +74,8 @@ export function ApplicationMessagesPanel({
     })
     const [subject, setSubject] = useState('')
     const [body, setBody] = useState('')
-    const [actionState, setActionState] = useState<'generate' | 'save' | 'send' | 'external' | null>(null)
+    const [rejectionReason, setRejectionReason] = useState('')
+    const [actionState, setActionState] = useState<'generate' | 'save' | 'send' | 'external' | 'asking-reason' | null>(null)
 
     const activeMessage = useMemo(
         () => messages.find((message) => message.id === activeMessageId) || null,
@@ -117,8 +118,10 @@ export function ApplicationMessagesPanel({
         const result = await generateApplicationMessageDraftAction({
             applicationId,
             messageType,
+            rejectionReason: messageType === 'reject' ? rejectionReason : undefined,
         })
         setActionState(null)
+        if (messageType === 'reject') setRejectionReason('')
 
         if (!result.success || !result.data) {
             toast.error(result.error || 'Failed to generate draft')
@@ -222,7 +225,13 @@ export function ApplicationMessagesPanel({
                     </Select>
                     <Button
                         type="button"
-                        onClick={handleGenerateDraft}
+                        onClick={() => {
+                            if (messageType === 'reject') {
+                                setActionState('asking-reason')
+                            } else {
+                                handleGenerateDraft()
+                            }
+                        }}
                         loading={actionState === 'generate'}
                         disabled={!canSend}
                     >
@@ -230,6 +239,41 @@ export function ApplicationMessagesPanel({
                     </Button>
                 </div>
             </div>
+
+            {actionState === 'asking-reason' && (
+                <div className="bg-amber-50 border border-amber-200 rounded-md p-4 mb-4">
+                    <h4 className="text-sm font-medium text-amber-900 mb-2">Why are you rejecting this candidate?</h4>
+                    <p className="text-xs text-amber-700 mb-3">
+                        Providing a specific reason prevents the AI from making assumptions (e.g. about Right to Work).
+                    </p>
+                    <Textarea
+                        value={rejectionReason}
+                        onChange={(e) => setRejectionReason(e.target.value)}
+                        placeholder="e.g. Not enough experience with cocktails, Availability doesn't match rota..."
+                        className="mb-3 bg-white"
+                        rows={2}
+                        autoFocus
+                    />
+                    <div className="flex justify-end gap-2">
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => {
+                                setActionState(null)
+                                setRejectionReason('')
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            size="sm"
+                            onClick={() => handleGenerateDraft()}
+                        >
+                            Generate Rejection Email
+                        </Button>
+                    </div>
+                </div>
+            )}
 
             <div className="space-y-4">
                 <FormGroup label="Subject">
@@ -294,8 +338,8 @@ export function ApplicationMessagesPanel({
                             type="button"
                             onClick={() => setActiveMessageId(message.id)}
                             className={`w-full text-left border rounded-lg px-4 py-3 transition ${activeMessageId === message.id
-                                    ? 'border-green-500 bg-green-50'
-                                    : 'border-gray-200 hover:border-gray-300'
+                                ? 'border-green-500 bg-green-50'
+                                : 'border-gray-200 hover:border-gray-300'
                                 }`}
                         >
                             <div className="flex items-center justify-between gap-2">

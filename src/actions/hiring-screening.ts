@@ -11,6 +11,7 @@ import { revalidatePath } from 'next/cache'
 const RerunSchema = z.object({
     applicationId: z.string().uuid(),
     reason: z.string().max(500).optional(),
+    runType: z.enum(['manual', 'second_opinion']).optional(),
 })
 
 const SetActiveSchema = z.object({
@@ -18,16 +19,20 @@ const SetActiveSchema = z.object({
     runId: z.string().uuid(),
 })
 
-function buildEligibility(evidence: Array<{ key?: string | null; label?: string | null; status?: string; evidence?: string }>) {
+function buildEligibility(evidence: Array<{ key?: string | null; label?: string | null; status?: string; evidence?: string; evidence_quotes?: string[] }>) {
     return evidence.map((item) => ({
         key: item.key ?? null,
         label: item.label ?? null,
-        status: item.status === 'yes' || item.status === 'no' ? item.status : 'unclear',
-        justification: (item.evidence || '').toString().slice(0, 400) || 'Not enough detail provided.',
+        status: item.status === 'yes' || item.status === 'no' || item.status === 'not_stated' || item.status === 'contradictory'
+            ? item.status
+            : 'unclear',
+        justification: Array.isArray(item.evidence_quotes) && item.evidence_quotes.length
+            ? item.evidence_quotes.join(' | ').slice(0, 400)
+            : (item.evidence || '').toString().slice(0, 400) || 'Not enough detail provided.',
     }))
 }
 
-export async function rerunApplicationScreeningAction(input: { applicationId: string; reason?: string }) {
+export async function rerunApplicationScreeningAction(input: { applicationId: string; reason?: string; runType?: 'manual' | 'second_opinion' }) {
     const allowed = await checkUserPermission('hiring', 'edit')
     if (!allowed) return { success: false, error: 'Unauthorized' }
 
@@ -56,12 +61,13 @@ export async function rerunApplicationScreeningAction(input: { applicationId: st
         })
         .eq('id', application.id)
 
+    const runType = parse.data.runType || 'manual'
     const jobResult = await jobQueue.enqueue(
         'screen_application',
         {
             applicationId: application.id,
             force: true,
-            runType: 'manual',
+            runType,
             runReason: parse.data.reason || null,
         },
         { unique: `screen_application:${application.id}:${Date.now()}` }
@@ -91,7 +97,7 @@ export async function rerunApplicationScreeningAction(input: { applicationId: st
             resource_type: 'hiring_application',
             resource_id: application.id,
             operation_status: 'success',
-            additional_info: { reason: parse.data.reason || null },
+                    additional_info: { reason: parse.data.reason || null, run_type: runType },
         })
     }
 
@@ -134,6 +140,8 @@ export async function setActiveScreeningRunAction(input: { applicationId: string
         concerns: Array.isArray(run.concerns) ? run.concerns : [],
         rationale: (run.result_raw as any)?.rationale || null,
         experience_analysis: run.experience_analysis || null,
+        computed_signals: (run.result_raw as any)?.computed_signals ?? null,
+        clarify_questions: (run.result_raw as any)?.clarify_questions ?? [],
         draft_replies: run.draft_replies || null,
         confidence: run.confidence ?? null,
         guardrails_followed: (run.result_raw as any)?.guardrails_followed ?? null,

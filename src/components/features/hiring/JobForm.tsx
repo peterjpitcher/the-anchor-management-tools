@@ -13,42 +13,35 @@ import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { createJobAction, updateJobAction } from '@/actions/hiring'
 import type { HiringJob, HiringJobTemplate } from '@/types/database'
+import { buildRubricConfig } from '@/lib/hiring/scoring-logic'
 
 const JSON_FIELDS = [
-    {
-        name: 'prerequisites',
-        label: 'Prerequisites (JSON)',
-        expected: 'array',
-        help: 'Essential checks and scored signals used by AI screening and re-engagement. Array of strings or objects (key, label, question, prompt, essential, type, weight). Example: [{"key":"weekend_availability","label":"Available weekends","essential":true,"question":"Can you work weekends?"}].',
-    },
     {
         name: 'screening_questions',
         label: 'Screening Questions (JSON)',
         expected: 'array',
+        allowPlainText: false,
         help: 'Candidate-facing questions; answers are stored on applications and used in screening. Array of strings or objects (question/label/prompt/key). Example: ["Right to work in the UK?", {"key":"availability","question":"What shifts can you cover?"}].',
     },
     {
         name: 'interview_questions',
         label: 'Interview Questions (JSON)',
         expected: 'array',
+        allowPlainText: false,
         help: 'Used in interview packs. Array of strings or objects (question/label/prompt). Example: ["Tell us about a busy service.", {"question":"What does great service mean to you?"}].',
-    },
-    {
-        name: 'screening_rubric',
-        label: 'Screening Rubric (JSON)',
-        expected: 'object',
-        help: 'Structured JSON for deterministic scoring. Use score_thresholds + items. Example: {"score_thresholds":{"invite":7,"clarify":5},"notes":"Prioritize bar experience and weekends.","items":[{"key":"bar_experience","label":"Bar experience","essential":false,"weight":2,"evidence_question":"Has bar or cocktail experience?"}]}.',
     },
     {
         name: 'message_templates',
         label: 'Message Templates (JSON)',
         expected: 'object',
+        allowPlainText: false,
         help: 'Keys: invite, clarify, reject, feedback. Value can be a string body or object with subject/body. Variables: {{first_name}}, {{last_name}}, {{full_name}}, {{job_title}}, {{location}}, {{company}}. Example: {"invite":{"subject":"Next steps for {{job_title}}","body":"Hi {{first_name}}, ..."}}.',
     },
     {
         name: 'compliance_lines',
         label: 'Compliance Lines (JSON)',
         expected: 'array',
+        allowPlainText: false,
         help: 'Lines appended to outbound emails; write them exactly. Array of strings. Example: ["We can only proceed with candidates who have the right to work in the UK."].',
     },
 ] as const
@@ -67,7 +60,7 @@ function formatJsonValue(value: unknown, fallback: unknown) {
     return JSON.stringify(value ?? fallback, null, 2)
 }
 
-function parseJsonField(raw: string | undefined, expected: 'array' | 'object') {
+function parseJsonField(raw: string | undefined, expected: 'array' | 'object', allowPlainText?: boolean) {
     const trimmed = (raw ?? '').trim()
     if (!trimmed) {
         return { value: expected === 'array' ? [] : {}, error: null }
@@ -83,7 +76,47 @@ function parseJsonField(raw: string | undefined, expected: 'array' | 'object') {
         }
         return { value: parsed, error: null }
     } catch {
+        if (allowPlainText) {
+            return { value: trimmed, error: null }
+        }
         return { value: null, error: 'Invalid JSON' }
+    }
+}
+
+function normalizeLineList(value: unknown) {
+    if (typeof value === 'string') return value
+    if (Array.isArray(value)) return value.map((item) => String(item)).join('\n')
+    return ''
+}
+
+function extractRubricTexts(rubric: unknown) {
+    if (!rubric) {
+        return { positive: '', redFlags: '', clarify: '', thresholds: undefined, notes: undefined }
+    }
+    if (typeof rubric === 'string') {
+        return { positive: rubric, redFlags: '', clarify: '', thresholds: undefined, notes: undefined }
+    }
+    if (typeof rubric !== 'object' || Array.isArray(rubric)) {
+        return { positive: '', redFlags: '', clarify: '', thresholds: undefined, notes: undefined }
+    }
+
+    const record = rubric as Record<string, any>
+    const positive = record.positive_signals_text
+        ?? (Array.isArray(record.positive_signals) ? record.positive_signals.join('\n') : '')
+    const redFlags = record.red_flags_text
+        ?? (Array.isArray(record.red_flags) ? record.red_flags.join('\n') : '')
+    const clarify = record.clarify_questions_text
+        ?? (Array.isArray(record.clarify_questions) ? record.clarify_questions.join('\n') : '')
+    const fromItems = !positive && Array.isArray(record.items)
+        ? record.items.map((item: any) => (item?.label || item?.key || item || '').toString()).filter(Boolean).join('\n')
+        : ''
+
+    return {
+        positive: positive || fromItems,
+        redFlags,
+        clarify,
+        thresholds: record.score_thresholds,
+        notes: record.notes,
     }
 }
 
@@ -105,10 +138,12 @@ const JobSchema = z.object({
     // requirements handled as comma separated string for simple UI, converted to array
     requirements: z.string().optional(),
     template_id: z.string().optional(),
-    prerequisites: z.string().optional(),
+    essentials_text: z.string().optional(),
     screening_questions: z.string().optional(),
     interview_questions: z.string().optional(),
-    screening_rubric: z.string().optional(),
+    positive_signals_text: z.string().optional(),
+    red_flags_text: z.string().optional(),
+    clarify_questions_text: z.string().optional(),
     message_templates: z.string().optional(),
     compliance_lines: z.string().optional(),
     posting_date: z.string().optional(),
@@ -125,6 +160,7 @@ interface JobFormProps {
 
 export function JobForm({ initialData, mode = 'create', templates = [] }: JobFormProps) {
     const router = useRouter()
+    const rubricTexts = extractRubricTexts(initialData?.screening_rubric)
     const { register, handleSubmit, watch, setValue, setError, clearErrors, formState: { errors, isSubmitting } } = useForm<JobFormData>({
         resolver: zodResolver(JobSchema),
         defaultValues: {
@@ -138,10 +174,12 @@ export function JobForm({ initialData, mode = 'create', templates = [] }: JobFor
             // flattened array to string for edit
             requirements: Array.isArray(initialData?.requirements) ? initialData?.requirements.join('\n') : '',
             template_id: initialData?.template_id || '',
-            prerequisites: formatJsonValue(initialData?.prerequisites, []),
+            essentials_text: normalizeLineList(initialData?.prerequisites),
+            positive_signals_text: rubricTexts.positive || '',
+            red_flags_text: rubricTexts.redFlags || '',
+            clarify_questions_text: rubricTexts.clarify || '',
             screening_questions: formatJsonValue(initialData?.screening_questions, []),
             interview_questions: formatJsonValue(initialData?.interview_questions, []),
-            screening_rubric: formatJsonValue(initialData?.screening_rubric, {}),
             message_templates: formatJsonValue(initialData?.message_templates, {}),
             compliance_lines: formatJsonValue(initialData?.compliance_lines, []),
             posting_date: formatDateTimeLocal(initialData?.posting_date ?? null),
@@ -151,6 +189,23 @@ export function JobForm({ initialData, mode = 'create', templates = [] }: JobFor
 
     // Auto-generate slug from title if in create mode and slug is empty
     const title = watch('title')
+    const essentialsText = watch('essentials_text') || ''
+    const positiveSignalsText = watch('positive_signals_text') || ''
+    const redFlagsText = watch('red_flags_text') || ''
+    const clarifyQuestionsText = watch('clarify_questions_text') || ''
+
+    const rubricPreview = React.useMemo(() => {
+        return buildRubricConfig({
+            prerequisites: essentialsText,
+            screening_rubric: {
+                score_thresholds: rubricTexts.thresholds ?? undefined,
+                notes: rubricTexts.notes ?? undefined,
+                positive_signals_text: positiveSignalsText,
+                red_flags_text: redFlagsText,
+                clarify_questions_text: clarifyQuestionsText,
+            }
+        })
+    }, [essentialsText, positiveSignalsText, redFlagsText, clarifyQuestionsText, rubricTexts.thresholds, rubricTexts.notes])
     React.useEffect(() => {
         if (mode === 'create' && title) {
             const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
@@ -167,7 +222,7 @@ export function JobForm({ initialData, mode = 'create', templates = [] }: JobFor
         const parsedJson: Record<string, unknown> = {}
 
         JSON_FIELDS.forEach((field) => {
-            const parsed = parseJsonField(data[field.name], field.expected)
+            const parsed = parseJsonField(data[field.name], field.expected, field.allowPlainText)
             if (parsed.error) {
                 jsonErrors[field.name] = parsed.error
             } else {
@@ -185,10 +240,24 @@ export function JobForm({ initialData, mode = 'create', templates = [] }: JobFor
             return
         }
 
+        const { essentials_text, positive_signals_text, red_flags_text, clarify_questions_text, ...rest } = data
+        const rubricMeta = initialData?.screening_rubric && typeof initialData.screening_rubric === 'object' && !Array.isArray(initialData.screening_rubric)
+            ? initialData.screening_rubric
+            : null
+        const rubricPayload = {
+            score_thresholds: rubricTexts.thresholds ?? (rubricMeta as any)?.score_thresholds ?? undefined,
+            notes: rubricTexts.notes ?? (rubricMeta as any)?.notes ?? undefined,
+            positive_signals_text: (positive_signals_text || '').trim(),
+            red_flags_text: (red_flags_text || '').trim(),
+            clarify_questions_text: (clarify_questions_text || '').trim(),
+        }
+
         const payload = {
-            ...data,
+            ...rest,
             template_id: data.template_id || null,
             requirements: data.requirements ? data.requirements.split('\n').filter(Boolean) : [],
+            prerequisites: (essentials_text || '').trim(),
+            screening_rubric: rubricPayload,
             ...parsedJson,
             posting_date: data.posting_date ? new Date(data.posting_date).toISOString() : null,
             closing_date: data.closing_date ? new Date(data.closing_date).toISOString() : null,
@@ -288,13 +357,46 @@ export function JobForm({ initialData, mode = 'create', templates = [] }: JobFor
 
             <div className="border border-gray-200 rounded-lg p-4 space-y-4">
                 <div>
+                    <h3 className="text-sm font-semibold text-gray-900">Screening criteria (plain text)</h3>
+                    <p className="text-xs text-gray-500">One item per line. These are compiled into the internal screening rubric.</p>
+                </div>
+                <FormGroup label="Essentials (non-negotiables)" help="Only mark NO when explicitly contradicted. Missing info should be Clarify." error={errors.essentials_text?.message}>
+                    <Textarea {...register('essentials_text')} rows={5} placeholder="Lives within 15 minutes of TW19 6AQ" error={!!errors.essentials_text} />
+                </FormGroup>
+                <FormGroup label="Positive signals (nice-to-have)" help="Used for fit scoring and ordering." error={errors.positive_signals_text?.message}>
+                    <Textarea {...register('positive_signals_text')} rows={5} placeholder="Solo shifts, cellar work, stock handling" error={!!errors.positive_signals_text} />
+                </FormGroup>
+                <FormGroup label="Red flags (do not auto-reject)" help="If present, flag for review or clarify." error={errors.red_flags_text?.message}>
+                    <Textarea {...register('red_flags_text')} rows={4} placeholder="Only weekdays, looking for temporary work" error={!!errors.red_flags_text} />
+                </FormGroup>
+                <FormGroup label="Clarify questions" help="Shown when essentials are unclear." error={errors.clarify_questions_text?.message}>
+                    <Textarea {...register('clarify_questions_text')} rows={4} placeholder="Can you prove right to work in the UK before a trial shift?" error={!!errors.clarify_questions_text} />
+                </FormGroup>
+                <div className="text-xs text-gray-600 space-y-1">
+                    <div className="font-semibold text-gray-700">Rubric preview</div>
+                    {rubricPreview.items.length ? (
+                        <div className="space-y-1">
+                            {rubricPreview.items.map((item) => (
+                                <div key={item.key}>
+                                    {item.essential ? 'Essential' : 'Signal'}: {item.label}
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div>No rubric items yet.</div>
+                    )}
+                </div>
+            </div>
+
+            <div className="border border-gray-200 rounded-lg p-4 space-y-4">
+                <div>
                     <h3 className="text-sm font-semibold text-gray-900">Advanced configuration (optional)</h3>
-                    <p className="text-xs text-gray-500">Override template defaults for this job.</p>
+                    <p className="text-xs text-gray-500">Override template defaults for interview packs or message drafts.</p>
                     <div className="mt-2 space-y-2 text-xs text-gray-500">
                         <p>Use this section only when you need to fine-tune screening, interview packs, or message drafts for this specific job.</p>
                         <p>Each field must be valid JSON (double quotes, no trailing commas). Leave a field empty or keep []/{} to inherit the template defaults.</p>
                         <p>Arrays can be strings or objects. Objects can include key, label, question, prompt, essential, type, and weight to give the AI more structure.</p>
-                        <p>Prerequisites, screening questions, and the rubric guide AI screening. Interview questions appear in interview packs. Message templates and compliance lines shape candidate emails.</p>
+                        <p>Screening questions guide candidate answers. Interview questions appear in interview packs. Message templates and compliance lines shape candidate emails.</p>
                         <p>
                             Message template keys: invite, clarify, reject, feedback. Variables:{' '}
                             {'{{first_name}}'}, {'{{last_name}}'}, {'{{full_name}}'}, {'{{job_title}}'}, {'{{location}}'}, {'{{company}}'}.

@@ -1171,6 +1171,7 @@ export class UnifiedJobQueue {
         }
 
         const runType = (payload.runType || payload.run_type || (force ? 'manual' : 'auto')) as string
+        const screeningMode = runType === 'second_opinion' ? 'second_opinion' : 'default'
         const runReason = (payload.runReason || payload.run_reason || null) as string | null
         const runStart = new Date().toISOString()
         let runId: string | null = null
@@ -1229,13 +1230,14 @@ export class UnifiedJobQueue {
             job,
             candidate,
             application,
+            mode: screeningMode,
           })
         } catch (screenError: any) {
           const errorMessage = screenError?.message || 'Screening failed'
           if (runId) {
-            await supabase
-              .from('hiring_screening_runs')
-              .update({
+              await supabase
+            .from('hiring_screening_runs')
+            .update({
                 status: 'failed',
                 error_message: errorMessage,
                 completed_at: new Date().toISOString(),
@@ -1261,8 +1263,11 @@ export class UnifiedJobQueue {
           concerns: screeningResult.concerns ?? [],
           rationale: screeningResult.rationale,
           experience_analysis: screeningResult.experience_analysis ?? null,
+          computed_signals: screeningResult.computed_signals ?? null,
+          clarify_questions: screeningResult.clarify_questions ?? [],
           draft_replies: screeningResult.draft_replies ?? null,
           confidence: screeningResult.confidence,
+          diagnostics: screeningResult.diagnostics ?? null,
           guardrails_followed: screeningResult.guardrails_followed ?? null,
           model_score: screeningResult.model_score ?? null,
           model_recommendation: screeningResult.model_recommendation ?? null,
@@ -1301,7 +1306,11 @@ export class UnifiedJobQueue {
               candidate_snapshot: screeningOutcome.candidateSnapshot,
               rubric_snapshot: screeningOutcome.rubricSnapshot,
               screener_answers: screeningOutcome.screenerAnswers ?? {},
-              result_raw: screeningOutcome.raw ?? {},
+              result_raw: {
+                ...(screeningOutcome.raw ?? {}),
+                computed_signals: screeningResult.computed_signals ?? null,
+                clarify_questions: screeningResult.clarify_questions ?? [],
+              },
               score_raw: screeningOutcome.raw.model_score ?? null,
               recommendation_raw: screeningOutcome.raw.model_recommendation ?? null,
               score_calibrated: screeningResult.score,

@@ -237,6 +237,7 @@ export async function generateHiringMessageDraft(input: {
     job: HiringJob
     candidate: HiringCandidate
     application: HiringApplication
+    rejectionReason?: string
 }): Promise<HiringMessageDraft> {
     const { entry, template } = getMessageTemplate(input.job, input.messageType)
     const complianceLines = getComplianceLines(input.job, template)
@@ -277,6 +278,7 @@ export async function generateHiringMessageDraft(input: {
     const systemPrompt = `You write warm, respectful hiring emails from Peter Pitcher (Tenant) at The Anchor.
 Use British English, keep it concise (roughly 120-180 words), and keep the tone friendly and professional.
 If the message type is feedback, provide supportive post-interview feedback without quoting internal notes.
+If a specific rejection reason is provided, frame it politely. If NOT provided, do NOT assume a reason (like right to work) - instead use a generic "moved forward with other candidates" phrasing.
 Include the compliance lines exactly as provided, but strictly formatted as a bulleted list using the "•" character, at the end of the message.`
 
     const templateContext = entry?.body
@@ -289,6 +291,7 @@ Include the compliance lines exactly as provided, but strictly formatted as a bu
         `Candidate name: ${input.candidate.first_name} ${input.candidate.last_name}`,
         `Outcome status: ${outcomeStatus ?? 'n/a'}`,
         `Outcome reason category: ${outcomeCategory ?? 'n/a'}`,
+        input.rejectionReason ? `Specific rejection reason (USE THIS): ${input.rejectionReason}` : `Specific rejection reason: none (use generic fallback).`,
         `Screening score: ${input.application.ai_score ?? 'N/A'}`,
         `Recommendation: ${input.application.ai_recommendation ?? 'N/A'}`,
         strengths.length ? `Strengths: ${strengths.join('; ')}` : 'Strengths: none provided.',
