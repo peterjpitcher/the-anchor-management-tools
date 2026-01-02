@@ -372,6 +372,117 @@ export class UnifiedJobQueue {
     return claimed
   }
 
+  private async handleJobFailureSideEffects(
+    supabase: ReturnType<typeof createAdminClient>,
+    job: Pick<Job, 'id' | 'type' | 'payload'>,
+    errorMessage: string,
+    willRetry: boolean
+  ) {
+    const payload = job.payload ?? {}
+    const retrySuffix = willRetry ? ' (retrying)' : ''
+    const message = `${errorMessage}${retrySuffix}`
+
+    if (job.type === 'screen_application') {
+      const applicationId = typeof payload.applicationId === 'string' ? payload.applicationId : null
+      if (!applicationId) return
+
+      const now = new Date().toISOString()
+      const nextStatus = willRetry ? 'pending' : 'failed'
+
+      const { error: updateError } = await supabase
+        .from('hiring_applications')
+        .update({
+          screening_status: nextStatus,
+          screening_error: message,
+          screening_updated_at: now,
+        })
+        .eq('id', applicationId)
+        .in('screening_status', ['pending', 'processing'])
+
+      if (updateError) {
+        logger.warn('Failed to update screening status after job failure', {
+          error: updateError,
+          metadata: { applicationId, jobId: job.id }
+        })
+      }
+
+      const { data: run, error: runError } = await supabase
+        .from('hiring_screening_runs')
+        .select('id')
+        .eq('application_id', applicationId)
+        .eq('status', 'processing')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (runError) {
+        logger.warn('Failed to load screening run after job failure', {
+          error: runError,
+          metadata: { applicationId, jobId: job.id }
+        })
+      } else if (run?.id) {
+        const { error: runUpdateError } = await supabase
+          .from('hiring_screening_runs')
+          .update({
+            status: 'failed',
+            error_message: message,
+            completed_at: now,
+          })
+          .eq('id', run.id)
+
+        if (runUpdateError) {
+          logger.warn('Failed to update screening run after job failure', {
+            error: runUpdateError,
+            metadata: { applicationId, runId: run.id, jobId: job.id }
+          })
+        }
+      }
+    }
+
+    if (job.type === 'parse_cv') {
+      const candidateId = typeof payload.candidateId === 'string' ? payload.candidateId : null
+      const applicationId = typeof payload.applicationId === 'string' ? payload.applicationId : null
+      const now = new Date().toISOString()
+
+      if (candidateId) {
+        const { error: updateError } = await supabase
+          .from('hiring_candidates')
+          .update({
+            parsing_status: 'failed',
+            parsing_error: message,
+            parsing_updated_at: now,
+          })
+          .eq('id', candidateId)
+
+        if (updateError) {
+          logger.warn('Failed to update parsing status after job failure', {
+            error: updateError,
+            metadata: { candidateId, jobId: job.id }
+          })
+        }
+      }
+
+      if (applicationId) {
+        try {
+          await this.enqueue(
+            'screen_application',
+            {
+              applicationId,
+              runType: 'auto',
+              runReason: 'parse_cv_failed'
+            },
+            { unique: `screen_application:${applicationId}` }
+          )
+        } catch (enqueueError) {
+          logger.warn('Failed to enqueue screening after parsing job failure', {
+            error: enqueueError as Error,
+            metadata: { applicationId, jobId: job.id }
+          })
+        }
+      }
+    }
+  }
+
   private async resetStaleJobs(supabase: ReturnType<typeof createAdminClient>) {
     if (!Number.isFinite(STALE_JOB_MINUTES) || STALE_JOB_MINUTES <= 0) {
       return
@@ -379,7 +490,7 @@ export class UnifiedJobQueue {
 
     const { data, error } = await supabase
       .from('jobs')
-      .select('id, attempts, max_attempts, started_at, lease_expires_at')
+      .select('id, type, payload, attempts, max_attempts, started_at, lease_expires_at')
       .eq('status', 'processing')
       .in('type', SUPPORTED_JOB_TYPES)
 
@@ -388,8 +499,9 @@ export class UnifiedJobQueue {
       return
     }
 
+    const typedJobs = (data ?? []) as Array<Pick<Job, 'id' | 'type' | 'payload' | 'attempts' | 'max_attempts' | 'started_at' | 'lease_expires_at'>>
     const cutoffMs = Date.now() - STALE_JOB_MINUTES * 60 * 1000
-    const staleJobs = (data ?? []).filter((job) => {
+    const staleJobs = typedJobs.filter((job) => {
       const leaseMs = job.lease_expires_at ? Date.parse(job.lease_expires_at) : Number.NaN
       if (Number.isFinite(leaseMs)) {
         return leaseMs <= Date.now()
@@ -407,10 +519,13 @@ export class UnifiedJobQueue {
     const now = new Date().toISOString()
 
     await Promise.allSettled(
-      staleJobs.map((job) => {
+      staleJobs.map(async (job) => {
         const attempts = Number(job.attempts ?? 0)
         const maxAttempts = Number(job.max_attempts ?? 3)
         const shouldRetry = attempts < maxAttempts
+        const errorMessage = shouldRetry
+          ? 'Job timed out - reset to pending'
+          : 'Job timed out - max attempts reached'
         const update = shouldRetry
           ? {
             status: 'pending',
@@ -419,7 +534,7 @@ export class UnifiedJobQueue {
             processing_token: null,
             lease_expires_at: null,
             last_heartbeat_at: null,
-            error_message: 'Job timed out - reset to pending',
+            error_message: errorMessage,
             updated_at: now,
           }
           : {
@@ -428,13 +543,20 @@ export class UnifiedJobQueue {
             processing_token: null,
             lease_expires_at: null,
             last_heartbeat_at: null,
-            error_message: 'Job timed out - max attempts reached',
+            error_message: errorMessage,
             updated_at: now,
           }
-        return supabase
+        const { error: updateError } = await supabase
           .from('jobs')
           .update(update)
           .eq('id', job.id)
+
+        if (updateError) {
+          logger.warn('Failed to reset stale job', { error: updateError, metadata: { jobId: job.id } })
+          return
+        }
+
+        await this.handleJobFailureSideEffects(supabase, job, errorMessage, shouldRetry)
       })
     )
 
@@ -586,6 +708,7 @@ export class UnifiedJobQueue {
       }
 
       await failureUpdate
+      await this.handleJobFailureSideEffects(supabase, job, errorMessage, shouldRetry)
 
       logger.error(`Job failed: ${job.type}`, {
         error: error as Error,
@@ -609,290 +732,365 @@ export class UnifiedJobQueue {
     // Import handlers dynamically to avoid circular dependencies
     switch (type) {
       case 'parse_cv': {
-        const { parseResumeWithUsage } = await import('@/lib/hiring/parsing')
-        const { createAdminClient } = await import('@/lib/supabase/admin')
-
-        const supabase = createAdminClient()
-        const candidateId = payload.candidateId as string | undefined
-        const resumeUrl = payload.resumeUrl as string | undefined
-        const storagePath = payload.storagePath as string | undefined
-        const documentId = payload.documentId as string | undefined
-        const applicationId = payload.applicationId as string | null | undefined
-        const jobId = payload.jobId as string | null | undefined
-
-        logParseDebug('parse_cv job received', {
-          candidateId,
-          documentId,
-          applicationId,
-          jobId,
-          hasStoragePath: Boolean(storagePath),
-          hasResumeUrl: Boolean(resumeUrl),
-        })
-
-        if (!candidateId) {
-          throw new Error('Missing candidateId for parse_cv job')
-        }
-
-        const candidateResponse = await supabase
-          .from('hiring_candidates')
-          .select('email, secondary_emails, first_name, last_name, phone, location, current_profile_version_id')
-          .eq('id', candidateId)
-          .single()
-
-        if (candidateResponse.error) {
-          throw new Error(`Candidate not found: ${candidateResponse.error.message}`)
-        }
-
-        const candidate = candidateResponse.data
-
-        logParseDebug('Candidate loaded', {
-          candidateId,
-          hasPlaceholderName: candidate?.first_name === 'Parsing' || candidate?.last_name === 'CV...',
-        })
-
-        const documentResponse = documentId
-          ? await supabase
-            .from('hiring_candidate_documents')
-            .select('*')
-            .eq('id', documentId)
-            .single()
-          : null
-
-        const document = documentResponse?.data ?? null
-
-        const resolvedStoragePath =
-          storagePath || (document?.storage_path && !document.storage_path.startsWith('http') ? document.storage_path : undefined)
-        const resolvedResumeUrl =
-          resumeUrl || (document?.storage_path?.startsWith('http') ? document.storage_path : undefined)
-
-        logParseDebug('Resolved resume source', {
-          candidateId,
-          resolvedStoragePath: resolvedStoragePath ?? null,
-          resolvedResumeUrl: resolvedResumeUrl ?? null,
-        })
-
-        let buffer: Buffer
-        let contentType: string
-
-        const guessContentType = (fileName?: string | null) => {
-          const extension = fileName?.split('.').pop()?.toLowerCase()
-          switch (extension) {
-            case 'pdf':
-              return 'application/pdf'
-            case 'doc':
-              return 'application/msword'
-            case 'docx':
-              return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-            case 'jpg':
-            case 'jpeg':
-              return 'image/jpeg'
-            case 'png':
-              return 'image/png'
-            case 'gif':
-              return 'image/gif'
-            default:
-              return 'application/octet-stream'
-          }
-        }
-
-        if (resolvedStoragePath) {
-          logParseDebug('Downloading resume from storage', { storagePath: resolvedStoragePath })
-          const { data, error } = await supabase.storage
-            .from('hiring-docs')
-            .download(resolvedStoragePath)
-
-          if (error || !data) {
-            throw new Error(`Failed to download resume from storage: ${error?.message || 'Unknown error'}`)
-          }
-
-          const arrayBuffer = await data.arrayBuffer()
-          buffer = Buffer.from(arrayBuffer)
-          contentType = data.type || document?.mime_type || guessContentType(document?.file_name)
-          logParseDebug('Downloaded resume from storage', {
-            storagePath: resolvedStoragePath,
-            contentType,
-            bytes: buffer.length,
-          })
-        } else if (resolvedResumeUrl && resolvedResumeUrl.startsWith('http')) {
-          logParseDebug('Downloading resume from URL', { resumeUrl: resolvedResumeUrl })
-          const fetchRes = await fetch(resolvedResumeUrl, { cache: 'no-store' })
-          if (!fetchRes.ok) throw new Error(`Failed to download resume: ${fetchRes.statusText}`)
-          const arrayBuffer = await fetchRes.arrayBuffer()
-          buffer = Buffer.from(arrayBuffer)
-          contentType = fetchRes.headers.get('content-type') || 'application/pdf'
-          logParseDebug('Downloaded resume from URL', {
-            resumeUrl: resolvedResumeUrl,
-            contentType,
-            bytes: buffer.length,
-          })
-        } else {
-          throw new Error('Resume URL or storage path is required')
-        }
-
-        logParseDebug('Parsing resume content', { candidateId, contentType, bytes: buffer.length })
-        const parseResult = await parseResumeWithUsage(buffer, contentType)
-        const parsedData = parseResult.parsedData
-
-        logParseDebug('Parsed resume content', {
-          candidateId,
-          model: parseResult.usage?.model ?? parseResult.model,
-          fields: parsedData ? Object.keys(parsedData) : [],
-        })
-
-        const isPlaceholderEmail = (value?: string | null) =>
-          !value || value.startsWith('pending-') || value.endsWith('@hiring.temp')
-
-        const normalizeEmail = (value?: string | null) => value?.trim().toLowerCase() || ''
-
-        const updates: Record<string, any> = {
-          parsed_data: parsedData
-        }
-
-        if ((candidate.first_name === 'Parsing' || !candidate.first_name) && parsedData.first_name) {
-          updates.first_name = parsedData.first_name
-        }
-        if ((candidate.last_name === 'CV...' || !candidate.last_name) && parsedData.last_name) {
-          updates.last_name = parsedData.last_name
-        }
-        if (isPlaceholderEmail(candidate.email) && parsedData.email) {
-          updates.email = parsedData.email
-        }
-        if (!candidate.phone && parsedData.phone) {
-          updates.phone = parsedData.phone
-        }
-        if (!candidate.location && parsedData.location) {
-          updates.location = parsedData.location
-        }
-
-        const secondaryEmails = new Set<string>(Array.isArray(candidate.secondary_emails) ? candidate.secondary_emails : [])
-        const parsedPrimaryEmail = normalizeEmail(parsedData.email)
-        const existingPrimaryEmail = normalizeEmail(candidate.email)
-
-        if (parsedPrimaryEmail && parsedPrimaryEmail !== existingPrimaryEmail && !isPlaceholderEmail(candidate.email)) {
-          secondaryEmails.add(parsedPrimaryEmail)
-        }
-
-        if (Array.isArray(parsedData.secondary_emails)) {
-          parsedData.secondary_emails.forEach((email) => {
-            const normalized = normalizeEmail(email)
-            if (normalized && normalized !== existingPrimaryEmail) {
-              secondaryEmails.add(normalized)
-            }
-          })
-        }
-
-        if (secondaryEmails.size > 0) {
-          updates.secondary_emails = Array.from(secondaryEmails)
-        }
-
-        let profileVersionId: string | null = null
+        // Wrapped in try-catch to ensure we update candidate status on failure
         try {
-          const latestVersion = await supabase
-            .from('hiring_candidate_profile_versions')
-            .select('id, version_number, parsed_data')
-            .eq('candidate_id', candidateId)
-            .order('version_number', { ascending: false })
-            .limit(1)
-            .maybeSingle()
+          const { parseResumeWithUsage } = await import('@/lib/hiring/parsing')
+          const { createAdminClient } = await import('@/lib/supabase/admin')
 
-          const previousData = latestVersion.data?.parsed_data || {}
-          const diffData: Record<string, any> = {}
-          const allKeys = new Set([
-            ...Object.keys(previousData || {}),
-            ...Object.keys(parsedData || {})
-          ])
+          const supabase = createAdminClient()
+          const candidateId = payload.candidateId as string | undefined
+          const resumeUrl = payload.resumeUrl as string | undefined
+          const storagePath = payload.storagePath as string | undefined
+          const documentId = payload.documentId as string | undefined
+          const applicationId = payload.applicationId as string | null | undefined
+          const jobId = payload.jobId as string | null | undefined
 
-          allKeys.forEach((key) => {
-            const beforeValue = (previousData as any)?.[key]
-            const afterValue = (parsedData as any)?.[key]
-            if (JSON.stringify(beforeValue) !== JSON.stringify(afterValue)) {
-              diffData[key] = { before: beforeValue ?? null, after: afterValue ?? null }
-            }
+          logParseDebug('parse_cv job received', {
+            candidateId,
+            documentId,
+            applicationId,
+            jobId,
+            hasStoragePath: Boolean(storagePath),
+            hasResumeUrl: Boolean(resumeUrl),
           })
 
-          const diffSummary = Object.keys(diffData).length
-            ? `Updated fields: ${Object.keys(diffData).join(', ')}`
-            : 'No changes detected'
+          if (!candidateId) {
+            throw new Error('Missing candidateId for parse_cv job')
+          }
 
-          const { data: versionRow, error: versionError } = await supabase
-            .from('hiring_candidate_profile_versions')
-            .insert({
-              candidate_id: candidateId,
-              document_id: document?.id || documentId || null,
-              version_number: (latestVersion.data?.version_number || 0) + 1,
-              parsed_data: parsedData,
-              diff_summary: diffSummary,
-              diff_data: diffData,
-            })
-            .select('id')
+          const candidateResponse = await supabase
+            .from('hiring_candidates')
+            .select('email, secondary_emails, first_name, last_name, phone, location, current_profile_version_id')
+            .eq('id', candidateId)
             .single()
 
-          if (versionError) {
-            throw new Error(versionError.message)
+          if (candidateResponse.error) {
+            throw new Error(`Candidate not found: ${candidateResponse.error.message}`)
           }
 
-          profileVersionId = versionRow?.id || null
-        } catch (error) {
-          logger.warn('Failed to create candidate profile version', { error: error as Error })
-        }
+          const candidate = candidateResponse.data
 
-        if (profileVersionId) {
-          updates.current_profile_version_id = profileVersionId
-        }
+          logParseDebug('Candidate loaded', {
+            candidateId,
+            hasPlaceholderName: candidate?.first_name === 'Parsing' || candidate?.last_name === 'CV...',
+          })
 
-        const { error: updateError } = await supabase
-          .from('hiring_candidates')
-          .update(updates)
-          .eq('id', candidateId)
-
-        if (updateError) throw new Error(`Failed to update candidate: ${updateError.message}`)
-
-        logParseDebug('Updated candidate profile', { candidateId })
-
-        await supabase.from('hiring_candidate_events').insert({
-          candidate_id: candidateId,
-          application_id: applicationId || null,
-          job_id: jobId || null,
-          event_type: 'cv_parsed',
-          source: 'system',
-          metadata: {
-            document_id: document?.id || documentId || null,
-            resume_url: resolvedResumeUrl || null,
-            storage_path: resolvedStoragePath || null,
-          },
-        })
-
-        if (parseResult.usage) {
-          const usage = parseResult.usage
-          const contextParts = ['hiring_parsing', candidateId]
-          if (document?.id || documentId) {
-            contextParts.push(String(document?.id || documentId))
+          try {
+            await supabase
+              .from('hiring_candidates')
+              .update({
+                parsing_status: 'processing',
+                parsing_error: null,
+                parsing_updated_at: new Date().toISOString(),
+              })
+              .eq('id', candidateId)
+          } catch (statusError) {
+            logger.warn('Failed to mark candidate parsing as processing', { error: statusError as Error })
           }
-          const context = contextParts.join(':')
-          const { error: usageError } = await (supabase.from('ai_usage_events') as any).insert([
-            {
-              context,
-              model: usage.model,
-              prompt_tokens: usage.promptTokens,
-              completion_tokens: usage.completionTokens,
-              total_tokens: usage.totalTokens,
-              cost: usage.cost,
+
+          const documentResponse = documentId
+            ? await supabase
+              .from('hiring_candidate_documents')
+              .select('*')
+              .eq('id', documentId)
+              .single()
+            : null
+
+          const document = documentResponse?.data ?? null
+
+          const resolvedStoragePath =
+            storagePath || (document?.storage_path && !document.storage_path.startsWith('http') ? document.storage_path : undefined)
+          const resolvedResumeUrl =
+            resumeUrl || (document?.storage_path?.startsWith('http') ? document.storage_path : undefined)
+
+          logParseDebug('Resolved resume source', {
+            candidateId,
+            resolvedStoragePath: resolvedStoragePath ?? null,
+            resolvedResumeUrl: resolvedResumeUrl ?? null,
+          })
+
+          let buffer: Buffer
+          let contentType: string
+
+          const guessContentType = (fileName?: string | null) => {
+            const extension = fileName?.split('.').pop()?.toLowerCase()
+            switch (extension) {
+              case 'pdf':
+                return 'application/pdf'
+              case 'doc':
+                return 'application/msword'
+              case 'docx':
+                return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+              case 'jpg':
+              case 'jpeg':
+                return 'image/jpeg'
+              case 'png':
+                return 'image/png'
+              case 'gif':
+                return 'image/gif'
+              default:
+                return 'application/octet-stream'
+            }
+          }
+
+          if (resolvedStoragePath) {
+            logParseDebug('Downloading resume from storage', { storagePath: resolvedStoragePath })
+            const { data, error } = await supabase.storage
+              .from('hiring-docs')
+              .download(resolvedStoragePath)
+
+            if (error || !data) {
+              throw new Error(`Failed to download resume from storage: ${error?.message || 'Unknown error'}`)
+            }
+
+            const arrayBuffer = await data.arrayBuffer()
+            buffer = Buffer.from(arrayBuffer)
+            contentType = data.type || document?.mime_type || guessContentType(document?.file_name)
+            logParseDebug('Downloaded resume from storage', {
+              storagePath: resolvedStoragePath,
+              contentType,
+              bytes: buffer.length,
+            })
+          } else if (resolvedResumeUrl && resolvedResumeUrl.startsWith('http')) {
+            logParseDebug('Downloading resume from URL', { resumeUrl: resolvedResumeUrl })
+            const fetchRes = await fetch(resolvedResumeUrl, { cache: 'no-store' })
+            if (!fetchRes.ok) throw new Error(`Failed to download resume: ${fetchRes.statusText}`)
+            const arrayBuffer = await fetchRes.arrayBuffer()
+            buffer = Buffer.from(arrayBuffer)
+            contentType = fetchRes.headers.get('content-type') || 'application/pdf'
+            logParseDebug('Downloaded resume from URL', {
+              resumeUrl: resolvedResumeUrl,
+              contentType,
+              bytes: buffer.length,
+            })
+          } else {
+            throw new Error('Resume URL or storage path is required')
+          }
+
+          logParseDebug('Parsing resume content', { candidateId, contentType, bytes: buffer.length })
+          const parseResult = await parseResumeWithUsage(buffer, contentType)
+          const parsedData = parseResult.parsedData
+
+          logParseDebug('Parsed resume content', {
+            candidateId,
+            model: parseResult.usage?.model ?? parseResult.model,
+            fields: parsedData ? Object.keys(parsedData) : [],
+          })
+
+          const isPlaceholderEmail = (value?: string | null) =>
+            !value || value.startsWith('pending-') || value.endsWith('@hiring.temp')
+
+          const normalizeEmail = (value?: string | null) => value?.trim().toLowerCase() || ''
+
+          const updates: Record<string, any> = {
+            parsed_data: parsedData,
+            resume_text: parseResult.resumeText || null,
+            parsing_status: 'success',
+            parsing_error: null,
+            parsing_updated_at: new Date().toISOString(),
+          }
+
+          if ((candidate.first_name === 'Parsing' || !candidate.first_name) && parsedData.first_name) {
+            updates.first_name = parsedData.first_name
+          }
+          if ((candidate.last_name === 'CV...' || !candidate.last_name) && parsedData.last_name) {
+            updates.last_name = parsedData.last_name
+          }
+          if (isPlaceholderEmail(candidate.email) && parsedData.email) {
+            updates.email = parsedData.email
+          }
+          if (!candidate.phone && parsedData.phone) {
+            updates.phone = parsedData.phone
+          }
+          if (!candidate.location && parsedData.location) {
+            updates.location = parsedData.location
+          }
+
+          const secondaryEmails = new Set<string>(Array.isArray(candidate.secondary_emails) ? candidate.secondary_emails : [])
+          const parsedPrimaryEmail = normalizeEmail(parsedData.email)
+          const existingPrimaryEmail = normalizeEmail(candidate.email)
+
+          if (parsedPrimaryEmail && parsedPrimaryEmail !== existingPrimaryEmail && !isPlaceholderEmail(candidate.email)) {
+            secondaryEmails.add(parsedPrimaryEmail)
+          }
+
+          if (Array.isArray(parsedData.secondary_emails)) {
+            parsedData.secondary_emails.forEach((email) => {
+              const normalized = normalizeEmail(email)
+              if (normalized && normalized !== existingPrimaryEmail) {
+                secondaryEmails.add(normalized)
+              }
+            })
+          }
+
+          if (secondaryEmails.size > 0) {
+            updates.secondary_emails = Array.from(secondaryEmails)
+          }
+
+          let profileVersionId: string | null = null
+          try {
+            const latestVersion = await supabase
+              .from('hiring_candidate_profile_versions')
+              .select('id, version_number, parsed_data')
+              .eq('candidate_id', candidateId)
+              .order('version_number', { ascending: false })
+              .limit(1)
+              .maybeSingle()
+
+            const previousData = latestVersion.data?.parsed_data || {}
+            const diffData: Record<string, any> = {}
+            const allKeys = new Set([
+              ...Object.keys(previousData || {}),
+              ...Object.keys(parsedData || {})
+            ])
+
+            allKeys.forEach((key) => {
+              const beforeValue = (previousData as any)?.[key]
+              const afterValue = (parsedData as any)?.[key]
+              if (JSON.stringify(beforeValue) !== JSON.stringify(afterValue)) {
+                diffData[key] = { before: beforeValue ?? null, after: afterValue ?? null }
+              }
+            })
+
+            const diffSummary = Object.keys(diffData).length
+              ? `Updated fields: ${Object.keys(diffData).join(', ')}`
+              : 'No changes detected'
+
+            const { data: versionRow, error: versionError } = await supabase
+              .from('hiring_candidate_profile_versions')
+              .insert({
+                candidate_id: candidateId,
+                document_id: document?.id || documentId || null,
+                version_number: (latestVersion.data?.version_number || 0) + 1,
+                parsed_data: parsedData,
+                diff_summary: diffSummary,
+                diff_data: diffData,
+              })
+              .select('id')
+              .single()
+
+            if (versionError) {
+              throw new Error(versionError.message)
+            }
+
+            profileVersionId = versionRow?.id || null
+          } catch (error) {
+            logger.warn('Failed to create candidate profile version', { error: error as Error })
+          }
+
+          if (profileVersionId) {
+            updates.current_profile_version_id = profileVersionId
+          }
+
+          const { error: updateError } = await supabase
+            .from('hiring_candidates')
+            .update(updates)
+            .eq('id', candidateId)
+
+          if (updateError) throw new Error(`Failed to update candidate: ${updateError.message}`)
+
+          logParseDebug('Updated candidate profile', { candidateId })
+
+          await supabase.from('hiring_candidate_events').insert({
+            candidate_id: candidateId,
+            application_id: applicationId || null,
+            job_id: jobId || null,
+            event_type: 'cv_parsed',
+            source: 'system',
+            metadata: {
+              document_id: document?.id || documentId || null,
+              resume_url: resolvedResumeUrl || null,
+              storage_path: resolvedStoragePath || null,
             },
-          ])
+          })
 
-          if (usageError) {
-            logger.warn('Failed to record parsing AI usage', { error: usageError })
+          const usageEntries = parseResult.usageBreakdown?.length
+            ? parseResult.usageBreakdown
+            : parseResult.usage
+              ? [{ label: 'structured_parse', ...parseResult.usage }]
+              : []
+
+          for (const entry of usageEntries) {
+            const contextParts = ['hiring_parsing', candidateId, entry.label]
+            if (document?.id || documentId) {
+              contextParts.push(String(document?.id || documentId))
+            }
+            const context = contextParts.join(':')
+            const { error: usageError } = await (supabase.from('ai_usage_events') as any).insert([
+              {
+                context,
+                model: entry.model,
+                prompt_tokens: entry.promptTokens,
+                completion_tokens: entry.completionTokens,
+                total_tokens: entry.totalTokens,
+                cost: entry.cost,
+              },
+            ])
+
+            if (usageError) {
+              logger.warn('Failed to record parsing AI usage', { error: usageError })
+            }
           }
-        }
 
-        if (applicationId) {
-          await this.enqueue(
-            'screen_application',
-            { applicationId },
-            { unique: `screen_application:${applicationId}` }
-          )
+          if (applicationId) {
+            await this.enqueue(
+              'screen_application',
+              { applicationId },
+              { unique: `screen_application:${applicationId}` }
+            )
+          }
+          return parsedData
+        } catch (error: any) {
+          const { createAdminClient } = await import('@/lib/supabase/admin')
+          const supabase = createAdminClient()
+          const candidateId = payload.candidateId as string | undefined
+          const applicationId = payload.applicationId as string | null | undefined
+          const jobId = payload.jobId as string | null | undefined
+          if (candidateId) {
+            // Update candidate to indicate failure so UI doesn't hang
+            try {
+              await supabase
+                .from('hiring_candidates')
+                .update({
+                  parsing_status: 'failed',
+                  parsing_error: error.message || 'Unknown parsing error',
+                  parsing_updated_at: new Date().toISOString(),
+                  parsed_data: {
+                    error: error.message || 'Unknown parsing error',
+                    failed_at: new Date().toISOString()
+                  },
+                  resume_text: null,
+                })
+                .eq('id', candidateId)
+
+              await supabase.from('hiring_candidate_events').insert({
+                candidate_id: candidateId,
+                application_id: applicationId || null,
+                job_id: jobId || null,
+                event_type: 'cv_parsing_failed',
+                source: 'system',
+                metadata: {
+                  error: error.message || 'Unknown parsing error',
+                },
+              })
+            } catch (cleanupError) {
+              logger.error('Failed to update candidate status on parsing failure', { error: cleanupError as Error })
+            }
+          }
+          if (applicationId) {
+            try {
+              await this.enqueue(
+                'screen_application',
+                { applicationId },
+                { unique: `screen_application:${applicationId}` }
+              )
+            } catch (enqueueError) {
+              logger.warn('Failed to enqueue screening after parsing failure', { error: enqueueError as Error })
+            }
+          }
+          logger.warn('Resume parsing failed, continuing workflow', { error })
+          return { failed: true, error: error.message || 'Parsing failed' }
         }
-        return parsedData
       }
 
       case 'screen_application': {
@@ -917,7 +1115,13 @@ export class UnifiedJobQueue {
             source,
             ai_score,
             ai_recommendation,
+            ai_score_raw,
+            ai_recommendation_raw,
+            ai_confidence,
             ai_screening_result,
+            screening_status,
+            screening_error,
+            latest_screening_run_id,
             screener_answers,
             candidate:hiring_candidates(*),
             job:hiring_jobs(*, template:hiring_job_templates(*))
@@ -962,37 +1166,107 @@ export class UnifiedJobQueue {
 
         let currentStage = application.stage
 
-        if (!force && (application.ai_score != null || application.ai_screening_result)) {
+        if (!force && application.screening_status === 'success' && application.latest_screening_run_id) {
           return { skipped: true, reason: 'already_screened' }
         }
 
+        const runType = (payload.runType || payload.run_type || (force ? 'manual' : 'auto')) as string
+        const runReason = (payload.runReason || payload.run_reason || null) as string | null
+        const runStart = new Date().toISOString()
+        let runId: string | null = null
+
+        try {
+          const { data: runRow, error: runError } = await supabase
+            .from('hiring_screening_runs')
+            .insert({
+              application_id: applicationId,
+              candidate_id: application.candidate_id,
+              job_id: application.job_id,
+              run_type: runType,
+              run_reason: runReason,
+              status: 'processing',
+              started_at: runStart,
+            })
+            .select('id')
+            .single()
+
+          if (runError) {
+            logger.warn('Failed to create screening run record', { error: runError })
+          } else {
+            runId = runRow?.id || null
+          }
+        } catch (runInsertError) {
+          logger.warn('Failed to create screening run record', { error: runInsertError as Error })
+        }
+
+        await supabase
+          .from('hiring_applications')
+          .update({
+            screening_status: 'processing',
+            screening_error: null,
+            screening_updated_at: runStart,
+          })
+          .eq('id', applicationId)
+
         if (application.stage === 'new') {
-          await supabase
+          const { data: stageUpdate } = await supabase
             .from('hiring_applications')
             .update({ stage: 'screening' })
             .eq('id', applicationId)
-          await logStageChange(currentStage, 'screening')
-          currentStage = 'screening'
+            .eq('stage', 'new')
+            .select('stage')
+            .maybeSingle()
+
+          if (stageUpdate?.stage === 'screening') {
+            await logStageChange(currentStage, 'screening')
+            currentStage = 'screening'
+          }
         }
 
-        const screeningOutcome = await screenApplicationWithAI({
-          job,
-          candidate,
-          application,
-        })
+        let screeningOutcome: Awaited<ReturnType<typeof screenApplicationWithAI>>
+        try {
+          screeningOutcome = await screenApplicationWithAI({
+            job,
+            candidate,
+            application,
+          })
+        } catch (screenError: any) {
+          const errorMessage = screenError?.message || 'Screening failed'
+          if (runId) {
+            await supabase
+              .from('hiring_screening_runs')
+              .update({
+                status: 'failed',
+                error_message: errorMessage,
+                completed_at: new Date().toISOString(),
+              })
+              .eq('id', runId)
+          }
+          await supabase
+            .from('hiring_applications')
+            .update({
+              screening_status: 'failed',
+              screening_error: errorMessage,
+              screening_updated_at: new Date().toISOString(),
+            })
+            .eq('id', applicationId)
+          throw screenError
+        }
 
         const screeningResult = screeningOutcome.result
-        const nextStage = currentStage === 'new' || currentStage === 'screening'
-          ? 'screened'
-          : currentStage
-
         const screeningPayload = {
           eligibility: screeningResult.eligibility,
+          evidence: screeningResult.evidence,
           strengths: screeningResult.strengths ?? [],
           concerns: screeningResult.concerns ?? [],
           rationale: screeningResult.rationale,
           experience_analysis: screeningResult.experience_analysis ?? null,
           draft_replies: screeningResult.draft_replies ?? null,
+          confidence: screeningResult.confidence,
+          guardrails_followed: screeningResult.guardrails_followed ?? null,
+          model_score: screeningResult.model_score ?? null,
+          model_recommendation: screeningResult.model_recommendation ?? null,
+          prompt_version: screeningOutcome.promptVersion,
           generated_at: new Date().toISOString(),
           model: screeningOutcome.usage?.model ?? screeningOutcome.model,
         }
@@ -1002,8 +1276,14 @@ export class UnifiedJobQueue {
           .update({
             ai_score: screeningResult.score,
             ai_recommendation: screeningResult.recommendation,
+            ai_score_raw: screeningResult.model_score ?? null,
+            ai_recommendation_raw: screeningResult.model_recommendation ?? null,
+            ai_confidence: screeningResult.confidence,
             ai_screening_result: screeningPayload,
-            stage: nextStage,
+            screening_status: 'success',
+            screening_error: null,
+            screening_updated_at: new Date().toISOString(),
+            latest_screening_run_id: runId,
           })
           .eq('id', applicationId)
 
@@ -1011,13 +1291,57 @@ export class UnifiedJobQueue {
           throw new Error(`Failed to update application screening: ${updateError.message}`)
         }
 
-        await logStageChange(currentStage, nextStage)
-        currentStage = nextStage
+        if (runId) {
+          await supabase
+            .from('hiring_screening_runs')
+            .update({
+              status: 'success',
+              completed_at: new Date().toISOString(),
+              job_snapshot: screeningOutcome.jobSnapshot,
+              candidate_snapshot: screeningOutcome.candidateSnapshot,
+              rubric_snapshot: screeningOutcome.rubricSnapshot,
+              screener_answers: screeningOutcome.screenerAnswers ?? {},
+              result_raw: screeningOutcome.raw ?? {},
+              score_raw: screeningOutcome.raw.model_score ?? null,
+              recommendation_raw: screeningOutcome.raw.model_recommendation ?? null,
+              score_calibrated: screeningResult.score,
+              recommendation_calibrated: screeningResult.recommendation,
+              confidence: screeningResult.confidence,
+              evidence: screeningResult.evidence ?? [],
+              strengths: screeningResult.strengths ?? [],
+              concerns: screeningResult.concerns ?? [],
+              experience_analysis: screeningResult.experience_analysis ?? null,
+              draft_replies: screeningResult.draft_replies ?? {},
+              usage: screeningOutcome.usage ?? {},
+              model: screeningOutcome.usage?.model ?? screeningOutcome.model,
+              temperature: screeningOutcome.temperature,
+              prompt_version: screeningOutcome.promptVersion,
+            })
+            .eq('id', runId)
+        }
+
+        if (currentStage === 'new' || currentStage === 'screening') {
+          const { data: stageUpdate } = await supabase
+            .from('hiring_applications')
+            .update({ stage: 'screened' })
+            .eq('id', applicationId)
+            .in('stage', ['new', 'screening'])
+            .select('stage')
+            .maybeSingle()
+
+          if (stageUpdate?.stage === 'screened') {
+            await logStageChange(currentStage, 'screened')
+            currentStage = 'screened'
+          }
+        }
 
         if (screeningOutcome.usage) {
+          const usageContext = runId
+            ? `hiring_screening:${applicationId}:${runId}`
+            : `hiring_screening:${applicationId}`
           const { error: usageError } = await (supabase.from('ai_usage_events') as any).insert([
             {
-              context: `hiring_screening:${applicationId}`,
+              context: usageContext,
               model: screeningOutcome.usage.model,
               prompt_tokens: screeningOutcome.usage.promptTokens,
               completion_tokens: screeningOutcome.usage.completionTokens,

@@ -716,6 +716,11 @@ export interface Database {
         Insert: Omit<HiringApplicationOverride, 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Omit<HiringApplicationOverride, 'id' | 'created_at' | 'updated_at'>>;
       };
+      hiring_screening_runs: {
+        Row: HiringScreeningRun;
+        Insert: Omit<HiringScreeningRun, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<HiringScreeningRun, 'id' | 'created_at' | 'updated_at'>>;
+      };
       hiring_interviews: {
         Row: HiringInterview;
         Insert: Omit<HiringInterview, 'id' | 'created_at' | 'updated_at'>;
@@ -790,6 +795,10 @@ export interface HiringCandidate {
   location?: string | null;
   resume_url?: string | null;
   parsed_data: any;
+  parsing_status?: string | null;
+  parsing_error?: string | null;
+  parsing_updated_at?: string | null;
+  resume_text?: string | null;
   search_vector?: any;
   current_profile_version_id?: string | null;
   anonymized_at?: string | null;
@@ -806,7 +815,14 @@ export interface HiringApplication {
   source: HiringCandidateSource;
   ai_score?: number | null;
   ai_recommendation?: string | null;
+  ai_score_raw?: number | null;
+  ai_recommendation_raw?: string | null;
+  ai_confidence?: number | null;
   ai_screening_result: any;
+  screening_status?: string | null;
+  screening_error?: string | null;
+  latest_screening_run_id?: string | null;
+  screening_updated_at?: string | null;
   screener_answers: any;
   interview_date?: string | null;
   outcome_status?: HiringApplicationOutcomeStatus | null;
@@ -815,6 +831,8 @@ export interface HiringApplication {
   outcome_notes?: string | null;
   outcome_recorded_at?: string | null;
   outcome_recorded_by?: string | null;
+  outcome_reviewed_at?: string | null;
+  outcome_reviewed_by?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -920,6 +938,40 @@ export interface HiringApplicationOverride {
   reason?: string | null;
   metadata: any;
   created_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HiringScreeningRun {
+  id: string;
+  application_id: string;
+  candidate_id: string;
+  job_id: string;
+  run_type: string;
+  run_reason?: string | null;
+  status: string;
+  error_message?: string | null;
+  model?: string | null;
+  temperature?: number | null;
+  prompt_version?: string | null;
+  job_snapshot: any;
+  candidate_snapshot: any;
+  rubric_snapshot: any;
+  screener_answers: any;
+  result_raw: any;
+  score_raw?: number | null;
+  recommendation_raw?: string | null;
+  score_calibrated?: number | null;
+  recommendation_calibrated?: string | null;
+  confidence?: number | null;
+  evidence: any;
+  strengths: any;
+  concerns: any;
+  experience_analysis?: string | null;
+  draft_replies: any;
+  usage: any;
+  started_at?: string | null;
+  completed_at?: string | null;
   created_at: string;
   updated_at: string;
 }

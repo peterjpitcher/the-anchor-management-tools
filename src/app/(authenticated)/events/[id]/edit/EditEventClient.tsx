@@ -58,7 +58,6 @@ export default function EditEventClient({ event, categories }: EditEventClientPr
                 label: 'Back to Event',
                 href: `/events/${event.id}`,
             }}
-            containerSize="xl"
         >
             <Card>
                 <EventFormGrouped

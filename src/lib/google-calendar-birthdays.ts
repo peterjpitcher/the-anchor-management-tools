@@ -1,4 +1,3 @@
-import { google } from 'googleapis';
 import { isCalendarConfigured, getOAuth2Client } from './google-calendar';
 import type { Employee } from '@/types/database';
 import { format, getYear } from 'date-fns';
@@ -13,8 +12,11 @@ interface EmployeeBirthday {
   email_address: string | null;
 }
 
-// Initialize the calendar API
-const calendar = google.calendar('v3');
+// Helper to get calendar client dynamically
+async function getCalendarClient() {
+  const { google } = await import('googleapis');
+  return google.calendar('v3');
+}
 
 // Generate a unique event ID for an employee's birthday
 function generateBirthdayEventId(employeeId: string): string {
@@ -43,32 +45,35 @@ export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Emp
       return null;
     }
 
+    // Get calendar client dynamically
+    const calendar = await getCalendarClient();
+
     console.log('[Birthday Calendar] Getting auth client...');
     const auth = await getOAuth2Client();
     const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
     console.log('[Birthday Calendar] Using calendar ID:', calendarId);
-    
+
     // Parse date of birth
     const dob = new Date(employee.date_of_birth);
     const eventId = generateBirthdayEventId(employee.employee_id);
-    
+
     // Calculate the start date for the recurring event
     // If the birthday has already passed this year, start from next year
     const currentYear = getYear(new Date());
     const currentYearBirthday = new Date(currentYear, dob.getMonth(), dob.getDate());
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     let startYear: number;
     if (currentYearBirthday >= today) {
       startYear = currentYear;
     } else {
       startYear = currentYear + 1;
     }
-    
+
     const startDate = new Date(startYear, dob.getMonth(), dob.getDate());
     const birthYear = dob.getFullYear();
-    
+
     const event = {
       id: eventId,
       summary: `🎂 ${employee.first_name} ${employee.last_name}'s Birthday`,
@@ -101,7 +106,7 @@ export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Emp
         ]
       }
     };
-    
+
     console.log('[Birthday Calendar] Event object prepared:', {
       summary: event.summary,
       eventId: eventId,
@@ -110,7 +115,7 @@ export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Emp
     });
 
     let response;
-    
+
     try {
       // Try to get existing event
       console.log('[Birthday Calendar] Checking for existing event:', eventId);
@@ -119,7 +124,7 @@ export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Emp
         calendarId,
         eventId
       });
-      
+
       // Update existing event
       console.log('[Birthday Calendar] Updating existing event:', eventId);
       response = await calendar.events.update({
@@ -146,7 +151,7 @@ export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Emp
         throw error;
       }
     }
-    
+
     return response.data.id || null;
   } catch (error: any) {
     // Provide more detailed error information
@@ -156,7 +161,7 @@ export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Emp
       errorDetails: error.errors,
       stack: error.stack
     });
-    
+
     if (error.message?.includes('authentication')) {
       console.error('[Birthday Calendar] Authentication error:', error.message);
       console.error('Please check your Google Calendar configuration in environment variables.');
@@ -176,7 +181,7 @@ export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Emp
     } else {
       console.error('[Birthday Calendar] Unexpected error:', error.message || error);
     }
-    
+
     // Don't throw the error, just return null to allow the operation to proceed
     return null;
   }
@@ -193,14 +198,16 @@ export async function deleteBirthdayCalendarEvent(employeeId: string): Promise<b
     const auth = await getOAuth2Client();
     const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
     const eventId = generateBirthdayEventId(employeeId);
-    
+
+    const calendar = await getCalendarClient();
+
     try {
       await calendar.events.delete({
         auth: auth as any,
         calendarId,
         eventId
       });
-      
+
       console.log('[Birthday Calendar] Deleted birthday event:', eventId);
       return true;
     } catch (error: any) {
@@ -238,7 +245,7 @@ export async function syncAllBirthdaysToCalendar(): Promise<{
 
     const { createClient } = await import('@/lib/supabase/server');
     const supabase = await createClient();
-    
+
     // Get all active employees with birthdays
     const { data: employees, error } = await supabase
       .from('employees')
@@ -253,7 +260,7 @@ export async function syncAllBirthdaysToCalendar(): Promise<{
     let synced = 0;
     let failed = 0;
     const errors: string[] = [];
-    
+
     for (const employee of employees || []) {
       try {
         const eventId = await syncBirthdayCalendarEvent(employee);
@@ -268,7 +275,7 @@ export async function syncAllBirthdaysToCalendar(): Promise<{
         errors.push(`Error syncing ${employee.first_name} ${employee.last_name}: ${error.message}`);
       }
     }
-    
+
     return {
       success: failed === 0,
       synced,

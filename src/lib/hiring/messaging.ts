@@ -143,7 +143,8 @@ function appendComplianceLines(body: string, complianceLines: string[]) {
     if (complianceLines.length === 0) return body
     const missing = complianceLines.filter((line) => !body.includes(line))
     if (missing.length === 0) return body
-    return `${body.trim()}\n\n${missing.join('\n')}`.trim()
+    const formattedCompliance = missing.map(line => `• ${line}`).join('\n')
+    return `${body.trim()}\n\n${formattedCompliance}`.trim()
 }
 
 function outcomeCategoryLine(category?: string | null) {
@@ -179,7 +180,7 @@ function buildFallbackBody(input: {
     const firstName = input.candidate.first_name || 'there'
     const jobTitle = input.job.title
     const greeting = `Hi ${firstName},`
-    const signoff = 'Best,\nPeter at The Anchor'
+    const signoff = 'Best,\nPeter Pitcher\nTenant'
 
     if (input.messageType === 'invite') {
         return `${greeting}\n\nThanks for applying for the ${jobTitle} role. We'd love to invite you for a quick chat to learn more and share details about the role. Could you let us know your availability over the next few days?\n\n${signoff}`
@@ -213,7 +214,7 @@ function buildOutreachFallbackBody(input: { candidate: HiringCandidate; job: Hir
         ? `You applied for the ${lastJobTitle} role with us earlier.`
         : 'You applied with us previously and we wanted to follow up.'
     const greeting = `Hi ${firstName},`
-    const signoff = 'Best,\nPeter at The Anchor'
+    const signoff = 'Best,\nPeter Pitcher\nTenant'
 
     return `${greeting}\n\n${previousRoleLine} We have opened a new ${jobTitle} role and thought you might be interested. If you would like to chat or apply, just reply to this email and we can share next steps.\n\n${signoff}`
 }
@@ -273,10 +274,10 @@ export async function generateHiringMessageDraft(input: {
         }
     }
 
-    const systemPrompt = `You write warm, respectful hiring emails from Peter at The Anchor.
+    const systemPrompt = `You write warm, respectful hiring emails from Peter Pitcher (Tenant) at The Anchor.
 Use British English, keep it concise (roughly 120-180 words), and keep the tone friendly and professional.
 If the message type is feedback, provide supportive post-interview feedback without quoting internal notes.
-Include the compliance lines exactly as provided, at the end of the message.`
+Include the compliance lines exactly as provided, but strictly formatted as a bulleted list using the "•" character, at the end of the message.`
 
     const templateContext = entry?.body
         ? `Template (use as a starting point if helpful):\n${entry.body}`
@@ -414,7 +415,7 @@ export async function generateHiringOutreachDraft(input: {
         }
     }
 
-    const systemPrompt = `You write warm, respectful hiring outreach emails from Peter at The Anchor.\nUse British English, keep it concise (roughly 120-180 words), and keep the tone friendly and professional.\nThe goal is to invite the candidate to reply or apply for the new role.\nInclude the compliance lines exactly as provided, at the end of the message.`
+    const systemPrompt = `You write warm, respectful hiring outreach emails from Peter Pitcher (Tenant) at The Anchor.\nUse British English, keep it concise (roughly 120-180 words), and keep the tone friendly and professional.\nThe goal is to invite the candidate to reply or apply for the new role.\nInclude the compliance lines exactly as provided, but strictly formatted as a bulleted list using the "•" character, at the end of the message.`
 
     const lastJobTitle = (input.lastApplication as any)?.job?.title as string | undefined
     const templateContext = entry?.body

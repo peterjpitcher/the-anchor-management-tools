@@ -10,9 +10,10 @@ import { JobsTable } from '@/components/features/hiring/JobsTable'
 import { CandidateList } from '@/components/features/hiring/CandidateList'
 import { AddCandidateModal } from '@/components/features/hiring/AddCandidateModal'
 import { DuplicateReviewPanel } from '@/components/features/hiring/DuplicateReviewPanel'
+import { ScreeningMetricsPanel } from '@/components/features/hiring/ScreeningMetricsPanel'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import type { HiringApplication, HiringCandidate, HiringJob } from '@/types/database'
-import type { HiringJobSummary } from '@/types/hiring'
+import type { HiringJobSummary, HiringScreeningMetrics } from '@/types/hiring'
 import type { DuplicateReviewItem } from '@/lib/hiring/duplicates'
 
 type ExtendedCandidate = HiringCandidate & {
@@ -26,10 +27,11 @@ interface HiringDashboardClientProps {
     canManage: boolean
     canEdit: boolean
     duplicateItems: DuplicateReviewItem[]
+    screeningMetrics: HiringScreeningMetrics
 }
 
-export function HiringDashboardClient({ jobs, candidates, canCreate, canManage, canEdit, duplicateItems }: HiringDashboardClientProps) {
-    const [activeTab, setActiveTab] = useState<'jobs' | 'candidates' | 'duplicates'>('jobs')
+export function HiringDashboardClient({ jobs, candidates, canCreate, canManage, canEdit, duplicateItems, screeningMetrics }: HiringDashboardClientProps) {
+    const [activeTab, setActiveTab] = useState<'jobs' | 'candidates' | 'duplicates' | 'screening'>('jobs')
     const [isAddCandidateOpen, setIsAddCandidateOpen] = useState(false)
 
     return (
@@ -85,10 +87,11 @@ export function HiringDashboardClient({ jobs, candidates, canCreate, canManage, 
                         { id: 'jobs', label: `Jobs (${jobs.length})` },
                         { id: 'candidates', label: `All Candidates (${candidates.length})` },
                         { id: 'duplicates', label: `Duplicates (${duplicateItems.length})` },
+                        { id: 'screening', label: 'Screening' },
                     ].map((tab) => (
                         <button
                             key={tab.id}
-                            onClick={() => setActiveTab(tab.id as 'jobs' | 'candidates' | 'duplicates')}
+                            onClick={() => setActiveTab(tab.id as 'jobs' | 'candidates' | 'duplicates' | 'screening')}
                             className={`
                             whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
                             ${activeTab === tab.id
@@ -129,6 +132,10 @@ export function HiringDashboardClient({ jobs, candidates, canCreate, canManage, 
 
             {activeTab === 'duplicates' && (
                 <DuplicateReviewPanel initialItems={duplicateItems} canEdit={canEdit} />
+            )}
+
+            {activeTab === 'screening' && (
+                <ScreeningMetricsPanel metrics={screeningMetrics} />
             )}
 
             {/* Modal */}

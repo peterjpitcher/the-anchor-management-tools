@@ -1,13 +1,16 @@
 
 'use client'
 
-import React from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { formatDate } from '@/lib/utils'
 import type { HiringApplication, HiringCandidate, HiringJob } from '@/types/database'
-import { EyeIcon } from '@heroicons/react/24/outline'
+import { EyeIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { DeleteConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
+import { deleteCandidateAction } from '@/actions/hiring'
+import { toast } from '@/components/ui-v2/feedback/Toast'
 
 type ExtendedCandidate = HiringCandidate & {
     applications: (HiringApplication & { job: HiringJob })[]
@@ -31,6 +34,32 @@ const statusColors: Record<string, 'default' | 'primary' | 'success' | 'warning'
 }
 
 export function CandidateList({ candidates }: CandidateListProps) {
+    const [candidateToDelete, setCandidateToDelete] = useState<ExtendedCandidate | null>(null)
+
+    const handleDelete = async () => {
+        if (!candidateToDelete) return
+
+        try {
+            const result = await deleteCandidateAction(candidateToDelete.id)
+            if (!result.success) {
+                toast.error(result.error || 'Failed to delete candidate')
+                // Throwing error for the dialog to catch and show in its own error state if needed, 
+                // but DeleteConfirmDialog catches errors and sets internal error state if promise rejects.
+                // Or we can just let toast handle it and return. 
+                // However, ConfirmDialog expects a promise. If it resolves, it closes.
+                // If I return here, it closes. So I should throw if I want the dialog to stay open with error,
+                // OR I can use toast and close. 
+                // Let's throw to keep dialog open if it's a server error.
+                throw new Error(result.error || 'Failed to delete candidate')
+            }
+            toast.success('Candidate deleted successfully')
+            setCandidateToDelete(null)
+        } catch (error: any) {
+            // Rethrow for ConfirmDialog to handle
+            throw error
+        }
+    }
+
     if (candidates.length === 0) {
         return (
             <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
@@ -77,6 +106,20 @@ export function CandidateList({ candidates }: CandidateListProps) {
                                                 </svg>
                                                 Processing CV...
                                             </div>
+                                        ) : candidate.first_name?.startsWith('[Parsing Failed]') ? (
+                                            <div className="flex flex-col group relative">
+                                                <Link href={`/hiring/candidates/${candidate.id}`} className="hover:text-red-600 hover:underline flex items-center gap-1.5 text-red-500 font-medium">
+                                                    <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                                                    Parsing Failed
+                                                </Link>
+                                                <span className="text-xs text-red-400">Please review manually</span>
+                                                {candidate.parsed_data?.error && (
+                                                    <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-48 bg-gray-900 text-white text-xs rounded p-2 z-10 shadow-lg">
+                                                        {candidate.parsed_data.error}
+                                                        <div className="absolute top-full left-4 -mt-1 border-4 border-transparent border-t-gray-900"></div>
+                                                    </div>
+                                                )}
+                                            </div>
                                         ) : (
                                             <Link href={`/hiring/candidates/${candidate.id}`} className="hover:text-blue-600 dark:hover:text-blue-400 hover:underline">
                                                 {candidate.first_name} {candidate.last_name}
@@ -105,17 +148,26 @@ export function CandidateList({ candidates }: CandidateListProps) {
                                         {formatDate(candidate.created_at)}
                                     </td>
                                     <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6 text-gray-500 dark:text-gray-400">
-                                        {latestApp ? (
-                                            <Link href={`/hiring/applications/${latestApp.id}`}>
-                                                <Button variant="ghost" size="sm" leftIcon={<EyeIcon className="w-4 h-4" />}>
-                                                    View
-                                                </Button>
-                                            </Link>
-                                        ) : (
-                                            <span className="text-xs">No App</span>
-                                            // Future: Link to Candidate Profile View?
-                                            // For now, only applications have detailed views.
-                                        )}
+                                        <div className="flex justify-end gap-2">
+                                            {latestApp ? (
+                                                <Link href={`/hiring/applications/${latestApp.id}`}>
+                                                    <Button variant="ghost" size="sm" leftIcon={<EyeIcon className="w-4 h-4" />}>
+                                                        View
+                                                    </Button>
+                                                </Link>
+                                            ) : (
+                                                <span className="text-xs self-center">No App</span>
+                                            )}
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10"
+                                                onClick={() => setCandidateToDelete(candidate)}
+                                            >
+                                                <TrashIcon className="w-4 h-4" />
+                                                <span className="sr-only">Delete</span>
+                                            </Button>
+                                        </div>
                                     </td>
                                 </tr>
                             )
@@ -123,6 +175,14 @@ export function CandidateList({ candidates }: CandidateListProps) {
                     </tbody>
                 </table>
             </div>
+
+            <DeleteConfirmDialog
+                open={!!candidateToDelete}
+                onClose={() => setCandidateToDelete(null)}
+                onDelete={handleDelete}
+                itemName={`${candidateToDelete?.first_name} ${candidateToDelete?.last_name}`}
+                itemType="candidate"
+            />
         </div>
     )
 }

@@ -34,7 +34,6 @@ export default async function EditJobPage({ params }: { params: Promise<{ id: st
                 label: 'Back to Jobs',
                 href: '/hiring'
             }}
-            containerSize="lg"
         >
             <div className="bg-white rounded-lg shadow sm:p-6 p-4">
                 <JobForm mode="edit" initialData={job} templates={templates} />

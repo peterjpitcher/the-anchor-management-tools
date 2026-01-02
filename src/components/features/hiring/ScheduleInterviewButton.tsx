@@ -43,8 +43,11 @@ export function ScheduleInterviewButton({ applicationId, candidateName }: Schedu
         try {
             const result = await scheduleInterviewAction(data)
             if (result.success) {
+                if (result.calendarWarning) {
+                    toast.error(result.calendarWarning, { duration: 6000 })
+                }
                 toast.success('Interview scheduled successfully')
-                if (result.eventUrl && result.eventUrl !== 'created') {
+                if (result.calendarSynced && result.eventUrl && result.eventUrl !== 'created' && !result.calendarWarning) {
                     window.open(result.eventUrl, '_blank')
                 }
                 setIsOpen(false)

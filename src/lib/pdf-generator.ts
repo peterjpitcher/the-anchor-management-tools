@@ -1,51 +1,59 @@
-import puppeteer, { type PDFOptions } from 'puppeteer'
-import chromium from '@sparticuz/chromium'
+// import type { PDFOptions } from 'puppeteer'
 import { generateCompactInvoiceHTML } from './invoice-template-compact'
 import { generateCompactQuoteHTML } from './quote-template-compact'
 import type { InvoiceWithDetails, QuoteWithDetails } from '@/types/invoices'
 
+// Helper to load puppeteer deps dynamically
+async function loadPuppeteer() {
+  const puppeteer = (await import('puppeteer')).default
+  const chromium = (await import('@sparticuz/chromium')).default
+  return { puppeteer, chromium }
+}
+
 // Generate PDF from invoice
 export async function generateInvoicePDF(invoice: InvoiceWithDetails): Promise<Buffer> {
   let browser = null
-  
+
   try {
+    const { puppeteer, chromium } = await loadPuppeteer()
+
     // Launch puppeteer with optimized settings for serverless environments
     browser = await puppeteer.launch({
       headless: true,
       args: process.env.VERCEL
         ? chromium.args
         : [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--single-process',
-            '--disable-gpu'
-          ],
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process',
+          '--disable-gpu'
+        ],
       executablePath: process.env.VERCEL
         ? await chromium.executablePath()
         : puppeteer.executablePath()
     })
-    
+
     const page = await browser.newPage()
-    
+
     // Generate HTML with absolute URL for logo
     const html = generateCompactInvoiceHTML({
       invoice,
-      logoUrl: process.env.NEXT_PUBLIC_APP_URL 
+      logoUrl: process.env.NEXT_PUBLIC_APP_URL
         ? `${process.env.NEXT_PUBLIC_APP_URL}/logo-oj.jpg`
         : undefined
     })
-    
+
     // Set content with proper viewport
     await page.setViewport({ width: 1200, height: 1600 })
-    await page.setContent(html, { 
+    await page.setContent(html, {
       waitUntil: 'networkidle0',
       timeout: 30000 // 30 second timeout
     })
-    
+
     // Add custom styles for PDF rendering
     await page.addStyleTag({
       content: `
@@ -54,7 +62,7 @@ export async function generateInvoicePDF(invoice: InvoiceWithDetails): Promise<B
         }
       `
     })
-    
+
     // Generate PDF with A4 format
     const pdf = await page.pdf({
       format: 'A4',
@@ -68,7 +76,7 @@ export async function generateInvoicePDF(invoice: InvoiceWithDetails): Promise<B
       },
       displayHeaderFooter: false
     })
-    
+
     return Buffer.from(pdf)
   } catch (error) {
     console.error('Error generating invoice PDF:', error)
@@ -83,45 +91,47 @@ export async function generateInvoicePDF(invoice: InvoiceWithDetails): Promise<B
 // Generate PDF from quote
 export async function generateQuotePDF(quote: QuoteWithDetails): Promise<Buffer> {
   let browser = null
-  
+
   try {
+    const { puppeteer, chromium } = await loadPuppeteer()
+
     // Launch puppeteer with optimized settings
     browser = await puppeteer.launch({
       headless: true,
       args: process.env.VERCEL
         ? chromium.args
         : [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--single-process',
-            '--disable-gpu'
-          ],
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process',
+          '--disable-gpu'
+        ],
       executablePath: process.env.VERCEL
         ? await chromium.executablePath()
         : puppeteer.executablePath()
     })
-    
+
     const page = await browser.newPage()
-    
+
     // Generate HTML with absolute URL for logo
     const html = generateCompactQuoteHTML({
       quote,
-      logoUrl: process.env.NEXT_PUBLIC_APP_URL 
+      logoUrl: process.env.NEXT_PUBLIC_APP_URL
         ? `${process.env.NEXT_PUBLIC_APP_URL}/logo-oj.jpg`
         : undefined
     })
-    
+
     // Set content with proper viewport
     await page.setViewport({ width: 1200, height: 1600 })
-    await page.setContent(html, { 
+    await page.setContent(html, {
       waitUntil: 'networkidle0',
       timeout: 30000
     })
-    
+
     // Add custom styles for PDF rendering
     await page.addStyleTag({
       content: `
@@ -130,7 +140,7 @@ export async function generateQuotePDF(quote: QuoteWithDetails): Promise<Buffer>
         }
       `
     })
-    
+
     // Generate PDF
     const pdf = await page.pdf({
       format: 'A4',
@@ -144,7 +154,7 @@ export async function generateQuotePDF(quote: QuoteWithDetails): Promise<Buffer>
       },
       displayHeaderFooter: false
     })
-    
+
     return Buffer.from(pdf)
   } catch (error) {
     console.error('Error generating quote PDF:', error)
@@ -159,38 +169,40 @@ export async function generateQuotePDF(quote: QuoteWithDetails): Promise<Buffer>
 // Helper function to generate PDF with custom HTML
 export async function generatePDFFromHTML(
   html: string,
-  pdfOptions?: PDFOptions
+  pdfOptions?: any
 ): Promise<Buffer> {
   let browser = null
-  
+
   try {
+    const { puppeteer, chromium } = await loadPuppeteer()
+
     browser = await puppeteer.launch({
       headless: true,
       args: process.env.VERCEL
         ? chromium.args
         : [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--single-process',
-            '--disable-gpu'
-          ],
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process',
+          '--disable-gpu'
+        ],
       executablePath: process.env.VERCEL
         ? await chromium.executablePath()
         : puppeteer.executablePath()
     })
-    
+
     const page = await browser.newPage()
-    
+
     await page.setViewport({ width: 1200, height: 1600 })
-    await page.setContent(html, { 
+    await page.setContent(html, {
       waitUntil: 'networkidle0',
       timeout: 30000
     })
-    
+
     const pdf = await page.pdf({
       format: 'A4',
       printBackground: true,
@@ -203,7 +215,7 @@ export async function generatePDFFromHTML(
       },
       ...pdfOptions
     })
-    
+
     return Buffer.from(pdf)
   } catch (error) {
     console.error('Error generating PDF from HTML:', error)

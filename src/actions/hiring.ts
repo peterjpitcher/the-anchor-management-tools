@@ -566,6 +566,9 @@ export async function overrideApplicationScreeningAction(input: {
             .update({
                 ai_score: nextScore,
                 ai_recommendation: nextRecommendation,
+                screening_status: 'success',
+                screening_error: null,
+                screening_updated_at: new Date().toISOString(),
             })
             .eq('id', parse.data.applicationId)
             .select('*')
@@ -638,6 +641,7 @@ const ApplicationOutcomeSchema = z.object({
     ]).nullable().optional(),
     outcomeReason: z.string().max(500).optional(),
     outcomeNotes: z.string().max(2000).optional(),
+    reviewed: z.boolean().optional(),
 })
 
 export async function scheduleInterviewAction(formData: any) {
@@ -661,6 +665,13 @@ export async function scheduleInterviewAction(formData: any) {
         const candidateName = `${application.candidate.first_name} ${application.candidate.last_name}`
         const jobTitle = application.job.title
         const candidateEmail = application.candidate.email
+
+        const admin = createAdminClient()
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        const userId = user?.id || null
+        const userEmail = user?.email ?? undefined
+        const userName = typeof user?.user_metadata?.full_name === 'string' ? user.user_metadata.full_name : undefined
 
         const emailValidator = z.string().email()
         const rawInterviewers = (interviewerEmails || '').split(/[;,]/).map((value) => value.trim()).filter(Boolean)
@@ -689,15 +700,23 @@ export async function scheduleInterviewAction(formData: any) {
         interviewerAttendees.forEach((attendee) => {
             attendeeMap.set(attendee.email.toLowerCase(), attendee)
         })
+        if (userEmail && !isPlaceholderEmail(userEmail)) {
+            const key = userEmail.toLowerCase()
+            if (!attendeeMap.has(key)) {
+                attendeeMap.set(key, { email: userEmail, name: userName })
+            }
+        }
 
         const attendees = Array.from(attendeeMap.values())
 
         // 2. Create Calendar Event
-        const { createInterviewEvent } = await import('@/lib/google-calendar')
+        const { createInterviewEvent, isInterviewCalendarConfigured } = await import('@/lib/google-calendar')
         const start = new Date(startTime)
         const end = new Date(start.getTime() + durationMinutes * 60000)
 
         const event = await createInterviewEvent({
+            candidateName,
+            jobTitle,
             summary: `Interview: ${candidateName} for ${jobTitle}`,
             description: `Interview with ${candidateName} for the role of ${jobTitle}. \n\nView Application: ${process.env.NEXT_PUBLIC_APP_URL}/hiring/applications/${applicationId}`,
             start,
@@ -706,12 +725,15 @@ export async function scheduleInterviewAction(formData: any) {
             attendees,
         })
         const eventUrl = event?.htmlLink || null
+        const calendarSynced = Boolean(event?.id)
+        let calendarWarning: string | null = event?.warning ?? null
 
-        const admin = createAdminClient()
-        const supabase = await createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        const userId = user?.id || null
-        const userEmail = user?.email ?? undefined
+        if (!calendarSynced && !calendarWarning) {
+            const configured = isInterviewCalendarConfigured()
+            calendarWarning = configured
+                ? 'Interview scheduled, but Google Calendar sync failed. Check calendar access and server logs.'
+                : 'Interview scheduled, but Google Calendar is not configured. Set GOOGLE_CALENDAR_ID and auth credentials.'
+        }
 
         const { data: interview, error: interviewError } = await admin
             .from('hiring_interviews')
@@ -771,7 +793,7 @@ export async function scheduleInterviewAction(formData: any) {
         }
 
         revalidatePath('/hiring')
-        return { success: true, eventUrl }
+        return { success: true, eventUrl, calendarSynced, calendarWarning }
     } catch (error) {
         console.error('Schedule interview failed:', error)
         return { success: false, error: 'Failed to schedule interview' }
@@ -784,6 +806,7 @@ export async function updateApplicationOutcomeAction(input: {
     outcomeReasonCategory?: string | null
     outcomeReason?: string
     outcomeNotes?: string
+    reviewed?: boolean
 }) {
     const allowed = await checkUserPermission('hiring', 'edit')
     if (!allowed) return { success: false, error: 'Unauthorized' }
@@ -794,6 +817,7 @@ export async function updateApplicationOutcomeAction(input: {
         outcomeReasonCategory: input.outcomeReasonCategory || null,
         outcomeReason: input.outcomeReason?.trim() || undefined,
         outcomeNotes: input.outcomeNotes?.trim() || undefined,
+        reviewed: input.reviewed === true,
     }
 
     const parse = ApplicationOutcomeSchema.safeParse(cleaned)
@@ -808,6 +832,11 @@ export async function updateApplicationOutcomeAction(input: {
         const userId = user?.id || null
         const userEmail = user?.email ?? undefined
 
+        const negativeOutcomes = new Set(['rejected', 'withdrawn', 'offer_declined', 'no_show'])
+        if (parse.data.outcomeStatus && negativeOutcomes.has(parse.data.outcomeStatus) && !parse.data.reviewed) {
+            return { success: false, error: 'Manual review confirmation is required for negative outcomes' }
+        }
+
         const updates: Record<string, any> = {
             outcome_status: parse.data.outcomeStatus || null,
             outcome_reason_category: parse.data.outcomeReasonCategory || null,
@@ -821,6 +850,14 @@ export async function updateApplicationOutcomeAction(input: {
         } else {
             updates.outcome_recorded_at = null
             updates.outcome_recorded_by = null
+        }
+
+        if (parse.data.outcomeStatus && negativeOutcomes.has(parse.data.outcomeStatus)) {
+            updates.outcome_reviewed_at = new Date().toISOString()
+            updates.outcome_reviewed_by = userId
+        } else {
+            updates.outcome_reviewed_at = null
+            updates.outcome_reviewed_by = null
         }
 
         const { data, error } = await admin
@@ -890,6 +927,12 @@ function appendComplianceLines(body: string, lines: unknown) {
     const missing = normalized.filter((line) => !body.includes(line))
     if (missing.length === 0) return body
     return `${body.trim()}\n\n${missing.join('\n')}`.trim()
+}
+
+function getMissingComplianceLines(body: string, lines: unknown) {
+    const normalized = normalizeComplianceLines(lines)
+    if (normalized.length === 0) return []
+    return normalized.filter((line) => !body.includes(line))
 }
 
 export async function generateApplicationMessageDraftAction(input: {
@@ -1080,7 +1123,13 @@ export async function sendApplicationMessageAction(input: {
             return { success: false, error: 'Subject and body are required to send' }
         }
 
-        const finalBody = appendComplianceLines(body, (message as any).metadata?.compliance_lines)
+        const complianceLines = (message as any).metadata?.compliance_lines
+        const missingCompliance = getMissingComplianceLines(body, complianceLines)
+        if (missingCompliance.length > 0) {
+            return { success: false, error: `Missing compliance lines: ${missingCompliance.join(' | ')}` }
+        }
+
+        const finalBody = appendComplianceLines(body, complianceLines)
 
         const candidate = (message as any).candidate
         const recipientEmail = candidate?.email
@@ -1211,7 +1260,13 @@ export async function markApplicationMessageSentExternallyAction(input: {
             return { success: false, error: 'Subject and body are required to log a message' }
         }
 
-        const finalBody = appendComplianceLines(body, (existing as any).metadata?.compliance_lines)
+        const complianceLines = (existing as any).metadata?.compliance_lines
+        const missingCompliance = getMissingComplianceLines(body, complianceLines)
+        if (missingCompliance.length > 0) {
+            return { success: false, error: `Missing compliance lines: ${missingCompliance.join(' | ')}` }
+        }
+
+        const finalBody = appendComplianceLines(body, complianceLines)
 
         const metadata = {
             ...(existing.metadata || {}),
@@ -1258,5 +1313,121 @@ export async function markApplicationMessageSentExternallyAction(input: {
     } catch (error: any) {
         console.error('Mark message sent externally failed:', error)
         return { success: false, error: error.message || 'Failed to update message' }
+    }
+}
+
+export async function deleteCandidateAction(candidateId: string) {
+    const allowed = await checkUserPermission('hiring', 'delete')
+    if (!allowed && !(await checkUserPermission('hiring', 'edit'))) {
+        return { success: false, error: 'Unauthorized' }
+    }
+
+    try {
+        const admin = createAdminClient()
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+
+        // Get candidate details for audit log before delete
+        const { data: candidate } = await admin
+            .from('hiring_candidates')
+            .select('*')
+            .eq('id', candidateId)
+            .single()
+
+        if (!candidate) {
+            return { success: false, error: 'Candidate not found' }
+        }
+
+        // Manual Cascade Deletion
+        // 1. Get all application IDs
+        const { data: applications } = await admin
+            .from('hiring_applications')
+            .select('id')
+            .eq('candidate_id', candidateId)
+
+        const applicationIds = applications?.map(app => app.id) || []
+
+        if (applicationIds.length > 0) {
+            // Delete Application Related Data
+
+            // Candidate Events related to these applications (Must come before app delete)
+            await admin.from('hiring_candidate_events').delete().in('application_id', applicationIds)
+
+            // Interviews & Attendees
+            const { data: interviews } = await admin
+                .from('hiring_interviews')
+                .select('id')
+                .in('application_id', applicationIds)
+            const interviewIds = interviews?.map(i => i.id) || []
+
+            if (interviewIds.length > 0) {
+                await admin.from('hiring_interview_attendees').delete().in('interview_id', interviewIds)
+                await admin.from('hiring_interviews').delete().in('id', interviewIds)
+            }
+
+            // Application Messages
+            await admin.from('hiring_application_messages').delete().in('application_id', applicationIds)
+
+            // Application Notes
+            await admin.from('hiring_notes').delete().eq('entity_type', 'application').in('entity_id', applicationIds)
+
+            // Application Overrides
+            await admin.from('hiring_application_overrides').delete().in('application_id', applicationIds)
+
+            // Delete Applications
+            const { error: appError } = await admin
+                .from('hiring_applications')
+                .delete()
+                .in('id', applicationIds)
+
+            if (appError) throw appError
+        }
+
+        // 2. Delete Candidate Related Data
+
+        // Profile Versions (might reference documents)
+        await admin.from('hiring_candidate_profile_versions').delete().eq('candidate_id', candidateId)
+
+        // Candidate Documents
+        await admin.from('hiring_candidate_documents').delete().eq('candidate_id', candidateId)
+
+        // Remaining Candidate Events (not deleted by application_id above)
+        await admin.from('hiring_candidate_events').delete().eq('candidate_id', candidateId)
+
+        // Candidate Notes
+        await admin.from('hiring_notes').delete().eq('entity_type', 'candidate').eq('entity_id', candidateId)
+
+        // 3. Delete Candidate
+        const { error } = await admin
+            .from('hiring_candidates')
+            .delete()
+            .eq('id', candidateId)
+
+        if (error) throw error
+
+        if (user) {
+            await logAuditEvent({
+                user_id: user.id,
+                user_email: user.email ?? undefined,
+                operation_type: 'delete',
+                resource_type: 'hiring_candidate',
+                resource_id: candidateId,
+                operation_status: 'success',
+                old_values: candidate,
+                additional_info: {
+                    first_name: candidate.first_name,
+                    last_name: candidate.last_name,
+                    email: candidate.email,
+                    deleted_applications_count: applicationIds.length
+                }
+            })
+        }
+
+        revalidatePath('/hiring')
+        revalidatePath('/hiring/candidates')
+        return { success: true }
+    } catch (error: any) {
+        console.error('Delete candidate failed:', error)
+        return { success: false, error: error.message || 'Failed to delete candidate' }
     }
 }

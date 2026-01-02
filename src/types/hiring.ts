@@ -15,6 +15,18 @@ export type HiringJobSummary = HiringJob & {
   overdueCount: number
 }
 
+export type HiringScreeningMetrics = {
+  since: string
+  totalRuns: number
+  successRuns: number
+  failedRuns: number
+  failureRate: number
+  avgLatencySeconds: number | null
+  runTypeBreakdown: Record<string, number>
+  last24hRuns: number
+  last24hFailures: number
+}
+
 export type HiringApplicationWithCandidateSummary = HiringApplication & {
   candidate: HiringCandidate
   candidate_application_count?: number

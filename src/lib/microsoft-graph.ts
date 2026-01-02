@@ -1,16 +1,17 @@
-import { Client } from '@microsoft/microsoft-graph-client'
-import { ClientSecretCredential } from '@azure/identity'
+// import { Client } from '@microsoft/microsoft-graph-client'
+// import { ClientSecretCredential } from '@azure/identity'
 import type { InvoiceWithDetails, QuoteWithDetails } from '@/types/invoices'
-import { generateInvoiceHTML } from '@/lib/invoice-template'
-import { generateQuoteHTML } from '@/lib/quote-template'
 import { generateInvoicePDF, generateQuotePDF } from '@/lib/pdf-generator'
 
 // Initialize Microsoft Graph client
-function getGraphClient() {
+async function getGraphClient() {
   // Check if Graph is configured
   if (!isGraphConfigured()) {
     throw new Error('Microsoft Graph is not configured. Please check environment variables.')
   }
+
+  const { Client } = await import('@microsoft/microsoft-graph-client')
+  const { ClientSecretCredential } = await import('@azure/identity')
 
   // Create credential using client secret
   const credential = new ClientSecretCredential(
@@ -63,11 +64,11 @@ export async function sendInvoiceEmail(
       }
     }
 
-    const client = getGraphClient()
+    const client = await getGraphClient()
     const senderEmail = process.env.MICROSOFT_USER_EMAIL!
 
     // Generate invoice PDF with 'sent' status if currently draft
-    const invoiceForPDF = invoice.status === 'draft' 
+    const invoiceForPDF = invoice.status === 'draft'
       ? { ...invoice, status: 'sent' as const }
       : invoice
     const pdfBuffer = await generateInvoicePDF(invoiceForPDF)
@@ -157,7 +158,7 @@ export async function sendQuoteEmail(
       }
     }
 
-    const client = getGraphClient()
+    const client = await getGraphClient()
     const senderEmail = process.env.MICROSOFT_USER_EMAIL!
 
     // Generate quote PDF
@@ -249,7 +250,7 @@ export async function sendInternalReminder(
       }
     }
 
-    const client = getGraphClient()
+    const client = await getGraphClient()
     const senderEmail = process.env.MICROSOFT_USER_EMAIL!
 
     // Create email message
@@ -318,7 +319,7 @@ export async function testEmailConnection(): Promise<{
       }
     }
 
-    const client = getGraphClient()
+    const client = await getGraphClient()
     const userEmail = process.env.MICROSOFT_USER_EMAIL!
 
     // Try to get user profile to verify connection
@@ -338,7 +339,7 @@ export async function testEmailConnection(): Promise<{
     }
   } catch (error: any) {
     console.error('Email connection test failed:', error)
-    
+
     let errorMessage = 'Failed to connect to Microsoft Graph'
     const details = { error: error.message }
 
