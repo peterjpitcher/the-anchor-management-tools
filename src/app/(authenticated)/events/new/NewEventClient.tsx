@@ -61,7 +61,6 @@ export default function NewEventClient({ categories }: NewEventClientProps) {
                 label: 'Back to Events',
                 href: '/events',
             }}
-            containerSize="xl"
         >
             <Card>
                 <EventFormGrouped

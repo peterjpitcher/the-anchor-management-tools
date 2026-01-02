@@ -23,7 +23,6 @@ export default async function HiringTemplatesPage() {
         { label: 'Templates' },
       ]}
       backButton={{ label: 'Back to Hiring', href: '/hiring' }}
-      containerSize="lg"
     >
       <HiringTemplatesPanel initialTemplates={templates} />
     </PageLayout>

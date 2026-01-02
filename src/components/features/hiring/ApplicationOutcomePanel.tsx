@@ -7,6 +7,7 @@ import { Button } from '@/components/ui-v2/forms/Button'
 import { Select } from '@/components/ui-v2/forms/Select'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
+import { Checkbox } from '@/components/ui-v2/forms/Checkbox'
 import { updateApplicationOutcomeAction } from '@/actions/hiring'
 
 const OUTCOME_OPTIONS = [
@@ -39,6 +40,7 @@ interface ApplicationOutcomePanelProps {
     initialReason?: string | null
     initialNotes?: string | null
     recordedAt?: string | null
+    reviewedAt?: string | null
 }
 
 export function ApplicationOutcomePanel({
@@ -49,15 +51,22 @@ export function ApplicationOutcomePanel({
     initialReason,
     initialNotes,
     recordedAt,
+    reviewedAt,
 }: ApplicationOutcomePanelProps) {
     const router = useRouter()
     const [status, setStatus] = useState(initialStatus || '')
     const [reasonCategory, setReasonCategory] = useState(initialReasonCategory || '')
     const [reason, setReason] = useState(initialReason || '')
     const [notes, setNotes] = useState(initialNotes || '')
+    const [reviewed, setReviewed] = useState(Boolean(reviewedAt))
     const [saving, setSaving] = useState(false)
+    const requiresReview = ['rejected', 'withdrawn', 'offer_declined', 'no_show'].includes(status)
 
     const handleSave = async () => {
+        if (requiresReview && !reviewed) {
+            toast.error('Confirm manual review before saving a negative outcome')
+            return
+        }
         setSaving(true)
         const result = await updateApplicationOutcomeAction({
             applicationId,
@@ -65,6 +74,7 @@ export function ApplicationOutcomePanel({
             outcomeReasonCategory: reasonCategory || null,
             outcomeReason: reason,
             outcomeNotes: notes,
+            reviewed,
         })
         setSaving(false)
 
@@ -132,6 +142,15 @@ export function ApplicationOutcomePanel({
                     disabled={!canEdit}
                 />
             </FormGroup>
+
+            {requiresReview && (
+                <Checkbox
+                    checked={reviewed}
+                    onChange={(event) => setReviewed(event.target.checked)}
+                    label="I have reviewed this outcome manually"
+                    disabled={!canEdit}
+                />
+            )}
 
             <div className="flex justify-end">
                 <Button type="button" onClick={handleSave} loading={saving} disabled={!canEdit}>

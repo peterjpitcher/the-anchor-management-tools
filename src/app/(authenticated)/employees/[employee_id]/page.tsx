@@ -201,7 +201,6 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
       backButton={{ label: 'Back to Employees', href: '/employees' }}
       navItems={navItems}
       navActions={navActions}
-      containerSize="2xl"
     >
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">

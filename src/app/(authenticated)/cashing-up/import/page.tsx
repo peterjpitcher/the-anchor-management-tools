@@ -65,7 +65,7 @@ export default function ImportPage() {
         const firstRow = data[0];
         // Allow 'Cash' OR 'Actual Cash' for counted
         const hasCounted = 'Cash' in firstRow || 'Actual Cash' in firstRow;
-        
+
         if (!firstRow || !('Date' in firstRow) || !hasCounted) {
           setError('Invalid CSV format. Missing required columns: Date, Cash (or Actual Cash), Card, Stripe');
           return;
@@ -73,7 +73,7 @@ export default function ImportPage() {
 
         for (let i = 0; i < data.length; i++) {
           const row = data[i];
-          
+
           // Parse Denominations if present
           const cashCounts: Record<number, number> = {};
           let hasCounts = false;
@@ -95,7 +95,7 @@ export default function ImportPage() {
 
           rows.push({
             date: row['Date'],
-            siteName: row['Site'] || '', 
+            siteName: row['Site'] || '',
             cashCounted: counted,
             cashExpected: expected,
             card: parseFloat(row['Card']) || 0,
@@ -120,7 +120,7 @@ export default function ImportPage() {
       const BATCH_SIZE = 50;
       const total = previewData.length;
       let processed = 0;
-      
+
       // Initialize result
       const currentResult: ImportResultState = {
         total: total,
@@ -130,13 +130,13 @@ export default function ImportPage() {
       };
 
       setProgress({ processed: 0, total });
-      
+
       for (let i = 0; i < total; i += BATCH_SIZE) {
         const batch = previewData.slice(i, i + BATCH_SIZE);
-        
+
         try {
           const res = await importCashupHistoryAction(batch);
-          
+
           if (res.success) {
             currentResult.succeeded += res.summary.succeeded;
             currentResult.failed += res.summary.failed;
@@ -144,8 +144,8 @@ export default function ImportPage() {
               currentResult.errors.push(...res.errors);
             }
           } else {
-             currentResult.failed += batch.length;
-             currentResult.errors.push(`Batch failed: ${res.errors.join(', ')}`);
+            currentResult.failed += batch.length;
+            currentResult.errors.push(`Batch failed: ${res.errors.join(', ')}`);
           }
 
           // Update state for intermediate feedback
@@ -159,7 +159,7 @@ export default function ImportPage() {
           setResult({ ...currentResult });
         }
       }
-      
+
       // Finalize
       setProgress(null);
     });
@@ -171,15 +171,15 @@ export default function ImportPage() {
       '2023-01-01', '500.00', '500.00', '1200.50', '300.00', 'Example Note',
       ...DENOMINATIONS.map(_ => '') // Empty cells for counts in example
     ];
-    
+
     // Add one example count
     // Find index of '£1' for example (offset by fixed cols)
     const poundIndex = headers.indexOf('£1');
     if (poundIndex > -1) example[poundIndex] = '10'; // 10 x £1
 
-    const csvContent = "data:text/csv;charset=utf-8," 
-        + headers.join(",") + "\n" + example.join(",");
-    
+    const csvContent = "data:text/csv;charset=utf-8,"
+      + headers.join(",") + "\n" + example.join(",");
+
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -198,9 +198,9 @@ export default function ImportPage() {
   ];
 
   return (
-    <PageLayout title="Import Historic Cashing Up" navItems={navItems} containerSize="xl">
-      <div className="space-y-6"> 
-        
+    <PageLayout title="Import Historic Cashing Up" navItems={navItems}>
+      <div className="space-y-6">
+
         {/* Instructions */}
         <div className="bg-white p-6 rounded-lg shadow border">
           <h3 className="text-lg font-semibold mb-4">Instructions</h3>
@@ -215,7 +215,7 @@ export default function ImportPage() {
             </ul>
           </div>
           <div className="mt-6">
-            <button 
+            <button
               onClick={downloadTemplate}
               className="px-4 py-2 bg-blue-50 text-blue-600 rounded border border-blue-200 hover:bg-blue-100 text-sm font-medium flex items-center gap-2"
             >
@@ -230,10 +230,10 @@ export default function ImportPage() {
         {/* Upload */}
         <div className="bg-white p-6 rounded-lg shadow border">
           <h3 className="text-lg font-semibold mb-4">Upload Data</h3>
-          
+
           <div className="mb-6">
-            <input 
-              type="file" 
+            <input
+              type="file"
               accept=".csv"
               onChange={handleFileChange}
               className="block w-full text-sm text-gray-500
@@ -258,8 +258,8 @@ export default function ImportPage() {
                 <span>{Math.round((progress.processed / progress.total) * 100)}%</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2.5">
-                <div 
-                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
+                <div
+                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
                   style={{ width: `${(progress.processed / progress.total) * 100}%` }}
                 ></div>
               </div>
@@ -268,27 +268,27 @@ export default function ImportPage() {
           )}
 
           {result && (
-             <div className={`p-4 rounded border mb-4 ${result.failed === 0 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-yellow-50 text-yellow-800 border-yellow-200'}`}>
-               <h4 className="font-bold mb-2">{result.failed === 0 && !progress ? 'Import Successful!' : 'Import Status'}</h4>
-               <p>Total Rows: {result.total}</p>
-               <p>Succeeded: {result.succeeded}</p>
-               <p>Failed: {result.failed}</p>
-               {result.errors.length > 0 && (
-                 <div className="mt-3 max-h-40 overflow-y-auto">
-                   <p className="font-semibold text-xs uppercase mb-1">Errors:</p>
-                   <ul className="list-disc pl-5 text-xs font-mono">
-                     {result.errors.map((e, i) => <li key={i}>{e}</li>)}
-                   </ul>
-                 </div>
-               )}
-             </div>
+            <div className={`p-4 rounded border mb-4 ${result.failed === 0 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-yellow-50 text-yellow-800 border-yellow-200'}`}>
+              <h4 className="font-bold mb-2">{result.failed === 0 && !progress ? 'Import Successful!' : 'Import Status'}</h4>
+              <p>Total Rows: {result.total}</p>
+              <p>Succeeded: {result.succeeded}</p>
+              <p>Failed: {result.failed}</p>
+              {result.errors.length > 0 && (
+                <div className="mt-3 max-h-40 overflow-y-auto">
+                  <p className="font-semibold text-xs uppercase mb-1">Errors:</p>
+                  <ul className="list-disc pl-5 text-xs font-mono">
+                    {result.errors.map((e, i) => <li key={i}>{e}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
           )}
 
           {previewData.length > 0 && !progress && (
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <h4 className="font-medium text-gray-700">Preview ({previewData.length} rows)</h4>
-                <button 
+                <button
                   onClick={handleImport}
                   disabled={isPending}
                   className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:opacity-50 font-medium"
@@ -296,7 +296,7 @@ export default function ImportPage() {
                   {isPending ? 'Starting Import...' : `Import ${previewData.length} Rows`}
                 </button>
               </div>
-              
+
               <div className="overflow-x-auto border rounded">
                 <table className="min-w-full divide-y divide-gray-200 text-sm">
                   <thead className="bg-gray-50">
@@ -318,16 +318,16 @@ export default function ImportPage() {
                         <td className="px-4 py-2 whitespace-nowrap">{row.siteName || '-'}</td>
                         <td className="px-4 py-2 text-right">£{row.cashCounted?.toFixed(2)}</td>
                         <td className="px-4 py-2 text-right">
-                            {row.cashExpected !== undefined ? `£${row.cashExpected.toFixed(2)}` : <span className="text-gray-400 italic">Same as Actual</span>}
+                          {row.cashExpected !== undefined ? `£${row.cashExpected.toFixed(2)}` : <span className="text-gray-400 italic">Same as Actual</span>}
                         </td>
                         <td className="px-4 py-2 text-right">£{row.card.toFixed(2)}</td>
                         <td className="px-4 py-2 text-right">£{row.stripe.toFixed(2)}</td>
                         <td className="px-4 py-2 text-center">
-                            {row.cashCounts ? (
-                                <span className="text-green-600 text-xs bg-green-100 px-2 py-1 rounded">Yes</span>
-                            ) : (
-                                <span className="text-gray-400 text-xs">-</span>
-                            )}
+                          {row.cashCounts ? (
+                            <span className="text-green-600 text-xs bg-green-100 px-2 py-1 rounded">Yes</span>
+                          ) : (
+                            <span className="text-gray-400 text-xs">-</span>
+                          )}
                         </td>
                         <td className="px-4 py-2 text-gray-500 truncate max-w-xs">{row.notes}</td>
                       </tr>

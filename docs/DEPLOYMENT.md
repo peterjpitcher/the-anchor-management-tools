@@ -124,6 +124,7 @@ MICROSOFT_USER_EMAIL=sender@domain.com
 
 # Google Calendar Integration
 GOOGLE_CALENDAR_ID=your_calendar_id@group.calendar.google.com
+GOOGLE_CALENDAR_INTERVIEW_ID=your_ops_calendar_id@group.calendar.google.com
 GOOGLE_SERVICE_ACCOUNT_KEY='{"type":"service_account",...}'
 
 # Rate Limiting (Upstash Redis)

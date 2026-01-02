@@ -48,14 +48,27 @@ export async function addHiringNoteAction(input: { entityType: 'candidate' | 'ap
       return { success: false, error: error?.message || 'Failed to save note' }
     }
 
+    // Fetch the note details
     const { data: note, error: noteError } = await admin
       .from('hiring_notes')
-      .select('*, author:profiles(first_name, last_name, email)')
+      .select('*')
       .eq('id', inserted.id)
       .single()
 
     if (noteError || !note) {
       return { success: false, error: noteError?.message || 'Failed to load note' }
+    }
+
+    // Fetch the author profile separately since there's no direct FK for PostgREST join
+    const { data: authorProfile } = await admin
+      .from('profiles')
+      .select('first_name, last_name, email')
+      .eq('id', user.id)
+      .single()
+
+    const noteWithAuthor: HiringNoteWithAuthor = {
+      ...note,
+      author: authorProfile || null,
     }
 
     await logAuditEvent({
@@ -68,7 +81,7 @@ export async function addHiringNoteAction(input: { entityType: 'candidate' | 'ap
       additional_info: { note_id: inserted.id },
     })
 
-    return { success: true, data: note as unknown as HiringNoteWithAuthor }
+    return { success: true, data: noteWithAuthor }
   } catch (error: any) {
     console.error('Failed to add hiring note:', error)
     return { success: false, error: error.message || 'Failed to save note' }

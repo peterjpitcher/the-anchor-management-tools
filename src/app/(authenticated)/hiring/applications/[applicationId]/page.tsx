@@ -1,32 +1,34 @@
 import { redirect, notFound } from 'next/navigation'
-import Link from 'next/link'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { getApplicationById, getApplicationMessages } from '@/lib/hiring/service'
+import { getApplicationById, getApplicationMessages, getScreeningRunsForApplication } from '@/lib/hiring/service'
 import { getHiringNotes } from '@/lib/hiring/notes'
 import { ApplicationStatusSelect } from '@/components/features/hiring/ApplicationStatusSelect'
 import { ScheduleInterviewButton } from '@/components/features/hiring/ScheduleInterviewButton'
-import { Badge } from '@/components/ui-v2/display/Badge'
+import { ApplicationScreeningPanel } from '@/components/features/hiring/ApplicationScreeningPanel'
 import { ApplicationMessagesPanel } from '@/components/features/hiring/ApplicationMessagesPanel'
 import { ApplicationOutcomePanel } from '@/components/features/hiring/ApplicationOutcomePanel'
 import { ApplicationOverridePanel } from '@/components/features/hiring/ApplicationOverridePanel'
 import { HiringNotesPanel } from '@/components/features/hiring/HiringNotesPanel'
 import { DocumentTextIcon, PhoneIcon, EnvelopeIcon, MapPinIcon } from '@heroicons/react/24/outline'
+import { DeleteCandidateButton } from '@/components/features/hiring/DeleteCandidateButton'
 
 export default async function ApplicationDetailsPage({ params }: { params: Promise<{ applicationId: string }> }) {
     const { applicationId } = await params
     const canView = await checkUserPermission('hiring', 'view')
     const canEdit = await checkUserPermission('hiring', 'edit')
     const canSend = await checkUserPermission('hiring', 'send')
+    const canDelete = await checkUserPermission('hiring', 'delete') // Check explicit delete
 
     if (!canView) {
         redirect('/unauthorized')
     }
 
     const application = await getApplicationById(applicationId)
-    const [messages, notes] = await Promise.all([
+    const [messages, notes, screeningRuns] = await Promise.all([
         getApplicationMessages(applicationId),
         getHiringNotes('application', applicationId),
+        getScreeningRunsForApplication(applicationId),
     ])
 
     if (!application) {
@@ -36,19 +38,8 @@ export default async function ApplicationDetailsPage({ params }: { params: Promi
     const { candidate, job, screener_answers } = application
     const parsedData = candidate.parsed_data as any // Cast for now until we have strict types for parsed JSON
     const screeningResult = application.ai_screening_result as any | null
-    const recommendation = application.ai_recommendation || ''
-    const recommendationLabel = recommendation ? recommendation.charAt(0).toUpperCase() + recommendation.slice(1) : 'Pending'
-    const recommendationVariant =
-        recommendation === 'invite'
-            ? 'success'
-            : recommendation === 'clarify'
-                ? 'warning'
-                : recommendation === 'hold'
-                    ? 'info'
-                    : recommendation === 'reject'
-                        ? 'error'
-                        : 'neutral'
-
+    const screeningStatus = application.screening_status
+        || (screeningResult ? 'success' : application.stage === 'screening' ? 'processing' : null)
     const defaultMessageType = application.outcome_status === 'rejected' ? 'feedback' : undefined
 
     return (
@@ -64,7 +55,6 @@ export default async function ApplicationDetailsPage({ params }: { params: Promi
                 label: 'Back to Job',
                 href: `/hiring/${job.id}`
             }}
-            containerSize="lg"
             headerActions={
                 canEdit && (
                     <>
@@ -76,6 +66,12 @@ export default async function ApplicationDetailsPage({ params }: { params: Promi
                             applicationId={application.id}
                             candidateName={`${candidate.first_name} ${candidate.last_name}`}
                         />
+                        {(canDelete || canEdit) && (
+                            <DeleteCandidateButton
+                                candidateId={candidate.id}
+                                candidateName={`${candidate.first_name} ${candidate.last_name}`}
+                            />
+                        )}
                     </>
                 )
             }
@@ -84,81 +80,18 @@ export default async function ApplicationDetailsPage({ params }: { params: Promi
                 {/* Left Column: Parsed Resume / Main Content */}
                 <div className="lg:col-span-2 space-y-6">
 
-                    {screeningResult && (
-                        <div className="bg-white shadow rounded-lg p-6 space-y-4">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                                <div>
-                                    <h3 className="text-lg font-medium text-gray-900">AI Screening</h3>
-                                    <p className="text-sm text-gray-500">Review before sending any response.</p>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <Badge variant="info">Score {application.ai_score ?? 'N/A'}/10</Badge>
-                                    <Badge variant={recommendationVariant}>{recommendationLabel}</Badge>
-                                </div>
-                            </div>
-
-                            {screeningResult?.rationale && (
-                                <div className="text-sm text-gray-700">{screeningResult.rationale}</div>
-                            )}
-
-                            {screeningResult?.experience_analysis && (
-                                <div className="text-sm text-gray-700">
-                                    <h4 className="text-sm font-semibold text-gray-900 mb-1">Experience analysis</h4>
-                                    <p>{screeningResult.experience_analysis}</p>
-                                </div>
-                            )}
-
-                            {Array.isArray(screeningResult?.eligibility) && screeningResult.eligibility.length > 0 && (
-                                <div className="space-y-2">
-                                    <h4 className="text-sm font-semibold text-gray-900">Eligibility checklist</h4>
-                                    <div className="space-y-2">
-                                        {screeningResult.eligibility.map((item: any, index: number) => {
-                                            const status = item?.status || 'unclear'
-                                            const badgeVariant = status === 'yes' ? 'success' : status === 'no' ? 'error' : 'warning'
-                                            return (
-                                                <div key={index} className="flex items-start gap-3">
-                                                    <Badge variant={badgeVariant} size="sm">
-                                                        {status.toUpperCase()}
-                                                    </Badge>
-                                                    <div>
-                                                        <div className="text-sm font-medium text-gray-900">
-                                                            {item?.label || item?.key || 'Requirement'}
-                                                        </div>
-                                                        {item?.justification && (
-                                                            <div className="text-xs text-gray-600">{item.justification}</div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            )
-                                        })}
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {Array.isArray(screeningResult?.strengths) && screeningResult.strengths.length > 0 && (
-                                    <div>
-                                        <h4 className="text-sm font-semibold text-gray-900 mb-2">Strengths</h4>
-                                        <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
-                                            {screeningResult.strengths.map((item: string, index: number) => (
-                                                <li key={index}>{item}</li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                )}
-                                {Array.isArray(screeningResult?.concerns) && screeningResult.concerns.length > 0 && (
-                                    <div>
-                                        <h4 className="text-sm font-semibold text-gray-900 mb-2">Concerns / Missing info</h4>
-                                        <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
-                                            {screeningResult.concerns.map((item: string, index: number) => (
-                                                <li key={index}>{item}</li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
+                    <ApplicationScreeningPanel
+                        applicationId={application.id}
+                        screeningResult={screeningResult}
+                        screeningStatus={screeningStatus}
+                        screeningError={application.screening_error}
+                        score={application.ai_score}
+                        recommendation={application.ai_recommendation}
+                        confidence={application.ai_confidence}
+                        latestRunId={application.latest_screening_run_id}
+                        runs={screeningRuns}
+                        canEdit={canEdit}
+                    />
 
                     {screeningResult && canEdit && (
                         <ApplicationOverridePanel
@@ -169,11 +102,6 @@ export default async function ApplicationDetailsPage({ params }: { params: Promi
                         />
                     )}
 
-                    {!screeningResult && application.stage === 'screening' && (
-                        <div className="bg-white shadow rounded-lg p-6 text-sm text-gray-600">
-                            Screening is in progress. Check back shortly for AI results.
-                        </div>
-                    )}
 
                     {/* AI Summary / Skills if available */}
                     {parsedData?.summary && (
@@ -318,6 +246,7 @@ export default async function ApplicationDetailsPage({ params }: { params: Promi
                         initialReason={application.outcome_reason}
                         initialNotes={application.outcome_notes}
                         recordedAt={application.outcome_recorded_at}
+                        reviewedAt={application.outcome_reviewed_at}
                     />
 
                     <HiringNotesPanel

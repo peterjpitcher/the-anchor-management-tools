@@ -24,11 +24,11 @@ export default async function DailyCashupPage(props: { searchParams: Promise<{ d
   if (!siteId) {
     const { data: defaultSite, error: defaultSiteError } = await supabase.from('sites').select('id').limit(1).single();
     if (defaultSiteError || !defaultSite) {
-        return (
-            <PageLayout title="Cashing Up" navItems={navItems} containerSize="xl" error="No site configured or an error occurred.">
-                <div className="p-4 text-center text-gray-500">Please configure a site in the database.</div>
-            </PageLayout>
-        );
+      return (
+        <PageLayout title="Cashing Up" navItems={navItems} containerSize="xl" error="No site configured or an error occurred.">
+          <div className="p-4 text-center text-gray-500">Please configure a site in the database.</div>
+        </PageLayout>
+      );
     }
     siteId = defaultSite.id;
   }
@@ -60,11 +60,11 @@ export default async function DailyCashupPage(props: { searchParams: Promise<{ d
   }
 
   return (
-    <PageLayout title="Cashing Up" navItems={navItems} containerSize="xl">
-      <DailyCashupForm 
-        site={siteDetails} 
+    <PageLayout title="Cashing Up" navItems={navItems}>
+      <DailyCashupForm
+        site={siteDetails}
         sessionDate={sessionDate || new Date().toISOString().split('T')[0]} // Default to today if not provided
-        initialSessionData={initialSessionData} 
+        initialSessionData={initialSessionData}
       />
     </PageLayout>
   );

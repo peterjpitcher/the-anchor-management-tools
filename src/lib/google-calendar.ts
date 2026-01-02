@@ -94,6 +94,48 @@ function parseServiceAccountKey(jsonString: string): any {
   }
 }
 
+function getDelegatedCalendarUser(): string | undefined {
+  const delegate = process.env.GOOGLE_CALENDAR_DELEGATE_EMAIL || process.env.GOOGLE_CALENDAR_IMPERSONATE_EMAIL
+  const trimmed = delegate?.trim()
+  return trimmed || undefined
+}
+
+function canInviteCalendarAttendees(): boolean {
+  const hasOAuth = Boolean(
+    process.env.GOOGLE_CLIENT_ID &&
+    process.env.GOOGLE_CLIENT_SECRET &&
+    process.env.GOOGLE_REFRESH_TOKEN
+  )
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
+    return Boolean(getDelegatedCalendarUser())
+  }
+  return hasOAuth
+}
+
+function isServiceAccountAttendeeError(error: any): boolean {
+  const message = String(error?.message || error?.response?.data?.error?.message || '')
+  return error?.code === 403 && /service accounts/i.test(message) && /invite attendees/i.test(message)
+}
+
+function formatCalendarIdForLog(calendarId?: string): string {
+  if (!calendarId) return 'NOT SET'
+  if (calendarId === 'primary') return 'primary'
+  return `${calendarId.substring(0, 10)}...`
+}
+
+function getInterviewCalendarId(): string | undefined {
+  const interviewId = process.env.GOOGLE_CALENDAR_INTERVIEW_ID
+  if (interviewId?.trim()) return interviewId.trim()
+  const fallbackId = process.env.GOOGLE_CALENDAR_ID
+  if (fallbackId?.trim()) return fallbackId.trim()
+  const hasOAuth = Boolean(
+    process.env.GOOGLE_CLIENT_ID &&
+    process.env.GOOGLE_CLIENT_SECRET &&
+    process.env.GOOGLE_REFRESH_TOKEN
+  )
+  return hasOAuth ? 'primary' : undefined
+}
+
 // Initialize OAuth2 client
 export async function getOAuth2Client() {
   console.log('[Google Calendar] Getting OAuth2 client...')
@@ -122,6 +164,21 @@ export async function getOAuth2Client() {
         if (!serviceAccount.client_email) {
           throw new Error('Invalid service account: missing client_email')
         }
+
+      const delegatedUser = getDelegatedCalendarUser()
+      if (delegatedUser) {
+        console.log('[Google Calendar] Using service account with domain-wide delegation:', {
+          delegatedUser
+        })
+        const auth = new google.auth.JWT({
+          email: serviceAccount.client_email,
+          key: serviceAccount.private_key,
+          scopes: ['https://www.googleapis.com/auth/calendar'],
+          subject: delegatedUser,
+        })
+        await auth.authorize()
+        return auth
+      }
 
         const auth = new google.auth.GoogleAuth({
           credentials: serviceAccount,
@@ -399,16 +456,62 @@ export function isCalendarConfigured(): boolean {
     process.env.GOOGLE_CLIENT_SECRET &&
     process.env.GOOGLE_REFRESH_TOKEN
   )
+  const usesPrimaryCalendar = hasOAuth && !hasCalendarId
+  const isConfigured = (hasCalendarId || usesPrimaryCalendar) && (hasServiceAccount || hasOAuth)
 
   console.log('[Google Calendar] Configuration check:', {
     hasCalendarId,
     calendarId: process.env.GOOGLE_CALENDAR_ID ? `${process.env.GOOGLE_CALENDAR_ID.substring(0, 10)}...` : 'NOT SET',
     hasServiceAccount,
     hasOAuth,
-    isConfigured: hasCalendarId && (hasServiceAccount || hasOAuth)
+    usesPrimaryCalendar,
+    isConfigured
   })
 
-  return hasCalendarId && (hasServiceAccount || hasOAuth)
+  return isConfigured
+}
+
+export function isInterviewCalendarConfigured(): boolean {
+  const hasInterviewCalendarId = !!process.env.GOOGLE_CALENDAR_INTERVIEW_ID
+  const hasCalendarId = !!process.env.GOOGLE_CALENDAR_ID
+  const hasServiceAccount = !!process.env.GOOGLE_SERVICE_ACCOUNT_KEY
+  const hasOAuth = !!(
+    process.env.GOOGLE_CLIENT_ID &&
+    process.env.GOOGLE_CLIENT_SECRET &&
+    process.env.GOOGLE_REFRESH_TOKEN
+  )
+  const usesPrimaryCalendar = hasOAuth && !(hasInterviewCalendarId || hasCalendarId)
+  const calendarIdValue = getInterviewCalendarId()
+  const calendarLabel = formatCalendarIdForLog(calendarIdValue)
+  const isConfigured = (hasInterviewCalendarId || hasCalendarId || usesPrimaryCalendar) && (hasServiceAccount || hasOAuth)
+
+  console.log('[Google Calendar] Interview configuration check:', {
+    hasInterviewCalendarId,
+    hasCalendarId,
+    calendarId: calendarLabel,
+    hasServiceAccount,
+    hasOAuth,
+    usesPrimaryCalendar,
+    isConfigured
+  })
+
+  return isConfigured
+}
+
+async function verifyInterviewCalendarAccess(auth: any, calendarId: string): Promise<string | null> {
+  try {
+    await calendar.calendars.get({ auth, calendarId })
+    return null
+  } catch (error: any) {
+    if (error?.code === 404) {
+      return 'Interview scheduled, but the Ops calendar was not found or is not shared with the service account. Check GOOGLE_CALENDAR_INTERVIEW_ID and calendar sharing.'
+    }
+    if (error?.code === 403) {
+      return 'Interview scheduled, but access to the Ops calendar was denied. Share it with the service account (Make changes to events).'
+    }
+    const fallback = error?.code ? `Calendar error (${error.code}).` : 'Calendar access check failed.'
+    return `Interview scheduled, but Google Calendar access failed. ${fallback}`
+  }
 }
 
 // Helper function to format a service account JSON for environment variable
@@ -574,7 +677,13 @@ export interface InterviewEventOptions {
   attendees?: Array<{ email: string; name?: string }>
 }
 
-export async function createInterviewEvent(options: InterviewEventOptions): Promise<{ id: string | null; htmlLink: string | null } | null> {
+export interface InterviewEventResult {
+  id: string | null
+  htmlLink: string | null
+  warning?: string | null
+}
+
+export async function createInterviewEvent(options: InterviewEventOptions): Promise<InterviewEventResult | null> {
   const {
     candidateName,
     jobTitle,
@@ -595,13 +704,21 @@ export async function createInterviewEvent(options: InterviewEventOptions): Prom
   })
 
   try {
-    if (!isCalendarConfigured()) {
+    if (!isInterviewCalendarConfigured()) {
       console.warn('[Google Calendar] Not configured. Skipping interview creation.')
       return null
     }
 
     const auth = await getOAuth2Client()
-    const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary'
+    const calendarId = getInterviewCalendarId() || 'primary'
+    const accessWarning = await verifyInterviewCalendarAccess(auth, calendarId)
+    if (accessWarning) {
+      console.warn('[Google Calendar] Interview calendar access check failed:', {
+        calendarId: formatCalendarIdForLog(calendarId),
+        message: accessWarning
+      })
+      return { id: null, htmlLink: null, warning: accessWarning }
+    }
 
     // Determine end time: explicit end > duration > default 60m
     let endUtc: Date
@@ -638,24 +755,54 @@ export async function createInterviewEvent(options: InterviewEventOptions): Prom
       },
     }
 
-    if (attendees.length > 0) {
-      event.attendees = attendees.map((attendee) => ({
+    const eventAttendees = attendees
+      .filter((attendee) => attendee?.email)
+      .map((attendee) => ({
         email: attendee.email,
-        ...(attendee.name ? { displayName: attendee.name } : {}),
+        displayName: attendee.name,
       }))
+
+    const allowAttendees = canInviteCalendarAttendees()
+    let warning: string | null = null
+
+    if (!allowAttendees && eventAttendees.length > 0) {
+      warning = 'Interview scheduled, but attendee invites were not sent. Configure Google Calendar domain-wide delegation or OAuth to send invites.'
     }
 
-    const response = await calendar.events.insert({
-      auth: auth as any,
-      calendarId,
-      requestBody: event,
-      sendUpdates: attendees.length > 0 ? 'all' : 'none',
-    })
+    const requestBody: any = { ...event }
+    if (allowAttendees && eventAttendees.length > 0) {
+      requestBody.attendees = eventAttendees
+    }
+
+    const insertEvent = async (body: any, sendUpdates: boolean) => {
+      const options: any = {
+        auth: auth as any,
+        calendarId,
+        requestBody: body,
+      }
+      if (sendUpdates) {
+        options.sendUpdates = 'all'
+      }
+      return calendar.events.insert(options)
+    }
+
+    let response
+    try {
+      response = await insertEvent(requestBody, allowAttendees && eventAttendees.length > 0)
+    } catch (error: any) {
+      if (allowAttendees && eventAttendees.length > 0 && isServiceAccountAttendeeError(error)) {
+        warning = 'Interview scheduled, but attendee invites were not sent. Configure Google Calendar domain-wide delegation or OAuth to send invites.'
+        response = await insertEvent(event, false)
+      } else {
+        throw error
+      }
+    }
 
     console.log('[Google Calendar] Interview event created:', response.data.id)
     return {
       id: response.data.id || null,
       htmlLink: response.data.htmlLink || null,
+      warning,
     }
 
   } catch (error: any) {

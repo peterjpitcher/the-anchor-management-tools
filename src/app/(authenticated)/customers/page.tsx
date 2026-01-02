@@ -83,7 +83,7 @@ export default function CustomersPage() {
   }, [showDeactivated])
 
   const [customPageSize, setCustomPageSize] = useState(50)
-  
+
   const paginationOptions = useMemo(() => ({
     pageSize: customPageSize === 1000 ? 10000 : customPageSize, // Use a very large number for "All"
     searchTerm: searchTerm,
@@ -502,7 +502,6 @@ export default function CustomersPage() {
             setEditingCustomer(null)
           },
         }}
-        containerSize="lg"
       >
         <Card>
           <CustomerForm
@@ -527,7 +526,6 @@ export default function CustomersPage() {
           label: 'Back to Customers',
           onBack: () => setShowImport(false),
         }}
-        containerSize="lg"
       >
         <CustomerImport
           onImportComplete={handleImportCustomers}
@@ -540,9 +538,9 @@ export default function CustomersPage() {
 
   const navItems: HeaderNavItem[] = canManageCustomers
     ? [
-        { label: 'Manage Labels', href: '/settings/customer-labels' },
-        { label: 'Import', onClick: openImportCustomers },
-      ]
+      { label: 'Manage Labels', href: '/settings/customer-labels' },
+      { label: 'Import', onClick: openImportCustomers },
+    ]
     : []
 
   const navActions = null
@@ -645,7 +643,7 @@ export default function CustomersPage() {
               />
             </Card>
           </div>
-          
+
           {/* Mobile view */}
           <div className="block md:hidden">
             <Card className="divide-y divide-gray-200">
@@ -701,9 +699,9 @@ export default function CustomersPage() {
                           </p>
                         )}
                         {customer.mobile_number && customer.sms_opt_in === false && (
-                          <Badge 
-                            variant="error" 
-                            size="sm" 
+                          <Badge
+                            variant="error"
+                            size="sm"
                             className="mt-1"
                             icon={<XCircleIcon className="h-3 w-3" />}
                           >
@@ -745,7 +743,7 @@ export default function CustomersPage() {
               ))}
             </Card>
           </div>
-          
+
           {/* Pagination */}
           {totalPages > 1 && (
             <PaginationV2

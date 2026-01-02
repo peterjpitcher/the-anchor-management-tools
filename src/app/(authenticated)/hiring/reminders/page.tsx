@@ -21,7 +21,6 @@ export default async function HiringRemindersPage() {
         { label: 'Reminders' },
       ]}
       backButton={{ label: 'Back to Hiring', href: '/hiring' }}
-      containerSize="lg"
     >
       <HiringStageReminderPanel initialConfig={config} />
     </PageLayout>

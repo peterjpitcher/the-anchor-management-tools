@@ -8,8 +8,10 @@ import { getHiringNotes } from '@/lib/hiring/notes'
 import { HiringNotesPanel } from '@/components/features/hiring/HiringNotesPanel'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Badge } from '@/components/ui-v2/display/Badge'
-import { ArrowTopRightOnSquareIcon, PaperClipIcon } from '@heroicons/react/20/solid'
+import { ArrowTopRightOnSquareIcon, PaperClipIcon, ExclamationTriangleIcon } from '@heroicons/react/20/solid'
 import { formatDate } from '@/lib/utils'
+import { RetryParsingButton } from '@/components/features/hiring/RetryParsingButton'
+import { ManualResumeTextModal } from '@/components/features/hiring/ManualResumeTextModal'
 
 export default async function CandidateProfilePage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
@@ -28,6 +30,12 @@ export default async function CandidateProfilePage({ params }: { params: Promise
     }
 
     const parsedData = candidate.parsed_data as any || {}
+    const parsingStatus = candidate.parsing_status
+        || (parsedData?.error ? 'failed' : Object.keys(parsedData).length > 0 ? 'success' : null)
+    const parsingError = candidate.parsing_error || parsedData?.error
+    const parsingFailed = parsingStatus === 'failed'
+    const parsingInProgress = parsingStatus === 'processing' || parsingStatus === 'pending'
+    const parsingManual = parsingStatus === 'manual'
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
     const profileVersions = (candidate as any).profile_versions || []
     const applicationCount = candidate.applications?.length || 0
@@ -61,7 +69,6 @@ export default async function CandidateProfilePage({ params }: { params: Promise
                 label: 'Back to Candidates',
                 href: '/hiring'
             }}
-            containerSize="lg"
         >
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 {/* Left Column: Parsed Info */}
@@ -166,7 +173,42 @@ export default async function CandidateProfilePage({ params }: { params: Promise
                         <h3 className="text-lg font-medium leading-6 text-gray-900 dark:text-white mb-4">
                             Parsed CV Details
                         </h3>
-                        {Object.keys(parsedData).length === 0 ? (
+                        {parsingFailed ? (
+                            <div className="bg-red-50 dark:bg-red-900/10 border-l-4 border-red-500 p-4 mb-4">
+                                <div className="flex justify-between items-start gap-4">
+                                    <div className="flex">
+                                        <div className="flex-shrink-0">
+                                            <ExclamationTriangleIcon className="h-5 w-5 text-red-400" aria-hidden="true" />
+                                        </div>
+                                        <div className="ml-3">
+                                            <h3 className="text-sm font-medium text-red-800 dark:text-red-200">
+                                                Parsing failed
+                                            </h3>
+                                            <div className="mt-2 text-sm text-red-700 dark:text-red-300">
+                                                <p>{parsingError || 'Resume parsing failed. Content may be missing.'}</p>
+                                                {candidate.parsing_updated_at && (
+                                                    <p className="mt-1 text-xs opacity-75">
+                                                        Failed at: {formatDate(candidate.parsing_updated_at)}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="ml-4 flex-shrink-0 flex flex-col gap-2">
+                                        <RetryParsingButton candidateId={candidate.id} />
+                                        <ManualResumeTextModal candidateId={candidate.id} />
+                                    </div>
+                                </div>
+                            </div>
+                        ) : parsingInProgress ? (
+                            <div className="bg-yellow-50 dark:bg-yellow-900/10 border-l-4 border-yellow-500 p-4 mb-4 text-sm text-yellow-800 dark:text-yellow-200">
+                                Parsing is in progress. Refresh in a moment to see updated details.
+                            </div>
+                        ) : parsingManual ? (
+                            <div className="bg-blue-50 dark:bg-blue-900/10 border-l-4 border-blue-500 p-4 mb-4 text-sm text-blue-800 dark:text-blue-200">
+                                Manual resume text is in use for this candidate.
+                            </div>
+                        ) : Object.keys(parsedData).length === 0 ? (
                             <p className="text-gray-500 italic">No parsed data available.</p>
                         ) : (
                             <div className="space-y-4">

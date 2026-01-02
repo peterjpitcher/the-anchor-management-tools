@@ -22,7 +22,6 @@ export default async function HiringRetentionPage() {
         { label: 'Retention' },
       ]}
       backButton={{ label: 'Back to Hiring', href: '/hiring' }}
-      containerSize="lg"
     >
       <HiringRetentionPanel initialPolicy={policy} initialCandidates={candidates} />
     </PageLayout>

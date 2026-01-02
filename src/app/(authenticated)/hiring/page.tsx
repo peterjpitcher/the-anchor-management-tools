@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { getAllCandidates, getJobDashboardSummaries } from '@/lib/hiring/service'
+import { getAllCandidates, getJobDashboardSummaries, getScreeningMetrics } from '@/lib/hiring/service'
 import { getDuplicateReviewQueue } from '@/lib/hiring/duplicates'
 import { HiringDashboardClient } from '@/components/features/hiring/HiringDashboardClient'
 
@@ -16,20 +16,22 @@ export default async function HiringPage() {
     redirect('/unauthorized')
   }
 
-  const [jobs, candidates, duplicates] = await Promise.all([
+  const [jobs, candidates, duplicates, screeningMetrics] = await Promise.all([
     getJobDashboardSummaries(),
     getAllCandidates(),
-    getDuplicateReviewQueue()
+    getDuplicateReviewQueue(),
+    getScreeningMetrics()
   ])
 
   return (
-    <HiringDashboardClient
-      jobs={jobs}
-      candidates={candidates}
-      canCreate={canCreate}
-      canManage={canManage}
-      canEdit={canEdit}
-      duplicateItems={duplicates}
-    />
+      <HiringDashboardClient
+        jobs={jobs}
+        candidates={candidates}
+        canCreate={canCreate}
+        canManage={canManage}
+        canEdit={canEdit}
+        duplicateItems={duplicates}
+        screeningMetrics={screeningMetrics}
+      />
   )
 }

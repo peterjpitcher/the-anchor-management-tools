@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { formatPhoneForStorage } from '@/lib/validation'
 import { getHiringStageReminderConfig } from '@/lib/hiring/reminders'
 import type { HiringJob, HiringJobTemplate, HiringCandidate, HiringApplication, HiringApplicationStage, Database } from '@/types/database'
-import type { HiringApplicationWithCandidateSummary, HiringJobSummary, HiringStageCounts } from '@/types/hiring'
+import type { HiringApplicationWithCandidateSummary, HiringJobSummary, HiringStageCounts, HiringScreeningMetrics } from '@/types/hiring'
 
 function isPastDate(value?: string | null) {
     if (!value) return false
@@ -168,6 +168,66 @@ export async function getJobDashboardSummaries(): Promise<HiringJobSummary[]> {
     return Array.from(summariesByJob.values())
 }
 
+export async function getScreeningMetrics(days = 30): Promise<HiringScreeningMetrics> {
+    const admin = createAdminClient()
+    const sinceDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+    const sinceIso = sinceDate.toISOString()
+    const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000)
+
+    const { data, error } = await admin
+        .from('hiring_screening_runs')
+        .select('status, run_type, started_at, completed_at, created_at')
+        .gte('created_at', sinceIso)
+
+    if (error) {
+        console.error('Error fetching screening metrics:', error)
+        throw new Error('Failed to fetch screening metrics')
+    }
+
+    const runs = data || []
+    const totalRuns = runs.length
+    const successRuns = runs.filter((run) => run.status === 'success').length
+    const failedRuns = runs.filter((run) => run.status === 'failed').length
+    const failureRate = totalRuns > 0 ? Number((failedRuns / totalRuns).toFixed(3)) : 0
+
+    const durations = runs
+        .map((run) => {
+            if (!run.started_at || !run.completed_at) return null
+            const start = new Date(run.started_at).getTime()
+            const end = new Date(run.completed_at).getTime()
+            if (!Number.isFinite(start) || !Number.isFinite(end)) return null
+            return (end - start) / 1000
+        })
+        .filter((value): value is number => Number.isFinite(value))
+
+    const avgLatencySeconds = durations.length
+        ? Number((durations.reduce((sum, value) => sum + value, 0) / durations.length).toFixed(1))
+        : null
+
+    const runTypeBreakdown: Record<string, number> = {}
+    runs.forEach((run) => {
+        const key = run.run_type || 'unknown'
+        runTypeBreakdown[key] = (runTypeBreakdown[key] || 0) + 1
+    })
+
+    const last24hRuns = runs.filter((run) => run.created_at && new Date(run.created_at) >= last24h).length
+    const last24hFailures = runs.filter(
+        (run) => run.created_at && new Date(run.created_at) >= last24h && run.status === 'failed'
+    ).length
+
+    return {
+        since: sinceIso,
+        totalRuns,
+        successRuns,
+        failedRuns,
+        failureRate,
+        avgLatencySeconds,
+        runTypeBreakdown,
+        last24hRuns,
+        last24hFailures,
+    }
+}
+
 export async function createJob(jobData: Partial<HiringJob>) {
     const admin = createAdminClient()
     const { data, error } = await admin
@@ -215,16 +275,35 @@ export async function getJobById(id: string) {
     return applyJobExpiry(data as HiringJob)
 }
 
-export async function getJobApplications(jobId: string) {
+export async function getJobApplications(
+    jobId: string,
+    options?: { includeHidden?: boolean; page?: number; pageSize?: number }
+) {
     const admin = createAdminClient()
-    const { data, error } = await admin
+    const page = Math.max(1, options?.page ?? 1)
+    const pageSize = Math.min(100, Math.max(1, options?.pageSize ?? 20))
+    const from = (page - 1) * pageSize
+    const to = from + pageSize - 1
+
+    let query = admin
         .from('hiring_applications')
-        .select(`
+        .select(
+            `
             *,
             candidate:hiring_candidates(*)
-        `)
+        `,
+            { count: 'exact' }
+        )
         .eq('job_id', jobId)
+
+    if (!options?.includeHidden) {
+        query = query.not('stage', 'in', '("rejected","withdrawn")')
+    }
+
+    const { data, error, count } = await query
+        .order('ai_score', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
+        .range(from, to)
 
     if (error) {
         console.error('Error fetching job applications:', error)
@@ -232,10 +311,16 @@ export async function getJobApplications(jobId: string) {
     }
 
     const applications = data as unknown as (HiringApplication & { candidate: HiringCandidate })[]
+    const totalCount = count ?? applications.length
     const candidateIds = Array.from(new Set(applications.map((app) => app.candidate_id)))
 
     if (candidateIds.length === 0) {
-        return applications as (HiringApplication & { candidate: HiringCandidate })[]
+        return {
+            applications: applications as (HiringApplication & { candidate: HiringCandidate })[],
+            totalCount,
+            page,
+            pageSize,
+        }
     }
 
     const { data: candidateApps, error: candidateAppsError } = await admin
@@ -245,7 +330,12 @@ export async function getJobApplications(jobId: string) {
 
     if (candidateAppsError) {
         console.error('Error fetching candidate application counts:', candidateAppsError)
-        return applications as (HiringApplication & { candidate: HiringCandidate })[]
+        return {
+            applications: applications as (HiringApplication & { candidate: HiringCandidate })[],
+            totalCount,
+            page,
+            pageSize,
+        }
     }
 
     const stats = new Map<string, { count: number; lastAppliedAt: string | null }>()
@@ -260,7 +350,7 @@ export async function getJobApplications(jobId: string) {
         stats.set(candidateId, { count: existing.count + 1, lastAppliedAt })
     }
 
-    return applications.map((app) => {
+    const enriched = applications.map((app) => {
         const stat = stats.get(app.candidate_id)
         return {
             ...app,
@@ -268,6 +358,13 @@ export async function getJobApplications(jobId: string) {
             candidate_last_applied_at: stat?.lastAppliedAt || app.created_at,
         }
     }) as HiringApplicationWithCandidateSummary[]
+
+    return {
+        applications: enriched,
+        totalCount,
+        page,
+        pageSize,
+    }
 }
 
 export async function updateApplicationStatus(id: string, status: HiringApplication['stage']) {
@@ -321,6 +418,22 @@ export async function getApplicationMessages(applicationId: string) {
     }
 
     return data as Database['public']['Tables']['hiring_application_messages']['Row'][]
+}
+
+export async function getScreeningRunsForApplication(applicationId: string) {
+    const admin = createAdminClient()
+    const { data, error } = await admin
+        .from('hiring_screening_runs')
+        .select('*')
+        .eq('application_id', applicationId)
+        .order('created_at', { ascending: false })
+
+    if (error) {
+        console.error('Error fetching screening runs:', error)
+        throw new Error('Failed to fetch screening runs')
+    }
+
+    return data as Database['public']['Tables']['hiring_screening_runs']['Row'][]
 }
 
 export async function getAllCandidates() {
@@ -477,6 +590,7 @@ export async function submitApplication(input: ApplicationInput) {
     const candidatePhone = normalizePhone(rawPhone)
     const fallbackPhone = rawPhone || null
     const origin = input.origin === 'api' ? 'api' : 'internal'
+    const hasResume = Boolean(input.candidate.resumeUrl || input.candidate.resumeStoragePath)
 
     let candidateId: string | null = null
     let existingCandidate: HiringCandidate | null = null
@@ -544,6 +658,7 @@ export async function submitApplication(input: ApplicationInput) {
                 location: input.candidate.location,
                 resume_url: input.candidate.resumeUrl,
                 parsed_data: {}, // Placeholder for AI parsing later
+                parsing_status: hasResume ? 'pending' : 'skipped',
             })
             .select('id, email, phone, location, secondary_emails, first_name, last_name')
             .single()
@@ -576,6 +691,10 @@ export async function submitApplication(input: ApplicationInput) {
 
         if (input.candidate.resumeUrl) {
             updates.resume_url = input.candidate.resumeUrl
+            updates.parsing_status = 'pending'
+            updates.parsing_error = null
+            updates.parsing_updated_at = new Date().toISOString()
+            updates.resume_text = null
         }
 
         if (shouldUpdateEmail) {

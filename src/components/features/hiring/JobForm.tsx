@@ -37,7 +37,7 @@ const JSON_FIELDS = [
         name: 'screening_rubric',
         label: 'Screening Rubric (JSON)',
         expected: 'object',
-        help: 'Free-form JSON object to steer AI scoring. Include thresholds, weights, or notes. Example: {"score_thresholds":{"invite":7,"clarify":5},"notes":"Prioritize bar experience and weekends."}.',
+        help: 'Structured JSON for deterministic scoring. Use score_thresholds + items. Example: {"score_thresholds":{"invite":7,"clarify":5},"notes":"Prioritize bar experience and weekends.","items":[{"key":"bar_experience","label":"Bar experience","essential":false,"weight":2,"evidence_question":"Has bar or cocktail experience?"}]}.',
     },
     {
         name: 'message_templates',

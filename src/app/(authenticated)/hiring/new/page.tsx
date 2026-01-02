@@ -25,7 +25,6 @@ export default async function NewJobPage() {
                 label: 'Back to Jobs',
                 href: '/hiring'
             }}
-            containerSize="lg"
         >
             <div className="bg-white rounded-lg shadow sm:p-6 p-4">
                 <JobForm mode="create" templates={templates} />
