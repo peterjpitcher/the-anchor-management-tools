@@ -18,8 +18,7 @@ import {
   TruckIcon,
   Squares2X2Icon,
   ChevronLeftIcon,
-  ChevronRightIcon,
-  BriefcaseIcon
+  ChevronRightIcon
 } from '@heroicons/react/24/outline'
 import { useMemo, useState } from 'react'
 import { usePermissions } from '@/contexts/PermissionContext'
@@ -63,7 +62,6 @@ export const navigationGroups: NavigationGroup[] = [
     name: 'People',
     items: [
       { name: 'Customers', href: '/customers', icon: UserGroupIcon, permission: { module: 'customers', action: 'view' } },
-      { name: 'Hiring', href: '/hiring', icon: BriefcaseIcon, permission: { module: 'hiring', action: 'view' } },
       { name: 'Employees', href: '/employees', icon: IdentificationIcon, permission: { module: 'employees', action: 'view' } },
       { name: 'Messages', href: '/messages', icon: EnvelopeIcon, permission: { module: 'messages', action: 'view' } },
     ]

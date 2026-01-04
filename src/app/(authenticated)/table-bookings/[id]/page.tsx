@@ -368,11 +368,15 @@ export default function BookingDetailsPage(props: { params: Promise<{ id: string
   const payment = booking.table_booking_payments?.find(p => p.status === 'completed');
   const bookingDateTime = new Date(`${booking.booking_date}T${booking.booking_time}`);
   const isPast = bookingDateTime < new Date();
+  const createdAtLabel = booking.created_at
+    ? format(new Date(booking.created_at), 'dd/MM/yyyy HH:mm')
+    : 'Unknown';
+  const sourceLabel = booking.source ?? 'Unknown';
 
   return (
     <PageLayout
       title={`Booking ${booking.booking_reference}`}
-      subtitle={`Created ${format(new Date(booking.created_at), 'dd/MM/yyyy HH:mm')} • Source: ${booking.source}`}
+      subtitle={`Created ${createdAtLabel} • Source: ${sourceLabel}`}
       breadcrumbs={[
         { label: 'Table Bookings', href: '/table-bookings' },
         { label: booking.booking_reference, href: '' },

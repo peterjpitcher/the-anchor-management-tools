@@ -3,7 +3,7 @@
 import { formatDate, getTodayIsoDate } from '@/lib/dateUtils'
 import Link from 'next/link'
 import { useEffect, useState, useCallback } from 'react'
-import { Customer, Booking, Event, Message } from '@/types/database'
+import { Customer, Booking, Event, Message, Database } from '@/types/database'
 import { PencilIcon, TrashIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline'
 import { BookingForm } from '@/components/features/events/BookingForm'
 import { toast } from '@/components/ui-v2/feedback/Toast'
@@ -33,6 +33,23 @@ import { getCustomerLabelAssignments, getCustomerLabels, type CustomerLabel, typ
 type BookingWithEvent = Omit<Booking, 'event'> & {
   event: Pick<Event, 'id' | 'name' | 'date' | 'time' | 'capacity' | 'created_at' | 'slug'>
 }
+
+type EventRow = Database['public']['Tables']['events']['Row']
+
+const toStringArray = (value: unknown): string[] | null => {
+  if (!Array.isArray(value)) {
+    return null
+  }
+  return value.filter((item): item is string => typeof item === 'string')
+}
+
+const normalizeEvent = (event: EventRow): Event => ({
+  ...event,
+  highlights: toStringArray(event.highlights),
+  keywords: toStringArray(event.keywords),
+  highlight_video_urls: toStringArray(event.highlight_video_urls),
+  gallery_image_urls: toStringArray(event.gallery_image_urls)
+})
 
 export const dynamic = 'force-dynamic'
 
@@ -160,7 +177,7 @@ export default function CustomerViewPage() {
       if (eventsError) {
         throw eventsError
       }
-      setAllEvents(eventsData ?? [])
+      setAllEvents((eventsData ?? []).map(normalizeEvent))
 
       if ('error' in smsStatsResult) {
         console.error('Failed to load SMS stats:', smsStatsResult.error)

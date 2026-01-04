@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-import { SupabaseClient } from '@supabase/supabase-js'
+import type { createClient } from '@/lib/supabase/client'
+
+type SupabaseClientType = ReturnType<typeof createClient>
 
 interface PaginationOptions {
   pageSize?: number
@@ -34,7 +36,7 @@ type FilterOperator =
   | 'contains'
 
 export function usePagination<T>(
-  supabase: SupabaseClient,
+  supabase: SupabaseClientType,
   tableName: string,
   query?: {
     select?: string

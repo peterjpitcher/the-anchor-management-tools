@@ -131,24 +131,6 @@ export interface SchemaFAQ {
   };
 }
 
-export interface SchemaJobPosting {
-  '@type': 'JobPosting';
-  title: string;
-  description: string;
-  datePosted: string;
-  validThrough?: string;
-  employmentType?: string;
-  hiringOrganization: SchemaOrganization;
-  jobLocation: SchemaPlace;
-  directApply?: boolean;
-  identifier?: {
-    '@type': 'PropertyValue';
-    name: string;
-    value: string;
-  };
-  url?: string;
-}
-
 // Constants for Schema.org URLs
 export const SCHEMA_EVENT_STATUS = {
   SCHEDULED: 'https://schema.org/EventScheduled',
@@ -293,47 +275,6 @@ export function eventToSchema(event: any, bookingCount: number = 0, faqs?: any[]
   }
   
   return schema;
-}
-
-function buildJobDescription(job: any): string {
-  if (job?.description && typeof job.description === 'string' && job.description.trim()) {
-    return job.description.trim()
-  }
-
-  if (Array.isArray(job?.requirements) && job.requirements.length > 0) {
-    const listItems = job.requirements
-      .map((item: unknown) => `<li>${String(item)}</li>`)
-      .join('')
-    return `<ul>${listItems}</ul>`
-  }
-
-  return job?.title ? String(job.title) : 'Job opportunity'
-}
-
-export function jobToSchema(job: any, options: { url?: string; directApply?: boolean } = {}): SchemaJobPosting {
-  const description = buildJobDescription(job)
-  const datePosted = job?.posting_date || job?.created_at || new Date().toISOString()
-  const validThrough = job?.closing_date || undefined
-
-  return {
-    '@type': 'JobPosting',
-    title: job?.title ? String(job.title) : 'Job opportunity',
-    description,
-    datePosted,
-    validThrough,
-    employmentType: job?.employment_type || undefined,
-    hiringOrganization: createOrganizer(),
-    jobLocation: createVenueLocation(),
-    directApply: options.directApply ?? true,
-    url: options.url,
-    identifier: job?.id
-      ? {
-          '@type': 'PropertyValue',
-          name: 'job_id',
-          value: String(job.id),
-        }
-      : undefined,
-  }
 }
 
 function getEventStatus(status: string): string {

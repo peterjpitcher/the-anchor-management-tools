@@ -28,32 +28,32 @@ export interface BookingTimeSlot {
 export interface TableBooking {
   id: string;
   booking_reference: string;
-  customer_id: string;
+  customer_id: string | null;
   booking_date: string;
   booking_time: string;
   party_size: number;
   tables_assigned?: any; // JSONB
   booking_type: BookingType;
   status: BookingStatus;
-  duration_minutes: number;
-  special_requirements?: string;
-  dietary_requirements?: string[];
-  allergies?: string[];
-  celebration_type?: string;
-  internal_notes?: string;
-  source: string;
-  created_at: string;
-  updated_at: string;
-  confirmed_at?: string;
-  cancelled_at?: string;
-  cancellation_reason?: string;
-  completed_at?: string;
-  no_show_at?: string;
-  modification_count: number;
+  duration_minutes: number | null;
+  special_requirements?: string | null;
+  dietary_requirements?: string[] | null;
+  allergies?: string[] | null;
+  celebration_type?: string | null;
+  internal_notes?: string | null;
+  source: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  confirmed_at?: string | null;
+  cancelled_at?: string | null;
+  cancellation_reason?: string | null;
+  completed_at?: string | null;
+  no_show_at?: string | null;
+  modification_count?: number | null;
   original_booking_data?: any;
   email_verification_token?: string;
   email_verified_at?: string;
-  customer?: Customer;
+  customer?: Customer | null;
   table_booking_items?: TableBookingItem[];
   table_booking_payments?: TableBookingPayment[];
   table_booking_modifications?: TableBookingModification[];
@@ -63,14 +63,14 @@ export interface TableBookingItem {
   id: string;
   booking_id: string;
   menu_item_id?: string;
-  custom_item_name?: string;
+  custom_item_name?: string | null;
   item_type: ItemType;
   quantity: number;
-  special_requests?: string;
+  special_requests?: string | null;
   price_at_booking: number;
-  guest_name?: string;
-  created_at: string;
-  updated_at: string;
+  guest_name?: string | null;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 export interface TableBookingPayment {
@@ -142,11 +142,11 @@ export interface Customer {
   first_name: string;
   last_name: string | null;
   mobile_number: string;
-  email?: string;
-  sms_opt_in: boolean;
-  table_booking_count?: number;
-  no_show_count?: number;
-  last_table_booking_date?: string;
+  email?: string | null;
+  sms_opt_in: boolean | null;
+  table_booking_count?: number | null;
+  no_show_count?: number | null;
+  last_table_booking_date?: string | null;
 }
 
 export interface MenuItemData {

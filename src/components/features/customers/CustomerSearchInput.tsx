@@ -59,9 +59,11 @@ export default function CustomerSearchInput({
       .eq('id', customerId)
       .single()
 
-    if (data && !error) {
-      setSelectedCustomer(data)
-      const name = [data.first_name, data.last_name ?? ''].filter(Boolean).join(' ')
+    const customer = data as Customer | null
+
+    if (customer && !error) {
+      setSelectedCustomer(customer)
+      const name = [customer.first_name, customer.last_name ?? ''].filter(Boolean).join(' ')
       setSearchTerm(name)
     }
   }, [supabase])
@@ -128,8 +130,10 @@ export default function CustomerSearchInput({
 
     const { data, error } = await query
 
-    if (!error && data) {
-      const filtered = data.filter((customer) => {
+    const results = (data as Customer[] | null) ?? []
+
+    if (!error && results.length > 0) {
+      const filtered = results.filter((customer) => {
         if (!excludedIds) return true
         if (selectedCustomerId && customer.id === selectedCustomerId) return true
         return !excludedIds.has(customer.id)

@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, BuildingOfficeIcon, DocumentTextIcon, LinkIcon, QueueListIcon, ReceiptRefundIcon, TruckIcon, Squares2X2Icon, BanknotesIcon, BriefcaseIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, BuildingOfficeIcon, DocumentTextIcon, LinkIcon, QueueListIcon, ReceiptRefundIcon, TruckIcon, Squares2X2Icon, BanknotesIcon } from '@heroicons/react/24/outline'
 import { useEffect, useState, useMemo } from 'react'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { Badge } from '@/components/ui-v2/display/Badge'
@@ -33,7 +33,6 @@ const secondaryNavigation: NavigationItemWithPermission[] = [
 ];
 
 const tertiaryNavigation: NavigationItemWithPermission[] = [
-  { name: 'Hiring', href: '/hiring', icon: BriefcaseIcon, permission: { module: 'hiring', action: 'view' } },
   { name: 'Employees', href: '/employees', icon: IdentificationIcon, permission: { module: 'employees', action: 'view' } },
   { name: 'Quick Add Note', href: '#', icon: PencilSquareIcon, action: true },
 ];
