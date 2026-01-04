@@ -3,11 +3,8 @@
 import { createClient } from '@/lib/supabase/client'
 import { createContext, useContext } from 'react'
 
-import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database } from '@/types/database'
-
 type SupabaseContext = {
-  supabase: SupabaseClient<Database>
+  supabase: ReturnType<typeof createClient>
 }
 
 const Context = createContext<SupabaseContext | undefined>(undefined)

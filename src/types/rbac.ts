@@ -50,7 +50,6 @@ export type ModuleName =
   | 'short_links'
   | 'menu_management'
   | 'cashing_up'
-  | 'hiring'
 ;
 
 export type ActionType = 

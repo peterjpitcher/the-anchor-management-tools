@@ -1,3 +1,5 @@
+import type { Database as GeneratedDatabase } from './database.generated';
+
 export interface Event {
   id: string;
   name: string;
@@ -7,26 +9,26 @@ export interface Event {
   category_id?: string | null;
   created_at: string;
   end_time?: string | null;
-  event_status?: string;
+  event_status?: string | null;
   performer_name?: string | null;
   performer_type?: string | null;
-  price?: number;
-  is_free?: boolean;
+  price?: number | null;
+  is_free?: boolean | null;
   booking_url?: string | null;
   // Phase 1 SEO fields
   slug: string;
   short_description?: string | null;
   long_description?: string | null;
-  highlights?: string[];
+  highlights?: string[] | null;
   meta_title?: string | null;
   meta_description?: string | null;
-  keywords?: string[];
+  keywords?: string[] | null;
   hero_image_url?: string | null;
-  gallery_image_urls?: string[];
+  gallery_image_urls?: string[] | null;
   poster_image_url?: string | null;
   thumbnail_image_url?: string | null;
   promo_video_url?: string | null;
-  highlight_video_urls?: string[];
+  highlight_video_urls?: string[] | null;
   doors_time?: string | null;
   duration_minutes?: number | null;
   last_entry_time?: string | null;
@@ -211,16 +213,16 @@ export interface Customer {
   mobile_number: string;
   email?: string | null;
   created_at: string;
-  sms_opt_in?: boolean;
-  sms_delivery_failures?: number;
+  sms_opt_in?: boolean | null;
+  sms_delivery_failures?: number | null;
   last_sms_failure_reason?: string | null;
   last_successful_sms_at?: string | null;
   sms_deactivated_at?: string | null;
   sms_deactivation_reason?: string | null;
-  messaging_status?: 'active' | 'suspended' | 'invalid_number' | 'opted_out';
+  messaging_status?: string | null;
   last_successful_delivery?: string | null;
-  consecutive_failures?: number;
-  total_failures_30d?: number;
+  consecutive_failures?: number | null;
+  total_failures_30d?: number | null;
   last_failure_type?: string | null;
 }
 
@@ -513,227 +515,7 @@ export interface Profile {
   updated_at: string;
 }
 
-export interface Database {
-  public: {
-    Tables: {
-      events: {
-        Row: Event;
-        Insert: Omit<Event, 'id' | 'created_at'>;
-        Update: Partial<Omit<Event, 'id' | 'created_at'>>;
-      };
-      customers: {
-        Row: Customer;
-        Insert: Omit<Customer, 'id' | 'created_at' | 'sms_opt_in' | 'sms_delivery_failures' | 'last_sms_failure_reason' | 'last_successful_sms_at' | 'sms_deactivated_at' | 'sms_deactivation_reason'>;
-        Update: Partial<Omit<Customer, 'id' | 'created_at'>>;
-      };
-      bookings: {
-        Row: Booking;
-        Insert: Omit<Booking, 'id' | 'created_at'>;
-        Update: Partial<Omit<Booking, 'id' | 'created_at'>>;
-      };
-      employees: {
-        Row: Employee;
-        Insert: Omit<Employee, 'employee_id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<Employee, 'employee_id' | 'created_at' | 'updated_at'>>;
-      };
-      employee_financial_details: {
-        Row: EmployeeFinancialDetails;
-        Insert: Omit<EmployeeFinancialDetails, 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<EmployeeFinancialDetails, 'created_at' | 'updated_at'>>;
-      };
-      employee_health_records: {
-        Row: EmployeeHealthRecord;
-        Insert: Omit<EmployeeHealthRecord, 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<EmployeeHealthRecord, 'created_at' | 'updated_at'>>;
-      };
-      employee_notes: {
-        Row: EmployeeNote;
-        Insert: Omit<EmployeeNote, 'note_id' | 'created_at'>;
-        Update: Partial<Omit<EmployeeNote, 'note_id' | 'created_at' | 'employee_id'>>;
-      };
-      attachment_categories: {
-        Row: AttachmentCategory;
-        Insert: Omit<AttachmentCategory, 'category_id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<AttachmentCategory, 'category_id' | 'created_at' | 'updated_at' | 'category_name'>>;
-      };
-      employee_attachments: {
-        Row: EmployeeAttachment;
-        Insert: Omit<EmployeeAttachment, 'attachment_id' | 'uploaded_at'>;
-        Update: Partial<Omit<EmployeeAttachment, 'attachment_id' | 'uploaded_at' | 'employee_id'>>;
-      };
-      employee_emergency_contacts: {
-        Row: EmployeeEmergencyContact;
-        Insert: Omit<EmployeeEmergencyContact, 'id' | 'created_at'>;
-        Update: Partial<Omit<EmployeeEmergencyContact, 'id' | 'created_at' | 'employee_id'>>;
-      };
-      messages: {
-        Row: Message;
-        Insert: Omit<Message, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<Message, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      message_delivery_status: {
-        Row: MessageDeliveryStatus;
-        Insert: Omit<MessageDeliveryStatus, 'id' | 'created_at'>;
-        Update: Partial<Omit<MessageDeliveryStatus, 'id' | 'created_at'>>;
-      };
-      webhook_logs: {
-        Row: WebhookLog;
-        Insert: Omit<WebhookLog, 'id' | 'created_at'>;
-        Update: Partial<Omit<WebhookLog, 'id' | 'created_at'>>;
-      };
-      audit_logs: {
-        Row: AuditLog;
-        Insert: Omit<AuditLog, 'id' | 'created_at'>;
-        Update: Partial<Omit<AuditLog, 'id' | 'created_at'>>;
-      };
-      message_templates: {
-        Row: MessageTemplate;
-        Insert: Omit<MessageTemplate, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<MessageTemplate, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      event_message_templates: {
-        Row: EventMessageTemplate;
-        Insert: Omit<EventMessageTemplate, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<EventMessageTemplate, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      roles: {
-        Row: Role;
-        Insert: Omit<Role, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<Role, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      user_roles: {
-        Row: UserRole;
-        Insert: Omit<UserRole, 'id' | 'created_at'>;
-        Update: Partial<Omit<UserRole, 'id' | 'created_at'>>;
-      };
-      customer_category_stats: {
-        Row: CustomerCategoryStats;
-        Insert: Omit<CustomerCategoryStats, 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<CustomerCategoryStats, 'created_at' | 'updated_at'>>;
-      };
-      event_categories: {
-        Row: EventCategory;
-        Insert: Omit<EventCategory, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<EventCategory, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      profiles: {
-        Row: Profile;
-        Insert: Omit<Profile, 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<Profile, 'created_at' | 'updated_at'>>;
-      };
-      receipt_batches: {
-        Row: ReceiptBatch;
-        Insert: Omit<ReceiptBatch, 'id' | 'uploaded_at' | 'created_at'>;
-        Update: Partial<Omit<ReceiptBatch, 'id' | 'uploaded_at' | 'created_at'>>;
-      };
-      receipt_rules: {
-        Row: ReceiptRule;
-        Insert: Omit<ReceiptRule, 'id' | 'created_at' | 'updated_at' | 'created_by' | 'updated_by'>;
-        Update: Partial<Omit<ReceiptRule, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      receipt_transactions: {
-        Row: ReceiptTransaction;
-        Insert: Omit<ReceiptTransaction, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<ReceiptTransaction, 'id' | 'created_at'>>;
-      };
-      receipt_files: {
-        Row: ReceiptFile;
-        Insert: Omit<ReceiptFile, 'id' | 'uploaded_at'>;
-        Update: Partial<Omit<ReceiptFile, 'id' | 'uploaded_at' | 'transaction_id'>>;
-      };
-      receipt_transaction_logs: {
-        Row: ReceiptTransactionLog;
-        Insert: Omit<ReceiptTransactionLog, 'id' | 'performed_at'>;
-        Update: Partial<Omit<ReceiptTransactionLog, 'id' | 'performed_at' | 'transaction_id'>>;
-      };
-      ai_usage_events: {
-        Row: AIUsageEvent;
-        Insert: Omit<AIUsageEvent, 'id' | 'occurred_at' | 'total_tokens'> & { total_tokens?: number };
-        Update: Partial<Omit<AIUsageEvent, 'id' | 'occurred_at'>>;
-      };
-      pl_targets: {
-        Row: PLTarget;
-        Insert: Omit<PLTarget, 'updated_at'> & { updated_at?: string };
-        Update: Partial<Omit<PLTarget, 'metric_key' | 'timeframe'>>;
-      };
-      pl_manual_actuals: {
-        Row: PLManualActual;
-        Insert: Omit<PLManualActual, 'updated_at'> & { updated_at?: string };
-        Update: Partial<Omit<PLManualActual, 'metric_key' | 'timeframe'>>;
-      };
-      hiring_job_templates: {
-        Row: HiringJobTemplate;
-        Insert: Omit<HiringJobTemplate, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<HiringJobTemplate, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      hiring_jobs: {
-        Row: HiringJob;
-        Insert: Omit<HiringJob, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<HiringJob, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      hiring_candidates: {
-        Row: HiringCandidate;
-        Insert: Omit<HiringCandidate, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<HiringCandidate, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      hiring_applications: {
-        Row: HiringApplication;
-        Insert: Omit<HiringApplication, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<HiringApplication, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      hiring_notes: {
-        Row: HiringNote;
-        Insert: Omit<HiringNote, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<HiringNote, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      hiring_candidate_documents: {
-        Row: HiringCandidateDocument;
-        Insert: Omit<HiringCandidateDocument, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<HiringCandidateDocument, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      hiring_candidate_profile_versions: {
-        Row: HiringCandidateProfileVersion;
-        Insert: Omit<HiringCandidateProfileVersion, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<HiringCandidateProfileVersion, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      hiring_candidate_events: {
-        Row: HiringCandidateEvent;
-        Insert: Omit<HiringCandidateEvent, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<HiringCandidateEvent, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      hiring_application_messages: {
-        Row: HiringApplicationMessage;
-        Insert: Omit<HiringApplicationMessage, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<HiringApplicationMessage, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      hiring_outreach_messages: {
-        Row: HiringOutreachMessage;
-        Insert: Omit<HiringOutreachMessage, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<HiringOutreachMessage, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      hiring_application_overrides: {
-        Row: HiringApplicationOverride;
-        Insert: Omit<HiringApplicationOverride, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<HiringApplicationOverride, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      hiring_screening_runs: {
-        Row: HiringScreeningRun;
-        Insert: Omit<HiringScreeningRun, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<HiringScreeningRun, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      hiring_interviews: {
-        Row: HiringInterview;
-        Insert: Omit<HiringInterview, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<HiringInterview, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      hiring_interview_attendees: {
-        Row: HiringInterviewAttendee;
-        Insert: Omit<HiringInterviewAttendee, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<HiringInterviewAttendee, 'id' | 'created_at' | 'updated_at'>>;
-      };
-    };
-  };
-}
+export type Database = GeneratedDatabase;
 
 export type HiringJobStatus = 'draft' | 'open' | 'closed' | 'archived' | 'expired';
 export type HiringApplicationStage = 'new' | 'screening' | 'screened' | 'in_conversation' | 'interview_scheduled' | 'interviewed' | 'offer' | 'hired' | 'rejected' | 'withdrawn';

@@ -10,9 +10,10 @@ interface EventTemplate {
   event_id: string
   template_type: string
   content: string
-  is_active: boolean
-  character_badge: number
-  estimated_segments: number
+  is_active: boolean | null
+  send_timing: string | null
+  custom_timing_hours: number | null
+  variables: string[] | null
 }
 
 interface Props {

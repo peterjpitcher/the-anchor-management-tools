@@ -58,7 +58,7 @@ export default function TableBookingsCalendarPage() {
         .from('table_bookings')
         .select(`
           *,
-          customer:customers(first_name, last_name)
+          customer:customers(id, first_name, last_name, mobile_number, sms_opt_in, email)
         `)
         .gte('booking_date', format(monthStart, 'yyyy-MM-dd'))
         .lte('booking_date', format(monthEnd, 'yyyy-MM-dd'))

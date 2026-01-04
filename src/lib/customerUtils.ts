@@ -1,6 +1,8 @@
 import { Customer } from '@/types/database'
-import { SupabaseClient } from '@supabase/supabase-js'
 import { toLocalIsoDate } from './dateUtils'
+import type { createClient } from '@/lib/supabase/client'
+
+type SupabaseClientType = ReturnType<typeof createClient>
 
 export type CustomerWithLoyalty = Customer & {
   isLoyal?: boolean
@@ -13,7 +15,7 @@ type BookingWithEvent = {
   }
 }
 
-export async function getLoyalCustomers(supabase: SupabaseClient): Promise<string[]> {
+export async function getLoyalCustomers(supabase: SupabaseClientType): Promise<string[]> {
   const now = new Date()
   const oneMonthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate())
   const oneMonthAhead = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate())
