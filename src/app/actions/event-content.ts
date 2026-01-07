@@ -34,6 +34,7 @@ type EventSeoContentResult = {
     longDescription: string | null
     highlights: string[]
     keywords: string[]
+    slug: string | null
   }
 } | {
   success: false
@@ -168,25 +169,28 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
         {
           role: 'system',
           content:
-            'You are an expert hospitality marketer crafting SEO-friendly website content for events. Keep outputs concise, engaging, and aligned with UK English. Use only the supplied event fields and never invent venue, price, capacity, time, performer, or category details. If a field is missing, leave the corresponding output empty.',
+            'You are an expert hospitality marketer for "The Anchor", a popular pub and venue. Your goal is to craft SEO-friendly, persuasive, and atmosphere-focused website content for events. Keep outputs concise, engaging, and aligned with UK English. Use only the supplied event fields and never invent venue, price, capacity, time, performer, or category details. If a field is missing, leave the corresponding output empty. Focus on driving ticket sales and reservations.',
         },
         {
           role: 'user',
           content: [
-            'Create fresh SEO copy for this event based on the details JSON below.',
+            'Create fresh, optimised SEO copy for this event based on the details JSON below.',
             'Priorities:',
-            '- Position the experience vividly for a night out.',
-            '- Highlight any unique draws from the brief.',
-            '- Build urgency to secure tickets immediately.',
-            '- If booking_url is provided, you may reference booking in general but do not include raw URLs.',
+            '- Position the experience vividly for a great night out at The Anchor.',
+            '- Highlight unique selling points and benefits (e.g., atmosphere, exclusive drinks, entertainment value).',
+            '- Build urgency to secure tickets or book a table immediately.',
+            '- Use persuasive language that drives conversion.',
+            '- If booking_url is provided, reference booking explicitly but do not include raw URLs.',
+            '- **Long Description SEO**: Generate a comprehensive description (300+ words) formatted in plain text (no markdown) but structured logically with paragraphs. Focus on ranking for relevant keywords by covering the atmosphere, what to expect, and why it is a must-attend.',
             '- Do NOT use Markdown formatting (no bold **, italics _, or links []()). Return clean plain text.',
             '- Do NOT invent missing details; if absent, leave that field blank.',
-            '- Keep the meta description under 155 characters and focus on urgency.',
-            '- Provide 3-5 highlights and 6-10 keyword phrases.',
+            '- Keep the meta description under 155 characters, focusing on the hook and call to action.',
+            '- Provide 3-5 punchy highlights and 6-10 targeted keyword phrases.',
+            '- **Slug**: Generate a URL-friendly slug (lowercase, alphanumeric, hyphens only, no spaces or special chars) based on the event name and date. Example: "six-nations-2026-england-vs-wales".',
             '',
             summary,
             '',
-            'Return JSON with keys metaTitle, metaDescription, shortDescription, longDescription, highlights (string array), keywords (string array). All fields must be strings (or arrays of strings); use "" for missing values.',
+            'Return JSON with keys metaTitle, metaDescription, shortDescription, longDescription, highlights (string array), keywords (string array), slug (string). All fields must be strings (or arrays of strings); use "" for missing values.',
           ].join('\n'),
         },
       ],
@@ -213,8 +217,9 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
                 minItems: 6,
                 maxItems: 12,
               },
+              slug: { type: ['string', 'null'] },
             },
-            required: ['metaTitle', 'metaDescription', 'shortDescription', 'longDescription', 'highlights', 'keywords'],
+            required: ['metaTitle', 'metaDescription', 'shortDescription', 'longDescription', 'highlights', 'keywords', 'slug'],
             additionalProperties: false,
           },
         },
@@ -241,6 +246,7 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
     longDescription: string | null
     highlights: string[]
     keywords: string[]
+    slug: string | null
   }
   try {
     parsed = JSON.parse(typeof content === 'string' ? content : JSON.stringify(content))
@@ -258,6 +264,7 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
       longDescription: parsed.longDescription ?? null,
       highlights: Array.isArray(parsed.highlights) ? parsed.highlights.filter(Boolean) : [],
       keywords: Array.isArray(parsed.keywords) ? parsed.keywords.filter(Boolean) : [],
+      slug: parsed.slug ?? null,
     },
   }
 }
@@ -436,14 +443,14 @@ export async function generateEventPromotionContent({ eventId, ticketUrl }: Even
 
   const facebookStoryParagraphs = Array.isArray(parsed.facebook?.story_paragraphs)
     ? (parsed.facebook.story_paragraphs as unknown[])
-        .map((paragraph) => (typeof paragraph === 'string' ? paragraph.trim() : ''))
-        .filter(Boolean)
+      .map((paragraph) => (typeof paragraph === 'string' ? paragraph.trim() : ''))
+      .filter(Boolean)
     : []
 
   const facebookBulletPoints = Array.isArray(parsed.facebook?.bullet_points)
     ? (parsed.facebook.bullet_points as unknown[])
-        .map((bullet) => (typeof bullet === 'string' ? bullet.trim() : ''))
-        .filter(Boolean)
+      .map((bullet) => (typeof bullet === 'string' ? bullet.trim() : ''))
+      .filter(Boolean)
     : []
 
   const facebookCta = typeof parsed.facebook?.cta === 'string' ? parsed.facebook.cta.trim() : ''
