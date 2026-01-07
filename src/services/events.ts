@@ -76,7 +76,12 @@ export const eventSchema = z.object({
     }, 'Date must be valid'),
   time: z.string()
     .min(1, 'Time is required')
-    .regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format (HH:MM)'),
+    .refine((val) => /^([0-1]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$|^24:00(:00)?$/.test(val), 'Invalid time format (HH:MM)')
+    .transform(val => {
+      if (val.startsWith('24:00')) return '23:59'
+      const parts = val.split(':')
+      return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : val
+    }),
   capacity: z.preprocess(
     (val) => {
       if (val === '' || val === null || val === undefined) return null;
@@ -96,19 +101,25 @@ export const eventSchema = z.object({
   meta_description: z.string().max(500).nullable().optional(),
   end_time: z.string().optional().nullable().transform(val => {
     if (!val || val.trim() === '') return null
-    if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(val)) return null
-    return val
+    if (val.startsWith('24:00') || val.startsWith('00:00')) return '23:59'
+    if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/.test(val)) return null
+    const parts = val.split(':')
+    return `${parts[0]}:${parts[1]}`
   }),
   duration_minutes: z.number().nullable().optional(),
   doors_time: z.string().optional().nullable().transform(val => {
     if (!val || val.trim() === '') return null
-    if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(val)) return null
-    return val
+    if (val.startsWith('24:00') || val.startsWith('00:00')) return '23:59'
+    if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/.test(val)) return null
+    const parts = val.split(':')
+    return `${parts[0]}:${parts[1]}`
   }),
   last_entry_time: z.string().optional().nullable().transform(val => {
     if (!val || val.trim() === '') return null
-    if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(val)) return null
-    return val
+    if (val.startsWith('24:00') || val.startsWith('00:00')) return '23:59'
+    if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/.test(val)) return null
+    const parts = val.split(':')
+    return `${parts[0]}:${parts[1]}`
   }),
   event_status: z.enum(['scheduled', 'cancelled', 'postponed', 'rescheduled', 'sold_out', 'draft']).default('scheduled'),
   performer_name: z.string().max(255).nullable().optional(),

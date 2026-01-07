@@ -10,8 +10,8 @@ import { Select } from '@/components/ui-v2/forms/Select'
 import { DebouncedTextarea } from '@/components/ui-v2/forms/DebouncedTextarea'
 import { SquareImageUpload } from '@/components/features/shared/SquareImageUpload'
 import toast from 'react-hot-toast'
-import { 
-  ChevronDownIcon, 
+import {
+  ChevronDownIcon,
   ChevronUpIcon,
   InformationCircleIcon,
   CalendarIcon,
@@ -39,7 +39,7 @@ interface SectionProps {
 
 function CollapsibleSection({ title, description, icon: Icon, children, defaultOpen = true }: SectionProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
-  
+
   return (
     <div className="bg-white shadow-sm ring-1 ring-gray-900/5 sm:rounded-xl overflow-hidden">
       <button
@@ -71,7 +71,7 @@ function CollapsibleSection({ title, description, icon: Icon, children, defaultO
 
 export function EventFormGrouped({ event, categories, onSubmit, onCancel }: EventFormGroupedProps) {
   const router = useRouter()
-  
+
   // Basic fields
   const [name, setName] = useState(event?.name ?? '')
   const [date, setDate] = useState(event?.date ?? '')
@@ -86,7 +86,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
   const [isFree, setIsFree] = useState(event?.is_free ?? true)
   const [imageUrl, setImageUrl] = useState(event?.hero_image_url ?? '')
   const [brief, setBrief] = useState(event?.brief ?? '')
-  
+
   // SEO and content fields
   const [slug, setSlug] = useState(event?.slug ?? '')
   const [shortDescription, setShortDescription] = useState(event?.short_description ?? '')
@@ -95,13 +95,13 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
   const [metaTitle, setMetaTitle] = useState(event?.meta_title ?? '')
   const [metaDescription, setMetaDescription] = useState(event?.meta_description ?? '')
   const [keywords, setKeywords] = useState(event?.keywords?.join(', ') ?? '')
-  
+
   // Additional timing and booking fields
   const [bookingUrl, setBookingUrl] = useState(event?.booking_url ?? '')
   const [doorsTime, setDoorsTime] = useState(event?.doors_time ?? '')
   const [durationMinutes, setDurationMinutes] = useState(event?.duration_minutes?.toString() ?? '')
   const [lastEntryTime, setLastEntryTime] = useState(event?.last_entry_time ?? '')
-  
+
   const [isGeneratingSeo, setIsGeneratingSeo] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -112,7 +112,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!name.trim() || !date || !time) {
       toast.error('Please fill in all required fields')
       return
@@ -164,10 +164,10 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
   // Auto-populate fields when category is selected
   const handleCategoryChange = (selectedCategoryId: string) => {
     setCategoryId(selectedCategoryId)
-    
+
     // Find the selected category
     const selectedCategory = categories.find(cat => cat.id === selectedCategoryId)
-    
+
     if (selectedCategory) {
       // Auto-populate fields from category defaults only if they're empty
       if (!name && selectedCategory.name) {
@@ -234,12 +234,24 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
     }
   }
 
-  // Update slug when name or date changes
+  // Auto-calculate duration when start/end time changes
   useEffect(() => {
-    if (name && date && !event) { // Only auto-generate for new events
-      setSlug(name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + date)
+    if (time && endTime) {
+      const [startHours, startMinutes] = time.split(':').map(Number)
+      const [endHours, endMinutes] = endTime.split(':').map(Number)
+
+      const startTotal = startHours * 60 + startMinutes
+      let endTotal = endHours * 60 + endMinutes
+
+      // Handle crossing midnight
+      if (endTotal < startTotal) {
+        endTotal += 24 * 60
+      }
+
+      const diff = endTotal - startTotal
+      setDurationMinutes(diff.toString())
     }
-  }, [name, date, event])
+  }, [time, endTime])
 
   const handleGenerateSeo = async () => {
     if (!name.trim()) {
@@ -249,6 +261,11 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
 
     setIsGeneratingSeo(true)
     try {
+      // Generate slug if empty
+      if (!slug && name && date) {
+        setSlug(name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + date)
+      }
+
       const selectedCategory = categoryId ? categories.find(cat => cat.id === categoryId) : undefined
       const result = await generateEventSeoContent({
         eventId: event?.id ?? null,
@@ -276,7 +293,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
         return
       }
 
-      const { metaTitle: nextMetaTitle, metaDescription: nextMetaDescription, shortDescription: nextShort, longDescription: nextLong, highlights: nextHighlights, keywords: nextKeywords } = result.data
+      const { metaTitle: nextMetaTitle, metaDescription: nextMetaDescription, shortDescription: nextShort, longDescription: nextLong, highlights: nextHighlights, keywords: nextKeywords, slug: nextSlug } = result.data
 
       if (nextMetaTitle) setMetaTitle(nextMetaTitle)
       if (nextMetaDescription) setMetaDescription(nextMetaDescription)
@@ -284,6 +301,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
       if (nextLong) setLongDescription(nextLong)
       if (nextHighlights) setHighlights(nextHighlights.join(', '))
       if (nextKeywords) setKeywords(nextKeywords.join(', '))
+      if (nextSlug) setSlug(nextSlug)
 
       toast.success('SEO content drafted')
     } catch (error) {
@@ -297,8 +315,8 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Basic Information Section */}
-      <CollapsibleSection 
-        title="Basic Information" 
+      <CollapsibleSection
+        title="Basic Information"
         description="Essential details about your event"
         icon={InformationCircleIcon}
         defaultOpen={true}
@@ -431,8 +449,8 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
       </CollapsibleSection>
 
       {/* Time & Schedule Section */}
-      <CollapsibleSection 
-        title="Time & Schedule" 
+      <CollapsibleSection
+        title="Time & Schedule"
         description="When your event takes place"
         icon={ClockIcon}
         defaultOpen={true}
@@ -519,8 +537,8 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
       </CollapsibleSection>
 
       {/* Pricing & Booking Section */}
-      <CollapsibleSection 
-        title="Pricing & Booking" 
+      <CollapsibleSection
+        title="Pricing & Booking"
         description="Ticket prices and booking information"
         icon={CalendarIcon}
         defaultOpen={false}
@@ -566,8 +584,8 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
       </CollapsibleSection>
 
       {/* Performers Section */}
-      <CollapsibleSection 
-        title="Performers" 
+      <CollapsibleSection
+        title="Performers"
         description="Information about who's performing"
         icon={UserGroupIcon}
         defaultOpen={false}
@@ -614,8 +632,8 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
       </CollapsibleSection>
 
       {/* SEO & Content Section */}
-      <CollapsibleSection 
-        title="SEO & Content" 
+      <CollapsibleSection
+        title="SEO & Content"
         description="Search engine optimization and content details"
         icon={MegaphoneIcon}
         defaultOpen={false}
