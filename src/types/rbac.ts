@@ -31,6 +31,7 @@ export type UserRole = {
 export type ModuleName = 
   | 'dashboard'
   | 'events'
+  | 'performers'
   | 'customers'
   | 'employees'
   | 'bookings'

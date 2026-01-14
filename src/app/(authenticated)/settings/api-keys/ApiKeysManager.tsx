@@ -22,6 +22,7 @@ interface ApiKeysManagerProps {
 const PERMISSION_OPTIONS = [
   { value: 'read:events', label: 'Read Events' },
   { value: 'write:events', label: 'Write Events' },
+  { value: 'write:performers', label: 'Write Performers' },
   { value: 'read:menu', label: 'Read Menu' },
   { value: 'write:menu', label: 'Write Menu' },
   { value: 'write:bookings', label: 'Write Bookings' },

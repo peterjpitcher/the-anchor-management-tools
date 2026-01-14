@@ -39,6 +39,67 @@ export interface Event {
   gbp_event_description?: string | null;
 }
 
+export type PerformerSubmissionStatus =
+  | 'new'
+  | 'shortlisted'
+  | 'contacted'
+  | 'booked'
+  | 'not_a_fit'
+  | 'do_not_contact';
+
+export interface PerformerSubmission {
+  id: string;
+  created_at: string;
+  updated_at: string;
+
+  full_name: string;
+  use_real_name: boolean;
+  act_name: string | null;
+  email: string;
+  phone: string;
+  base_location: string;
+
+  performer_types: string[];
+  performer_type_other: string | null;
+
+  bio: string;
+
+  links: Record<string, string[]>;
+  has_links: boolean;
+  social_handles: Record<string, string>;
+
+  experience_level: string | null;
+  pronouns: string | null;
+  accessibility_notes: string | null;
+
+  availability_general: 'weeknights' | 'weekends' | 'either';
+  can_start_around_8pm: 'yes' | 'no' | 'depends';
+  availability: Record<string, unknown>;
+
+  set_length_minutes: number | null;
+  content_rating: 'family_friendly' | 'mild_language' | 'adults_only' | null;
+  music_originals_covers: 'original' | 'covers' | 'mix' | null;
+  genres: string[];
+
+  tech_needs: Record<string, unknown>;
+  tech_needs_other: string | null;
+  bring_own_gear: string | null;
+  setup_time_minutes: number | null;
+  performer_count: number | null;
+  special_requirements: string | null;
+
+  consent_data_storage: boolean;
+  consent_marketing: boolean;
+  consent_media: boolean;
+
+  status: PerformerSubmissionStatus;
+  internal_notes: string | null;
+
+  source: string;
+  submitted_ip: string | null;
+  user_agent: string | null;
+}
+
 export interface EventChecklistStatus {
   id: string;
   event_id: string;
