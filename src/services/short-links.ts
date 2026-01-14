@@ -7,14 +7,14 @@ const CustomCodeSchema = z
   .string()
   .trim()
   .min(3, 'Custom code must be at least 3 characters')
-  .max(32, 'Custom code must be 32 characters or fewer')
+  .max(20, 'Custom code must be 20 characters or fewer')
   .regex(/^[a-z0-9-]+$/i, 'Custom code can only contain letters, numbers, and hyphens')
   .transform((value) => value.toLowerCase());
 
 export const CreateShortLinkSchema = z.object({
   name: z.string().max(120).optional(),
   destination_url: z.string().url('Invalid URL'),
-  link_type: z.enum(['loyalty_portal', 'event_checkin', 'promotion', 'reward_redemption', 'custom']),
+  link_type: z.enum(['loyalty_portal', 'event_checkin', 'promotion', 'reward_redemption', 'custom', 'booking_confirmation']),
   metadata: z.record(z.any()).optional(),
   expires_at: z.string().optional(),
   custom_code: CustomCodeSchema.optional()
