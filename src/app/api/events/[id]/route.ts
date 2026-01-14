@@ -64,6 +64,7 @@ export async function GET(
     const extendedEvent = {
       id: event.id,
       slug: event.slug,
+      bookingUrl: event.booking_url || null,
       highlights: event.highlights || [],
       keywords: event.keywords || [],
       shortDescription: event.short_description,
@@ -91,7 +92,7 @@ export async function GET(
         max_seats_per_booking: 6,
         requires_customer_details: true,
         allows_notes: true,
-        sms_confirmation_enabled: true,
+        sms_confirmation_enabled: false,
       },
       custom_messages: event.event_message_templates?.reduce((acc: any, template: any) => {
         acc[template.template_type] = template.custom_content;

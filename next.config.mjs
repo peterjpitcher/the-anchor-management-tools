@@ -41,11 +41,6 @@ const nextConfig = {
     config.cache = false
     config.externals.push('@napi-rs/canvas')
 
-    // Explicitly disable minification to bypass WebpackError
-    if (config.optimization) {
-      config.optimization.minimize = false
-    }
-
     return config
   },
 };

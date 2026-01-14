@@ -1,14 +1,52 @@
-import React from 'react'
+'use client'
+
+import React, { useState } from 'react'
 import { EventOverview } from '@/app/(authenticated)/events/get-events-command-center'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { Badge } from '@/components/ui-v2/display/Badge'
+import { TrashIcon } from '@heroicons/react/24/outline'
+import { usePermissions } from '@/contexts/PermissionContext'
+import { deleteEvent } from '@/app/actions/events'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { useRouter } from 'next/navigation'
 
 interface EventListProps {
     events: EventOverview[]
 }
 
 export default function EventList({ events }: EventListProps) {
+    const router = useRouter()
+    const { hasPermission } = usePermissions()
+    const canManageEvents = hasPermission('events', 'manage')
+    const [deletingEventId, setDeletingEventId] = useState<string | null>(null)
+
+    const handleDeleteEvent = async (event: EventOverview) => {
+        if (!canManageEvents) {
+            toast.error('You do not have permission to delete events.')
+            return
+        }
+
+        if (!window.confirm(`Delete "${event.name}"? This action cannot be undone.`)) return
+
+        try {
+            setDeletingEventId(event.id)
+            const result = await deleteEvent(event.id)
+            if (result && 'error' in result && result.error) {
+                toast.error(result.error)
+                return
+            }
+
+            toast.success('Event deleted successfully')
+            router.refresh()
+        } catch (error) {
+            console.error('Error deleting event:', error)
+            toast.error(error instanceof Error ? error.message : 'Failed to delete event')
+        } finally {
+            setDeletingEventId(null)
+        }
+    }
+
     if (events.length === 0) {
         return (
             <div className="text-center py-20 bg-gray-50 rounded-lg border border-dashed border-gray-300">
@@ -85,9 +123,23 @@ export default function EventList({ events }: EventListProps) {
                                 </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                <Link href={`/events/${event.id}`} className="text-indigo-600 hover:text-indigo-900">
-                                    Manage
-                                </Link>
+                                <div className="inline-flex items-center justify-end gap-3">
+                                    <Link href={`/events/${event.id}`} className="text-indigo-600 hover:text-indigo-900">
+                                        Manage
+                                    </Link>
+                                    {canManageEvents && (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDeleteEvent(event)}
+                                            disabled={deletingEventId === event.id}
+                                            className="text-red-600 hover:text-red-900 disabled:cursor-not-allowed disabled:opacity-50"
+                                            title="Delete event"
+                                        >
+                                            <TrashIcon className="h-5 w-5" />
+                                            <span className="sr-only">Delete Event</span>
+                                        </button>
+                                    )}
+                                </div>
                             </td>
                         </tr>
                     ))}

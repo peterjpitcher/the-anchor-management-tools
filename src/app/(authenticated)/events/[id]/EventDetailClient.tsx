@@ -28,6 +28,8 @@ import { formatPhoneForDisplay } from '@/lib/validation'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { deleteBooking } from '@/app/actions/bookings'
+import { deleteEvent } from '@/app/actions/events'
+import { Button } from '@/components/ui-v2/forms/Button'
 
 type Event = BaseEvent & {
   category?: EventCategory | null
@@ -69,6 +71,7 @@ export default function EventDetailClient({
 
   const [showBookingForm, setShowBookingForm] = useState(false)
   const [showAddAttendeesModal, setShowAddAttendeesModal] = useState(false)
+  const [isDeletingEvent, setIsDeletingEvent] = useState(false)
 
   const [marketingLinks, setMarketingLinks] = useState<EventMarketingLink[]>(initialMarketingLinks)
   const [marketingLoading, setMarketingLoading] = useState(false)
@@ -169,6 +172,37 @@ export default function EventDetailClient({
     } catch (error) {
       console.error('Error deleting booking:', error)
       toast.error(error instanceof Error ? error.message : 'Failed to delete booking')
+    }
+  }
+
+  const handleDeleteEvent = async () => {
+    if (!canManageEvents) {
+      toast.error('You do not have permission to delete events.')
+      return
+    }
+
+    if (bookings.length > 0) {
+      toast.error('Cannot delete an event with existing bookings. Delete bookings first.')
+      return
+    }
+
+    if (!window.confirm(`Delete "${event.name}"? This action cannot be undone.`)) return
+
+    try {
+      setIsDeletingEvent(true)
+      const result = await deleteEvent(event.id)
+      if (result && 'error' in result && result.error) {
+        toast.error(result.error)
+        return
+      }
+
+      toast.success('Event deleted successfully')
+      router.replace('/events')
+    } catch (error) {
+      console.error('Error deleting event:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to delete event')
+    } finally {
+      setIsDeletingEvent(false)
     }
   }
 
@@ -505,6 +539,20 @@ export default function EventDetailClient({
         href: '/events',
       }}
       navItems={navItems}
+      navActions={
+        canManageEvents && (
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={handleDeleteEvent}
+            loading={isDeletingEvent}
+            disabled={isDeletingEvent || bookings.length > 0}
+            title={bookings.length > 0 ? 'Delete all bookings/reminders before deleting this event' : 'Delete event'}
+          >
+            Delete Event
+          </Button>
+        )
+      }
       className="bg-gray-50/50"
     >
       <Modal
