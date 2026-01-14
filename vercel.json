@@ -41,6 +41,26 @@
       ]
     },
     {
+      "source": "/robots.txt",
+      "destination": "/robots.txt",
+      "has": [
+        {
+          "type": "host",
+          "value": "vip-club.uk"
+        }
+      ]
+    },
+    {
+      "source": "/robots.txt",
+      "destination": "/robots.txt",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.vip-club.uk"
+        }
+      ]
+    },
+    {
       "source": "/:code",
       "destination": "/api/redirect/:code",
       "has": [
