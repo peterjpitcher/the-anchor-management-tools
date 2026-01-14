@@ -103,6 +103,7 @@ export async function GET(_request: NextRequest) {
       return {
         id: event.id,
         slug: event.slug,
+        bookingUrl: event.booking_url || null,
         highlights: event.highlights || [],
         event_status: event.event_status, // Expose raw status
         ...eventToSchema(event, bookedSeats, faqs),

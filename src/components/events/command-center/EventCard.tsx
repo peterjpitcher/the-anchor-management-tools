@@ -1,11 +1,15 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { EventOverview } from '@/app/(authenticated)/events/get-events-command-center'
 // Assuming these exist or we use standard HTML/Tailwind
 import { format } from 'date-fns'
+import { TrashIcon } from '@heroicons/react/24/outline'
+import { usePermissions } from '@/contexts/PermissionContext'
+import { deleteEvent } from '@/app/actions/events'
+import { toast } from '@/components/ui-v2/feedback/Toast'
 
 interface EventCardProps {
     event: EventOverview
@@ -13,6 +17,9 @@ interface EventCardProps {
 
 export default function EventCard({ event }: EventCardProps) {
     const router = useRouter()
+    const { hasPermission } = usePermissions()
+    const canManageEvents = hasPermission('events', 'manage')
+    const [isDeleting, setIsDeleting] = useState(false)
     // Helpers
     const formatTime = (timeStr: string) => {
         // Basic parse assuming HH:mm:ss or HH:mm
@@ -38,6 +45,35 @@ export default function EventCard({ event }: EventCardProps) {
         router.push(`/events/${event.id}`)
     }
 
+    const handleDeleteEvent = async (e: React.MouseEvent<HTMLButtonElement>) => {
+        e.preventDefault()
+        e.stopPropagation()
+
+        if (!canManageEvents) {
+            toast.error('You do not have permission to delete events.')
+            return
+        }
+
+        if (!window.confirm(`Delete "${event.name}"? This action cannot be undone.`)) return
+
+        try {
+            setIsDeleting(true)
+            const result = await deleteEvent(event.id)
+            if (result && 'error' in result && result.error) {
+                toast.error(result.error)
+                return
+            }
+
+            toast.success('Event deleted successfully')
+            router.refresh()
+        } catch (error) {
+            console.error('Error deleting event:', error)
+            toast.error(error instanceof Error ? error.message : 'Failed to delete event')
+        } finally {
+            setIsDeleting(false)
+        }
+    }
+
     return (
         // eslint-disable-next-line
         <div
@@ -56,6 +92,21 @@ export default function EventCard({ event }: EventCardProps) {
                     />
                 ) : (
                     <div className="w-full h-full" style={fallbackGradient} />
+                )}
+
+                {canManageEvents && (
+                    <div className="absolute top-2 left-2">
+                        <button
+                            type="button"
+                            onClick={handleDeleteEvent}
+                            disabled={isDeleting}
+                            className="inline-flex items-center justify-center rounded-md border border-gray-200 bg-white/90 p-1.5 text-red-600 shadow-sm hover:bg-white hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            title="Delete event"
+                        >
+                            <TrashIcon className="h-4 w-4" />
+                            <span className="sr-only">Delete Event</span>
+                        </button>
+                    </div>
                 )}
 
                 {/* Status Badge Overlay */}
