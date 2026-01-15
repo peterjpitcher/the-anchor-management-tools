@@ -35,7 +35,7 @@ export default function BookingSuccessPage() {
     }
 
     loadBooking();
-  }, [bookingId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [bookingId]);
 
   async function loadBooking() {
     if (!bookingId) {

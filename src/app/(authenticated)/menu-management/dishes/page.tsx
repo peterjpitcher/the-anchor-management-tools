@@ -244,14 +244,12 @@ export default function MenuDishesPage() {
     ]).catch((err) => {
       console.error('Initial load error:', err);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     loadDishes().catch((err) => {
       console.error('Dish load error:', err);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeMenuFilter]);
 
   async function loadDishes(menuCodeOverride?: string) {

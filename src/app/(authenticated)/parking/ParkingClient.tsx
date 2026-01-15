@@ -123,7 +123,6 @@ export default function ParkingClient({ permissions, initialError }: Props) {
 
   useEffect(() => {
     void fetchBookings()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, paymentFilter, search])
 
   useEffect(() => {
@@ -140,7 +139,6 @@ export default function ParkingClient({ permissions, initialError }: Props) {
     }
 
     void loadRates()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [permissions.canManage])
 
   useEffect(() => {

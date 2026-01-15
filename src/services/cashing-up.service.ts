@@ -352,11 +352,8 @@ export class CashingUpService {
 
       // Calculate breakdown totals
       const breakdowns = s.cashup_payment_breakdowns || [];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const cashTotal = breakdowns.find((b: any) => b.payment_type_code === 'CASH')?.counted_amount || 0;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const cardTotal = breakdowns.find((b: any) => b.payment_type_code === 'CARD')?.counted_amount || 0;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const stripeTotal = breakdowns.find((b: any) => b.payment_type_code === 'STRIPE')?.counted_amount || 0;
 
       return {

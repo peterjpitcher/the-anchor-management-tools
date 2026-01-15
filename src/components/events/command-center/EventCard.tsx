@@ -75,7 +75,6 @@ export default function EventCard({ event }: EventCardProps) {
     }
 
     return (
-        // eslint-disable-next-line
         <div
             onClick={handleCardClick}
             className="group relative bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col h-full cursor-pointer"

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState, useTransition } from 'react'
+import { useCallback, useState, useTransition } from 'react'
 import { format } from 'date-fns'
 
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
@@ -45,47 +45,6 @@ function getStatusBadgeVariant(status: PerformerSubmissionStatus): 'default' | '
   }
 }
 
-function formatAvailabilityLabel(value: string): string {
-  switch (value) {
-    case 'weeknights':
-      return 'Weeknights'
-    case 'weekends':
-      return 'Weekends'
-    case 'either':
-      return 'Either'
-    default:
-      return value
-  }
-}
-
-function formatYesNoDepends(value: string): string {
-  switch (value) {
-    case 'yes':
-      return 'Yes'
-    case 'no':
-      return 'No'
-    case 'depends':
-      return 'Depends'
-    default:
-      return value
-  }
-}
-
-function flattenLinks(links: Record<string, unknown>): Array<{ label: string; url: string }> {
-  const output: Array<{ label: string; url: string }> = []
-
-  for (const [key, value] of Object.entries(links || {})) {
-    const values = Array.isArray(value) ? value : [value]
-    for (const entry of values) {
-      const url = typeof entry === 'string' ? entry.trim() : ''
-      if (!url) continue
-      output.push({ label: key, url })
-    }
-  }
-
-  return output.sort((a, b) => a.label.localeCompare(b.label))
-}
-
 export default function PerformerSubmissionClient({ submission }: { submission: PerformerSubmission }) {
   const { hasPermission } = usePermissions()
   const canEdit = hasPermission('performers', 'edit') || hasPermission('performers', 'manage')
@@ -95,8 +54,6 @@ export default function PerformerSubmissionClient({ submission }: { submission: 
   const [savedStatus, setSavedStatus] = useState<PerformerSubmissionStatus>(submission.status)
   const [savedInternalNotes, setSavedInternalNotes] = useState<string>(submission.internal_notes || '')
   const [isPending, startTransition] = useTransition()
-
-  const links = useMemo(() => flattenLinks((submission.links as unknown as Record<string, unknown>) || {}), [submission.links])
 
   const hasChanges = status !== savedStatus || internalNotes !== savedInternalNotes
 
@@ -127,7 +84,7 @@ export default function PerformerSubmissionClient({ submission }: { submission: 
 
   return (
     <PageLayout
-      title={submission.act_name || submission.full_name}
+      title={submission.full_name}
       subtitle="Performer interest submission"
       backButton={{ label: 'Back to performers', href: '/performers' }}
       headerActions={
@@ -172,10 +129,6 @@ export default function PerformerSubmissionClient({ submission }: { submission: 
                 <div className="text-sm text-gray-900">{submission.full_name}</div>
               </div>
               <div>
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Act name</div>
-                <div className="text-sm text-gray-900">{submission.act_name || '—'}</div>
-              </div>
-              <div>
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Email</div>
                 <div className="text-sm text-gray-900">
                   <a className="text-blue-600 hover:text-blue-700" href={`mailto:${submission.email}`}>
@@ -191,64 +144,15 @@ export default function PerformerSubmissionClient({ submission }: { submission: 
                   </a>
                 </div>
               </div>
-              <div className="sm:col-span-2">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Base location</div>
-                <div className="text-sm text-gray-900">{submission.base_location}</div>
-              </div>
             </div>
           </Card>
 
           <Card>
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">Performer details</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-3">Submission</h2>
             <div className="space-y-3">
               <div>
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Performer type(s)</div>
-                <div className="mt-1 flex flex-wrap gap-2">
-                  {(submission.performer_types || []).map((type) => (
-                    <Badge key={type} variant="default">
-                      {type}
-                    </Badge>
-                  ))}
-                  {submission.performer_type_other && (
-                    <Badge variant="default">Other: {submission.performer_type_other}</Badge>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Bio</div>
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Description</div>
                 <p className="mt-1 text-sm text-gray-700 whitespace-pre-wrap">{submission.bio}</p>
-              </div>
-
-              <div>
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Availability</div>
-                <div className="mt-1 text-sm text-gray-700">
-                  <div>Generally: {formatAvailabilityLabel(submission.availability_general)}</div>
-                  <div>Can start around 8pm: {formatYesNoDepends(submission.can_start_around_8pm)}</div>
-                </div>
-              </div>
-
-              <div>
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Links</div>
-                {links.length === 0 ? (
-                  <p className="mt-1 text-sm text-gray-600">No links provided.</p>
-                ) : (
-                  <ul className="mt-1 space-y-1 text-sm">
-                    {links.map((item, index) => (
-                      <li key={`${item.label}-${index}`}>
-                        <span className="text-gray-600">{item.label}:</span>{' '}
-                        <a
-                          href={item.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:text-blue-700 break-all"
-                        >
-                          {item.url}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                )}
               </div>
             </div>
           </Card>
@@ -295,11 +199,9 @@ export default function PerformerSubmissionClient({ submission }: { submission: 
           </Card>
 
           <Card>
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">Consents</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-3">Consent</h2>
             <ul className="text-sm text-gray-700 space-y-1">
               <li>Data storage: {submission.consent_data_storage ? 'Yes' : 'No'}</li>
-              <li>Marketing updates: {submission.consent_marketing ? 'Yes' : 'No'}</li>
-              <li>Media consent: {submission.consent_media ? 'Yes' : 'No'}</li>
             </ul>
           </Card>
 
