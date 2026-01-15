@@ -24,7 +24,10 @@ export async function createShortLink(data: z.infer<typeof CreateShortLinkSchema
     }
     
     // Validate input
-    const validatedData = CreateShortLinkSchema.parse(data);
+    const validatedData = CreateShortLinkSchema.parse({
+      ...data,
+      expires_at: data.expires_at ?? undefined,
+    });
     
     const result = await ShortLinkService.createShortLink(validatedData);
 
