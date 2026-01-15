@@ -13,7 +13,6 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { SearchInput } from '@/components/ui-v2/forms/SearchInput'
 import { Select } from '@/components/ui-v2/forms/Select'
-import { Checkbox } from '@/components/ui-v2/forms/Checkbox'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
@@ -31,18 +30,6 @@ const STATUS_OPTIONS: Array<{ value: PerformerSubmissionStatus | 'all'; label: s
   { value: 'not_a_fit', label: 'Not a fit' },
   { value: 'do_not_contact', label: 'Do not contact' },
 ]
-
-const PERFORMER_TYPE_OPTIONS = [
-  'Acoustic singer-songwriter',
-  'Acoustic duo / trio',
-  'Electric musician / band',
-  'DJ',
-  'Comedy',
-  'Spoken word / poetry',
-  'Storytelling',
-  'Magic / close-up',
-  'Other',
-] as const
 
 function formatStatusLabel(status: PerformerSubmissionStatus): string {
   const option = STATUS_OPTIONS.find((item) => item.value === status)
@@ -73,24 +60,6 @@ function escapeCsvCell(value: unknown): string {
   return `"${text.replace(/"/g, '""')}"`
 }
 
-function buildLinksSummary(links: Record<string, unknown>): string {
-  const entries = Object.entries(links || {})
-  const parts: string[] = []
-
-  for (const [key, value] of entries) {
-    const values = Array.isArray(value) ? value : [value]
-    const urls = values
-      .map((v) => (typeof v === 'string' ? v.trim() : ''))
-      .filter(Boolean)
-
-    for (const url of urls) {
-      parts.push(`${key}: ${url}`)
-    }
-  }
-
-  return parts.join(' | ')
-}
-
 export default function PerformersPage() {
   const supabase = useSupabase()
   const router = useRouter()
@@ -101,9 +70,6 @@ export default function PerformersPage() {
 
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<PerformerSubmissionStatus | 'all'>('new')
-  const [typeFilter, setTypeFilter] = useState<string>('all')
-  const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'weeknights' | 'weekends' | 'either'>('all')
-  const [hasLinksOnly, setHasLinksOnly] = useState(false)
 
   const queryConfig = useMemo(() => {
     const filters: Array<{ column: string; operator: 'eq' | 'contains'; value: any }> = []
@@ -112,25 +78,12 @@ export default function PerformersPage() {
       filters.push({ column: 'status', operator: 'eq', value: statusFilter })
     }
 
-    if (typeFilter !== 'all') {
-      filters.push({ column: 'performer_types', operator: 'contains', value: [typeFilter] })
-    }
-
-    if (availabilityFilter !== 'all') {
-      filters.push({ column: 'availability_general', operator: 'eq', value: availabilityFilter })
-    }
-
-    if (hasLinksOnly) {
-      filters.push({ column: 'has_links', operator: 'eq', value: true })
-    }
-
     return {
-      select:
-        'id, created_at, full_name, act_name, email, phone, base_location, performer_types, availability_general, can_start_around_8pm, has_links, status',
+      select: 'id, created_at, full_name, email, phone, status',
       orderBy: { column: 'created_at', ascending: false },
       filters,
     }
-  }, [statusFilter, typeFilter, availabilityFilter, hasLinksOnly])
+  }, [statusFilter])
 
   const {
     data: submissions,
@@ -148,7 +101,7 @@ export default function PerformersPage() {
     {
       pageSize: 50,
       searchTerm,
-      searchColumns: ['full_name', 'act_name', 'email', 'phone', 'base_location'],
+      searchColumns: ['full_name', 'email', 'phone'],
     },
   )
 
@@ -162,7 +115,7 @@ export default function PerformersPage() {
       let query = supabase
         .from('performer_submissions')
         .select(
-          'created_at, status, full_name, act_name, email, phone, base_location, performer_types, availability_general, can_start_around_8pm, has_links, links, internal_notes',
+          'created_at, status, full_name, email, phone, bio, internal_notes, consent_data_storage',
         )
         .order('created_at', { ascending: false })
 
@@ -170,21 +123,9 @@ export default function PerformersPage() {
         query = query.eq('status', statusFilter)
       }
 
-      if (typeFilter !== 'all') {
-        query = query.contains('performer_types' as any, [typeFilter])
-      }
-
-      if (availabilityFilter !== 'all') {
-        query = query.eq('availability_general', availabilityFilter)
-      }
-
-      if (hasLinksOnly) {
-        query = query.eq('has_links', true)
-      }
-
       if (searchTerm.trim()) {
         const pattern = `%${searchTerm.trim()}%`
-        const orConditions = ['full_name', 'act_name', 'email', 'phone', 'base_location']
+        const orConditions = ['full_name', 'email', 'phone']
           .map((col) => `${col}.ilike.${pattern}`)
           .join(',')
         query = query.or(orConditions)
@@ -202,15 +143,10 @@ export default function PerformersPage() {
         'Created at',
         'Status',
         'Full name',
-        'Act name',
         'Email',
         'Phone',
-        'Base location',
-        'Performer types',
-        'Availability',
-        'Can start around 8pm',
-        'Has links',
-        'Links',
+        'Consent (data storage)',
+        'Description',
         'Internal notes',
       ]
 
@@ -221,15 +157,10 @@ export default function PerformersPage() {
             row.created_at,
             row.status,
             row.full_name,
-            row.act_name,
             row.email,
             row.phone,
-            row.base_location,
-            Array.isArray(row.performer_types) ? row.performer_types.join('; ') : '',
-            row.availability_general,
-            row.can_start_around_8pm,
-            row.has_links ? 'yes' : 'no',
-            buildLinksSummary(row.links || {}),
+            row.consent_data_storage ? 'yes' : 'no',
+            row.bio,
             row.internal_notes || '',
           ]
             .map(escapeCsvCell)
@@ -257,9 +188,6 @@ export default function PerformersPage() {
     canExport,
     supabase,
     statusFilter,
-    typeFilter,
-    availabilityFilter,
-    hasLinksOnly,
     searchTerm,
   ])
 
@@ -275,50 +203,23 @@ export default function PerformersPage() {
         ),
       },
       {
-        key: 'act',
-        header: 'Act',
+        key: 'name',
+        header: 'Name',
         cell: (row: PerformerSubmission) => (
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-gray-900 truncate">{row.act_name || row.full_name}</div>
-            <div className="text-xs text-gray-500 truncate">{row.full_name}</div>
+            <div className="text-sm font-semibold text-gray-900 truncate">{row.full_name}</div>
           </div>
         ),
       },
       {
-        key: 'location',
-        header: 'Location',
+        key: 'contact',
+        header: 'Contact',
         cell: (row: PerformerSubmission) => (
-          <div className="text-sm text-gray-700 truncate">{row.base_location}</div>
-        ),
-        hideOnMobile: true,
-      },
-      {
-        key: 'types',
-        header: 'Type(s)',
-        cell: (row: PerformerSubmission) => (
-          <div className="text-sm text-gray-700 line-clamp-2">
-            {(row.performer_types || []).join(', ')}
+          <div className="min-w-0">
+            <div className="text-sm text-gray-700 truncate">{row.email}</div>
+            <div className="text-xs text-gray-500 truncate">{row.phone}</div>
           </div>
         ),
-      },
-      {
-        key: 'availability',
-        header: 'Availability',
-        cell: (row: PerformerSubmission) => (
-          <div className="text-xs text-gray-600 space-y-1">
-            <div>General: {row.availability_general}</div>
-            <div>8pm: {row.can_start_around_8pm}</div>
-          </div>
-        ),
-        hideOnMobile: true,
-      },
-      {
-        key: 'links',
-        header: 'Links',
-        cell: (row: PerformerSubmission) => (
-          row.has_links ? <Badge variant="success">Yes</Badge> : <Badge variant="default">No</Badge>
-        ),
-        align: 'center' as const,
         hideOnMobile: true,
       },
       {
@@ -371,9 +272,9 @@ export default function PerformersPage() {
       <Card>
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
-            <div className="md:col-span-6">
+            <div className="md:col-span-9">
               <SearchInput
-                placeholder="Search name, act, email, phone, location..."
+                placeholder="Search name, email, phone..."
                 value={searchTerm}
                 onSearch={setSearchTerm}
                 loading={isLoading}
@@ -386,39 +287,10 @@ export default function PerformersPage() {
                 options={STATUS_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
               />
             </div>
-            <div className="md:col-span-3">
-              <Select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                options={[
-                  { value: 'all', label: 'All performer types' },
-                  ...PERFORMER_TYPE_OPTIONS.map((type) => ({ value: type, label: type })),
-                ]}
-              />
-            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
-            <div className="md:col-span-3">
-              <Select
-                value={availabilityFilter}
-                onChange={(e) => setAvailabilityFilter(e.target.value as any)}
-                options={[
-                  { value: 'all', label: 'Any availability' },
-                  { value: 'weeknights', label: 'Weeknights' },
-                  { value: 'weekends', label: 'Weekends' },
-                  { value: 'either', label: 'Either' },
-                ]}
-              />
-            </div>
-            <div className="md:col-span-6 flex items-center">
-              <Checkbox
-                label="Has links"
-                checked={hasLinksOnly}
-                onChange={(e) => setHasLinksOnly(e.target.checked)}
-              />
-            </div>
-            <div className="md:col-span-3 flex items-center justify-end">
+            <div className="md:col-span-12 flex items-center justify-end">
               <Button variant="secondary" size="sm" onClick={refresh} disabled={isLoading}>
                 Refresh
               </Button>

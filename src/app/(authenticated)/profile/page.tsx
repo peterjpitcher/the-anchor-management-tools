@@ -237,7 +237,6 @@ export default function ProfilePage() {
                 <div className="relative">
                   <div className="h-24 w-24 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
                     {profile.avatar_url ? (
-                      /* eslint-disable-next-line @next/next/no-img-element */
                       <img
                         src={`${process.env.NEXT_PUBLIC_SUPABASE_URL || ''}/storage/v1/object/public/avatars/${profile.avatar_url}`}
                         alt="Avatar"
