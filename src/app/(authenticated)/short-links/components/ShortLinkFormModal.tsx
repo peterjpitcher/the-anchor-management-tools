@@ -79,7 +79,7 @@ export function ShortLinkFormModal({ open, onClose, onSuccess, link, canManage }
     setSubmitting(true)
 
     try {
-      let expiresAt: string | undefined | null = null
+      let expiresAt: string | undefined = undefined
       if (expiresIn !== 'never') {
         const date = new Date()
         if (expiresIn === '1d') date.setDate(date.getDate() + 1)
@@ -105,7 +105,7 @@ export function ShortLinkFormModal({ open, onClose, onSuccess, link, canManage }
           destination_url: destinationUrl,
           link_type: linkType as any,
           custom_code: customCode || undefined,
-          expires_at: expiresAt as string | undefined
+          expires_at: expiresAt
         })
       }
 
