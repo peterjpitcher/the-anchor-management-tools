@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { z } from 'zod';
+import { buildShortLinkUrl } from '@/lib/short-links/base-url';
 
 // Validation schemas
 const CustomCodeSchema = z
@@ -64,10 +65,22 @@ export class ShortLinkService {
         .eq('short_code', (result as any).short_code);
     }
 
+    const shortCode = (result as any).short_code as string;
+
+    const { data: linkRow, error: linkFetchError } = await supabase
+      .from('short_links')
+      .select('id')
+      .eq('short_code', shortCode)
+      .single();
+
+    if (linkFetchError) {
+      throw new Error('Failed to load created short link');
+    }
+
     return {
-      id: (result as any)?.id,
-      short_code: (result as any).short_code,
-      full_url: (result as any).full_url
+      id: linkRow.id,
+      short_code: shortCode,
+      full_url: buildShortLinkUrl(shortCode)
     };
   }
 
@@ -158,7 +171,7 @@ export class ShortLinkService {
     
     return {
       short_code: link.short_code,
-      full_url: `https://vip-club.uk/${link.short_code}`
+      full_url: buildShortLinkUrl(link.short_code)
     };
   }
 

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import VendorSummaryGrid from './_components/VendorSummaryGrid'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { getReceiptsNavItems } from '../receiptsNavItems'
 
 export const runtime = 'nodejs'
 
@@ -21,6 +22,7 @@ export default async function ReceiptsVendorsPage() {
       title="Vendor spending trends"
       subtitle="See which suppliers are rising in cost and where spend is stable."
       backButton={{ label: 'Back to receipts', href: '/receipts' }}
+      navItems={getReceiptsNavItems({ view: 'vendors' })}
     >
       {vendors.length === 0 ? (
         <Card variant="bordered">

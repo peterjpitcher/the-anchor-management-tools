@@ -14,6 +14,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { getShortLinkAnalytics, getShortLinkAnalyticsSummary } from '@/app/actions/short-links'
 import toast from 'react-hot-toast'
+import { buildShortLinkUrl } from '@/lib/short-links/base-url'
 
 interface ShortLink {
   id: string
@@ -44,8 +45,6 @@ interface Props {
   open: boolean
   onClose: () => void
 }
-
-const SHORT_LINK_BASE_URL = 'https://the-anchor.pub/l'
 
 export function ShortLinkAnalyticsModal({ link, open, onClose }: Props) {
   const [analytics, setAnalytics] = useState<ShortLinkAnalytics | null>(null)
@@ -150,7 +149,7 @@ export function ShortLinkAnalyticsModal({ link, open, onClose }: Props) {
           <Card variant="bordered" padding="sm">
             <p className="text-xs sm:text-sm text-gray-600">Short Link</p>
             <p className="font-mono text-sm sm:text-base">
-              {SHORT_LINK_BASE_URL.replace(/^https?:\/\//, '')}/{link.short_code}
+              {buildShortLinkUrl(link.short_code).replace(/^https?:\/\//, '')}
             </p>
           </Card>
 

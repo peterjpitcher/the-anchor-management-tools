@@ -4,6 +4,7 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import PnlClient from '@/app/(authenticated)/receipts/_components/PnlClient'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { getReceiptsNavItems } from '../receiptsNavItems'
 
 export const runtime = 'nodejs'
 
@@ -20,6 +21,7 @@ export default async function ReceiptsPnlPage() {
       title="P&L Targets"
       subtitle="Compare actual results to your targets across key timeframes."
       backButton={{ label: 'Back to Receipts', href: '/receipts' }}
+      navItems={getReceiptsNavItems({ view: 'pnl' })}
     >
       <Card>
         <PnlClient initialData={data} />

@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { isShortLinkHost, isShortLinkPath } from '@/lib/short-links/routing'
 
 const PUBLIC_PATH_PREFIXES = [
   '/_next',     // Next.js internal
@@ -39,15 +40,6 @@ function isPublicPath(pathname: string) {
   return false;
 }
 
-function isShortLinkHost(hostname: string) {
-  return (
-    hostname === 'vip-club.uk' || 
-    hostname.endsWith('.vip-club.uk') ||
-    hostname === 'the-anchor.pub' ||
-    hostname.endsWith('.the-anchor.pub')
-  )
-}
-
 function sanitizeRedirectTarget(url: URL) {
   try {
     const decodedPath = decodeURIComponent(url.pathname).trim()
@@ -62,7 +54,7 @@ function sanitizeRedirectTarget(url: URL) {
 
 export async function middleware(request: NextRequest) {
   const hostname = request.headers.get('host') || ''
-  if (isShortLinkHost(hostname)) {
+  if (isShortLinkHost(hostname) && isShortLinkPath(request.nextUrl.pathname)) {
     return NextResponse.next()
   }
 

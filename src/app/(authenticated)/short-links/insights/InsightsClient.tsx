@@ -21,8 +21,6 @@ interface VolumeDataResponse {
   data: Array<{ date: string; value: number }>
 }
 
-const SHORT_LINK_BASE_URL = 'https://the-anchor.pub/l'
-
 export function InsightsClient() {
   const [volumeData, setVolumeData] = useState<VolumeDataResponse[] | null>(null)
   const [volumePeriod, setVolumePeriod] = useState('30')
