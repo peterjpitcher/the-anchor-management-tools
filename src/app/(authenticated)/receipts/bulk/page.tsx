@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { receiptTransactionStatusSchema } from '@/lib/validation'
 import type { ReceiptTransaction } from '@/types/database'
+import { getReceiptsNavItems } from '../receiptsNavItems'
 
 const STATUS_VALUES = new Set(receiptTransactionStatusSchema.options)
 
@@ -51,6 +52,7 @@ export default async function ReceiptsBulkPage({ searchParams }: PageProps) {
       title="Bulk classification"
       subtitle="Group similar transactions, confirm AI suggestions, and roll out rules in one sweep."
       backButton={{ label: 'Back to receipts', href: '/receipts' }}
+      navItems={getReceiptsNavItems({ view: 'bulk' })}
     >
       <ReceiptBulkReviewClient initialData={data} initialFilters={filters} />
     </PageLayout>

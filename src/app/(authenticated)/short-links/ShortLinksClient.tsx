@@ -22,6 +22,7 @@ import {
 } from '@/app/actions/short-links'
 import { ShortLinkAnalyticsModal } from './components/ShortLinkAnalyticsModal'
 import { ShortLinkFormModal } from './components/ShortLinkFormModal'
+import { buildShortLinkUrl } from '@/lib/short-links/base-url'
 
 interface ShortLink {
   id: string
@@ -39,8 +40,6 @@ interface Props {
   initialLinks: ShortLink[]
   canManage: boolean
 }
-
-const SHORT_LINK_BASE_URL = 'https://the-anchor.pub/l'
 
 export default function ShortLinksClient({ initialLinks, canManage }: Props) {
   const [links, setLinks] = useState<ShortLink[]>(initialLinks)
@@ -78,13 +77,13 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
   }
 
   const handleCopyLink = async (link: ShortLink) => {
-    const fullUrl = `${SHORT_LINK_BASE_URL}/${link.short_code}`
+    const fullUrl = buildShortLinkUrl(link.short_code)
     await navigator.clipboard.writeText(fullUrl)
     toast.success('Link copied to clipboard!')
   }
 
   const handleCopyQrCode = async (link: ShortLink) => {
-    const fullUrl = `${SHORT_LINK_BASE_URL}/${link.short_code}`
+    const fullUrl = buildShortLinkUrl(link.short_code)
 
     try {
       const QRCode = await import('qrcode')
@@ -121,7 +120,7 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
     const link = links.find(l => l.id === linkId)
     if (!link) return
 
-    const message = `Are you sure you want to delete this short link?\n\n${SHORT_LINK_BASE_URL}/${link.short_code}\n\nAfter deletion, anyone visiting this link will no longer be redirected.`
+    const message = `Are you sure you want to delete this short link?\n\n${buildShortLinkUrl(link.short_code)}\n\nAfter deletion, anyone visiting this link will no longer be redirected.`
     if (!confirm(message)) return
 
     try {
@@ -196,7 +195,7 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
                 header: 'Short Link',
                 cell: (link) => (
                   <code className="text-sm font-mono bg-gray-100 px-2 py-1 rounded">
-                    {SHORT_LINK_BASE_URL.replace(/^https?:\/\//, '')}/{link.short_code}
+                    {buildShortLinkUrl(link.short_code).replace(/^https?:\/\//, '')}
                   </code>
                 )
               },
@@ -290,7 +289,7 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
                   <div className="flex-1 min-w-0 mr-4">
                     {link.name && <div className="text-sm font-medium mb-1">{link.name}</div>}
                     <code className="text-sm font-mono bg-gray-100 px-2 py-1 rounded inline-block mb-2">
-                      {SHORT_LINK_BASE_URL.replace(/^https?:\/\//, '')}/{link.short_code}
+                      {buildShortLinkUrl(link.short_code).replace(/^https?:\/\//, '')}
                     </code>
                     <p className="text-xs text-gray-600 truncate">{link.destination_url}</p>
                   </div>
@@ -372,4 +371,3 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
     </PageLayout>
   )
 }
-

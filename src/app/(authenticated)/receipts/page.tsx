@@ -1,9 +1,9 @@
 import ReceiptsClient from './_components/ReceiptsClient'
 import { getReceiptWorkspaceData, type ReceiptWorkspaceFilters } from '@/app/actions/receipts'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { getReceiptsNavItems } from './receiptsNavItems'
 
 const STATUS_VALUES = new Set(['pending', 'completed', 'auto_completed', 'no_receipt_required', 'cant_find'])
 const DIRECTION_VALUES = new Set(['in', 'out'])
@@ -93,43 +93,11 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
     data = await getReceiptWorkspaceData(filters)
   }
 
-  const navItems: HeaderNavItem[] = [
-    {
-      label: 'Workspace',
-      href: '/receipts',
-      active: !missingVendorOnly && !missingExpenseOnly,
-    },
-    {
-      label: 'Monthly overview',
-      href: '/receipts/monthly',
-    },
-    {
-      label: 'Vendor trends',
-      href: '/receipts/vendors',
-    },
-    {
-      label: 'P&L dashboard',
-      href: '/receipts/pnl',
-    },
-    {
-      label: 'Bulk classification',
-      href: '/receipts/bulk',
-    },
-    {
-      label: 'Needs vendor',
-      href: '/receipts?needsVendor=1',
-      active: missingVendorOnly,
-    },
-    {
-      label: 'Needs expense',
-      href: '/receipts?needsExpense=1',
-      active: missingExpenseOnly,
-    },
-    {
-      label: 'Missing expense summary',
-      href: '/receipts/missing-expense',
-    },
-  ]
+  const navItems = getReceiptsNavItems({
+    view: 'workspace',
+    missingVendorOnly,
+    missingExpenseOnly,
+  })
 
   return (
     <PageLayout

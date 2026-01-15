@@ -6,6 +6,7 @@ import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { getReceiptsNavItems } from '../receiptsNavItems'
 
 const currencyFormatter = new Intl.NumberFormat('en-GB', {
   style: 'currency',
@@ -99,6 +100,7 @@ export default async function ReceiptsMonthlyPage() {
       <PageLayout
         title="Monthly receipts overview"
         subtitle="Track income and spending trends across recent months."
+        navItems={getReceiptsNavItems({ view: 'monthly' })}
       >
         <EmptyState
           title="No receipt data yet"
@@ -215,6 +217,7 @@ export default async function ReceiptsMonthlyPage() {
       title="Monthly receipts overview"
       subtitle="Track income and spending trends across recent months."
       backButton={{ label: 'Back to receipts', href: '/receipts' }}
+      navItems={getReceiptsNavItems({ view: 'monthly' })}
     >
       <section className="space-y-6">
         <div className="grid gap-4 lg:grid-cols-3">

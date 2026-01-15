@@ -4,6 +4,7 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { getReceiptsNavItems } from '../receiptsNavItems'
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('en-GB', {
@@ -36,6 +37,7 @@ export default async function ReceiptsMissingExpensePage() {
       title="Transactions needing expense category"
       subtitle="Vendors with receipts that still require an expense category."
       backButton={{ label: 'Back to receipts', href: '/receipts' }}
+      navItems={getReceiptsNavItems({ view: 'missing-expense' })}
     >
       <div className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-3">
