@@ -55,7 +55,10 @@ export class ShortLinkService {
       if ((error as any)?.code === '23505') {
         throw new Error('Custom code already in use. Please choose another.');
       }
-      throw new Error('Failed to create short link');
+      if ((error as any)?.code === 'PGRST203') {
+        throw new Error('Short link creation is temporarily unavailable (database RPC overload). Please apply the latest Supabase migrations.');
+      }
+      throw new Error((error as any)?.message || 'Failed to create short link');
     }
     
     if (data.name && (result as any)?.short_code) {
