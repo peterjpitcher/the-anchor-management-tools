@@ -17,7 +17,7 @@ export const CreateShortLinkSchema = z.object({
   destination_url: z.string().url('Invalid URL'),
   link_type: z.enum(['loyalty_portal', 'event_checkin', 'promotion', 'reward_redemption', 'custom', 'booking_confirmation']),
   metadata: z.record(z.any()).optional(),
-  expires_at: z.string().optional(),
+  expires_at: z.string().nullable().optional(),
   custom_code: CustomCodeSchema.optional()
 });
 
