@@ -26,14 +26,6 @@ export default function EventCard({ event }: EventCardProps) {
         const [h, m] = timeStr.split(':')
         return `${h}:${m}`
     }
-
-    const getProgressColor = (percent: number) => {
-        if (percent >= 100) return 'bg-purple-600'
-        if (percent >= 80) return 'bg-green-500'
-        return 'bg-blue-500'
-    }
-
-    const capacityPercent = event.capacity ? Math.min(100, Math.round((event.bookedSeats / event.capacity) * 100)) : 0
     const checklistPercent = Math.round((event.checklist.completed / event.checklist.total) * 100)
 
     // Determine gradient based on category color or default
@@ -136,27 +128,7 @@ export default function EventCard({ event }: EventCardProps) {
                 </div>
 
                 {/* Capacity Bar */}
-                <div className="mt-auto pt-4 space-y-2">
-                    {event.capacity ? (
-                        <div>
-                            <div className="flex justify-between text-xs mb-1">
-                                <span className="text-gray-600 font-medium">{event.bookedSeats} / {event.capacity} seats</span>
-                                <span className="text-gray-500">{capacityPercent}%</span>
-                            </div>
-                            <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                                <div
-                                    className={`h-full rounded-full transition-all ${getProgressColor(capacityPercent)}`}
-                                    style={{ width: `${capacityPercent}%` }}
-                                />
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="flex justify-between text-xs py-2 border-t border-gray-100">
-                            <span className="text-gray-600 font-medium">Unlimited Capacity</span>
-                            <span className="text-gray-900 font-bold">{event.bookedSeats} booked</span>
-                        </div>
-                    )}
-                </div>
+                <div className="mt-auto pt-4" />
 
                 {/* Checklist Ring & Quick Stats */}
                 <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">

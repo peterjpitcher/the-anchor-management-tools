@@ -34,8 +34,6 @@ export type ModuleName =
   | 'performers'
   | 'customers'
   | 'employees'
-  | 'bookings'
-  | 'table_bookings'
   | 'messages'
   | 'sms_health'
   | 'settings'

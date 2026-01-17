@@ -132,7 +132,6 @@ export async function resolveCustomerIdForSms(
 
   let bookingContext:
     | { type: 'private'; record: any }
-    | { type: 'table'; record: any }
     | null = null
 
   if (params.bookingId) {
@@ -150,24 +149,6 @@ export async function resolveCustomerIdForSms(
       }
 
       bookingContext = { type: 'private', record: privateBooking }
-    } else {
-      const { data: tableBooking } = await supabase
-        .from('table_bookings')
-        .select(
-          'id, customer_id, customer:customers(id, first_name, last_name, email, mobile_number)'
-        )
-        .eq('id', params.bookingId)
-        .maybeSingle()
-
-      if (tableBooking) {
-        const customerRecord = Array.isArray(tableBooking.customer) ? tableBooking.customer[0] : tableBooking.customer
-        const linkedCustomerId = tableBooking.customer_id || customerRecord?.id
-        if (linkedCustomerId) {
-          return { customerId: linkedCustomerId }
-        }
-
-        bookingContext = { type: 'table', record: { ...tableBooking, customer: customerRecord } }
-      }
     }
   }
 
@@ -202,11 +183,6 @@ export async function resolveCustomerIdForSms(
             customer_id: customerId,
             customer_name: displayName || null
           })
-          .eq('id', bookingContext.record.id)
-      } else if (bookingContext.type === 'table') {
-        await supabase
-          .from('table_bookings')
-          .update({ customer_id: customerId })
           .eq('id', bookingContext.record.id)
       }
     } catch (updateError) {

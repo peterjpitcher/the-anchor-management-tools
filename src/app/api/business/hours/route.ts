@@ -87,21 +87,7 @@ export async function GET(_request: NextRequest) {
       .eq('start_date', todayStr)
       .order('start_time', { ascending: true });
 
-    // Get current bookings for capacity calculation
-    const { data: currentBookings } = await supabase
-      .from('table_bookings')
-      .select('party_size, booking_time')
-      .eq('booking_date', todayStr)
-      .in('status', ['confirmed', 'pending_payment']);
-
-    // Get booking time slots configuration
-    const currentDayOfWeek = new Date().getDay();
-    const { data: bookingSlots } = await supabase
-      .from('booking_time_slots')
-      .select('*')
-      .eq('day_of_week', currentDayOfWeek)
-      .eq('is_active', true)
-      .order('slot_time', { ascending: true });
+    // Table booking functionality removed; omit reservation capacity + slot calculations.
 
   // Format regular hours
   const formattedRegularHours = regularHours?.reduce((acc: any, hour) => {
@@ -271,15 +257,6 @@ export async function GET(_request: NextRequest) {
     })) || [],
   };
 
-  // Calculate capacity information
-  const RESTAURANT_CAPACITY = 50;
-  const currentCapacity = currentBookings?.reduce((sum, booking) => sum + booking.party_size, 0) || 0;
-  const capacityInfo = {
-    total: RESTAURANT_CAPACITY,
-    available: Math.max(0, RESTAURANT_CAPACITY - currentCapacity),
-    percentageFull: Math.round((currentCapacity / RESTAURANT_CAPACITY) * 100),
-  };
-
   // Generate upcoming week overview
   const upcomingWeek = [];
   for (let i = 0; i < 7; i++) {
@@ -328,10 +305,6 @@ export async function GET(_request: NextRequest) {
       endsAt: null,
       capacity: null,
       message: sundayLunchMessage,
-    },
-    bookings: {
-      accepting: currentStatus.isOpen && currentStatus.kitchenOpen,
-      availableSlots: bookingSlots?.map(slot => slot.slot_time.substring(0, 5)) || [],
     },
   };
 
@@ -435,7 +408,6 @@ export async function GET(_request: NextRequest) {
       currentStatus: {
         ...currentStatus,
         services,
-        capacity: capacityInfo,
       },
       today: todayInfo,
       upcomingWeek,
@@ -467,7 +439,6 @@ export async function GET(_request: NextRequest) {
         },
       },
       integration: {
-        bookingApi: '/api/table-bookings/availability',
         eventsApi: '/api/events',
         lastUpdated: new Date().toISOString(),
         updateFrequency: '1 minute',

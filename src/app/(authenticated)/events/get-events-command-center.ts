@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getTodayIsoDate, getLocalIsoDateDaysAhead, getLocalIsoDateDaysAgo } from '@/lib/dateUtils'
+import { getTodayIsoDate, getLocalIsoDateDaysAhead } from '@/lib/dateUtils'
 import { buildEventChecklist, EVENT_CHECKLIST_TOTAL_TASKS, ChecklistTodoItem, EventChecklistItem } from '@/lib/event-checklist'
 
 export type EventOverview = {
@@ -8,14 +8,11 @@ export type EventOverview = {
     date: string
     time: string
     daysUntil: number
-    capacity: number | null
-    bookedSeats: number
-    price: number | null
-    isFree: boolean
     category: { id: string; name: string; color: string } | null
     heroImageUrl: string | null
     posterImageUrl: string | null
     eventStatus: string | null
+    bookingUrl: string | null
     checklist: {
         completed: number
         total: number
@@ -33,10 +30,9 @@ export type EventOverview = {
 export type EventsOverviewResult = {
     kpis: {
         activeEvents: number
-        last24hSeats: number
-        velocityPercent: number | null
-        urgentAttention: number
-        revenueEstimate: number
+        overdueTasks: number
+        dueTodayTasks: number
+        draftEvents: number
     }
     upcoming: EventOverview[]
     past: EventOverview[]
@@ -48,10 +44,9 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
     const supabase = createAdminClient()
     const todayIso = getTodayIsoDate()
     const windowEndIso = getLocalIsoDateDaysAhead(30)
-    const pastWindowIso = getLocalIsoDateDaysAgo(7) // For recent past events if needed, but mainly we focus on upcoming.
 
     // 1. Parallel Fetching
-    const [eventsResult, velocityResult, checklistResult] = await Promise.all([
+    const [eventsResult, checklistResult] = await Promise.all([
         // Fetch Events (Upcoming + sliver of past for context if needed, but primarily >= today)
         // "Range: date >= today" per plan. But let's fetch a bit of past if needed for "recent" lists, 
         // though the plan emphasizes "Approaching" and "Future".
@@ -63,36 +58,15 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
         name,
         date,
         time,
-        capacity,
-        price,
+        booking_url,
         poster_image_url,
         hero_image_url,
         event_status,
-        category:event_categories(id, name, color),
-        booking_totals:bookings(sum:seats)
+        category:event_categories(id, name, color)
       `)
             .gte('date', todayIso)
             .order('date', { ascending: true })
             .order('time', { ascending: true }),
-
-        // Fetch Velocity (Bookings in last 24h)
-        // We need to know which event these bookings belong to, to verify they are for UPCOMING events?
-        // The plan says "Join events to ensure only bookings for upcoming events".
-        // Since we can't easily join in a single simple query without foreign table filters which can be tricky with aggregates,
-        // let's just fetch recent bookings and filter in memory or assume all recent sales match "current" inventory.
-        // Better: Fetch recent bookings with their event.date via join.
-        supabase
-            .from('bookings')
-            .select(`
-        seats,
-        event:events!inner(date, capacity)
-      `)
-            .gt('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
-
-        // We might want to filter the event date in the velocity join too, but let's accept all recent sales 
-        // as "velocity" for simplicity unless strict upcoming-only is required. 
-        // Plan: "velocityPercent = capacityTotal > 0 ? (last24hSeats / capacityTotal) : null"
-        // capacityTotal is based on UPCOMING events 30 days.
 
         // Fetch Checklist Statuses for UPCOMING events (we'll filter IDs after getting events? 
         // Or just fetch all statuses for events in range? 
@@ -110,7 +84,7 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
     if (eventsResult.error) {
         console.error('Error fetching events:', eventsResult.error)
         return {
-            kpis: { activeEvents: 0, last24hSeats: 0, velocityPercent: 0, urgentAttention: 0, revenueEstimate: 0 },
+            kpis: { activeEvents: 0, overdueTasks: 0, dueTodayTasks: 0, draftEvents: 0 },
             upcoming: [],
             past: [],
             todos: [],
@@ -119,7 +93,6 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
     }
 
     const events = eventsResult.data || []
-    const velocityBookings = velocityResult.data || []
     const checklistStatuses = checklistResult.data || []
 
     // Map statuses by Event ID
@@ -142,36 +115,9 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
     ))
     const activeEventsCount = eventsInWindow.length
 
-    // 2. Ticket Velocity
-    // bookings in last 24h.
-    // Filter for events that are actually in our "upcoming" window? 
-    // Plan: "last24hSeats... AND events.date BETWEEN today AND today+30".
-    const velocityBookingsFiltered = velocityBookings.filter((b: any) => {
-        const d = b.event?.date
-        return d && d >= todayIso && d <= windowEndIso
-    })
-    const last24hSeats = velocityBookingsFiltered.reduce((sum, b) => sum + (b.seats || 0), 0)
-
-    const capacityTotal = eventsInWindow.reduce((sum, e) => {
-        return sum + (e.capacity || 0)
-    }, 0)
-
-    const velocityPercent = capacityTotal > 0 ? Math.round((last24hSeats / capacityTotal) * 100) : null
-
-    // 3. Revenue Estimate (30 days)
-    const revenueEstimate = eventsInWindow.reduce((sum, e) => {
-        const seats = (e.booking_totals as any[])?.reduce((acc: number, curr: { sum: number }) => acc + (curr.sum || 0), 0) || 0
-        const price = e.price || 0
-        return sum + (seats * price)
-    }, 0)
-
-
     // --- View Model Mapping ---
     const mappedEvents: EventOverview[] = events.map(event => {
-        const bookedSeats = (event.booking_totals as any[])?.reduce((acc: number, curr: { sum: number }) => acc + (curr.sum || 0), 0) || 0
-        const capacity = event.capacity
-        const price = event.price
-        const isFree = !price || price === 0
+        const bookingUrl = typeof event.booking_url === 'string' ? event.booking_url : null
 
         // Checklist
         const eventStatuses = statusMap.get(event.id) || []
@@ -189,34 +135,29 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
 
         // Status Badge Logic
         let badgeLabel = 'On Track'
-        let badgeTone: EventOverview['statusBadge']['tone'] = 'neutral' // Changed default from info to neutral or success-like
+        let badgeTone: EventOverview['statusBadge']['tone'] = 'success'
 
         if (event.event_status === 'draft') {
             badgeLabel = 'Draft'
             badgeTone = 'neutral'
         } else if (event.event_status === 'cancelled' || event.event_status === 'postponed') {
             badgeLabel = event.event_status === 'cancelled' ? 'Cancelled' : 'Postponed'
-            badgeTone = 'error'
-        } else if (capacity && bookedSeats >= capacity) {
-            badgeLabel = 'Sold Out'
-            badgeTone = 'success' // or neutral dark
-        } else if (capacity && (bookedSeats / capacity) >= 0.8) {
-            badgeLabel = 'Selling Fast'
-            badgeTone = 'success'
+            badgeTone = event.event_status === 'cancelled' ? 'error' : 'warning'
+        } else if (overdueCount > 0) {
+            badgeLabel = 'Overdue Tasks'
+            badgeTone = 'warning'
+        } else if (dueTodayCount > 0) {
+            badgeLabel = 'Due Today'
+            badgeTone = 'info'
         } else {
-            // "Low Bookings" check: 0 bookings and within 7 days
-            const daysUntil = Math.ceil((new Date(event.date).getTime() - new Date(todayIso).getTime()) / (1000 * 60 * 60 * 24))
-            if (bookedSeats === 0 && daysUntil <= 7 && daysUntil >= 0) {
-                badgeLabel = 'Low Bookings'
-                badgeTone = 'warning'
-            } else {
-                badgeLabel = 'On Track'
-                badgeTone = 'info'
-            }
+            badgeLabel = 'On Track'
+            badgeTone = 'success'
         }
 
         // Days Until
         const daysUntil = Math.ceil((new Date(event.date).getTime() - new Date(todayIso).getTime()) / (1000 * 60 * 60 * 24))
+
+        const categoryRecord = Array.isArray(event.category) ? event.category[0] : event.category
 
         return {
             id: event.id,
@@ -224,14 +165,11 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
             date: event.date,
             time: event.time,
             daysUntil,
-            capacity,
-            bookedSeats,
-            price,
-            isFree,
-            category: event.category as any,
+            category: categoryRecord as any,
             heroImageUrl: event.hero_image_url,
             posterImageUrl: event.poster_image_url,
             eventStatus: event.event_status,
+            bookingUrl,
             checklist: {
                 completed: completedCount,
                 total: EVENT_CHECKLIST_TOTAL_TASKS,
@@ -247,15 +185,9 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
         }
     })
 
-    // 4. Urgent Attention (Overdue Tasks + Low Bookings in Window)
-    // Plan: overdueChecklistCount + zeroBookingCloseCount
-    // We need to sum these up across ALL upcoming events (or just window?)
-    // Plan says "Urgent Attention: overdue checklist items plus events with 0 bookings within X days" 
-    // The query for events was gte today.
-
     const totalOverdueTasks = mappedEvents.reduce((sum, e) => sum + e.checklist.overdueCount, 0)
-    const lowBookingsEvents = mappedEvents.filter(e => e.statusBadge.label === 'Low Bookings').length
-    const urgentAttention = totalOverdueTasks + lowBookingsEvents
+    const totalDueTodayTasks = mappedEvents.reduce((sum, e) => sum + e.checklist.dueTodayCount, 0)
+    const draftEvents = mappedEvents.filter((e) => e.eventStatus === 'draft').length
 
     // Todos (for sidebar)
     const todos: ChecklistTodoItem[] = []
@@ -275,10 +207,9 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
     return {
         kpis: {
             activeEvents: activeEventsCount,
-            last24hSeats,
-            velocityPercent,
-            urgentAttention,
-            revenueEstimate
+            overdueTasks: totalOverdueTasks,
+            dueTodayTasks: totalDueTodayTasks,
+            draftEvents,
         },
         upcoming: mappedEvents.filter(e => e.date >= todayIso), // Ensure purely upcoming
         past: [], // Not implemented yet

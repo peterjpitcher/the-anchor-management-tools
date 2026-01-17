@@ -27,7 +27,6 @@ export async function GET(
           icon,
           slug
         ),
-        booking_totals:bookings(sum:seats),
         event_faqs(
           id,
           question,
@@ -52,8 +51,6 @@ export async function GET(
     if (error || !event) {
       return createErrorResponse('Event not found', 'NOT_FOUND', 404);
     }
-
-    const bookedSeats = (event.booking_totals?.[0]?.sum as number | null) ?? 0;
     
     // Sort FAQs by sort_order
     const faqs = event.event_faqs?.sort((a: any, b: any) => a.sort_order - b.sort_order) || [];
@@ -87,13 +84,7 @@ export async function GET(
         color: event.category.color,
         icon: event.category.icon
       } : null,
-      ...eventToSchema(event, bookedSeats, faqs),
-      booking_rules: {
-        max_seats_per_booking: 6,
-        requires_customer_details: true,
-        allows_notes: true,
-        sms_confirmation_enabled: false,
-      },
+      ...eventToSchema(event, faqs),
       custom_messages: event.event_message_templates?.reduce((acc: any, template: any) => {
         acc[template.template_type] = template.custom_content;
         return acc;

@@ -29,7 +29,7 @@ export default async function EventsPage() {
     <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden bg-gray-50/50 p-4 md:p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Events Command Center</h1>
-        <p className="text-sm text-gray-500">Manage upcoming events, track sales velocity, and clear tasks.</p>
+        <p className="text-sm text-gray-500">Manage upcoming events and clear tasks.</p>
       </div>
 
       <KPIHeader kpis={data.kpis} />

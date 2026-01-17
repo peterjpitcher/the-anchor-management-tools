@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react'
 import { EventsOverviewResult } from '@/app/(authenticated)/events/get-events-command-center'
 import ControlBar, { ViewMode, FilterType } from './ControlBar'
+import EventCalendarView from './EventCalendarView'
 import EventGrid from './EventGrid'
 import EventList from './EventList'
 import TaskSidebar from './TaskSidebar'
@@ -12,7 +13,7 @@ interface CommandCenterShellProps {
 }
 
 export default function CommandCenterShell({ initialData }: CommandCenterShellProps) {
-    const [viewMode, setViewMode] = useState<ViewMode>('list')
+    const [viewMode, setViewMode] = useState<ViewMode>('calendar')
     const [filter, setFilter] = useState<FilterType>('all')
     const [searchQuery, setSearchQuery] = useState('')
     const [isSidebarOpen, setIsSidebarOpen] = useState(true)
@@ -31,13 +32,10 @@ export default function CommandCenterShell({ initialData }: CommandCenterShellPr
         }
 
         // 2. Status Filters
-        if (filter === 'selling_fast') {
-            events = events.filter(e => e.statusBadge.label === 'Selling Fast' || e.statusBadge.label === 'Sold Out')
-        } else if (filter === 'attention_needed') {
+        if (filter === 'attention_needed') {
             events = events.filter(e =>
                 e.checklist.overdueCount > 0 ||
-                e.statusBadge.label === 'Low Bookings' ||
-                e.statusBadge.label === 'Attention' // Just in case
+                e.checklist.dueTodayCount > 0
             )
         }
 
@@ -59,7 +57,9 @@ export default function CommandCenterShell({ initialData }: CommandCenterShellPr
                 />
 
                 <div className="flex-1 overflow-y-auto min-h-0 pb-20 scrollbar-hide">
-                    {viewMode === 'grid' ? (
+                    {viewMode === 'calendar' ? (
+                        <EventCalendarView events={filteredEvents} />
+                    ) : viewMode === 'grid' ? (
                         <EventGrid events={filteredEvents} />
                     ) : (
                         <EventList events={filteredEvents} />

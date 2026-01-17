@@ -161,8 +161,6 @@ export async function createServiceStatusOverride(
 
     revalidatePath('/settings/business-hours')
     revalidatePath('/api/business/hours')
-    revalidatePath('/api/table-bookings/availability')
-    revalidatePath('/api/table-bookings/menu/sunday-lunch')
 
     return { success: true, data }
   } catch (error: any) {
@@ -200,8 +198,6 @@ export async function deleteServiceStatusOverride(
 
     revalidatePath('/settings/business-hours')
     revalidatePath('/api/business/hours')
-    revalidatePath('/api/table-bookings/availability')
-    revalidatePath('/api/table-bookings/menu/sunday-lunch')
 
     return { success: true }
   } catch (error: any) {
@@ -236,8 +232,6 @@ export async function updateServiceStatus(
 
     revalidatePath('/settings/business-hours')
     revalidatePath('/api/business/hours')
-    revalidatePath('/api/table-bookings/availability')
-    revalidatePath('/api/table-bookings/menu/sunday-lunch')
 
     return { success: true, data: updated }
   } catch (error: any) {

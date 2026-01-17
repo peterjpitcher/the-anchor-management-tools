@@ -370,7 +370,7 @@ export function Calendar({
                 onMouseEnter={() => setHoveredDate(day)}
                 onMouseLeave={() => setHoveredDate(null)}
               >
-                <div className="flex items-start justify-between mb-1">
+                <div className="flex items-start justify-between mb-2">
                   <span className={cn(
                     'text-sm',
                     isToday(day) && 'bg-green-600 text-white px-2 py-0.5 rounded-full'
@@ -394,7 +394,7 @@ export function Calendar({
                         onEventClick?.(event)
                       }}
                       className={cn(
-                        'text-xs p-1 rounded truncate cursor-pointer',
+                        'text-xs px-2 py-1.5 rounded-md truncate cursor-pointer leading-snug',
                         'hover:opacity-80 transition-opacity'
                       )}
                       style={{
@@ -525,7 +525,7 @@ export function Calendar({
               'text-2xl',
               isToday(currentDate) && 'font-bold text-green-600'
             )}>
-              {format(currentDate, 'MMMM d, yyyy')}
+              <span className="whitespace-nowrap">{format(currentDate, 'MMMM d, yyyy')}</span>
             </div>
           </div>
           
@@ -589,8 +589,8 @@ export function Calendar({
     <div className={cn('flex flex-col bg-white rounded-lg border', className)} style={{ height }}>
       {/* Navigation */}
       {showNavigation && (
-        <div className="flex items-center justify-between p-4 border-b">
-          <div className="flex items-center gap-2">
+	        <div className="flex items-center gap-4 p-4 border-b">
+	          <div className="flex items-center gap-2 shrink-0">
             <Button variant="secondary"
               size="sm"
               onClick={goToPrevious}
@@ -614,22 +614,24 @@ export function Calendar({
             )}
           </div>
           
-          <h2 className="text-lg font-semibold">
-            {view === 'month' && format(currentDate, 'MMMM yyyy')}
-            {view === 'week' && `Week of ${format(startOfWeek(currentDate, { weekStartsOn: firstDayOfWeek }), 'MMM d, yyyy')}`}
-            {view === 'day' && format(currentDate, 'MMMM d, yyyy')}
-          </h2>
+	          <h2 className="text-lg font-semibold min-w-0 flex-1 text-center truncate">
+	            {view === 'month' && format(currentDate, 'MMMM yyyy')}
+	            {view === 'week' && `Week of ${format(startOfWeek(currentDate, { weekStartsOn: firstDayOfWeek }), 'MMM d, yyyy')}`}
+	            {view === 'day' && format(currentDate, 'MMMM d, yyyy')}
+	          </h2>
           
-          {showViewSelector && (
-            <Select
-              value={view}
-              onChange={(e) => onViewChange?.(e.target.value as any)}
-              selectSize="sm"
-              className="w-24"
-            >
-              <option value="month">Month</option>
-              <option value="week">Week</option>
-              <option value="day">Day</option>
+	          {showViewSelector && (
+	            <Select
+	              value={view}
+	              onChange={(e) => onViewChange?.(e.target.value as any)}
+	              selectSize="sm"
+	              fullWidth={false}
+	              wrapperClassName="shrink-0"
+	              className="w-24"
+	            >
+	              <option value="month">Month</option>
+	              <option value="week">Week</option>
+	              <option value="day">Day</option>
             </Select>
           )}
         </div>

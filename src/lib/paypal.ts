@@ -1,4 +1,3 @@
-import { TableBooking, TableBookingItem } from '@/types/table-bookings';
 import { retry, RetryConfigs } from './retry';
 
 type PayPalConfig = {
@@ -173,35 +172,6 @@ async function createCheckoutOrder(options: CheckoutOrderOptions) {
     orderId: data.id,
     approveUrl,
   };
-}
-
-// Create PayPal order for table bookings
-export async function createPayPalOrder(
-  booking: TableBooking & { table_booking_items?: TableBookingItem[] },
-  returnUrl: string,
-  cancelUrl: string,
-  depositOnly: boolean = false
-) {
-  const items = booking.table_booking_items || [];
-  const totalAmount = items.reduce(
-    (sum, item) => sum + item.price_at_booking * item.quantity,
-    0
-  );
-
-  const paymentAmount = depositOnly ? booking.party_size * 5 : totalAmount;
-  const description = depositOnly
-    ? `Sunday Lunch Booking Deposit - ${booking.booking_reference} (£5 per person)`
-    : `Sunday Lunch Booking - ${booking.booking_reference}`;
-
-  return createCheckoutOrder({
-    customId: booking.id,
-    reference: booking.booking_reference,
-    description,
-    amount: paymentAmount,
-    returnUrl,
-    cancelUrl,
-    requestId: `booking-${booking.id}`,
-  });
 }
 
 export interface PayPalOrderOptions {

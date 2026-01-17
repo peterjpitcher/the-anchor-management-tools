@@ -1,11 +1,11 @@
 'use client'
 
 import React from 'react'
-import { MagnifyingGlassIcon, PlusIcon, ViewColumnsIcon, ListBulletIcon } from '@heroicons/react/24/outline'
+import { MagnifyingGlassIcon, PlusIcon, ViewColumnsIcon, ListBulletIcon, CalendarDaysIcon } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 
-export type ViewMode = 'grid' | 'list'
-export type FilterType = 'all' | 'selling_fast' | 'attention_needed'
+export type ViewMode = 'calendar' | 'grid' | 'list'
+export type FilterType = 'all' | 'attention_needed'
 
 interface ControlBarProps {
     searchQuery: string
@@ -49,12 +49,6 @@ export default function ControlBar({
                         All
                     </button>
                     <button
-                        onClick={() => setFilter('selling_fast')}
-                        className={`px-3 py-1.5 text-xs font-medium rounded-sm transition-all ${filter === 'selling_fast' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
-                    >
-                        Selling Fast
-                    </button>
-                    <button
                         onClick={() => setFilter('attention_needed')}
                         className={`px-3 py-1.5 text-xs font-medium rounded-sm transition-all ${filter === 'attention_needed' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
                     >
@@ -67,6 +61,13 @@ export default function ControlBar({
             <div className="flex items-center gap-3 w-full md:w-auto justify-end">
                 {/* View Toggle */}
                 <div className="flex bg-gray-100 p-1 rounded-md">
+                    <button
+                        onClick={() => setViewMode('calendar')}
+                        title="Calendar View"
+                        className={`p-1.5 rounded-sm transition-all ${viewMode === 'calendar' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                    >
+                        <CalendarDaysIcon className="w-4 h-4" />
+                    </button>
                     <button
                         onClick={() => setViewMode('grid')}
                         title="Grid View"
@@ -100,12 +101,6 @@ export default function ControlBar({
                     className={`px-3 py-1.5 text-xs font-medium rounded-full border whitespace-nowrap ${filter === 'all' ? 'bg-black text-white border-black' : 'bg-white text-gray-700 border-gray-200'}`}
                 >
                     All Events
-                </button>
-                <button
-                    onClick={() => setFilter('selling_fast')}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-full border whitespace-nowrap ${filter === 'selling_fast' ? 'bg-black text-white border-black' : 'bg-white text-gray-700 border-gray-200'}`}
-                >
-                    Selling Fast
                 </button>
                 <button
                     onClick={() => setFilter('attention_needed')}

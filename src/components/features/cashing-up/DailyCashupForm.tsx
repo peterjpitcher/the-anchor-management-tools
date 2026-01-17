@@ -85,7 +85,6 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData, isBill 
   const [dailyData, setDailyData] = useState<{
     events: any[];
     privateBookings: any[];
-    tableBookings: any[];
   } | null>(null);
 
   const [missingDates, setMissingDates] = useState<string[]>([]);
@@ -716,7 +715,7 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData, isBill 
                           {dailyData.events.map((e: any) => (
                             <li key={e.id} className="text-sm border-b border-purple-200 last:border-0 pb-1 last:pb-0">
                               <div className="font-medium text-purple-900">{e.name}</div>
-                              <div className="text-xs text-purple-700">{e.time} • {e.booked_count || 0} booked</div>
+                              <div className="text-xs text-purple-700">{e.time || 'Time TBC'}</div>
                             </li>
                           ))}
                         </ul>
@@ -740,28 +739,6 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData, isBill 
                       )}
                     </div>
 
-                    {/* Table Bookings */}
-                    <div className="bg-emerald-50 p-4 rounded border border-emerald-100">
-                      <h4 className="font-bold text-emerald-800 text-sm mb-3 uppercase">Table Bookings ({dailyData.tableBookings.length})</h4>
-                      {dailyData.tableBookings.length === 0 ? (
-                        <p className="text-gray-500 text-sm italic">No table bookings</p>
-                      ) : (
-                        <div className="max-h-96 overflow-y-auto">
-                          <ul className="space-y-2">
-                            {dailyData.tableBookings.map((tb: any) => (
-                              <li key={tb.id} className="text-sm border-b border-emerald-200 last:border-0 pb-1 last:pb-0">
-                                <div className="font-medium text-emerald-900">
-                                  {tb.customer?.first_name} {tb.customer?.last_name}
-                                </div>
-                                <div className="text-xs text-emerald-700">
-                                  {tb.booking_time} • {tb.party_size}ppl
-                                </div>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
                  </div>
               ) : (
                 <div className="bg-gray-50 p-4 rounded border text-center text-gray-500 italic">

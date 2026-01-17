@@ -2,7 +2,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { Job, JobType, JobPayload, JobOptions } from './job-types'
 import { logger } from './logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
-import { formatTime12Hour, formatDateInLondon } from '@/lib/dateUtils'
 
 const LEGACY_JOB_TYPES: JobType[] = [
   'sync_customer_stats',
@@ -237,9 +236,6 @@ export class JobQueue {
       case 'send_email':
         return this.processSendEmail(payload)
 
-      case 'process_event_reminder':
-        return this.processEventReminder(payload)
-
       default:
         throw new Error(`Unknown job type: ${type}`)
     }
@@ -248,79 +244,15 @@ export class JobQueue {
   // Job processors
 
   private async processSendEmail(payload: JobPayload['send_email']) {
-    const {
-      sendBookingConfirmationEmail,
-      sendBookingCancellationEmail,
-      sendBookingReminderEmail
-    } = await import('@/app/actions/table-booking-email')
-
-    let result
-
-    switch (payload.template) {
-      case 'table_booking_confirmation':
-      case 'table_booking_confirmation_sunday_lunch':
-        if (!payload.booking_id) throw new Error('booking_id required')
-        result = await sendBookingConfirmationEmail(payload.booking_id, true)
-        break
-
-      case 'table_booking_cancellation':
-        if (!payload.booking_id) throw new Error('booking_id required')
-        result = await sendBookingCancellationEmail(
-          payload.booking_id,
-          payload.refund_message || 'No payment was taken for this booking.'
-        )
-        break
-
-      case 'table_booking_reminder':
-        if (!payload.booking_id) throw new Error('booking_id required')
-        result = await sendBookingReminderEmail(payload.booking_id)
-        break
-
-      // Add payment request case if you implement it
-      // case 'table_booking_payment_request': ...
-
-      default:
-        throw new Error(`Unknown email template: ${payload.template}`)
-    }
-
-    if (result.error) {
-      throw new Error(result.error)
-    }
-
-    return result
+    throw new Error(`send_email jobs are no longer supported (template=${payload.template})`)
   }
 
   private async processSendSms(payload: JobPayload['send_sms']) {
     const { sendSMS } = await import('./twilio')
-    let messageText = payload.message || ''
+    const messageText = payload.message || ''
 
-    // Check if this is a template-based SMS (e.g., from table bookings)
-    if (payload.template && payload.variables) {
-      const supabase = await createAdminClient()
-
-      // Get the template
-      const { data: template } = await supabase
-        .from('table_booking_sms_templates')
-        .select('*')
-        .eq('template_key', payload.template)
-        .eq('is_active', true)
-        .single()
-
-      if (!template) {
-        throw new Error(`SMS template not found: ${payload.template}`)
-      }
-
-      // Replace variables in template
-      messageText = template.template_text
-      Object.entries(payload.variables).forEach(([key, value]) => {
-        const replacement = key === 'event_time' ? formatTime12Hour(String(value)) : String(value)
-        messageText = messageText.replace(new RegExp(`{{${key}}}`, 'g'), replacement)
-      })
-
-      // Add contact phone if not in variables
-      if (messageText.includes('{{contact_phone}}') && !payload.variables.contact_phone) {
-        messageText = messageText.replace(/{{contact_phone}}/g, process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '')
-      }
+    if (payload.template) {
+      throw new Error('Template-based SMS jobs are no longer supported')
     }
 
     const supportPhone = (payload.variables?.contact_phone as string | undefined) || process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
@@ -391,22 +323,6 @@ export class JobQueue {
 
   private async updateSmsHealth(payload: JobPayload['update_sms_health']) {
     return { success: true }
-  }
-
-  private async processEventReminder(payload: JobPayload['process_event_reminder']) {
-    const { sendEventReminderById } = await import('@/lib/reminders/send-event-reminder')
-    const result = await sendEventReminderById(payload.reminderId)
-
-    if (!result.success) {
-      if (result.cancelled) {
-        // If cancelled (e.g., opted out, paused, already sent), we count as success for the job queue
-        // so it doesn't retry endlessly. The reminder status itself is updated in the DB by the function.
-        return { success: true, cancelled: true, reason: result.error }
-      }
-      throw new Error(result.error)
-    }
-
-    return { success: true, twilioSid: result.twilioSid }
   }
 }
 
