@@ -89,7 +89,6 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
   // Default event settings
   const [defaultStartTime, setDefaultStartTime] = useState(category?.default_start_time?.substring(0, 5) ?? '')
   const [defaultEndTime, setDefaultEndTime] = useState(category?.default_end_time?.substring(0, 5) ?? '')
-  const [defaultCapacity, setDefaultCapacity] = useState(category?.default_capacity?.toString() ?? '')
   const [defaultPrice, setDefaultPrice] = useState(category?.default_price?.toString() ?? '0')
   const [defaultIsFree, setDefaultIsFree] = useState(category?.default_is_free ?? true)
   const [defaultPerformerName, setDefaultPerformerName] = useState(category?.default_performer_name ?? '')
@@ -142,7 +141,6 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
         poster_image_url: imageUrl || null,
         default_start_time: defaultStartTime || null,
         default_end_time: defaultEndTime || null,
-        default_capacity: defaultCapacity ? parseInt(defaultCapacity) : null,
         default_price: parseFloat(defaultPrice) || 0,
         default_is_free: defaultIsFree,
         default_performer_name: defaultPerformerName.trim() || undefined,
@@ -341,7 +339,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
       >
         <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
           <div className="col-span-full">
-            <h4 className="text-sm font-medium text-gray-900 mb-4">Time & Capacity</h4>
+            <h4 className="text-sm font-medium text-gray-900 mb-4">Time</h4>
           </div>
 
           <div className="sm:col-span-2">
@@ -369,23 +367,6 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 id="default_end_time"
                 value={defaultEndTime}
                 onChange={(e) => setDefaultEndTime(e.target.value)}
-                fullWidth
-              />
-            </div>
-          </div>
-
-          <div className="sm:col-span-2">
-            <label htmlFor="default_capacity" className="block text-sm font-medium leading-6 text-gray-900">
-              Default Capacity
-            </label>
-            <div className="mt-2">
-              <Input
-                type="number"
-                id="default_capacity"
-                value={defaultCapacity}
-                onChange={(e) => setDefaultCapacity(e.target.value)}
-                min="1"
-                placeholder="Unlimited"
                 fullWidth
               />
             </div>

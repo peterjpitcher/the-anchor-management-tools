@@ -38,6 +38,14 @@ export function ShortLinkFormModal({ open, onClose, onSuccess, link, canManage }
   const [expiresIn, setExpiresIn] = useState('never')
   const [submitting, setSubmitting] = useState(false)
 
+  const allowedLinkTypes = new Set([
+    'custom',
+    'booking_confirmation',
+    'loyalty_portal',
+    'promotion',
+    'reward_redemption',
+  ])
+
   // Reset or populate form when opening/changing link
   useEffect(() => {
     if (open) {
@@ -45,7 +53,7 @@ export function ShortLinkFormModal({ open, onClose, onSuccess, link, canManage }
         // Edit mode
         setName(link.name || '')
         setDestinationUrl(link.destination_url)
-        setLinkType(link.link_type)
+        setLinkType(allowedLinkTypes.has(link.link_type) ? link.link_type : 'custom')
         setCustomCode(link.short_code)
 
         if (link.expires_at) {
@@ -176,7 +184,6 @@ export function ShortLinkFormModal({ open, onClose, onSuccess, link, canManage }
           <Select value={linkType} onChange={(e) => setLinkType(e.target.value)}>
             <option value="custom">Custom</option>
             <option value="booking_confirmation">Booking Confirmation</option>
-            <option value="event_checkin">Event Check-in</option>
             <option value="loyalty_portal">Loyalty Portal</option>
             <option value="promotion">Promotion</option>
             <option value="reward_redemption">Reward Redemption</option>

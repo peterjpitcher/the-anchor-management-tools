@@ -257,24 +257,6 @@ export class EventService {
   static async updateEvent(id: string, input: UpdateEventInput) {
     const supabase = await createClient();
 
-    // 1. Validation: Check capacity constraint
-    if (input.capacity !== undefined && input.capacity !== null) {
-      const { data: bookings, error: bookingsError } = await supabase
-        .from('bookings')
-        .select('seats')
-        .eq('event_id', id)
-
-      if (bookingsError) {
-        console.error('Failed to validate capacity against bookings:', bookingsError);
-        throw new Error('Unable to validate capacity');
-      }
-
-      const totalSeats = bookings?.reduce((sum, booking) => sum + (booking.seats || 0), 0) ?? 0;
-      if (totalSeats > input.capacity) {
-        throw new Error(`Cannot reduce capacity below current bookings (${totalSeats} tickets booked)`);
-      }
-    }
-
     // 2. Slug Handling (only if name or date changes or slug is explicitly provided)
     let slug = input.slug;
     if (!slug && (input.name || input.date)) {
@@ -355,16 +337,6 @@ export class EventService {
       throw new Error('Event not found');
     }
 
-    // Check for bookings
-    const { count } = await supabase
-      .from('bookings')
-      .select('*', { count: 'exact', head: true })
-      .eq('event_id', id);
-
-    if (count && count > 0) {
-      throw new Error('Cannot delete event with existing bookings');
-    }
-
     const { error } = await supabase
       .from('events')
       .delete()
@@ -413,7 +385,7 @@ export class EventService {
     const supabase = await createClient();
     const { data, error } = await supabase
       .from('events')
-      .select('*, category:event_categories(*), booking_totals:bookings(sum:seats)')
+      .select('*, category:event_categories(*)')
       .eq('date', date)
       .neq('event_status', 'cancelled')
       .order('time', { ascending: true });
@@ -423,12 +395,7 @@ export class EventService {
       throw new Error('Failed to fetch events');
     }
 
-    // Calculate total booked count for each event
-    return data.map(event => ({
-      ...event,
-      booked_count: event.booking_totals?.reduce((sum: number, booking: any) => sum + (booking.sum || 0), 0) || 0,
-      booking_totals: undefined
-    }));
+    return data;
   }
 
   static async getEvents(options?: {

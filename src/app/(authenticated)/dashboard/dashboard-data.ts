@@ -12,8 +12,6 @@ type EventSummary = {
   name: string
   date: string | null
   time: string | null
-  capacity: number | null
-  bookingCount: number
 }
 
 type EventsSnapshot = {
@@ -52,28 +50,6 @@ type PrivateBookingSummary = {
 type PrivateBookingsSnapshot = {
   permitted: boolean
   upcoming: PrivateBookingSummary[]
-  totalUpcoming: number
-  error?: string
-}
-
-type TableBookingCustomer = {
-  first_name: string | null
-  last_name: string | null
-}
-
-type TableBookingSummary = {
-  id: string
-  customer_id: string | null
-  booking_date: string | null
-  booking_time: string | null
-  party_size: number | null
-  status: string | null
-  customers: TableBookingCustomer[] | TableBookingCustomer | null
-}
-
-type TableBookingsSnapshot = {
-  permitted: boolean
-  upcoming: TableBookingSummary[]
   totalUpcoming: number
   error?: string
 }
@@ -202,7 +178,6 @@ export type DashboardSnapshot = {
   customers: CustomersSnapshot
   messages: MessagesSnapshot
   privateBookings: PrivateBookingsSnapshot
-  tableBookings: TableBookingsSnapshot
   parking: ParkingSnapshot
   invoices: InvoicesSnapshot
   employees: EmployeesSnapshot
@@ -309,12 +284,6 @@ const fetchDashboardSnapshot = unstable_cache(
 
     const privateBookings: PrivateBookingsSnapshot = {
       permitted: hasModuleAccess(permissionsMap, 'private_bookings'),
-      upcoming: [],
-      totalUpcoming: 0,
-    }
-
-    const tableBookings: TableBookingsSnapshot = {
-      permitted: hasModuleAccess(permissionsMap, 'table_bookings'),
       upcoming: [],
       totalUpcoming: 0,
     }
@@ -502,9 +471,7 @@ const fetchDashboardSnapshot = unstable_cache(
               id,
               name,
               date,
-              time,
-              capacity,
-              bookings (id, seats)
+              time
             `, { count: 'exact' })
             .gte('date', todayIso)
             .order('date', { ascending: true })
@@ -514,17 +481,11 @@ const fetchDashboardSnapshot = unstable_cache(
           if (error) throw error
 
           const processed = (data ?? []).map((event) => {
-            const bookingCount = Array.isArray(event.bookings)
-              ? event.bookings.reduce((total: number, booking: { seats: number | null }) => total + (booking.seats || 0), 0)
-              : 0
-
             return {
               id: event.id as string,
               name: (event.name as string) ?? 'Untitled event',
               date: (event.date as string) ?? null,
               time: (event.time as string) ?? null,
-              capacity: event.capacity != null ? Number(event.capacity) : null,
-              bookingCount,
             }
           })
 
@@ -609,49 +570,6 @@ const fetchDashboardSnapshot = unstable_cache(
         } catch (error) {
           console.error('Failed to load dashboard private bookings:', error)
           privateBookings.error = 'Failed to load private bookings'
-        }
-      })() : Promise.resolve(),
-
-      tableBookings.permitted ? (async () => {
-        try {
-          const { data, error, count } = await supabase
-            .from('table_bookings')
-            .select(
-              `
-                id,
-                customer_id,
-                booking_date,
-                booking_time,
-                party_size,
-                status,
-                customers (
-                  first_name,
-                  last_name
-                )
-              `,
-              { count: 'exact' }
-            )
-            .gte('booking_date', todayIso)
-            .neq('status', 'cancelled')
-            .order('booking_date', { ascending: true })
-            .order('booking_time', { ascending: true })
-            .range(0, 19)
-
-          if (error) throw error
-
-          tableBookings.upcoming = (data ?? []).map((booking) => ({
-            id: booking.id as string,
-            customer_id: (booking.customer_id as string) ?? null,
-            booking_date: (booking.booking_date as string) ?? null,
-            booking_time: (booking.booking_time as string) ?? null,
-            party_size: booking.party_size != null ? Number(booking.party_size) : null,
-            status: (booking.status as string) ?? null,
-            customers: booking.customers ?? null,
-          }))
-          tableBookings.totalUpcoming = typeof count === 'number' ? count : tableBookings.upcoming.length
-        } catch (error) {
-          console.error('Failed to load dashboard table bookings:', error)
-          tableBookings.error = 'Failed to load table bookings'
         }
       })() : Promise.resolve(),
 
@@ -1011,7 +929,6 @@ const fetchDashboardSnapshot = unstable_cache(
       customers,
       messages,
       privateBookings,
-      tableBookings,
       parking,
       invoices,
       employees,

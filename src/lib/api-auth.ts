@@ -32,7 +32,6 @@ export async function verifyApiKey(
     if (requiredScope) {
       const permissions = apiKeyData.permissions || [];
       const hasPermission = permissions.includes(requiredScope) || 
-                           permissions.includes('manage:table_bookings') ||
                            permissions.includes('*');
                        
       if (!hasPermission) {

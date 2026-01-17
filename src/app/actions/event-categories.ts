@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { logAuditEvent } from '@/app/actions/audit'
-import type { EventCategory, CategoryFormData, CategoryRegular, CrossCategorySuggestion, CategoryRecentCheckIn } from '@/types/event-categories'
+import type { EventCategory, CategoryFormData, CategoryRegular, CrossCategorySuggestion } from '@/types/event-categories'
 import { toLocalIsoDate } from '@/lib/dateUtils'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { EventCategoryService } from '@/services/event-categories'
@@ -367,80 +367,6 @@ export async function getCategoryRegulars(categoryId: string, daysBack: number =
   }
 }
 
-export async function getCategoryRecentCheckIns(categoryId: string, daysBack: number = 90): Promise<{ data?: CategoryRecentCheckIn[], error?: string }> {
-  try {
-    const supabase = await createClient()
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return { error: 'Unauthorized' }
-    }
-
-    const cutoffDate = new Date()
-    cutoffDate.setDate(cutoffDate.getDate() - daysBack)
-
-    const { data, error } = await supabase
-      .from('event_check_ins')
-      .select(`
-        customer_id,
-        check_in_time,
-        customer:customers!inner(
-          id,
-          first_name,
-          last_name,
-          mobile_number
-        ),
-        event:events!inner(
-          id,
-          category_id
-        )
-      `)
-      .eq('event.category_id', categoryId)
-      .gte('check_in_time', cutoffDate.toISOString())
-
-    if (error) throw error
-
-    const aggregated = new Map<string, CategoryRecentCheckIn>()
-
-    for (const row of data || []) {
-      const rawCustomer = row.customer
-      const customer = Array.isArray(rawCustomer) ? rawCustomer[0] : rawCustomer
-
-      if (!customer || !row.customer_id || !row.check_in_time) {
-        continue
-      }
-
-      const existing = aggregated.get(row.customer_id)
-      if (existing) {
-        existing.check_in_count += 1
-        if (new Date(row.check_in_time) > new Date(existing.last_check_in_time)) {
-          existing.last_check_in_time = row.check_in_time
-        }
-      } else {
-        aggregated.set(row.customer_id, {
-          customer_id: row.customer_id,
-          first_name: customer.first_name,
-          last_name: customer.last_name,
-          mobile_number: customer.mobile_number,
-          last_check_in_time: row.check_in_time,
-          check_in_count: 1,
-        })
-      }
-    }
-
-    const result = Array.from(aggregated.values()).sort((a, b) => {
-      const timeA = new Date(a.last_check_in_time).getTime()
-      const timeB = new Date(b.last_check_in_time).getTime()
-      return timeB - timeA
-    })
-
-    return { data: result }
-  } catch (error) {
-    console.error('Error fetching recent check-ins for category:', error)
-    return { error: 'Failed to fetch recent check-ins' }
-  }
-}
-
 export async function getCrossCategorySuggestions(
   targetCategoryId: string, 
   sourceCategoryId: string, 
@@ -626,93 +552,6 @@ export async function getCustomerCategoryPreferences(customerId: string) {
   } catch (error) {
     console.error('Error fetching customer category preferences:', error)
     return { error: 'Failed to fetch customer preferences' }
-  }
-}
-
-export async function getCustomerEventActivity(customerId: string) {
-  try {
-    const supabase = await createClient()
-
-    const [{ data: bookings, error: bookingsError }, { data: checkIns, error: checkInsError }] = await Promise.all([
-      supabase
-        .from('bookings')
-        .select(`
-          id,
-          event_id,
-          seats,
-          created_at,
-          notes,
-          event:events(
-            id,
-            name,
-            date,
-            time,
-            slug,
-            category:event_categories(id, name, color)
-          )
-        `)
-        .eq('customer_id', customerId)
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('event_check_ins')
-        .select(`
-          id,
-          event_id,
-          booking_id,
-          check_in_time,
-          check_in_method,
-          event:events(
-            id,
-            name,
-            date,
-            time,
-            slug
-          )
-        `)
-        .eq('customer_id', customerId)
-        .order('check_in_time', { ascending: false }),
-    ])
-
-    if (bookingsError) throw bookingsError
-    if (checkInsError) throw checkInsError
-
-    const normalizeEvent = <T extends { event?: any }>(record: T) => {
-      const rawEvent = record.event
-      const event = Array.isArray(rawEvent) ? rawEvent[0] : rawEvent
-
-      if (!event) {
-        return { ...record, event: null }
-      }
-
-      const category = event.category
-      const normalizedCategory = Array.isArray(category) ? category[0] : category
-
-      return {
-        ...record,
-        event: {
-          id: event.id,
-          name: event.name,
-          date: event.date,
-          time: event.time,
-          slug: event.slug,
-          category: normalizedCategory
-            ? {
-              id: normalizedCategory.id,
-              name: normalizedCategory.name,
-              color: normalizedCategory.color,
-            }
-            : null,
-        },
-      }
-    }
-
-    const normalizedBookings = (bookings || []).map(booking => normalizeEvent(booking))
-    const normalizedCheckIns = (checkIns || []).map(checkIn => normalizeEvent(checkIn))
-
-    return { bookings: normalizedBookings, checkIns: normalizedCheckIns }
-  } catch (error) {
-    console.error('Error fetching customer event activity:', error)
-    return { error: 'Failed to fetch customer event activity' }
   }
 }
 

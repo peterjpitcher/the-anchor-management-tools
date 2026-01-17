@@ -147,11 +147,6 @@ export async function exportProfileData() {
     return { error: 'Failed to export data' }
   }
 
-  const { data: bookings } = await supabase
-    .from('bookings')
-    .select('*, event:events(*)')
-    .eq('customer_id', user.id)
-
   const { data: messages } = await supabase
     .from('messages')
     .select('*')
@@ -159,7 +154,6 @@ export async function exportProfileData() {
 
   const exportPayload = {
     profile,
-    bookings: bookings || [],
     messages: messages || [],
     exportDate: new Date().toISOString(),
   }

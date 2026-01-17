@@ -13,7 +13,6 @@ import {
   BuildingOfficeIcon,
   DocumentTextIcon,
   LinkIcon,
-  QueueListIcon,
   ReceiptRefundIcon,
   TruckIcon,
   Squares2X2Icon,
@@ -54,7 +53,6 @@ export const navigationGroups: NavigationGroup[] = [
     name: 'Operations',
     items: [
       { name: 'Events', href: '/events', icon: CalendarIcon, permission: { module: 'events', action: 'view' } },
-      { name: 'Table Bookings', href: '/table-bookings', icon: QueueListIcon, permission: { module: 'table_bookings', action: 'view' } },
       { name: 'Private Bookings', href: '/private-bookings', icon: BuildingOfficeIcon, permission: { module: 'private_bookings', action: 'view' } },
       { name: 'Parking', href: '/parking', icon: TruckIcon, permission: { module: 'parking', action: 'view' } },
     ]

@@ -21,8 +21,7 @@ export async function GET(_request: NextRequest) {
           description,
           color,
           icon
-        ),
-        booking_totals:bookings(sum:seats)
+        )
       `)
       .eq('date', today)
       .order('time', { ascending: true });
@@ -43,13 +42,12 @@ export async function GET(_request: NextRequest) {
 
     // Transform events to Schema.org format
     const schemaEvents = events?.map(event => {
-      const bookedSeats = (event.booking_totals?.[0]?.sum as number | null) ?? 0;
       return {
         id: event.id,
         slug: event.slug,
         bookingUrl: event.booking_url || null,
         event_status: event.event_status,
-        ...eventToSchema(event, bookedSeats),
+        ...eventToSchema(event),
       };
     }) || [];
 

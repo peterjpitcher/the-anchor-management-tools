@@ -273,11 +273,6 @@ const [categories, setCategories] = useState<EventCategory[]>([])
               Start: {category.default_start_time}
             </div>
           )}
-          {category.default_capacity && (
-            <div className="text-xs">
-              Capacity: {category.default_capacity}
-            </div>
-          )}
           <div className="text-xs">
             Reminder: {category.default_reminder_hours}h before
           </div>

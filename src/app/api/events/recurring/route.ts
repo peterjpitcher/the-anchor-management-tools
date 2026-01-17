@@ -31,7 +31,6 @@ export async function GET(_request: NextRequest) {
       name: event.name,
       category: event.category,
       default_time: event.time,
-      default_capacity: event.capacity,
       performer: event.performer_name ? {
         name: event.performer_name,
         type: event.performer_type || 'Person',

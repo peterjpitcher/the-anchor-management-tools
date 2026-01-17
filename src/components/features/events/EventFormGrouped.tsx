@@ -77,7 +77,6 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
   const [date, setDate] = useState(event?.date ?? '')
   const [time, setTime] = useState(event?.time ?? '')
   const [endTime, setEndTime] = useState(event?.end_time ?? '')
-  const [capacity, setCapacity] = useState(event?.capacity?.toString() ?? '')
   const [categoryId, setCategoryId] = useState(event?.category_id ?? '')
   const [eventStatus, setEventStatus] = useState(event?.event_status ?? 'scheduled')
   const [performerName, setPerformerName] = useState(event?.performer_name ?? '')
@@ -125,7 +124,6 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
         date,
         time,
         end_time: endTime || null,
-        capacity: capacity && capacity !== '' ? parseInt(capacity) : null,
         category_id: categoryId || null,
         event_status: eventStatus,
         performer_name: performerName.trim() || null,
@@ -178,9 +176,6 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
       }
       if (!endTime && selectedCategory.default_end_time) {
         setEndTime(selectedCategory.default_end_time)
-      }
-      if (!capacity && selectedCategory.default_capacity) {
-        setCapacity(selectedCategory.default_capacity.toString())
       }
       if (selectedCategory.default_price !== null && selectedCategory.default_price !== undefined) {
         setPrice(selectedCategory.default_price.toString())
@@ -273,7 +268,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
         date: date || null,
         time: time || null,
         categoryName: selectedCategory?.name ?? null,
-        capacity: capacity ? Number(capacity) : null,
+        capacity: null,
         brief: brief.trim() ? brief.trim() : null,
         performerName: performerName.trim() || null,
         performerType: performerType.trim() || null,
@@ -407,23 +402,6 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 <option value="postponed">Postponed</option>
                 <option value="sold_out">Sold Out</option>
               </Select>
-            </div>
-          </div>
-
-          <div className="sm:col-span-2">
-            <label htmlFor="capacity" className="block text-sm font-medium leading-6 text-gray-900">
-              Capacity
-            </label>
-            <div className="mt-2">
-              <Input
-                type="number"
-                id="capacity"
-                value={capacity}
-                onChange={(e) => setCapacity(e.target.value)}
-                min="1"
-                placeholder="Unlimited"
-                fullWidth
-              />
             </div>
           </div>
 

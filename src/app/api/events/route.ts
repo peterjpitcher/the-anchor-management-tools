@@ -44,7 +44,6 @@ export async function GET(_request: NextRequest) {
           color,
           icon
         ),
-        booking_totals:bookings(sum:seats),
         event_faqs(
           id,
           question,
@@ -88,15 +87,12 @@ export async function GET(_request: NextRequest) {
 
     // Transform events to Schema.org format with FAQs
     const filtered = (events || []).filter((event) => {
-      const bookedSeats = (event.booking_totals?.[0]?.sum as number | null) ?? 0;
-      if (!availableOnly) return true;
-      if (event.capacity === null) return true; // uncapped events are always available
-      return bookedSeats < event.capacity;
-    });
+      if (!availableOnly) return true
+      const status = (event.event_status as string | null | undefined) ?? null
+      return status !== 'sold_out' && status !== 'cancelled' && status !== 'draft'
+    })
 
     const schemaEvents = filtered.slice(0, limit).map(event => {
-      const bookedSeats = (event.booking_totals?.[0]?.sum as number | null) ?? 0;
-
       // Sort FAQs by sort_order
       const faqs = event.event_faqs?.sort((a: any, b: any) => a.sort_order - b.sort_order) || [];
 
@@ -106,7 +102,7 @@ export async function GET(_request: NextRequest) {
         bookingUrl: event.booking_url || null,
         highlights: event.highlights || [],
         event_status: event.event_status, // Expose raw status
-        ...eventToSchema(event, bookedSeats, faqs),
+        ...eventToSchema(event, faqs),
       };
     });
 

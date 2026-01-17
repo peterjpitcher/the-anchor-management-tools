@@ -89,7 +89,6 @@ export default async function DashboardPage() {
 
   const quickActions = [
     { label: 'New Event', href: '/events/new', icon: CalendarIcon, permission: snapshot.events.permitted },
-    { label: 'New Booking', href: '/table-bookings/new', icon: UsersIcon, permission: snapshot.tableBookings.permitted },
     { label: 'New Private Booking', href: '/private-bookings/new', icon: CurrencyPoundIcon, permission: snapshot.privateBookings.permitted },
     { label: 'New Invoice', href: '/invoices/new', icon: ClipboardDocumentListIcon, permission: snapshot.invoices.permitted },
   ]
@@ -103,10 +102,6 @@ export default async function DashboardPage() {
   }
 
   // --- Aggregate Today's Items ---
-  const tablesToday = snapshot.tableBookings.permitted 
-    ? snapshot.tableBookings.upcoming.filter(b => isToday(b.booking_date))
-    : []
-    
   const privateToday = snapshot.privateBookings.permitted
     ? snapshot.privateBookings.upcoming.filter(b => isToday(b.event_date))
     : []
@@ -128,9 +123,6 @@ export default async function DashboardPage() {
     : []
 
   // Filter Horizon items to exclude today
-  const upcomingTables = snapshot.tableBookings.permitted 
-    ? snapshot.tableBookings.upcoming.filter(b => !isToday(b.booking_date))
-    : []
   const upcomingPrivate = snapshot.privateBookings.permitted
     ? snapshot.privateBookings.upcoming.filter(b => !isToday(b.event_date))
     : []
@@ -139,7 +131,6 @@ export default async function DashboardPage() {
     : []
 
   // Group items
-  const groupedTables = groupItems(upcomingTables, b => b.booking_date)
   const groupedPrivate = groupItems(upcomingPrivate, b => b.event_date)
   const groupedParking = groupItems(upcomingParking, b => b.start_at)
 
@@ -366,12 +357,12 @@ export default async function DashboardPage() {
                 <div className="flex items-center justify-between">
                   <CardTitle>Today&apos;s Schedule</CardTitle>
                   <Badge variant="secondary">
-                    {eventsToday.length + privateToday.length + tablesToday.length + parkingToday.length + invoicesDueToday.length + overdueInvoices.length} Items
+                    {eventsToday.length + privateToday.length + parkingToday.length + invoicesDueToday.length + overdueInvoices.length} Items
                   </Badge>
                 </div>
               }
             >
-              {eventsToday.length === 0 && privateToday.length === 0 && tablesToday.length === 0 && parkingToday.length === 0 && invoicesDueToday.length === 0 && overdueInvoices.length === 0 ? (
+              {eventsToday.length === 0 && privateToday.length === 0 && parkingToday.length === 0 && invoicesDueToday.length === 0 && overdueInvoices.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
                   <CalendarIcon className="h-12 w-12 mx-auto text-gray-300 mb-2" />
                   <p>Nothing scheduled for today.</p>
@@ -464,77 +455,9 @@ export default async function DashboardPage() {
                     </div>
                   ))}
 
-                  {/* Table Bookings */}
-                  {tablesToday.map(booking => {
-                    const name = Array.isArray(booking.customers) ? booking.customers[0]?.first_name : booking.customers?.first_name
-                    return (
-                      <div key={booking.id} className="p-4 flex items-start gap-4 hover:bg-gray-50 transition-colors">
-                        <div className="p-2 bg-teal-100 text-teal-600 rounded-lg">
-                          <UsersIcon className="h-5 w-5" />
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="text-sm font-medium text-gray-900">{name || 'Guest'}</h4>
-                          <p className="text-xs text-gray-500">Table • {booking.booking_time} • {booking.party_size} ppl</p>
-                        </div>
-                        <Link href={`/table-bookings/${booking.id}`}>
-                          <Button variant="ghost" size="sm" rightIcon={<ArrowRightIcon className="h-4 w-4" />}>View</Button>
-                        </Link>
-                      </div>
-                    )
-                  })}
                 </div>
               )}
             </Card>
-
-            {/* Upcoming Table Bookings */}
-            {snapshot.tableBookings.permitted && (
-              <Card 
-                header={
-                  <div className="flex items-center justify-between">
-                    <CardTitle>Upcoming Table Bookings</CardTitle>
-                    <Link href="/table-bookings" className="text-sm text-primary-600 hover:text-primary-700 font-medium">View All</Link>
-                  </div>
-                }
-              >
-                {groupedTables.length > 0 ? (
-                  <div className="divide-y divide-gray-100">
-                    {groupedTables.map(([label, items]) => (
-                      <div key={label}>
-                        <div className="bg-gray-50 px-4 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider sticky top-0">
-                          {label}
-                        </div>
-                        {items.map(booking => {
-                          const customerData = Array.isArray(booking.customers) ? booking.customers[0] : booking.customers
-                          const fullName = customerData ? `${customerData.first_name || ''} ${customerData.last_name || ''}`.trim() : 'Guest'
-                          return (
-                            <Link key={booking.id} href={`/table-bookings/${booking.id}`} className="block hover:bg-gray-50 transition-colors">
-                              <div className="py-2 px-4 flex items-center gap-3">
-                                <div className="flex-shrink-0 w-10 text-center bg-teal-50 rounded-lg p-1 border border-teal-100 text-teal-700">
-                                  <span className="block text-xs font-bold uppercase">
-                                    {booking.booking_date ? new Date(booking.booking_date).toLocaleDateString('en-US', { month: 'short' }) : 'TBC'}
-                                  </span>
-                                  <span className="block text-base font-bold">
-                                    {booking.booking_date ? new Date(booking.booking_date).getDate() : '?'}
-                                  </span>
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-gray-900 truncate">
-                                    {fullName} <span className="text-xs text-gray-500">• {booking.booking_time || 'Time TBC'} • {booking.party_size} ppl</span>
-                                  </p>
-                                </div>
-                                <ArrowRightIcon className="h-5 w-5 text-gray-300" />
-                              </div>
-                            </Link>
-                          )
-                        })}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="p-8 text-center text-gray-500">No upcoming table bookings.</div>
-                )}
-              </Card>
-            )}
 
             {/* Upcoming Private Bookings */}
             {snapshot.privateBookings.permitted && (

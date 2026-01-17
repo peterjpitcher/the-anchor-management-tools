@@ -5,15 +5,6 @@ interface KPIHeaderProps {
 }
 
 export default function KPIHeader({ kpis }: KPIHeaderProps) {
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('en-GB', {
-            style: 'currency',
-            currency: 'GBP',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-        }).format(amount)
-    }
-
     return (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             {/* Active Events */}
@@ -25,43 +16,36 @@ export default function KPIHeader({ kpis }: KPIHeaderProps) {
                 </div>
             </div>
 
-            {/* Ticket Velocity */}
+            {/* Overdue Tasks */}
             <div className="bg-white rounded-lg border p-4 shadow-sm">
-                <div className="text-sm font-medium text-gray-500">Ticket Velocity</div>
+                <div className="text-sm font-medium text-gray-500">Overdue Tasks</div>
                 <div className="mt-1 flex items-baseline gap-2">
-                    {kpis.velocityPercent !== null ? (
-                        <>
-                            <span className={`text-2xl font-semibold ${kpis.velocityPercent >= 80 ? 'text-green-600' : 'text-gray-900'}`}>
-                                {kpis.velocityPercent}%
-                            </span>
-                            <span className="text-xs text-gray-500">sold (24h)</span>
-                        </>
-                    ) : (
-                        <>
-                            <span className="text-2xl font-semibold text-gray-900">{kpis.last24hSeats}</span>
-                            <span className="text-xs text-gray-500">seats (24h)</span>
-                        </>
-                    )}
-                </div>
-            </div>
-
-            {/* Urgent Attention */}
-            <div className="bg-white rounded-lg border p-4 shadow-sm">
-                <div className="text-sm font-medium text-gray-500">Urgent Attention</div>
-                <div className="mt-1 flex items-baseline gap-2">
-                    <span className={`text-2xl font-semibold ${kpis.urgentAttention > 0 ? 'text-red-600' : 'text-gray-900'}`}>
-                        {kpis.urgentAttention}
+                    <span className={`text-2xl font-semibold ${kpis.overdueTasks > 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                        {kpis.overdueTasks}
                     </span>
-                    <span className="text-xs text-gray-500">tasks/alerts</span>
+                    <span className="text-xs text-gray-500">due</span>
                 </div>
             </div>
 
-            {/* Revenue Estimate */}
+            {/* Due Today */}
             <div className="bg-white rounded-lg border p-4 shadow-sm">
-                <div className="text-sm font-medium text-gray-500">Revenue (Est.)</div>
+                <div className="text-sm font-medium text-gray-500">Due Today</div>
                 <div className="mt-1 flex items-baseline gap-2">
-                    <span className="text-2xl font-semibold text-gray-900">{formatCurrency(kpis.revenueEstimate)}</span>
-                    <span className="text-xs text-gray-500">next 30d</span>
+                    <span className={`text-2xl font-semibold ${kpis.dueTodayTasks > 0 ? 'text-amber-600' : 'text-gray-900'}`}>
+                        {kpis.dueTodayTasks}
+                    </span>
+                    <span className="text-xs text-gray-500">tasks</span>
+                </div>
+            </div>
+
+            {/* Draft Events */}
+            <div className="bg-white rounded-lg border p-4 shadow-sm">
+                <div className="text-sm font-medium text-gray-500">Draft Events</div>
+                <div className="mt-1 flex items-baseline gap-2">
+                    <span className={`text-2xl font-semibold ${kpis.draftEvents > 0 ? 'text-gray-900' : 'text-gray-900'}`}>
+                        {kpis.draftEvents}
+                    </span>
+                    <span className="text-xs text-gray-500">upcoming</span>
                 </div>
             </div>
         </div>

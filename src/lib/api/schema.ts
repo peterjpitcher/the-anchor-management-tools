@@ -189,14 +189,16 @@ export function createOrganizer(): SchemaOrganization {
 }
 
 // Convert database event to Schema.org format
-export function eventToSchema(event: any, bookingCount: number = 0, faqs?: any[]): SchemaEvent {
+export function eventToSchema(event: any, faqs?: any[]): SchemaEvent {
   const startDateTime = `${event.date}T${event.time}+00:00`;
   const endDateTime = event.end_time 
     ? `${event.date}T${event.end_time}+00:00`
     : undefined;
-  
-  const capacity: number | null = event.capacity === undefined ? null : event.capacity;
-  const remainingSeats = capacity === null ? null : capacity - bookingCount;
+
+  const availability =
+    event.event_status === 'sold_out'
+      ? SCHEMA_AVAILABILITY.SOLD_OUT
+      : SCHEMA_AVAILABILITY.IN_STOCK
   
   // Build image array from multiple image fields
   const images: string[] = []
@@ -237,21 +239,11 @@ export function eventToSchema(event: any, bookingCount: number = 0, faqs?: any[]
       url: event.booking_url || `${process.env.NEXT_PUBLIC_APP_URL}/events/${event.slug || event.id}`,
       price: event.price?.toString() || '0',
       priceCurrency: 'GBP',
-      availability: remainingSeats === null
-        ? SCHEMA_AVAILABILITY.IN_STOCK
-        : remainingSeats > 0 
-          ? (remainingSeats < 10 ? SCHEMA_AVAILABILITY.LIMITED : SCHEMA_AVAILABILITY.IN_STOCK)
-          : SCHEMA_AVAILABILITY.SOLD_OUT,
+      availability,
       validFrom: new Date().toISOString(),
-      inventoryLevel: remainingSeats !== null ? {
-        '@type': 'QuantitativeValue',
-        value: remainingSeats,
-      } : undefined,
     },
     organizer: createOrganizer(),
     isAccessibleForFree: event.is_free === true,
-    maximumAttendeeCapacity: capacity === null ? undefined : capacity,
-    remainingAttendeeCapacity: remainingSeats === null ? undefined : remainingSeats,
     // Enhanced SEO fields
     url: `${process.env.NEXT_PUBLIC_APP_URL}/events/${event.slug || event.id}`,
     identifier: event.id,
