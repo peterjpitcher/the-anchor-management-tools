@@ -13,6 +13,7 @@ interface Props {
   site: { id: string; name: string };
   sessionDate: string; // New prop
   initialSessionData: CashupSession | null; // New prop
+  isBill?: boolean;
 }
 
 const DENOMINATIONS = [
@@ -30,7 +31,40 @@ const DENOMINATIONS = [
   { value: 0.01, label: '1p' },
 ];
 
-export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props) {
+const BILL_EASTER_EGG_CHANCE = 0.15;
+const BILL_EASTER_EGG_SIGN_OFF = 'Your Pete';
+const BILL_EASTER_EGG_MESSAGES = [
+  "Bill — you’re a seriously great person. I’m so grateful for you. I love you.",
+  "Quick reminder: you’re kind, capable, and ridiculously lovable. I appreciate you so much.",
+  "If this was a performance review: exceeds expectations (and then some). I love you.",
+  "Cashing up again? Thank you. I see you, I appreciate you, and I love you more than words.",
+  "You’re my favourite human. Also: your existence is a net positive in every spreadsheet.",
+  "Bill, you make life lighter. I love you. I appreciate you. I’m proud of you.",
+  "If you’re counting coins, I’m counting reasons I love you. Spoiler: I ran out of numbers.",
+  "You’re the best kind of person: good heart, good humour, good everything. Love you.",
+  "You mean the world to me. Also you’re doing amazing — yes, even if the till disagrees.",
+  "Just popping in to say: you matter to me, a lot. And you’re genuinely brilliant.",
+  "Bill, you’re handsome, hilarious, and somehow still humble about it. I love you.",
+  "Thank you for being you — steady, warm, and wonderfully you. I appreciate you endlessly.",
+  "You’ve got this. And you’ve got me. I love you more than I can fit in one toast.",
+  "You’re the calm in my chaos. I appreciate you more than you know. Love you.",
+  "Bill: world-class human, top-tier partner, elite smile. I love you.",
+  "I’m proud of the man you are. Also proud of you for doing this admin. Love you.",
+  "You make my life better in a million small ways. I notice. I appreciate you. I love you.",
+  "Your daily affirmation: you’re doing great, you’re deeply loved, and your bum looks fantastic (science).",
+  "I love you. I appreciate you. I’m lucky it’s you. Also: drink some water, you legend.",
+  "Bill, you’re my favourite part of every day — even the cashing-up bit. Love you.",
+];
+
+function maybeGetBillEasterEggMessage(isBill: boolean | undefined) {
+  if (!isBill) return null;
+  if (Math.random() > BILL_EASTER_EGG_CHANCE) return null;
+
+  const message = BILL_EASTER_EGG_MESSAGES[Math.floor(Math.random() * BILL_EASTER_EGG_MESSAGES.length)];
+  return `${message}\n\n${BILL_EASTER_EGG_SIGN_OFF}`;
+}
+
+export function DailyCashupForm({ site, sessionDate, initialSessionData, isBill }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   
@@ -280,7 +314,9 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props
       // Refresh missing dates after save
       getMissingCashupDatesAction(siteId).then(r => r.success && setMissingDates(r.dates || []));
       
-      if (!silent) alert('Saved successfully!');
+      if (!silent) {
+        alert(maybeGetBillEasterEggMessage(isBill) ?? 'Saved successfully!');
+      }
       return res.data.id;
     } else {
       alert('Error: ' + (res.error || 'Unknown error'));
@@ -300,6 +336,8 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData }: Props
       if (id) {
         const res = await submitSessionAction(id);
         if (res.success) {
+          const msg = maybeGetBillEasterEggMessage(isBill);
+          if (msg) alert(msg);
           // Find next missing date
           const nextDate = missingDates.find(d => d !== date);
           if (nextDate) {

@@ -9,6 +9,8 @@ export default async function DailyCashupPage(props: { searchParams: Promise<{ d
   const siteIdParam = searchParams.siteId;
 
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const isBill = user?.email?.toLowerCase() === 'billy@orangejelly.co.uk';
   let defaultSiteId: string | undefined;
 
   const navItems = [ // Moved declaration here
@@ -65,6 +67,7 @@ export default async function DailyCashupPage(props: { searchParams: Promise<{ d
         site={siteDetails}
         sessionDate={sessionDate || new Date().toISOString().split('T')[0]} // Default to today if not provided
         initialSessionData={initialSessionData}
+        isBill={isBill}
       />
     </PageLayout>
   );
