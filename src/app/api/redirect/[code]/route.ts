@@ -72,12 +72,46 @@ export async function GET(
       return NextResponse.redirect(FALLBACK_REDIRECT_URL);
     }
 
-    if (!link) {
-      return NextResponse.redirect(FALLBACK_REDIRECT_URL);
+    let resolvedLink = link;
+    let resolvedViaAlias = false;
+
+    if (!resolvedLink) {
+      const { data: alias, error: aliasError } = await supabase
+        .from('short_link_aliases')
+        .select('short_link_id')
+        .eq('alias_code', shortCode)
+        .maybeSingle();
+
+      if (aliasError) {
+        console.error('Short link alias lookup error:', shortCode, aliasError);
+        return NextResponse.redirect(FALLBACK_REDIRECT_URL);
+      }
+
+      if (!alias) {
+        return NextResponse.redirect(FALLBACK_REDIRECT_URL);
+      }
+
+      const { data: targetLink, error: targetError } = await supabase
+        .from('short_links')
+        .select('*')
+        .eq('id', alias.short_link_id)
+        .maybeSingle();
+
+      if (targetError) {
+        console.error('Short link alias target lookup error:', shortCode, targetError);
+        return NextResponse.redirect(FALLBACK_REDIRECT_URL);
+      }
+
+      if (!targetLink) {
+        return NextResponse.redirect(FALLBACK_REDIRECT_URL);
+      }
+
+      resolvedLink = targetLink;
+      resolvedViaAlias = true;
     }
     
     // Check if expired
-    if (link.expires_at && new Date(link.expires_at) < new Date()) {
+    if (resolvedLink.expires_at && new Date(resolvedLink.expires_at) < new Date()) {
       return NextResponse.redirect(FALLBACK_REDIRECT_URL);
     }
     
@@ -91,7 +125,7 @@ export async function GET(
       await supabase
         .from('short_link_clicks')
         .insert({
-          short_link_id: link.id,
+          short_link_id: resolvedLink.id,
           user_agent: userAgent,
           referrer: request.headers.get('referer'),
           ip_address: ipAddress,
@@ -103,18 +137,19 @@ export async function GET(
           os,
           utm_source: utmParams.utm_source,
           utm_medium: utmParams.utm_medium,
-          utm_campaign: utmParams.utm_campaign
+          utm_campaign: utmParams.utm_campaign,
+          metadata: resolvedViaAlias ? { alias_code: shortCode } : {}
         });
         
       await (supabase as any).rpc('increment_short_link_clicks', {
-        p_short_link_id: link.id
+        p_short_link_id: resolvedLink.id
       });
     } catch (err) {
       console.error('Error tracking click:', err);
     }
     
     // Redirect immediately to the destination URL
-    return NextResponse.redirect(link.destination_url);
+    return NextResponse.redirect(resolvedLink.destination_url);
   } catch (error) {
     console.error('Redirect error:', error);
     return NextResponse.redirect(FALLBACK_REDIRECT_URL);

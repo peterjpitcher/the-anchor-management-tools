@@ -40,7 +40,8 @@ export async function createShortLink(data: z.infer<typeof CreateShortLinkSchema
       additional_info: {
         short_code: result.short_code,
         destination: validatedData.destination_url,
-        link_type: validatedData.link_type
+        link_type: validatedData.link_type,
+        already_exists: result.already_exists === true
       }
     });
 
@@ -50,7 +51,8 @@ export async function createShortLink(data: z.infer<typeof CreateShortLinkSchema
       success: true, 
       data: {
         short_code: result.short_code,
-        full_url: result.full_url
+        full_url: result.full_url,
+        already_exists: result.already_exists === true
       }
     };
   } catch (error: any) {

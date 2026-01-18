@@ -14,7 +14,7 @@ const CustomCodeSchema = z
 
 export const CreateShortLinkSchema = z.object({
   name: z.string().max(120).optional(),
-  destination_url: z.string().url('Invalid URL'),
+  destination_url: z.string().trim().url('Invalid URL'),
   link_type: z.enum(['loyalty_portal', 'promotion', 'reward_redemption', 'custom', 'booking_confirmation']),
   metadata: z.record(z.any()).optional(),
   expires_at: z.string().nullable().optional(),
@@ -24,7 +24,7 @@ export const CreateShortLinkSchema = z.object({
 export const UpdateShortLinkSchema = z.object({
   id: z.string().uuid('Invalid short link'),
   name: z.string().max(120).optional().nullable(),
-  destination_url: z.string().url('Invalid URL'),
+  destination_url: z.string().trim().url('Invalid URL'),
   link_type: CreateShortLinkSchema.shape.link_type,
   expires_at: z.string().nullable().optional()
 });
@@ -38,8 +38,45 @@ export type UpdateShortLinkInput = z.infer<typeof UpdateShortLinkSchema>;
 export type ResolveShortLinkInput = z.infer<typeof ResolveShortLinkSchema>;
 
 export class ShortLinkService {
-  static async createShortLink(data: CreateShortLinkInput) {
+  private static async findShortLinkByDestinationUrl(
+    supabase: Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createAdminClient>,
+    destinationUrl: string
+  ) {
+    const { data, error } = await supabase
+      .from('short_links')
+      .select('id, short_code, created_at')
+      .eq('destination_url', destinationUrl)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw new Error('Failed to check for existing short links');
+    return data;
+  }
+
+  static async createShortLink(data: CreateShortLinkInput): Promise<{
+    id: string;
+    short_code: string;
+    full_url: string;
+    already_exists: boolean;
+  }> {
     const supabase = await createClient();
+
+    const existing = await this.findShortLinkByDestinationUrl(supabase, data.destination_url);
+    if (existing) {
+      if (data.custom_code && existing.short_code !== data.custom_code) {
+        throw new Error(
+          `A short link already exists for this URL (${buildShortLinkUrl(existing.short_code)}). Short codes can't be changed; edit or delete the existing link instead.`
+        );
+      }
+
+      return {
+        id: existing.id,
+        short_code: existing.short_code,
+        full_url: buildShortLinkUrl(existing.short_code),
+        already_exists: true,
+      };
+    }
     
     const { data: result, error } = await supabase
       .rpc('create_short_link', {
@@ -65,7 +102,8 @@ export class ShortLinkService {
       await supabase
         .from('short_links')
         .update({ name: data.name })
-        .eq('short_code', (result as any).short_code);
+        .eq('short_code', (result as any).short_code)
+        .is('name', null);
     }
 
     const shortCode = (result as any).short_code as string;
@@ -83,7 +121,8 @@ export class ShortLinkService {
     return {
       id: linkRow.id,
       short_code: shortCode,
-      full_url: buildShortLinkUrl(shortCode)
+      full_url: buildShortLinkUrl(shortCode),
+      already_exists: false,
     };
   }
 
@@ -100,6 +139,14 @@ export class ShortLinkService {
 
   static async updateShortLink(input: UpdateShortLinkInput) {
     const supabase = await createClient();
+
+    const conflict = await this.findShortLinkByDestinationUrl(supabase, input.destination_url);
+    if (conflict && conflict.id !== input.id) {
+      throw new Error(
+        `A short link already exists for this URL (${buildShortLinkUrl(conflict.short_code)}).`
+      );
+    }
+
     const { data: updated, error } = await supabase
       .from('short_links')
       .update({
@@ -144,37 +191,40 @@ export class ShortLinkService {
     link_type: string;
     metadata?: Record<string, any>;
     expires_at?: string;
-  }): Promise<{ short_code: string; full_url: string }> {
+  }): Promise<{ short_code: string; full_url: string; already_exists: boolean }> {
     const supabase = await createAdminClient();
-    
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    let shortCode = '';
-    for (let i = 0; i < 6; i++) {
-      shortCode += chars[Math.floor(Math.random() * chars.length)];
+
+    const existing = await this.findShortLinkByDestinationUrl(supabase, data.destination_url);
+    if (existing) {
+      return {
+        short_code: existing.short_code,
+        full_url: buildShortLinkUrl(existing.short_code),
+        already_exists: true,
+      };
     }
-    
-    const { data: link, error } = await supabase
-      .from('short_links')
-      .insert({
-        short_code: shortCode,
-        destination_url: data.destination_url,
-        link_type: data.link_type,
-        metadata: data.metadata || {},
-        expires_at: data.expires_at || null
+
+    const { data: result, error } = await supabase
+      .rpc('create_short_link', {
+        p_destination_url: data.destination_url,
+        p_link_type: data.link_type,
+        p_metadata: data.metadata || {},
+        p_expires_at: data.expires_at || null,
+        p_custom_code: null,
       })
-      .select()
       .single();
-    
+
     if (error) {
-      if (error.code === '23505') {
+      if ((error as any)?.code === '23505') {
         return this.createShortLinkInternal(data);
       }
-      throw error;
+      throw new Error((error as any)?.message || 'Failed to create short link');
     }
-    
+
+    const shortCode = (result as any).short_code as string;
     return {
-      short_code: link.short_code,
-      full_url: buildShortLinkUrl(link.short_code)
+      short_code: shortCode,
+      full_url: buildShortLinkUrl(shortCode),
+      already_exists: false,
     };
   }
 
@@ -185,11 +235,36 @@ export class ShortLinkService {
       .from('short_links')
       .select('*')
       .eq('short_code', input.short_code)
-      .single();
+      .maybeSingle();
     
-    if (error || !link) throw new Error('Short link not found');
+    if (error) throw new Error('Short link not found');
+
+    let resolvedLink = link;
+    let resolvedViaAlias = false;
+
+    if (!resolvedLink) {
+      const { data: alias, error: aliasError } = await supabase
+        .from('short_link_aliases')
+        .select('short_link_id')
+        .eq('alias_code', input.short_code)
+        .maybeSingle();
+
+      if (aliasError) throw new Error('Short link not found');
+      if (!alias) throw new Error('Short link not found');
+
+      const { data: targetLink, error: targetError } = await supabase
+        .from('short_links')
+        .select('*')
+        .eq('id', alias.short_link_id)
+        .maybeSingle();
+
+      if (targetError || !targetLink) throw new Error('Short link not found');
+
+      resolvedLink = targetLink;
+      resolvedViaAlias = true;
+    }
     
-    if (link.expires_at && new Date(link.expires_at) < new Date()) {
+    if (resolvedLink.expires_at && new Date(resolvedLink.expires_at) < new Date()) {
       throw new Error('This link has expired');
     }
     
@@ -197,18 +272,19 @@ export class ShortLinkService {
     supabase
       .from('short_link_clicks')
       .insert({
-        short_link_id: link.id
+        short_link_id: resolvedLink.id,
+        metadata: resolvedViaAlias ? { alias_code: input.short_code } : {}
       })
       .then(async () => {
         await (supabase as any).rpc('increment_short_link_clicks', {
-          p_short_link_id: link.id
+          p_short_link_id: resolvedLink.id
         });
       });
     
     return {
-      destination_url: link.destination_url,
-      link_type: link.link_type,
-      metadata: link.metadata
+      destination_url: resolvedLink.destination_url,
+      link_type: resolvedLink.link_type,
+      metadata: resolvedLink.metadata
     };
   }
 
