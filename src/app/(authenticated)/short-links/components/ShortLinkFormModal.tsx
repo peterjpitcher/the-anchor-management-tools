@@ -122,7 +122,10 @@ export function ShortLinkFormModal({ open, onClose, onSuccess, link, canManage }
         return
       }
 
-      toast.success(`Short link ${link ? 'updated' : 'created'}`)
+      const alreadyExists = !link && !!result.data?.already_exists
+      toast.success(
+        link ? 'Short link updated' : alreadyExists ? 'Short link already exists' : 'Short link created'
+      )
       
       // Special handling for create: copy to clipboard if available
       if (!link && result.data?.full_url && navigator.clipboard) {
