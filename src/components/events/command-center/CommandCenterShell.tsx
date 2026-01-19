@@ -58,7 +58,10 @@ export default function CommandCenterShell({ initialData }: CommandCenterShellPr
 
                 <div className="flex-1 overflow-y-auto min-h-0 pb-20 scrollbar-hide">
                     {viewMode === 'calendar' ? (
-                        <EventCalendarView events={filteredEvents} />
+                        <EventCalendarView
+                            events={filteredEvents}
+                            privateBookings={initialData.privateBookingsForCalendar}
+                        />
                     ) : viewMode === 'grid' ? (
                         <EventGrid events={filteredEvents} />
                     ) : (

@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getTodayIsoDate, getLocalIsoDateDaysAhead } from '@/lib/dateUtils'
 import { buildEventChecklist, EVENT_CHECKLIST_TOTAL_TASKS, ChecklistTodoItem, EventChecklistItem } from '@/lib/event-checklist'
+import type { BookingStatus } from '@/types/private-bookings'
 
 export type EventOverview = {
     id: string
@@ -37,7 +38,20 @@ export type EventsOverviewResult = {
     upcoming: EventOverview[]
     past: EventOverview[]
     todos: ChecklistTodoItem[]
+    privateBookingsForCalendar: PrivateBookingCalendarOverview[]
     error?: string
+}
+
+export type PrivateBookingCalendarOverview = {
+    id: string
+    customer_name: string
+    event_date: string
+    start_time: string
+    end_time: string | null
+    end_time_next_day: boolean | null
+    status: BookingStatus
+    event_type: string | null
+    guest_count: number | null
 }
 
 export async function getEventsCommandCenterData(): Promise<EventsOverviewResult> {
@@ -88,6 +102,7 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
             upcoming: [],
             past: [],
             todos: [],
+            privateBookingsForCalendar: [],
             error: 'Failed to load events.'
         }
     }
@@ -214,6 +229,7 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
         upcoming: mappedEvents.filter(e => e.date >= todayIso), // Ensure purely upcoming
         past: [], // Not implemented yet
         todos,
+        privateBookingsForCalendar: [],
         error: undefined
     }
 }

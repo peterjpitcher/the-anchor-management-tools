@@ -225,7 +225,7 @@ export class PrivateBookingService {
     if (!input.customer_id && input.customer_first_name && normalizedContactPhone) {
       customerData = {
         first_name: input.customer_first_name,
-        last_name: input.customer_last_name,
+        last_name: input.customer_last_name?.trim() || '',
         mobile_number: normalizedContactPhone,
         email: normalizedContactEmail,
         sms_opt_in: true
@@ -371,6 +371,13 @@ export class PrivateBookingService {
       } else if (!internalNotes.includes(DATE_TBD_NOTE)) {
         internalNotes = `${internalNotes}\n${DATE_TBD_NOTE}`;
       }
+    } else if (input.date_tbd === false && internalNotes?.includes(DATE_TBD_NOTE)) {
+      internalNotes =
+        internalNotes
+          .split('\n')
+          .filter((line: string) => line.trim() !== DATE_TBD_NOTE)
+          .join('\n')
+          .trim() || null;
     }
 
     const normalizedContactPhone =
@@ -420,6 +427,10 @@ export class PrivateBookingService {
       hold_expiry: holdExpiryIso,
       updated_at: new Date().toISOString()
     };
+
+    // Remove non-column fields
+    delete updatePayload.date_tbd;
+    delete updatePayload.items;
 
     if (input.date_tbd) {
       updatePayload.balance_due_date = null;

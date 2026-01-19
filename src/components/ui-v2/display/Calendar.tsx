@@ -408,7 +408,7 @@ export function Calendar({
                         </span>
                       )}
                       {' '}
-                      {event.title}
+                      {renderEvent ? renderEvent(event) : event.title}
                     </div>
                   ))}
                   {dayEvents.length > 3 && (
@@ -492,7 +492,7 @@ export function Calendar({
                             height: `${((event.end.getTime() - event.start.getTime()) / (1000 * 60 * 60)) * 60}px`
                           }}
                         >
-                          {event.title}
+                          {renderEvent ? renderEvent(event) : event.title}
                         </div>
                       ))}
                     </div>
@@ -560,7 +560,9 @@ export function Calendar({
                           color: event.textColor || 'white'
                         }}
                       >
-                        <div className="font-medium text-sm">{event.title}</div>
+                        <div className="font-medium text-sm">
+                          {renderEvent ? renderEvent(event) : event.title}
+                        </div>
                         {event.location && (
                           <div className="flex items-center gap-1 text-xs mt-1">
                             <MapPinIcon className="h-3 w-3" />
@@ -589,49 +591,48 @@ export function Calendar({
     <div className={cn('flex flex-col bg-white rounded-lg border', className)} style={{ height }}>
       {/* Navigation */}
       {showNavigation && (
-	        <div className="flex items-center gap-4 p-4 border-b">
-	          <div className="flex items-center gap-2 shrink-0">
-            <Button variant="secondary"
+        <div className="flex items-center gap-4 p-4 border-b">
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="secondary"
               size="sm"
               onClick={goToPrevious}
               iconOnly
               leftIcon={<ChevronLeftIcon />}
             />
-            <Button variant="secondary"
+            <Button
+              variant="secondary"
               size="sm"
               onClick={goToNext}
               iconOnly
               leftIcon={<ChevronRightIcon />}
             />
             {showTodayButton && (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={goToToday}
-              >
+              <Button variant="secondary" size="sm" onClick={goToToday}>
                 Today
               </Button>
             )}
           </div>
           
-	          <h2 className="text-lg font-semibold min-w-0 flex-1 text-center truncate">
-	            {view === 'month' && format(currentDate, 'MMMM yyyy')}
-	            {view === 'week' && `Week of ${format(startOfWeek(currentDate, { weekStartsOn: firstDayOfWeek }), 'MMM d, yyyy')}`}
-	            {view === 'day' && format(currentDate, 'MMMM d, yyyy')}
-	          </h2>
+          <h2 className="text-lg font-semibold min-w-0 flex-1 text-center truncate">
+            {view === 'month' && format(currentDate, 'MMMM yyyy')}
+            {view === 'week' &&
+              `Week of ${format(startOfWeek(currentDate, { weekStartsOn: firstDayOfWeek }), 'MMM d, yyyy')}`}
+            {view === 'day' && format(currentDate, 'MMMM d, yyyy')}
+          </h2>
           
-	          {showViewSelector && (
-	            <Select
-	              value={view}
-	              onChange={(e) => onViewChange?.(e.target.value as any)}
-	              selectSize="sm"
-	              fullWidth={false}
-	              wrapperClassName="shrink-0"
-	              className="w-24"
-	            >
-	              <option value="month">Month</option>
-	              <option value="week">Week</option>
-	              <option value="day">Day</option>
+          {showViewSelector && (
+            <Select
+              value={view}
+              onChange={(e) => onViewChange?.(e.target.value as any)}
+              selectSize="sm"
+              fullWidth={false}
+              wrapperClassName="shrink-0"
+              className="w-24"
+            >
+              <option value="month">Month</option>
+              <option value="week">Week</option>
+              <option value="day">Day</option>
             </Select>
           )}
         </div>
