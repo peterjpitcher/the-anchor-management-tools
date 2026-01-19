@@ -273,6 +273,22 @@ export default function EventDetailClient({ event, initialMarketingLinks }: Even
                     </dd>
                   </div>
                 )}
+                {event.brief?.trim() && (
+                  <div className="sm:col-span-2 lg:col-span-3">
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">Event brief</dt>
+                    <dd className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <span className="text-sm text-gray-600">{event.brief.trim().length.toLocaleString()} chars</span>
+                      <Button
+                        size="xs"
+                        variant="secondary"
+                        leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                        onClick={() => handleCopyToClipboard(event.brief?.trim() ?? '', 'Event brief')}
+                      >
+                        Copy brief
+                      </Button>
+                    </dd>
+                  </div>
+                )}
               </dl>
 
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
