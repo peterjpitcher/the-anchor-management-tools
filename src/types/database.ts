@@ -37,6 +37,8 @@ export interface Event {
   facebook_event_description?: string | null;
   gbp_event_title?: string | null;
   gbp_event_description?: string | null;
+  opentable_experience_title?: string | null;
+  opentable_experience_description?: string | null;
 }
 
 export type PerformerSubmissionStatus =

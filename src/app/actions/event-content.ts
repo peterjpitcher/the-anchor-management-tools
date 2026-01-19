@@ -44,22 +44,26 @@ type EventSeoContentResult = {
 type EventPromotionContentResult = {
   success: true
   data: {
-    facebook: {
-      name: string
-      storyParagraphs: string[]
-      bulletPoints: string[]
-      cta: string
-      plainText: string
-    }
-    googleBusinessProfile: {
-      title: string
-      description: string
-    }
+    type: EventPromotionContentType
+    content:
+      | {
+        name: string
+        description: string
+      }
+      | {
+        title: string
+        description: string
+      }
   }
 } | {
   success: false
   error: string
 }
+
+export type EventPromotionContentType =
+  | 'facebook_event'
+  | 'google_business_profile_event'
+  | 'opentable_experience'
 
 function buildEventSummary(input: EventSeoContentInput): string {
   const payload = {
@@ -269,12 +273,19 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
   }
 }
 
-type EventPromotionInput = {
+export type EventPromotionInput = {
   eventId: string
-  ticketUrl?: string | null
+  contentType: EventPromotionContentType
 }
 
-export async function generateEventPromotionContent({ eventId, ticketUrl }: EventPromotionInput): Promise<EventPromotionContentResult> {
+function normalizeString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+export async function generateEventPromotionContent({
+  eventId,
+  contentType,
+}: EventPromotionInput): Promise<EventPromotionContentResult> {
   const canManageEvents = await checkUserPermission('events', 'manage')
   if (!canManageEvents) {
     return { success: false, error: 'You do not have permission to generate content.' }
@@ -294,16 +305,19 @@ export async function generateEventPromotionContent({ eventId, ticketUrl }: Even
       name,
       date,
       time,
+      end_time,
+      doors_time,
+      last_entry_time,
+      duration_minutes,
+      capacity,
+      price,
+      is_free,
       brief,
       short_description,
       long_description,
       booking_url,
       performer_name,
       performer_type,
-      facebook_event_name,
-      facebook_event_description,
-      gbp_event_title,
-      gbp_event_description,
       category:event_categories(name)
     `)
     .eq('id', eventId)
@@ -314,25 +328,178 @@ export async function generateEventPromotionContent({ eventId, ticketUrl }: Even
     return { success: false, error: 'Event not found.' }
   }
 
-  const callToActionLink = ticketUrl?.trim() || event.booking_url || null
   const categoryRecord =
     !event.category || Array.isArray(event.category)
       ? null
       : (event.category as { name?: string | null })
 
   const categoryName = categoryRecord?.name ?? null
+
+  const hasBookingUrl = Boolean(event.booking_url && String(event.booking_url).trim().length > 0)
+  const priceLabel =
+    event.is_free ? 'Free' : typeof event.price === 'number' ? `£${event.price.toFixed(2)}` : null
+
   const detailLines = [
+    'Venue: The Anchor',
     `Event name: ${event.name}`,
     event.date ? `Event date: ${event.date}` : null,
-    event.time ? `Event time: ${event.time}` : null,
+    event.time ? `Event start time: ${event.time}` : null,
+    event.end_time ? `Event end time: ${event.end_time}` : null,
+    event.doors_time ? `Doors time: ${event.doors_time}` : null,
+    event.last_entry_time ? `Last entry time: ${event.last_entry_time}` : null,
+    typeof event.duration_minutes === 'number' ? `Duration (minutes): ${event.duration_minutes}` : null,
     categoryName ? `Category: ${categoryName}` : null,
     event.performer_name ? `Performer: ${event.performer_name}` : null,
     event.performer_type ? `Performer type: ${event.performer_type}` : null,
+    typeof event.capacity === 'number' ? `Capacity: ${event.capacity}` : null,
+    priceLabel ? `Price: ${priceLabel}` : null,
     event.short_description ? `Short description: ${event.short_description}` : null,
     event.long_description ? `Long description: ${event.long_description}` : null,
     event.brief ? `Brief details:\n${event.brief}` : null,
-    callToActionLink ? `Ticket link: ${callToActionLink}` : 'Ticket link: [Ticket link will be provided separately]',
+    hasBookingUrl ? 'Booking link available: yes (do not include any URL)' : 'Booking link available: no',
   ].filter(Boolean)
+
+  const { messages, schemaName, schema, maxTokens, temperature } = (() => {
+    switch (contentType) {
+      case 'facebook_event':
+        return {
+          schemaName: 'facebook_event_copy',
+          schema: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              description: { type: 'string' },
+            },
+            required: ['name', 'description'],
+            additionalProperties: false,
+          },
+          temperature: 0.8,
+          maxTokens: 700,
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You are an expert hospitality marketer. Write high-performing Facebook Event copy in UK English that is vivid, clear, and conversion-focused.',
+            },
+            {
+              role: 'user',
+              content: [
+                'Write ONE Facebook Event name and ONE Facebook Event description for the event details below.',
+                '',
+                'Best practices to follow:',
+                '- Hook quickly in the first 1-2 lines (mobile-first).',
+                '- Use short paragraphs and line breaks for readability.',
+                '- Include a short "Need to know" section with only facts provided (no guessing).',
+                '- End with a clear call to action (but do NOT include any URL).',
+                '',
+                'Hard constraints:',
+                '- Output must be plain text (no markdown).',
+                '- Do not include raw URLs anywhere.',
+                '- Do not invent missing details (no ages, dress codes, set times, pricing, inclusions unless provided).',
+                '- Keep the event name concise (aim < 70 characters).',
+                '',
+                'Event details:',
+                detailLines.join('\n'),
+                '',
+                'Return JSON with keys { name, description }.',
+              ].join('\n'),
+            },
+          ],
+        }
+      case 'google_business_profile_event':
+        return {
+          schemaName: 'gbp_event_copy',
+          schema: {
+            type: 'object',
+            properties: {
+              title: { type: 'string' },
+              description: { type: 'string' },
+            },
+            required: ['title', 'description'],
+            additionalProperties: false,
+          },
+          temperature: 0.7,
+          maxTokens: 600,
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You are an expert hospitality marketer. Write conversion-focused Google Business Profile Event copy in UK English.',
+            },
+            {
+              role: 'user',
+              content: [
+                'Write ONE Google Business Profile (GBP) Event title and ONE GBP Event description for the event details below.',
+                '',
+                'Best practices to follow:',
+                '- Make the first 120 characters compelling (it often appears as the preview).',
+                '- Be scannable: 1-2 short paragraphs, then a compact details block if useful.',
+                '- Include "The Anchor" naturally (already provided in details).',
+                '- End with a clear call to action (but do NOT include any URL).',
+                '',
+                'Hard constraints:',
+                '- Output must be plain text (no markdown).',
+                '- Do not include raw URLs anywhere.',
+                '- Do not invent missing details.',
+                '- Keep the description under 1500 characters.',
+                '- Keep the title concise (aim < 80 characters).',
+                '',
+                'Event details:',
+                detailLines.join('\n'),
+                '',
+                'Return JSON with keys { title, description }.',
+              ].join('\n'),
+            },
+          ],
+        }
+      case 'opentable_experience':
+        return {
+          schemaName: 'opentable_experience_copy',
+          schema: {
+            type: 'object',
+            properties: {
+              title: { type: 'string' },
+              description: { type: 'string' },
+            },
+            required: ['title', 'description'],
+            additionalProperties: false,
+          },
+          temperature: 0.7,
+          maxTokens: 900,
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You are an expert hospitality marketer. Write an OpenTable Experience title and description in UK English that sells the experience clearly and elegantly.',
+            },
+            {
+              role: 'user',
+              content: [
+                'Write ONE OpenTable Experience title and ONE OpenTable Experience description for the event details below.',
+                '',
+                'Best practices to follow:',
+                '- Keep the title simple and clear (no hype, no ALL CAPS).',
+                '- The description should read like premium hospitality copy: sensory, specific, and benefit-led.',
+                '- Use paragraph format only (no bullet points, no headings).',
+                '- Build a natural arc: hook → what to expect → key practical info → call to action.',
+                '',
+                'Hard constraints:',
+                '- Output must be plain text (no markdown).',
+                '- Do not include raw URLs anywhere.',
+                '- Do not invent missing details.',
+                '- Title: aim 3–7 words and < 60 characters.',
+                '- Description: paragraph format, around 1500 characters (target 1400–1600).',
+                '',
+                'Event details:',
+                detailLines.join('\n'),
+                '',
+                'Return JSON with keys { title, description }.',
+              ].join('\n'),
+            },
+          ],
+        }
+    }
+  })()
 
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
@@ -342,75 +509,16 @@ export async function generateEventPromotionContent({ eventId, ticketUrl }: Even
     },
     body: JSON.stringify({
       model: eventsModel,
-      temperature: 0.75,
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are a hospitality marketing expert who writes compelling promotional copy for social and local listings. Use UK English.',
-        },
-        {
-          role: 'user',
-          content: [
-            'Create two promotional assets for the event below:',
-            '1. Facebook Event name and description that follow best-performing patterns.',
-            '2. Google Business Profile event title and description optimised for conversions.',
-            '',
-            'Essential requirements:',
-            '- Make the Facebook description punchy, sensory, and tailored to a fun night out in UK English.',
-            '- For Facebook, return JSON with fields name, story_paragraphs (array, 2-3 items), bullet_points (array, 3-5 items for a "Need to Know" list), and cta (single sentence).',
-            '- Story paragraphs should feel emotional and immersive; bullet points must cover key logistics; CTA must quote the ticket link verbatim if available.',
-            '- Build urgency to secure tickets immediately.',
-            '- Keep the Google Business Profile description within 750 characters.',
-            '',
-            detailLines.join('\n'),
-            '',
-            'Return JSON with keys facebook { name, story_paragraphs, bullet_points, cta } and googleBusinessProfile { title, description }.',
-          ].join('\n'),
-        },
-      ],
+      temperature,
+      messages,
       response_format: {
         type: 'json_schema',
         json_schema: {
-          name: 'event_promotion_content',
-          schema: {
-            type: 'object',
-            properties: {
-              facebook: {
-                type: 'object',
-                properties: {
-                  name: { type: 'string' },
-                  story_paragraphs: {
-                    type: 'array',
-                    items: { type: 'string' },
-                    minItems: 2,
-                    maxItems: 3,
-                  },
-                  bullet_points: {
-                    type: 'array',
-                    items: { type: 'string' },
-                    minItems: 3,
-                    maxItems: 6,
-                  },
-                  cta: { type: 'string' },
-                },
-                required: ['name', 'story_paragraphs', 'bullet_points', 'cta'],
-              },
-              googleBusinessProfile: {
-                type: 'object',
-                properties: {
-                  title: { type: 'string' },
-                  description: { type: 'string' },
-                },
-                required: ['title', 'description'],
-              },
-            },
-            required: ['facebook', 'googleBusinessProfile'],
-            additionalProperties: false,
-          },
+          name: schemaName,
+          schema,
         },
       },
-      max_tokens: 800,
+      max_tokens: maxTokens,
     }),
   })
 
@@ -425,15 +533,7 @@ export async function generateEventPromotionContent({ eventId, ticketUrl }: Even
     return { success: false, error: 'OpenAI returned no content.' }
   }
 
-  let parsed: {
-    facebook: {
-      name: string
-      story_paragraphs?: unknown
-      bullet_points?: unknown
-      cta?: unknown
-    }
-    googleBusinessProfile: { title: string; description: string }
-  }
+  let parsed: Record<string, unknown>
   try {
     parsed = JSON.parse(typeof content === 'string' ? content : JSON.stringify(content))
   } catch (error) {
@@ -441,62 +541,27 @@ export async function generateEventPromotionContent({ eventId, ticketUrl }: Even
     return { success: false, error: 'Unable to parse AI response.' }
   }
 
-  const facebookStoryParagraphs = Array.isArray(parsed.facebook?.story_paragraphs)
-    ? (parsed.facebook.story_paragraphs as unknown[])
-      .map((paragraph) => (typeof paragraph === 'string' ? paragraph.trim() : ''))
-      .filter(Boolean)
-    : []
-
-  const facebookBulletPoints = Array.isArray(parsed.facebook?.bullet_points)
-    ? (parsed.facebook.bullet_points as unknown[])
-      .map((bullet) => (typeof bullet === 'string' ? bullet.trim() : ''))
-      .filter(Boolean)
-    : []
-
-  const facebookCta = typeof parsed.facebook?.cta === 'string' ? parsed.facebook.cta.trim() : ''
-
-  const plainSections: string[] = []
-  if (facebookStoryParagraphs.length) {
-    plainSections.push(facebookStoryParagraphs.join('\n\n'))
-  }
-  if (facebookBulletPoints.length) {
-    plainSections.push(['Need to Know:', ...facebookBulletPoints.map((point) => `- ${point}`)].join('\n'))
-  }
-  if (facebookCta) {
-    plainSections.push(facebookCta)
-  }
-
-  const facebookPlainText = plainSections.join('\n\n').trim()
-
-  const { error: updateError } = await supabase
-    .from('events')
-    .update({
-      facebook_event_name: parsed.facebook?.name ?? null,
-      facebook_event_description: facebookPlainText || null,
-      gbp_event_title: parsed.googleBusinessProfile?.title ?? null,
-      gbp_event_description: parsed.googleBusinessProfile?.description ?? null,
-    })
-    .eq('id', eventId)
-
-  if (updateError) {
-    console.error('Failed to save promotional content to event', updateError)
-    return { success: false, error: 'Failed to save promotional content.' }
-  }
+  const contentResult = (() => {
+    switch (contentType) {
+      case 'facebook_event':
+        return {
+          name: normalizeString(parsed.name),
+          description: normalizeString(parsed.description),
+        }
+      case 'google_business_profile_event':
+      case 'opentable_experience':
+        return {
+          title: normalizeString(parsed.title),
+          description: normalizeString(parsed.description),
+        }
+    }
+  })()
 
   return {
     success: true,
     data: {
-      facebook: {
-        name: parsed.facebook?.name ?? '',
-        storyParagraphs: facebookStoryParagraphs,
-        bulletPoints: facebookBulletPoints,
-        cta: facebookCta,
-        plainText: facebookPlainText,
-      },
-      googleBusinessProfile: {
-        title: parsed.googleBusinessProfile?.title ?? '',
-        description: parsed.googleBusinessProfile?.description ?? '',
-      },
+      type: contentType,
+      content: contentResult,
     },
   }
 }
