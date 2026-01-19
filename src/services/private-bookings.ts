@@ -271,18 +271,21 @@ export class PrivateBookingService {
     }
 
     // Google Calendar Sync
-    if (booking) {
-      // We wait for this as it updates the booking with calendar ID
-      try {
-        const eventId = await syncCalendarEvent(booking);
-        if (eventId) {
-          await createAdminClient()
-            .from('private_bookings')
-            .update({ calendar_event_id: eventId })
-            .eq('id', booking.id);
+    if (booking && isCalendarConfigured()) {
+      const isDateTbdBooking = Boolean(booking.internal_notes?.includes(DATE_TBD_NOTE))
+      if (!isDateTbdBooking && booking.status !== 'cancelled') {
+        // We wait for this as it updates the booking with calendar ID
+        try {
+          const eventId = await syncCalendarEvent(booking);
+          if (eventId) {
+            await createAdminClient()
+              .from('private_bookings')
+              .update({ calendar_event_id: eventId })
+              .eq('id', booking.id);
+          }
+        } catch (e) {
+          console.error('Calendar sync failed:', e);
         }
-      } catch (e) {
-        console.error('Calendar sync failed:', e);
       }
     }
 
@@ -488,12 +491,30 @@ export class PrivateBookingService {
     // Calendar Sync
     if (isCalendarConfigured()) {
       try {
+        const isDateTbdBooking = Boolean(internalNotes?.includes(DATE_TBD_NOTE))
+        const shouldRemoveCalendarEvent = updatedBooking.status === 'cancelled' || isDateTbdBooking
+
+        if (shouldRemoveCalendarEvent) {
+          if (updatedBooking.calendar_event_id) {
+            const deleted = await deleteCalendarEvent(updatedBooking.calendar_event_id)
+            if (deleted) {
+              await supabase
+                .from('private_bookings')
+                .update({ calendar_event_id: null })
+                .eq('id', id)
+              updatedBooking.calendar_event_id = null
+            }
+          }
+          return updatedBooking
+        }
+
         const eventId = await syncCalendarEvent(updatedBooking);
-        if (eventId && !updatedBooking.calendar_event_id) {
+        if (eventId && eventId !== updatedBooking.calendar_event_id) {
           await supabase
             .from('private_bookings')
             .update({ calendar_event_id: eventId })
             .eq('id', id);
+          updatedBooking.calendar_event_id = eventId
         }
       } catch (error) {
         console.error('Calendar sync exception:', error);
@@ -656,11 +677,13 @@ export class PrivateBookingService {
     // 3. Calendar Cleanup
     if (booking.calendar_event_id && isCalendarConfigured()) {
       try {
-        await deleteCalendarEvent(booking.calendar_event_id);
-        await supabase
-          .from('private_bookings')
-          .update({ calendar_event_id: null })
-          .eq('id', id);
+        const deleted = await deleteCalendarEvent(booking.calendar_event_id);
+        if (deleted) {
+          await supabase
+            .from('private_bookings')
+            .update({ calendar_event_id: null })
+            .eq('id', id);
+        }
       } catch (error) {
         console.error('Failed to delete calendar event:', error);
       }
@@ -708,10 +731,14 @@ export class PrivateBookingService {
           .single();
 
         if (bookingDetails?.calendar_event_id) {
-          await deleteCalendarEvent(bookingDetails.calendar_event_id);
+          const deleted = await deleteCalendarEvent(bookingDetails.calendar_event_id);
+          if (!deleted) {
+            throw new Error('Failed to remove Google Calendar event. Please try again.');
+          }
         }
       } catch (error) {
         console.error('Failed to delete calendar event during booking deletion:', error);
+        throw error
       }
     }
 
@@ -793,7 +820,7 @@ export class PrivateBookingService {
         } as PrivateBookingWithDetails;
 
         const eventId = await syncCalendarEvent(fullBookingForSync);
-        if (eventId && !booking.calendar_event_id && booking.status !== 'confirmed') {
+        if (eventId && eventId !== booking.calendar_event_id) {
           await supabase
             .from('private_bookings')
             .update({ calendar_event_id: eventId })
@@ -865,7 +892,13 @@ export class PrivateBookingService {
           ...updatedBooking,
         } as PrivateBookingWithDetails;
 
-        await syncCalendarEvent(fullBookingForSync);
+        const eventId = await syncCalendarEvent(fullBookingForSync);
+        if (eventId && eventId !== booking.calendar_event_id) {
+          await supabase
+            .from('private_bookings')
+            .update({ calendar_event_id: eventId })
+            .eq('id', bookingId);
+        }
       } catch (error) {
         console.error('Calendar sync failed during final payment record:', error);
       }
