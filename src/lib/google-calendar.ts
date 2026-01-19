@@ -300,9 +300,18 @@ export async function syncCalendarEvent(booking: PrivateBooking): Promise<string
     console.log('[Google Calendar] Using calendar ID:', calendarId)
 
     const startUtc = combineDateAndTime(booking.event_date, booking.start_time)
-    const endUtc = booking.end_time
+    let endUtc = booking.end_time
       ? combineDateAndTime(booking.event_date, booking.end_time, booking.end_time_next_day)
       : addHours(startUtc, 1)
+    if (endUtc.getTime() <= startUtc.getTime()) {
+      console.warn('[Google Calendar] End time is not after start time. Using 1 hour duration.', {
+        bookingId: booking.id,
+        startTime: booking.start_time,
+        endTime: booking.end_time,
+        endTimeNextDay: booking.end_time_next_day,
+      })
+      endUtc = addHours(startUtc, 1)
+    }
     const startDateTime = formatForCalendar(startUtc)
     const endDateTime = formatForCalendar(endUtc)
 
@@ -340,13 +349,37 @@ export async function syncCalendarEvent(booking: PrivateBooking): Promise<string
     if (booking.calendar_event_id) {
       // Update existing event
       console.log('[Google Calendar] Updating existing event:', booking.calendar_event_id)
-      response = await calendar.events.update({
-        auth: auth as any,
-        calendarId,
-        eventId: booking.calendar_event_id,
-        requestBody: event,
-      })
-      console.log('[Google Calendar] Event updated successfully:', response.data.id)
+      try {
+        response = await calendar.events.update({
+          auth: auth as any,
+          calendarId,
+          eventId: booking.calendar_event_id,
+          requestBody: event,
+        })
+        console.log('[Google Calendar] Event updated successfully:', response.data.id)
+      } catch (error: any) {
+        const code = error?.code
+        if (code !== 404 && code !== 410) {
+          throw error
+        }
+
+        console.warn('[Google Calendar] Existing event not found. Creating a new event.', {
+          bookingId: booking.id,
+          missingEventId: booking.calendar_event_id,
+          code,
+        })
+
+        response = await calendar.events.insert({
+          auth: auth as any,
+          calendarId,
+          requestBody: event,
+        })
+
+        console.log('[Google Calendar] Event created successfully:', {
+          id: response.data.id,
+          link: response.data.htmlLink,
+        })
+      }
     } else {
       // Create new event
       console.log('[Google Calendar] Creating new event...')
