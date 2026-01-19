@@ -446,15 +446,39 @@ export function EventPromotionContentCard({
                   </div>
                   <div className="space-y-2">
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Event name</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Event name</p>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          iconOnly
+                          aria-label="Copy event name"
+                          title="Copy event name"
+                          disabled={content.name.trim().length === 0}
+                          onClick={() => handleCopy(content.name.trim(), 'Event name')}
+                          leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                        />
+                      </div>
                       <p className="rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-900">
                         {content.name}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        Description ({content.description.length} chars)
-                      </p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                          Description ({content.description.length} chars)
+                        </p>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          iconOnly
+                          aria-label="Copy description"
+                          title="Copy description"
+                          disabled={content.description.trim().length === 0}
+                          onClick={() => handleCopy(content.description, 'Description')}
+                          leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                        />
+                      </div>
                       <Textarea
                         value={content.description}
                         readOnly
@@ -486,15 +510,39 @@ export function EventPromotionContentCard({
                   </div>
                   <div className="space-y-2">
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Title</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Title</p>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          iconOnly
+                          aria-label="Copy title"
+                          title="Copy title"
+                          disabled={content.title.trim().length === 0}
+                          onClick={() => handleCopy(content.title.trim(), 'Title')}
+                          leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                        />
+                      </div>
                       <p className="rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-900">
                         {content.title}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        Description ({content.description.length} chars)
-                      </p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                          Description ({content.description.length} chars)
+                        </p>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          iconOnly
+                          aria-label="Copy description"
+                          title="Copy description"
+                          disabled={content.description.trim().length === 0}
+                          onClick={() => handleCopy(content.description, 'Description')}
+                          leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                        />
+                      </div>
                       <Textarea
                         value={content.description}
                         readOnly
