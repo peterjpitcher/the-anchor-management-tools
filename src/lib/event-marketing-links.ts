@@ -4,6 +4,7 @@ export type EventMarketingChannelKey =
   | 'facebook'
   | 'lnk_bio'
   | 'google_business_profile'
+  | 'opentable'
   | 'newsletter'
   | 'sms'
   | 'whatsapp'
@@ -71,6 +72,16 @@ export const EVENT_MARKETING_CHANNELS: EventMarketingChannelConfig[] = [
     utmMedium: 'business_profile',
     utmContent: 'google_post',
     shortCodePrefix: 'gp',
+  },
+  {
+    key: 'opentable',
+    label: 'OpenTable',
+    type: 'digital',
+    description: 'Use for OpenTable experience listings',
+    utmSource: 'opentable',
+    utmMedium: 'reservation_platform',
+    utmContent: 'opentable_experience',
+    shortCodePrefix: 'ot',
   },
   {
     key: 'newsletter',
