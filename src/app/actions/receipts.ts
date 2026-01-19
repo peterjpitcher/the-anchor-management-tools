@@ -1,10 +1,11 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import { checkUserPermission } from './rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import { recordAIUsage } from '@/lib/receipts/ai-classification'
+import { selectBestReceiptRule } from '@/lib/receipts/rule-matching'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { jobQueue } from '@/lib/unified-job-queue'
 import {
@@ -717,6 +718,8 @@ async function applyAutomationRules(
     }
   }
 
+  const activeRules = ruleList.filter((rule) => rule.is_active)
+
   let statusAutoUpdated = 0
   let classificationUpdated = 0
   let matchedCount = 0
@@ -733,43 +736,16 @@ async function applyAutomationRules(
 
     const direction = getTransactionDirection(transaction)
     const amountValue = guessAmountValue(transaction)
-    const detailText = transaction.details.toLowerCase()
     inspectedTransactions.push(transaction)
 
-    const matchingRule = ruleList.find((rule) => {
-      if (!rule.is_active) return false
-
-      if (rule.match_direction !== 'both' && rule.match_direction !== direction) {
-        return false
-      }
-
-      if (rule.match_description) {
-        const needles = rule.match_description
-          .toLowerCase()
-          .split(',')
-          .map((needle: string) => needle.trim())
-          .filter((needle: string) => needle.length > 0)
-        const matchesDescription = needles.some((needle: string) => detailText.includes(needle))
-        if (!matchesDescription) return false
-      }
-
-      if (rule.match_transaction_type) {
-        const typeMatch = (transaction.transaction_type ?? '').toLowerCase()
-        if (!typeMatch.includes(rule.match_transaction_type.toLowerCase())) {
-          return false
-        }
-      }
-
-      if (rule.match_min_amount != null && amountValue < rule.match_min_amount) {
-        return false
-      }
-
-      if (rule.match_max_amount != null && amountValue > rule.match_max_amount) {
-        return false
-      }
-
-      return true
-    })
+    const matchingRule = selectBestReceiptRule(
+      activeRules,
+      {
+        details: transaction.details,
+        transaction_type: transaction.transaction_type,
+      },
+      { direction, amountValue }
+    )
 
     if (!matchingRule) {
       if (unmatchedSamples.length < 20) {
@@ -1117,6 +1093,8 @@ export async function finalizeReceiptRuleRetroRun(input: {
   revalidatePath('/receipts')
   revalidatePath('/receipts/vendors')
   revalidatePath('/receipts/monthly')
+  revalidateTag('dashboard')
+  revalidatePath('/dashboard')
 
   return { success: true }
 }
@@ -1327,6 +1305,8 @@ export async function importReceiptStatement(formData: FormData) {
   revalidatePath('/receipts')
   revalidatePath('/receipts/vendors')
   revalidatePath('/receipts/monthly')
+  revalidateTag('dashboard')
+  revalidatePath('/dashboard')
 
   return {
     success: true,
@@ -1429,6 +1409,8 @@ export async function markReceiptTransaction(input: {
   })
 
   revalidatePath('/receipts')
+  revalidateTag('dashboard')
+  revalidatePath('/dashboard')
 
   return { success: true, transaction: updated }
 }
@@ -1557,6 +1539,8 @@ export async function updateReceiptClassification(input: {
   })
 
   revalidatePath('/receipts')
+  revalidateTag('dashboard')
+  revalidatePath('/dashboard')
 
   return {
     success: true,
@@ -1681,6 +1665,8 @@ export async function uploadReceiptForTransaction(formData: FormData) {
   })
 
   revalidatePath('/receipts')
+  revalidateTag('dashboard')
+  revalidatePath('/dashboard')
 
   return { success: true, receipt }
 }
@@ -1759,6 +1745,8 @@ export async function deleteReceiptFile(fileId: string) {
   })
 
   revalidatePath('/receipts')
+  revalidateTag('dashboard')
+  revalidatePath('/dashboard')
 
   return { success: true }
 }
@@ -1823,6 +1811,8 @@ export async function createReceiptRule(formData: FormData): Promise<RuleMutatio
   })
 
   revalidatePath('/receipts')
+  revalidateTag('dashboard')
+  revalidatePath('/dashboard')
 
   return { success: true, rule, canPromptRetro: true }
 }
@@ -1882,6 +1872,8 @@ export async function updateReceiptRule(ruleId: string, formData: FormData): Pro
   })
 
   revalidatePath('/receipts')
+  revalidateTag('dashboard')
+  revalidatePath('/dashboard')
 
   return { success: true, rule: updated, canPromptRetro: true }
 }
@@ -1917,6 +1909,8 @@ export async function toggleReceiptRule(ruleId: string, isActive: boolean) {
   }
 
   revalidatePath('/receipts')
+  revalidateTag('dashboard')
+  revalidatePath('/dashboard')
 
   return { success: true, rule: updated }
 }
@@ -1945,6 +1939,8 @@ export async function deleteReceiptRule(ruleId: string) {
   })
 
   revalidatePath('/receipts')
+  revalidateTag('dashboard')
+  revalidatePath('/dashboard')
 
   return { success: true }
 }
@@ -2035,7 +2031,7 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
   }
 
   if (filters.missingExpenseOnly) {
-    baseQuery = baseQuery.is('expense_category', null)
+    baseQuery = baseQuery.is('expense_category', null).not('amount_out', 'is', null)
   }
 
   if (monthRange) {
@@ -2372,6 +2368,8 @@ export async function applyReceiptGroupClassification(input: {
 
   revalidatePath('/receipts')
   revalidatePath('/receipts/bulk')
+  revalidateTag('dashboard')
+  revalidatePath('/dashboard')
 
   return { success: true, updated: ids.length }
 }
@@ -2420,6 +2418,8 @@ export async function createReceiptRuleFromGroup(input: {
 
   if ('success' in result) {
     revalidatePath('/receipts/bulk')
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
   }
 
   return result
@@ -2930,6 +2930,7 @@ export async function getReceiptMissingExpenseSummary(): Promise<ReceiptMissingE
     .from('receipt_transactions')
     .select('vendor_name, amount_out, amount_in, transaction_date')
     .is('expense_category', null)
+    .not('amount_out', 'is', null)
 
   if (error) {
     console.error('Failed to load missing expense summary', error)
