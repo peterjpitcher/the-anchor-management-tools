@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
 import { z } from 'zod'
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import type {
   Invoice,
   InvoiceWithDetails,
@@ -106,6 +106,8 @@ export async function createInvoice(formData: FormData): Promise<CreateInvoiceRe
     })
 
     revalidatePath('/invoices')
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     
     return { success: true, invoice }
   } catch (error: any) {
@@ -145,6 +147,8 @@ export async function updateInvoiceStatus(formData: FormData) {
 
     revalidatePath('/invoices')
     revalidatePath(`/invoices/${invoiceId}`)
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     
     return { success: true }
   } catch (error: any) {
@@ -179,6 +183,8 @@ export async function deleteInvoice(formData: FormData) {
     })
 
     revalidatePath('/invoices')
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     
     return { success: true }
   } catch (error: any) {

@@ -1,7 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
 import { z } from 'zod';
 import { checkUserPermission } from './rbac';
 import { logAuditEvent } from './audit';
@@ -46,6 +46,8 @@ export async function createShortLink(data: z.infer<typeof CreateShortLinkSchema
     });
 
     revalidatePath('/short-links');
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
 
     return { 
       success: true, 
@@ -109,6 +111,8 @@ export async function updateShortLink(input: z.infer<typeof UpdateShortLinkSchem
     });
 
     revalidatePath('/short-links');
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
 
     return { success: true, data: updated };
   } catch (error: any) {
@@ -148,6 +152,8 @@ export async function deleteShortLink(id: string) {
     });
 
     revalidatePath('/short-links');
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
 
     return { success: true };
   } catch (error: any) {

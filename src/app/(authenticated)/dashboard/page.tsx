@@ -1,24 +1,26 @@
 import Link from 'next/link'
-import { 
-  CalendarIcon, 
-  UsersIcon, 
-  ChatBubbleLeftIcon, 
-  CurrencyPoundIcon, 
-  TruckIcon,
-  ExclamationTriangleIcon,
+import {
   ArrowRightIcon,
+  BanknotesIcon,
+  BellIcon,
+  CalendarIcon,
+  ChatBubbleLeftIcon,
   CheckCircleIcon,
   ClipboardDocumentListIcon,
-  PlusIcon,
-  BellIcon,
-  BanknotesIcon
+  CurrencyPoundIcon,
+  ExclamationTriangleIcon,
+  TruckIcon,
 } from '@heroicons/react/24/outline'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card, CardTitle } from '@/components/ui-v2/layout/Card'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { Button } from '@/components/ui-v2/forms/Button'
-import { formatDate } from '@/lib/dateUtils'
+import { formatDate, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
+import { refreshDashboard } from './actions'
+import UpcomingScheduleCalendar from './UpcomingScheduleCalendar'
 import { loadDashboardSnapshot } from './dashboard-data'
+
+const LONDON_TIMEZONE = 'Europe/London'
 
 const currencyFormatter = new Intl.NumberFormat('en-GB', {
   style: 'currency',
@@ -26,113 +28,106 @@ const currencyFormatter = new Intl.NumberFormat('en-GB', {
   maximumFractionDigits: 0,
 })
 
-// Helper to group items by relative date
-function groupItems<T>(items: T[], getDate: (item: T) => string | null) {
-  const groups: Record<string, T[]> = {
-    'Tomorrow': [],
-    'This Week': [],
-    'Next Week': [],
-    'This Month': [],
-    'Later': [],
-    'To Be Confirmed': []
+const londonLongDateFormatter = new Intl.DateTimeFormat('en-GB', {
+  weekday: 'long',
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+  timeZone: LONDON_TIMEZONE,
+})
+
+const londonTimeFormatter = new Intl.DateTimeFormat('en-GB', {
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZone: LONDON_TIMEZONE,
+})
+
+function getInvoiceVendorName(vendor: unknown): string {
+  if (!vendor) return 'No Vendor'
+  if (Array.isArray(vendor)) {
+    const first = vendor[0] as { name?: string | null } | undefined
+    return first?.name ?? 'No Vendor'
   }
+  return (vendor as { name?: string | null }).name ?? 'No Vendor'
+}
 
-  const now = new Date()
-  const tomorrow = new Date(now)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-  const tomorrowIso = tomorrow.toISOString().split('T')[0]
-
-  // Get end of current week (Sunday)
-  const endOfWeek = new Date(now)
-  const day = now.getDay()
-  const diff = now.getDate() - day + (day === 0 ? 0 : 7) // adjust when day is sunday
-  endOfWeek.setDate(diff)
-  endOfWeek.setHours(23, 59, 59, 999)
-
-  // Get end of next week
-  const endOfNextWeek = new Date(endOfWeek)
-  endOfNextWeek.setDate(endOfNextWeek.getDate() + 7)
-
-  // Get end of current month
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-
-  items.forEach(item => {
-    const dateStr = getDate(item)
-    
-    if (!dateStr) {
-      groups['To Be Confirmed'].push(item)
-      return
-    }
-
-    const date = new Date(dateStr)
-    const dateIso = date.toISOString().split('T')[0]
-
-    if (dateIso === tomorrowIso) {
-      groups['Tomorrow'].push(item)
-    } else if (date <= endOfWeek) {
-      groups['This Week'].push(item)
-    } else if (date <= endOfNextWeek) {
-      groups['Next Week'].push(item)
-    } else if (date <= endOfMonth) {
-      groups['This Month'].push(item)
-    } else {
-      groups['Later'].push(item)
-    }
-  })
-
-  // Filter out empty groups
-  return Object.entries(groups).filter(([_, items]) => items.length > 0)
+function formatStatusLabel(value: string | null | undefined): string {
+  if (!value) return 'Unknown'
+  return value
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
 }
 
 export default async function DashboardPage() {
   const snapshot = await loadDashboardSnapshot()
 
+  const lastUpdatedAt = new Date(snapshot.generatedAt)
+  const subtitle = `${londonLongDateFormatter.format(new Date())} • Updated ${londonTimeFormatter.format(lastUpdatedAt)}`
+
   const quickActions = [
-    { label: 'New Event', href: '/events/new', icon: CalendarIcon, permission: snapshot.events.permitted },
-    { label: 'New Private Booking', href: '/private-bookings/new', icon: CurrencyPoundIcon, permission: snapshot.privateBookings.permitted },
-    { label: 'New Invoice', href: '/invoices/new', icon: ClipboardDocumentListIcon, permission: snapshot.invoices.permitted },
+    { label: 'New Event', href: '/events/new', icon: CalendarIcon, permitted: snapshot.events.permitted },
+    {
+      label: 'New Private Booking',
+      href: '/private-bookings/new',
+      icon: CurrencyPoundIcon,
+      permitted: snapshot.privateBookings.permitted,
+    },
+    { label: 'New Invoice', href: '/invoices/new', icon: ClipboardDocumentListIcon, permitted: snapshot.invoices.permitted },
   ]
 
   // --- Date Helpers ---
-  const todayDate = new Date()
-  const todayIso = todayDate.toISOString().split('T')[0]
-  const isToday = (dateString: string | null) => {
-    if (!dateString) return false
-    return dateString.startsWith(todayIso)
-  }
+  const todayIso = getTodayIsoDate()
+  const isToday = (dateString: string | null) => Boolean(dateString && dateString.startsWith(todayIso))
 
   // --- Aggregate Today's Items ---
   const privateToday = snapshot.privateBookings.permitted
-    ? snapshot.privateBookings.upcoming.filter(b => isToday(b.event_date))
+    ? snapshot.privateBookings.upcoming.filter((booking) => isToday(booking.event_date))
     : []
 
-  const eventsToday = snapshot.events.permitted
-    ? snapshot.events.today
-    : []
+  const eventsToday = snapshot.events.permitted ? snapshot.events.today : []
 
   const parkingToday = snapshot.parking.permitted
-    ? snapshot.parking.upcoming.filter(b => isToday(b.start_at))
+    ? snapshot.parking.upcoming.filter((booking) => isToday(booking.start_at))
     : []
 
-  const overdueInvoices = snapshot.invoices.permitted
-    ? snapshot.invoices.overdue
-    : []
+  const overdueInvoices = snapshot.invoices.permitted ? snapshot.invoices.overdue : []
+  const invoicesDueToday = snapshot.invoices.permitted ? snapshot.invoices.dueToday : []
 
-  const invoicesDueToday = snapshot.invoices.permitted
-    ? snapshot.invoices.dueToday
-    : []
+  const todayItemCount =
+    eventsToday.length + privateToday.length + parkingToday.length + invoicesDueToday.length + overdueInvoices.length
 
-  // Filter Horizon items to exclude today
-  const upcomingPrivate = snapshot.privateBookings.permitted
-    ? snapshot.privateBookings.upcoming.filter(b => !isToday(b.event_date))
-    : []
-  const upcomingParking = snapshot.parking.permitted
-    ? snapshot.parking.upcoming.filter(b => !isToday(b.start_at))
-    : []
+  const calendarEvents = snapshot.events.permitted ? [...snapshot.events.today, ...snapshot.events.upcoming] : []
+  const calendarPrivateBookings = snapshot.privateBookings.permitted ? snapshot.privateBookings.upcoming : []
+  const calendarParkingBookings = snapshot.parking.permitted ? snapshot.parking.upcoming : []
 
-  // Group items
-  const groupedPrivate = groupItems(upcomingPrivate, b => b.event_date)
-  const groupedParking = groupItems(upcomingParking, b => b.start_at)
+  const upcomingScheduleCount =
+    calendarEvents.filter((event) => Boolean(event.date)).length +
+    calendarPrivateBookings.filter((booking) => Boolean(booking.event_date)).length +
+    calendarParkingBookings.filter((booking) => Boolean(booking.start_at)).length
+
+  // --- Private Booking Attention Metrics ---
+  const now = new Date()
+  const holdExpiryCutoff = new Date(now)
+  holdExpiryCutoff.setDate(holdExpiryCutoff.getDate() + 7)
+
+  const holdsExpiringSoon = snapshot.privateBookings.permitted
+    ? snapshot.privateBookings.upcoming.filter((booking) => {
+        if (booking.status !== 'draft') return false
+        if (!booking.hold_expiry) return false
+        const expiry = new Date(booking.hold_expiry)
+        return expiry > now && expiry <= holdExpiryCutoff
+      }).length
+    : 0
+
+  const balanceDueCutoffIso = getLocalIsoDateDaysAhead(14)
+  const balancesDueSoon = snapshot.privateBookings.permitted
+    ? snapshot.privateBookings.upcoming.filter((booking) => {
+        if (booking.status !== 'confirmed') return false
+        if (!booking.balance_due_date) return false
+        return booking.balance_due_date >= todayIso && booking.balance_due_date <= balanceDueCutoffIso
+      }).length
+    : 0
 
   // --- Action Items (Needs Attention) ---
   const actionItems: Array<{
@@ -144,7 +139,30 @@ export default async function DashboardPage() {
     icon: any
   }> = []
 
-  // System Health
+  // Private bookings
+  if (snapshot.privateBookings.permitted && holdsExpiringSoon > 0) {
+    actionItems.push({
+      id: 'pb-holds-expiring',
+      title: 'Draft Holds Expiring',
+      description: `${holdsExpiringSoon} expiring in next 7 days`,
+      href: '/private-bookings',
+      severity: 'high',
+      icon: ExclamationTriangleIcon,
+    })
+  }
+
+  if (snapshot.privateBookings.permitted && balancesDueSoon > 0) {
+    actionItems.push({
+      id: 'pb-balances-due',
+      title: 'Balances Due Soon',
+      description: `${balancesDueSoon} due in next 14 days`,
+      href: '/private-bookings',
+      severity: 'medium',
+      icon: CurrencyPoundIcon,
+    })
+  }
+
+  // System health
   if (snapshot.systemHealth.permitted) {
     if (snapshot.systemHealth.smsFailures24h > 0) {
       actionItems.push({
@@ -153,25 +171,34 @@ export default async function DashboardPage() {
         description: `${snapshot.systemHealth.smsFailures24h} failed in last 24h`,
         href: '/settings',
         severity: 'high',
-        icon: ExclamationTriangleIcon
+        icon: ExclamationTriangleIcon,
+      })
+    }
+
+    if (snapshot.systemHealth.failedCronJobs24h > 0) {
+      actionItems.push({
+        id: 'cron-failures',
+        title: 'Cron Failures',
+        description: `${snapshot.systemHealth.failedCronJobs24h} failed in last 24h`,
+        href: '/settings',
+        severity: 'high',
+        icon: ExclamationTriangleIcon,
       })
     }
   }
 
   // Invoices
-  if (snapshot.invoices.permitted) {
-    if (snapshot.invoices.overdueCount > 0) {
-      actionItems.push({
-        id: 'overdue-inv',
-        title: 'Overdue Invoices',
-        description: `${snapshot.invoices.overdueCount} overdue`,
-        href: '/invoices?status=overdue',
-        severity: 'high',
-        icon: CurrencyPoundIcon
-      })
-    }
+  if (snapshot.invoices.permitted && snapshot.invoices.overdueCount > 0) {
+    actionItems.push({
+      id: 'overdue-inv',
+      title: 'Overdue Invoices',
+      description: `${snapshot.invoices.overdueCount} overdue`,
+      href: '/invoices?status=overdue',
+      severity: 'high',
+      icon: CurrencyPoundIcon,
+    })
   }
-  
+
   // Messages
   if (snapshot.messages.permitted && snapshot.messages.unread > 0) {
     actionItems.push({
@@ -180,189 +207,212 @@ export default async function DashboardPage() {
       description: `${snapshot.messages.unread} unread`,
       href: '/messages',
       severity: 'medium',
-      icon: ChatBubbleLeftIcon
+      icon: ChatBubbleLeftIcon,
     })
   }
 
   // Parking
   if (snapshot.parking.permitted && snapshot.parking.pendingPayments > 0) {
-     actionItems.push({
-       id: 'parking-unpaid',
-       title: 'Unpaid Parking',
-       description: `${snapshot.parking.pendingPayments} pending`,
-       href: '/parking',
-       severity: 'medium',
-       icon: TruckIcon
-     })
+    actionItems.push({
+      id: 'parking-unpaid',
+      title: 'Unpaid Parking',
+      description: `${snapshot.parking.pendingPayments} pending`,
+      href: '/parking',
+      severity: 'medium',
+      icon: TruckIcon,
+    })
   }
 
   // Receipts
   if (snapshot.receipts.permitted && snapshot.receipts.needsAttention > 0) {
     actionItems.push({
       id: 'receipts',
-      title: 'Receipt Issues',
-      description: `${snapshot.receipts.needsAttention} need review`,
+      title: 'Receipts Pending',
+      description: `${snapshot.receipts.needsAttention} to review`,
       href: '/receipts',
       severity: 'medium',
-      icon: ClipboardDocumentListIcon
+      icon: ClipboardDocumentListIcon,
+    })
+  }
+
+  const overviewCards: Array<{
+    key: string
+    href: string
+    title: string
+    value: React.ReactNode
+    description: React.ReactNode
+    icon: any
+    borderClassName: string
+    iconWrapperClassName: string
+  }> = []
+
+  if (snapshot.cashingUp.permitted) {
+    overviewCards.push({
+      key: 'weekly-takings',
+      href: '/cashing-up/dashboard',
+      title: 'Weekly Takings',
+      value: currencyFormatter.format(snapshot.cashingUp.thisWeekTotal),
+      description: (
+        <span className="text-xs text-gray-500">
+          {snapshot.cashingUp.completedThrough ? `(up to ${snapshot.cashingUp.completedThrough})` : '(no days cashed yet)'}
+        </span>
+      ),
+      icon: BanknotesIcon,
+      borderClassName: 'border-l-4 border-l-emerald-500',
+      iconWrapperClassName: 'bg-emerald-50 text-emerald-600',
+    })
+  }
+
+  if (snapshot.privateBookings.permitted) {
+    overviewCards.push({
+      key: 'private-bookings-holds',
+      href: '/private-bookings',
+      title: 'Holds Expiring (7d)',
+      value: holdsExpiringSoon,
+      description: (
+        <span className="text-xs text-gray-500">
+          {balancesDueSoon > 0 ? `${balancesDueSoon} balances due in 14d` : 'No balances due soon'}
+        </span>
+      ),
+      icon: CurrencyPoundIcon,
+      borderClassName: 'border-l-4 border-l-indigo-500',
+      iconWrapperClassName: 'bg-indigo-50 text-indigo-600',
+    })
+  }
+
+  if (snapshot.parking.permitted) {
+    overviewCards.push({
+      key: 'parking-pending',
+      href: '/parking',
+      title: 'Parking Pending',
+      value: snapshot.parking.pendingPayments,
+      description: (
+        <span className="text-xs text-gray-500">
+          {snapshot.parking.arrivalsToday} arrivals today
+        </span>
+      ),
+      icon: TruckIcon,
+      borderClassName: 'border-l-4 border-l-gray-400',
+      iconWrapperClassName: 'bg-gray-100 text-gray-700',
+    })
+  }
+
+  if (snapshot.invoices.permitted) {
+    overviewCards.push({
+      key: 'unpaid-invoices',
+      href: '/invoices?status=unpaid',
+      title: 'Unpaid Invoices',
+      value: currencyFormatter.format(snapshot.invoices.totalUnpaidValue),
+      description: (
+        <span className="text-xs text-gray-500">
+          {snapshot.invoices.unpaidCount} outstanding • {snapshot.invoices.overdueCount} overdue
+        </span>
+      ),
+      icon: CurrencyPoundIcon,
+      borderClassName: 'border-l-4 border-l-red-500',
+      iconWrapperClassName: 'bg-red-50 text-red-600',
+    })
+  }
+
+  if (snapshot.receipts.permitted) {
+    overviewCards.push({
+      key: 'receipts',
+      href: '/receipts',
+      title: 'Receipts to Resolve',
+      value: snapshot.receipts.needsAttention,
+      description: (
+        <span className="text-xs text-gray-500">
+          {snapshot.receipts.lastImportAt
+            ? `Last import ${londonTimeFormatter.format(new Date(snapshot.receipts.lastImportAt))}`
+            : 'No imports yet'}
+        </span>
+      ),
+      icon: ClipboardDocumentListIcon,
+      borderClassName: 'border-l-4 border-l-orange-500',
+      iconWrapperClassName: 'bg-orange-50 text-orange-600',
+    })
+  }
+
+  if (snapshot.messages.permitted) {
+    overviewCards.push({
+      key: 'messages',
+      href: '/messages',
+      title: 'Unread Messages',
+      value: snapshot.messages.unread,
+      description: <span className="text-xs text-gray-500">From customers</span>,
+      icon: ChatBubbleLeftIcon,
+      borderClassName: 'border-l-4 border-l-green-500',
+      iconWrapperClassName: 'bg-green-50 text-green-600',
     })
   }
 
   return (
     <PageLayout
       title="Dashboard"
-      subtitle={new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+      subtitle={subtitle}
       navItems={[]}
+      headerActions={
+        <form action={refreshDashboard}>
+          <Button type="submit" variant="secondary" size="sm">
+            Refresh
+          </Button>
+        </form>
+      }
       className="bg-gray-50"
       padded={false}
     >
       <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1600px] mx-auto">
-        
-        {/* 1. Stats Overview Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Weekly Takings */}
-          {snapshot.cashingUp.permitted && (
-            <Link href="/cashing-up/dashboard" className="block">
-              <Card className="hover:shadow-md transition-shadow cursor-pointer h-full border-l-4 border-l-emerald-500">
+        {/* 1. Overview */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          {overviewCards.map((card) => (
+            <Link key={card.key} href={card.href} className="block">
+              <Card className={`hover:shadow-md transition-shadow cursor-pointer h-full ${card.borderClassName}`}>
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">Weekly Takings</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">
-                      {currencyFormatter.format(snapshot.cashingUp.thisWeekTotal)}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {snapshot.cashingUp.completedThrough ? `(up to ${snapshot.cashingUp.completedThrough})` : '(no days cashed yet)'}
-                    </p>
+                    <p className="text-sm font-medium text-gray-500">{card.title}</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-1">{card.value}</p>
+                    <div className="mt-1">{card.description}</div>
                   </div>
-                  <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
-                    <BanknotesIcon className="h-6 w-6" />
-                  </div>
-                </div>
-                <div className="mt-3 space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-gray-500">vs Target</span>
-                    <span className={snapshot.cashingUp.thisWeekTotal >= snapshot.cashingUp.thisWeekTarget ? 'text-emerald-600 font-medium' : 'text-red-600 font-medium'}>
-                      {snapshot.cashingUp.thisWeekTotal >= snapshot.cashingUp.thisWeekTarget ? '+' : ''}
-                      {currencyFormatter.format(snapshot.cashingUp.thisWeekTotal - snapshot.cashingUp.thisWeekTarget)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                     <span className="text-gray-500">vs Last Week</span>
-                     <span className={snapshot.cashingUp.thisWeekTotal >= snapshot.cashingUp.lastWeekTotal ? 'text-emerald-600' : 'text-red-600'}>
-                       {snapshot.cashingUp.thisWeekTotal >= snapshot.cashingUp.lastWeekTotal ? '↑' : '↓'} {currencyFormatter.format(Math.abs(snapshot.cashingUp.thisWeekTotal - snapshot.cashingUp.lastWeekTotal))}
-                     </span>
-                  </div>
-                   <div className="flex justify-between text-xs">
-                     <span className="text-gray-500">vs Last Year</span>
-                     <span className={snapshot.cashingUp.thisWeekTotal >= snapshot.cashingUp.lastYearTotal ? 'text-emerald-600' : 'text-red-600'}>
-                       {snapshot.cashingUp.thisWeekTotal >= snapshot.cashingUp.lastYearTotal ? '↑' : '↓'} {currencyFormatter.format(Math.abs(snapshot.cashingUp.thisWeekTotal - snapshot.cashingUp.lastYearTotal))}
-                     </span>
+                  <div className={`p-2 rounded-lg ${card.iconWrapperClassName}`}>
+                    <card.icon className="h-6 w-6" />
                   </div>
                 </div>
               </Card>
             </Link>
-          )}
-
-          {/* New Customers */}
-          {snapshot.customers.permitted && (
-            <Link href="/customers" className="block">
-              <Card className="hover:shadow-md transition-shadow cursor-pointer h-full border-l-4 border-l-blue-500">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">New Customers (Month)</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">{snapshot.customers.newThisMonth}</p>
-                  </div>
-                  <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
-                    <UsersIcon className="h-6 w-6" />
-                  </div>
-                </div>
-                <p className="text-xs text-gray-500 mt-3">
-                  vs {snapshot.customers.newLastMonth} last month
-                </p>
-              </Card>
-            </Link>
-          )}
-
-          {/* Unpaid Invoices */}
-          {snapshot.invoices.permitted && (
-            <Link href="/invoices?status=unpaid" className="block">
-              <Card className="hover:shadow-md transition-shadow cursor-pointer h-full border-l-4 border-l-red-500">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Unpaid Invoices</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">
-                      {currencyFormatter.format(snapshot.invoices.totalUnpaidValue)}
-                    </p>
-                  </div>
-                  <div className="p-2 bg-red-50 rounded-lg text-red-600">
-                    <CurrencyPoundIcon className="h-6 w-6" />
-                  </div>
-                </div>
-                <p className="text-xs text-gray-500 mt-3">
-                  {snapshot.invoices.unpaidCount} invoices outstanding
-                </p>
-              </Card>
-            </Link>
-          )}
-
-          {/* Receipts */}
-          {snapshot.receipts.permitted && (
-            <Link href="/receipts" className="block">
-              <Card className="hover:shadow-md transition-shadow cursor-pointer h-full border-l-4 border-l-orange-500">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Receipts to Resolve</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">{snapshot.receipts.needsAttention}</p>
-                  </div>
-                  <div className="p-2 bg-orange-50 rounded-lg text-orange-600">
-                    <ClipboardDocumentListIcon className="h-6 w-6" />
-                  </div>
-                </div>
-                <p className="text-xs text-gray-500 mt-3">
-                  Pending review or details
-                </p>
-              </Card>
-            </Link>
-          )}
-
-          {/* Unread Messages */}
-          {snapshot.messages.permitted && (
-            <Link href="/messages" className="block">
-              <Card className="hover:shadow-md transition-shadow cursor-pointer h-full border-l-4 border-l-green-500">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Unread Messages</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">{snapshot.messages.unread}</p>
-                  </div>
-                  <div className="p-2 bg-green-50 rounded-lg text-green-600">
-                    <ChatBubbleLeftIcon className="h-6 w-6" />
-                  </div>
-                </div>
-                <p className="text-xs text-gray-500 mt-3">
-                  From customers
-                </p>
-              </Card>
-            </Link>
-          )}
+          ))}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
-          
-          {/* 2. Main Content (Left 2 Columns) */}
-          <div className="lg:col-span-2 space-y-6">
-            
-            {/* Today's Schedule */}
-            <Card 
+          {/* Upcoming Schedule Calendar (Full Width) */}
+          <div className="lg:col-span-3">
+            <Card
               header={
                 <div className="flex items-center justify-between">
-                  <CardTitle>Today&apos;s Schedule</CardTitle>
-                  <Badge variant="secondary">
-                    {eventsToday.length + privateToday.length + parkingToday.length + invoicesDueToday.length + overdueInvoices.length} Items
-                  </Badge>
+                  <CardTitle>Upcoming Schedule</CardTitle>
+                  <Badge variant="secondary">{upcomingScheduleCount} items</Badge>
                 </div>
               }
             >
-              {eventsToday.length === 0 && privateToday.length === 0 && parkingToday.length === 0 && invoicesDueToday.length === 0 && overdueInvoices.length === 0 ? (
+              <UpcomingScheduleCalendar
+                events={calendarEvents}
+                privateBookings={calendarPrivateBookings}
+                parkingBookings={calendarParkingBookings}
+              />
+            </Card>
+          </div>
+
+          {/* 2. Main Content */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Today's Schedule */}
+            <Card
+              header={
+                <div className="flex items-center justify-between">
+                  <CardTitle>Today&apos;s Schedule</CardTitle>
+                  <Badge variant="secondary">{todayItemCount} items</Badge>
+                </div>
+              }
+            >
+              {todayItemCount === 0 ? (
                 <div className="text-center py-8 text-gray-500">
                   <CalendarIcon className="h-12 w-12 mx-auto text-gray-300 mb-2" />
                   <p>Nothing scheduled for today.</p>
@@ -370,25 +420,36 @@ export default async function DashboardPage() {
               ) : (
                 <div className="divide-y divide-gray-100">
                   {/* Overdue Invoices - High Priority */}
-                  {overdueInvoices.map(invoice => (
-                    <div key={invoice.id} className="p-4 flex items-start gap-4 bg-red-50 hover:bg-red-100 transition-colors border-l-4 border-red-500">
+                  {overdueInvoices.map((invoice) => (
+                    <div
+                      key={invoice.id}
+                      className="p-4 flex items-start gap-4 bg-red-50 hover:bg-red-100 transition-colors border-l-4 border-red-500"
+                    >
                       <div className="p-2 bg-white text-red-600 rounded-lg border border-red-200">
                         <ExclamationTriangleIcon className="h-5 w-5" />
                       </div>
                       <div className="flex-1">
                         <h4 className="text-sm font-medium text-red-900">Overdue Invoice #{invoice.invoice_number}</h4>
                         <p className="text-xs text-red-700">
-                          Due {invoice.due_date ? formatDate(new Date(invoice.due_date)) : 'Unknown'} • {currencyFormatter.format(invoice.total_amount || 0)}
+                          Due {invoice.due_date ? formatDate(invoice.due_date) : 'Unknown'} •{' '}
+                          {currencyFormatter.format(invoice.total_amount || 0)}
                         </p>
                       </div>
                       <Link href={`/invoices/${invoice.id}`}>
-                        <Button variant="ghost" size="sm" className="text-red-700 hover:text-red-900 hover:bg-red-200" rightIcon={<ArrowRightIcon className="h-4 w-4" />}>View</Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-700 hover:text-red-900 hover:bg-red-200"
+                          rightIcon={<ArrowRightIcon className="h-4 w-4" />}
+                        >
+                          View
+                        </Button>
                       </Link>
                     </div>
                   ))}
 
                   {/* Invoices Due Today */}
-                  {invoicesDueToday.map(invoice => (
+                  {invoicesDueToday.map((invoice) => (
                     <div key={invoice.id} className="p-4 flex items-start gap-4 hover:bg-gray-50 transition-colors">
                       <div className="p-2 bg-yellow-100 text-yellow-700 rounded-lg">
                         <CurrencyPoundIcon className="h-5 w-5" />
@@ -396,17 +457,19 @@ export default async function DashboardPage() {
                       <div className="flex-1">
                         <h4 className="text-sm font-medium text-gray-900">Invoice Due Today #{invoice.invoice_number}</h4>
                         <p className="text-xs text-gray-500">
-                          {currencyFormatter.format(invoice.total_amount || 0)} • {invoice.vendor ? (Array.isArray(invoice.vendor) ? invoice.vendor[0]?.name : invoice.vendor.name) : 'No Vendor'}
+                          {currencyFormatter.format(invoice.total_amount || 0)} • {getInvoiceVendorName(invoice.vendor)}
                         </p>
                       </div>
                       <Link href={`/invoices/${invoice.id}`}>
-                        <Button variant="ghost" size="sm" rightIcon={<ArrowRightIcon className="h-4 w-4" />}>View</Button>
+                        <Button variant="ghost" size="sm" rightIcon={<ArrowRightIcon className="h-4 w-4" />}>
+                          View
+                        </Button>
                       </Link>
                     </div>
                   ))}
 
                   {/* Parking Arrivals */}
-                  {parkingToday.map(booking => (
+                  {parkingToday.map((booking) => (
                     <div key={booking.id} className="p-4 flex items-start gap-4 hover:bg-gray-50 transition-colors">
                       <div className="p-2 bg-gray-100 text-gray-600 rounded-lg">
                         <TruckIcon className="h-5 w-5" />
@@ -414,17 +477,20 @@ export default async function DashboardPage() {
                       <div className="flex-1">
                         <h4 className="text-sm font-medium text-gray-900">Parking Arrival: {booking.vehicle_registration}</h4>
                         <p className="text-xs text-gray-500">
-                          {booking.customer_first_name} {booking.customer_last_name} • {booking.start_at ? new Date(booking.start_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Time TBC'}
+                          {booking.customer_first_name} {booking.customer_last_name} •{' '}
+                          {booking.start_at ? londonTimeFormatter.format(new Date(booking.start_at)) : 'Time TBC'}
                         </p>
                       </div>
                       <Link href="/parking">
-                        <Button variant="ghost" size="sm" rightIcon={<ArrowRightIcon className="h-4 w-4" />}>View</Button>
+                        <Button variant="ghost" size="sm" rightIcon={<ArrowRightIcon className="h-4 w-4" />}>
+                          View
+                        </Button>
                       </Link>
                     </div>
                   ))}
 
                   {/* Events */}
-                  {eventsToday.map(event => (
+                  {eventsToday.map((event) => (
                     <div key={event.id} className="p-4 flex items-start gap-4 hover:bg-gray-50 transition-colors">
                       <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
                         <CalendarIcon className="h-5 w-5" />
@@ -434,143 +500,192 @@ export default async function DashboardPage() {
                         <p className="text-xs text-gray-500">Event • {event.time || 'All Day'}</p>
                       </div>
                       <Link href={`/events/${event.id}`}>
-                        <Button variant="ghost" size="sm" rightIcon={<ArrowRightIcon className="h-4 w-4" />}>View</Button>
+                        <Button variant="ghost" size="sm" rightIcon={<ArrowRightIcon className="h-4 w-4" />}>
+                          View
+                        </Button>
                       </Link>
                     </div>
                   ))}
 
                   {/* Private Bookings */}
-                  {privateToday.map(booking => (
+                  {privateToday.map((booking) => (
                     <div key={booking.id} className="p-4 flex items-start gap-4 hover:bg-gray-50 transition-colors">
                       <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
                         <CurrencyPoundIcon className="h-5 w-5" />
                       </div>
                       <div className="flex-1">
                         <h4 className="text-sm font-medium text-gray-900">{booking.customer_name}</h4>
-                        <p className="text-xs text-gray-500">Private Booking • {booking.start_time || 'TBC'} • {booking.status}</p>
+                        <p className="text-xs text-gray-500">
+                          Private Booking • {booking.start_time || 'TBC'} • {formatStatusLabel(booking.status)}
+                        </p>
                       </div>
                       <Link href={`/private-bookings/${booking.id}`}>
-                        <Button variant="ghost" size="sm" rightIcon={<ArrowRightIcon className="h-4 w-4" />}>View</Button>
+                        <Button variant="ghost" size="sm" rightIcon={<ArrowRightIcon className="h-4 w-4" />}>
+                          View
+                        </Button>
                       </Link>
                     </div>
                   ))}
-
                 </div>
               )}
             </Card>
 
-            {/* Upcoming Private Bookings */}
-            {snapshot.privateBookings.permitted && (
-              <Card 
+            {/* Finance */}
+            {(snapshot.invoices.permitted || snapshot.receipts.permitted || snapshot.quotes.permitted) && (
+              <Card
                 header={
                   <div className="flex items-center justify-between">
-                    <CardTitle>Upcoming Private Bookings</CardTitle>
-                    <Link href="/private-bookings" className="text-sm text-primary-600 hover:text-primary-700 font-medium">View All</Link>
+                    <CardTitle>Finance</CardTitle>
+                    <div className="flex items-center gap-3 text-sm">
+                      {snapshot.invoices.permitted && (
+                        <Link href="/invoices" className="text-primary-600 hover:text-primary-700 font-medium">
+                          Invoices
+                        </Link>
+                      )}
+                      {snapshot.receipts.permitted && (
+                        <Link href="/receipts" className="text-primary-600 hover:text-primary-700 font-medium">
+                          Receipts
+                        </Link>
+                      )}
+                      {snapshot.quotes.permitted && (
+                        <Link href="/quotes" className="text-primary-600 hover:text-primary-700 font-medium">
+                          Quotes
+                        </Link>
+                      )}
+                    </div>
                   </div>
                 }
               >
-                {groupedPrivate.length > 0 ? (
-                  <div className="divide-y divide-gray-100">
-                    {groupedPrivate.map(([label, items]) => (
-                      <div key={label}>
-                        <div className="bg-gray-50 px-4 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider sticky top-0">
-                          {label}
-                        </div>
-                        {items.map(booking => (
-                          <Link key={booking.id} href={`/private-bookings/${booking.id}`} className="block hover:bg-gray-50 transition-colors">
-                            <div className="py-2 px-4 flex items-center gap-3">
-                              <div className="flex-shrink-0 w-10 text-center bg-indigo-50 rounded-lg p-1 border border-indigo-100 text-indigo-700">
-                                <span className="block text-xs font-bold uppercase">
-                                  {booking.event_date ? new Date(booking.event_date).toLocaleDateString('en-US', { month: 'short' }) : 'TBC'}
-                                </span>
-                                <span className="block text-base font-bold">
-                                  {booking.event_date ? new Date(booking.event_date).getDate() : '?'}
-                                </span>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-gray-900 truncate">
-                                  {booking.customer_name || 'Guest'} <span className="text-xs text-gray-500">• {booking.start_time || 'Time TBC'} • {booking.status}</span>
-                                </p>
-                              </div>
-                              <ArrowRightIcon className="h-5 w-5 text-gray-300" />
-                            </div>
-                          </Link>
-                        ))}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {snapshot.invoices.permitted ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-sm font-semibold text-gray-900">Next Unpaid Invoices</h4>
+                        <Badge variant={snapshot.invoices.overdueCount > 0 ? 'warning' : 'secondary'}>
+                          {snapshot.invoices.overdueCount} overdue
+                        </Badge>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="p-8 text-center text-gray-500">No upcoming private bookings.</div>
-                )}
-              </Card>
-            )}
+                      {snapshot.invoices.unpaid.length === 0 ? (
+                        <p className="text-sm text-gray-500">No unpaid invoices.</p>
+                      ) : (
+                        <div className="divide-y divide-gray-100 border border-gray-200 rounded-lg overflow-hidden">
+                          {snapshot.invoices.unpaid.map((invoice) => (
+                            <Link key={invoice.id} href={`/invoices/${invoice.id}`} className="block hover:bg-gray-50 transition-colors">
+                              <div className="p-3 flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium text-gray-900 truncate">#{invoice.invoice_number}</p>
+                                  <p className="text-xs text-gray-500 truncate">
+                                    Due {invoice.due_date ? formatDate(invoice.due_date) : 'Unknown'} • {getInvoiceVendorName(invoice.vendor)}
+                                  </p>
+                                </div>
+                                <div className="text-sm font-semibold text-gray-900">
+                                  {currencyFormatter.format(invoice.total_amount || 0)}
+                                </div>
+                              </div>
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500">Invoices not available.</div>
+                  )}
 
-            {/* Upcoming Parking */}
-            {snapshot.parking.permitted && (
-              <Card 
-                header={
-                  <div className="flex items-center justify-between">
-                    <CardTitle>Upcoming Parking</CardTitle>
-                    <Link href="/parking" className="text-sm text-primary-600 hover:text-primary-700 font-medium">View All</Link>
-                  </div>
-                }
-              >
-                {groupedParking.length > 0 ? (
-                  <div className="divide-y divide-gray-100">
-                    {groupedParking.map(([label, items]) => (
-                      <div key={label}>
-                        <div className="bg-gray-50 px-4 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider sticky top-0">
-                          {label}
+                  <div className="space-y-4">
+                    {snapshot.receipts.permitted && (
+                      <div className="rounded-lg border border-gray-200 p-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-semibold text-gray-900">Receipts</h4>
+                          <Badge variant={snapshot.receipts.needsAttention > 0 ? 'warning' : 'success'}>
+                            {snapshot.receipts.needsAttention > 0 ? 'Needs review' : 'Clear'}
+                          </Badge>
                         </div>
-                        {items.map(booking => (
-                          <Link key={booking.id} href={`/parking`} className="block hover:bg-gray-50 transition-colors">
-                            <div className="py-2 px-4 flex items-center gap-3">
-                              <div className="flex-shrink-0 w-10 text-center bg-gray-50 rounded-lg p-1 border border-gray-200 text-gray-700">
-                                <TruckIcon className="h-5 w-5 mx-auto" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-gray-900 truncate">
-                                  {booking.vehicle_registration} <span className="text-xs text-gray-500">• {booking.start_at ? formatDate(new Date(booking.start_at)) : 'TBC'} {booking.customer_first_name && `• ${booking.customer_first_name} ${booking.customer_last_name || ''}`}</span>
-                                </p>
-                              </div>
-                              <Badge variant={booking.payment_status === 'paid' ? 'success' : 'warning'}>
-                                {booking.payment_status}
-                              </Badge>
-                            </div>
-                          </Link>
-                        ))}
+                        <div className="mt-3 space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Pending</span>
+                            <span className="font-medium text-gray-900">{snapshot.receipts.pendingCount}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Can&apos;t find</span>
+                            <span className="font-medium text-gray-900">{snapshot.receipts.cantFindCount}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Last import</span>
+                            <span className="font-medium text-gray-900">
+                              {snapshot.receipts.lastImportAt
+                                ? londonTimeFormatter.format(new Date(snapshot.receipts.lastImportAt))
+                                : '—'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">OpenAI cost</span>
+                            <span className="font-medium text-gray-900">
+                              {snapshot.receipts.openAiCost != null ? currencyFormatter.format(snapshot.receipts.openAiCost) : '—'}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                    ))}
+                    )}
+
+                    {snapshot.quotes.permitted && (
+                      <div className="rounded-lg border border-gray-200 p-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-semibold text-gray-900">Quotes</h4>
+                          <Badge variant={snapshot.quotes.draftCount > 0 ? 'secondary' : 'default'}>
+                            {snapshot.quotes.draftCount} drafts
+                          </Badge>
+                        </div>
+                        <div className="mt-3 space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Pending</span>
+                            <span className="font-medium text-gray-900">
+                              {currencyFormatter.format(snapshot.quotes.totalPendingValue)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Expired</span>
+                            <span className="font-medium text-gray-900">
+                              {currencyFormatter.format(snapshot.quotes.totalExpiredValue)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Accepted</span>
+                            <span className="font-medium text-gray-900">
+                              {currencyFormatter.format(snapshot.quotes.totalAcceptedValue)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="p-8 text-center text-gray-500">No upcoming parking bookings.</div>
-                )}
+                </div>
               </Card>
             )}
           </div>
 
-          {/* 3. Sidebar (Right Column) */}
+          {/* 3. Sidebar */}
           <div className="space-y-6">
-            
             {/* Quick Actions */}
             <Card>
               <CardTitle className="mb-4">Quick Actions</CardTitle>
               <div className="grid grid-cols-2 gap-3">
-                {quickActions.filter(qa => qa.permission).map((action) => (
-                  <Link
-                    key={action.label}
-                    href={action.href}
-                    className="flex flex-col items-center justify-center p-3 bg-white border border-gray-200 rounded-lg hover:border-primary-500 hover:shadow-sm transition-all text-center group"
-                  >
-                    <action.icon className="h-6 w-6 text-gray-400 group-hover:text-primary-600 mb-2" />
-                    <span className="text-xs font-medium text-gray-700 group-hover:text-primary-700">{action.label}</span>
-                  </Link>
-                ))}
+                {quickActions
+                  .filter((qa) => qa.permitted)
+                  .map((action) => (
+                    <Link
+                      key={action.label}
+                      href={action.href}
+                      className="flex flex-col items-center justify-center p-3 bg-white border border-gray-200 rounded-lg hover:border-primary-500 hover:shadow-sm transition-all text-center group"
+                    >
+                      <action.icon className="h-6 w-6 text-gray-400 group-hover:text-primary-600 mb-2" />
+                      <span className="text-xs font-medium text-gray-700 group-hover:text-primary-700">{action.label}</span>
+                    </Link>
+                  ))}
               </div>
             </Card>
 
             {/* Action Required */}
-            <Card 
+            <Card
               header={
                 <div className="flex items-center gap-2">
                   <BellIcon className="h-5 w-5 text-gray-500" />
@@ -580,19 +695,21 @@ export default async function DashboardPage() {
             >
               {actionItems.length > 0 ? (
                 <div className="space-y-3">
-                  {actionItems.map(item => (
-                    <Link 
+                  {actionItems.map((item) => (
+                    <Link
                       key={item.id}
                       href={item.href}
                       className={`
                         flex items-start gap-3 p-3 rounded-lg border transition-colors
-                        ${item.severity === 'high' 
-                          ? 'bg-red-50 border-red-100 hover:bg-red-100' 
+                        ${item.severity === 'high'
+                          ? 'bg-red-50 border-red-100 hover:bg-red-100'
                           : 'bg-orange-50 border-orange-100 hover:bg-orange-100'
                         }
                       `}
                     >
-                      <item.icon className={`h-5 w-5 mt-0.5 flex-shrink-0 ${item.severity === 'high' ? 'text-red-600' : 'text-orange-600'}`} />
+                      <item.icon
+                        className={`h-5 w-5 mt-0.5 flex-shrink-0 ${item.severity === 'high' ? 'text-red-600' : 'text-orange-600'}`}
+                      />
                       <div>
                         <p className={`text-sm font-medium ${item.severity === 'high' ? 'text-red-900' : 'text-orange-900'}`}>
                           {item.title}
@@ -613,31 +730,58 @@ export default async function DashboardPage() {
               )}
             </Card>
 
-            {/* Quick Stats / System Info */}
-            {snapshot.employees.permitted && (
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">System Status</h4>
-                <div className="space-y-3">
+            {/* Status / Info */}
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">At a Glance</h4>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Last Updated</span>
+                  <span className="text-sm font-medium text-gray-900">{londonTimeFormatter.format(lastUpdatedAt)}</span>
+                </div>
+
+                {snapshot.employees.permitted && (
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Active Staff</span>
                     <Badge variant="secondary">{snapshot.employees.activeCount}</Badge>
                   </div>
-                  {snapshot.customers.permitted && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600">New Customers (7d)</span>
-                      <Badge variant="success">+{snapshot.customers.newThisWeek}</Badge>
-                    </div>
-                  )}
-                  {snapshot.shortLinks.permitted && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600">Active Short Links</span>
-                      <span className="text-sm font-medium text-gray-900">{snapshot.shortLinks.activeCount}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+                )}
 
+                {snapshot.customers.permitted && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">New Customers (7d)</span>
+                    <Badge variant="success">+{snapshot.customers.newThisWeek}</Badge>
+                  </div>
+                )}
+
+                {snapshot.events.permitted && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Upcoming Events</span>
+                    <span className="text-sm font-medium text-gray-900">{snapshot.events.totalUpcoming}</span>
+                  </div>
+                )}
+
+                {snapshot.shortLinks.permitted && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Active Short Links</span>
+                    <span className="text-sm font-medium text-gray-900">{snapshot.shortLinks.activeCount}</span>
+                  </div>
+                )}
+
+                {snapshot.customers.permitted && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Customers (Month)</span>
+                    <span className="text-sm font-medium text-gray-900">+{snapshot.customers.newThisMonth}</span>
+                  </div>
+                )}
+
+                {snapshot.user.email && (
+                  <div className="pt-2 border-t border-gray-100">
+                    <p className="text-xs text-gray-500">Signed in as</p>
+                    <p className="text-sm font-medium text-gray-900 truncate">{snapshot.user.email}</p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>

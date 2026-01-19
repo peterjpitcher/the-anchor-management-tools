@@ -45,6 +45,10 @@ type PrivateBookingSummary = {
   start_time: string | null
   status: string | null
   customer_id: string | null
+  hold_expiry: string | null
+  deposit_status: 'Paid' | 'Required' | 'Not Required' | null
+  balance_due_date: string | null
+  days_until_event: number | null
 }
 
 type PrivateBookingsSnapshot = {
@@ -552,21 +556,35 @@ const fetchDashboardSnapshot = unstable_cache(
 
       privateBookings.permitted ? (async () => {
         try {
-          const { data, count } = await PrivateBookingService.getBookings({
+          const { data } = await PrivateBookingService.getBookings({
             fromDate: todayIso,
             limit: 20,
             useAdmin: true
           });
 
-          privateBookings.upcoming = (data ?? []).map((booking) => ({
+          const filtered = (data ?? []).filter((booking) => {
+            const status = (booking.status as string) ?? null
+            return status === 'draft' || status === 'confirmed'
+          })
+
+          privateBookings.upcoming = filtered.map((booking) => ({
             id: booking.id as string,
             customer_name: (booking.customer_name as string) ?? null,
             event_date: (booking.event_date as string) ?? null,
             start_time: (booking.start_time as string) ?? null,
             status: (booking.status as string) ?? null,
             customer_id: (booking.customer_id as string) ?? null,
+            hold_expiry: (booking.hold_expiry as string) ?? null,
+            deposit_status: (booking.deposit_status as PrivateBookingSummary['deposit_status']) ?? null,
+            balance_due_date: (booking.balance_due_date as string) ?? null,
+            days_until_event:
+              typeof booking.days_until_event === 'number'
+                ? booking.days_until_event
+                : booking.days_until_event != null
+                  ? Number(booking.days_until_event)
+                  : null,
           }))
-          privateBookings.totalUpcoming = typeof count === 'number' ? count : privateBookings.upcoming.length
+          privateBookings.totalUpcoming = privateBookings.upcoming.length
         } catch (error) {
           console.error('Failed to load dashboard private bookings:', error)
           privateBookings.error = 'Failed to load private bookings'
