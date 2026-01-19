@@ -65,7 +65,7 @@ export default function EditPrivateBookingPage({
 
   useEffect(() => {
     async function loadBooking() {
-      const result = await getPrivateBooking(id)
+      const result = await getPrivateBooking(id, 'edit')
       if ('error' in result) {
         setError(result.error || 'An error occurred')
       } else if (result.data) {

@@ -22,7 +22,8 @@ import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
 import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
-import { checkUserPermission } from '@/app/actions/rbac'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 
 async function handleCreateSpace(formData: FormData) {
   'use server'
@@ -39,8 +40,10 @@ async function handleCreateSpace(formData: FormData) {
     if (result.error === 'Insufficient permissions' || result.error === 'Not authenticated') {
       redirect('/unauthorized')
     }
-    throw new Error(result.error)
+    redirect(`/private-bookings/settings/spaces?error=${encodeURIComponent(result.error)}`)
   }
+
+  redirect('/private-bookings/settings/spaces')
 }
 
 async function handleUpdateSpace(formData: FormData) {
@@ -59,8 +62,10 @@ async function handleUpdateSpace(formData: FormData) {
     if (result.error === 'Insufficient permissions' || result.error === 'Not authenticated') {
       redirect('/unauthorized')
     }
-    throw new Error(result.error)
+    redirect(`/private-bookings/settings/spaces?error=${encodeURIComponent(result.error)}`)
   }
+
+  redirect('/private-bookings/settings/spaces')
 }
 
 async function handleDeleteSpace(formData: FormData) {
@@ -73,12 +78,28 @@ async function handleDeleteSpace(formData: FormData) {
     if (result.error === 'Insufficient permissions' || result.error === 'Not authenticated') {
       redirect('/unauthorized')
     }
-    throw new Error(result.error)
+    redirect(`/private-bookings/settings/spaces?error=${encodeURIComponent(result.error)}`)
   }
+
+  redirect('/private-bookings/settings/spaces')
 }
 
-export default async function VenueSpacesPage() {
-  const canManageSpaces = await checkUserPermission('private_bookings', 'manage_spaces')
+export default async function VenueSpacesPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ error?: string }>
+}) {
+  const permissionsResult = await getCurrentUserModuleActions('private_bookings')
+
+  if ('error' in permissionsResult) {
+    if (permissionsResult.error === 'Not authenticated') {
+      redirect('/login')
+    }
+    redirect('/unauthorized')
+  }
+
+  const actions = new Set(permissionsResult.actions)
+  const canManageSpaces = actions.has('manage_spaces') || actions.has('manage')
 
   if (!canManageSpaces) {
     redirect('/unauthorized')
@@ -87,10 +108,25 @@ export default async function VenueSpacesPage() {
   const spacesResult = await getVenueSpacesForManagement()
 
   if ('error' in spacesResult) {
-    throw new Error(spacesResult.error)
+    return (
+      <PageLayout
+        title="Venue Spaces"
+        subtitle="Manage available spaces for private hire"
+        backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
+        navActions={
+          <NavGroup>
+            <NavLink href="/private-bookings/settings">Settings Home</NavLink>
+          </NavGroup>
+        }
+        error={spacesResult.error}
+      />
+    )
   }
 
   const spaces = (spacesResult.data ?? []) as VenueSpace[]
+
+  const resolvedSearchParams = searchParams ? await searchParams : {}
+  const errorMessage = typeof resolvedSearchParams?.error === 'string' ? resolvedSearchParams.error : null
 
   const statusOptions = [
     { value: 'true', label: 'Active' },
@@ -111,6 +147,9 @@ export default async function VenueSpacesPage() {
       }
     >
       <div className="space-y-6">
+        {errorMessage && (
+          <Alert variant="error" title="Error" description={errorMessage} />
+        )}
         {/* Add New Space Form */}
         <Card>
         <Section 

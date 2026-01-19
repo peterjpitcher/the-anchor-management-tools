@@ -34,6 +34,15 @@ const getString = (formData: FormData, key: string): string | undefined => {
   return undefined
 }
 
+// Helper function that preserves empty strings (used to allow clearing optional fields)
+const getStringAllowEmpty = (formData: FormData, key: string): string | undefined => {
+  const value = formData.get(key)
+  if (typeof value !== 'string') {
+    return undefined
+  }
+  return value.trim()
+}
+
 type PrivateBookingsManageAction =
   | 'manage_catering'
   | 'manage_spaces'
@@ -87,14 +96,24 @@ export async function getPrivateBookings(filters?: {
 }
 
 // Get single private booking by ID
-export async function getPrivateBooking(id: string) {
+export async function getPrivateBooking(
+  id: string,
+  variant: 'detail' | 'edit' | 'items' | 'messages' = 'detail'
+) {
   const canView = await checkUserPermission('private_bookings', 'view')
   if (!canView) {
     return { error: 'You do not have permission to view private bookings' }
   }
 
   try {
-    const data = await PrivateBookingService.getBookingById(id);
+    const data =
+      variant === 'edit'
+        ? await PrivateBookingService.getBookingByIdForEdit(id)
+        : variant === 'items'
+          ? await PrivateBookingService.getBookingByIdForItems(id)
+          : variant === 'messages'
+            ? await PrivateBookingService.getBookingByIdForMessages(id)
+            : await PrivateBookingService.getBookingById(id)
     return { data };
   } catch (error: any) {
     console.error('Error fetching private booking:', error);
@@ -189,8 +208,6 @@ export async function createPrivateBooking(formData: FormData) {
 
 // Update private booking
 export async function updatePrivateBooking(id: string, formData: FormData) {
-  const supabase = await createClient()
-
   const canEdit = await checkUserPermission('private_bookings', 'edit')
   if (!canEdit) {
     return { error: 'You do not have permission to update private bookings' }
@@ -198,27 +215,40 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
 
   const isDateTbd = formData.get('date_tbd') === 'true'
 
+  const setupTimeRaw = getStringAllowEmpty(formData, 'setup_time')
+  const endTimeRaw = getStringAllowEmpty(formData, 'end_time')
+
   const rawData = {
     customer_first_name: (getString(formData, 'customer_first_name') || '').trim(),
-    customer_last_name: getString(formData, 'customer_last_name'),
+    customer_last_name: getStringAllowEmpty(formData, 'customer_last_name'),
     customer_id: getString(formData, 'customer_id'),
-    contact_phone: getString(formData, 'contact_phone'),
-    contact_email: getString(formData, 'contact_email'),
+    contact_phone: getStringAllowEmpty(formData, 'contact_phone'),
+    contact_email: getStringAllowEmpty(formData, 'contact_email'),
     event_date: getString(formData, 'event_date'),
     start_time: getString(formData, 'start_time') ? formatTimeToHHMM(getString(formData, 'start_time')) : undefined,
-    setup_date: getString(formData, 'setup_date'),
-    setup_time: getString(formData, 'setup_time') ? formatTimeToHHMM(getString(formData, 'setup_time')) : undefined,
-    end_time: getString(formData, 'end_time') ? formatTimeToHHMM(getString(formData, 'end_time')) : undefined,
+    setup_date: getStringAllowEmpty(formData, 'setup_date'),
+    setup_time:
+      setupTimeRaw === undefined
+        ? undefined
+        : setupTimeRaw === ''
+          ? ''
+          : formatTimeToHHMM(setupTimeRaw),
+    end_time:
+      endTimeRaw === undefined
+        ? undefined
+        : endTimeRaw === ''
+          ? ''
+          : formatTimeToHHMM(endTimeRaw),
     guest_count: (() => {
       const value = getString(formData, 'guest_count')
       return value ? parseInt(value, 10) : undefined
     })(),
-    event_type: getString(formData, 'event_type'),
-    internal_notes: getString(formData, 'internal_notes'),
-    customer_requests: getString(formData, 'customer_requests'),
-    special_requirements: getString(formData, 'special_requirements'),
-    accessibility_needs: getString(formData, 'accessibility_needs'),
-    source: getString(formData, 'source'),
+    event_type: getStringAllowEmpty(formData, 'event_type'),
+    internal_notes: getStringAllowEmpty(formData, 'internal_notes'),
+    customer_requests: getStringAllowEmpty(formData, 'customer_requests'),
+    special_requirements: getStringAllowEmpty(formData, 'special_requirements'),
+    accessibility_needs: getStringAllowEmpty(formData, 'accessibility_needs'),
+    source: getStringAllowEmpty(formData, 'source'),
     status: getString(formData, 'status') as BookingStatus | undefined,
   }
 
@@ -234,14 +264,6 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
     // Call Service
     const booking = await PrivateBookingService.updateBooking(id, {
       ...bookingData,
-      event_date: bookingData.event_date || undefined,
-      start_time: bookingData.start_time || undefined,
-      end_time: bookingData.end_time || undefined,
-      setup_date: bookingData.setup_date || undefined,
-      setup_time: bookingData.setup_time || undefined,
-      status: bookingData.status || undefined,
-      balance_due_date: bookingData.balance_due_date || undefined,
-      internal_notes: bookingData.internal_notes || undefined,
       date_tbd: isDateTbd
     } as UpdatePrivateBookingInput);
 

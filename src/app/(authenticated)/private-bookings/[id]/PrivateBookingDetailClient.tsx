@@ -241,8 +241,13 @@ function PaymentModal({
   const [paymentMethod, setPaymentMethod] = useState<
     "cash" | "card" | "invoice"
   >("card");
-  const [customAmount, setCustomAmount] = useState(amount.toString());
+  const [customAmount, setCustomAmount] = useState(amount.toFixed(2));
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setCustomAmount(Number.isFinite(amount) ? amount.toFixed(2) : "0.00");
+  }, [amount, isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -250,7 +255,9 @@ function PaymentModal({
 
     const formData = new FormData();
     formData.set("payment_method", paymentMethod);
-    formData.set("amount", customAmount);
+    if (type === "deposit") {
+      formData.set("amount", customAmount);
+    }
 
     const result =
       type === "deposit"
@@ -271,15 +278,21 @@ function PaymentModal({
       title={`Record ${type === "deposit" ? "Deposit" : "Final"} Payment`}
     >
       <Form onSubmit={handleSubmit} className="space-y-4">
-        <FormGroup label="Payment Amount (£)">
+        <FormGroup label={type === "deposit" ? "Payment Amount (£)" : "Balance Due (£)"}>
           <Input
             type="number"
             value={customAmount}
-            onChange={(e) => setCustomAmount(e.target.value)}
+            onChange={type === "deposit" ? (e) => setCustomAmount(e.target.value) : undefined}
             step="0.01"
             min="0"
-            required
+            required={type === "deposit"}
+            disabled={type === "final"}
           />
+          {type === "final" && (
+            <p className="mt-2 text-xs text-gray-500">
+              Amount is based on the current balance due for this booking.
+            </p>
+          )}
         </FormGroup>
 
         <FormGroup label="Payment Method">

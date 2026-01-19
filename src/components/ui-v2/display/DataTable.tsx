@@ -16,6 +16,25 @@ import { Checkbox } from '../forms/Checkbox'
 import { Skeleton, SkeletonCard } from '../feedback/Skeleton'
 import { EmptyState } from './EmptyState'
 
+const ROW_CLICK_IGNORE_SELECTOR = [
+  'a',
+  'button',
+  'input',
+  'select',
+  'textarea',
+  'label',
+  '[role="button"]',
+  '[data-row-click-ignore="true"]'
+].join(',');
+
+function shouldIgnoreRowClick(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return Boolean(target.closest(ROW_CLICK_IGNORE_SELECTOR));
+}
+
 export interface Column<T = unknown> {
   /**
    * Unique key for the column
@@ -430,7 +449,14 @@ export function DataTable<T = unknown>({
           
           if (renderMobileCard) {
             return (
-              <div key={key} onClick={() => onRowClick?.(row)}>
+              <div
+                key={key}
+                onClick={(event) => {
+                  if (!clickableRows || !onRowClick) return
+                  if (shouldIgnoreRowClick(event.target)) return
+                  onRowClick(row)
+                }}
+              >
                 {renderMobileCard(row)}
               </div>
             )
@@ -444,7 +470,11 @@ export function DataTable<T = unknown>({
                 clickableRows && 'cursor-pointer hover:shadow-md transition-shadow',
                 isSelected && 'ring-2 ring-green-500'
               )}
-              onClick={() => onRowClick?.(row)}
+              onClick={(event) => {
+                if (!clickableRows || !onRowClick) return
+                if (shouldIgnoreRowClick(event.target)) return
+                onRowClick(row)
+              }}
             >
               {selectable && (
                 <div className="flex items-center justify-between">
@@ -608,7 +638,11 @@ export function DataTable<T = unknown>({
                         isSelected && 'bg-green-50',
                         customRowClass
                       )}
-                      onClick={() => onRowClick?.(row)}
+                      onClick={(event) => {
+                        if (!clickableRows || !onRowClick) return
+                        if (shouldIgnoreRowClick(event.target)) return
+                        onRowClick(row)
+                      }}
                     >
                       {selectable && (
                         <td className={cn('relative', sizeClasses[size].cell)}>

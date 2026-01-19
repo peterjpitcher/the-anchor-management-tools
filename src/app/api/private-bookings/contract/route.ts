@@ -49,15 +49,6 @@ export async function GET(request: NextRequest) {
     return new NextResponse('Booking not found', { status: 404 })
   }
 
-  // Debug: Log booking discount details
-  console.log('Contract generation - Booking discount details:', {
-    id: booking.id,
-    discount_type: booking.discount_type,
-    discount_amount: booking.discount_amount,
-    discount_reason: booking.discount_reason,
-    total_amount: booking.total_amount
-  })
-
   // Generate HTML contract with company details
   const html = generateContractHTML({
     booking,

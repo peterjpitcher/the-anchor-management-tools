@@ -63,6 +63,7 @@ interface PrivateBookingsClientProps {
   initialBookings: PrivateBookingDashboardItem[]
   initialTotalCount: number
   pageSize: number
+  initialError?: string | null
 }
 
 type FetchParams = {
@@ -107,12 +108,14 @@ export default function PrivateBookingsClient({
   permissions,
   initialBookings,
   initialTotalCount,
-  pageSize
+  pageSize,
+  initialError
 }: PrivateBookingsClientProps) {
   const router = useRouter()
   const cacheRef = useRef<Map<string, CacheEntry>>(new Map())
   const [bookings, setBookings] = useState<PrivateBookingDashboardItem[]>(initialBookings)
   const [totalCount, setTotalCount] = useState(initialTotalCount)
+  const [loadError, setLoadError] = useState<string | null>(initialError ?? null)
   const [statusFilter, setStatusFilter] = useState<BookingStatus | 'all'>('all')
   const [dateFilter, setDateFilter] = useState<'all' | 'upcoming' | 'past'>('upcoming')
   const [searchTerm, setSearchTerm] = useState('')
@@ -149,6 +152,8 @@ export default function PrivateBookingsClient({
       setSearchTerm(params.search)
       setCurrentPage(params.page)
 
+      setLoadError(null)
+
       const cacheKey = buildCacheKey(params, effectivePageSize)
       const cached = cacheRef.current.get(cacheKey)
       if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
@@ -168,6 +173,9 @@ export default function PrivateBookingsClient({
 
         if ('error' in result) {
           toast.error(result.error ?? 'Failed to load private bookings.')
+          if (bookings.length === 0) {
+            setLoadError(result.error ?? 'Failed to load private bookings.')
+          }
           return
         }
 
@@ -180,7 +188,7 @@ export default function PrivateBookingsClient({
         setTotalCount(result.totalCount)
       })
     },
-    [effectivePageSize]
+    [effectivePageSize, bookings.length]
   )
 
   const fetchWithState = useCallback(
@@ -297,6 +305,18 @@ export default function PrivateBookingsClient({
       subtitle="Manage private venue bookings and events"
       navActions={navActions}
       headerActions={headerActions}
+      error={loadError}
+      onRetry={
+        loadError
+          ? () =>
+              runFetch({
+                status: statusFilter,
+                dateFilter,
+                search: searchTerm,
+                page: currentPage
+              })
+          : undefined
+      }
     >
       <div className="space-y-6">
         <Card className="hidden sm:block">

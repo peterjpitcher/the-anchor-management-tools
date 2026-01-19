@@ -1,6 +1,5 @@
 import { notFound, redirect } from 'next/navigation'
-import { checkUserPermission } from '@/app/actions/rbac'
-import type { ActionType } from '@/types/rbac'
+import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 import { getPrivateBooking } from '@/app/actions/privateBookingActions'
 import PrivateBookingDetailServer from '../PrivateBookingDetailServer'
 
@@ -23,47 +22,39 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
   const errors: string[] = []
 
   let canView = false
-  let viewCheckErrored = false
+  let canEdit = false
+  let canDelete = false
+  let canManageDeposits = false
+  let canSendSms = false
+  let canManageSpaces = false
+  let canManageCatering = false
+  let canManageVendors = false
 
-  try {
-    canView = await checkUserPermission('private_bookings', 'view')
-  } catch (error) {
-    console.error('Unable to verify private booking view permission', error)
+  const permissionsResult = await getCurrentUserModuleActions('private_bookings')
+
+  if ('error' in permissionsResult) {
+    if (permissionsResult.error === 'Not authenticated') {
+      redirect('/login')
+    }
+
+    console.error('Unable to verify private bookings permissions', permissionsResult.error)
     errors.push('We could not verify your access to private bookings; some actions may be limited.')
-    viewCheckErrored = true
+  } else {
+    const actions = new Set(permissionsResult.actions)
+
+    canView = actions.has('view') || actions.has('manage')
+    canEdit = actions.has('edit') || actions.has('manage')
+    canDelete = actions.has('delete')
+    canManageDeposits = actions.has('manage_deposits') || actions.has('manage')
+    canSendSms = actions.has('send') || actions.has('manage')
+    canManageSpaces = actions.has('manage_spaces') || actions.has('manage')
+    canManageCatering = actions.has('manage_catering') || actions.has('manage')
+    canManageVendors = actions.has('manage_vendors') || actions.has('manage')
   }
 
-  if (!canView && !viewCheckErrored) {
+  if (!canView && errors.length === 0) {
     redirect('/unauthorized')
   }
-
-  async function safePermission(action: ActionType, description: string) {
-    try {
-      return await checkUserPermission('private_bookings', action)
-    } catch (error) {
-      console.error(`Unable to verify private booking ${action} permission`, error)
-      errors.push(description)
-      return false
-    }
-  }
-
-  const [
-    canEdit,
-    canDelete,
-    canManageDeposits,
-    canSendSms,
-    canManageSpaces,
-    canManageCatering,
-    canManageVendors,
-  ] = await Promise.all([
-    safePermission('edit', 'We could not confirm edit access; changes may be limited.'),
-    safePermission('delete', 'We could not confirm delete access; cancellation may be disabled.'),
-    safePermission('manage_deposits', 'We could not confirm deposit permissions; payment recording may be disabled.'),
-    safePermission('send', 'We could not confirm messaging permissions; SMS actions may be disabled.'),
-    safePermission('manage_spaces', 'We could not confirm venue space permissions; space updates may be disabled.'),
-    safePermission('manage_catering', 'We could not confirm catering permissions; catering updates may be disabled.'),
-    safePermission('manage_vendors', 'We could not confirm vendor permissions; vendor updates may be disabled.'),
-  ])
 
   let bookingData = null
 

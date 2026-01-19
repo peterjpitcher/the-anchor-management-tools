@@ -69,6 +69,30 @@ export async function checkUserPermission(
   return await PermissionService.checkUserPermission(moduleName, action, targetUserId);
 }
 
+export async function getCurrentUserModuleActions(moduleName: ModuleName) {
+  try {
+    const supabase = await createClient();
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return { error: 'Not authenticated' as const };
+    }
+
+    const permissions = await PermissionService.getUserPermissions(user.id);
+
+    const actions = (permissions || [])
+      .filter((permission) => permission.module_name === moduleName)
+      .map((permission) => permission.action);
+
+    const uniqueActions = Array.from(new Set(actions));
+
+    return { success: true as const, actions: uniqueActions };
+  } catch (error: any) {
+    console.error('Error fetching module permissions:', error);
+    return { error: error.message || 'Failed to fetch permissions' };
+  }
+}
+
 export async function getUserRoles(userId?: string) {
   try {
     const supabase = await createClient();

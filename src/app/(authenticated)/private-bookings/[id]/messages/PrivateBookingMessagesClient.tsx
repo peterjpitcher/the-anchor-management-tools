@@ -111,23 +111,33 @@ const normalizeBooking = (booking: PrivateBookingWithDetails): PrivateBookingWit
 
 interface PrivateBookingMessagesClientProps {
   bookingId: string
-  initialBooking: PrivateBookingWithDetails
+  initialBooking: PrivateBookingWithDetails | null
+  initialError?: string | null
   canSendSms: boolean
 }
 
-export default function PrivateBookingMessagesClient({ bookingId, initialBooking, canSendSms }: PrivateBookingMessagesClientProps) {
+export default function PrivateBookingMessagesClient({
+  bookingId,
+  initialBooking,
+  initialError,
+  canSendSms
+}: PrivateBookingMessagesClientProps) {
   const router = useRouter()
-  const [booking, setBooking] = useState<PrivateBookingWithDetails | null>(() => normalizeBooking(initialBooking))
+  const [booking, setBooking] = useState<PrivateBookingWithDetails | null>(() =>
+    initialBooking ? normalizeBooking(initialBooking) : null
+  )
   const [loading, setLoading] = useState(false)
   const [selectedTemplate, setSelectedTemplate] = useState<string>('')
   const [customMessage, setCustomMessage] = useState<string>('')
   const [messageToSend, setMessageToSend] = useState<string>('')
   const [sending, setSending] = useState(false)
-  const [sentMessages, setSentMessages] = useState<PrivateBookingSmsQueue[]>(() => initialBooking.sms_queue?.filter((msg) => msg.status === 'sent') ?? [])
+  const [sentMessages, setSentMessages] = useState<PrivateBookingSmsQueue[]>(() =>
+    initialBooking?.sms_queue?.filter((msg) => msg.status === 'sent') ?? []
+  )
 
   const loadBooking = useCallback(async (id: string) => {
     setLoading(true)
-    const result = await getPrivateBooking(id)
+    const result = await getPrivateBooking(id, 'messages')
 
     if ('error' in result && result.error) {
       toast.error(result.error)
@@ -153,7 +163,10 @@ export default function PrivateBookingMessagesClient({ bookingId, initialBooking
       const normalized = normalizeBooking(initialBooking)
       setBooking(normalized)
       setSentMessages(normalized.sms_queue?.filter((msg) => msg.status === 'sent') ?? [])
+      return
     }
+    setBooking(null)
+    setSentMessages([])
   }, [initialBooking])
 
   const handleTemplateSelect = (templateId: string) => {
@@ -223,7 +236,7 @@ export default function PrivateBookingMessagesClient({ bookingId, initialBooking
     refreshBooking()
   }
 
-  if (loading || !booking) {
+  if (loading) {
     return (
       <PageLayout
         title="Private Booking Messages"
@@ -231,6 +244,17 @@ export default function PrivateBookingMessagesClient({ bookingId, initialBooking
         backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
         loading
         loadingLabel="Loading messages..."
+      />
+    )
+  }
+
+  if (!booking) {
+    return (
+      <PageLayout
+        title="Private Booking Messages"
+        subtitle="Unable to load booking information"
+        backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
+        error={initialError ?? 'Booking not found.'}
       />
     )
   }

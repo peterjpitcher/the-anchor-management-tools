@@ -4,7 +4,7 @@ import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
 import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { checkUserPermission } from '@/app/actions/rbac'
+import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 import { CateringManager } from '@/components/features/catering/CateringManager'
 
 export default async function CateringPackagesPage({
@@ -12,7 +12,17 @@ export default async function CateringPackagesPage({
 }: {
   searchParams: Promise<{ error?: string }>
 }) {
-  const canManageCatering = await checkUserPermission('private_bookings', 'manage_catering')
+  const permissionsResult = await getCurrentUserModuleActions('private_bookings')
+
+  if ('error' in permissionsResult) {
+    if (permissionsResult.error === 'Not authenticated') {
+      redirect('/login')
+    }
+    redirect('/unauthorized')
+  }
+
+  const actions = new Set(permissionsResult.actions)
+  const canManageCatering = actions.has('manage_catering') || actions.has('manage')
 
   if (!canManageCatering) {
     redirect('/unauthorized')
@@ -21,7 +31,19 @@ export default async function CateringPackagesPage({
   const packagesResult = await getCateringPackagesForManagement()
 
   if ('error' in packagesResult) {
-    throw new Error(packagesResult.error)
+    return (
+      <PageLayout
+        title="Catering Packages"
+        subtitle="Manage food and drink options for private events"
+        backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
+        navActions={
+          <NavGroup>
+            <NavLink href="/private-bookings/settings">Settings Home</NavLink>
+          </NavGroup>
+        }
+        error={packagesResult.error}
+      />
+    )
   }
 
   const packages = packagesResult.data ?? []

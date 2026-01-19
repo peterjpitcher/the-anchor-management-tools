@@ -1,10 +1,9 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { checkUserPermission } from '@/app/actions/rbac'
-import { toLocalIsoDate } from '@/lib/dateUtils'
 import type { PrivateBookingWithDetails, BookingStatus } from '@/types/private-bookings'
 import { PrivateBookingService } from '@/services/private-bookings'
+import { PermissionService } from '@/services/permission'
 
 interface FetchOptions {
   status?: BookingStatus | 'all'
@@ -13,8 +12,6 @@ interface FetchOptions {
   page?: number
   pageSize?: number
 }
-
-const ITEMS_PER_PAGE_DEFAULT = 20
 
 export type PrivateBookingDashboardItem = PrivateBookingWithDetails & {
   is_date_tbd?: boolean
@@ -43,7 +40,7 @@ export async function fetchPrivateBookings(options: FetchOptions) {
     return { error: 'Authentication required' }
   }
 
-  const canView = await checkUserPermission('private_bookings', 'view', user.id)
+  const canView = await PermissionService.checkUserPermission('private_bookings', 'view', user.id)
   if (!canView) {
     return { error: 'You do not have permission to view private bookings' }
   }
@@ -71,7 +68,7 @@ export async function fetchPrivateBookingsForCalendar() {
     return { error: 'Authentication required' }
   }
 
-  const canView = await checkUserPermission('private_bookings', 'view', user.id)
+  const canView = await PermissionService.checkUserPermission('private_bookings', 'view', user.id)
   if (!canView) {
     return { error: 'You do not have permission to view private bookings' }
   }

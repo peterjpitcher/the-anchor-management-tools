@@ -20,7 +20,8 @@ import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
-import { checkUserPermission } from '@/app/actions/rbac'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 
 async function handleCreateVendor(formData: FormData) {
   'use server'
@@ -42,8 +43,10 @@ async function handleCreateVendor(formData: FormData) {
     if (result.error === 'Insufficient permissions' || result.error === 'Not authenticated') {
       redirect('/unauthorized')
     }
-    throw new Error(result.error)
+    redirect(`/private-bookings/settings/vendors?error=${encodeURIComponent(result.error)}`)
   }
+
+  redirect('/private-bookings/settings/vendors')
 }
 
 async function handleUpdateVendor(formData: FormData) {
@@ -67,8 +70,10 @@ async function handleUpdateVendor(formData: FormData) {
     if (result.error === 'Insufficient permissions' || result.error === 'Not authenticated') {
       redirect('/unauthorized')
     }
-    throw new Error(result.error)
+    redirect(`/private-bookings/settings/vendors?error=${encodeURIComponent(result.error)}`)
   }
+
+  redirect('/private-bookings/settings/vendors')
 }
 
 async function handleDeleteVendor(formData: FormData) {
@@ -81,12 +86,28 @@ async function handleDeleteVendor(formData: FormData) {
     if (result.error === 'Insufficient permissions' || result.error === 'Not authenticated') {
       redirect('/unauthorized')
     }
-    throw new Error(result.error)
+    redirect(`/private-bookings/settings/vendors?error=${encodeURIComponent(result.error)}`)
   }
+
+  redirect('/private-bookings/settings/vendors')
 }
 
-export default async function VendorsPage() {
-  const canManageVendors = await checkUserPermission('private_bookings', 'manage_vendors')
+export default async function VendorsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ error?: string }>
+}) {
+  const permissionsResult = await getCurrentUserModuleActions('private_bookings')
+
+  if ('error' in permissionsResult) {
+    if (permissionsResult.error === 'Not authenticated') {
+      redirect('/login')
+    }
+    redirect('/unauthorized')
+  }
+
+  const actions = new Set(permissionsResult.actions)
+  const canManageVendors = actions.has('manage_vendors') || actions.has('manage')
 
   if (!canManageVendors) {
     redirect('/unauthorized')
@@ -94,10 +115,25 @@ export default async function VendorsPage() {
 
   const vendorsResult = await getVendorsForManagement()
   if ('error' in vendorsResult) {
-    throw new Error(vendorsResult.error)
+    return (
+      <PageLayout
+        title="Vendor Database"
+        subtitle="Manage preferred vendors and service providers"
+        backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
+        navActions={
+          <NavGroup>
+            <NavLink href="/private-bookings/settings">Settings Home</NavLink>
+          </NavGroup>
+        }
+        error={vendorsResult.error}
+      />
+    )
   }
 
   const vendors = vendorsResult.data ?? []
+
+  const resolvedSearchParams = searchParams ? await searchParams : {}
+  const errorMessage = typeof resolvedSearchParams?.error === 'string' ? resolvedSearchParams.error : null
 
   const vendorsByType = vendors.reduce((acc: Record<string, Vendor[]>, vendor: Vendor) => {
     const type = vendor.service_type
@@ -157,6 +193,9 @@ export default async function VendorsPage() {
       }
     >
       <div className="space-y-6">
+      {errorMessage && (
+        <Alert variant="error" title="Error" description={errorMessage} />
+      )}
       {/* Add New Vendor Form */}
       <Card>
         <Section 
