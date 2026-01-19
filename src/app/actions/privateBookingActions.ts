@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import { z } from 'zod'
 import type {
   PrivateBookingWithDetails,
@@ -199,6 +199,8 @@ export async function createPrivateBooking(formData: FormData) {
     } as CreatePrivateBookingInput);
 
     revalidatePath('/private-bookings')
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true, data: booking }
   } catch (error: any) {
     console.error('Error creating private booking:', error)
@@ -269,6 +271,8 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
 
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${id}`)
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true, data: booking }
   } catch (error: any) {
     console.error('Error updating private booking:', error)
@@ -288,6 +292,8 @@ export async function updateBookingStatus(id: string, status: BookingStatus) {
 
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${id}`)
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true }
   } catch (error: any) {
     console.error('Error updating booking status:', error)
@@ -321,6 +327,8 @@ export async function addPrivateBookingNote(bookingId: string, note: string) {
   try {
     await PrivateBookingService.addNote(bookingId, trimmedNote, user.id, user.email || undefined)
     revalidatePath(`/private-bookings/${bookingId}`)
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true }
   } catch (error: any) {
     console.error('Error recording booking note:', error)
@@ -342,6 +350,8 @@ export async function deletePrivateBooking(id: string) {
 
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${id}`)
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true }
   } catch (error: any) {
     console.error('Error deleting private booking:', error)
@@ -500,6 +510,8 @@ export async function recordDepositPayment(bookingId: string, formData: FormData
     await PrivateBookingService.recordDeposit(bookingId, amount, paymentMethod, user?.id || undefined)
 
     revalidatePath(`/private-bookings/${bookingId}`)
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true }
   } catch (error: any) {
     console.error('Error recording deposit payment:', error)
@@ -525,6 +537,8 @@ export async function recordFinalPayment(bookingId: string, formData: FormData) 
     await PrivateBookingService.recordFinalPayment(bookingId, paymentMethod, user?.id || undefined)
 
     revalidatePath(`/private-bookings/${bookingId}`)
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true }
   } catch (error: any) {
     console.error('Error recording final payment:', error)
@@ -548,6 +562,8 @@ export async function cancelPrivateBooking(bookingId: string, reason?: string) {
 
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${bookingId}`)
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true }
   } catch (error: any) {
     console.error('Error cancelling private booking:', error)
@@ -570,6 +586,8 @@ export async function applyBookingDiscount(bookingId: string, data: {
     await PrivateBookingService.applyBookingDiscount(bookingId, data)
 
     revalidatePath(`/private-bookings/${bookingId}`)
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true }
   } catch (error: any) {
     console.error('Error applying discount: ', error)
@@ -879,6 +897,8 @@ export async function addBookingItem(data: {
 
     revalidatePath(`/private-bookings/${data.booking_id}`)
     revalidatePath(`/private-bookings/${data.booking_id}/items`)
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true }
   } catch (error: any) {
     console.error('Error adding booking item:', error)
@@ -907,6 +927,8 @@ export async function updateBookingItem(itemId: string, data: {
     const bookingId = result.bookingId;
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidatePath(`/private-bookings/${bookingId}/items`)
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true }
   } catch (error: any) {
     console.error('Error updating booking item:', error)
@@ -927,6 +949,8 @@ export async function deleteBookingItem(itemId: string) {
 
     revalidatePath(`/private-bookings/${result.bookingId}`)
     revalidatePath(`/private-bookings/${result.bookingId}/items`)
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true }
   } catch (error: any) {
     console.error('Error deleting booking item:', error)
@@ -947,6 +971,8 @@ export async function reorderBookingItems(bookingId: string, orderedIds: string[
 
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidatePath(`/private-bookings/${bookingId}/items`)
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true }
   } catch (error: any) {
     console.error('Error updating booking item order:', error)

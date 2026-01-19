@@ -1,7 +1,7 @@
 'use server'
 
 import { checkUserPermission } from './rbac'
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import { MessageService } from '@/services/messages'
 
 export async function getUnreadMessageCounts() {
@@ -46,6 +46,8 @@ export async function markMessagesAsRead(customerId: string) {
     revalidatePath('/customers')
     revalidatePath(`/customers/${customerId}`)
     revalidatePath('/', 'layout') // This revalidates the navigation with unread counts
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     
     return { success: true }
   } catch (error: any) {

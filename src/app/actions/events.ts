@@ -1,7 +1,7 @@
 'use server'
 
 import { z } from 'zod'
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import { logAuditEvent } from './audit'
 import type { Event, EventFAQ } from '@/types/database'
 import { checkUserPermission } from '@/app/actions/rbac'
@@ -141,6 +141,8 @@ export async function createEvent(formData: FormData): Promise<CreateEventResult
     });
 
     revalidatePath('/events');
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true, data: event as Event };
   } catch (error: any) {
     console.error('Unexpected error creating event:', error);
@@ -187,6 +189,8 @@ export async function updateEvent(id: string, formData: FormData) {
 
     revalidatePath('/events');
     revalidatePath(`/events/${id}`);
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true, data: event as Event };
   } catch (error: any) {
     console.error('Unexpected error updating event:', error);
@@ -223,6 +227,8 @@ export async function deleteEvent(id: string) {
     });
 
     revalidatePath('/events');
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true };
   } catch (error: any) {
     console.error('Unexpected error deleting event:', error);

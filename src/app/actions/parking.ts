@@ -9,7 +9,7 @@ import { calculateParkingPricing } from '@/lib/parking/pricing'
 import { getActiveParkingRate, insertParkingBooking, getParkingBooking, updateParkingBooking } from '@/lib/parking/repository'
 import { checkParkingCapacity } from '@/lib/parking/capacity'
 import { createParkingPaymentOrder, sendParkingPaymentRequest } from '@/lib/parking/payments'
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import type { ParkingBooking, ParkingBookingStatus, ParkingPaymentStatus } from '@/types/parking'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { resolveCustomerByPhone } from '@/lib/parking/customers'
@@ -192,6 +192,8 @@ export async function createParkingBooking(formData: FormData) {
     }
 
     revalidatePath('/parking')
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
 
     return {
       success: true,
@@ -446,6 +448,8 @@ export async function updateParkingBookingStatus(
     })
 
     revalidatePath('/parking')
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
 
     return { success: true, booking }
   } catch (error) {
@@ -514,6 +518,8 @@ export async function generateParkingPaymentLink(bookingId: string) {
     })
 
     revalidatePath('/parking')
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
 
     return { success: true, approveUrl }
   } catch (error) {
@@ -606,6 +612,8 @@ export async function markParkingBookingPaid(bookingId: string) {
     })
 
     revalidatePath('/parking')
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
 
     return { success: true, booking: updated }
   } catch (error) {

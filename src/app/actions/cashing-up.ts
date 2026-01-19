@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { PermissionService } from '@/services/permission';
 import { CashingUpService } from '@/services/cashing-up.service';
 import { UpsertCashupSessionDTO } from '@/types/cashing-up';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
 
 export async function getSessionByIdAction(id: string) {
   const supabase = await createClient();
@@ -44,6 +44,8 @@ export async function upsertSessionAction(data: UpsertCashupSessionDTO, existing
   try {
     const result = await CashingUpService.upsertSession(supabase, data, user.id, existingId);
     revalidatePath('/cashing-up'); // Revalidate relevant paths
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true, data: result };
   } catch (error: any) {
     console.error('Upsert error:', error);
@@ -63,6 +65,8 @@ export async function submitSessionAction(id: string) {
   try {
     const result = await CashingUpService.submitSession(supabase, id, user.id);
     revalidatePath('/cashing-up');
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true, data: result };
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -81,6 +85,8 @@ export async function approveSessionAction(id: string) {
   try {
     const result = await CashingUpService.approveSession(supabase, id, user.id);
     revalidatePath('/cashing-up');
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true, data: result };
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -99,6 +105,8 @@ export async function lockSessionAction(id: string) {
   try {
     const result = await CashingUpService.lockSession(supabase, id, user.id);
     revalidatePath('/cashing-up');
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true, data: result };
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -117,6 +125,8 @@ export async function unlockSessionAction(id: string) {
   try {
     const result = await CashingUpService.unlockSession(supabase, id, user.id);
     revalidatePath('/cashing-up');
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true, data: result };
   } catch (error: any) {
     return { success: false, error: error.message };

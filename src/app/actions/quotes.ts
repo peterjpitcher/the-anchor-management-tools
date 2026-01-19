@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
 import { z } from 'zod'
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import { getTodayIsoDate, getLocalIsoDateDaysAhead, toLocalIsoDate } from '@/lib/dateUtils'
 import type { 
   Quote, 
@@ -306,6 +306,8 @@ export async function createQuote(formData: FormData) {
     })
 
     revalidatePath('/quotes')
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     
     return { quote, success: true }
   } catch (error) {
@@ -370,6 +372,8 @@ export async function updateQuoteStatus(formData: FormData) {
 
     revalidatePath('/quotes')
     revalidatePath(`/quotes/${quoteId}`)
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     
     return { success: true }
   } catch (error) {
@@ -530,6 +534,8 @@ export async function updateQuote(formData: FormData) {
 
     revalidatePath('/quotes')
     revalidatePath(`/quotes/${quoteId}`)
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     
     return { success: true }
   } catch (error) {
@@ -593,6 +599,8 @@ export async function deleteQuote(formData: FormData) {
     })
 
     revalidatePath('/quotes')
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     
     return { success: true }
   } catch (error) {
@@ -720,6 +728,8 @@ export async function convertQuoteToInvoice(quoteId: string) {
 
     revalidatePath('/quotes')
     revalidatePath('/invoices')
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     
     return { invoice, success: true }
   } catch (error) {

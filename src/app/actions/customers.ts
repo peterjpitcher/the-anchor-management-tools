@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import { logAuditEvent } from './audit'
 import { customerSchema } from '@/lib/validation'
 import { checkUserPermission } from './rbac'
@@ -72,6 +72,8 @@ export async function createCustomer(formData: FormData) {
     })
 
     revalidatePath('/customers')
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true, data: customer }
   } catch (error) {
     console.error('Unexpected error creating customer:', error)
@@ -118,6 +120,8 @@ export async function updateCustomer(id: string, formData: FormData) {
 
     revalidatePath('/customers')
     revalidatePath(`/customers/${id}`)
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true, data: customer }
   } catch (error) {
     console.error('Unexpected error updating customer:', error)
@@ -149,6 +153,8 @@ export async function deleteCustomer(id: string) {
     }
 
     revalidatePath('/customers')
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
     return { success: true }
   } catch (error) {
     console.error('Unexpected error deleting customer:', error)
@@ -201,6 +207,8 @@ export async function importCustomers(entries: ImportCustomerInput[]) {
     }
 
     revalidatePath('/customers')
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
 
     return {
       success: true,
@@ -247,6 +255,8 @@ export async function deleteTestCustomers() {
     }
 
     revalidatePath('/customers')
+    revalidateTag('dashboard')
+    revalidatePath('/dashboard')
 
     return result
   } catch (error) {
