@@ -1,4 +1,3 @@
-import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -24,7 +23,7 @@ import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { SmsQueueActionForm } from '@/components/private-bookings/SmsQueueActionForm'
-import { checkUserPermission } from '@/app/actions/rbac'
+import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 import type { SmsQueueActionState } from '@/components/private-bookings/SmsQueueActionForm'
 
 async function handleApproveSms(_prevState: SmsQueueActionState, formData: FormData): Promise<SmsQueueActionState> {
@@ -79,18 +78,19 @@ async function handleSendSms(_prevState: SmsQueueActionState, formData: FormData
 }
 
 export default async function SmsQueuePage() {
-  const supabase = await createClient()
+  const permissionsResult = await getCurrentUserModuleActions('private_bookings')
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    redirect('/login')
+  if ('error' in permissionsResult) {
+    if (permissionsResult.error === 'Not authenticated') {
+      redirect('/login')
+    }
+    redirect('/unauthorized')
   }
 
-  const [canViewQueue, canApproveSms, canSendSms] = await Promise.all([
-    checkUserPermission('private_bookings', 'view_sms_queue'),
-    checkUserPermission('private_bookings', 'approve_sms'),
-    checkUserPermission('private_bookings', 'send'),
-  ])
+  const actions = new Set(permissionsResult.actions)
+  const canViewQueue = actions.has('view_sms_queue') || actions.has('manage')
+  const canApproveSms = actions.has('approve_sms') || actions.has('manage')
+  const canSendSms = actions.has('send') || actions.has('manage')
 
   if (!canViewQueue) {
     redirect('/unauthorized')

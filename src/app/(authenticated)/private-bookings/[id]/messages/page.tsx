@@ -1,5 +1,5 @@
 import { notFound, redirect } from 'next/navigation'
-import { checkUserPermission } from '@/app/actions/rbac'
+import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 import { getPrivateBooking } from '@/app/actions/privateBookingActions'
 import PrivateBookingMessagesClient from './PrivateBookingMessagesClient'
 
@@ -19,16 +19,27 @@ export default async function PrivateBookingMessagesPage({ params }: PageProps) 
     notFound()
   }
 
-  const [canView, canSendSms] = await Promise.all([
-    checkUserPermission('private_bookings', 'view'),
-    checkUserPermission('private_bookings', 'send')
-  ])
+  const permissionsResult = await getCurrentUserModuleActions('private_bookings')
+
+  if ('error' in permissionsResult) {
+    if (permissionsResult.error === 'Not authenticated') {
+      redirect('/login')
+    }
+    redirect('/unauthorized')
+  }
+
+  const actions = new Set(permissionsResult.actions)
+  const canView = actions.has('view') || actions.has('manage')
+  const canSendSms = actions.has('send') || actions.has('manage')
 
   if (!canView) {
     redirect('/unauthorized')
   }
 
-  const result = await getPrivateBooking(bookingId)
+  let booking = null
+  let initialError: string | null = null
+
+  const result = await getPrivateBooking(bookingId, 'messages')
 
   if (!result || result.error) {
     if (result?.error === 'Booking not found') {
@@ -39,19 +50,20 @@ export default async function PrivateBookingMessagesPage({ params }: PageProps) 
       redirect('/unauthorized')
     }
 
-    throw new Error(result?.error ?? 'Failed to load booking')
+    initialError = result?.error ?? 'Failed to load booking'
+  } else {
+    booking = result.data ?? null
   }
 
-  const booking = result.data
-
-  if (!booking) {
-    notFound()
+  if (!booking && !initialError) {
+    initialError = 'We could not load this booking.'
   }
 
   return (
     <PrivateBookingMessagesClient
       bookingId={bookingId}
       initialBooking={booking}
+      initialError={initialError}
       canSendSms={canSendSms}
     />
   )

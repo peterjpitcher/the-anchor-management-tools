@@ -724,7 +724,7 @@ export default function ItemsPage() {
   const loadData = useCallback(async (id: string) => {
     setLoading(true)
 
-    const bookingResult = await getPrivateBooking(id)
+    const bookingResult = await getPrivateBooking(id, 'items')
 
     if ('error' in bookingResult && bookingResult.error) {
       toast.error(bookingResult.error)

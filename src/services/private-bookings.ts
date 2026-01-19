@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { formatPhoneForStorage, sanitizeMoneyString } from '@/lib/utils'; // Added sanitizeMoneyString
+import { formatPhoneForStorage } from '@/lib/utils';
 import { toLocalIsoDate } from '@/lib/dateUtils';
 import { SmsQueueService } from '@/services/sms-queue';
 import { syncCalendarEvent, deleteCalendarEvent, isCalendarConfigured } from '@/lib/google-calendar';
@@ -12,6 +12,19 @@ import type {
   PrivateBookingAuditWithUser
 } from '@/types/private-bookings';
 import { z } from 'zod'; // Import z for schemas
+
+const toNumber = (value: unknown, fallback = 0): number => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  return fallback;
+};
 
 // Helper function to format time to HH:MM
 export function formatTimeToHHMM(time: string | undefined): string | undefined {
@@ -197,21 +210,32 @@ export class PrivateBookingService {
 
     const holdExpiryIso = holdExpiryMoment.toISOString();
 
+    const normalizedContactPhone =
+      input.contact_phone && input.contact_phone.trim() !== ''
+        ? formatPhoneForStorage(input.contact_phone.trim())
+        : null;
+
+    const normalizedContactEmail =
+      input.contact_email && input.contact_email.trim() !== ''
+        ? input.contact_email.trim().toLowerCase()
+        : null;
+
     // Customer Data for finding/creating
     let customerData = null;
-    if (!input.customer_id && input.customer_first_name && input.contact_phone) {
+    if (!input.customer_id && input.customer_first_name && normalizedContactPhone) {
       customerData = {
         first_name: input.customer_first_name,
         last_name: input.customer_last_name,
-        mobile_number: formatPhoneForStorage(input.contact_phone),
-        email: input.contact_email?.toLowerCase() || null,
+        mobile_number: normalizedContactPhone,
+        email: normalizedContactEmail,
         sms_opt_in: true
       };
     }
 
     const bookingPayload = {
       ...input,
-      contact_email: input.contact_email || null, // Sanitize empty string to null
+      contact_phone: normalizedContactPhone,
+      contact_email: normalizedContactEmail,
       customer_id: input.customer_id,
       event_date: finalEventDate,
       start_time: finalStartTime,
@@ -240,10 +264,10 @@ export class PrivateBookingService {
     // 3. Side Effects (Fire and Forget / Non-blocking mostly) 
 
     // SMS
-    if (booking && input.contact_phone) {
+    if (booking && normalizedContactPhone) {
       // Ensure booking object passed to sendCreationSms has the calculated hold_expiry
       const bookingWithHoldExpiry = { ...booking, hold_expiry: holdExpiryIso };
-      this.sendCreationSms(bookingWithHoldExpiry, input.contact_phone).catch(console.error);
+      this.sendCreationSms(bookingWithHoldExpiry, normalizedContactPhone).catch(console.error);
     }
 
     // Google Calendar Sync
@@ -340,12 +364,6 @@ export class PrivateBookingService {
     }
 
     let internalNotes = input.internal_notes ?? currentBooking.internal_notes ?? null;
-    if (internalNotes && internalNotes.includes(DATE_TBD_NOTE) && !input.internal_notes) {
-      // specific logic to preserve TBD note if not explicitly overwritten? 
-      // actually if input.internal_notes is undefined, we keep existing. 
-      // If it is provided (even empty), we replace.
-      // But here we are coalescing. 
-    }
 
     if (input.date_tbd) {
       if (!internalNotes) {
@@ -355,6 +373,34 @@ export class PrivateBookingService {
       }
     }
 
+    const normalizedContactPhone =
+      input.contact_phone === undefined
+        ? undefined
+        : input.contact_phone.trim() === ''
+          ? null
+          : formatPhoneForStorage(input.contact_phone.trim());
+
+    const normalizedContactEmail =
+      input.contact_email === undefined
+        ? undefined
+        : input.contact_email.trim() === ''
+          ? null
+          : input.contact_email.trim().toLowerCase();
+
+    const normalizedSetupDate =
+      input.setup_date === undefined
+        ? undefined
+        : input.setup_date.trim() === ''
+          ? null
+          : input.setup_date;
+
+    const normalizedSetupTime =
+      input.setup_time === undefined
+        ? undefined
+        : input.setup_time.trim() === ''
+          ? null
+          : input.setup_time;
+
     const customer_name = input.customer_last_name
       ? `${input.customer_first_name} ${input.customer_last_name}`
       : input.customer_first_name || undefined;
@@ -362,8 +408,12 @@ export class PrivateBookingService {
     const updatePayload: any = {
       ...input,
       customer_name, // undefined if not provided
+      contact_phone: normalizedContactPhone,
+      contact_email: normalizedContactEmail,
       event_date: finalEventDate,
       start_time: finalStartTime,
+      setup_date: normalizedSetupDate,
+      setup_time: normalizedSetupTime,
       end_time: cleanedEndTime, // can be null to clear
       end_time_next_day: endTimeNextDay,
       internal_notes: internalNotes,
@@ -855,27 +905,17 @@ export class PrivateBookingService {
     const supabase = filters?.useAdmin ? createAdminClient() : await createClient();
 
     let query = supabase
-      .from('private_bookings')
-      .select(`
-        *,
-        customer:customers(id, first_name, last_name, mobile_number),
-        items:private_booking_items(
-          *,
-          space:venue_spaces(*),
-          package:catering_packages(*),
-          vendor:vendors(*)
-        )
-      `, { count: 'exact' })
+      .from('private_bookings_with_details')
+      .select('*', { count: 'exact' })
       .order('event_date', { ascending: true, nullsFirst: true })
-      .order('display_order', { ascending: true, foreignTable: 'private_booking_items' });
+      .order('start_time', { ascending: true, nullsFirst: true });
 
     if (filters?.status) {
       query = query.eq('status', filters.status);
     }
 
     if (filters?.fromDate) {
-      // Include future dates OR dates that are to be determined (null)
-      query = query.or(`event_date.gte.${filters.fromDate},event_date.is.null`);
+      query = query.gte('event_date', filters.fromDate);
     }
 
     if (filters?.toDate) {
@@ -897,26 +937,7 @@ export class PrivateBookingService {
       throw new Error(error.message || 'An error occurred');
     }
 
-    const bookingsWithDetails: PrivateBookingWithDetails[] = (data || []).map(booking => {
-      const calculatedTotal = booking.items?.reduce((sum: number, item: any) =>
-        sum + (item.line_total || 0), 0) || 0;
-
-      const eventDate = new Date(booking.event_date);
-      const today = new Date();
-      const daysUntilEvent = Math.ceil((eventDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
-      const depositStatus = booking.deposit_paid_date ? 'Paid' :
-        booking.deposit_amount > 0 ? 'Required' : 'Not Required';
-
-      return {
-        ...booking,
-        calculated_total: calculatedTotal,
-        deposit_status: depositStatus,
-        days_until_event: daysUntilEvent
-      };
-    });
-
-    return { data: bookingsWithDetails, count };
+    return { data: (data || []) as PrivateBookingWithDetails[], count };
   }
 
   static async fetchPrivateBookings(options: {
@@ -926,57 +947,137 @@ export class PrivateBookingService {
     page?: number;
     pageSize?: number;
   }) {
+    const supabase = await createClient();
     const page = options.page && options.page > 0 ? options.page : 1;
     const pageSize = options.pageSize && options.pageSize > 0 ? options.pageSize : 20;
     const todayIso = toLocalIsoDate(new Date());
 
-    const filters: {
-      status?: BookingStatus;
-      fromDate?: string;
-      toDate?: string;
-    } = {};
+    const start = (page - 1) * pageSize;
+    const end = start + pageSize - 1;
+
+    let query = supabase
+      .from('private_bookings_with_details')
+      .select(
+        `
+          id,
+          customer_id,
+          customer_name,
+          customer_first_name,
+          customer_last_name,
+          customer_full_name,
+          contact_phone,
+          contact_email,
+          event_date,
+          start_time,
+          setup_date,
+          setup_time,
+          end_time,
+          end_time_next_day,
+          guest_count,
+          event_type,
+          status,
+          contract_version,
+          created_at,
+          updated_at,
+          deposit_amount,
+          deposit_paid_date,
+          total_amount,
+          balance_due_date,
+          final_payment_date,
+          final_payment_method,
+          discount_type,
+          discount_amount,
+          discount_reason,
+          internal_notes,
+          customer_requests,
+          calculated_total,
+          deposit_status,
+          days_until_event
+        `,
+        { count: 'exact' }
+      )
+      .order('event_date', { ascending: true, nullsFirst: true })
+      .order('start_time', { ascending: true, nullsFirst: true });
 
     if (options.status && options.status !== 'all') {
-      filters.status = options.status;
+      query = query.eq('status', options.status);
     }
 
     if (options.dateFilter === 'upcoming') {
-      filters.fromDate = todayIso;
+      query = query.gte('event_date', todayIso);
     } else if (options.dateFilter === 'past') {
-      filters.toDate = todayIso;
+      query = query.lte('event_date', todayIso);
     }
 
-    const { data } = await this.getBookings(filters);
-    const searchTerm = options.search?.trim().toLowerCase();
-
-    let filtered = data || [];
+    const searchTerm = options.search?.trim();
     if (searchTerm) {
-      filtered = filtered.filter((booking) => {
-        const searchTargets = [
-          booking.customer_name,
-          booking.customer_first_name,
-          booking.customer_last_name,
-          booking.contact_phone,
-          booking.event_type
-        ]
-          .filter(Boolean)
-          .map((value) => String(value).toLowerCase());
+      const pattern = `%${searchTerm}%`;
 
-        return searchTargets.some((value) => value.includes(searchTerm));
-      });
+      query = query.or(
+        [
+          `customer_name.ilike.${pattern}`,
+          `customer_first_name.ilike.${pattern}`,
+          `customer_last_name.ilike.${pattern}`,
+          `customer_full_name.ilike.${pattern}`,
+          `contact_phone.ilike.${pattern}`,
+          `contact_email.ilike.${pattern}`,
+          `event_type.ilike.${pattern}`,
+        ].join(',')
+      );
     }
 
-    const totalCount = filtered.length;
-    const start = (page - 1) * pageSize;
-    const paginated = filtered.slice(start, start + pageSize);
+    const { data, error, count } = await query.range(start, end);
 
-    return { data: paginated, totalCount };
+    if (error) {
+      console.error('Error fetching private bookings:', error);
+      throw new Error(error.message || 'An error occurred');
+    }
+
+    const totalCount = typeof count === 'number' ? count : (data?.length ?? 0);
+
+    const enriched = (data || []).map((booking) => ({
+      ...booking,
+      is_date_tbd: Boolean(booking.internal_notes?.includes(DATE_TBD_NOTE)),
+    }));
+
+    return { data: enriched as PrivateBookingWithDetails[], totalCount };
   }
 
   static async fetchPrivateBookingsForCalendar() {
     const todayIso = toLocalIsoDate(new Date());
-    const { data } = await this.getBookings({ fromDate: todayIso });
-    return { data: data || [] };
+    const supabase = await createClient();
+
+    const { data, error } = await supabase
+      .from('private_bookings_with_details')
+      .select(
+        `
+          id,
+          customer_name,
+          customer_first_name,
+          customer_last_name,
+          event_date,
+          start_time,
+          end_time,
+          end_time_next_day,
+          status,
+          contract_version,
+          created_at,
+          updated_at,
+          event_type,
+          guest_count,
+          internal_notes
+        `
+      )
+      .gte('event_date', todayIso)
+      .order('event_date', { ascending: true, nullsFirst: true })
+      .order('start_time', { ascending: true, nullsFirst: true });
+
+    if (error) {
+      console.error('Error fetching bookings for calendar:', error);
+      throw new Error(error.message || 'An error occurred');
+    }
+
+    return { data: (data || []) as PrivateBookingWithDetails[] };
   }
 
   static async getBookingById(id: string) {
@@ -986,7 +1087,7 @@ export class PrivateBookingService {
       .from('private_bookings')
       .select(`
         *,
-        customer:customers(id, first_name, last_name, mobile_number),
+        customer:customers(id, first_name, last_name, email, phone:mobile_number),
         items:private_booking_items(
           *,
           space:venue_spaces(*),
@@ -1035,15 +1136,17 @@ export class PrivateBookingService {
 
     const items = bookingCore.items ?? [];
 
-    const calculatedTotal = items?.reduce((sum: number, item: any) =>
-      sum + (item.line_total || 0), 0) || 0;
+    const calculatedTotal = items?.reduce((sum: number, item: any) => sum + toNumber(item.line_total), 0) || 0;
 
     const eventDate = new Date(data.event_date);
     const today = new Date();
     const daysUntilEvent = Math.ceil((eventDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
-    const depositStatus = data.deposit_paid_date ? 'Paid' :
-      data.deposit_amount > 0 ? 'Required' : 'Not Required';
+    const depositStatus = data.deposit_paid_date
+      ? 'Paid'
+      : toNumber(data.deposit_amount) > 0
+        ? 'Required'
+        : 'Not Required';
 
     const auditTrail = ((auditsData ?? []) as PrivateBookingAuditWithUser[]).slice().sort(
       (a, b) => new Date(b.performed_at).getTime() - new Date(a.performed_at).getTime()
@@ -1059,6 +1162,139 @@ export class PrivateBookingService {
     };
 
     return bookingWithDetails;
+  }
+
+  static async getBookingByIdForEdit(id: string) {
+    const supabase = await createClient();
+
+    const { data, error } = await supabase
+      .from('private_bookings')
+      .select(
+        `
+          *,
+          customer:customers(id, first_name, last_name, email, phone:mobile_number)
+        `
+      )
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching private booking for edit:', error);
+      throw new Error(error.message || 'An error occurred');
+    }
+
+    if (!data) {
+      throw new Error('Booking not found');
+    }
+
+    return data as PrivateBookingWithDetails;
+  }
+
+  static async getBookingByIdForItems(id: string) {
+    const supabase = await createClient();
+
+    const { data, error } = await supabase
+      .from('private_bookings')
+      .select(
+        `
+          *,
+          customer:customers(id, first_name, last_name, email, phone:mobile_number),
+          items:private_booking_items(
+            *,
+            space:venue_spaces(*),
+            package:catering_packages(*),
+            vendor:vendors(*)
+          )
+        `
+      )
+      .order('display_order', { ascending: true, foreignTable: 'private_booking_items' })
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching private booking items:', error);
+      throw new Error(error.message || 'An error occurred');
+    }
+
+    if (!data) {
+      throw new Error('Booking not found');
+    }
+
+    const items = (data as any).items ?? [];
+    const calculatedTotal = items.reduce((sum: number, item: any) => sum + toNumber(item.line_total), 0);
+
+    return {
+      ...(data as PrivateBookingWithDetails),
+      calculated_total: calculatedTotal,
+    };
+  }
+
+  static async getBookingByIdForMessages(id: string) {
+    const supabase = await createClient();
+
+    const { data: booking, error: bookingError } = await supabase
+      .from('private_bookings_with_details')
+      .select(
+        `
+          id,
+          customer_id,
+          customer_name,
+          customer_first_name,
+          customer_last_name,
+          customer_full_name,
+          contact_phone,
+          contact_email,
+          event_date,
+          start_time,
+          setup_date,
+          setup_time,
+          end_time,
+          end_time_next_day,
+          guest_count,
+          event_type,
+          status,
+          deposit_amount,
+          deposit_paid_date,
+          total_amount,
+          balance_due_date,
+          final_payment_date,
+          final_payment_method,
+          discount_type,
+          discount_amount,
+          discount_reason,
+          internal_notes,
+          calculated_total,
+          days_until_event,
+          deposit_status
+        `
+      )
+      .eq('id', id)
+      .maybeSingle();
+
+    if (bookingError) {
+      console.error('Error fetching private booking for messages:', bookingError);
+      throw new Error(bookingError.message || 'An error occurred');
+    }
+
+    if (!booking) {
+      throw new Error('Booking not found');
+    }
+
+    const { data: smsQueue, error: smsError } = await supabase
+      .from('private_booking_sms_queue')
+      .select('*')
+      .eq('booking_id', id)
+      .order('created_at', { ascending: false });
+
+    if (smsError) {
+      console.error('Error fetching private booking SMS queue:', smsError);
+      throw new Error(smsError.message || 'Failed to fetch booking messages');
+    }
+
+    return {
+      ...(booking as PrivateBookingWithDetails),
+      sms_queue: smsQueue ?? [],
+    };
   }
 
   static async getVenueSpaces(activeOnly = true, useAdmin = false) {
@@ -1169,7 +1405,7 @@ export class PrivateBookingService {
       year: 'numeric'
     });
 
-    const depositAmount = booking.deposit_amount || 0;
+    const depositAmount = toNumber(booking.deposit_amount);
     const formattedDeposit = depositAmount.toFixed(2);
 
     // Calculate hold expiry (14 days from creation)

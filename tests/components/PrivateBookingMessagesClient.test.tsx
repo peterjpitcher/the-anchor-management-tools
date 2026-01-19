@@ -97,7 +97,7 @@ describe('PrivateBookingMessagesClient', () => {
     })
 
     expect(toast.success).toHaveBeenCalledWith('Message sent successfully.')
-    expect(mockGetPrivateBooking).toHaveBeenCalledWith('booking-1')
+    expect(mockGetPrivateBooking).toHaveBeenCalledWith('booking-1', 'messages')
   })
 
   it('shows an error toast when the SMS action fails', async () => {
