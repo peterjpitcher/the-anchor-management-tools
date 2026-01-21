@@ -1,4 +1,5 @@
 // import type { PDFOptions } from 'puppeteer'
+import type { ChildProcess } from 'node:child_process'
 import { generateCompactInvoiceHTML } from './invoice-template-compact'
 import { generateCompactQuoteHTML } from './quote-template-compact'
 import type { InvoiceWithDetails, QuoteWithDetails } from '@/types/invoices'
@@ -10,34 +11,129 @@ async function loadPuppeteer() {
   return { puppeteer, chromium }
 }
 
-// Generate PDF from invoice
-export async function generateInvoicePDF(invoice: InvoiceWithDetails): Promise<Buffer> {
-  let browser = null
+type PdfGeneratorBrowser = {
+  newPage: () => Promise<any>
+  close: () => Promise<void>
+  process?: () => ChildProcess | null
+}
+
+type PdfGeneratorPage = {
+  setViewport: (viewport: { width: number; height: number }) => Promise<void>
+  setContent: (
+    html: string,
+    options: { waitUntil: 'networkidle0'; timeout: number }
+  ) => Promise<void>
+  addStyleTag: (options: { content: string }) => Promise<void>
+  pdf: (options: any) => Promise<Uint8Array>
+  close: () => Promise<void>
+}
+
+type ExistingBrowserOptions = { browser?: PdfGeneratorBrowser }
+
+const LOCAL_CHROMIUM_ARGS = [
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-dev-shm-usage',
+  '--disable-accelerated-2d-canvas',
+  '--no-first-run',
+  '--no-zygote',
+  '--disable-gpu',
+]
+
+let cachedChromiumExecutablePath: string | null = null
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+  })
 
   try {
-    const { puppeteer, chromium } = await loadPuppeteer()
+    return await Promise.race([promise, timeoutPromise])
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
+  }
+}
 
-    // Launch puppeteer with optimized settings for serverless environments
-    browser = await puppeteer.launch({
-      headless: true,
-      args: process.env.VERCEL
-        ? chromium.args
-        : [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process',
-          '--disable-gpu'
-        ],
-      executablePath: process.env.VERCEL
-        ? await chromium.executablePath()
-        : puppeteer.executablePath()
+export async function closePdfBrowser(browser: PdfGeneratorBrowser): Promise<void> {
+  try {
+    await withTimeout(browser.close(), 2000, 'browser.close')
+  } catch {
+    try {
+      browser.process?.()?.kill('SIGKILL')
+    } catch {
+      // Ignore cleanup errors
+    }
+  }
+}
+
+async function closePdfPage(page: PdfGeneratorPage): Promise<void> {
+  try {
+    await withTimeout(page.close(), 2000, 'page.close')
+  } catch {
+    // Ignore cleanup errors
+  }
+}
+
+export async function createPdfBrowser(): Promise<PdfGeneratorBrowser> {
+  const { puppeteer, chromium } = await loadPuppeteer()
+  const useSparticuzChromium = Boolean(process.env.VERCEL) && process.platform === 'linux'
+
+  const executablePath = useSparticuzChromium
+    ? (cachedChromiumExecutablePath ??= await chromium.executablePath())
+    : puppeteer.executablePath()
+
+  return puppeteer.launch({
+    headless: true,
+    args: useSparticuzChromium ? chromium.args : LOCAL_CHROMIUM_ARGS,
+    executablePath,
+  })
+}
+
+async function renderPdfFromHtml(
+  browser: PdfGeneratorBrowser,
+  html: string,
+  pdfOptions: any
+): Promise<Buffer> {
+  const page = (await browser.newPage()) as PdfGeneratorPage
+
+  try {
+    await page.setViewport({ width: 1200, height: 1600 })
+    await page.setContent(html, {
+      waitUntil: 'networkidle0',
+      timeout: 30000,
     })
 
-    const page = await browser.newPage()
+    await page.addStyleTag({
+      content: `
+        @media print {
+          body { -webkit-print-color-adjust: exact; }
+        }
+      `,
+    })
+
+    const pdf = await page.pdf(pdfOptions)
+    return Buffer.from(pdf)
+  } finally {
+    await closePdfPage(page)
+  }
+}
+
+// Generate PDF from invoice
+export async function generateInvoicePDF(
+  invoice: InvoiceWithDetails,
+  options: ExistingBrowserOptions = {}
+): Promise<Buffer> {
+  let browser: PdfGeneratorBrowser | null = options.browser ?? null
+  const shouldCloseBrowser = !browser
+
+  try {
+    if (!browser) {
+      browser = await createPdfBrowser()
+    }
 
     // Generate HTML with absolute URL for logo
     const html = generateCompactInvoiceHTML({
@@ -47,24 +143,8 @@ export async function generateInvoicePDF(invoice: InvoiceWithDetails): Promise<B
         : undefined
     })
 
-    // Set content with proper viewport
-    await page.setViewport({ width: 1200, height: 1600 })
-    await page.setContent(html, {
-      waitUntil: 'networkidle0',
-      timeout: 30000 // 30 second timeout
-    })
-
-    // Add custom styles for PDF rendering
-    await page.addStyleTag({
-      content: `
-        @media print {
-          body { -webkit-print-color-adjust: exact; }
-        }
-      `
-    })
-
     // Generate PDF with A4 format
-    const pdf = await page.pdf({
+    return await renderPdfFromHtml(browser, html, {
       format: 'A4',
       printBackground: true,
       preferCSSPageSize: false,
@@ -76,46 +156,28 @@ export async function generateInvoicePDF(invoice: InvoiceWithDetails): Promise<B
       },
       displayHeaderFooter: false
     })
-
-    return Buffer.from(pdf)
   } catch (error) {
     console.error('Error generating invoice PDF:', error)
     throw new Error('Failed to generate PDF')
   } finally {
-    if (browser) {
-      await browser.close()
+    if (browser && shouldCloseBrowser) {
+      await closePdfBrowser(browser)
     }
   }
 }
 
 // Generate PDF from quote
-export async function generateQuotePDF(quote: QuoteWithDetails): Promise<Buffer> {
-  let browser = null
+export async function generateQuotePDF(
+  quote: QuoteWithDetails,
+  options: ExistingBrowserOptions = {}
+): Promise<Buffer> {
+  let browser: PdfGeneratorBrowser | null = options.browser ?? null
+  const shouldCloseBrowser = !browser
 
   try {
-    const { puppeteer, chromium } = await loadPuppeteer()
-
-    // Launch puppeteer with optimized settings
-    browser = await puppeteer.launch({
-      headless: true,
-      args: process.env.VERCEL
-        ? chromium.args
-        : [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process',
-          '--disable-gpu'
-        ],
-      executablePath: process.env.VERCEL
-        ? await chromium.executablePath()
-        : puppeteer.executablePath()
-    })
-
-    const page = await browser.newPage()
+    if (!browser) {
+      browser = await createPdfBrowser()
+    }
 
     // Generate HTML with absolute URL for logo
     const html = generateCompactQuoteHTML({
@@ -125,24 +187,8 @@ export async function generateQuotePDF(quote: QuoteWithDetails): Promise<Buffer>
         : undefined
     })
 
-    // Set content with proper viewport
-    await page.setViewport({ width: 1200, height: 1600 })
-    await page.setContent(html, {
-      waitUntil: 'networkidle0',
-      timeout: 30000
-    })
-
-    // Add custom styles for PDF rendering
-    await page.addStyleTag({
-      content: `
-        @media print {
-          body { -webkit-print-color-adjust: exact; }
-        }
-      `
-    })
-
     // Generate PDF
-    const pdf = await page.pdf({
+    return await renderPdfFromHtml(browser, html, {
       format: 'A4',
       printBackground: true,
       preferCSSPageSize: false,
@@ -154,14 +200,12 @@ export async function generateQuotePDF(quote: QuoteWithDetails): Promise<Buffer>
       },
       displayHeaderFooter: false
     })
-
-    return Buffer.from(pdf)
   } catch (error) {
     console.error('Error generating quote PDF:', error)
     throw new Error('Failed to generate PDF')
   } finally {
-    if (browser) {
-      await browser.close()
+    if (browser && shouldCloseBrowser) {
+      await closePdfBrowser(browser)
     }
   }
 }
@@ -169,41 +213,18 @@ export async function generateQuotePDF(quote: QuoteWithDetails): Promise<Buffer>
 // Helper function to generate PDF with custom HTML
 export async function generatePDFFromHTML(
   html: string,
-  pdfOptions?: any
+  pdfOptions?: any,
+  options: ExistingBrowserOptions = {}
 ): Promise<Buffer> {
-  let browser = null
+  let browser: PdfGeneratorBrowser | null = options.browser ?? null
+  const shouldCloseBrowser = !browser
 
   try {
-    const { puppeteer, chromium } = await loadPuppeteer()
+    if (!browser) {
+      browser = await createPdfBrowser()
+    }
 
-    browser = await puppeteer.launch({
-      headless: true,
-      args: process.env.VERCEL
-        ? chromium.args
-        : [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process',
-          '--disable-gpu'
-        ],
-      executablePath: process.env.VERCEL
-        ? await chromium.executablePath()
-        : puppeteer.executablePath()
-    })
-
-    const page = await browser.newPage()
-
-    await page.setViewport({ width: 1200, height: 1600 })
-    await page.setContent(html, {
-      waitUntil: 'networkidle0',
-      timeout: 30000
-    })
-
-    const pdf = await page.pdf({
+    return await renderPdfFromHtml(browser, html, {
       format: 'A4',
       printBackground: true,
       preferCSSPageSize: false,
@@ -215,14 +236,12 @@ export async function generatePDFFromHTML(
       },
       ...pdfOptions
     })
-
-    return Buffer.from(pdf)
   } catch (error) {
     console.error('Error generating PDF from HTML:', error)
     throw new Error('Failed to generate PDF')
   } finally {
-    if (browser) {
-      await browser.close()
+    if (browser && shouldCloseBrowser) {
+      await closePdfBrowser(browser)
     }
   }
 }

@@ -89,6 +89,18 @@
     {
       "path": "/api/cron/hiring-stage-reminders",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/oj-projects-billing-reminders",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/oj-projects-retainer-projects",
+      "schedule": "0 0 1 * *"
+    },
+    {
+      "path": "/api/cron/oj-projects-billing",
+      "schedule": "5 1 * * *"
     }
   ]
 }

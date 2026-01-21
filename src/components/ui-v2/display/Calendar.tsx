@@ -51,6 +51,7 @@ export interface CalendarEvent {
   start: Date
   end: Date
   allDay?: boolean
+  showOnStartDayOnly?: boolean
   color?: string
   textColor?: string
   description?: string
@@ -247,16 +248,22 @@ export function Calendar({
   // Get events for a specific date
   const getEventsForDate = (date: Date) => {
     return events.filter(event => {
-      const eventStart = startOfDay(event.start)
-      const eventEnd = startOfDay(event.end)
-      const currentDay = startOfDay(date)
-      
+      const currentDayStart = startOfDay(date)
+
       if (event.allDay) {
-        return currentDay >= eventStart && currentDay <= eventEnd
+        const eventStartDay = startOfDay(event.start)
+        const eventEndDay = startOfDay(event.end)
+        return currentDayStart >= eventStartDay && currentDayStart <= eventEndDay
       }
-      
-      return isSameDay(event.start, date) || 
-             (currentDay >= eventStart && currentDay <= eventEnd)
+
+      if (event.showOnStartDayOnly) {
+        return isSameDay(event.start, date)
+      }
+
+      // Treat timed events as a half-open interval [start, end) for day inclusion.
+      // This prevents events ending exactly at midnight from being shown on the next day.
+      const currentDayEnd = addDays(currentDayStart, 1)
+      return event.start < currentDayEnd && event.end > currentDayStart
     })
   }
   

@@ -26,12 +26,18 @@ export type SmsTriggerType =
   | 'urgent'
   | 'manual'
   | 'booking_created'
+  | 'booking_confirmed'
   | 'booking_cancelled'
   | 'booking_expired'
   | 'date_changed'
+  | 'event_reminder_14d'
+  | 'event_reminder_1d'
+  | 'balance_reminder'
+  | 'setup_reminder'
   | 'deposit_reminder_7day'
   | 'deposit_reminder_1day'
   | 'balance_reminder_14day'
+  | 'booking_completed'
 
 export type SmsStatus = 'pending' | 'approved' | 'sent' | 'cancelled' | 'failed'
 

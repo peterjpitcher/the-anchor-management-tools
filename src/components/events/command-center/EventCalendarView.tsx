@@ -195,6 +195,7 @@ export default function EventCalendarView({
         title,
         start,
         end,
+        showOnStartDayOnly: true,
         color,
         textColor: getReadableTextColor(color),
       }

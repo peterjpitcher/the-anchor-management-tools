@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatDateInLondon } from '@/lib/dateUtils'
+import { formatDateDdMmmmYyyy, formatDateInLondon } from '@/lib/dateUtils'
 
 describe('formatDateInLondon', () => {
   it('returns the London calendar date even when another timezone would shift the day', () => {
@@ -30,5 +30,11 @@ describe('formatDateInLondon', () => {
 
     expect(formatted).toBe('15 February')
     expect(source.toISOString()).toBe('2024-02-15T00:00:00.000Z')
+  })
+})
+
+describe('formatDateDdMmmmYyyy', () => {
+  it('formats dates as dd mmmm yyyy', () => {
+    expect(formatDateDdMmmmYyyy('2024-01-05')).toBe('05 January 2024')
   })
 })

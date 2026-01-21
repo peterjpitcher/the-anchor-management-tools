@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 // Ensure Node.js runtime for Puppeteer usage
 export const runtime = 'nodejs'
+export const maxDuration = 60
 import { createClient } from '@/lib/supabase/server'
 import { generateQuotePDF } from '@/lib/pdf-generator'
 import { checkUserPermission } from '@/app/actions/rbac'

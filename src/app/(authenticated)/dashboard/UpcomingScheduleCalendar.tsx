@@ -193,6 +193,7 @@ export default function UpcomingScheduleCalendar({
         start,
         end,
         allDay,
+        showOnStartDayOnly: true,
         color,
         textColor: getReadableTextColor(color),
       })

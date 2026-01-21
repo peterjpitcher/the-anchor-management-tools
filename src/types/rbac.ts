@@ -42,6 +42,7 @@ export type ModuleName =
   | 'roles'
   | 'private_bookings'
   | 'invoices'
+  | 'oj_projects'
   | 'receipts'
   | 'loyalty'
   | 'quotes'

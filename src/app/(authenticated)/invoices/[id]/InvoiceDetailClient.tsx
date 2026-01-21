@@ -92,6 +92,11 @@ export default function InvoiceDetailClient({
       return
     }
 
+    if (newStatus === 'void') {
+      const confirmed = window.confirm('Void this invoice?')
+      if (!confirmed) return
+    }
+
     setActionLoading(true)
     setError(null)
 
@@ -100,7 +105,20 @@ export default function InvoiceDetailClient({
       formData.append('invoiceId', invoice.id)
       formData.append('status', newStatus)
 
-      const result = await updateInvoiceStatus(formData)
+      let result: any = await updateInvoiceStatus(formData)
+
+      if (newStatus === 'void' && result?.error && result?.code === 'OJ_LINKED_ITEMS') {
+        const force = window.confirm(`${result.error}\n\nForce void anyway? This will not unbill linked OJ Projects items.`)
+        if (!force) {
+          throw new Error(result.error)
+        }
+
+        const forceFormData = new FormData()
+        forceFormData.append('invoiceId', invoice.id)
+        forceFormData.append('status', newStatus)
+        forceFormData.append('force', 'true')
+        result = await updateInvoiceStatus(forceFormData)
+      }
 
       if (result.error) {
         throw new Error(result.error)

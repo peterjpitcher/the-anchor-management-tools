@@ -39,7 +39,9 @@ const nextConfig = {
   webpack: (config) => {
     // Disable webpack filesystem cache to silence noisy serialization warnings during build
     config.cache = false
-    config.externals.push('@napi-rs/canvas')
+    if (Array.isArray(config.externals)) {
+      config.externals.push('@napi-rs/canvas')
+    }
 
     return config
   },

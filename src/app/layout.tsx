@@ -30,10 +30,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className="font-sans antialiased">
-        <ServiceWorkerRegistration />
-        <NetworkStatus />
+    <html lang="en" suppressHydrationWarning>
+      <body className="font-sans antialiased" suppressHydrationWarning>
+        {/* <ServiceWorkerRegistration /> */}
+        {/* <NetworkStatus /> */}
         <Toaster position="top-right" />
         <SupabaseProvider>{children}</SupabaseProvider>
       </body>
