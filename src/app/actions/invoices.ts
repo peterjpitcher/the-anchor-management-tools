@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
 import { z } from 'zod'
@@ -128,9 +129,41 @@ export async function updateInvoiceStatus(formData: FormData) {
 
     const invoiceId = formData.get('invoiceId') as string
     const newStatus = formData.get('status') as InvoiceStatus
+    const force = String(formData.get('force') || '') === 'true'
 
     if (!invoiceId || !newStatus) {
       return { error: 'Invoice ID and status are required' }
+    }
+
+    // Prevent voiding invoices that have linked OJ Projects items, unless explicitly overridden.
+    if (newStatus === 'void' && !force) {
+      const adminClient = createAdminClient()
+
+      const { count: entryCount, error: entryError } = await adminClient
+        .from('oj_entries')
+        .select('id', { count: 'exact', head: true })
+        .eq('invoice_id', invoiceId)
+
+      if (entryError) {
+        return { error: entryError.message || 'Failed to check linked OJ Projects entries' }
+      }
+
+      const { count: recurringCount, error: recurringError } = await adminClient
+        .from('oj_recurring_charge_instances')
+        .select('id', { count: 'exact', head: true })
+        .eq('invoice_id', invoiceId)
+
+      if (recurringError) {
+        return { error: recurringError.message || 'Failed to check linked OJ Projects recurring charges' }
+      }
+
+      const linkedCount = (entryCount ?? 0) + (recurringCount ?? 0)
+      if (linkedCount > 0) {
+        return {
+          error: 'This invoice has linked OJ Projects items. Voiding it will not automatically revert or unbill those entries/charges.',
+          code: 'OJ_LINKED_ITEMS',
+        }
+      }
     }
 
     const { updatedInvoice, oldStatus } = await InvoiceService.updateInvoiceStatus(invoiceId, newStatus)

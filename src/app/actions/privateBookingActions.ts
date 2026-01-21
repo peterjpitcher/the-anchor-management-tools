@@ -215,6 +215,15 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
     return { error: 'You do not have permission to update private bookings' }
   }
 
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'Not authenticated' }
+  }
+
   const isDateTbd = formData.get('date_tbd') === 'true'
 
   const setupTimeRaw = getStringAllowEmpty(formData, 'setup_time')
@@ -267,7 +276,7 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
     const booking = await PrivateBookingService.updateBooking(id, {
       ...bookingData,
       date_tbd: isDateTbd
-    } as UpdatePrivateBookingInput);
+    } as UpdatePrivateBookingInput, user.id);
 
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${id}`)
@@ -288,7 +297,16 @@ export async function updateBookingStatus(id: string, status: BookingStatus) {
   }
 
   try {
-    await PrivateBookingService.updateBookingStatus(id, status);
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { error: 'Not authenticated' }
+    }
+
+    await PrivateBookingService.updateBookingStatus(id, status, user.id);
 
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${id}`)

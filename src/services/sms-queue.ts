@@ -7,7 +7,7 @@ export type QueueSmsInput = {
   trigger_type: string;
   template_key: string;
   message_body: string;
-  customer_phone: string;
+  customer_phone?: string | null;
   customer_name: string;
   customer_id?: string;
   created_by?: string;
@@ -16,6 +16,51 @@ export type QueueSmsInput = {
 };
 
 export class SmsQueueService {
+  private static async resolvePrivateBookingRecipientPhone(
+    supabase: ReturnType<typeof createAdminClient>,
+    data: QueueSmsInput
+  ): Promise<{ phone: string | null; customerId?: string }> {
+    const directPhone = data.customer_phone?.trim();
+    if (directPhone) {
+      return { phone: directPhone, customerId: data.customer_id };
+    }
+
+    let customerId = data.customer_id;
+
+    const { data: booking, error: bookingError } = await supabase
+      .from('private_bookings')
+      .select('contact_phone, customer_id')
+      .eq('id', data.booking_id)
+      .maybeSingle();
+
+    if (bookingError) {
+      console.error('[SmsQueueService] Failed to resolve booking phone:', bookingError);
+    }
+
+    const bookingPhone = booking?.contact_phone?.trim();
+    if (bookingPhone) {
+      return { phone: bookingPhone, customerId: customerId ?? booking?.customer_id ?? undefined };
+    }
+
+    customerId = customerId ?? booking?.customer_id ?? undefined;
+    if (!customerId) {
+      return { phone: null, customerId };
+    }
+
+    const { data: customer, error: customerError } = await supabase
+      .from('customers')
+      .select('mobile_number')
+      .eq('id', customerId)
+      .maybeSingle();
+
+    if (customerError) {
+      console.error('[SmsQueueService] Failed to resolve customer phone:', customerError);
+    }
+
+    const customerPhone = customer?.mobile_number?.trim();
+    return { phone: customerPhone || null, customerId };
+  }
+
   // Function to automatically send private booking SMS
   static async sendPrivateBookingSms(
     bookingId: string,
@@ -31,12 +76,15 @@ export class SmsQueueService {
       'final_payment_received',
       'payment_received',
       'booking_confirmed',
+      'booking_completed',
       'date_changed',
       'booking_cancelled',
       'booking_expired',
       'deposit_reminder_7day',
       'deposit_reminder_1day',
       'balance_reminder_14day',
+      'event_reminder_1d',
+      'setup_reminder',
       'manual'
     ];
     
@@ -89,6 +137,17 @@ export class SmsQueueService {
   // Function to queue and auto-send private booking SMS
   static async queueAndSend(data: QueueSmsInput) {
     const supabase = createAdminClient();
+
+    const { phone: resolvedPhone, customerId: resolvedCustomerId } =
+      await SmsQueueService.resolvePrivateBookingRecipientPhone(supabase, data);
+
+    if (!resolvedPhone) {
+      console.error('[SmsQueueService] No phone number available for SMS', {
+        bookingId: data.booking_id,
+        triggerType: data.trigger_type
+      });
+      return { error: 'No phone number available for SMS' };
+    }
     
     // Insert into queue for record keeping
     const { data: smsRecord, error: insertError } = await supabase
@@ -99,9 +158,9 @@ export class SmsQueueService {
         template_key: data.template_key,
         scheduled_for: new Date().toISOString(),
         message_body: data.message_body,
-        customer_phone: data.customer_phone,
+        customer_phone: resolvedPhone,
         customer_name: data.customer_name,
-        recipient_phone: data.customer_phone,
+        recipient_phone: resolvedPhone,
         status: 'pending',
         created_by: data.created_by,
         priority: data.priority || 2,
@@ -119,9 +178,9 @@ export class SmsQueueService {
     const autoSendResult = await SmsQueueService.sendPrivateBookingSms(
       data.booking_id,
       data.trigger_type,
-      data.customer_phone,
+      resolvedPhone,
       data.message_body,
-      data.customer_id
+      resolvedCustomerId
     );
     
     if (autoSendResult.sent && autoSendResult.sid) {

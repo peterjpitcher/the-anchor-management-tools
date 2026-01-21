@@ -264,7 +264,7 @@ export class PrivateBookingService {
     // 3. Side Effects (Fire and Forget / Non-blocking mostly) 
 
     // SMS
-    if (booking && normalizedContactPhone) {
+    if (booking) {
       // Ensure booking object passed to sendCreationSms has the calculated hold_expiry
       const bookingWithHoldExpiry = { ...booking, hold_expiry: holdExpiryIso };
       this.sendCreationSms(bookingWithHoldExpiry, normalizedContactPhone).catch(console.error);
@@ -292,7 +292,7 @@ export class PrivateBookingService {
     return booking;
   }
 
-  static async updateBooking(id: string, input: UpdatePrivateBookingInput) {
+  static async updateBooking(id: string, input: UpdatePrivateBookingInput, performedByUserId?: string) {
     const supabase = await createClient();
     const DATE_TBD_NOTE = 'Event date/time to be confirmed';
     const DEFAULT_TBD_TIME = '12:00';
@@ -300,7 +300,9 @@ export class PrivateBookingService {
     // 1. Get Current Booking
     const { data: currentBooking, error: fetchError } = await supabase
       .from('private_bookings')
-      .select('status, contact_phone, customer_first_name, event_date, start_time, end_time, end_time_next_day, customer_id, internal_notes, balance_due_date, calendar_event_id, hold_expiry')
+      .select(
+        'status, contact_phone, customer_first_name, customer_last_name, customer_name, event_date, start_time, setup_date, setup_time, end_time, end_time_next_day, customer_id, internal_notes, balance_due_date, calendar_event_id, hold_expiry, deposit_paid_date'
+      )
       .eq('id', id)
       .single();
 
@@ -458,7 +460,7 @@ export class PrivateBookingService {
     // 4. Side Effects
 
     // Send Date Change SMS if hold was reset
-    if (holdExpiryIso && updatedBooking.contact_phone && updatedBooking.status === 'draft') {
+    if (holdExpiryIso && updatedBooking.status === 'draft') {
       const eventDateReadable = new Date(updatedBooking.event_date).toLocaleDateString('en-GB', {
         day: 'numeric', month: 'long', year: 'numeric'
       });
@@ -478,7 +480,7 @@ export class PrivateBookingService {
         customer_phone: updatedBooking.contact_phone,
         customer_name: updatedBooking.customer_name,
         customer_id: updatedBooking.customer_id,
-        created_by: undefined, // System triggered
+        created_by: performedByUserId,
         priority: 2,
         metadata: {
           template: 'private_booking_date_changed',
@@ -486,6 +488,147 @@ export class PrivateBookingService {
           new_expiry: expiryReadable
         }
       }).catch(console.error);
+    }
+
+    const statusChanged = updatedBooking.status && updatedBooking.status !== currentBooking.status;
+
+    // Setup reminder (confirmed bookings)
+    const setupDateChanged = input.setup_date !== undefined && input.setup_date !== currentBooking.setup_date;
+    const setupTimeChanged = input.setup_time !== undefined && input.setup_time !== currentBooking.setup_time;
+    const shouldSendSetupReminder =
+      updatedBooking.status === 'confirmed' &&
+      Boolean(updatedBooking.setup_time) &&
+      (setupDateChanged || setupTimeChanged);
+
+    if (shouldSendSetupReminder) {
+      const eventDateReadable = new Date(updatedBooking.event_date).toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      });
+
+      const setupTimeReadable = updatedBooking.setup_time
+        ? new Date(`1970-01-01T${updatedBooking.setup_time}`).toLocaleTimeString('en-GB', {
+            hour: 'numeric',
+            minute: '2-digit'
+          })
+        : '';
+
+      const firstName =
+        updatedBooking.customer_first_name || updatedBooking.customer_name?.split(' ')[0] || 'there';
+
+      const messageBody = `Hi ${firstName}, confirming setup for your event on ${eventDateReadable}. Your vendors/team can access the venue from ${setupTimeReadable}.`;
+
+      await SmsQueueService.queueAndSend({
+        booking_id: updatedBooking.id,
+        trigger_type: 'setup_reminder',
+        template_key: 'private_booking_setup_reminder',
+        message_body: messageBody,
+        customer_phone: updatedBooking.contact_phone,
+        customer_name:
+          updatedBooking.customer_name ||
+          `${updatedBooking.customer_first_name ?? ''} ${updatedBooking.customer_last_name ?? ''}`.trim(),
+        customer_id: updatedBooking.customer_id,
+        created_by: performedByUserId,
+        priority: 2,
+        metadata: {
+          template: 'private_booking_setup_reminder',
+          event_date: eventDateReadable,
+          setup_time: updatedBooking.setup_time ?? null,
+          setup_date: updatedBooking.setup_date ?? null
+        }
+      }).catch(console.error);
+    }
+
+    // Status change messages (e.g. status modal)
+    if (statusChanged) {
+      const eventDateReadable = new Date(updatedBooking.event_date).toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      });
+
+      const firstName =
+        updatedBooking.customer_first_name || updatedBooking.customer_name?.split(' ')[0] || 'there';
+
+      if (updatedBooking.status === 'confirmed' && !updatedBooking.deposit_paid_date) {
+        const eventType = updatedBooking.event_type || 'event';
+        const messageBody = `Hi ${firstName}, your private event booking at The Anchor on ${eventDateReadable} has been confirmed! We look forward to hosting your ${eventType}.`;
+
+        await SmsQueueService.queueAndSend({
+          booking_id: updatedBooking.id,
+          trigger_type: 'booking_confirmed',
+          template_key: 'private_booking_confirmed',
+          message_body: messageBody,
+          customer_phone: updatedBooking.contact_phone,
+          customer_name:
+            updatedBooking.customer_name ||
+            `${updatedBooking.customer_first_name ?? ''} ${updatedBooking.customer_last_name ?? ''}`.trim(),
+          customer_id: updatedBooking.customer_id,
+          created_by: performedByUserId,
+          priority: 1,
+          metadata: {
+            template: 'private_booking_confirmed',
+            event_date: eventDateReadable,
+            event_type: updatedBooking.event_type ?? null
+          }
+        }).catch(console.error);
+      }
+
+      if (updatedBooking.status === 'cancelled') {
+        const messageBody = `Hi ${firstName}, your private booking on ${eventDateReadable} has been cancelled.`;
+
+        await SmsQueueService.queueAndSend({
+          booking_id: updatedBooking.id,
+          trigger_type: 'booking_cancelled',
+          template_key: 'private_booking_cancelled',
+          message_body: messageBody,
+          customer_phone: updatedBooking.contact_phone,
+          customer_name:
+            updatedBooking.customer_name ||
+            `${updatedBooking.customer_first_name ?? ''} ${updatedBooking.customer_last_name ?? ''}`.trim(),
+          customer_id: updatedBooking.customer_id,
+          created_by: performedByUserId,
+          priority: 2,
+          metadata: {
+            template: 'private_booking_cancelled',
+            event_date: eventDateReadable,
+            reason: 'status_change'
+          }
+        }).catch(console.error);
+      }
+
+      if (updatedBooking.status === 'completed') {
+        const admin = createAdminClient();
+        const { count } = await admin
+          .from('private_booking_sms_queue')
+          .select('*', { count: 'exact', head: true })
+          .eq('booking_id', updatedBooking.id)
+          .eq('trigger_type', 'booking_completed')
+          .in('status', ['pending', 'approved', 'sent']);
+
+        if ((count ?? 0) === 0) {
+          const messageBody = `Hi ${firstName}, thank you for choosing The Anchor for your event! We hope you and your guests had a wonderful time. We'd love to welcome you back again soon.`;
+
+          await SmsQueueService.queueAndSend({
+            booking_id: updatedBooking.id,
+            trigger_type: 'booking_completed',
+            template_key: 'private_booking_thank_you',
+            message_body: messageBody,
+            customer_phone: updatedBooking.contact_phone,
+            customer_name:
+              updatedBooking.customer_name ||
+              `${updatedBooking.customer_first_name ?? ''} ${updatedBooking.customer_last_name ?? ''}`.trim(),
+            customer_id: updatedBooking.customer_id,
+            created_by: performedByUserId,
+            priority: 4,
+            metadata: {
+              template: 'private_booking_thank_you',
+              event_date: eventDateReadable
+            }
+          }).catch(console.error);
+        }
+      }
     }
 
     // Calendar Sync
@@ -524,8 +667,8 @@ export class PrivateBookingService {
     return updatedBooking;
   }
 
-  static async updateBookingStatus(id: string, status: BookingStatus) {
-    return this.updateBooking(id, { status });
+  static async updateBookingStatus(id: string, status: BookingStatus, performedByUserId?: string) {
+    return this.updateBooking(id, { status }, performedByUserId);
   }
 
   static async applyBookingDiscount(
@@ -618,13 +761,13 @@ export class PrivateBookingService {
     }
 
     // 4. SMS Notification
-    if (booking.contact_phone) {
+    if (booking.contact_phone || booking.customer_id) {
       const eventDate = new Date(booking.event_date).toLocaleDateString('en-GB', {
         day: 'numeric', month: 'long', year: 'numeric'
       });
 
       const firstName = booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there';
-      const smsMessage = `Hi ${firstName}, your tentative private booking date on ${eventDate} has been cancelled. Reply to this message if you need any help or call 01753 682 707 if you believe this was a mistake.`;
+      const smsMessage = `Hi ${firstName}, your private booking on ${eventDate} has been cancelled. Reply to this message if you need any help or call 01753 682 707 if you believe this was a mistake.`;
 
       await SmsQueueService.queueAndSend({
         booking_id: id,
@@ -690,12 +833,12 @@ export class PrivateBookingService {
     }
 
     // 4. SMS Notification
-    if (booking.contact_phone) {
+    if (booking.contact_phone || booking.customer_id) {
       const eventDate = new Date(booking.event_date).toLocaleDateString('en-GB', {
         day: 'numeric', month: 'long', year: 'numeric'
       });
 
-      const smsMessage = `Hi ${booking.customer_first_name}, the 14-day hold on ${eventDate} has now expired and the date has been released. Please contact us if you'd like to re-book.`;
+      const smsMessage = `Hi ${booking.customer_first_name}, the hold on ${eventDate} has now expired and the date has been released. Please contact us if you'd like to re-book.`;
 
       await SmsQueueService.queueAndSend({
         booking_id: id,
@@ -785,7 +928,7 @@ export class PrivateBookingService {
     if (error) throw new Error('Failed to record deposit');
 
     // SMS
-    if (booking.contact_phone) {
+    if (booking.contact_phone || booking.customer_id) {
       const eventDate = new Date(booking.event_date).toLocaleDateString('en-GB', {
         day: 'numeric', month: 'long', year: 'numeric'
       });
@@ -859,7 +1002,7 @@ export class PrivateBookingService {
     if (error) throw new Error('Failed to record final payment');
 
     // SMS
-    if (booking.contact_phone) {
+    if (booking.contact_phone || booking.customer_id) {
       const eventDate = new Date(booking.event_date).toLocaleDateString('en-GB', {
         day: 'numeric', month: 'long', year: 'numeric'
       });
@@ -1442,7 +1585,7 @@ export class PrivateBookingService {
     return data;
   }
 
-  private static async sendCreationSms(booking: any, phone: string) {
+  private static async sendCreationSms(booking: any, phone?: string | null) {
     const eventDateReadable = new Date(booking.event_date).toLocaleDateString('en-GB', {
       day: 'numeric',
       month: 'long',
@@ -1483,7 +1626,7 @@ export class PrivateBookingService {
       trigger_type: 'booking_created',
       template_key: 'private_booking_created',
       message_body: smsMessage,
-      customer_phone: phone,
+      customer_phone: phone ?? undefined,
       customer_name: booking.customer_name,
       customer_id: booking.customer_id,
       created_by: booking.created_by,

@@ -19,6 +19,11 @@
 # misc
 .DS_Store
 *.pem
+*.bak
+
+# local debug/scratch
+src/app/test-crash/
+src/components/SpinnerTemp.tsx
 
 # debug
 npm-debug.log*

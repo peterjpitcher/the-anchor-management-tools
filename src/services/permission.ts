@@ -97,6 +97,7 @@ export class PermissionService {
       console.error('Error checking permission:', error);
       return false;
     }
+
     
     return data === true;
   }

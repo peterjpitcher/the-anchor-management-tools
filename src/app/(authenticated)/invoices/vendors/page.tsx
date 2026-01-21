@@ -64,7 +64,10 @@ interface VendorContact {
   id: string
   name: string
   email: string | null
+  phone?: string | null
+  role?: string | null
   is_primary: boolean
+  receive_invoice_copy?: boolean | null
 }
 
 interface VendorFormData {
@@ -102,7 +105,14 @@ export default function VendorsPage() {
   const [contactsModalVendor, setContactsModalVendor] = useState<InvoiceVendor | null>(null)
   const [contacts, setContacts] = useState<VendorContact[]>([])
   const [contactsLoading, setContactsLoading] = useState(false)
-  const [contactForm, setContactForm] = useState<{ id?: string, name: string, email: string, is_primary: boolean }>({ name: '', email: '', is_primary: false })
+  const [contactForm, setContactForm] = useState<{ id?: string, name: string, email: string, phone: string, role: string, is_primary: boolean, receive_invoice_copy: boolean }>({
+    name: '',
+    email: '',
+    phone: '',
+    role: '',
+    is_primary: false,
+    receive_invoice_copy: false,
+  })
   const [contactSaving, setContactSaving] = useState(false)
 
   useEffect(() => {
@@ -157,7 +167,7 @@ export default function VendorsPage() {
   function closeContacts() {
     setContactsModalVendor(null)
     setContacts([])
-    setContactForm({ name: '', email: '', is_primary: false })
+    setContactForm({ name: '', email: '', phone: '', role: '', is_primary: false, receive_invoice_copy: false })
     setError(null)
   }
 
@@ -175,7 +185,10 @@ export default function VendorsPage() {
       fd.append('vendorId', contactsModalVendor.id)
       fd.append('name', contactForm.name)
       fd.append('email', contactForm.email)
+      fd.append('phone', contactForm.phone)
+      fd.append('role', contactForm.role)
       fd.append('isPrimary', String(contactForm.is_primary))
+      fd.append('receiveInvoiceCopy', String(contactForm.receive_invoice_copy))
       if (contactForm.id) fd.append('id', contactForm.id)
 
       const res = contactForm.id ? await updateVendorContact(fd) : await createVendorContact(fd)
@@ -183,7 +196,7 @@ export default function VendorsPage() {
       // refresh list
       const list = await getVendorContacts(contactsModalVendor.id)
       if (!list.error) setContacts(list.contacts || [])
-      setContactForm({ name: '', email: '', is_primary: false })
+      setContactForm({ name: '', email: '', phone: '', role: '', is_primary: false, receive_invoice_copy: false })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save contact')
     } finally {
@@ -608,14 +621,40 @@ export default function VendorsPage() {
               {contacts.map(c => (
                 <div key={c.id} className="p-4 flex items-center justify-between gap-4">
                   <div className="min-w-0">
-                    <div className="font-medium truncate">{c.name || '(No name)'} {c.is_primary && <span className="ml-2 text-xs text-green-700 bg-green-100 px-2 py-0.5 rounded">Primary</span>}</div>
+                    <div className="font-medium truncate">
+                      {c.name || '(No name)'}
+                      {c.is_primary && (
+                        <span className="ml-2 text-xs text-green-700 bg-green-100 px-2 py-0.5 rounded">
+                          Primary
+                        </span>
+                      )}
+                      {c.receive_invoice_copy && (
+                        <span className="ml-2 text-xs text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
+                          Invoice CC
+                        </span>
+                      )}
+                    </div>
                     <div className="text-sm text-gray-700 break-all">{c.email}</div>
+                    {(c.phone || c.role) && (
+                      <div className="text-xs text-gray-600 mt-1">
+                        {c.role ? <span className="mr-3">Role: {c.role}</span> : null}
+                        {c.phone ? <span>Phone: {c.phone}</span> : null}
+                      </div>
+                    )}
                   </div>
                   <div className="flex gap-2 shrink-0">
                     <Button
                       size="sm"
                       variant="secondary"
-                      onClick={() => setContactForm({ id: c.id, name: c.name || '', email: c.email || '', is_primary: c.is_primary })}
+                      onClick={() => setContactForm({
+                        id: c.id,
+                        name: c.name || '',
+                        email: c.email || '',
+                        phone: c.phone || '',
+                        role: c.role || '',
+                        is_primary: c.is_primary,
+                        receive_invoice_copy: !!c.receive_invoice_copy,
+                      })}
                       disabled={!canEdit}
                       title={!canEdit ? 'You need invoice edit permission to modify contacts.' : undefined}
                     >
@@ -659,6 +698,20 @@ export default function VendorsPage() {
                     disabled={!canEdit}
                   />
                 </FormGroup>
+                <FormGroup label="Phone">
+                  <Input
+                    value={contactForm.phone}
+                    onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
+                    disabled={!canEdit}
+                  />
+                </FormGroup>
+                <FormGroup label="Role">
+                  <Input
+                    value={contactForm.role}
+                    onChange={(e) => setContactForm({ ...contactForm, role: e.target.value })}
+                    disabled={!canEdit}
+                  />
+                </FormGroup>
                 <label className="inline-flex items-center gap-2 md:col-span-2 text-sm">
                   <input
                     type="checkbox"
@@ -667,6 +720,15 @@ export default function VendorsPage() {
                     disabled={!canEdit}
                   />
                   Set as primary contact
+                </label>
+                <label className="inline-flex items-center gap-2 md:col-span-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={contactForm.receive_invoice_copy}
+                    onChange={(e) => setContactForm({ ...contactForm, receive_invoice_copy: e.target.checked })}
+                    disabled={!canEdit}
+                  />
+                  Receive invoice copy (CC)
                 </label>
               </div>
               <div className="flex justify-end">

@@ -11,6 +11,15 @@ export function generateInvoiceHTML(data: InvoiceTemplateData): string {
   const { invoice, logoUrl } = data
   
   // Helper functions
+  const escapeHtml = (value: string) => {
+    return String(value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;')
+  }
+
   const formatDate = (date: string | null) => {
     return formatDateFull(date)
   }
@@ -459,7 +468,7 @@ export function generateInvoiceHTML(data: InvoiceTemplateData): string {
   ${invoice.notes ? `
     <div class="notes-section">
       <h3>Notes</h3>
-      <p>${invoice.notes}</p>
+      <p>${escapeHtml(invoice.notes)}</p>
     </div>
   ` : ''}
 

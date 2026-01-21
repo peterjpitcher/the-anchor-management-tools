@@ -114,8 +114,20 @@ export default async function SmsQueuePage() {
   const formatTriggerType = (type: string) => {
     const types: Record<string, string> = {
       status_change: 'Status Change',
+      booking_created: 'Booking Created',
+      booking_confirmed: 'Booking Confirmed',
+      booking_cancelled: 'Booking Cancelled',
+      booking_expired: 'Booking Expired',
+      date_changed: 'Date Changed',
       deposit_received: 'Deposit Received',
       payment_received: 'Payment Received',
+      final_payment_received: 'Final Payment Received',
+      deposit_reminder_7day: 'Deposit Reminder (7d)',
+      deposit_reminder_1day: 'Deposit Reminder (1d)',
+      balance_reminder_14day: 'Balance Reminder (14d)',
+      event_reminder_1d: 'Event Reminder (1d)',
+      setup_reminder: 'Setup Reminder',
+      booking_completed: 'Thank You',
       reminder: 'Reminder',
       payment_due: 'Payment Due',
       urgent: 'Urgent',
@@ -355,8 +367,8 @@ export default async function SmsQueuePage() {
         <div>
           <h3 className="text-base font-medium mb-2">SMS Approval Process</h3>
           <ul className="text-sm space-y-1 list-disc list-inside">
-            <li>All SMS messages for private bookings require approval before sending</li>
-            <li>Messages are automatically queued when booking status changes or payments are received</li>
+            <li>Some SMS messages are sent automatically (e.g. booking created, reminders, payments)</li>
+            <li>Other SMS messages are queued for approval before sending</li>
             <li>Approved messages must be manually sent using the &quot;Send Now&quot; button</li>
             <li>Rejected messages are moved to the cancelled status and won&apos;t be sent</li>
             <li>When booking dates change, pending messages are automatically cancelled and new ones created</li>

@@ -60,6 +60,15 @@ export function formatDateFull(date: string | Date | null): string {
   })
 }
 
+export function formatDateDdMmmmYyyy(date: string | Date | null | undefined): string {
+  if (!date) return ''
+  return formatDateInLondon(date, {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric'
+  })
+}
+
 export function formatTime12Hour(time: string | null): string {
   if (!time) return 'TBC'
   

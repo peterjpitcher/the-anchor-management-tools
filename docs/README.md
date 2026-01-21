@@ -10,6 +10,7 @@ Use this index to find the canonical documentation for The Anchor Management Too
 
 ## Plans & Proposals
 - [Hiring workflow requirements](./plans/hiring-workflow.md) – jobs, candidates, and hiring workflow requirements with discovery notes.
+- [OJ Projects PRD](./plans/oj-projects.md) – client projects, time/mileage tracking, and automated monthly invoicing.
 
 ## Development Workflow
 - [Contributing](./CONTRIBUTING.md) – project structure, coding standards, branch strategy, and PR expectations.

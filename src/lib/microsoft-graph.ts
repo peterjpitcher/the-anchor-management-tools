@@ -54,7 +54,8 @@ export async function sendInvoiceEmail(
   recipientEmail: string,
   subject?: string,
   body?: string,
-  ccRecipients?: string[]
+  ccRecipients?: string[],
+  additionalAttachments?: Array<{ name: string; contentType: string; buffer: Buffer }>
 ): Promise<{ success: boolean; error?: string; messageId?: string }> {
   try {
     if (!isGraphConfigured()) {
@@ -93,6 +94,25 @@ Orange Jelly Limited
 
 P.S. The invoice is attached as a PDF for easy viewing and printing.`
 
+    const attachments: any[] = [
+      {
+        '@odata.type': '#microsoft.graph.fileAttachment',
+        name: `invoice-${invoice.invoice_number}.pdf`,
+        contentType: 'application/pdf',
+        contentBytes: bufferToBase64(pdfBuffer)
+      }
+    ]
+
+    for (const extra of additionalAttachments || []) {
+      if (!extra?.name || !extra?.buffer) continue
+      attachments.push({
+        '@odata.type': '#microsoft.graph.fileAttachment',
+        name: extra.name,
+        contentType: extra.contentType || 'application/octet-stream',
+        contentBytes: bufferToBase64(extra.buffer)
+      })
+    }
+
     // Create email message
     const message: any = {
       subject: emailSubject,
@@ -107,14 +127,7 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`
           }
         }
       ],
-      attachments: [
-        {
-          '@odata.type': '#microsoft.graph.fileAttachment',
-          name: `invoice-${invoice.invoice_number}.pdf`,
-          contentType: 'application/pdf',
-          contentBytes: bufferToBase64(pdfBuffer)
-        }
-      ]
+      attachments
     }
 
     if (ccRecipients && ccRecipients.length) {

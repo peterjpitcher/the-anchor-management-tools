@@ -15,6 +15,15 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
     (invoice.line_items?.some(item => item.discount_percentage > 0) ?? false)
 
   // Helper functions
+  const escapeHtml = (value: string) => {
+    return String(value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;')
+  }
+
   const formatDate = (date: string | null) => {
     return formatDateFull(date)
   }
@@ -489,7 +498,7 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
   ${invoice.notes ? `
     <div class="notes-section keep-together">
       <h3>Notes</h3>
-      <p>${invoice.notes}</p>
+      <p>${escapeHtml(invoice.notes)}</p>
     </div>
   ` : ''}
 

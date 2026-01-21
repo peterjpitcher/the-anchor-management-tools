@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import JSZip from 'jszip'
 
 export const runtime = 'nodejs'
+export const maxDuration = 300
 
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { generateInvoiceHTML } from '@/lib/invoice-template'
-import { generateInvoicePDF } from '@/lib/pdf-generator'
+import { closePdfBrowser, createPdfBrowser, generateInvoicePDF } from '@/lib/pdf-generator'
 import { logAuditEvent } from '@/app/actions/audit'
 import type { InvoiceWithDetails } from '@/types/invoices'
 
@@ -107,20 +108,26 @@ export async function GET(request: NextRequest) {
 
     zip.file('invoice-summary.csv', csvContent)
 
-    // Generate PDFs for each invoice
-    for (const invoice of invoices) {
-      const typedInvoice = invoice as InvoiceWithDetails
+    const browser = await createPdfBrowser()
 
-      // Generate HTML copy for reference
-      const html = generateInvoiceHTML({
-        invoice: typedInvoice,
-        logoUrl: '/logo-oj.jpg'
-      })
+    try {
+      // Generate PDFs for each invoice
+      for (const invoice of invoices) {
+        const typedInvoice = invoice as InvoiceWithDetails
 
-      const pdfBuffer = await generateInvoicePDF(typedInvoice)
+        // Generate HTML copy for reference
+        const html = generateInvoiceHTML({
+          invoice: typedInvoice,
+          logoUrl: '/logo-oj.jpg'
+        })
 
-      zip.file(`invoices/${invoice.invoice_number}.html`, html)
-      zip.file(`invoices/${invoice.invoice_number}.pdf`, pdfBuffer)
+        const pdfBuffer = await generateInvoicePDF(typedInvoice, { browser })
+
+        zip.file(`invoices/${invoice.invoice_number}.html`, html)
+        zip.file(`invoices/${invoice.invoice_number}.pdf`, pdfBuffer)
+      }
+    } finally {
+      await closePdfBrowser(browser)
     }
 
     // Add a README file

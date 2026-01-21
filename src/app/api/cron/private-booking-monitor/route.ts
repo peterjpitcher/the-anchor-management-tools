@@ -147,7 +147,7 @@ export async function GET(request: Request) {
     console.log('Starting private booking monitor...')
 
     const now = new Date()
-    const stats = { remindersSent: 0, expirationsProcessed: 0, balanceRemindersSent: 0 }
+    const stats = { remindersSent: 0, expirationsProcessed: 0, balanceRemindersSent: 0, eventRemindersSent: 0 }
 
     // --- PASS 1: REMINDERS (Drafts - Catch-up Logic) ---
     // Find draft bookings where hold_expiry is approaching (<= 7 days)
@@ -192,9 +192,10 @@ export async function GET(request: Request) {
                 .from('private_booking_sms_queue')
                 .select('*', { count: 'exact', head: true })
                 .eq('booking_id', booking.id)
-                .eq('trigger_type', triggerType);
+                .eq('trigger_type', triggerType)
+                .in('status', ['pending', 'approved', 'sent']);
             
-            if (count === 0) {
+            if ((count ?? 0) === 0) {
                 const messageBody = `Hi ${booking.customer_first_name}, just a quick reminder that your hold on ${eventDateReadable} expires in ${diffDays} days. Please pay the deposit soon to secure the booking.`;
                 
                 const result = await SmsQueueService.queueAndSend({
@@ -224,9 +225,14 @@ export async function GET(request: Request) {
             .select('*', { count: 'exact', head: true })
             .eq('booking_id', booking.id)
             .eq('trigger_type', triggerType)
+            .in('status', ['pending', 'approved', 'sent'])
 
-          if (count === 0) {
-            const messageBody = `Hi ${booking.customer_first_name}, your hold on ${eventDateReadable} expires tomorrow! Please pay the deposit today to prevent the date being released.`
+          if ((count ?? 0) === 0) {
+            const expiryReadable = expiry.toLocaleDateString('en-GB', {
+              day: 'numeric',
+              month: 'long'
+            })
+            const messageBody = `Hi ${booking.customer_first_name}, your hold on ${eventDateReadable} expires soon (by ${expiryReadable}). Please pay the deposit to prevent the date being released.`
 
             const result = await SmsQueueService.queueAndSend({
               booking_id: booking.id,
@@ -272,12 +278,10 @@ export async function GET(request: Request) {
     // Actually, simplest is just strict ISO string comparison.
     
     const { data: confirmedBookings } = await supabase
-      .from('private_bookings')
-      .select(`
-         id, customer_first_name, customer_name, contact_phone, event_date, 
-         total_amount, deposit_amount, deposit_paid_date,
-         final_payment_date, customer_id
-      `)
+      .from('private_bookings_with_details')
+      .select(
+        'id, customer_first_name, customer_name, contact_phone, customer_mobile, event_date, total_amount, calculated_total, deposit_amount, balance_due_date, final_payment_date, customer_id'
+      )
       .eq('status', 'confirmed')
       .gt('event_date', now.toISOString()) // Future events only
       .lte('event_date', fourteenDaysFromNow.toISOString()) // <= 14 days away
@@ -286,15 +290,7 @@ export async function GET(request: Request) {
     if (confirmedBookings) {
       for (const booking of confirmedBookings) {
         // Resolve phone number (fallback to customer record)
-        let contactPhone = booking.contact_phone;
-        if (!contactPhone && booking.customer_id) {
-            const { data: customer } = await supabase
-                .from('customers')
-                .select('mobile_number')
-                .eq('id', booking.customer_id)
-                .single();
-            contactPhone = customer?.mobile_number;
-        }
+        const contactPhone = booking.contact_phone || booking.customer_mobile
 
         if (!contactPhone) continue;
 
@@ -304,19 +300,33 @@ export async function GET(request: Request) {
         if (!isPaid) {
            const triggerType = 'balance_reminder_14day';
            
+           const totalAmount = Number(booking.calculated_total ?? booking.total_amount ?? 0)
+           const depositAmount = Number(booking.deposit_amount ?? 0)
+           const balanceDue = Math.max(totalAmount - depositAmount, 0)
+           if (!Number.isFinite(balanceDue) || balanceDue <= 0) continue
+
            // Check duplicate
            const { count } = await supabase
              .from('private_booking_sms_queue')
              .select('*', { count: 'exact', head: true })
              .eq('booking_id', booking.id)
-             .eq('trigger_type', triggerType);
+             .eq('trigger_type', triggerType)
+             .in('status', ['pending', 'approved', 'sent']);
 
-           if (count === 0) {
+           if ((count ?? 0) === 0) {
              const eventDateReadable = new Date(booking.event_date).toLocaleDateString('en-GB', { 
                 day: 'numeric', month: 'long', year: 'numeric' 
              });
-             
-             const messageBody = `Hi ${booking.customer_first_name}, your event on ${eventDateReadable} is coming up soon! Just a reminder that the final balance is due. Can you please arrange payment?`;
+             const dueDateReadable = booking.balance_due_date
+               ? new Date(booking.balance_due_date).toLocaleDateString('en-GB', {
+                   day: 'numeric',
+                   month: 'long',
+                   year: 'numeric'
+                 })
+               : null
+
+             const duePart = dueDateReadable ? ` is due by ${dueDateReadable}` : ' is now due'
+             const messageBody = `Hi ${booking.customer_first_name}, your event at The Anchor is coming up on ${eventDateReadable}! Your remaining balance of £${balanceDue.toFixed(2)}${duePart}. Can you please arrange payment?`
 
              const result = await SmsQueueService.queueAndSend({
                booking_id: booking.id,
@@ -325,6 +335,7 @@ export async function GET(request: Request) {
                message_body: messageBody,
                customer_phone: contactPhone,
                customer_name: booking.customer_name,
+               customer_id: booking.customer_id ?? undefined,
                priority: 1
              });
 
@@ -334,6 +345,59 @@ export async function GET(request: Request) {
                stats.balanceRemindersSent++;
              }
            }
+        }
+      }
+    }
+
+    // --- PASS 4: EVENT REMINDER (Confirmed - 1 day before) ---
+    const tomorrow = new Date(now)
+    tomorrow.setDate(now.getDate() + 1)
+    const tomorrowLondon = getLondonRunKey(tomorrow)
+
+    const { data: tomorrowBookings } = await supabase
+      .from('private_bookings')
+      .select('id, customer_first_name, customer_name, contact_phone, start_time, guest_count, event_date, customer_id, internal_notes')
+      .eq('status', 'confirmed')
+      .eq('event_date', tomorrowLondon)
+
+    if (tomorrowBookings) {
+      for (const booking of tomorrowBookings) {
+        const isDateTbdBooking = Boolean(booking.internal_notes?.includes('Event date/time to be confirmed'))
+        if (isDateTbdBooking) continue
+
+        const triggerType = 'event_reminder_1d'
+
+        const { count } = await supabase
+          .from('private_booking_sms_queue')
+          .select('*', { count: 'exact', head: true })
+          .eq('booking_id', booking.id)
+          .eq('trigger_type', triggerType)
+          .in('status', ['pending', 'approved', 'sent'])
+
+        if ((count ?? 0) > 0) continue
+
+        const firstName = booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there'
+        const startTimeReadable = booking.start_time ? String(booking.start_time).slice(0, 5) : null
+        const timePart = startTimeReadable ? ` at ${startTimeReadable}` : ''
+        const guestPart = booking.guest_count ? ` for your ${booking.guest_count} guests` : ''
+
+        const messageBody = `Hi ${firstName}, just a reminder that your event at The Anchor is tomorrow${timePart}! We're all set${guestPart}. See you tomorrow!`
+
+        const result = await SmsQueueService.queueAndSend({
+          booking_id: booking.id,
+          trigger_type: triggerType,
+          template_key: `private_booking_${triggerType}`,
+          message_body: messageBody,
+          customer_phone: booking.contact_phone,
+          customer_name: booking.customer_name,
+          customer_id: booking.customer_id ?? undefined,
+          priority: 3
+        })
+
+        if (result.error) {
+          console.error(`Failed to queue event reminder for booking ${booking.id}:`, result.error)
+        } else {
+          stats.eventRemindersSent++
         }
       }
     }

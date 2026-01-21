@@ -9,7 +9,10 @@ const ContactSchema = z.object({
   vendorId: z.string().uuid('Invalid vendor ID'),
   name: z.string().optional(),
   email: z.string().email('Invalid email address'),
-  isPrimary: z.coerce.boolean().optional()
+  phone: z.string().optional(),
+  role: z.string().optional(),
+  isPrimary: z.coerce.boolean().optional(),
+  receiveInvoiceCopy: z.coerce.boolean().optional(),
 })
 
 export async function getVendorContacts(vendorId: string) {
@@ -33,7 +36,10 @@ export async function createVendorContact(formData: FormData) {
     vendorId: formData.get('vendorId'),
     name: formData.get('name') || undefined,
     email: formData.get('email'),
-    isPrimary: formData.get('isPrimary') === 'true'
+    phone: formData.get('phone') || undefined,
+    role: formData.get('role') || undefined,
+    isPrimary: formData.get('isPrimary') === 'true',
+    receiveInvoiceCopy: formData.get('receiveInvoiceCopy') === 'true',
   })
   if (!parsed.success) return { error: parsed.error.errors[0].message }
 
@@ -44,7 +50,10 @@ export async function createVendorContact(formData: FormData) {
       vendor_id: parsed.data.vendorId,
       name: parsed.data.name || null,
       email: parsed.data.email,
-      is_primary: parsed.data.isPrimary || false
+      phone: parsed.data.phone || null,
+      role: parsed.data.role || null,
+      is_primary: parsed.data.isPrimary || false,
+      receive_invoice_copy: parsed.data.receiveInvoiceCopy || false,
     })
 
   if (error) return { error: error.message }
@@ -63,7 +72,10 @@ export async function updateVendorContact(formData: FormData) {
     vendorId: formData.get('vendorId'),
     name: formData.get('name') || undefined,
     email: formData.get('email'),
-    isPrimary: formData.get('isPrimary') === 'true'
+    phone: formData.get('phone') || undefined,
+    role: formData.get('role') || undefined,
+    isPrimary: formData.get('isPrimary') === 'true',
+    receiveInvoiceCopy: formData.get('receiveInvoiceCopy') === 'true',
   })
   if (!parsed.success) return { error: parsed.error.errors[0].message }
 
@@ -73,7 +85,10 @@ export async function updateVendorContact(formData: FormData) {
     .update({
       name: parsed.data.name || null,
       email: parsed.data.email,
-      is_primary: parsed.data.isPrimary || false
+      phone: parsed.data.phone || null,
+      role: parsed.data.role || null,
+      is_primary: parsed.data.isPrimary || false,
+      receive_invoice_copy: parsed.data.receiveInvoiceCopy || false,
     })
     .eq('id', id)
 
@@ -99,4 +114,3 @@ export async function deleteVendorContact(formData: FormData) {
   revalidatePath('/invoices/vendors')
   return { success: true }
 }
-
