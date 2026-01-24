@@ -11,6 +11,7 @@ interface FetchOptions {
   search?: string
   page?: number
   pageSize?: number
+  includeCancelled?: boolean
 }
 
 export type PrivateBookingDashboardItem = PrivateBookingWithDetails & {

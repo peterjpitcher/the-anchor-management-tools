@@ -1133,11 +1133,13 @@ export class PrivateBookingService {
     search?: string;
     page?: number;
     pageSize?: number;
+    includeCancelled?: boolean;
   }) {
     const supabase = await createClient();
     const page = options.page && options.page > 0 ? options.page : 1;
     const pageSize = options.pageSize && options.pageSize > 0 ? options.pageSize : 20;
     const todayIso = toLocalIsoDate(new Date());
+    const includeCancelled = options.includeCancelled !== false;
 
     const start = (page - 1) * pageSize;
     const end = start + pageSize - 1;
@@ -1192,6 +1194,9 @@ export class PrivateBookingService {
 
     if (options.dateFilter === 'upcoming') {
       query = query.gte('event_date', todayIso);
+      if (!includeCancelled && (!options.status || options.status === 'all')) {
+        query = query.neq('status', 'cancelled');
+      }
     } else if (options.dateFilter === 'past') {
       query = query.lte('event_date', todayIso);
     }
@@ -1222,8 +1227,27 @@ export class PrivateBookingService {
 
     const totalCount = typeof count === 'number' ? count : (data?.length ?? 0);
 
+    const bookingIds = (data || []).map((booking) => booking.id).filter(Boolean);
+    const holdExpiryById = new Map<string, string | null>();
+
+    if (bookingIds.length > 0) {
+      const { data: holdExpiryRows, error: holdExpiryError } = await supabase
+        .from('private_bookings')
+        .select('id, hold_expiry')
+        .in('id', bookingIds);
+
+      if (holdExpiryError) {
+        console.error('Error fetching hold expiry dates for private bookings:', holdExpiryError);
+      } else if (holdExpiryRows) {
+        for (const row of holdExpiryRows) {
+          holdExpiryById.set(row.id, row.hold_expiry ?? null);
+        }
+      }
+    }
+
     const enriched = (data || []).map((booking) => ({
       ...booking,
+      hold_expiry: holdExpiryById.get(booking.id) ?? undefined,
       is_date_tbd: Boolean(booking.internal_notes?.includes(DATE_TBD_NOTE)),
     }));
 

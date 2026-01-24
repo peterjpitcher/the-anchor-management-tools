@@ -37,6 +37,7 @@ export default async function PrivateBookingsPage() {
   const initialResult = await fetchPrivateBookings({
     status: 'all',
     dateFilter: 'upcoming',
+    includeCancelled: true,
     page: 1
   })
 

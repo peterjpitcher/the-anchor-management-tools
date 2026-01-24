@@ -35,6 +35,7 @@ import {
   type PrivateBookingDashboardItem
 } from '@/app/actions/private-bookings-dashboard'
 import type { BookingStatus } from '@/types/private-bookings'
+import { formatDistanceToNowStrict } from 'date-fns'
 
 const DEFAULT_PAGE_SIZE = 20
 const CACHE_TTL_MS = 30_000
@@ -71,6 +72,7 @@ type FetchParams = {
   dateFilter: 'all' | 'upcoming' | 'past'
   search: string
   page: number
+  includeCancelled: boolean
 }
 
 const buildCacheKey = (params: FetchParams, pageSize: number) =>
@@ -79,6 +81,7 @@ const buildCacheKey = (params: FetchParams, pageSize: number) =>
     dateFilter: params.dateFilter,
     search: params.search,
     page: params.page,
+    includeCancelled: params.includeCancelled,
     pageSize
   })
 
@@ -91,6 +94,18 @@ const toNumber = (value: number | string | null | undefined) => {
     return Number.isFinite(parsed) ? parsed : 0
   }
   return 0
+}
+
+const getHoldExpiryCountdown = (holdExpiry: string | null | undefined) => {
+  if (!holdExpiry) return null
+
+  const expiry = new Date(holdExpiry)
+  if (Number.isNaN(expiry.getTime())) return null
+
+  const relative = formatDistanceToNowStrict(expiry, { addSuffix: true })
+  const prefix = expiry.getTime() <= Date.now() ? 'Hold expired' : 'Hold expires'
+
+  return `${prefix} ${relative}`
 }
 
 function useDebouncedValue<T>(value: T, delay: number) {
@@ -118,6 +133,7 @@ export default function PrivateBookingsClient({
   const [loadError, setLoadError] = useState<string | null>(initialError ?? null)
   const [statusFilter, setStatusFilter] = useState<BookingStatus | 'all'>('all')
   const [dateFilter, setDateFilter] = useState<'all' | 'upcoming' | 'past'>('upcoming')
+  const [includeCancelled, setIncludeCancelled] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [searchDraft, setSearchDraft] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
@@ -133,7 +149,8 @@ export default function PrivateBookingsClient({
       status: 'all',
       dateFilter: 'upcoming',
       search: '',
-      page: 1
+      page: 1,
+      includeCancelled: true
     }
 
     cacheRef.current.set(buildCacheKey(initialParams, effectivePageSize), {
@@ -166,6 +183,7 @@ export default function PrivateBookingsClient({
         const result = await fetchPrivateBookings({
           status: params.status,
           dateFilter: params.dateFilter,
+          includeCancelled: params.includeCancelled,
           search: params.search,
           page: params.page,
           pageSize: effectivePageSize
@@ -197,11 +215,12 @@ export default function PrivateBookingsClient({
         status: overrides.status ?? statusFilter,
         dateFilter: overrides.dateFilter ?? dateFilter,
         search: overrides.search ?? searchTerm,
-        page: overrides.page ?? currentPage
+        page: overrides.page ?? currentPage,
+        includeCancelled: overrides.includeCancelled ?? includeCancelled
       }
       runFetch(params)
     },
-    [statusFilter, dateFilter, searchTerm, currentPage, runFetch]
+    [statusFilter, dateFilter, searchTerm, currentPage, includeCancelled, runFetch]
   )
 
   const handleStatusChange = (value: BookingStatus | 'all') => {
@@ -228,9 +247,11 @@ export default function PrivateBookingsClient({
     setStatusFilter('all')
     setDateFilter('upcoming')
     setSearchDraft('')
+    setIncludeCancelled(true)
     fetchWithState({
       status: 'all',
       dateFilter: 'upcoming',
+      includeCancelled: true,
       search: '',
       page: 1
     })
@@ -299,6 +320,32 @@ export default function PrivateBookingsClient({
     fetchWithState({ search: trimmed, page: 1 })
   }, [debouncedSearch, searchTerm, fetchWithState])
 
+  const canToggleCancelled = dateFilter === 'upcoming' && statusFilter === 'all'
+
+  const handleToggleCancelledVisibility = () => {
+    const next = !includeCancelled
+    setIncludeCancelled(next)
+    fetchWithState({ includeCancelled: next, page: 1 })
+  }
+
+  const sectionActions = canToggleCancelled || loading
+    ? (
+        <div className="flex items-center gap-2">
+          {canToggleCancelled && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleToggleCancelledVisibility}
+              disabled={loading}
+            >
+              {includeCancelled ? 'Hide cancelled' : 'Show cancelled'}
+            </Button>
+          )}
+          {loading && <Spinner size="sm" />}
+        </div>
+      )
+    : null
+
   return (
     <PageLayout
       title="Private Bookings"
@@ -313,7 +360,8 @@ export default function PrivateBookingsClient({
                 status: statusFilter,
                 dateFilter,
                 search: searchTerm,
-                page: currentPage
+                page: currentPage,
+                includeCancelled
               })
           : undefined
       }
@@ -372,7 +420,7 @@ export default function PrivateBookingsClient({
 
         <Section
           title={`Bookings (${totalCount})`}
-          actions={loading && <Spinner size="sm" />}
+          actions={sectionActions}
         >
           <Card>
             <DataTable<PrivateBookingDashboardItem>
@@ -444,6 +492,11 @@ export default function PrivateBookingsClient({
                       <Badge variant={statusConfig[booking.status].variant} size="sm">
                         {statusConfig[booking.status].label}
                       </Badge>
+                      {booking.status === 'draft' && (
+                        <div className="mt-1 text-xs text-gray-500">
+                          {getHoldExpiryCountdown(booking.hold_expiry) ?? 'Hold expiry not set'}
+                        </div>
+                      )}
                       {booking.deposit_status && booking.deposit_status !== 'Not Required' && (
                         <div className="mt-1">
                           <span
@@ -511,31 +564,39 @@ export default function PrivateBookingsClient({
                   )
                 }
               ]}
-              renderMobileCard={(booking) => (
-                <div>
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="flex-1 min-w-0 mr-2">
-                      <div className="font-medium text-gray-900 truncate">{booking.customer_name}</div>
-                      {booking.is_date_tbd ? (
-                        <div className="text-sm text-amber-600">Date to be confirmed</div>
-                      ) : (
-                        <>
-                          <div className="text-sm text-gray-500">{formatDateFull(booking.event_date)}</div>
-                          <div className="text-sm text-gray-500">{formatTime12Hour(booking.start_time)}</div>
-                        </>
-                      )}
-                      {!booking.is_date_tbd && booking.days_until_event !== undefined && booking.days_until_event !== null && booking.days_until_event >= 0 && (
-                        <div className="text-xs text-gray-400 mt-1">
-                          {booking.days_until_event === 0 ? 'Today' : `${booking.days_until_event} days`}
-                        </div>
-                      )}
+                renderMobileCard={(booking) => (
+                  <div>
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex-1 min-w-0 mr-2">
+                        <div className="font-medium text-gray-900 truncate">{booking.customer_name}</div>
+                        {booking.is_date_tbd ? (
+                          <div className="text-sm text-amber-600">Date to be confirmed</div>
+                        ) : (
+                          <>
+                            <div className="text-sm text-gray-500">{formatDateFull(booking.event_date)}</div>
+                            <div className="text-sm text-gray-500">{formatTime12Hour(booking.start_time)}</div>
+                          </>
+                        )}
+                        {!booking.is_date_tbd &&
+                          booking.days_until_event !== undefined &&
+                          booking.days_until_event !== null &&
+                          booking.days_until_event >= 0 && (
+                            <div className="text-xs text-gray-400 mt-1">
+                              {booking.days_until_event === 0 ? 'Today' : `${booking.days_until_event} days`}
+                            </div>
+                          )}
+                        {booking.status === 'draft' && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            {getHoldExpiryCountdown(booking.hold_expiry) ?? 'Hold expiry not set'}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-shrink-0">
+                        <Badge variant={statusConfig[booking.status].variant} size="sm">
+                          {statusConfig[booking.status].label}
+                        </Badge>
+                      </div>
                     </div>
-                    <div className="flex-shrink-0">
-                      <Badge variant={statusConfig[booking.status].variant} size="sm">
-                        {statusConfig[booking.status].label}
-                      </Badge>
-                    </div>
-                  </div>
 
                   {booking.contact_phone && (
                     <div className="text-sm text-gray-500 mb-2 flex items-center gap-1">
