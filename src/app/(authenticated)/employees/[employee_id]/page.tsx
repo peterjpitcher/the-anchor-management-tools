@@ -7,6 +7,7 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Tabs } from '@/components/ui-v2/navigation/Tabs'
 import { Badge } from '@/components/ui-v2/display/Badge'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
 import DeleteEmployeeButton from '@/components/features/employees/DeleteEmployeeButton'
 import EmployeeNotesList from '@/components/features/employees/EmployeeNotesList'
 import AddEmployeeNoteForm from '@/components/features/employees/AddEmployeeNoteForm'
@@ -76,11 +77,25 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     { label: 'Email Address', value: employee.email_address, isEmail: true },
     { label: 'Job Title', value: employee.job_title },
     { label: 'Employment Status', value: employee.status, isBadge: true },
+    { label: 'First Shift Date', value: employee.first_shift_date ? formatDate(employee.first_shift_date) : 'N/A' },
     { label: 'Start Date', value: employee.employment_start_date ? formatDate(employee.employment_start_date) : 'N/A' },
     { label: 'End Date', value: employee.employment_end_date ? formatDate(employee.employment_end_date) : 'N/A' },
     { label: 'Date of Birth', value: employee.date_of_birth ? formatDate(employee.date_of_birth) : 'N/A' },
-    { label: 'Phone Number', value: employee.phone_number || 'N/A', isPhone: true },
-    { label: 'Address', value: employee.address || 'N/A', isFullWidth: true }
+    { label: 'Telephone', value: employee.phone_number || 'N/A', isPhone: true },
+    { label: 'Mobile', value: employee.mobile_number || 'N/A', isPhone: true },
+    { label: 'Post Code', value: employee.post_code || 'N/A' },
+    { label: 'Uniform Preference', value: employee.uniform_preference || 'N/A' },
+    { label: 'Keyholder', value: employee.keyholder_status ? 'Yes' : 'No' },
+    { label: 'Address', value: employee.address || 'N/A', isFullWidth: true },
+  ]
+
+  const setupMissingItems = [
+    ...(emergencyContacts.length === 0 ? ['Emergency contacts'] : []),
+    ...(!financialDetails ? ['Bank details'] : []),
+    ...(!healthRecord ? ['Health information'] : []),
+    ...(!rightToWork ? ['Right to Work'] : []),
+    ...(!employee.post_code ? ['Post code'] : []),
+    ...(!employee.mobile_number && !employee.phone_number ? ['Telephone/mobile number'] : []),
   ]
 
   const tabs = [
@@ -113,9 +128,13 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
                     {field.value}
                   </a>
                 ) : field.isPhone ? (
-                  <a href={`tel:${field.value}`} className="text-blue-600 hover:text-blue-700">
-                    {field.value}
-                  </a>
+                  field.value === 'N/A' ? (
+                    field.value
+                  ) : (
+                    <a href={`tel:${field.value}`} className="text-blue-600 hover:text-blue-700">
+                      {field.value}
+                    </a>
+                  )
                 ) : (
                   field.value
                 )}
@@ -230,6 +249,16 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
               </div>
             </Card>
           </section>
+
+          {setupMissingItems.length > 0 && (
+            <Alert variant="warning" title="Setup incomplete">
+              <ul className="list-disc pl-5 space-y-1">
+                {setupMissingItems.map((item) => (
+                  <li key={item}>{item} missing</li>
+                ))}
+              </ul>
+            </Alert>
+          )}
 
           <section id="details">
             <Card>

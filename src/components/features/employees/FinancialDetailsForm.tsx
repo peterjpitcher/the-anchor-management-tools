@@ -8,6 +8,7 @@ import type { EmployeeFinancialDetails } from '@/types/database';
 import { usePathname, useRouter } from 'next/navigation';
 import { toast } from '@/components/ui-v2/feedback/Toast';
 import { Input } from '@/components/ui-v2/forms/Input';
+import { Textarea } from '@/components/ui-v2/forms/Textarea';
 import { Button } from '@/components/ui-v2/forms/Button';
 
 interface FinancialDetailsFormProps {
@@ -56,8 +57,8 @@ export default function FinancialDetailsForm({ employeeId, financialDetails, onS
 
   const details = [
     { name: 'ni_number', label: 'NI Number', defaultValue: financialDetails?.ni_number },
-    { name: 'payee_name', label: 'Payee Name', defaultValue: financialDetails?.payee_name },
-    { name: 'bank_name', label: 'Bank Name', defaultValue: financialDetails?.bank_name },
+    { name: 'payee_name', label: 'Account Name(s)', defaultValue: financialDetails?.payee_name },
+    { name: 'bank_name', label: 'Bank / Building Society', defaultValue: financialDetails?.bank_name },
     { name: 'bank_sort_code', label: 'Sort Code', defaultValue: financialDetails?.bank_sort_code, placeholder: '00-00-00' },
     { name: 'bank_account_number', label: 'Account Number', defaultValue: financialDetails?.bank_account_number, placeholder: '8 digits' },
     { name: 'branch_address', label: 'Branch Address', defaultValue: financialDetails?.branch_address },
@@ -74,15 +75,25 @@ export default function FinancialDetailsForm({ employeeId, financialDetails, onS
               {field.label}
             </label>
             <div className="mt-1 sm:col-span-3 sm:mt-0">
-              <Input
-                type="text"
-                name={field.name}
-                id={field.name}
-                defaultValue={field.defaultValue || ''}
-                placeholder={field.placeholder}
-                error={!!state?.errors?.[field.name]}
-                fullWidth
-              />
+              {field.name === 'branch_address' ? (
+                <Textarea
+                  name={field.name}
+                  id={field.name}
+                  defaultValue={field.defaultValue || ''}
+                  rows={2}
+                  error={!!state?.errors?.[field.name]}
+                />
+              ) : (
+                <Input
+                  type="text"
+                  name={field.name}
+                  id={field.name}
+                  defaultValue={field.defaultValue || ''}
+                  placeholder={field.placeholder}
+                  error={!!state?.errors?.[field.name]}
+                  fullWidth
+                />
+              )}
               {state?.errors?.[field.name] && (
                 <p className="mt-2 text-sm text-red-600">{state.errors[field.name]}</p>
               )}

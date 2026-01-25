@@ -29,12 +29,56 @@ function cleanFormDataForEmployee(formData: FormData, includeFiles = false) {
   const formDataEntries = Object.fromEntries(formData.entries());
   const cleanedData = Object.entries(formDataEntries).reduce((acc, [key, value]) => {
     // Convert empty strings to null for optional fields
-    if (value === '' && ['date_of_birth', 'address', 'phone_number', 'employment_end_date', 'employment_end_date', 'ni_number', 'bank_account_number', 'bank_sort_code', 'bank_name', 'payee_name', 'branch_address', 'doctor_name', 'doctor_address', 'allergies', 'illness_history', 'recent_treatment', 'disability_reg_number', 'disability_reg_expiry_date', 'disability_details', 'relationship', 'document_details', 'document_expiry_date', 'follow_up_date', 'verified_by_user_id', 'note'].includes(key)) {
+    if (value === '' && [
+      'date_of_birth',
+      'address',
+      'post_code',
+      'phone_number',
+      'mobile_number',
+      'first_shift_date',
+      'uniform_preference',
+      'employment_end_date',
+      'employment_end_date',
+      'ni_number',
+      'bank_account_number',
+      'bank_sort_code',
+      'bank_name',
+      'payee_name',
+      'branch_address',
+      'doctor_name',
+      'doctor_address',
+      'allergies',
+      'absence_or_treatment_details',
+      'illness_history',
+      'recent_treatment',
+      'disability_reg_number',
+      'disability_reg_expiry_date',
+      'disability_details',
+      'relationship',
+      'document_reference',
+      'document_details',
+      'document_expiry_date',
+      'follow_up_date',
+      'verified_by_user_id',
+      'check_method',
+      'note'
+    ].includes(key)) {
       acc[key] = null;
     } else if (key === 'document_photo' && !includeFiles) {
         // Skip file if not explicitly asked
-    } else if (['has_diabetes', 'has_epilepsy', 'has_skin_condition', 'has_depressive_illness', 
-              'has_bowel_problems', 'has_ear_problems', 'is_registered_disabled'].includes(key)) {
+    } else if ([
+      'has_diabetes',
+      'has_epilepsy',
+      'has_skin_condition',
+      'has_depressive_illness',
+      'has_bowel_problems',
+      'has_ear_problems',
+      'is_registered_disabled',
+      'has_allergies',
+      'had_absence_over_2_weeks_last_3_years',
+      'had_outpatient_treatment_over_3_months_last_3_years',
+      'keyholder_status'
+    ].includes(key)) {
         acc[key] = value === 'on' || value === 'true'; // Convert checkbox to boolean
     } else {
       acc[key] = value;
@@ -55,7 +99,7 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
     const cleanedData = cleanFormDataForEmployee(formData);
 
     const financialFields = ['ni_number', 'payee_name', 'bank_name', 'bank_sort_code', 'bank_account_number', 'branch_address'];
-    const healthFields = ['doctor_name', 'doctor_address', 'allergies', 'illness_history', 'recent_treatment', 
+    const healthFields = ['doctor_name', 'doctor_address', 'allergies', 'has_allergies', 'had_absence_over_2_weeks_last_3_years', 'had_outpatient_treatment_over_3_months_last_3_years', 'absence_or_treatment_details', 'illness_history', 'recent_treatment', 
         'has_diabetes', 'has_epilepsy', 'has_skin_condition', 'has_depressive_illness', 'has_bowel_problems', 
         'has_ear_problems', 'is_registered_disabled', 'disability_reg_number', 'disability_reg_expiry_date', 
         'disability_details'];
@@ -540,15 +584,40 @@ export async function upsertHealthRecord(
   const data: any = Object.fromEntries(formData.entries());
 
   const booleanFields = [
-    'has_diabetes', 'has_epilepsy', 'has_skin_condition', 'has_depressive_illness',
-    'has_bowel_problems', 'has_ear_problems', 'is_registered_disabled'
+    'has_diabetes',
+    'has_epilepsy',
+    'has_skin_condition',
+    'has_depressive_illness',
+    'has_bowel_problems',
+    'has_ear_problems',
+    'is_registered_disabled',
+    'has_allergies',
+    'had_absence_over_2_weeks_last_3_years',
+    'had_outpatient_treatment_over_3_months_last_3_years'
   ];
   booleanFields.forEach(field => {
     data[field] = data[field] === 'on';
   });
+
+  // Keep dependent text fields consistent with checkbox state
+  if (!data.has_allergies) {
+    data.allergies = null;
+  }
+
+  if (!data.had_absence_over_2_weeks_last_3_years && !data.had_outpatient_treatment_over_3_months_last_3_years) {
+    data.absence_or_treatment_details = null;
+  }
   
-  const optionalTextFields = ['doctor_name', 'doctor_address', 'allergies', 'illness_history', 
-                              'recent_treatment', 'disability_reg_number', 'disability_details'];
+  const optionalTextFields = [
+    'doctor_name',
+    'doctor_address',
+    'allergies',
+    'absence_or_treatment_details',
+    'illness_history',
+    'recent_treatment',
+    'disability_reg_number',
+    'disability_details'
+  ];
   optionalTextFields.forEach(field => {
     if (data[field] === '') {
       data[field] = null;
