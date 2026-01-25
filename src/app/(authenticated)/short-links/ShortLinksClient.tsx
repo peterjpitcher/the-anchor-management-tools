@@ -23,6 +23,7 @@ import {
 import { ShortLinkAnalyticsModal } from './components/ShortLinkAnalyticsModal'
 import { ShortLinkFormModal } from './components/ShortLinkFormModal'
 import { buildShortLinkUrl } from '@/lib/short-links/base-url'
+import { useShortLinkClickToasts } from '@/hooks/useShortLinkClickToasts'
 
 interface ShortLink {
   id: string
@@ -46,6 +47,23 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
   const [showFormModal, setShowFormModal] = useState(false)
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false)
   const [selectedLink, setSelectedLink] = useState<ShortLink | null>(null)
+
+  useShortLinkClickToasts({
+    seedLinks: initialLinks,
+    onClickRegistered: (updated) => {
+      setLinks((prev) =>
+        prev.map((link) =>
+          link.id === updated.id
+            ? {
+                ...link,
+                click_count: updated.click_count ?? link.click_count,
+                last_clicked_at: updated.last_clicked_at,
+              }
+            : link
+        )
+      )
+    },
+  })
 
   const refreshLinks = useCallback(async () => {
     const result = await getShortLinks()
