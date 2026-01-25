@@ -71,7 +71,8 @@ export default function EmergencyContactsTab({
                       <p className="text-sm text-gray-500">{contact.relationship}</p>
                     </div>
                   </div>
-                  {contact.phone_number && <p className="text-sm text-gray-500">Phone: {contact.phone_number}</p>}
+                  {contact.phone_number && <p className="text-sm text-gray-500">Telephone: {contact.phone_number}</p>}
+                  {contact.mobile_number && <p className="text-sm text-gray-500">Mobile: {contact.mobile_number}</p>}
                   {contact.address && <p className="text-sm text-gray-500">{contact.address}</p>}
                 </div>
               </div>

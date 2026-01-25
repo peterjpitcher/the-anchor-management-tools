@@ -96,7 +96,12 @@ export const employeeSchema = z.object({
   status: z.enum(['Active', 'Former', 'Prospective']),
   date_of_birth: z.union([z.string().min(1), z.null()]).optional(),
   address: z.union([z.string().min(1), z.null()]).optional(),
+  post_code: z.union([z.string().min(1), z.null()]).optional(),
   phone_number: z.union([z.string().min(1), z.null()]).optional(),
+  mobile_number: z.union([z.string().min(1), z.null()]).optional(),
+  first_shift_date: z.union([z.string().min(1), z.null()]).optional(),
+  uniform_preference: z.union([z.string().min(1), z.null()]).optional(),
+  keyholder_status: z.union([z.boolean(), z.null()]).optional(),
   employment_end_date: z.union([z.string().min(1), z.null()]).optional(),
 });
 
@@ -139,6 +144,7 @@ export const EmergencyContactSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   relationship: z.union([z.string().min(1), z.null()]).optional(),
   phone_number: z.union([z.string().regex(/^(\+?44|0)?[0-9]{10,11}$/, 'Invalid UK phone number format'), z.null()]).optional(),
+  mobile_number: z.union([z.string().regex(/^(\+?44|0)?[0-9]{10,11}$/, 'Invalid UK phone number format'), z.null()]).optional(),
   priority: z.enum(['Primary', 'Secondary', 'Other']).optional(),
   address: z.union([z.string().min(1), z.null()]).optional(),
 });
@@ -173,6 +179,10 @@ export const HealthRecordSchema = z.object({
   doctor_name: z.union([z.string().min(1), z.null()]).optional(),
   doctor_address: z.union([z.string().min(1), z.null()]).optional(),
   allergies: z.union([z.string().min(1), z.null()]).optional(),
+  has_allergies: z.boolean().optional(),
+  had_absence_over_2_weeks_last_3_years: z.boolean(),
+  had_outpatient_treatment_over_3_months_last_3_years: z.boolean(),
+  absence_or_treatment_details: z.union([z.string().min(1), z.null()]).optional(),
   illness_history: z.union([z.string().min(1), z.null()]).optional(),
   recent_treatment: z.union([z.string().min(1), z.null()]).optional(),
   has_diabetes: z.boolean(),
@@ -194,6 +204,8 @@ const RIGHT_TO_WORK_DOCUMENT_TYPES = [
 export const RightToWorkSchema = z.object({
   employee_id: z.string().uuid(),
   document_type: z.enum(RIGHT_TO_WORK_DOCUMENT_TYPES),
+  check_method: z.union([z.enum(['manual', 'online', 'digital']), z.null()]).optional(),
+  document_reference: z.union([z.string().min(1), z.null()]).optional(),
   document_details: z.union([z.string().min(1), z.null()]).optional(),
   verification_date: z.string().min(1, 'Verification date is required'),
   document_expiry_date: z.union([z.string().min(1), z.null()]).optional(),
@@ -217,9 +229,9 @@ export const ONBOARDING_FIELD_CONFIG: Record<OnboardingChecklistField, { label: 
   wheniwork_invite_sent: { label: 'WhenIWork Invite Sent', dateField: 'wheniwork_invite_date' },
   private_whatsapp_added: { label: 'Added to Private WhatsApp', dateField: 'private_whatsapp_date' },
   team_whatsapp_added: { label: 'Added to Team WhatsApp', dateField: 'team_whatsapp_date' },
-  till_system_setup: { label: 'Till System Setup', dateField: 'till_system_setup_date' },
-  training_flow_setup: { label: 'Training in Flow Setup', dateField: 'training_flow_setup_date' },
-  employment_agreement_drafted: { label: 'Employment Agreement Drafted', dateField: 'employment_agreement_drafted_date' },
+  till_system_setup: { label: 'Till System Setup', dateField: 'till_system_date' },
+  training_flow_setup: { label: 'Training in Flow Setup', dateField: 'training_flow_date' },
+  employment_agreement_drafted: { label: 'Employment Agreement Drafted', dateField: 'employment_agreement_date' },
   employee_agreement_accepted: { label: 'Employee Agreement Accepted', dateField: 'employee_agreement_accepted_date' }
 };
 
@@ -233,7 +245,12 @@ export type CreateEmployeeInput = {
   status: 'Active' | 'Former' | 'Prospective';
   date_of_birth?: string | null;
   address?: string | null;
+  post_code?: string | null;
   phone_number?: string | null;
+  mobile_number?: string | null;
+  first_shift_date?: string | null;
+  uniform_preference?: string | null;
+  keyholder_status?: boolean | null;
   employment_end_date?: string | null;
   
   // Financial Details
@@ -251,6 +268,10 @@ export type CreateEmployeeInput = {
     doctor_name?: string | null;
     doctor_address?: string | null;
     allergies?: string | null;
+    has_allergies?: boolean;
+    had_absence_over_2_weeks_last_3_years?: boolean;
+    had_outpatient_treatment_over_3_months_last_3_years?: boolean;
+    absence_or_treatment_details?: string | null;
     illness_history?: string | null;
     recent_treatment?: string | null;
     has_diabetes?: boolean;
@@ -280,7 +301,12 @@ export class EmployeeService {
       status: input.status,
       date_of_birth: input.date_of_birth ?? null,
       address: input.address ?? null,
+      post_code: input.post_code ?? null,
       phone_number: input.phone_number ?? null,
+      mobile_number: input.mobile_number ?? null,
+      first_shift_date: input.first_shift_date ?? null,
+      uniform_preference: input.uniform_preference ?? null,
+      keyholder_status: input.keyholder_status ?? false,
       employment_end_date: input.employment_end_date ?? null,
     };
 
@@ -297,6 +323,10 @@ export class EmployeeService {
       doctor_name: input.health.doctor_name ?? null,
       doctor_address: input.health.doctor_address ?? null,
       allergies: input.health.allergies ?? null,
+      has_allergies: input.health.has_allergies ?? false,
+      had_absence_over_2_weeks_last_3_years: input.health.had_absence_over_2_weeks_last_3_years ?? false,
+      had_outpatient_treatment_over_3_months_last_3_years: input.health.had_outpatient_treatment_over_3_months_last_3_years ?? false,
+      absence_or_treatment_details: input.health.absence_or_treatment_details ?? null,
       illness_history: input.health.illness_history ?? null,
       recent_treatment: input.health.recent_treatment ?? null,
       has_diabetes: input.health.has_diabetes ?? false,
@@ -918,7 +948,10 @@ export class EmployeeService {
             `first_name.ilike.${searchPattern}`,
             `last_name.ilike.${searchPattern}`,
             `email_address.ilike.${searchPattern}`,
-            `job_title.ilike.${searchPattern}`
+            `job_title.ilike.${searchPattern}`,
+            `mobile_number.ilike.${searchPattern}`,
+            `phone_number.ilike.${searchPattern}`,
+            `post_code.ilike.${searchPattern}`
           ].join(',')
         );
       }
@@ -1004,8 +1037,9 @@ export class EmployeeService {
   static generateCSV(employees: Employee[], includeFields?: string[]): string {
     const defaultFields = [
       'employee_id', 'first_name', 'last_name', 'email_address', 'job_title',
-      'phone_number', 'employment_start_date', 'employment_end_date', 'status',
-      'date_of_birth', 'address'
+      'phone_number', 'mobile_number', 'post_code',
+      'employment_start_date', 'first_shift_date', 'employment_end_date', 'status',
+      'date_of_birth', 'address', 'uniform_preference', 'keyholder_status'
     ];
 
     const fields = includeFields && includeFields.length > 0 ? includeFields : defaultFields;

@@ -16,8 +16,8 @@ const DetailItem = ({ label, value }: { label: string; value: string | undefined
 export default function FinancialDetailsTab({ financialDetails }: FinancialDetailsTabProps) {
   const details = [
     { label: 'NI Number', value: financialDetails?.ni_number },
-    { label: 'Payee Name', value: financialDetails?.payee_name },
-    { label: 'Bank Name', value: financialDetails?.bank_name },
+    { label: 'Account Name(s)', value: financialDetails?.payee_name },
+    { label: 'Bank / Building Society', value: financialDetails?.bank_name },
     { label: 'Sort Code', value: financialDetails?.bank_sort_code },
     { label: 'Account Number', value: financialDetails?.bank_account_number },
     { label: 'Branch Address', value: financialDetails?.branch_address },

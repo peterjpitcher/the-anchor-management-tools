@@ -31,6 +31,9 @@ function SubmitButton() {
 
 export default function HealthRecordsForm({ employeeId, healthRecord }: HealthRecordsFormProps) {
   const [state, formAction] = useActionState(upsertHealthRecord, null);
+  const [hasAllergies, setHasAllergies] = useState(Boolean(healthRecord?.has_allergies ?? healthRecord?.allergies));
+  const [hadAbsence, setHadAbsence] = useState(Boolean(healthRecord?.had_absence_over_2_weeks_last_3_years));
+  const [hadOutpatient, setHadOutpatient] = useState(Boolean(healthRecord?.had_outpatient_treatment_over_3_months_last_3_years));
   const [isRegisteredDisabled, setIsRegisteredDisabled] = useState(healthRecord?.is_registered_disabled || false);
   const pathname = usePathname();
   const router = useRouter();
@@ -79,7 +82,7 @@ export default function HealthRecordsForm({ employeeId, healthRecord }: HealthRe
               <Checkbox
                 id={field.name}
                 name={field.name}
-                checked={field.defaultChecked}
+                defaultChecked={field.defaultChecked}
                 onChange={field.onChange}
               />
             </div>
@@ -100,10 +103,32 @@ export default function HealthRecordsForm({ employeeId, healthRecord }: HealthRe
   const generalFields: FieldConfig[] = [
       { name: 'doctor_name', label: 'Doctor Name', defaultValue: healthRecord?.doctor_name },
       { name: 'doctor_address', label: 'Doctor Address', defaultValue: healthRecord?.doctor_address },
-      { name: 'allergies', label: 'Allergies', type: 'textarea' as const, defaultValue: healthRecord?.allergies },
-      { name: 'illness_history', label: 'History of Illness', type: 'textarea' as const, defaultValue: healthRecord?.illness_history },
-      { name: 'recent_treatment', label: 'Recent Treatment (last 3 months)', type: 'textarea' as const, defaultValue: healthRecord?.recent_treatment },
+      { name: 'illness_history', label: 'Additional Medical Notes', type: 'textarea' as const, defaultValue: healthRecord?.illness_history },
   ];
+
+  const questionnaireFields: FieldConfig[] = [
+      { 
+        name: 'has_allergies', 
+        label: 'Do you have any allergies?', 
+        type: 'checkbox' as const, 
+        defaultChecked: hasAllergies, 
+        onChange: (e: any) => setHasAllergies(e.target.checked) 
+      },
+      { 
+        name: 'had_absence_over_2_weeks_last_3_years', 
+        label: 'In the past 3 years, been off work for 2+ weeks due to illness/accident?', 
+        type: 'checkbox' as const, 
+        defaultChecked: hadAbsence, 
+        onChange: (e: any) => setHadAbsence(e.target.checked) 
+      },
+      { 
+        name: 'had_outpatient_treatment_over_3_months_last_3_years', 
+        label: 'In the past 3 years, attended outpatient treatment for 3+ months?', 
+        type: 'checkbox' as const, 
+        defaultChecked: hadOutpatient, 
+        onChange: (e: any) => setHadOutpatient(e.target.checked) 
+      },
+  ]
   
   const conditionFields: FieldConfig[] = [
       { name: 'has_diabetes', label: 'Suffer with Diabetes?', type: 'checkbox' as const, defaultChecked: healthRecord?.has_diabetes },
@@ -127,6 +152,28 @@ export default function HealthRecordsForm({ employeeId, healthRecord }: HealthRe
       <div className="space-y-4">
         <div className="space-y-4">
             {generalFields.map(renderField)}
+        </div>
+
+        <div className="space-y-4 pt-6">
+          <p className="text-base font-medium text-gray-900 sm:col-span-4">Health Questionnaire</p>
+          {questionnaireFields.map(renderField)}
+
+          {hasAllergies && (
+            <div className="pl-8 mt-2">
+              {renderField({ name: 'allergies', label: 'If yes, please specify', type: 'textarea', defaultValue: healthRecord?.allergies })}
+            </div>
+          )}
+
+          {(hadAbsence || hadOutpatient) && (
+            <div className="pl-8 mt-2">
+              {renderField({ 
+                name: 'absence_or_treatment_details', 
+                label: 'If yes to either, please provide details', 
+                type: 'textarea', 
+                defaultValue: healthRecord?.absence_or_treatment_details 
+              })}
+            </div>
+          )}
         </div>
 
         <div className="space-y-4 pt-6">

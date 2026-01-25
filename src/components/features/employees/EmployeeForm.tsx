@@ -12,6 +12,7 @@ import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { Input } from '@/components/ui-v2/forms/Input';
 import { Textarea } from '@/components/ui-v2/forms/Textarea';
 import { Select } from '@/components/ui-v2/forms/Select';
+import { Checkbox } from '@/components/ui-v2/forms/Checkbox';
 import { Button } from '@/components/ui-v2/forms/Button';
 
 interface EmployeeFormProps {
@@ -27,9 +28,10 @@ interface EmployeeFormProps {
 type FormField = {
   name: string;
   label: string;
-  type: string;
+  type: 'text' | 'email' | 'tel' | 'date' | 'textarea' | 'select' | 'checkbox';
   required?: boolean;
   defaultValue?: string | null;
+  defaultChecked?: boolean;
   options?: string[];
 }
 
@@ -89,7 +91,8 @@ export default function EmployeeForm({
         { name: 'first_name', label: 'First Name', type: 'text', required: true, defaultValue: employee?.first_name },
         { name: 'last_name', label: 'Last Name', type: 'text', required: true, defaultValue: employee?.last_name },
         { name: 'email_address', label: 'Email Address', type: 'email', required: true, defaultValue: employee?.email_address },
-        { name: 'phone_number', label: 'Phone Number', type: 'tel', defaultValue: employee?.phone_number },
+        { name: 'phone_number', label: 'Telephone', type: 'tel', defaultValue: employee?.phone_number },
+        { name: 'mobile_number', label: 'Mobile', type: 'tel', defaultValue: employee?.mobile_number },
       ]
     },
     {
@@ -99,13 +102,22 @@ export default function EmployeeForm({
         { name: 'status', label: 'Status', type: 'select', required: true, options: ['Active', 'Former', 'Prospective'], defaultValue: employee?.status || 'Active' },
         { name: 'employment_start_date', label: 'Employment Start Date', type: 'date', required: true, defaultValue: employee?.employment_start_date?.split('T')[0] },
         { name: 'employment_end_date', label: 'Employment End Date', type: 'date', defaultValue: employee?.employment_end_date?.split('T')[0] },
+        { name: 'first_shift_date', label: 'First Shift Date', type: 'date', defaultValue: employee?.first_shift_date?.split('T')[0] },
       ]
     },
     {
       title: 'Personal Details',
       fields: [
         { name: 'date_of_birth', label: 'Date of Birth', type: 'date', defaultValue: employee?.date_of_birth?.split('T')[0] },
+        { name: 'post_code', label: 'Post Code', type: 'text', defaultValue: employee?.post_code },
         { name: 'address', label: 'Address', type: 'textarea', defaultValue: employee?.address },
+      ]
+    },
+    {
+      title: 'Additional',
+      fields: [
+        { name: 'uniform_preference', label: 'Uniform Preference', type: 'text', defaultValue: employee?.uniform_preference },
+        { name: 'keyholder_status', label: 'Keyholder Status', type: 'checkbox', defaultChecked: employee?.keyholder_status ?? false },
       ]
     }
   ];
@@ -164,6 +176,17 @@ export default function EmployeeForm({
                       defaultValue={field.defaultValue || ''}
                       error={!!state?.errors?.[field.name]}
                     />
+                  ) : field.type === 'checkbox' ? (
+                    <>
+                      <input type="hidden" name={field.name} value="false" />
+                      <Checkbox
+                        id={field.name}
+                        name={field.name}
+                        defaultChecked={field.defaultChecked}
+                        value="true"
+                        error={!!state?.errors?.[field.name]}
+                      />
+                    </>
                   ) : field.type === 'select' ? (
                     <Select
                       id={field.name}
@@ -201,19 +224,30 @@ export default function EmployeeForm({
               {field.label} {field.required && <span className="text-red-500">*</span>}
             </label>
             <div>
-              {field.type === 'textarea' ? (
-                <Textarea
-                  id={field.name}
-                  name={field.name}
-                  rows={3}
-                  defaultValue={field.defaultValue || ''}
-                  error={!!state?.errors?.[field.name]}
-                />
-              ) : field.type === 'select' ? (
-                <Select
-                  id={field.name}
-                  name={field.name}
-                  defaultValue={field.defaultValue || (field.name === 'status' ? 'Active' : '')}
+                {field.type === 'textarea' ? (
+                  <Textarea
+                    id={field.name}
+                    name={field.name}
+                    rows={3}
+                    defaultValue={field.defaultValue || ''}
+                    error={!!state?.errors?.[field.name]}
+                  />
+                ) : field.type === 'checkbox' ? (
+                  <>
+                    <input type="hidden" name={field.name} value="false" />
+                    <Checkbox
+                      id={field.name}
+                      name={field.name}
+                      defaultChecked={field.defaultChecked}
+                      value="true"
+                      error={!!state?.errors?.[field.name]}
+                    />
+                  </>
+                ) : field.type === 'select' ? (
+                  <Select
+                    id={field.name}
+                    name={field.name}
+                    defaultValue={field.defaultValue || (field.name === 'status' ? 'Active' : '')}
                   required={field.required}
                   error={!!state?.errors?.[field.name]}
                   options={field.options?.map(option => ({ label: option, value: option }))}

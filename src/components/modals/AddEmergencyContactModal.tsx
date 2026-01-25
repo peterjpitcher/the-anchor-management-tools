@@ -47,7 +47,8 @@ export default function AddEmergencyContactModal({
     { name: 'name', label: 'Full Name', type: 'text', required: true },
     { name: 'relationship', label: 'Relationship', type: 'text' },
     { name: 'priority', label: 'Priority', type: 'select', options: ['Primary', 'Secondary', 'Other'] },
-    { name: 'phone_number', label: 'Phone Number', type: 'tel' },
+    { name: 'phone_number', label: 'Telephone', type: 'tel' },
+    { name: 'mobile_number', label: 'Mobile', type: 'tel' },
     { name: 'address', label: 'Address', type: 'textarea' },
   ];
 

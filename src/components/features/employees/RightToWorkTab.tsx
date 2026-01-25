@@ -7,11 +7,10 @@ import { upsertRightToWork, getRightToWorkPhotoUrl, deleteRightToWorkPhoto } fro
 import type { EmployeeRightToWork } from '@/types/database'
 import { AlertCircle, CheckCircle, Clock, Upload, Eye, Download, Trash2 } from 'lucide-react'
 
-const DOCUMENT_TYPE_OPTIONS = ['Passport', 'Biometric Residence Permit', 'Share Code', 'Other'] as const
-const LEGACY_DOCUMENT_TYPES = ['List A', 'List B'] as const
+const DOCUMENT_TYPE_OPTIONS = ['Passport', 'Biometric Residence Permit', 'Share Code', 'List A', 'List B', 'Other'] as const
+const LEGACY_DOCUMENT_TYPES: readonly string[] = []
 
-const isLegacyDocumentType = (value: string): value is (typeof LEGACY_DOCUMENT_TYPES)[number] =>
-  (LEGACY_DOCUMENT_TYPES as readonly string[]).includes(value)
+const isLegacyDocumentType = (value: string) => LEGACY_DOCUMENT_TYPES.includes(value)
 
 interface RightToWorkTabProps {
   employeeId: string
@@ -99,7 +98,7 @@ export default function RightToWorkTab({
   const documentTypeOptions = useMemo(() => {
     const options = [...DOCUMENT_TYPE_OPTIONS] as string[]
     const existingType = rightToWorkData?.document_type
-    if (existingType && isLegacyDocumentType(existingType) && !options.includes(existingType)) {
+    if (existingType && !options.includes(existingType)) {
       options.push(existingType)
     }
     return options
@@ -186,6 +185,26 @@ export default function RightToWorkTab({
         <input type="hidden" name="employee_id" value={employeeId} />
 
         <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
+          <label htmlFor="check_method" className="block text-sm font-medium text-gray-700 sm:col-span-1">
+            Check Method
+          </label>
+          <div className="mt-1 sm:col-span-3 sm:mt-0">
+            <select
+              id="check_method"
+              name="check_method"
+              defaultValue={rightToWorkData?.check_method ?? ''}
+              disabled={!canEdit}
+              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm disabled:bg-gray-100"
+            >
+              <option value="">Select check method</option>
+              <option value="manual">Manual check (original documents)</option>
+              <option value="online">Online Home Office check (eVisa)</option>
+              <option value="digital">Digital check (IDSP)</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
           <label htmlFor="document_type" className="block text-sm font-medium text-gray-700 sm:col-span-1">
             Document Type <span className="text-red-500">*</span>
           </label>
@@ -203,12 +222,27 @@ export default function RightToWorkTab({
               </option>
               {documentTypeOptions.map((option) => (
                 <option key={option} value={option}>
-                  {isLegacyDocumentType(option)
-                    ? `Legacy – ${option}`
-                    : option}
+                  {isLegacyDocumentType(option) ? `Legacy – ${option}` : option}
                 </option>
               ))}
             </select>
+          </div>
+        </div>
+
+        <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
+          <label htmlFor="verification_date" className="block text-sm font-medium text-gray-700 sm:col-span-1">
+            Verification Date <span className="text-red-500">*</span>
+          </label>
+          <div className="mt-1 sm:col-span-3 sm:mt-0">
+            <input
+              type="date"
+              id="verification_date"
+              name="verification_date"
+              defaultValue={rightToWorkData?.verification_date?.split('T')[0] ?? ''}
+              disabled={!canEdit}
+              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm disabled:bg-gray-100"
+              required
+            />
           </div>
         </div>
 
@@ -237,7 +271,7 @@ export default function RightToWorkTab({
               type="date"
               id="document_expiry_date"
               name="document_expiry_date"
-              defaultValue={rightToWorkData?.document_expiry_date ?? ''}
+              defaultValue={rightToWorkData?.document_expiry_date?.split('T')[0] ?? ''}
               disabled={!canEdit}
               className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm disabled:bg-gray-100"
             />
@@ -253,7 +287,7 @@ export default function RightToWorkTab({
               type="date"
               id="follow_up_date"
               name="follow_up_date"
-              defaultValue={rightToWorkData?.follow_up_date ?? ''}
+              defaultValue={rightToWorkData?.follow_up_date?.split('T')[0] ?? ''}
               disabled={!canEdit}
               className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm disabled:bg-gray-100"
             />

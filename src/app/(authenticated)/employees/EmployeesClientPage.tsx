@@ -178,7 +178,7 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
         <Card>
           <div className="space-y-4">
             <SearchInput
-              placeholder="Search by name, email, or job title..."
+              placeholder="Search by name, email, job title, phone, or post code..."
               defaultValue={searchTerm}
               onSearch={(value) => updateFilters({ search: value })}
               loading={isLoading}
@@ -246,6 +246,19 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
                       {employee.email_address}
                     </a>
                   )
+                },
+                {
+                  key: 'mobile_number',
+                  header: 'Mobile',
+                  cell: (employee: Employee) => {
+                    const value = employee.mobile_number || employee.phone_number
+                    if (!value) return 'N/A'
+                    return (
+                      <a href={`tel:${value}`} className="text-blue-600 hover:text-blue-700">
+                        {value}
+                      </a>
+                    )
+                  }
                 },
                 {
                   key: 'date_of_birth',

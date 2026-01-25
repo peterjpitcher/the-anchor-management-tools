@@ -284,12 +284,17 @@ export interface Employee {
   last_name: string;
   date_of_birth?: string | null; // Date
   address?: string | null;
+  post_code?: string | null;
   phone_number?: string | null;
+  mobile_number?: string | null;
   email_address: string;
   job_title: string;
   employment_start_date: string; // Date
   employment_end_date?: string | null; // Date
+  first_shift_date?: string | null; // Date
   status: string; // e.g., 'Active', 'Former', 'Prospective'
+  uniform_preference?: string | null;
+  keyholder_status?: boolean | null;
   created_at: string; // Timestamp
   updated_at: string; // Timestamp
 }
@@ -299,8 +304,6 @@ export interface EmployeeFinancialDetails {
   ni_number?: string | null;
   bank_account_number?: string | null;
   bank_sort_code?: string | null;
-  sort_code_in_words?: string | null;
-  account_number_in_words?: string | null;
   bank_name?: string | null;
   payee_name?: string | null;
   branch_address?: string | null;
@@ -313,6 +316,10 @@ export interface EmployeeHealthRecord {
   doctor_name?: string | null;
   doctor_address?: string | null;
   allergies?: string | null;
+  has_allergies?: boolean | null;
+  had_absence_over_2_weeks_last_3_years?: boolean | null;
+  had_outpatient_treatment_over_3_months_last_3_years?: boolean | null;
+  absence_or_treatment_details?: string | null;
   illness_history?: string | null;
   recent_treatment?: string | null;
   has_diabetes: boolean;
@@ -363,13 +370,24 @@ export interface EmployeeEmergencyContact {
   relationship?: string | null;
   address?: string | null;
   phone_number?: string | null;
+  mobile_number?: string | null;
   priority?: 'Primary' | 'Secondary' | 'Other' | null;
   created_at: string; // Timestamp
 }
 
+export type EmployeeRightToWorkDocumentType =
+  | 'Passport'
+  | 'Biometric Residence Permit'
+  | 'Share Code'
+  | 'Other'
+  | 'List A'
+  | 'List B'
+  | (string & {});
+
 export interface EmployeeRightToWork {
   employee_id: string; // UUID, Primary Key, Foreign Key to Employee
-  document_type: 'List A' | 'List B';
+  document_type: EmployeeRightToWorkDocumentType;
+  check_method?: 'manual' | 'online' | 'digital' | null;
   document_reference?: string | null;
   document_details?: string | null;
   verification_date: string; // Date

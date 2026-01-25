@@ -16,12 +16,17 @@ const DetailItem = ({ label, value }: { label: string; value: string | undefined
 );
 
 export default function HealthRecordsTab({ healthRecord }: HealthRecordsTabProps) {
+  const hasAllergies = Boolean(healthRecord?.has_allergies ?? healthRecord?.allergies)
+
   const details = [
     { label: 'Doctor Name', value: healthRecord?.doctor_name },
     { label: 'Doctor Address', value: healthRecord?.doctor_address },
-    { label: 'Allergies', value: healthRecord?.allergies },
-    { label: 'History of Illness', value: healthRecord?.illness_history },
-    { label: 'Recent Treatment (last 3 months)', value: healthRecord?.recent_treatment },
+    { label: 'Has Allergies?', value: hasAllergies },
+    { label: 'Allergy Details', value: healthRecord?.allergies },
+    { label: 'Off Work 2+ Weeks (past 3 years)?', value: healthRecord?.had_absence_over_2_weeks_last_3_years ?? false },
+    { label: 'Outpatient Treatment 3+ Months (past 3 years)?', value: healthRecord?.had_outpatient_treatment_over_3_months_last_3_years ?? false },
+    { label: 'Absence/Treatment Details', value: healthRecord?.absence_or_treatment_details },
+    { label: 'Additional Medical Notes', value: healthRecord?.illness_history },
   ];
 
   const conditions = [
