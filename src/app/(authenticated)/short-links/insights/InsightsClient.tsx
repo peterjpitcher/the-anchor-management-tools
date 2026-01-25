@@ -11,6 +11,7 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { getShortLinkVolume } from '@/app/actions/short-links'
 import { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 import toast from 'react-hot-toast'
+import { useShortLinkClickToasts } from '@/hooks/useShortLinkClickToasts'
 
 interface VolumeDataResponse {
   shortCode: string
@@ -22,6 +23,8 @@ interface VolumeDataResponse {
 }
 
 export function InsightsClient() {
+  useShortLinkClickToasts()
+
   const [volumeData, setVolumeData] = useState<VolumeDataResponse[] | null>(null)
   const [volumePeriod, setVolumePeriod] = useState('30')
   const [loadingVolume, setLoadingVolume] = useState(false)
