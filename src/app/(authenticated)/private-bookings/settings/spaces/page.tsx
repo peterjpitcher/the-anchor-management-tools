@@ -30,7 +30,8 @@ async function handleCreateSpace(formData: FormData) {
   
   const result = await createVenueSpace({
     name: formData.get('name') as string,
-    capacity: parseInt(formData.get('capacity_seated') as string),
+    capacity: parseInt(formData.get('capacity_seated') as string, 10),
+    capacity_standing: parseInt(formData.get('capacity_standing') as string, 10),
     hire_cost: parseFloat(formData.get('rate_per_hour') as string),
     description: formData.get('description') as string || null,
     is_active: formData.get('active') === 'true'
@@ -52,7 +53,8 @@ async function handleUpdateSpace(formData: FormData) {
   const spaceId = formData.get('spaceId') as string
   const result = await updateVenueSpace(spaceId, {
     name: formData.get('name') as string,
-    capacity: parseInt(formData.get('capacity_seated') as string),
+    capacity: parseInt(formData.get('capacity_seated') as string, 10),
+    capacity_standing: parseInt(formData.get('capacity_standing') as string, 10),
     hire_cost: parseFloat(formData.get('rate_per_hour') as string),
     description: formData.get('description') as string || null,
     is_active: formData.get('active') === 'true'
@@ -157,7 +159,7 @@ export default async function VenueSpacesPage({
           icon={<PlusIcon className="h-5 w-5 text-blue-600" />}
         >
           <form action={handleCreateSpace} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
               <FormGroup label="Space Name" required className="lg:col-span-2">
                 <Input
                   type="text"
@@ -175,6 +177,16 @@ export default async function VenueSpacesPage({
                   required
                   min="1"
                   placeholder="50"
+                />
+              </FormGroup>
+              <FormGroup label="Standing Capacity" required>
+                <Input
+                  type="number"
+                  id="capacity_standing"
+                  name="capacity_standing"
+                  required
+                  min="1"
+                  placeholder="80"
                 />
               </FormGroup>
               <FormGroup label="Hourly Rate (£)" required>
@@ -232,7 +244,7 @@ export default async function VenueSpacesPage({
                   <form action={handleUpdateSpace} className="space-y-4">
                     <input type="hidden" name="spaceId" value={space.id} />
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
                       <FormGroup label="Space Name" className="lg:col-span-2">
                         <Input
                           type="text"
@@ -248,6 +260,15 @@ export default async function VenueSpacesPage({
                           type="number"
                           name="capacity_seated"
                           defaultValue={space.capacity_seated}
+                          required
+                          min="1"
+                        />
+                      </FormGroup>
+                      <FormGroup label="Standing Capacity">
+                        <Input
+                          type="number"
+                          name="capacity_standing"
+                          defaultValue={space.capacity_standing ?? space.capacity_seated ?? ''}
                           required
                           min="1"
                         />

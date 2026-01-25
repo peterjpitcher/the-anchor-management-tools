@@ -1838,6 +1838,7 @@ export class PrivateBookingService {
   static async createVenueSpace(data: {
     name: string;
     capacity: number;
+    capacity_standing: number;
     hire_cost: number;
     description?: string | null;
     is_active: boolean;
@@ -1847,6 +1848,7 @@ export class PrivateBookingService {
     const dbData = {
       name: data.name,
       capacity_seated: data.capacity,
+      capacity_standing: data.capacity_standing,
       rate_per_hour: data.hire_cost,
       description: data.description,
       active: data.is_active,
@@ -1877,6 +1879,7 @@ export class PrivateBookingService {
         new_values: {
           name: inserted.name,
           capacity_seated: inserted.capacity_seated,
+          capacity_standing: inserted.capacity_standing,
           rate_per_hour: inserted.rate_per_hour,
           description: inserted.description,
           active: inserted.active
@@ -1890,6 +1893,7 @@ export class PrivateBookingService {
   static async updateVenueSpace(id: string, data: {
     name: string;
     capacity: number;
+    capacity_standing: number;
     hire_cost: number;
     description?: string | null;
     is_active: boolean;
@@ -1909,6 +1913,7 @@ export class PrivateBookingService {
     const dbData = {
       name: data.name,
       capacity_seated: data.capacity,
+      capacity_standing: data.capacity_standing,
       rate_per_hour: data.hire_cost,
       description: data.description,
       active: data.is_active
@@ -1937,6 +1942,7 @@ export class PrivateBookingService {
         old_values: {
           name: existing.name,
           capacity_seated: existing.capacity_seated,
+          capacity_standing: existing.capacity_standing,
           rate_per_hour: existing.rate_per_hour,
           description: existing.description,
           active: existing.active
@@ -1944,6 +1950,7 @@ export class PrivateBookingService {
         new_values: {
           name: updated.name,
           capacity_seated: updated.capacity_seated,
+          capacity_standing: updated.capacity_standing,
           rate_per_hour: updated.rate_per_hour,
           description: updated.description,
           active: updated.active
@@ -1987,6 +1994,7 @@ export class PrivateBookingService {
       old_values: {
         name: existing.name,
         capacity_seated: existing.capacity_seated,
+        capacity_standing: existing.capacity_standing,
         rate_per_hour: existing.rate_per_hour,
         description: existing.description,
         active: existing.active

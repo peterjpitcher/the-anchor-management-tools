@@ -717,6 +717,7 @@ export async function sendApprovedSms(smsId: string) {
 export async function createVenueSpace(data: {
   name: string
   capacity: number
+  capacity_standing: number
   hire_cost: number
   description?: string | null
   is_active: boolean
@@ -741,6 +742,7 @@ export async function createVenueSpace(data: {
 export async function updateVenueSpace(id: string, data: {
   name: string
   capacity: number
+  capacity_standing: number
   hire_cost: number
   description?: string | null
   is_active: boolean
