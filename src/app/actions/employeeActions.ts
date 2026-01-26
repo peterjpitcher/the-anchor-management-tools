@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import type { ActionFormState, NoteFormState, AttachmentFormState, DeleteState } from '@/types/actions';
 import { getConstraintErrorMessage, isPostgrestError } from '@/lib/dbErrorHandler';
+import { MAX_FILE_SIZE } from '@/lib/constants';
 import { logAuditEvent } from '@/app/actions/audit';
 import { getCurrentUser } from '@/lib/audit-helpers';
 import { checkUserPermission } from './rbac';
@@ -22,7 +23,28 @@ import {
   ONBOARDING_CHECKLIST_FIELDS,
   ONBOARDING_FIELD_CONFIG,
   OnboardingChecklistField
-} from '@/services/employees';
+	} from '@/services/employees';
+
+const EMPLOYEE_ATTACHMENTS_BUCKET_NAME = 'employee-attachments';
+const RIGHT_TO_WORK_ALLOWED_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png'] as const;
+const EMPLOYEE_ATTACHMENT_ALLOWED_MIME_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+] as const;
+
+function sanitizeFileName(name: string, fallback: string) {
+  const sanitized = name
+    .replace(/[^\w\s.-]/g, '')
+    .replace(/\s+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^[._-]+|[._-]+$/g, '');
+
+  return sanitized || fallback;
+}
 
 // Helper to clean form data (moved from original actions)
 function cleanFormDataForEmployee(formData: FormData, includeFiles = false) {
@@ -337,6 +359,188 @@ export async function addEmployeeNote(prevState: NoteFormState, formData: FormDa
 }
 
 // Attachment Actions
+export async function createEmployeeAttachmentUploadUrl(
+  employeeId: string,
+  fileName: string,
+  fileType: string,
+  fileSize: number
+): Promise<{ type: 'success'; path: string; token: string } | { type: 'error'; message: string }> {
+  try {
+    const { checkRateLimit } = await import('@/lib/rate-limit-server')
+    await checkRateLimit('api', 10) // 10 uploads per minute
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Too many requests')) {
+      return { type: 'error', message: 'Too many file uploads. Please try again later.' }
+    }
+  }
+
+  const hasPermission = await checkUserPermission('employees', 'upload_documents')
+  if (!hasPermission) {
+    return { type: 'error', message: 'Insufficient permissions to upload employee documents.' }
+  }
+
+  const employeeIdResult = z.string().uuid().safeParse(employeeId)
+  if (!employeeIdResult.success) {
+    return { type: 'error', message: 'Invalid employee ID.' }
+  }
+
+  if (!EMPLOYEE_ATTACHMENT_ALLOWED_MIME_TYPES.includes(fileType as (typeof EMPLOYEE_ATTACHMENT_ALLOWED_MIME_TYPES)[number])) {
+    return { type: 'error', message: 'Invalid file type. Only PDF, Word, JPG, PNG, and TXT files are allowed.' }
+  }
+
+  if (!Number.isFinite(fileSize) || fileSize <= 0) {
+    return { type: 'error', message: 'Invalid file size.' }
+  }
+
+  if (fileSize >= MAX_FILE_SIZE) {
+    return { type: 'error', message: 'File size must be less than 10MB.' }
+  }
+
+  const finalFileName = sanitizeFileName(fileName, 'unnamed_file')
+  const uniqueFileName = `${employeeId}/${Date.now()}_${finalFileName}`
+
+  const adminClient = createAdminClient()
+  const { data, error } = await adminClient.storage
+    .from(EMPLOYEE_ATTACHMENTS_BUCKET_NAME)
+    .createSignedUploadUrl(uniqueFileName, { upsert: false })
+
+  if (error || !data?.token) {
+    return { type: 'error', message: error?.message || 'Failed to create signed upload URL.' }
+  }
+
+  return { type: 'success', path: data.path, token: data.token }
+}
+
+export async function createRightToWorkDocumentUploadUrl(
+  employeeId: string,
+  fileName: string,
+  fileType: string,
+  fileSize: number
+): Promise<{ type: 'success'; path: string; token: string } | { type: 'error'; message: string }> {
+  const hasPermission = await checkUserPermission('employees', 'edit')
+  if (!hasPermission) {
+    return { type: 'error', message: 'Insufficient permissions to upload right to work documents.' }
+  }
+
+  const employeeIdResult = z.string().uuid().safeParse(employeeId)
+  if (!employeeIdResult.success) {
+    return { type: 'error', message: 'Invalid employee ID.' }
+  }
+
+  if (!RIGHT_TO_WORK_ALLOWED_MIME_TYPES.includes(fileType as (typeof RIGHT_TO_WORK_ALLOWED_MIME_TYPES)[number])) {
+    return { type: 'error', message: 'Only PDF, JPG, and PNG files are allowed.' }
+  }
+
+  if (!Number.isFinite(fileSize) || fileSize <= 0) {
+    return { type: 'error', message: 'Invalid file size.' }
+  }
+
+  if (fileSize >= MAX_FILE_SIZE) {
+    return { type: 'error', message: 'File size must be less than 10MB.' }
+  }
+
+  const finalFileName = sanitizeFileName(fileName, 'right_to_work_document')
+  const uniqueFileName = `${employeeId}/rtw_${Date.now()}_${finalFileName}`
+
+  const adminClient = createAdminClient()
+  const { data, error } = await adminClient.storage
+    .from(EMPLOYEE_ATTACHMENTS_BUCKET_NAME)
+    .createSignedUploadUrl(uniqueFileName, { upsert: false })
+
+  if (error || !data?.token) {
+    return { type: 'error', message: error?.message || 'Failed to create signed upload URL.' }
+  }
+
+  return { type: 'success', path: data.path, token: data.token }
+}
+
+const employeeAttachmentRecordSchema = z.object({
+  employee_id: z.string().uuid(),
+  category_id: z.string().uuid('A valid category must be selected.'),
+  storage_path: z.string().min(1),
+  file_name: z.string().min(1),
+  mime_type: z
+    .string()
+    .min(1)
+    .refine(
+      (value) => EMPLOYEE_ATTACHMENT_ALLOWED_MIME_TYPES.includes(value as (typeof EMPLOYEE_ATTACHMENT_ALLOWED_MIME_TYPES)[number]),
+      'Invalid file type. Only PDF, Word, JPG, PNG, and TXT files are allowed.'
+    ),
+  file_size_bytes: z.preprocess(
+    (value) => (typeof value === 'string' ? Number(value) : value),
+    z.number().int().positive().max(MAX_FILE_SIZE - 1, 'File size must be less than 10MB.')
+  ),
+  description: z
+    .preprocess((value) => (typeof value === 'string' && value.trim() === '' ? undefined : value), z.string().optional())
+    .optional(),
+})
+
+export async function saveEmployeeAttachmentRecord(
+  prevState: AttachmentFormState,
+  formData: FormData
+): Promise<AttachmentFormState> {
+  const hasPermission = await checkUserPermission('employees', 'upload_documents')
+  if (!hasPermission) {
+    return { type: 'error', message: 'Insufficient permissions to upload employee documents.' }
+  }
+
+  const raw = Object.fromEntries(formData.entries())
+  const parsed = employeeAttachmentRecordSchema.safeParse(raw)
+  if (!parsed.success) {
+    return { type: 'error', message: 'Validation failed.', errors: parsed.error.flatten().fieldErrors }
+  }
+
+  const { employee_id, category_id, storage_path, file_name, mime_type, file_size_bytes, description } = parsed.data
+  if (!storage_path.startsWith(`${employee_id}/`)) {
+    return { type: 'error', message: 'Invalid upload path.' }
+  }
+
+  const adminClient = createAdminClient()
+
+  try {
+    const { error: dbError } = await adminClient.from('employee_attachments').insert({
+      employee_id,
+      category_id,
+      file_name,
+      storage_path,
+      mime_type,
+      file_size_bytes,
+      description: description || null,
+    })
+
+    if (dbError) {
+      throw new Error(`Database insert failed: ${dbError.message}`)
+    }
+
+    const userInfo = await getCurrentUser()
+    await logAuditEvent({
+      ...(userInfo.user_id && { user_id: userInfo.user_id }),
+      ...(userInfo.user_email && { user_email: userInfo.user_email }),
+      operation_type: 'add_attachment',
+      resource_type: 'employee',
+      resource_id: employee_id,
+      operation_status: 'success',
+      additional_info: {
+        file_name,
+        category: category_id,
+        file_size: file_size_bytes,
+        storage_path,
+      },
+    })
+
+    revalidatePath(`/employees/${employee_id}`)
+    return { type: 'success', message: 'Attachment uploaded successfully!' }
+  } catch (error: any) {
+    console.error('Attachment record save error:', error)
+    const { error: removeError } = await adminClient.storage.from(EMPLOYEE_ATTACHMENTS_BUCKET_NAME).remove([storage_path])
+    if (removeError) {
+      console.error(`Failed to clean up uploaded file '${storage_path}' after DB error`, removeError)
+    }
+
+    return { type: 'error', message: error?.message || 'An unexpected error occurred during upload.' }
+  }
+}
+
 export async function addEmployeeAttachment(
   prevState: AttachmentFormState,
   formData: FormData
@@ -679,13 +883,17 @@ export async function upsertRightToWork(
     return {
       type: 'error',
       message: 'Insufficient permissions to update right to work information.',
-    };
-  }
+	    };
+	  }
 
-  const cleanedData = cleanFormDataForEmployee(formData, true); // Include files for this one
-  
-  // Handle file field - if it's an empty file, remove it from data before validation
-  if (cleanedData.document_photo && cleanedData.document_photo instanceof File && cleanedData.document_photo.size === 0) {
+	  const photoStoragePathValue = formData.get('photo_storage_path')
+	  const photoStoragePath =
+	    typeof photoStoragePathValue === 'string' && photoStoragePathValue.trim().length > 0 ? photoStoragePathValue.trim() : null
+
+	  const cleanedData = cleanFormDataForEmployee(formData, true); // Include files for this one
+	  
+	  // Handle file field - if it's an empty file, remove it from data before validation
+	  if (cleanedData.document_photo && cleanedData.document_photo instanceof File && cleanedData.document_photo.size === 0) {
     delete cleanedData.document_photo;
   }
 
@@ -696,35 +904,41 @@ export async function upsertRightToWork(
       type: 'error',
       message: 'Validation failed.',
       errors: validatedFields.error.flatten().fieldErrors,
-    };
-  }
+	    };
+	  }
 
-  try {
-    const supabase = createAdminClient(); // Needed for currentUserId
-    const { data: { user } } = await supabase.auth.getUser();
-    const currentUserId = user?.id || null;
+	  try {
+	    const userInfo = await getCurrentUser();
+	    const currentUserId = userInfo.user_id ?? null;
 
-    await EmployeeService.upsertRightToWork(
-      validatedFields.data.employee_id,
-      validatedFields.data,
-      currentUserId
-    );
+	    if (photoStoragePath && !photoStoragePath.startsWith(`${validatedFields.data.employee_id}/`)) {
+	      return {
+	        type: 'error',
+	        message: 'Invalid upload path.',
+	      };
+	    }
 
-    const userInfo = await getCurrentUser();
-    await logAuditEvent({
-      ...(userInfo.user_id && { user_id: userInfo.user_id }),
-      ...(userInfo.user_email && { user_email: userInfo.user_email }),
+	    await EmployeeService.upsertRightToWork(
+	      validatedFields.data.employee_id,
+	      validatedFields.data,
+	      currentUserId,
+	      photoStoragePath
+	    );
+
+	    await logAuditEvent({
+	      ...(userInfo.user_id && { user_id: userInfo.user_id }),
+	      ...(userInfo.user_email && { user_email: userInfo.user_email }),
       operation_type: 'update',
       resource_type: 'employee',
       resource_id: validatedFields.data.employee_id,
       operation_status: 'success',
-      additional_info: {
-        action: 'update_right_to_work',
-        document_type: validatedFields.data.document_type,
-        verification_date: validatedFields.data.verification_date,
-        photo_uploaded: validatedFields.data.document_photo ? true : false
-      }
-    });
+	      additional_info: {
+	        action: 'update_right_to_work',
+	        document_type: validatedFields.data.document_type,
+	        verification_date: validatedFields.data.verification_date,
+	        photo_uploaded: Boolean(validatedFields.data.document_photo || photoStoragePath),
+	      }
+	    });
 
     revalidatePath(`/employees/${validatedFields.data.employee_id}`);
     return {
