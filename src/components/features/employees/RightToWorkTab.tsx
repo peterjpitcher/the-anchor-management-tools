@@ -5,10 +5,13 @@ import { useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { upsertRightToWork, getRightToWorkPhotoUrl, deleteRightToWorkPhoto } from '@/app/actions/employeeActions'
 import type { EmployeeRightToWork } from '@/types/database'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { MAX_FILE_SIZE } from '@/lib/constants'
 import { AlertCircle, CheckCircle, Clock, Upload, Eye, Download, Trash2 } from 'lucide-react'
 
 const DOCUMENT_TYPE_OPTIONS = ['Passport', 'Biometric Residence Permit', 'Share Code', 'List A', 'List B', 'Other'] as const
 const LEGACY_DOCUMENT_TYPES: readonly string[] = []
+const RIGHT_TO_WORK_ALLOWED_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png'] as const
 
 const isLegacyDocumentType = (value: string) => LEGACY_DOCUMENT_TYPES.includes(value)
 
@@ -329,7 +332,26 @@ export default function RightToWorkTab({
                 className="hidden"
                 onChange={(event) => {
                   const file = event.target.files?.[0]
-                  setSelectedFileName(file?.name ?? null)
+                  if (!file) {
+                    setSelectedFileName(null)
+                    return
+                  }
+
+                  if (!RIGHT_TO_WORK_ALLOWED_MIME_TYPES.includes(file.type as (typeof RIGHT_TO_WORK_ALLOWED_MIME_TYPES)[number])) {
+                    toast.error('Only PDF, JPG, and PNG files are allowed.')
+                    event.target.value = ''
+                    setSelectedFileName(null)
+                    return
+                  }
+
+                  if (file.size >= MAX_FILE_SIZE) {
+                    toast.error('File size must be less than 10MB.')
+                    event.target.value = ''
+                    setSelectedFileName(null)
+                    return
+                  }
+
+                  setSelectedFileName(file.name)
                 }}
               />
             </label>

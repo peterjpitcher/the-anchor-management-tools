@@ -16,6 +16,7 @@ import { RadioGroup } from '@/components/ui-v2/forms/Radio'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { addEmployee, addEmergencyContact, upsertRightToWork, updateOnboardingChecklist } from '@/app/actions/employeeActions'
+import { MAX_FILE_SIZE } from '@/lib/constants'
 
 type EmployeeStatus = 'Active' | 'Former' | 'Prospective'
 
@@ -34,6 +35,8 @@ const DIGIT_WORDS = [
   'eight',
   'nine'
 ] as const
+
+const RIGHT_TO_WORK_ALLOWED_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png'] as const
 
 function digitsToWords(input: string) {
   const digits = input.replace(/\D/g, '')
@@ -271,6 +274,8 @@ export default function NewEmployeeOnboardingClient() {
     }
 
     startTransition(async () => {
+      let employeeId: string
+
       try {
         const employeeFormData = new FormData()
 
@@ -341,17 +346,24 @@ export default function NewEmployeeOnboardingClient() {
           throw new Error(createResult?.message || 'Failed to create employee')
         }
 
-        const employeeId = createResult.employeeId
-        const followUpErrors: string[] = []
+        employeeId = createResult.employeeId
+      } catch (error) {
+        console.error('[NewEmployeeOnboarding] Create failed', error)
+        toast.error('Failed to create employee. Please check the form and try again.')
+        return
+      }
 
-        // Emergency contacts (Section 1)
-        const primary = state.emergency_contacts.primary
-        const secondary = state.emergency_contacts.secondary
+      const followUpErrors: string[] = []
 
-        if (hasAnyEmergencyContact(primary)) {
-          if (!primary.name.trim()) {
-            followUpErrors.push('Primary emergency contact name is missing.')
-          } else {
+      // Emergency contacts (Section 1)
+      const primary = state.emergency_contacts.primary
+      const secondary = state.emergency_contacts.secondary
+
+      if (hasAnyEmergencyContact(primary)) {
+        if (!primary.name.trim()) {
+          followUpErrors.push('Primary emergency contact name is missing.')
+        } else {
+          try {
             const contactForm = new FormData()
             contactForm.append('employee_id', employeeId)
             contactForm.append('name', primary.name.trim())
@@ -364,13 +376,18 @@ export default function NewEmployeeOnboardingClient() {
             if (res?.type === 'error') {
               followUpErrors.push(res.message || 'Failed to save primary emergency contact.')
             }
+          } catch (error) {
+            console.error('[NewEmployeeOnboarding] Primary emergency contact save failed', error)
+            followUpErrors.push('Failed to save primary emergency contact.')
           }
         }
+      }
 
-        if (hasAnyEmergencyContact(secondary)) {
-          if (!secondary.name.trim()) {
-            followUpErrors.push('Secondary emergency contact name is missing.')
-          } else {
+      if (hasAnyEmergencyContact(secondary)) {
+        if (!secondary.name.trim()) {
+          followUpErrors.push('Secondary emergency contact name is missing.')
+        } else {
+          try {
             const contactForm = new FormData()
             contactForm.append('employee_id', employeeId)
             contactForm.append('name', secondary.name.trim())
@@ -383,14 +400,19 @@ export default function NewEmployeeOnboardingClient() {
             if (res?.type === 'error') {
               followUpErrors.push(res.message || 'Failed to save secondary emergency contact.')
             }
+          } catch (error) {
+            console.error('[NewEmployeeOnboarding] Secondary emergency contact save failed', error)
+            followUpErrors.push('Failed to save secondary emergency contact.')
           }
         }
+      }
 
-        // Right to work (Section 4)
-        if (state.right_to_work.enabled) {
-          if (!state.right_to_work.document_type || !state.right_to_work.verification_date) {
-            followUpErrors.push('Right to Work is enabled but document type or verification date is missing.')
-          } else {
+      // Right to work (Section 4)
+      if (state.right_to_work.enabled) {
+        if (!state.right_to_work.document_type || !state.right_to_work.verification_date) {
+          followUpErrors.push('Right to Work is enabled but document type or verification date is missing.')
+        } else {
+          try {
             const rtwForm = new FormData()
             rtwForm.append('employee_id', employeeId)
             rtwForm.append('document_type', state.right_to_work.document_type)
@@ -406,31 +428,36 @@ export default function NewEmployeeOnboardingClient() {
             if (rtwResult?.type === 'error') {
               followUpErrors.push(rtwResult.message || 'Failed to save right to work information.')
             }
+          } catch (error) {
+            console.error('[NewEmployeeOnboarding] Right to work save failed', error)
+            followUpErrors.push('Failed to save right to work information.')
           }
         }
+      }
 
-        // Office checklist (Section 7 - for office use)
-        const checklistFields = Object.entries(state.onboarding) as Array<[keyof EmployeeSetupState['onboarding'], boolean]>
-        for (const [field, checked] of checklistFields) {
-          if (!checked) continue
+      // Office checklist (Section 7 - for office use)
+      const checklistFields = Object.entries(state.onboarding) as Array<[keyof EmployeeSetupState['onboarding'], boolean]>
+      for (const [field, checked] of checklistFields) {
+        if (!checked) continue
+        try {
           const result = await updateOnboardingChecklist(employeeId, field, true)
           if (!result.success) {
             followUpErrors.push(result.error || `Failed to update onboarding checklist: ${field}`)
           }
+        } catch (error) {
+          console.error('[NewEmployeeOnboarding] Onboarding checklist update failed', { field, error })
+          followUpErrors.push(`Failed to update onboarding checklist: ${field}`)
         }
-
-        if (followUpErrors.length > 0) {
-          console.warn('[NewEmployeeOnboarding] Follow-up errors:', followUpErrors)
-          toast.error('Employee created, but some sections could not be saved. Please review the employee profile.')
-        } else {
-          toast.success('Employee created successfully!')
-        }
-
-        router.push(`/employees/${employeeId}`)
-      } catch (error) {
-        console.error('[NewEmployeeOnboarding] Create failed', error)
-        toast.error('Failed to create employee. Please check the form and try again.')
       }
+
+      if (followUpErrors.length > 0) {
+        console.warn('[NewEmployeeOnboarding] Follow-up errors:', followUpErrors)
+        toast.error('Employee created, but some sections could not be saved. Please review the employee profile.')
+      } else {
+        toast.success('Employee created successfully!')
+      }
+
+      router.push(`/employees/${employeeId}`)
     })
   }
 
@@ -821,7 +848,29 @@ export default function NewEmployeeOnboardingClient() {
                 <FormGroup label="Document photo / scan (PDF/JPG/PNG)" className="sm:col-span-2">
                   <Input
                     type="file"
-                    onChange={(e) => updateRightToWork('document_photo', e.target.files?.[0] ?? null)}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] ?? null
+                      if (!file) {
+                        updateRightToWork('document_photo', null)
+                        return
+                      }
+
+                      if (!RIGHT_TO_WORK_ALLOWED_MIME_TYPES.includes(file.type as (typeof RIGHT_TO_WORK_ALLOWED_MIME_TYPES)[number])) {
+                        toast.error('Only PDF, JPG, and PNG files are allowed.')
+                        e.target.value = ''
+                        updateRightToWork('document_photo', null)
+                        return
+                      }
+
+                      if (file.size >= MAX_FILE_SIZE) {
+                        toast.error('File size must be less than 10MB.')
+                        e.target.value = ''
+                        updateRightToWork('document_photo', null)
+                        return
+                      }
+
+                      updateRightToWork('document_photo', file)
+                    }}
                     accept=".pdf,.jpg,.jpeg,.png"
                   />
                 </FormGroup>
@@ -962,4 +1011,3 @@ export default function NewEmployeeOnboardingClient() {
     </PageLayout>
   )
 }
-
