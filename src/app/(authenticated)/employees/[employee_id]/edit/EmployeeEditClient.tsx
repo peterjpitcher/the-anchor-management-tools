@@ -9,7 +9,6 @@ import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Tabs } from '@/components/ui-v2/navigation/Tabs'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
-import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 
 interface EmployeeEditClientProps {
   employee: Employee
@@ -58,12 +57,6 @@ export default function EmployeeEditClient({
     }
   ]
 
-  const navItems: HeaderNavItem[] = [
-    { label: 'Personal', href: '#personal' },
-    { label: 'Financial', href: '#financial' },
-    { label: 'Health', href: '#health' },
-  ]
-
   return (
     <PageLayout
       title={`Edit: ${employee.first_name} ${employee.last_name}`}
@@ -72,7 +65,6 @@ export default function EmployeeEditClient({
         label: 'Back to Employee',
         href: `/employees/${employee.employee_id}`
       }}
-      navItems={navItems}
       headerActions={
         <LinkButton href={`/employees/${employee.employee_id}`} variant="secondary" size="sm">
           Cancel

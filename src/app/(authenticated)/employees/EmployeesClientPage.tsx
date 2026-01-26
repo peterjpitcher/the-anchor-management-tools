@@ -13,7 +13,6 @@ import { TabNav } from '@/components/ui-v2/navigation/TabNav'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { StatusBadge } from '@/components/ui-v2/display/Badge'
 import { Pagination as PaginationV2 } from '@/components/ui-v2/navigation/Pagination'
-import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { exportEmployees } from '@/app/actions/employeeExport'
 import type { EmployeeRosterResult } from '@/app/actions/employeeQueries'
@@ -127,13 +126,12 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
   const showSearchResultMessage = Boolean(searchTerm)
   const currentEmployees = roster.employees as Employee[]
 
-  const navItems: HeaderNavItem[] = [
-    { label: 'Filters', href: '#filters' },
-    { label: 'Birthdays', href: '/employees/birthdays' },
-  ]
+  const headerActions = (
+    <>
+      <LinkButton href="/employees/birthdays" size="md" variant="secondary">
+        Birthdays
+      </LinkButton>
 
-  const navActions = (
-    <div className="flex flex-wrap items-center gap-2">
       {permissions.canExport && (
         <Dropdown
           label="Export"
@@ -154,24 +152,27 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
           ]}
           disabled={isLoading || currentEmployees.length === 0}
           variant="secondary"
-          size="sm"
+          size="md"
         />
       )}
-    </div>
-  )
 
-  const headerActions = permissions.canCreate ? (
-    <LinkButton href="/employees/new" size="md" variant="primary" leftIcon={<PlusIcon className="h-5 w-5" />}>
-      Add Employee
-    </LinkButton>
-  ) : null
+      {permissions.canCreate && (
+        <LinkButton
+          href="/employees/new"
+          size="md"
+          variant="primary"
+          leftIcon={<PlusIcon className="h-5 w-5" />}
+        >
+          Add Employee
+        </LinkButton>
+      )}
+    </>
+  )
 
   return (
     <PageLayout
       title="Employees"
       subtitle="Manage your staff and their information"
-      navItems={navItems}
-      navActions={navActions}
       headerActions={headerActions}
     >
       <section id="filters">

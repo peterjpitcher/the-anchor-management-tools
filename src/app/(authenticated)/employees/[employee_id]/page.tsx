@@ -22,7 +22,6 @@ import { EmployeeAuditTrail } from '@/components/features/employees/EmployeeAudi
 import { EmployeeRecentChanges } from '@/components/features/employees/EmployeeRecentChanges'
 import { getEmployeeDetailData } from '@/app/actions/employeeDetails'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
-import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 
 export const dynamic = 'force-dynamic'
 
@@ -189,16 +188,9 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     }
   ]
 
-  const navItems: HeaderNavItem[] = [
-    { label: 'Overview', href: '#overview' },
-    { label: 'Details', href: '#details' },
-    { label: 'Notes', href: '#notes' },
-    { label: 'Documents', href: '#documents' },
-    { label: 'Audit Trail', href: '#audit' },
-  ]
-
-  const navActions = (
-    <div className="flex flex-wrap items-center gap-2">
+  const headerActions =
+    permissions.canEdit || permissions.canDelete ? (
+      <>
       {permissions.canEdit && (
         <LinkButton href={`/employees/${employee.employee_id}/edit`} size="sm" variant="primary">
           Edit Employee
@@ -210,16 +202,15 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
           employeeName={`${employee.first_name} ${employee.last_name}`}
         />
       )}
-    </div>
-  )
+      </>
+    ) : null
 
   return (
     <PageLayout
       title={`${employee.first_name} ${employee.last_name}`}
       subtitle={employee.job_title}
       backButton={{ label: 'Back to Employees', href: '/employees' }}
-      navItems={navItems}
-      navActions={navActions}
+      headerActions={headerActions}
     >
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
