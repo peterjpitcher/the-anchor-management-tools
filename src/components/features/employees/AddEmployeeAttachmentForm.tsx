@@ -7,6 +7,17 @@ import { addEmployeeAttachment } from '@/app/actions/employeeActions'
 import type { AttachmentFormState } from '@/types/actions'
 import type { AttachmentCategory } from '@/types/database'
 import { Button } from '@/components/ui-v2/forms/Button'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { MAX_FILE_SIZE } from '@/lib/constants'
+
+const ATTACHMENT_ALLOWED_MIME_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain'
+] as const
 
 interface AddEmployeeAttachmentFormProps {
   employeeId: string
@@ -66,6 +77,23 @@ export default function AddEmployeeAttachmentForm({
             required
             className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-l-lg file:border-0 file:text-sm file:font-semibold file:bg-primary-soft file:text-primary hover:file:bg-primary-soft/80 disabled:cursor-not-allowed"
             disabled={!hasCategories}
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (!file) {
+                return
+              }
+
+              if (!ATTACHMENT_ALLOWED_MIME_TYPES.includes(file.type as (typeof ATTACHMENT_ALLOWED_MIME_TYPES)[number])) {
+                toast.error('Invalid file type. Only PDF, Word, JPG, PNG, and TXT files are allowed.')
+                event.target.value = ''
+                return
+              }
+
+              if (file.size >= MAX_FILE_SIZE) {
+                toast.error('File size must be less than 10MB.')
+                event.target.value = ''
+              }
+            }}
           />
         </div>
         <p className="mt-2 text-xs text-gray-500">
