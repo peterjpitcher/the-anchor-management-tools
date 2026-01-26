@@ -1,9 +1,9 @@
 'use client'
 
-import { useActionState, useEffect, useRef } from 'react'
-import { useFormStatus } from 'react-dom'
+import { useRef, useState, useTransition, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { addEmployeeAttachment } from '@/app/actions/employeeActions'
+import { createEmployeeAttachmentUploadUrl, saveEmployeeAttachmentRecord } from '@/app/actions/employeeActions'
+import { useSupabase } from '@/components/providers/SupabaseProvider'
 import type { AttachmentFormState } from '@/types/actions'
 import type { AttachmentCategory } from '@/types/database'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -24,8 +24,7 @@ interface AddEmployeeAttachmentFormProps {
   categories: AttachmentCategory[]
 }
 
-function SubmitAttachmentButton({ disabled }: { disabled?: boolean }) {
-  const { pending } = useFormStatus()
+function SubmitAttachmentButton({ disabled, pending }: { disabled?: boolean; pending: boolean }) {
   return (
     <Button type="submit" variant="primary" size="md" disabled={pending || disabled}>
       {pending ? 'Uploading…' : 'Upload Attachment'}
@@ -37,28 +36,81 @@ export default function AddEmployeeAttachmentForm({
   employeeId,
   categories
 }: AddEmployeeAttachmentFormProps) {
+  const supabase = useSupabase()
   const hasCategories = categories.length > 0
   const router = useRouter()
-  const initialState: AttachmentFormState = null
-  const [state, dispatch] = useActionState(addEmployeeAttachment, initialState)
+  const [state, setState] = useState<AttachmentFormState>(null)
+  const [isUploading, startTransition] = useTransition()
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const formRef = useRef<HTMLFormElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    if (state?.type === 'success') {
-      formRef.current?.reset()
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
-      router.refresh()
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!hasCategories) return
+
+    const file = selectedFile
+    if (!file) {
+      setState({ type: 'error', message: 'Please select a file to upload.', errors: { attachment_file: ['A file is required.'] } })
+      return
     }
-  }, [state, router])
+
+    const rawFormData = new FormData(event.currentTarget)
+    const categoryId = String(rawFormData.get('category_id') || '')
+    const description = String(rawFormData.get('description') || '')
+
+    startTransition(async () => {
+      try {
+        const signedUpload = await createEmployeeAttachmentUploadUrl(employeeId, file.name, file.type, file.size)
+        if (signedUpload.type === 'error') {
+          setState({ type: 'error', message: signedUpload.message || 'Failed to prepare attachment upload.' })
+          return
+        }
+
+        const uploadResult = await supabase.storage
+          .from('employee-attachments')
+          .uploadToSignedUrl(signedUpload.path, signedUpload.token, file, {
+            upsert: false,
+            contentType: file.type,
+          })
+
+        if (uploadResult.error) {
+          console.error('Attachment upload failed:', uploadResult.error)
+          setState({ type: 'error', message: uploadResult.error.message || 'Failed to upload attachment.' })
+          return
+        }
+
+        const saveForm = new FormData()
+        saveForm.append('employee_id', employeeId)
+        saveForm.append('category_id', categoryId)
+        if (description.trim()) saveForm.append('description', description)
+        saveForm.append('storage_path', signedUpload.path)
+        saveForm.append('file_name', file.name)
+        saveForm.append('mime_type', file.type)
+        saveForm.append('file_size_bytes', String(file.size))
+
+        const result = await saveEmployeeAttachmentRecord(null, saveForm)
+        setState(result)
+
+        if (result?.type === 'success') {
+          formRef.current?.reset()
+          if (fileInputRef.current) {
+            fileInputRef.current.value = ''
+          }
+          setSelectedFile(null)
+          router.refresh()
+        }
+      } catch (error) {
+        console.error('Attachment save failed:', error)
+        setState({ type: 'error', message: error instanceof Error ? error.message : 'Failed to upload attachment.' })
+      }
+    })
+  }
 
   return (
     <form
-      action={dispatch}
+      onSubmit={handleSubmit}
       ref={formRef}
-      encType="multipart/form-data"
       className="space-y-6"
     >
       <input type="hidden" name="employee_id" value={employeeId} />
@@ -76,23 +128,29 @@ export default function AddEmployeeAttachmentForm({
             accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.txt"
             required
             className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-l-lg file:border-0 file:text-sm file:font-semibold file:bg-primary-soft file:text-primary hover:file:bg-primary-soft/80 disabled:cursor-not-allowed"
-            disabled={!hasCategories}
+            disabled={!hasCategories || isUploading}
             onChange={(event) => {
               const file = event.target.files?.[0]
               if (!file) {
+                setSelectedFile(null)
                 return
               }
 
               if (!ATTACHMENT_ALLOWED_MIME_TYPES.includes(file.type as (typeof ATTACHMENT_ALLOWED_MIME_TYPES)[number])) {
                 toast.error('Invalid file type. Only PDF, Word, JPG, PNG, and TXT files are allowed.')
                 event.target.value = ''
+                setSelectedFile(null)
                 return
               }
 
               if (file.size >= MAX_FILE_SIZE) {
                 toast.error('File size must be less than 10MB.')
                 event.target.value = ''
+                setSelectedFile(null)
+                return
               }
+
+              setSelectedFile(file)
             }}
           />
         </div>
@@ -157,7 +215,7 @@ export default function AddEmployeeAttachmentForm({
       )}
 
       <div className="flex justify-end">
-        <SubmitAttachmentButton disabled={!hasCategories} />
+        <SubmitAttachmentButton disabled={!hasCategories} pending={isUploading} />
       </div>
 
       {!hasCategories && (

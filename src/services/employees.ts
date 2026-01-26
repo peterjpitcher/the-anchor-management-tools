@@ -616,7 +616,8 @@ export class EmployeeService {
   static async upsertRightToWork(
     employeeId: string,
     rtwData: z.infer<typeof RightToWorkSchema>,
-    currentUserId: string | null
+    currentUserId: string | null,
+    photoStoragePathOverride: string | null = null
   ) {
     const adminClient = createAdminClient();
 
@@ -624,48 +625,50 @@ export class EmployeeService {
     const verifiedByUserId = rtwData.verified_by_user_id ?? currentUserId;
     
     // Handle file upload if provided
+    if (photoStoragePathOverride && !photoStoragePathOverride.startsWith(`${employeeId}/`)) {
+      throw new Error('Invalid photo storage path.');
+    }
+
     let photoStoragePath: string | null = null;
     const documentPhoto = rtwData.document_photo;
-    
-    if (documentPhoto && documentPhoto.size > 0) {
-      // Check if there's an existing photo to delete
+
+    const shouldUploadNewPhoto = Boolean(documentPhoto && documentPhoto.size > 0);
+    const shouldUseOverridePhotoPath = Boolean(photoStoragePathOverride);
+    let existingPhotoPath: string | null = null;
+
+    if (shouldUploadNewPhoto || shouldUseOverridePhotoPath) {
       const { data: existingRecord } = await adminClient
         .from('employee_right_to_work')
         .select('photo_storage_path')
         .eq('employee_id', employeeId)
         .maybeSingle();
-        
+
+      existingPhotoPath = existingRecord?.photo_storage_path ?? null;
+    }
+
+    if (shouldUploadNewPhoto && documentPhoto) {
       // Upload new photo
       const sanitizedFileName = documentPhoto.name
         .replace(/[^\w\s.-]/g, '')
         .replace(/\s+/g, '_')
         .replace(/_+/g, '_')
         .replace(/^[._-]+|[._-]+$/g, '');
-      
+
       const finalFileName = sanitizedFileName || 'right_to_work_document';
       const uniqueFileName = `${employeeId}/rtw_${Date.now()}_${finalFileName}`;
-      
+
       const { data: uploadData, error: uploadError } = await adminClient.storage
         .from(ATTACHMENT_BUCKET_NAME)
         .upload(uniqueFileName, documentPhoto, { upsert: false });
-        
+
       if (uploadError) {
         console.error('Error uploading right to work document:', uploadError);
         throw new Error(`Failed to upload document photo: ${uploadError.message}`);
       }
-      
+
       photoStoragePath = uploadData.path;
-      
-      // Delete old photo if exists
-      if (existingRecord?.photo_storage_path) {
-        const { error: deleteError } = await adminClient.storage
-          .from(ATTACHMENT_BUCKET_NAME)
-          .remove([existingRecord.photo_storage_path]);
-          
-        if (deleteError) {
-          console.error('Error deleting old right to work photo:', deleteError);
-        }
-      }
+    } else if (shouldUseOverridePhotoPath) {
+      photoStoragePath = photoStoragePathOverride;
     }
     
     // Prepare data for database update
@@ -689,7 +692,16 @@ export class EmployeeService {
       }
       throw error;
     }
-    return { data: dataForDb, oldPhotoPath: photoStoragePath };
+
+    // Delete old photo after a successful DB update
+    if (existingPhotoPath && photoStoragePath && existingPhotoPath !== photoStoragePath) {
+      const { error: deleteError } = await adminClient.storage.from(ATTACHMENT_BUCKET_NAME).remove([existingPhotoPath]);
+      if (deleteError) {
+        console.error('Error deleting old right to work photo:', deleteError);
+      }
+    }
+
+    return { data: dataForDb, oldPhotoPath: existingPhotoPath };
   }
 
   static async getRightToWorkPhotoUrl(photoPath: string): Promise<string | null> {

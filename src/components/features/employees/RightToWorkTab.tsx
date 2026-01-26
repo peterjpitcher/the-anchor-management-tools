@@ -1,9 +1,15 @@
 'use client'
 
-import { useActionState, useEffect, useMemo, useState } from 'react'
-import { useFormStatus } from 'react-dom'
+import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { upsertRightToWork, getRightToWorkPhotoUrl, deleteRightToWorkPhoto } from '@/app/actions/employeeActions'
+import {
+  createRightToWorkDocumentUploadUrl,
+  deleteRightToWorkPhoto,
+  getRightToWorkPhotoUrl,
+  upsertRightToWork,
+} from '@/app/actions/employeeActions'
+import { useSupabase } from '@/components/providers/SupabaseProvider'
+import type { ActionFormState } from '@/types/actions'
 import type { EmployeeRightToWork } from '@/types/database'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { MAX_FILE_SIZE } from '@/lib/constants'
@@ -22,8 +28,7 @@ interface RightToWorkTabProps {
   canViewDocuments: boolean
 }
 
-function SubmitButton({ disabled }: { disabled: boolean }) {
-  const { pending } = useFormStatus()
+function SubmitButton({ disabled, pending }: { disabled: boolean; pending: boolean }) {
   return (
     <button
       type="submit"
@@ -42,10 +47,14 @@ export default function RightToWorkTab({
   canViewDocuments
 }: RightToWorkTabProps) {
   const router = useRouter()
-  const [state, formAction] = useActionState(upsertRightToWork, null)
+  const supabase = useSupabase()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [state, setState] = useState<ActionFormState>(null)
+  const [isSaving, startTransition] = useTransition()
   const [rightToWorkData, setRightToWorkData] = useState<EmployeeRightToWork | null>(rightToWork)
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   const [loadingPhoto, setLoadingPhoto] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null)
   const [deletingPhoto, setDeletingPhoto] = useState(false)
 
@@ -76,13 +85,6 @@ export default function RightToWorkTab({
     fetchPhotoUrl()
   }, [rightToWorkData?.photo_storage_path, canViewDocuments])
 
-  useEffect(() => {
-    if (state?.type === 'success') {
-      setSelectedFileName(null)
-      router.refresh()
-    }
-  }, [state, router])
-
   const isExpiringSoon = useMemo(() => {
     if (!rightToWorkData?.document_expiry_date) return false
     const expiryDate = new Date(rightToWorkData.document_expiry_date)
@@ -106,6 +108,68 @@ export default function RightToWorkTab({
     }
     return options
   }, [rightToWorkData?.document_type])
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!canEdit) return
+
+    const formData = new FormData(event.currentTarget)
+    formData.set('employee_id', employeeId)
+    formData.delete('document_photo')
+
+    startTransition(async () => {
+      try {
+        const documentPhoto = selectedFile
+
+        if (documentPhoto) {
+          const signedUpload = await createRightToWorkDocumentUploadUrl(
+            employeeId,
+            documentPhoto.name,
+            documentPhoto.type,
+            documentPhoto.size
+          )
+
+          if (signedUpload.type === 'error') {
+            setState({ type: 'error', message: signedUpload.message || 'Failed to prepare right to work document upload.' })
+            return
+          }
+
+          const uploadResult = await supabase.storage
+            .from('employee-attachments')
+            .uploadToSignedUrl(signedUpload.path, signedUpload.token, documentPhoto, {
+              upsert: false,
+              contentType: documentPhoto.type
+            })
+
+          if (uploadResult.error) {
+            console.error('Right to work document upload failed:', uploadResult.error)
+            setState({ type: 'error', message: uploadResult.error.message || 'Failed to upload document photo.' })
+            return
+          }
+
+          formData.append('photo_storage_path', signedUpload.path)
+        }
+
+        const result = await upsertRightToWork(null, formData)
+        setState(result)
+
+        if (result?.type === 'success') {
+          setSelectedFile(null)
+          setSelectedFileName(null)
+          if (fileInputRef.current) {
+            fileInputRef.current.value = ''
+          }
+          router.refresh()
+        }
+      } catch (error) {
+        console.error('Right to work save failed:', error)
+        setState({
+          type: 'error',
+          message: error instanceof Error ? error.message : 'Failed to save right to work information.',
+        })
+      }
+    })
+  }
 
   const handleDeletePhoto = async () => {
     if (!canEdit || !rightToWorkData?.photo_storage_path) {
@@ -184,7 +248,7 @@ export default function RightToWorkTab({
         </p>
       )}
 
-      <form action={formAction} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4">
         <input type="hidden" name="employee_id" value={employeeId} />
 
         <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
@@ -323,37 +387,41 @@ export default function RightToWorkTab({
                 <Upload className="h-5 w-5 text-gray-400" />
                 <span>{selectedFileName ?? 'Upload scan or photo (PDF/JPG/PNG)'}</span>
               </div>
-              <input
-                type="file"
-                id="document_photo"
-                name="document_photo"
-                accept=".pdf,.jpg,.jpeg,.png"
-                disabled={!canEdit}
-                className="hidden"
-                onChange={(event) => {
-                  const file = event.target.files?.[0]
-                  if (!file) {
-                    setSelectedFileName(null)
-                    return
-                  }
+	              <input
+	                type="file"
+	                id="document_photo"
+	                ref={fileInputRef}
+	                accept=".pdf,.jpg,.jpeg,.png"
+	                disabled={!canEdit || isSaving}
+	                className="hidden"
+	                onChange={(event) => {
+	                  const file = event.target.files?.[0]
+	                  if (!file) {
+	                    setSelectedFile(null)
+	                    setSelectedFileName(null)
+	                    return
+	                  }
 
-                  if (!RIGHT_TO_WORK_ALLOWED_MIME_TYPES.includes(file.type as (typeof RIGHT_TO_WORK_ALLOWED_MIME_TYPES)[number])) {
-                    toast.error('Only PDF, JPG, and PNG files are allowed.')
-                    event.target.value = ''
-                    setSelectedFileName(null)
-                    return
-                  }
+	                  if (!RIGHT_TO_WORK_ALLOWED_MIME_TYPES.includes(file.type as (typeof RIGHT_TO_WORK_ALLOWED_MIME_TYPES)[number])) {
+	                    toast.error('Only PDF, JPG, and PNG files are allowed.')
+	                    event.target.value = ''
+	                    setSelectedFile(null)
+	                    setSelectedFileName(null)
+	                    return
+	                  }
 
-                  if (file.size >= MAX_FILE_SIZE) {
-                    toast.error('File size must be less than 10MB.')
-                    event.target.value = ''
-                    setSelectedFileName(null)
-                    return
-                  }
+	                  if (file.size >= MAX_FILE_SIZE) {
+	                    toast.error('File size must be less than 10MB.')
+	                    event.target.value = ''
+	                    setSelectedFile(null)
+	                    setSelectedFileName(null)
+	                    return
+	                  }
 
-                  setSelectedFileName(file.name)
-                }}
-              />
+	                  setSelectedFile(file)
+	                  setSelectedFileName(file.name)
+	                }}
+	              />
             </label>
 
             {canViewDocuments && rightToWorkData?.photo_storage_path && (
@@ -409,12 +477,12 @@ export default function RightToWorkTab({
           <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
             {state.message}
           </div>
-        )}
+	        )}
 
-        <div className="flex justify-end">
-          <SubmitButton disabled={!canEdit} />
-        </div>
-      </form>
-    </div>
-  )
+	        <div className="flex justify-end">
+	          <SubmitButton disabled={!canEdit} pending={isSaving} />
+	        </div>
+	      </form>
+	    </div>
+	  )
 }

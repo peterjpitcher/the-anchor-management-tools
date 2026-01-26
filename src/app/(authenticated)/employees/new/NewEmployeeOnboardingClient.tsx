@@ -15,7 +15,14 @@ import { Checkbox } from '@/components/ui-v2/forms/Checkbox'
 import { RadioGroup } from '@/components/ui-v2/forms/Radio'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { addEmployee, addEmergencyContact, upsertRightToWork, updateOnboardingChecklist } from '@/app/actions/employeeActions'
+import {
+  addEmployee,
+  addEmergencyContact,
+  createRightToWorkDocumentUploadUrl,
+  upsertRightToWork,
+  updateOnboardingChecklist
+} from '@/app/actions/employeeActions'
+import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { MAX_FILE_SIZE } from '@/lib/constants'
 
 type EmployeeStatus = 'Active' | 'Former' | 'Prospective'
@@ -205,6 +212,7 @@ function hasAnyEmergencyContact(contact: EmployeeSetupState['emergency_contacts'
 
 export default function NewEmployeeOnboardingClient() {
   const router = useRouter()
+  const supabase = useSupabase()
   const [activeTab, setActiveTab] = useState('employee')
   const [state, setState] = useState<EmployeeSetupState>(DEFAULT_STATE)
   const [isPending, startTransition] = useTransition()
@@ -412,22 +420,49 @@ export default function NewEmployeeOnboardingClient() {
         if (!state.right_to_work.document_type || !state.right_to_work.verification_date) {
           followUpErrors.push('Right to Work is enabled but document type or verification date is missing.')
         } else {
-          try {
-            const rtwForm = new FormData()
-            rtwForm.append('employee_id', employeeId)
-            rtwForm.append('document_type', state.right_to_work.document_type)
-            if (state.right_to_work.check_method) rtwForm.append('check_method', state.right_to_work.check_method)
-            if (state.right_to_work.document_reference) rtwForm.append('document_reference', state.right_to_work.document_reference)
-            rtwForm.append('verification_date', state.right_to_work.verification_date)
-            if (state.right_to_work.document_expiry_date) rtwForm.append('document_expiry_date', state.right_to_work.document_expiry_date)
-            if (state.right_to_work.follow_up_date) rtwForm.append('follow_up_date', state.right_to_work.follow_up_date)
-            if (state.right_to_work.document_details) rtwForm.append('document_details', state.right_to_work.document_details)
-            if (state.right_to_work.document_photo) rtwForm.append('document_photo', state.right_to_work.document_photo)
+	          try {
+	            const rtwForm = new FormData()
+	            rtwForm.append('employee_id', employeeId)
+	            rtwForm.append('document_type', state.right_to_work.document_type)
+	            if (state.right_to_work.check_method) rtwForm.append('check_method', state.right_to_work.check_method)
+	            if (state.right_to_work.document_reference) rtwForm.append('document_reference', state.right_to_work.document_reference)
+	            rtwForm.append('verification_date', state.right_to_work.verification_date)
+	            if (state.right_to_work.document_expiry_date) rtwForm.append('document_expiry_date', state.right_to_work.document_expiry_date)
+	            if (state.right_to_work.follow_up_date) rtwForm.append('follow_up_date', state.right_to_work.follow_up_date)
+	            if (state.right_to_work.document_details) rtwForm.append('document_details', state.right_to_work.document_details)
 
-            const rtwResult = await upsertRightToWork(null, rtwForm)
-            if (rtwResult?.type === 'error') {
-              followUpErrors.push(rtwResult.message || 'Failed to save right to work information.')
-            }
+	            const rtwDocumentPhoto = state.right_to_work.document_photo
+	            if (rtwDocumentPhoto) {
+	              const signedUpload = await createRightToWorkDocumentUploadUrl(
+	                employeeId,
+	                rtwDocumentPhoto.name,
+	                rtwDocumentPhoto.type,
+	                rtwDocumentPhoto.size
+	              )
+
+	              if (signedUpload.type === 'error') {
+	                followUpErrors.push(signedUpload.message || 'Failed to prepare right to work document upload.')
+	              } else {
+	                const uploadResult = await supabase.storage
+	                  .from('employee-attachments')
+	                  .uploadToSignedUrl(signedUpload.path, signedUpload.token, rtwDocumentPhoto, {
+	                    upsert: false,
+	                    contentType: rtwDocumentPhoto.type
+	                  })
+
+	                if (uploadResult.error) {
+	                  console.error('[NewEmployeeOnboarding] Right to work document upload failed', uploadResult.error)
+	                  followUpErrors.push(uploadResult.error.message || 'Failed to upload right to work document photo.')
+	                } else {
+	                  rtwForm.append('photo_storage_path', signedUpload.path)
+	                }
+	              }
+	            }
+
+	            const rtwResult = await upsertRightToWork(null, rtwForm)
+	            if (rtwResult?.type === 'error') {
+	              followUpErrors.push(rtwResult.message || 'Failed to save right to work information.')
+	            }
           } catch (error) {
             console.error('[NewEmployeeOnboarding] Right to work save failed', error)
             followUpErrors.push('Failed to save right to work information.')
