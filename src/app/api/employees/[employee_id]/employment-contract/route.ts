@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/server'
 import { generatePDFFromHTML } from '@/lib/pdf-generator'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { generateEmploymentContractHTML } from '@/lib/employment-contract-template'
+import { COMPANY_DETAILS } from '@/lib/company-details'
 
 function sanitizeFilename(value: string, fallback: string): string {
   const trimmed = String(value || '').trim()
@@ -54,7 +55,8 @@ export async function GET(
 
   try {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
-    const logoUrl = `${appUrl}/logo.png`
+    const logoUrl = `${appUrl}/logo-oj.jpg`
+    const footerText = `${COMPANY_DETAILS.legalName} trading as ${COMPANY_DETAILS.tradingName} • ${COMPANY_DETAILS.fullAddress}`
 
     const html = generateEmploymentContractHTML({
       employee,
@@ -68,10 +70,16 @@ export async function GET(
       margin: {
         top: '15mm',
         right: '15mm',
-        bottom: '15mm',
+        bottom: '22mm',
         left: '15mm',
       },
-      displayHeaderFooter: false,
+      displayHeaderFooter: true,
+      headerTemplate: '<span></span>',
+      footerTemplate: `
+        <div style="width: 100%; font-size: 8px; color: #6b7280; text-align: center; padding: 0 15mm;">
+          ${footerText}
+        </div>
+      `,
     })
 
     const safeName = sanitizeFilename(
@@ -91,4 +99,3 @@ export async function GET(
     return new NextResponse('Failed to generate contract PDF', { status: 500 })
   }
 }
-
