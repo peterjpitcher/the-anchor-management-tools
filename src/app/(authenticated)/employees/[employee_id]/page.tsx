@@ -22,6 +22,7 @@ import { EmployeeAuditTrail } from '@/components/features/employees/EmployeeAudi
 import { EmployeeRecentChanges } from '@/components/features/employees/EmployeeRecentChanges'
 import { getEmployeeDetailData } from '@/app/actions/employeeDetails'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { ArrowDownTrayIcon } from '@heroicons/react/24/outline'
 
 export const dynamic = 'force-dynamic'
 
@@ -188,22 +189,33 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     }
   ]
 
-  const headerActions =
-    permissions.canEdit || permissions.canDelete ? (
-      <>
+  const headerActions = (
+    <>
+      <LinkButton
+        href={`/api/employees/${employee.employee_id}/employment-contract`}
+        size="sm"
+        variant="secondary"
+        target="_blank"
+        leftIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
+      >
+        <span className="hidden sm:inline">Employment Contract</span>
+        <span className="sm:hidden">Contract</span>
+      </LinkButton>
+
       {permissions.canEdit && (
         <LinkButton href={`/employees/${employee.employee_id}/edit`} size="sm" variant="primary">
           Edit Employee
         </LinkButton>
       )}
+
       {permissions.canDelete && (
         <DeleteEmployeeButton
           employeeId={employee.employee_id}
           employeeName={`${employee.first_name} ${employee.last_name}`}
         />
       )}
-      </>
-    ) : null
+    </>
+  )
 
   return (
     <PageLayout
