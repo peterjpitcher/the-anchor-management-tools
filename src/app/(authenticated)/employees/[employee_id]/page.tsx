@@ -198,8 +198,8 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
         target="_blank"
         leftIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
       >
-        <span className="hidden sm:inline">Employment Contract</span>
-        <span className="sm:hidden">Contract</span>
+        <span className="hidden sm:inline">Casual Worker Agreement</span>
+        <span className="sm:hidden">Agreement</span>
       </LinkButton>
 
       {permissions.canEdit && (
