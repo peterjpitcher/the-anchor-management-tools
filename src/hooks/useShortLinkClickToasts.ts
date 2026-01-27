@@ -3,6 +3,7 @@ import type { RealtimeChannel, RealtimePostgresUpdatePayload } from '@supabase/s
 import toast from 'react-hot-toast'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import type { Database } from '@/types/database'
+import { playBell } from '@/lib/sound/bell'
 
 type ShortLinkRow = Database['public']['Tables']['short_links']['Row']
 type SeedLink = Pick<ShortLinkRow, 'id' | 'click_count'>
@@ -11,12 +12,14 @@ type Options = {
   enabled?: boolean
   seedLinks?: SeedLink[]
   onClickRegistered?: (updated: ShortLinkRow, delta: number) => void
+  playSound?: boolean
 }
 
 export function useShortLinkClickToasts({
   enabled = true,
   seedLinks,
   onClickRegistered,
+  playSound = false,
 }: Options = {}) {
   const supabase = useSupabase()
   const clickCountsRef = useRef<Map<string, number>>(new Map())
@@ -72,6 +75,9 @@ export function useShortLinkClickToasts({
                   : `${delta} clicks registered for ${label}`
 
               toast.success(message)
+              if (playSound) {
+                void playBell()
+              }
               onClickRegisteredRef.current?.(updated, delta)
             }
 

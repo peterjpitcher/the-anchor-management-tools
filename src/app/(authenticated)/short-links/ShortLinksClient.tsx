@@ -50,6 +50,7 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
 
   useShortLinkClickToasts({
     seedLinks: initialLinks,
+    playSound: true,
     onClickRegistered: (updated) => {
       setLinks((prev) =>
         prev.map((link) =>

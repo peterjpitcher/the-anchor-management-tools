@@ -23,7 +23,7 @@ interface VolumeDataResponse {
 }
 
 export function InsightsClient() {
-  useShortLinkClickToasts()
+  useShortLinkClickToasts({ playSound: true })
 
   const [volumeData, setVolumeData] = useState<VolumeDataResponse[] | null>(null)
   const [volumePeriod, setVolumePeriod] = useState('30')
