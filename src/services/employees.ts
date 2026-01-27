@@ -354,6 +354,16 @@ export class EmployeeService {
       throw error; // Let server action handle the error mapping
     }
 
+    // Automatically sync birthday to Google Calendar (best-effort).
+    if (employee?.status === 'Active' && employee?.date_of_birth) {
+      try {
+        await syncBirthdayCalendarEvent(employee);
+      } catch (calendarError) {
+        console.error('Failed to sync birthday calendar on employee create:', calendarError);
+        // Don't fail employee creation if calendar sync fails
+      }
+    }
+
     return employee;
   }
 
@@ -378,28 +388,26 @@ export class EmployeeService {
       throw error;
     }
 
-    // Handle birthday calendar sync based on status and date of birth changes
-    const statusChanged = oldEmployee.status !== updateData.status;
-    const dobChanged = oldEmployee.date_of_birth !== updateData.date_of_birth;
-    
-    if (statusChanged || dobChanged) {
-        try {
-            // If employee became former or date of birth was removed, delete calendar events
-            if (updateData.status === 'Former' || !updateData.date_of_birth) {
-                await deleteBirthdayCalendarEvent(employeeId);
-            } 
-            // If employee is active and has date of birth, sync calendar event
-            else if (updateData.status === 'Active' && updateData.date_of_birth) {
-                await syncBirthdayCalendarEvent({
-                    ...oldEmployee,
-                    ...updateData,
-                    employee_id: employeeId
-                });
-            }
-        } catch (error) {
-            console.error('Failed to update birthday calendar:', error);
-            // Don't fail the employee update if calendar sync fails
-        }
+    // Keep Google Calendar birthday event in sync (best-effort).
+    const wasEligibleForBirthdayEvent = oldEmployee.status === 'Active' && Boolean(oldEmployee.date_of_birth);
+    const isEligibleForBirthdayEvent = updateData.status === 'Active' && Boolean(updateData.date_of_birth);
+
+    if (wasEligibleForBirthdayEvent && !isEligibleForBirthdayEvent) {
+      try {
+        await deleteBirthdayCalendarEvent(employeeId);
+      } catch (calendarError) {
+        console.error('Failed to delete birthday calendar event:', calendarError);
+      }
+    } else if (isEligibleForBirthdayEvent) {
+      try {
+        await syncBirthdayCalendarEvent({
+          ...oldEmployee,
+          ...updateData,
+          employee_id: employeeId
+        });
+      } catch (calendarError) {
+        console.error('Failed to update birthday calendar event:', calendarError);
+      }
     }
     
     return { updatedEmployee: updateData, oldEmployee: oldEmployee };
