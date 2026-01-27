@@ -13,10 +13,10 @@ import { Badge } from '@/components/ui-v2/display/Badge'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { Edit2, Trash2, Play, Pause, FileText, Calendar, Clock } from 'lucide-react'
-import { toLocalIsoDate } from '@/lib/dateUtils'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import type { RecurringInvoiceWithDetails } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
+import { formatDateInLondon } from '@/lib/dateUtils'
 
 type GenerateInvoiceActionResult = Awaited<ReturnType<typeof generateInvoiceFromRecurring>>
 
@@ -177,50 +177,14 @@ export default function RecurringInvoiceDetailPage() {
     }
   }
 
-  function calculateNextInvoiceDate(): string | null {
+  function getNextInvoiceDate(): string | null {
     if (!recurringInvoice || !recurringInvoice.is_active) return null
 
-    const today = new Date()
-    const startDate = new Date(recurringInvoice.start_date)
-
-    if (recurringInvoice.end_date) {
-      const endDate = new Date(recurringInvoice.end_date)
-      if (today > endDate) return null
+    if (recurringInvoice.end_date && recurringInvoice.next_invoice_date > recurringInvoice.end_date) {
+      return null
     }
 
-    if (today < startDate) {
-      return toLocalIsoDate(startDate)
-    }
-
-    const lastGenerated = recurringInvoice.last_invoice?.invoice_date
-      ? new Date(recurringInvoice.last_invoice.invoice_date)
-      : new Date(startDate.getTime() - 1)
-
-    const nextDate = new Date(lastGenerated)
-
-    switch (recurringInvoice.frequency) {
-      case 'weekly':
-        nextDate.setDate(nextDate.getDate() + 7)
-        break
-      case 'monthly':
-        nextDate.setMonth(nextDate.getMonth() + 1)
-        break
-      case 'quarterly':
-        nextDate.setMonth(nextDate.getMonth() + 3)
-        break
-      case 'yearly':
-        nextDate.setFullYear(nextDate.getFullYear() + 1)
-        break
-      default:
-        nextDate.setMonth(nextDate.getMonth() + 1)
-    }
-
-    if (recurringInvoice.end_date) {
-      const endDate = new Date(recurringInvoice.end_date)
-      if (nextDate > endDate) return null
-    }
-
-    return toLocalIsoDate(nextDate)
+    return recurringInvoice.next_invoice_date
   }
 
   if (permissionsLoading || loading) {
@@ -250,7 +214,7 @@ export default function RecurringInvoiceDetailPage() {
     )
   }
 
-  const nextInvoiceDate = calculateNextInvoiceDate()
+  const nextInvoiceDate = getNextInvoiceDate()
   const totals = recurringInvoice.line_items?.reduce((acc, item) => {
     const lineSubtotal = item.quantity * item.unit_price
     const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
@@ -354,14 +318,14 @@ export default function RecurringInvoiceDetailPage() {
 
             <div>
               <div className="text-sm text-gray-500">Start Date</div>
-              <div className="mt-1">{new Date(recurringInvoice.start_date).toLocaleDateString('en-GB')}</div>
+              <div className="mt-1">{formatDateInLondon(recurringInvoice.start_date)}</div>
             </div>
 
             <div>
               <div className="text-sm text-gray-500">End Date</div>
               <div className="mt-1">
                 {recurringInvoice.end_date
-                  ? new Date(recurringInvoice.end_date).toLocaleDateString('en-GB')
+                  ? formatDateInLondon(recurringInvoice.end_date)
                   : 'Ongoing'}
               </div>
             </div>
@@ -377,7 +341,7 @@ export default function RecurringInvoiceDetailPage() {
               <div className="text-sm text-gray-500">Next Invoice Date</div>
               <div className="mt-1 font-medium">
                 {nextInvoiceDate
-                  ? new Date(nextInvoiceDate).toLocaleDateString('en-GB')
+                  ? formatDateInLondon(nextInvoiceDate)
                   : 'N/A'}
               </div>
             </div>
@@ -386,7 +350,7 @@ export default function RecurringInvoiceDetailPage() {
               <div>
                 <div className="text-sm text-gray-500">Last Generated</div>
                 <div className="mt-1">
-                  {new Date(recurringInvoice.last_invoice.invoice_date).toLocaleDateString('en-GB')}
+                  {formatDateInLondon(recurringInvoice.last_invoice.invoice_date)}
                 </div>
               </div>
             )}

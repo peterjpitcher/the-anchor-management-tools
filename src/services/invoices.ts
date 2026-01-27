@@ -97,6 +97,58 @@ export class InvoiceService {
   }
 
   /**
+   * Creates an invoice and its line items atomically using the service role client.
+   * Intended for trusted server-side automation (e.g. cron jobs).
+   */
+  static async createInvoiceAsAdmin(input: CreateInvoiceInput) {
+    const adminClient = await createAdminClient()
+
+    const totals = calculateInvoiceTotals(input.line_items, input.invoice_discount_percentage)
+
+    const { data: seqData, error: seqError } = await adminClient
+      .rpc('get_and_increment_invoice_series', { p_series_code: 'INV' })
+      .single()
+
+    if (seqError) {
+      throw new Error('Failed to generate invoice number')
+    }
+
+    const encoded = ((seqData as { next_sequence: number }).next_sequence + 5000)
+      .toString(36)
+      .toUpperCase()
+      .padStart(5, '0')
+    const invoiceNumber = `INV-${encoded}`
+
+    const invoiceData = {
+      invoice_number: invoiceNumber,
+      vendor_id: input.vendor_id,
+      invoice_date: input.invoice_date,
+      due_date: input.due_date,
+      reference: input.reference,
+      invoice_discount_percentage: input.invoice_discount_percentage,
+      subtotal_amount: totals.subtotalBeforeInvoiceDiscount,
+      discount_amount: totals.invoiceDiscountAmount,
+      vat_amount: totals.vatAmount,
+      total_amount: totals.totalAmount,
+      notes: input.notes,
+      internal_notes: input.internal_notes,
+      status: 'draft' as InvoiceStatus,
+    }
+
+    const { data: invoice, error } = await adminClient.rpc('create_invoice_transaction', {
+      p_invoice_data: invoiceData,
+      p_line_items: input.line_items
+    })
+
+    if (error) {
+      console.error('Create invoice transaction error:', error)
+      throw new Error('Failed to create invoice')
+    }
+
+    return invoice
+  }
+
+  /**
    * Records a payment and updates invoice status atomically.
    */
   static async recordPayment(input: RecordPaymentInput) {

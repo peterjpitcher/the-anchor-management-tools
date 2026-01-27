@@ -5,16 +5,19 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
-import { toLocalIsoDate } from '@/lib/dateUtils'
-import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
 import type { RecurringInvoiceWithDetails, RecurringFrequency, InvoiceLineItemInput } from '@/types/invoices'
 import { InvoiceService } from '@/services/invoices'
+import { addDaysIsoDate, calculateNextInvoiceIsoDate } from '@/lib/recurringInvoiceSchedule'
 
 // Validation schemas
-const CreateRecurringInvoiceSchema = z.object({
+const RecurringInvoiceSchemaBase = z.object({
   vendor_id: z.string().uuid('Invalid vendor ID'),
   frequency: z.enum(['weekly', 'monthly', 'quarterly', 'yearly'] as const),
   start_date: z.string().refine((date) => !isNaN(Date.parse(date)), 'Invalid date'),
+  next_invoice_date: z
+    .string()
+    .optional()
+    .refine((date) => !date || !isNaN(Date.parse(date)), 'Invalid date'),
   end_date: z.string().optional().refine((date) => !date || !isNaN(Date.parse(date)), 'Invalid date'),
   days_before_due: z.number().min(0).max(365),
   reference: z.string().optional(),
@@ -23,10 +26,41 @@ const CreateRecurringInvoiceSchema = z.object({
   internal_notes: z.string().optional()
 })
 
-const UpdateRecurringInvoiceSchema = CreateRecurringInvoiceSchema.extend({
-  id: z.string().uuid('Invalid recurring invoice ID'),
-  is_active: z.boolean()
-})
+function applyRecurringInvoiceDateRules<T extends z.ZodTypeAny>(schema: T) {
+  return schema.superRefine((data: any, ctx) => {
+    const nextInvoiceDate = data.next_invoice_date || data.start_date
+    const start = new Date(data.start_date)
+    const next = new Date(nextInvoiceDate)
+
+    if (next < start) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['next_invoice_date'],
+        message: 'Next invoice date cannot be before the start date'
+      })
+    }
+
+    if (data.end_date) {
+      const end = new Date(data.end_date)
+      if (next > end) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['next_invoice_date'],
+          message: 'Next invoice date cannot be after the end date'
+        })
+      }
+    }
+  })
+}
+
+const CreateRecurringInvoiceSchema = applyRecurringInvoiceDateRules(RecurringInvoiceSchemaBase)
+
+const UpdateRecurringInvoiceSchema = applyRecurringInvoiceDateRules(
+  RecurringInvoiceSchemaBase.extend({
+    id: z.string().uuid('Invalid recurring invoice ID'),
+    is_active: z.boolean()
+  })
+)
 
 // Get all recurring invoices
 export async function getRecurringInvoices() {
@@ -155,6 +189,7 @@ export async function createRecurringInvoice(formData: FormData) {
       vendor_id: formData.get('vendor_id'),
       frequency: formData.get('frequency'),
       start_date: formData.get('start_date'),
+      next_invoice_date: formData.get('next_invoice_date') || undefined,
       end_date: formData.get('end_date') || undefined,
       days_before_due: parseInt(formData.get('days_before_due') as string),
       reference: formData.get('reference') || undefined,
@@ -163,14 +198,14 @@ export async function createRecurringInvoice(formData: FormData) {
       internal_notes: formData.get('internal_notes') || undefined
     })
 
-    const nextInvoiceDate = new Date(validatedData.start_date)
+    const nextInvoiceDate = validatedData.next_invoice_date || validatedData.start_date
     
     // Create recurring invoice
     const { data: recurringInvoice, error: createError } = await supabase
       .from('recurring_invoices')
       .insert({
         ...validatedData,
-        next_invoice_date: nextInvoiceDate.toISOString(),
+        next_invoice_date: nextInvoiceDate,
         is_active: true
       })
       .select()
@@ -251,6 +286,7 @@ export async function updateRecurringInvoice(formData: FormData) {
       vendor_id: formData.get('vendor_id'),
       frequency: formData.get('frequency'),
       start_date: formData.get('start_date'),
+      next_invoice_date: formData.get('next_invoice_date') || undefined,
       end_date: formData.get('end_date') || undefined,
       days_before_due: parseInt(formData.get('days_before_due') as string),
       reference: formData.get('reference') || undefined,
@@ -362,17 +398,14 @@ export async function deleteRecurringInvoice(formData: FormData) {
 
 // Generate invoice from recurring invoice
 export async function generateInvoiceFromRecurring(
-  recurringInvoiceId: string,
-  options: { bypassPermissionCheck?: boolean } = {}
+  recurringInvoiceId: string
 ) {
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     
-    if (!options.bypassPermissionCheck) {
-      const hasPermission = await checkUserPermission('invoices', 'create')
-      if (!hasPermission) return { error: 'Insufficient permissions' }
-    }
+    const hasPermission = await checkUserPermission('invoices', 'create')
+    if (!hasPermission) return { error: 'Insufficient permissions' }
 
     // Get recurring invoice details
     const { data: recurringInvoice, error: fetchError } = await supabase
@@ -400,13 +433,12 @@ export async function generateInvoiceFromRecurring(
     if (!recurringInvoice.is_active) return { error: 'Recurring invoice is not active' }
 
     // Calculate dates
-    const invoiceDate = new Date()
-    const dueDate = new Date()
+    const invoiceDateIso = recurringInvoice.next_invoice_date
     const vendorPaymentTerms = typeof recurringInvoice.vendor?.payment_terms === 'number'
       ? recurringInvoice.vendor.payment_terms
       : null
-    const effectivePaymentTerms = vendorPaymentTerms ?? recurringInvoice.days_before_due ?? 0
-    dueDate.setDate(dueDate.getDate() + effectivePaymentTerms)
+    const effectivePaymentTerms = Number(vendorPaymentTerms ?? recurringInvoice.days_before_due ?? 0) || 0
+    const dueDateIso = addDaysIsoDate(invoiceDateIso, effectivePaymentTerms)
 
     // Prepare line items for service
     const lineItems: InvoiceLineItemInput[] = (recurringInvoice.line_items ?? []).map((item: any) => ({
@@ -421,25 +453,25 @@ export async function generateInvoiceFromRecurring(
     // Use InvoiceService to create the invoice
     const newInvoice = await InvoiceService.createInvoice({
       vendor_id: recurringInvoice.vendor_id,
-      invoice_date: toLocalIsoDate(invoiceDate),
-      due_date: toLocalIsoDate(dueDate),
+      invoice_date: invoiceDateIso,
+      due_date: dueDateIso,
       reference: recurringInvoice.reference,
-      invoice_discount_percentage: recurringInvoice.invoice_discount_percentage || 0,
+      invoice_discount_percentage: Number(recurringInvoice.invoice_discount_percentage) || 0,
       notes: recurringInvoice.notes,
       internal_notes: recurringInvoice.internal_notes,
       line_items: lineItems
     })
 
     // Update recurring invoice next date
-    const nextDate = calculateNextInvoiceDate(
-      invoiceDate,
+    const nextDateIso = calculateNextInvoiceIsoDate(
+      invoiceDateIso,
       recurringInvoice.frequency as RecurringFrequency
     )
 
     await supabase
       .from('recurring_invoices')
       .update({
-        next_invoice_date: nextDate.toISOString(),
+        next_invoice_date: nextDateIso,
         last_invoice_id: newInvoice.id,
         updated_at: new Date().toISOString()
       })
@@ -508,23 +540,4 @@ export async function toggleRecurringInvoiceStatus(formData: FormData) {
   } catch (error) {
     return { error: 'An unexpected error occurred' }
   }
-}
-
-function calculateNextInvoiceDate(currentDate: Date, frequency: RecurringFrequency): Date {
-  const nextDate = new Date(currentDate)
-  switch (frequency) {
-    case 'weekly':
-      nextDate.setDate(nextDate.getDate() + 7)
-      break
-    case 'monthly':
-      nextDate.setMonth(nextDate.getMonth() + 1)
-      break
-    case 'quarterly':
-      nextDate.setMonth(nextDate.getMonth() + 3)
-      break
-    case 'yearly':
-      nextDate.setFullYear(nextDate.getFullYear() + 1)
-      break
-  }
-  return nextDate
 }

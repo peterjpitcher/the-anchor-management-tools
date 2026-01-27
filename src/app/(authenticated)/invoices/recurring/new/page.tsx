@@ -33,6 +33,8 @@ export default function NewRecurringInvoicePage() {
   const [vendorId, setVendorId] = useState('')
   const [frequency, setFrequency] = useState<RecurringFrequency>('monthly')
   const [startDate, setStartDate] = useState(getTodayIsoDate())
+  const [nextInvoiceDate, setNextInvoiceDate] = useState(getTodayIsoDate())
+  const [hasEditedNextInvoiceDate, setHasEditedNextInvoiceDate] = useState(false)
   const [endDate, setEndDate] = useState('')
   const [daysBefore, setDaysBefore] = useState(30)
   const [reference, setReference] = useState('')
@@ -158,6 +160,7 @@ export default function NewRecurringInvoicePage() {
       formData.append('vendor_id', vendorId)
       formData.append('frequency', frequency)
       formData.append('start_date', startDate)
+      formData.append('next_invoice_date', nextInvoiceDate)
       if (endDate) formData.append('end_date', endDate)
       formData.append('days_before_due', daysBefore.toString())
       if (reference) formData.append('reference', reference)
@@ -252,7 +255,30 @@ export default function NewRecurringInvoicePage() {
               <Input
                 type="date"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setStartDate(value)
+                  if (!hasEditedNextInvoiceDate) {
+                    setNextInvoiceDate(value)
+                  }
+                }}
+                required
+              />
+            </FormGroup>
+
+            <FormGroup
+              label="Next Invoice Date"
+              required
+              help="Controls when the next invoice will be generated. This can be adjusted without changing the start date."
+            >
+              <Input
+                type="date"
+                value={nextInvoiceDate}
+                onChange={(e) => {
+                  setHasEditedNextInvoiceDate(true)
+                  setNextInvoiceDate(e.target.value)
+                }}
+                min={startDate}
                 required
               />
             </FormGroup>

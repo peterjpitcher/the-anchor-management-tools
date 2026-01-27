@@ -16,6 +16,7 @@ import { Plus, Calendar, Trash2, Edit, Play, Pause } from 'lucide-react'
 import type { RecurringInvoiceWithDetails } from '@/types/invoices'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { usePermissions } from '@/contexts/PermissionContext'
+import { formatDateInLondon } from '@/lib/dateUtils'
 
 type GenerateInvoiceActionResult = Awaited<ReturnType<typeof generateInvoiceFromRecurring>>
 
@@ -171,7 +172,7 @@ export default function RecurringInvoicesPage() {
     } else if (daysUntil <= 7) {
       return `In ${daysUntil} days`
     } else {
-      return nextDate.toLocaleDateString('en-GB')
+      return formatDateInLondon(date)
     }
   }
 
@@ -259,7 +260,7 @@ export default function RecurringInvoicesPage() {
                 cell: (r) => (
                   <div>
                     <div className="text-sm text-gray-900">{getNextInvoiceLabel(r.next_invoice_date)}</div>
-                    <div className="text-xs text-gray-500">{new Date(r.next_invoice_date).toLocaleDateString('en-GB')}</div>
+                    <div className="text-xs text-gray-500">{formatDateInLondon(r.next_invoice_date)}</div>
                   </div>
                 )
               },
