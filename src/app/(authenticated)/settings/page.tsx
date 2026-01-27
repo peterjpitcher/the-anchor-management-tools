@@ -109,13 +109,6 @@ const settingsSections = [
     permission: { module: 'settings', action: 'manage' },
   },
   {
-    name: 'Sync Employee Birthdays',
-    description: 'Sync all employee birthdays to Google Calendar',
-    href: '/settings/sync-birthdays',
-    icon: CalendarDaysIcon,
-    permission: { module: 'employees', action: 'manage' },
-  },
-  {
     name: 'API Keys',
     description: 'Manage API keys for external integrations',
     href: '/settings/api-keys',

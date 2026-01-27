@@ -1,6 +1,7 @@
 import { isCalendarConfigured, getOAuth2Client } from './google-calendar';
 import type { Employee } from '@/types/database';
 import { format, getYear } from 'date-fns';
+import { createHash } from 'crypto';
 
 // Minimal employee type for birthday sync
 interface EmployeeBirthday {
@@ -20,9 +21,11 @@ async function getCalendarClient() {
 
 // Generate a unique event ID for an employee's birthday
 function generateBirthdayEventId(employeeId: string): string {
-  // Use a predictable ID so we can find and update existing events
-  // Remove year from ID since this will be a recurring event
-  return `birthday-${employeeId}`.replace(/[^a-z0-9]/g, '');
+  // Use a predictable, Google Calendar-compatible id.
+  // Google Calendar event ids must use base32hex chars: a-v and digits 0-9.
+  // A hex digest (0-9, a-f) satisfies this requirement.
+  const hash = createHash('sha1').update(employeeId).digest('hex'); // 40 chars
+  return `b${hash}`;
 }
 
 // Create or update a birthday calendar event
