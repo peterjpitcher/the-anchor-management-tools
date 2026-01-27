@@ -34,6 +34,7 @@ export default function EditRecurringInvoicePage() {
   const [vendorId, setVendorId] = useState('')
   const [frequency, setFrequency] = useState<RecurringFrequency>('monthly')
   const [startDate, setStartDate] = useState('')
+  const [nextInvoiceDate, setNextInvoiceDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [daysBefore, setDaysBefore] = useState(30)
   const [reference, setReference] = useState('')
@@ -73,6 +74,7 @@ export default function EditRecurringInvoicePage() {
         setVendorId(recurring.vendor_id)
         setFrequency(recurring.frequency)
         setStartDate(recurring.start_date)
+        setNextInvoiceDate(recurring.next_invoice_date)
         setEndDate(recurring.end_date || '')
         setDaysBefore(recurring.days_before_due)
         setReference(recurring.reference || '')
@@ -181,6 +183,7 @@ export default function EditRecurringInvoicePage() {
       formData.append('vendor_id', vendorId)
       formData.append('frequency', frequency)
       formData.append('start_date', startDate)
+      formData.append('next_invoice_date', nextInvoiceDate)
       if (endDate) formData.append('end_date', endDate)
       formData.append('days_before_due', daysBefore.toString())
       if (reference) formData.append('reference', reference)
@@ -276,6 +279,20 @@ export default function EditRecurringInvoicePage() {
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
+                  required
+                />
+              </FormGroup>
+
+              <FormGroup
+                label="Next Invoice Date"
+                required
+                help="Controls when the next invoice will be generated."
+              >
+                <Input
+                  type="date"
+                  value={nextInvoiceDate}
+                  onChange={(e) => setNextInvoiceDate(e.target.value)}
+                  min={startDate}
                   required
                 />
               </FormGroup>
