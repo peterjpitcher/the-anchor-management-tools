@@ -123,11 +123,13 @@ export const addAttachmentSchema = z.object({
         'application/pdf',
         'image/jpeg',
         'image/png',
+        'image/tiff',
+        'image/tif',
         'application/msword',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'text/plain'
       ].includes(file.type),
-      "Invalid file type. Only PDF, JPG, PNG, Word documents, and TXT files are allowed."
+      "Invalid file type. Only PDF, JPG, PNG, TIFF, Word documents, and TXT files are allowed."
     ),
   category_id: z.string().uuid("A valid category must be selected."),
   description: z.string().optional(),

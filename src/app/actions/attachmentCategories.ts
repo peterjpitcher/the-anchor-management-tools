@@ -8,6 +8,7 @@ import { revalidatePath } from 'next/cache'
 export type AttachmentCategory = {
   category_id: string
   category_name: string
+  email_on_upload: boolean
   created_at: string
   updated_at: string
 }
@@ -47,7 +48,7 @@ export async function listAttachmentCategories() {
   }
 }
 
-export async function createAttachmentCategory(input: { name: string }) {
+export async function createAttachmentCategory(input: { name: string; emailOnUpload?: boolean }) {
   try {
     const ensure = await requireSettingsManage()
     if ('error' in ensure) {
@@ -63,7 +64,7 @@ export async function createAttachmentCategory(input: { name: string }) {
 
     const { data, error } = await supabase
       .from('attachment_categories')
-      .insert({ category_name: normalizedName })
+      .insert({ category_name: normalizedName, email_on_upload: Boolean(input.emailOnUpload) })
       .select()
       .single()
 
@@ -77,7 +78,7 @@ export async function createAttachmentCategory(input: { name: string }) {
       resource_type: 'attachment_category',
       resource_id: data.category_id,
       operation_status: 'success',
-      new_values: { category_name: normalizedName },
+      new_values: { category_name: normalizedName, email_on_upload: Boolean(input.emailOnUpload) },
     })
 
     revalidatePath('/settings/categories')
@@ -89,16 +90,11 @@ export async function createAttachmentCategory(input: { name: string }) {
   }
 }
 
-export async function updateAttachmentCategory(input: { id: string; name: string }) {
+export async function updateAttachmentCategory(input: { id: string; name?: string; emailOnUpload?: boolean }) {
   try {
     const ensure = await requireSettingsManage()
     if ('error' in ensure) {
       return { error: ensure.error }
-    }
-
-    const normalizedName = input.name.trim()
-    if (!normalizedName) {
-      return { error: 'Category name is required' }
     }
 
     const { supabase } = ensure
@@ -113,9 +109,16 @@ export async function updateAttachmentCategory(input: { id: string; name: string
       return { error: 'Category not found' }
     }
 
+    const normalizedName = (input.name ?? existing.category_name).trim()
+    if (!normalizedName) {
+      return { error: 'Category name is required' }
+    }
+
+    const nextEmailOnUpload = input.emailOnUpload ?? existing.email_on_upload ?? false
+
     const { data, error } = await supabase
       .from('attachment_categories')
-      .update({ category_name: normalizedName })
+      .update({ category_name: normalizedName, email_on_upload: nextEmailOnUpload })
       .eq('category_id', input.id)
       .select()
       .single()
@@ -130,8 +133,8 @@ export async function updateAttachmentCategory(input: { id: string; name: string
       resource_type: 'attachment_category',
       resource_id: input.id,
       operation_status: 'success',
-      old_values: { category_name: existing.category_name },
-      new_values: { category_name: normalizedName },
+      old_values: { category_name: existing.category_name, email_on_upload: existing.email_on_upload ?? false },
+      new_values: { category_name: normalizedName, email_on_upload: nextEmailOnUpload },
     })
 
     revalidatePath('/settings/categories')

@@ -137,14 +137,17 @@ export type Database = {
         Row: {
           category_id: string
           category_name: string
+          email_on_upload: boolean
         }
         Insert: {
           category_id?: string
           category_name: string
+          email_on_upload?: boolean
         }
         Update: {
           category_id?: string
           category_name?: string
+          email_on_upload?: boolean
         }
         Relationships: []
       }
