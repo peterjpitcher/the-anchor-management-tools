@@ -347,6 +347,7 @@ export interface EmployeeNote {
 export interface AttachmentCategory {
   category_id: string; // UUID
   category_name: string;
+  email_on_upload: boolean;
   created_at: string; // Timestamp
   updated_at: string; // Timestamp
 }

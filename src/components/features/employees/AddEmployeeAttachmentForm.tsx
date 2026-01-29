@@ -14,6 +14,8 @@ const ATTACHMENT_ALLOWED_MIME_TYPES = [
   'application/pdf',
   'image/jpeg',
   'image/png',
+  'image/tiff',
+  'image/tif',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'text/plain'
@@ -125,7 +127,7 @@ export default function AddEmployeeAttachmentForm({
             name="attachment_file"
             type="file"
             ref={fileInputRef}
-            accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.txt"
+            accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,.doc,.docx,.txt"
             required
             className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-l-lg file:border-0 file:text-sm file:font-semibold file:bg-primary-soft file:text-primary hover:file:bg-primary-soft/80 disabled:cursor-not-allowed"
             disabled={!hasCategories || isUploading}
@@ -137,7 +139,7 @@ export default function AddEmployeeAttachmentForm({
               }
 
               if (!ATTACHMENT_ALLOWED_MIME_TYPES.includes(file.type as (typeof ATTACHMENT_ALLOWED_MIME_TYPES)[number])) {
-                toast.error('Invalid file type. Only PDF, Word, JPG, PNG, and TXT files are allowed.')
+                toast.error('Invalid file type. Only PDF, Word, JPG, PNG, TIFF, and TXT files are allowed.')
                 event.target.value = ''
                 setSelectedFile(null)
                 return
@@ -155,7 +157,7 @@ export default function AddEmployeeAttachmentForm({
           />
         </div>
         <p className="mt-2 text-xs text-gray-500">
-          Accepted: PDF, Word, JPG, PNG, TXT (max 10&nbsp;MB).
+          Accepted: PDF, Word, JPG, PNG, TIFF, TXT (max 10&nbsp;MB).
         </p>
         {state?.errors?.attachment_file && (
           <p className="mt-1 text-sm text-red-600">{state.errors.attachment_file}</p>

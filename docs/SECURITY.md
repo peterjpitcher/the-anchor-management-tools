@@ -171,7 +171,7 @@ USING (bucket_id = 'employee-attachments');
 
 **Security Measures**:
 - 10MB file size limit
-- Allowed types: PDF, PNG, JPG, JPEG
+- Allowed types: PDF, PNG, JPG, JPEG, TIFF
 - Files organized by entity ID
 - Signed URLs with 1-hour expiration
 - No public bucket access

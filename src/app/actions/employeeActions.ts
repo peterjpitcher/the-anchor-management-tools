@@ -9,6 +9,8 @@ import { MAX_FILE_SIZE } from '@/lib/constants';
 import { logAuditEvent } from '@/app/actions/audit';
 import { getCurrentUser } from '@/lib/audit-helpers';
 import { checkUserPermission } from './rbac';
+import { sendEmail } from '@/lib/email/emailService';
+import { formatDateInLondon } from '@/lib/dateUtils';
 // Import services and schemas
 import { 
   EmployeeService,
@@ -31,10 +33,157 @@ const EMPLOYEE_ATTACHMENT_ALLOWED_MIME_TYPES = [
   'application/pdf',
   'image/jpeg',
   'image/png',
+  'image/tiff',
+  'image/tif',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'text/plain',
 ] as const;
+
+const EMPLOYEE_DOCUMENT_EMAIL_COMPANY = 'Orange Jelly Limited';
+const EMPLOYEE_DOCUMENT_EMAIL_SENDER = 'Peter Pitcher';
+
+function buildEmployeeDocumentEmail(params: {
+  employeeName: string;
+  documentName: string;
+  categoryName: string;
+  sentDate: Date;
+}) {
+  const sentDate = formatDateInLondon(params.sentDate, {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
+
+  const subject = `New document from ${EMPLOYEE_DOCUMENT_EMAIL_COMPANY}`;
+  const text = `Hi ${params.employeeName},\n\n` +
+    `You have received a new document from ${EMPLOYEE_DOCUMENT_EMAIL_COMPANY}.\n\n` +
+    `Document: ${params.documentName}\n` +
+    `Category: ${params.categoryName}\n` +
+    `Date: ${sentDate}\n\n` +
+    `Please save this document for your employment and tax records.\n\n` +
+    `If you were not expecting this document or believe you received it in error, please contact us immediately and delete the attachment.\n\n` +
+    `This email and any attachments contain confidential and personal information intended only for the named recipient. If you are not the intended recipient, please do not disclose, copy, distribute, or use the information in any way.\n\n` +
+    `Thanks,\n${EMPLOYEE_DOCUMENT_EMAIL_SENDER}\n${EMPLOYEE_DOCUMENT_EMAIL_COMPANY}`;
+
+  return { subject, text };
+}
+
+async function normaliseToBuffer(data: unknown): Promise<Buffer> {
+  if (!data) {
+    return Buffer.from('');
+  }
+
+  if (Buffer.isBuffer(data)) {
+    return data;
+  }
+
+  if (data instanceof Uint8Array) {
+    return Buffer.from(data);
+  }
+
+  if (typeof (data as any).arrayBuffer === 'function') {
+    const arrayBuffer = await (data as Blob).arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  }
+
+  return Buffer.from(String(data));
+}
+
+async function maybeSendEmployeeAttachmentEmail(params: {
+  adminClient: ReturnType<typeof createAdminClient>;
+  employeeId: string;
+  categoryId: string;
+  storagePath: string;
+  fileName: string;
+  mimeType: string;
+  fileSizeBytes: number;
+}) {
+  const { adminClient, employeeId, categoryId, storagePath, fileName, mimeType, fileSizeBytes } = params;
+
+  const { data: category, error: categoryError } = await adminClient
+    .from('attachment_categories')
+    .select('category_name, email_on_upload')
+    .eq('category_id', categoryId)
+    .maybeSingle();
+
+  if (categoryError) {
+    console.error('Failed to load attachment category for email:', categoryError);
+  }
+
+  if (!category?.email_on_upload) {
+    return { attempted: false };
+  }
+
+  const { data: employee, error: employeeError } = await adminClient
+    .from('employees')
+    .select('first_name, last_name, email_address')
+    .eq('employee_id', employeeId)
+    .maybeSingle();
+
+  if (employeeError) {
+    console.error('Failed to load employee for document email:', employeeError);
+    return { attempted: true, success: false, error: employeeError.message };
+  }
+
+  if (!employee?.email_address) {
+    console.warn('Employee email missing for document email.', { employeeId });
+    return { attempted: true, success: false, error: 'Employee email missing' };
+  }
+
+  const { data: download, error: downloadError } = await adminClient.storage
+    .from(EMPLOYEE_ATTACHMENTS_BUCKET_NAME)
+    .download(storagePath);
+
+  if (downloadError || !download) {
+    console.error('Failed to download attachment for email:', downloadError);
+    return { attempted: true, success: false, error: downloadError?.message || 'Download failed' };
+  }
+
+  const buffer = await normaliseToBuffer(download);
+  const employeeName = `${employee.first_name ?? ''} ${employee.last_name ?? ''}`.trim() || 'there';
+  const { subject, text } = buildEmployeeDocumentEmail({
+    employeeName,
+    documentName: fileName,
+    categoryName: category.category_name ?? 'Document',
+    sentDate: new Date(),
+  });
+
+  const emailResult = await sendEmail({
+    to: employee.email_address,
+    subject,
+    text,
+    attachments: [
+      {
+        name: fileName,
+        content: buffer,
+        contentType: mimeType || 'application/octet-stream',
+      }
+    ]
+  });
+
+  const userInfo = await getCurrentUser();
+  await logAuditEvent({
+    ...(userInfo.user_id && { user_id: userInfo.user_id }),
+    ...(userInfo.user_email && { user_email: userInfo.user_email }),
+    operation_type: emailResult.success ? 'email_sent' : 'email_failed',
+    resource_type: 'employee_attachment',
+    resource_id: storagePath,
+    operation_status: emailResult.success ? 'success' : 'failure',
+    error_message: emailResult.success ? undefined : emailResult.error,
+    additional_info: {
+      employee_id: employeeId,
+      recipient: employee.email_address,
+      category_id: categoryId,
+      category_name: category.category_name,
+      file_name: fileName,
+      file_size_bytes: fileSizeBytes,
+      mime_type: mimeType,
+    }
+  });
+
+  return { attempted: true, success: emailResult.success, error: emailResult.error };
+}
 
 function sanitizeFileName(name: string, fallback: string) {
   const sanitized = name
@@ -385,7 +534,7 @@ export async function createEmployeeAttachmentUploadUrl(
   }
 
   if (!EMPLOYEE_ATTACHMENT_ALLOWED_MIME_TYPES.includes(fileType as (typeof EMPLOYEE_ATTACHMENT_ALLOWED_MIME_TYPES)[number])) {
-    return { type: 'error', message: 'Invalid file type. Only PDF, Word, JPG, PNG, and TXT files are allowed.' }
+    return { type: 'error', message: 'Invalid file type. Only PDF, Word, JPG, PNG, TIFF, and TXT files are allowed.' }
   }
 
   if (!Number.isFinite(fileSize) || fileSize <= 0) {
@@ -464,7 +613,7 @@ const employeeAttachmentRecordSchema = z.object({
     .min(1)
     .refine(
       (value) => EMPLOYEE_ATTACHMENT_ALLOWED_MIME_TYPES.includes(value as (typeof EMPLOYEE_ATTACHMENT_ALLOWED_MIME_TYPES)[number]),
-      'Invalid file type. Only PDF, Word, JPG, PNG, and TXT files are allowed.'
+      'Invalid file type. Only PDF, Word, JPG, PNG, TIFF, and TXT files are allowed.'
     ),
   file_size_bytes: z.preprocess(
     (value) => (typeof value === 'string' ? Number(value) : value),
@@ -528,6 +677,20 @@ export async function saveEmployeeAttachmentRecord(
       },
     })
 
+    const emailResult = await maybeSendEmployeeAttachmentEmail({
+      adminClient,
+      employeeId: employee_id,
+      categoryId: category_id,
+      storagePath: storage_path,
+      fileName: file_name,
+      mimeType: mime_type,
+      fileSizeBytes: file_size_bytes,
+    });
+
+    if (emailResult.attempted && !emailResult.success) {
+      console.error('Employee attachment email failed:', emailResult.error);
+    }
+
     revalidatePath(`/employees/${employee_id}`)
     return { type: 'success', message: 'Attachment uploaded successfully!' }
   } catch (error: any) {
@@ -569,7 +732,7 @@ export async function addEmployeeAttachment(
   const { employee_id, attachment_file, category_id, description } = result.data;
 
   try {
-    await EmployeeService.addEmployeeAttachment(employee_id, attachment_file, category_id, description);
+    const attachment = await EmployeeService.addEmployeeAttachment(employee_id, attachment_file, category_id, description);
     
     const userInfo = await getCurrentUser();
     await logAuditEvent({
@@ -586,6 +749,22 @@ export async function addEmployeeAttachment(
         // storage_path: result.storagePath // Cannot expose storage path via action return
       }
     });
+
+    if (attachment?.storagePath) {
+      const emailResult = await maybeSendEmployeeAttachmentEmail({
+        adminClient: createAdminClient(),
+        employeeId: employee_id,
+        categoryId: category_id,
+        storagePath: attachment.storagePath,
+        fileName: attachment_file.name,
+        mimeType: attachment_file.type,
+        fileSizeBytes: attachment_file.size,
+      });
+
+      if (emailResult.attempted && !emailResult.success) {
+        console.error('Employee attachment email failed:', emailResult.error);
+      }
+    }
     
     revalidatePath(`/employees/${employee_id}`);
     return { type: 'success', message: 'Attachment uploaded successfully!' };
