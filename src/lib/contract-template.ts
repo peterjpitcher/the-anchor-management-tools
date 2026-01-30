@@ -30,6 +30,23 @@ export function generateContractHTML(data: ContractData): string {
     return `£${amount.toFixed(2)}`
   }
 
+  const escapeHtml = (value: string) => {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+  }
+
+  const formatPlainText = (value?: string | null) => {
+    if (!value) {
+      return null
+    }
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? escapeHtml(trimmed) : null
+  }
+
   // Calculate totals including discounts
   const calculateSubtotal = () => {
     return booking.items?.reduce((sum: number, item: PrivateBookingItem) => {
@@ -97,6 +114,7 @@ export function generateContractHTML(data: ContractData): string {
   const total = calculateTotal()
   // Balance due is the total event cost (deposit is separate and refundable)
   const balanceDue = booking.final_payment_date ? 0 : total
+  const contractNote = formatPlainText(booking.contract_note)
 
   // Calculate balance due date (7 days before event)
   let balanceDueDate = 'To be confirmed'
@@ -205,6 +223,10 @@ export function generateContractHTML(data: ContractData): string {
     .info-section p {
       margin: 3px 0;
       font-size: 8pt;
+    }
+
+    .plain-text {
+      white-space: pre-wrap;
     }
     
     table {
@@ -424,6 +446,13 @@ export function generateContractHTML(data: ContractData): string {
     <h3>Special Requirements</h3>
     ${booking.special_requirements ? `<p><strong>Event Requirements:</strong> ${booking.special_requirements}</p>` : ''}
     ${booking.accessibility_needs ? `<p><strong>Accessibility Needs:</strong> ${booking.accessibility_needs}</p>` : ''}
+  </div>
+  ` : ''}
+
+  ${contractNote ? `
+  <div class="info-section" style="margin-bottom: 30px;">
+    <h3>Contract Note</h3>
+    <p class="plain-text">${contractNote}</p>
   </div>
   ` : ''}
 

@@ -7,6 +7,8 @@ import EventCalendarView from './EventCalendarView'
 import EventGrid from './EventGrid'
 import EventList from './EventList'
 import TaskSidebar from './TaskSidebar'
+import EventExportPanel from './EventExportPanel'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 interface CommandCenterShellProps {
     initialData: EventsOverviewResult
@@ -17,6 +19,8 @@ export default function CommandCenterShell({ initialData }: CommandCenterShellPr
     const [filter, setFilter] = useState<FilterType>('all')
     const [searchQuery, setSearchQuery] = useState('')
     const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+    const { hasPermission } = usePermissions()
+    const canExport = hasPermission('events', 'export') || hasPermission('events', 'manage')
 
     // Filter Logic
     const filteredEvents = useMemo(() => {
@@ -47,6 +51,9 @@ export default function CommandCenterShell({ initialData }: CommandCenterShellPr
         <div className="flex flex-1 min-h-0 overflow-hidden">
             {/* Main Content Area */}
             <div className="flex-1 flex flex-col min-w-0 pr-0 md:pr-4 overflow-hidden">
+                {canExport && (
+                    <EventExportPanel events={initialData.upcoming} />
+                )}
                 <ControlBar
                     searchQuery={searchQuery}
                     setSearchQuery={setSearchQuery}

@@ -64,6 +64,7 @@ export const privateBookingSchema = z.object({
   guest_count: z.number().min(0, 'Guest count cannot be negative').optional(),
   event_type: z.string().optional(),
   internal_notes: z.string().optional(),
+  contract_note: z.string().optional(),
   customer_requests: z.string().optional(),
   special_requirements: z.string().optional(),
   accessibility_needs: z.string().optional(),
@@ -106,6 +107,7 @@ export type CreatePrivateBookingInput = {
   guest_count?: number;
   event_type?: string;
   internal_notes?: string;
+  contract_note?: string;
   customer_requests?: string;
   special_requirements?: string;
   accessibility_needs?: string;

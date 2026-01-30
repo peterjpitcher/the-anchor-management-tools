@@ -4076,6 +4076,7 @@ export type Database = {
           cancelled_at: string | null
           contact_email: string | null
           contact_phone: string | null
+          contract_note: string | null
           contract_version: number | null
           created_at: string
           created_by: string | null
@@ -4118,6 +4119,7 @@ export type Database = {
           cancelled_at?: string | null
           contact_email?: string | null
           contact_phone?: string | null
+          contract_note?: string | null
           contract_version?: number | null
           created_at?: string
           created_by?: string | null
@@ -4160,6 +4162,7 @@ export type Database = {
           cancelled_at?: string | null
           contact_email?: string | null
           contact_phone?: string | null
+          contract_note?: string | null
           contract_version?: number | null
           created_at?: string
           created_by?: string | null
@@ -6213,6 +6216,7 @@ export type Database = {
           calendar_event_id: string | null
           contact_email: string | null
           contact_phone: string | null
+          contract_note: string | null
           contract_version: number | null
           created_at: string | null
           created_by: string | null
