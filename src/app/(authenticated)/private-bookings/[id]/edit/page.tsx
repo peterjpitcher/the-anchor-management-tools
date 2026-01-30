@@ -451,6 +451,16 @@ export default function EditPrivateBookingPage({
                 />
               </FormGroup>
 
+              <FormGroup label="Contract Note" help="Shown on the contract exactly as entered">
+                <Textarea
+                  name="contract_note"
+                  id="contract_note"
+                  rows={3}
+                  defaultValue={booking.contract_note || ''}
+                  placeholder="Add a plain-text note to appear on the contract..."
+                />
+              </FormGroup>
+
               <FormGroup label="Special Requirements">
                 <Textarea
                   name="special_requirements"

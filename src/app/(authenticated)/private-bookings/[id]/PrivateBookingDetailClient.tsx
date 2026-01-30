@@ -1992,6 +1992,7 @@ export default function PrivateBookingDetailClient({
           {/* Notes Section */}
           {(booking.customer_requests ||
             booking.internal_notes ||
+            booking.contract_note ||
             booking.special_requirements ||
             booking.accessibility_needs) && (
             <Section id="notes-requirements" title="Notes & Requirements">
@@ -2034,6 +2035,16 @@ export default function PrivateBookingDetailClient({
                       </h3>
                       <p className="text-sm text-gray-600 whitespace-pre-wrap">
                         {internalNotesForDisplay}
+                      </p>
+                    </div>
+                  )}
+                  {booking.contract_note && (
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-700 mb-1">
+                        Contract Note
+                      </h3>
+                      <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                        {booking.contract_note}
                       </p>
                     </div>
                   )}

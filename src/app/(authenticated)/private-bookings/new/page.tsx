@@ -398,6 +398,18 @@ export default function NewPrivateBookingPage() {
                   placeholder="Staff notes, setup requirements, important reminders..."
                 />
               </FormGroup>
+
+              <FormGroup
+                label="Contract Note"
+                help="Shown on the contract exactly as entered"
+              >
+                <Textarea
+                  id="contract_note"
+                  name="contract_note"
+                  rows={3}
+                  placeholder="Add a plain-text note to appear on the contract..."
+                />
+              </FormGroup>
               
               <FormGroup
                 label="Special Requirements"

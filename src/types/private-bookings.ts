@@ -75,6 +75,7 @@ export interface PrivateBooking {
   calendar_event_id?: string
   contract_version: number
   internal_notes?: string
+  contract_note?: string
   customer_requests?: string
   special_requirements?: string
   accessibility_needs?: string
