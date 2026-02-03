@@ -20,6 +20,10 @@ export function generateInvoiceHTML(data: InvoiceTemplateData): string {
       .replaceAll("'", '&#39;')
   }
 
+  const formatMultiline = (value: string) => {
+    return escapeHtml(value).replace(/\n/g, '<br />')
+  }
+
   const formatDate = (date: string | null) => {
     return formatDateFull(date)
   }
@@ -468,7 +472,7 @@ export function generateInvoiceHTML(data: InvoiceTemplateData): string {
   ${invoice.notes ? `
     <div class="notes-section">
       <h3>Notes</h3>
-      <p>${escapeHtml(invoice.notes)}</p>
+      <p>${formatMultiline(invoice.notes)}</p>
     </div>
   ` : ''}
 
