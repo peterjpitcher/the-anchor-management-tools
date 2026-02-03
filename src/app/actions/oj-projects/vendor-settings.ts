@@ -13,6 +13,7 @@ const BillingSettingsSchema = z.object({
   vat_rate: z.coerce.number().min(0).max(100),
   mileage_rate: z.coerce.number().min(0).max(100),
   retainer_included_hours_per_month: z.coerce.number().min(0).max(1000).optional(),
+  statement_mode: z.boolean().optional(),
 })
 
 export async function getVendorBillingSettings(vendorId: string) {
@@ -43,6 +44,7 @@ export async function upsertVendorBillingSettings(formData: FormData) {
     vat_rate: formData.get('vat_rate'),
     mileage_rate: formData.get('mileage_rate'),
     retainer_included_hours_per_month: formData.get('retainer_included_hours_per_month') ?? undefined,
+    statement_mode: formData.get('statement_mode') === 'on' || formData.get('statement_mode') === 'true',
   })
 
   if (!parsed.success) return { error: parsed.error.errors[0].message }
@@ -70,6 +72,7 @@ export async function upsertVendorBillingSettings(formData: FormData) {
         vat_rate: parsed.data.vat_rate,
         mileage_rate: parsed.data.mileage_rate,
         retainer_included_hours_per_month: parsed.data.retainer_included_hours_per_month ?? null,
+        statement_mode: parsed.data.statement_mode ?? false,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'vendor_id' }
@@ -80,4 +83,3 @@ export async function upsertVendorBillingSettings(formData: FormData) {
   if (error) return { error: error.message }
   return { settings: data, success: true as const }
 }
-

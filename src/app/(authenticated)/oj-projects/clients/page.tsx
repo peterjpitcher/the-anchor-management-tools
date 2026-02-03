@@ -9,6 +9,7 @@ import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Select } from '@/components/ui-v2/forms/Select'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
+import { Checkbox } from '@/components/ui-v2/forms/Checkbox'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
@@ -51,6 +52,7 @@ type SettingsFormState = {
   vat_rate: string
   mileage_rate: string
   retainer_included_hours_per_month: string
+  statement_mode: boolean
 }
 
 type ChargeFormState = {
@@ -108,10 +110,15 @@ export default function OJProjectsClientsPage() {
     vat_rate: '20',
     mileage_rate: '0.42',
     retainer_included_hours_per_month: '',
+    statement_mode: false,
   })
 
   const [charges, setCharges] = useState<any[]>([])
   const [contacts, setContacts] = useState<VendorContact[]>([])
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+  const [previewData, setPreviewData] = useState<any | null>(null)
 
   const invoiceRecipientConfigured = useMemo(() => {
     const vendorEmails = String(selectedVendor?.email || '')
@@ -134,6 +141,9 @@ export default function OJProjectsClientsPage() {
         return acc + exVat + exVat * (vatRate / 100)
       }, 0)
   }, [charges])
+
+  const previewInvoice = useMemo(() => previewData?.vendors?.[0]?.invoice_preview || null, [previewData])
+  const previewVendor = useMemo(() => previewData?.vendors?.[0] || null, [previewData])
 
   const capMisconfigured = useMemo(() => {
     if (settings.billing_mode !== 'cap') return false
@@ -241,6 +251,7 @@ export default function OJProjectsClientsPage() {
         mileage_rate: s?.mileage_rate != null ? String(s.mileage_rate) : '0.42',
         retainer_included_hours_per_month:
           s?.retainer_included_hours_per_month != null ? String(s.retainer_included_hours_per_month) : '',
+        statement_mode: !!s?.statement_mode,
       })
 
       setCharges(chargesRes.charges || [])
@@ -273,6 +284,7 @@ export default function OJProjectsClientsPage() {
       fd.append('vat_rate', settings.vat_rate)
       fd.append('mileage_rate', settings.mileage_rate)
       fd.append('retainer_included_hours_per_month', settings.retainer_included_hours_per_month)
+      fd.append('statement_mode', settings.statement_mode ? 'on' : 'off')
 
       const res = await upsertVendorBillingSettings(fd)
       if (res.error) throw new Error(res.error)
@@ -282,6 +294,27 @@ export default function OJProjectsClientsPage() {
       toast.error(err instanceof Error ? err.message : 'Failed to save client settings')
     } finally {
       setSavingSettings(false)
+    }
+  }
+
+  async function openPreview() {
+    if (!vendorId) return
+    setPreviewLoading(true)
+    setPreviewError(null)
+    setPreviewData(null)
+    try {
+      const res = await fetch(`/api/oj-projects/billing-preview?vendor_id=${vendorId}`)
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to load preview')
+      }
+      setPreviewData(data)
+      setPreviewOpen(true)
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : 'Failed to load preview')
+      setPreviewOpen(true)
+    } finally {
+      setPreviewLoading(false)
     }
   }
 
@@ -580,6 +613,16 @@ export default function OJProjectsClientsPage() {
                   </FormGroup>
                 )}
 
+                <FormGroup label="Statement Mode">
+                  <Checkbox
+                    checked={settings.statement_mode}
+                    onChange={(e) => setSettings({ ...settings, statement_mode: e.target.checked })}
+                    disabled={!canEditSettings}
+                    label="Send balance statement invoices"
+                    description="Hide itemised work; show project balance summary and payment projection."
+                  />
+                </FormGroup>
+
                 <FormGroup label="Mileage Rate (£/mile)" required>
                   <Input
                     type="number"
@@ -609,7 +652,16 @@ export default function OJProjectsClientsPage() {
                 </div>
               </div>
 
-              <div className="flex justify-end pt-2 border-t border-gray-100">
+              <div className="flex flex-wrap gap-2 justify-end pt-2 border-t border-gray-100">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={openPreview}
+                  loading={previewLoading}
+                  disabled={!vendorId || previewLoading}
+                >
+                  {settings.statement_mode ? 'Preview Statement Invoice' : 'Preview Invoice (Dry Run)'}
+                </Button>
                 <Button type="submit" loading={savingSettings} disabled={!canEditSettings || savingSettings}>
                   <Save className="w-4 h-4 mr-2" />
                   Save Settings
@@ -838,6 +890,100 @@ export default function OJProjectsClientsPage() {
           </div>
         </div>
       )}
+
+      <Modal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        title={previewVendor?.statement_mode ? 'Statement Invoice Preview (Dry Run)' : 'Invoice Preview (Dry Run)'}
+        size="lg"
+      >
+        <div className="space-y-4 text-sm">
+          <Alert variant="info">
+            This is a dry run preview. No invoice is created or sent.
+          </Alert>
+
+          {previewError && <Alert variant="error">{previewError}</Alert>}
+
+          {!previewError && previewVendor && !previewVendor.would_invoice && (
+            <Alert variant="warning">
+              {previewVendor.reason || 'No invoice would be generated for this period.'}
+            </Alert>
+          )}
+
+          {!previewError && previewInvoice && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <div className="text-xs text-gray-500">Billing period</div>
+                  <div className="font-medium">{previewData?.period}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">Invoice date</div>
+                  <div className="font-medium">{previewInvoice.invoice_date}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">Due date</div>
+                  <div className="font-medium">{previewInvoice.due_date}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">Reference</div>
+                  <div className="font-medium">{previewInvoice.reference}</div>
+                </div>
+              </div>
+
+              <div className="border rounded-md p-3">
+                <div className="text-xs text-gray-500 mb-2">Totals (inc VAT)</div>
+                <div className="flex justify-between text-sm">
+                  <span>Subtotal</span>
+                  <span>£{Number(previewInvoice.totals?.subtotalBeforeInvoiceDiscount || 0).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>VAT</span>
+                  <span>£{Number(previewInvoice.totals?.vatAmount || 0).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm font-semibold">
+                  <span>Total</span>
+                  <span>£{Number(previewInvoice.totals?.totalAmount || 0).toFixed(2)}</span>
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500 mb-2">Line items</div>
+                <div className="space-y-2">
+                  {(previewInvoice.line_items || []).map((item: any, idx: number) => {
+                    const qty = Number(item.quantity || 0)
+                    const unit = Number(item.unit_price || 0)
+                    const vatRate = Number(item.vat_rate || 0)
+                    const total = qty * unit * (1 + vatRate / 100)
+                    return (
+                      <div key={`${item.description}-${idx}`} className="border rounded-md p-2">
+                        <div className="font-medium">{item.description}</div>
+                        <div className="text-xs text-gray-500">
+                          Qty {qty} · £{unit.toFixed(2)} · VAT {vatRate}%
+                        </div>
+                        <div className="text-sm font-semibold">£{total.toFixed(2)}</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500 mb-2">Notes</div>
+                <pre className="whitespace-pre-wrap text-xs bg-gray-50 border rounded-md p-3">
+                  {previewInvoice.notes}
+                </pre>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <ModalActions>
+          <Button variant="secondary" onClick={() => setPreviewOpen(false)}>
+            Close
+          </Button>
+        </ModalActions>
+      </Modal>
 
       <Modal open={vendorModalOpen} onClose={() => setVendorModalOpen(false)} title="New Client">
         <form onSubmit={createNewVendor} className="space-y-4">

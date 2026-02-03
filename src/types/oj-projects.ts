@@ -21,6 +21,7 @@ export type OJVendorBillingSettings = {
   vat_rate: number
   mileage_rate: number
   retainer_included_hours_per_month: number | null
+  statement_mode: boolean | null
   created_at: string
   updated_at: string
 }
