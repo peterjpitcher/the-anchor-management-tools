@@ -32,7 +32,7 @@ import { classifyReceiptTransaction } from '@/lib/openai'
 import { getOpenAIConfig } from '@/lib/openai/config'
 
 const RECEIPT_BUCKET = 'receipts'
-const MAX_RECEIPT_UPLOAD_SIZE = 15 * 1024 * 1024 // 15 MB safety limit
+const MAX_RECEIPT_UPLOAD_SIZE = 15 * 1024 * 1024 // 15 MB safety limit (keep in sync with next.config.mjs)
 const DEFAULT_PAGE_SIZE = 25
 const MAX_MONTH_PAGE_SIZE = 5000
 const RECEIPT_AI_JOB_CHUNK_SIZE = 10

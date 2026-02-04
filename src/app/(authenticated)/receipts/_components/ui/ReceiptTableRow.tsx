@@ -129,20 +129,27 @@ export function ReceiptTableRow({
     formData.append('receipt', file)
 
     startTransition(async () => {
-      const result = await uploadReceiptForTransaction(formData)
-      if (result?.error || !result?.receipt) {
-        toast.error(result?.error ?? 'Upload failed')
-        return
+      try {
+        const result = await uploadReceiptForTransaction(formData)
+        if (result?.error || !result?.receipt) {
+          toast.error(result?.error ?? 'Upload failed')
+          return
+        }
+
+        onUpdate({
+          ...transaction,
+          status: 'completed',
+          receipt_required: false,
+          files: [...transaction.files, result.receipt as ReceiptFile]
+        }, transaction.status)
+
+        toast.success('Receipt uploaded')
+      } catch (error) {
+        console.error('Receipt upload failed', error)
+        const message = error instanceof Error ? error.message.toLowerCase() : ''
+        const tooLarge = (message.includes('body') && message.includes('limit')) || message.includes('too large')
+        toast.error(tooLarge ? 'File is too large. Please keep receipts under 15MB.' : 'Upload failed')
       }
-
-      onUpdate({
-        ...transaction,
-        status: 'completed',
-        receipt_required: false,
-        files: [...transaction.files, result.receipt as ReceiptFile]
-      }, transaction.status)
-
-      toast.success('Receipt uploaded')
     })
   }
 
