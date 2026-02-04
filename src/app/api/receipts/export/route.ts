@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import archiver, { type ArchiverError } from 'archiver'
-import { PassThrough } from 'stream'
+import { PassThrough, Readable } from 'stream'
 import Papa from 'papaparse'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -8,8 +8,10 @@ import { receiptQuarterExportSchema } from '@/lib/validation'
 import type { ReceiptTransaction, ReceiptFile } from '@/types/database'
 
 export const runtime = 'nodejs'
+export const maxDuration = 300
 
 const RECEIPT_BUCKET = 'receipts'
+const DOWNLOAD_CONCURRENCY = 4
 
 type ReceiptTransactionRow = ReceiptTransaction & {
   receipt_files?: ReceiptFile[] | null
@@ -50,69 +52,82 @@ export async function GET(request: NextRequest) {
     const rows = (transactions ?? []) as ReceiptTransactionRow[]
     const summaryCsv = await buildSummaryCsv(rows, parsed.data.year, parsed.data.quarter)
 
-    const archive = archiver('zip', { zlib: { level: 9 } })
+    const archive = archiver('zip', { zlib: { level: 1 } })
     const passthrough = new PassThrough()
-    archive.pipe(passthrough)
-    const chunks: Buffer[] = []
 
-    const archiveFinished = new Promise<void>((resolve, reject) => {
-      passthrough.on('data', (chunk) => chunks.push(chunk as Buffer))
-      passthrough.on('end', resolve)
-      passthrough.on('error', reject)
-      archive.on('warning', (warning) => {
-        const archiverWarning = warning as ArchiverError
-        if (archiverWarning?.code === 'ENOENT') {
-          console.warn('Archiver warning:', warning)
-          return
-        }
-        reject(warning)
-      })
-      archive.on('error', (archiveError) => {
-        reject(archiveError)
-      })
-    })
+    const handleArchiveError = (error: unknown) => {
+      console.error('Receipts export stream failed:', error)
+      passthrough.destroy(error instanceof Error ? error : new Error('Receipts export failed'))
+    }
 
-    archive.append(summaryCsv, {
-      name: `Receipts_Q${parsed.data.quarter}_${parsed.data.year}.csv`,
-    })
-
-    for (const transaction of rows) {
-      const files = transaction.receipt_files ?? []
-      if (!files?.length) continue
-
-      for (const [index, file] of files.entries()) {
-        const download = await supabase.storage.from(RECEIPT_BUCKET).download(file.storage_path)
-        if (download.error || !download.data) {
-          console.warn(`Failed to download receipt ${file.storage_path}:`, download.error)
-          continue
-        }
-
-        const buffer = await normaliseToBuffer(download.data)
-        const name = buildReceiptFileName(transaction, file, index)
-
-        archive.append(buffer, { name })
+    archive.on('warning', (warning) => {
+      const archiverWarning = warning as ArchiverError
+      if (archiverWarning?.code === 'ENOENT') {
+        console.warn('Archiver warning:', warning)
+        return
       }
-    }
+      handleArchiveError(warning)
+    })
+    archive.on('error', handleArchiveError)
+    passthrough.on('error', (streamError) => {
+      console.error('Receipts export passthrough error:', streamError)
+    })
 
-    if (!rows.length) {
-      const placeholder = Buffer.from('No transactions found for this quarter.', 'utf-8')
-      archive.append(placeholder, { name: 'README.txt' })
-    }
+    archive.pipe(passthrough)
 
-    await archive.finalize()
-    await archiveFinished
-
-    const zipBuffer = Buffer.concat(chunks)
-
-    return new NextResponse(zipBuffer, {
+    const stream = Readable.toWeb(passthrough) as unknown as ReadableStream<Uint8Array>
+    const response = new NextResponse(stream, {
       status: 200,
       headers: {
         'Content-Type': 'application/zip',
         'Content-Disposition': `attachment; filename="receipts_q${parsed.data.quarter}_${parsed.data.year}.zip"`,
         'Cache-Control': 'no-store',
-        'Content-Length': zipBuffer.length.toString(),
+        'X-Accel-Buffering': 'no',
       },
     })
+
+    void (async () => {
+      try {
+        archive.append(summaryCsv, {
+          name: `Receipts_Q${parsed.data.quarter}_${parsed.data.year}.csv`,
+        })
+
+        const downloadTasks: Array<() => Promise<void>> = []
+
+        for (const transaction of rows) {
+          const files = transaction.receipt_files ?? []
+          if (!files?.length) continue
+
+          for (const [index, file] of files.entries()) {
+            downloadTasks.push(async () => {
+              const download = await supabase.storage.from(RECEIPT_BUCKET).download(file.storage_path)
+              if (download.error || !download.data) {
+                console.warn(`Failed to download receipt ${file.storage_path}:`, download.error)
+                return
+              }
+
+              const buffer = await normaliseToBuffer(download.data)
+              const name = buildReceiptFileName(transaction, file, index)
+
+              archive.append(buffer, { name })
+            })
+          }
+        }
+
+        await runWithConcurrency(downloadTasks, DOWNLOAD_CONCURRENCY)
+
+        if (!rows.length) {
+          const placeholder = Buffer.from('No transactions found for this quarter.', 'utf-8')
+          archive.append(placeholder, { name: 'README.txt' })
+        }
+
+        await archive.finalize()
+      } catch (streamError) {
+        handleArchiveError(streamError)
+      }
+    })()
+
+    return response
   } catch (err) {
     console.error('Receipts export failed:', err)
     const message = err instanceof Error ? err.message : 'Unknown error'
@@ -273,6 +288,23 @@ async function normaliseToBuffer(data: unknown): Promise<Buffer> {
   }
 
   return Buffer.from(String(data))
+}
+
+async function runWithConcurrency(tasks: Array<() => Promise<void>>, limit: number) {
+  if (!tasks.length) return
+
+  const queue = tasks.slice()
+  const workerCount = Math.min(limit, queue.length)
+
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (queue.length) {
+      const task = queue.shift()
+      if (!task) return
+      await task()
+    }
+  })
+
+  await Promise.all(workers)
 }
 
 function sanitizeDescriptionForFilename(value: string): string {

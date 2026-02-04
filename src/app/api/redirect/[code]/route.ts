@@ -3,6 +3,12 @@ import { createClient } from '@supabase/supabase-js';
 import { parseUserAgent, parseQueryParams, getCountryFromHeaders, getCityFromHeaders, getRegionFromHeaders } from '@/lib/user-agent-parser';
 
 const FALLBACK_REDIRECT_URL = 'https://www.the-anchor.pub';
+const MISSING_RELATION_CODE = '42P01';
+let loggedMissingAliasTable = false;
+
+function isMissingRelationError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: string }).code === MISSING_RELATION_CODE;
+}
 
 function normalizeShortCode(raw: string | undefined | null): string | null {
   if (!raw) return null;
@@ -83,6 +89,13 @@ export async function GET(
         .maybeSingle();
 
       if (aliasError) {
+        if (isMissingRelationError(aliasError)) {
+          if (!loggedMissingAliasTable) {
+            console.warn('Short link alias table missing. Apply latest Supabase migrations to enable aliases.');
+            loggedMissingAliasTable = true;
+          }
+          return NextResponse.redirect(FALLBACK_REDIRECT_URL);
+        }
         console.error('Short link alias lookup error:', shortCode, aliasError);
         return NextResponse.redirect(FALLBACK_REDIRECT_URL);
       }
