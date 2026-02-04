@@ -38,7 +38,7 @@ const MAX_MONTH_PAGE_SIZE = 5000
 const RECEIPT_AI_JOB_CHUNK_SIZE = 10
 const EXPENSE_CATEGORY_OPTIONS = receiptExpenseCategorySchema.options
 const BULK_STATUS_OPTIONS = receiptTransactionStatusSchema.options
-const OUTSTANDING_STATUSES: ReceiptTransaction['status'][] = ['pending', 'cant_find']
+const OUTSTANDING_STATUSES: ReceiptTransaction['status'][] = ['pending']
 type BulkStatus = (typeof BULK_STATUS_OPTIONS)[number]
 
 const bulkGroupQuerySchema = z.object({
