@@ -12,7 +12,7 @@ type WorkspaceTransaction = ReceiptWorkspaceData['transactions'][number]
 type SortColumn = NonNullable<ReceiptWorkspaceFilters['sortBy']>
 
 // Helper types matching action exports
-type ReceiptSortColumn = 'transaction_date' | 'details' | 'amount_in' | 'amount_out'
+type ReceiptSortColumn = 'transaction_date' | 'details' | 'amount_in' | 'amount_out' | 'amount_total'
 
 interface ReceiptListProps {
   transactions: WorkspaceTransaction[]
@@ -51,6 +51,8 @@ export function ReceiptList({
     { value: 'transaction_date:asc', label: 'Date · oldest first' },
     { value: 'details:asc', label: 'Details · A → Z' },
     { value: 'details:desc', label: 'Details · Z → A' },
+    { value: 'amount_total:desc', label: 'Amount · high to low' },
+    { value: 'amount_total:asc', label: 'Amount · low to high' },
     { value: 'amount_out:desc', label: 'Money out · high to low' },
     { value: 'amount_out:asc', label: 'Money out · low to high' },
     { value: 'amount_in:desc', label: 'Money in · high to low' },
@@ -59,6 +61,8 @@ export function ReceiptList({
 
   const isVendorMissing = (value: string | null | undefined) => !value || value.trim().length === 0
   const isExpenseMissing = (value: string | null | undefined) => !value || value.trim().length === 0
+  const outstandingStatuses = new Set<ReceiptTransaction['status']>(['pending', 'cant_find'])
+  const isOutstandingStatus = (status: ReceiptTransaction['status']) => outstandingStatuses.has(status)
 
   // Filter check to immediately remove items that no longer match strict filters
   // This logic was previously in the `handleStatusUpdate` of the monolithic component
@@ -68,8 +72,8 @@ export function ReceiptList({
           onTransactionRemove(updated.id, previousStatus, updated.status)
           return
       }
-      // If we show only outstanding and it's no longer pending, remove it
-      if (filters.showOnlyOutstanding && updated.status !== 'pending') {
+      // If we show only outstanding and it's now complete, remove it
+      if (filters.showOnlyOutstanding && !isOutstandingStatus(updated.status)) {
           onTransactionRemove(updated.id, previousStatus, updated.status)
           return
       }

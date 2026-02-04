@@ -38,6 +38,7 @@ const MAX_MONTH_PAGE_SIZE = 5000
 const RECEIPT_AI_JOB_CHUNK_SIZE = 10
 const EXPENSE_CATEGORY_OPTIONS = receiptExpenseCategorySchema.options
 const BULK_STATUS_OPTIONS = receiptTransactionStatusSchema.options
+const OUTSTANDING_STATUSES: ReceiptTransaction['status'][] = ['pending', 'cant_find']
 type BulkStatus = (typeof BULK_STATUS_OPTIONS)[number]
 
 const bulkGroupQuerySchema = z.object({
@@ -84,7 +85,7 @@ type ParsedTransactionRow = {
   dedupeHash: string
 }
 
-export type ReceiptSortColumn = 'transaction_date' | 'details' | 'amount_in' | 'amount_out'
+export type ReceiptSortColumn = 'transaction_date' | 'details' | 'amount_in' | 'amount_out' | 'amount_total'
 
 export type ReceiptWorkspaceFilters = {
   status?: ReceiptTransaction['status'] | 'all'
@@ -1981,13 +1982,19 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
   const page = isMonthScoped ? 1 : Math.max(filters.page ?? 1, 1)
   const offset = isMonthScoped ? 0 : (page - 1) * pageSize
 
-  const sortColumn: ReceiptSortColumn = filters.sortBy ?? 'transaction_date'
+  const isAllTimeView = !filters.month
+  const defaultSortColumn: ReceiptSortColumn = isAllTimeView ? 'amount_total' : 'transaction_date'
+  const sortColumn: ReceiptSortColumn = filters.sortBy ?? defaultSortColumn
   const sortDirection: 'asc' | 'desc' = filters.sortDirection === 'asc' ? 'asc' : 'desc'
 
-  const orderDefinitions: Array<{ column: ReceiptSortColumn; ascending: boolean }> = []
+  const orderDefinitions: Array<{ column: ReceiptSortColumn; ascending: boolean; nullsFirst?: boolean }> = []
 
   const isAscending = sortDirection === 'asc'
-  orderDefinitions.push({ column: sortColumn, ascending: isAscending })
+  orderDefinitions.push({
+    column: sortColumn,
+    ascending: isAscending,
+    nullsFirst: sortColumn === 'amount_total' ? false : undefined,
+  })
 
   if (!orderDefinitions.some((order) => order.column === 'transaction_date')) {
     orderDefinitions.push({ column: 'transaction_date', ascending: false })
@@ -2002,7 +2009,7 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
     .select('*, receipt_files(*), receipt_rules!receipt_transactions_rule_applied_id_fkey(id, name)', { count: 'exact' })
 
   orderDefinitions.forEach((order) => {
-    baseQuery = baseQuery.order(order.column, { ascending: order.ascending })
+    baseQuery = baseQuery.order(order.column, { ascending: order.ascending, nullsFirst: order.nullsFirst })
   })
 
   if (filters.status && filters.status !== 'all') {
@@ -2010,7 +2017,7 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
   }
 
   if (filters.showOnlyOutstanding && !filters.status) {
-    baseQuery = baseQuery.eq('status', 'pending')
+    baseQuery = baseQuery.in('status', OUTSTANDING_STATUSES)
   }
 
   if (filters.direction && filters.direction !== 'all') {

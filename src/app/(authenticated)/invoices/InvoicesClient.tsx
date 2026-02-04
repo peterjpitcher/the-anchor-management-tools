@@ -17,6 +17,8 @@ import { usePermissions } from '@/contexts/PermissionContext'
 import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 import { MobileInvoiceCard } from './MobileInvoiceCard'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { toast } from '@/components/ui-v2/feedback/Toast'
+import { toLocalIsoDate } from '@/lib/dateUtils'
 
 type InvoiceSummary = {
   total_outstanding: number
@@ -102,6 +104,10 @@ export default function InvoicesClient({
   // Local state for controlled inputs
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(initialStatus)
   const [searchTerm, setSearchTerm] = useState(initialSearch)
+  const [exportStartDate, setExportStartDate] = useState('')
+  const [exportEndDate, setExportEndDate] = useState('')
+  const [exportLoading, setExportLoading] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   // Sync local state with props (e.g. browser navigation)
   useEffect(() => {
@@ -111,6 +117,19 @@ export default function InvoicesClient({
   useEffect(() => {
     setSearchTerm(initialSearch)
   }, [initialSearch])
+
+  useEffect(() => {
+    if (!resolvedPermissions.canExport) return
+    if (exportStartDate || exportEndDate) return
+
+    const now = new Date()
+    const currentQuarter = Math.floor(now.getMonth() / 3)
+    const quarterStart = new Date(now.getFullYear(), currentQuarter * 3, 1)
+    const quarterEnd = new Date(now.getFullYear(), (currentQuarter + 1) * 3, 0)
+
+    setExportStartDate(toLocalIsoDate(quarterStart))
+    setExportEndDate(toLocalIsoDate(quarterEnd))
+  }, [resolvedPermissions.canExport, exportStartDate, exportEndDate])
 
   // URL updates
   const updateUrl = useCallback((newParams: Record<string, string | undefined>) => {
@@ -141,6 +160,60 @@ export default function InvoicesClient({
     }, 500)
     return () => clearTimeout(timer)
   }, [searchTerm, initialSearch, updateUrl])
+
+  async function handleExport() {
+    if (!resolvedPermissions.canExport) {
+      toast.error('You do not have permission to export invoices')
+      return
+    }
+
+    if (!exportStartDate || !exportEndDate) {
+      setExportError('Please select both start and end dates.')
+      return
+    }
+
+    if (exportStartDate > exportEndDate) {
+      setExportError('Start date must be before end date.')
+      return
+    }
+
+    setExportLoading(true)
+    setExportError(null)
+
+    try {
+      const params = new URLSearchParams({
+        start_date: exportStartDate,
+        end_date: exportEndDate,
+        type: 'all',
+      })
+
+      const response = await fetch(`/api/invoices/export?${params}`)
+      if (!response.ok) {
+        const text = await response.text()
+        throw new Error(text || 'Export failed')
+      }
+
+      const contentDisposition = response.headers.get('content-disposition')
+      const filename = contentDisposition?.match(/filename="(.+)"/)?.[1] || 'invoices-export.zip'
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      toast.success('Export downloaded successfully')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to export invoices'
+      setExportError(message)
+      toast.error(message)
+    } finally {
+      setExportLoading(false)
+    }
+  }
 
   function getStatusBadgeVariant(
     status: InvoiceStatus
@@ -352,6 +425,72 @@ export default function InvoicesClient({
                   fullWidth={false}
                 />
               </div>
+
+              {resolvedPermissions.canExport && (
+                <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                    <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-3">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-gray-600">Start date</label>
+                        <Input
+                          type="date"
+                          value={exportStartDate}
+                          onChange={(e) => {
+                            setExportStartDate(e.target.value)
+                            setExportError(null)
+                          }}
+                          fullWidth={false}
+                          className="sm:w-40"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-gray-600">End date</label>
+                        <Input
+                          type="date"
+                          value={exportEndDate}
+                          onChange={(e) => {
+                            setExportEndDate(e.target.value)
+                            setExportError(null)
+                          }}
+                          fullWidth={false}
+                          className="sm:w-40"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          const now = new Date()
+                          const currentQuarter = Math.floor(now.getMonth() / 3)
+                          const quarterStart = new Date(now.getFullYear(), currentQuarter * 3, 1)
+                          const quarterEnd = new Date(now.getFullYear(), (currentQuarter + 1) * 3, 0)
+                          setExportStartDate(toLocalIsoDate(quarterStart))
+                          setExportEndDate(toLocalIsoDate(quarterEnd))
+                        }}
+                        leftIcon={<Calendar className="h-4 w-4" />}
+                      >
+                        This quarter
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleExport}
+                        loading={exportLoading}
+                        disabled={exportLoading || !exportStartDate || !exportEndDate}
+                        leftIcon={<Download className="h-4 w-4" />}
+                      >
+                        Download
+                      </Button>
+                    </div>
+                  </div>
+                  {exportError && (
+                    <p className="mt-2 text-sm text-red-600">{exportError}</p>
+                  )}
+                </div>
+              )}
 
               <div className="flex gap-2 sm:hidden">
                 {resolvedPermissions.canExport && (
