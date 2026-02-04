@@ -8,7 +8,6 @@ import { Select } from '@/components/ui-v2/forms/Select'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import {
   markReceiptTransaction,
-  uploadReceiptForTransaction,
   deleteReceiptFile,
   getReceiptSignedUrl,
   updateReceiptClassification,
@@ -130,8 +129,13 @@ export function ReceiptTableRow({
 
     startTransition(async () => {
       try {
-        const result = await uploadReceiptForTransaction(formData)
-        if (result?.error || !result?.receipt) {
+        const response = await fetch('/api/receipts/upload', {
+          method: 'POST',
+          body: formData,
+        })
+        const result = await response.json().catch(() => ({}))
+
+        if (!response.ok || result?.error || !result?.receipt) {
           toast.error(result?.error ?? 'Upload failed')
           return
         }
