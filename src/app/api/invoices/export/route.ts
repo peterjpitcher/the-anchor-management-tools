@@ -6,7 +6,6 @@ export const maxDuration = 300
 
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { generateInvoiceHTML } from '@/lib/invoice-template'
 import { closePdfBrowser, createPdfBrowser, generateInvoicePDF } from '@/lib/pdf-generator'
 import { logAuditEvent } from '@/app/actions/audit'
 import type { InvoiceWithDetails } from '@/types/invoices'
@@ -115,15 +114,8 @@ export async function GET(request: NextRequest) {
       for (const invoice of invoices) {
         const typedInvoice = invoice as InvoiceWithDetails
 
-        // Generate HTML copy for reference
-        const html = generateInvoiceHTML({
-          invoice: typedInvoice,
-          logoUrl: '/logo-oj.jpg'
-        })
-
         const pdfBuffer = await generateInvoicePDF(typedInvoice, { browser })
 
-        zip.file(`invoices/${invoice.invoice_number}.html`, html)
         zip.file(`invoices/${invoice.invoice_number}.pdf`, pdfBuffer)
       }
     } finally {
@@ -139,7 +131,7 @@ Export Type: ${exportType}
 
 Files included:
 - invoice-summary.csv: Summary of all invoices
-- invoices/: Individual invoice files (HTML + PDF)
+- invoices/: Individual invoice PDFs
 `
     zip.file('README.txt', readme)
 

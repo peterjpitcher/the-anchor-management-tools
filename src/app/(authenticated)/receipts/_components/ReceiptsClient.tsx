@@ -82,9 +82,10 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
 
   // Sorting Logic
   type SortColumn = NonNullable<ReceiptWorkspaceFilters['sortBy']>
-  const currentSortBy = (initialFilters.sortBy ?? 'transaction_date') as SortColumn
-  const currentSortDirection = initialFilters.sortDirection ?? 'desc'
-  const defaultSort = { column: 'transaction_date', direction: 'desc' } as const
+  const defaultSortColumn: SortColumn = !initialFilters.month ? 'amount_total' : 'transaction_date'
+  const defaultSort = { column: defaultSortColumn, direction: 'desc' } as const
+  const currentSortBy = (initialFilters.sortBy ?? defaultSort.column) as SortColumn
+  const currentSortDirection = initialFilters.sortDirection ?? defaultSort.direction
 
   function updateQuery(next: Record<string, string | null>) {
     const params = new URLSearchParams(searchParams.toString())
@@ -116,7 +117,7 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
   }
 
   function handleSort(column: SortColumn) {
-    let nextDirection: 'asc' | 'desc' = column === 'transaction_date' ? 'desc' : 'asc'
+    let nextDirection: 'asc' | 'desc' = (column === 'transaction_date' || column === 'amount_total') ? 'desc' : 'asc'
     if (currentSortBy === column) {
       nextDirection = currentSortDirection === 'asc' ? 'desc' : 'asc'
     }

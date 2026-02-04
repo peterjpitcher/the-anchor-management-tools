@@ -163,6 +163,7 @@ export interface ReceiptTransaction {
   transaction_type: string | null;
   amount_in: number | null;
   amount_out: number | null;
+  amount_total: number | null;
   balance: number | null;
   dedupe_hash: string;
   status: ReceiptTransactionStatus;

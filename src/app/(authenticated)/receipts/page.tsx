@@ -7,7 +7,7 @@ import { getReceiptsNavItems } from './receiptsNavItems'
 
 const STATUS_VALUES = new Set(['pending', 'completed', 'auto_completed', 'no_receipt_required', 'cant_find'])
 const DIRECTION_VALUES = new Set(['in', 'out'])
-const SORT_COLUMNS = new Set(['transaction_date', 'details', 'amount_in', 'amount_out'])
+const SORT_COLUMNS = new Set(['transaction_date', 'details', 'amount_in', 'amount_out', 'amount_total'])
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/
 
 function resolveMonthParam(value?: string) {
@@ -47,18 +47,22 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
   const search = typeof resolvedParams?.search === 'string' ? resolvedParams.search : ''
 
   const rawSort = typeof resolvedParams?.sort === 'string' ? resolvedParams.sort : undefined
-  const sortBy = rawSort && SORT_COLUMNS.has(rawSort) ? rawSort as ReceiptWorkspaceFilters['sortBy'] : 'transaction_date'
+  const sortByFromQuery = rawSort && SORT_COLUMNS.has(rawSort) ? rawSort as ReceiptWorkspaceFilters['sortBy'] : undefined
   const rawSortDirection = typeof resolvedParams?.sortDirection === 'string' ? resolvedParams.sortDirection : undefined
-  const sortDirection = rawSortDirection === 'asc' ? 'asc' : 'desc'
+  const sortDirectionFromQuery = rawSortDirection === 'asc' || rawSortDirection === 'desc' ? rawSortDirection : undefined
 
   const rawMonth = typeof resolvedParams?.month === 'string' ? resolvedParams.month : undefined
-  
+
   let month: string | undefined
   if (rawMonth) {
     month = resolveMonthParam(rawMonth)
   } else if (!showOnlyOutstanding) {
     month = resolveMonthParam(undefined)
   }
+
+  const defaultSortBy: ReceiptWorkspaceFilters['sortBy'] = !month ? 'amount_total' : 'transaction_date'
+  const sortBy = sortByFromQuery ?? defaultSortBy
+  const sortDirection = sortDirectionFromQuery ?? 'desc'
 
   const rawPage = typeof resolvedParams?.page === 'string' ? resolvedParams.page : undefined
   const page = rawPage ? parseInt(rawPage, 10) : 1
