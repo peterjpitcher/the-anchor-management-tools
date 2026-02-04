@@ -61,7 +61,7 @@ export function ReceiptList({
 
   const isVendorMissing = (value: string | null | undefined) => !value || value.trim().length === 0
   const isExpenseMissing = (value: string | null | undefined) => !value || value.trim().length === 0
-  const outstandingStatuses = new Set<ReceiptTransaction['status']>(['pending', 'cant_find'])
+  const outstandingStatuses = new Set<ReceiptTransaction['status']>(['pending'])
   const isOutstandingStatus = (status: ReceiptTransaction['status']) => outstandingStatuses.has(status)
 
   // Filter check to immediately remove items that no longer match strict filters
