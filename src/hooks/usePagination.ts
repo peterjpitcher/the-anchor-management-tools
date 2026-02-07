@@ -8,6 +8,7 @@ interface PaginationOptions {
   initialPage?: number
   searchTerm?: string
   searchColumns?: string[]
+  countMode?: 'exact' | 'planned' | 'estimated'
 }
 
 interface PaginationResult<T> {
@@ -49,6 +50,7 @@ export function usePagination<T>(
   const pageSize = options?.pageSize || 25
   const searchTerm = options?.searchTerm || ''
   const searchColumns = options?.searchColumns || []
+  const countMode = options?.countMode || 'exact'
   
   const [currentPage, setCurrentPage] = useState(options?.initialPage || 1)
   const [data, setData] = useState<T[]>([])
@@ -67,7 +69,7 @@ export function usePagination<T>(
 
     try {
       // Build the query
-      let countQuery = supabase.from(tableName).select('*', { count: 'exact', head: true })
+      let countQuery = supabase.from(tableName).select('*', { count: countMode, head: true })
       let dataQuery = supabase.from(tableName).select(query?.select || '*')
 
       // Apply filters
@@ -111,12 +113,24 @@ export function usePagination<T>(
               dataQuery = dataQuery.is(filter.column, filter.value)
               break
             case 'in':
-              countQuery = countQuery.in(filter.column, filter.value)
-              dataQuery = dataQuery.in(filter.column, filter.value)
+              countQuery = countQuery.in(
+                filter.column,
+                filter.value as readonly (string | number | boolean | null)[]
+              )
+              dataQuery = dataQuery.in(
+                filter.column,
+                filter.value as readonly (string | number | boolean | null)[]
+              )
               break
             case 'contains':
-              countQuery = countQuery.contains(filter.column as any, filter.value)
-              dataQuery = dataQuery.contains(filter.column as any, filter.value)
+              countQuery = countQuery.contains(
+                filter.column,
+                filter.value as string | readonly unknown[] | Record<string, unknown>
+              )
+              dataQuery = dataQuery.contains(
+                filter.column,
+                filter.value as string | readonly unknown[] | Record<string, unknown>
+              )
               break
           }
         }
@@ -164,7 +178,7 @@ export function usePagination<T>(
     } finally {
       setIsLoading(false)
     }
-  }, [supabase, tableName, query, currentPage, pageSize, searchTerm, searchColumns])
+  }, [supabase, tableName, query, currentPage, pageSize, searchTerm, searchColumns, countMode])
 
   useEffect(() => {
     fetchData()

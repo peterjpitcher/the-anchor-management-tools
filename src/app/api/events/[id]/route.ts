@@ -3,6 +3,15 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { eventToSchema } from '@/lib/api/schema';
 
+type EventFaqRow = {
+  sort_order: number | null;
+};
+
+type EventMessageTemplateRow = {
+  template_type: string;
+  custom_content: string | null;
+};
+
 export async function GET(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -53,7 +62,18 @@ export async function GET(
     }
     
     // Sort FAQs by sort_order
-    const faqs = event.event_faqs?.sort((a: any, b: any) => a.sort_order - b.sort_order) || [];
+    const faqs = [...(event.event_faqs || [])].sort(
+      (a: EventFaqRow, b: EventFaqRow) => (a.sort_order || 0) - (b.sort_order || 0)
+    );
+
+    const messageTemplates = (event.event_message_templates || []) as EventMessageTemplateRow[];
+    const customMessages = messageTemplates.reduce(
+      (acc, template) => {
+        acc[template.template_type] = template.custom_content;
+        return acc;
+      },
+      {} as Record<string, string | null>
+    );
 
     const lastUpdated = event.updated_at || event.created_at;
 
@@ -85,10 +105,7 @@ export async function GET(
         icon: event.category.icon
       } : null,
       ...eventToSchema(event, faqs),
-      custom_messages: event.event_message_templates?.reduce((acc: any, template: any) => {
-        acc[template.template_type] = template.custom_content;
-        return acc;
-      }, {}),
+      custom_messages: customMessages,
       _meta: {
         lastUpdated,
       },

@@ -4,14 +4,28 @@ import { env } from '@/lib/env';
 import { sendSMS } from '@/lib/twilio';
 
 export class MessageService {
-  static async getUnreadCounts() {
+  static async getUnreadCounts(customerIds?: string[]) {
     const supabase = createAdminClient();
-    
-    const { data, error } = await supabase
+
+    const uniqueCustomerIds = customerIds
+      ? Array.from(new Set(customerIds.filter((id): id is string => typeof id === 'string' && id.length > 0)))
+      : null;
+
+    if (uniqueCustomerIds && uniqueCustomerIds.length === 0) {
+      return {};
+    }
+
+    let query = supabase
       .from('messages')
       .select('customer_id')
       .eq('direction', 'inbound')
       .is('read_at', null);
+
+    if (uniqueCustomerIds) {
+      query = query.in('customer_id', uniqueCustomerIds);
+    }
+
+    const { data, error } = await query;
     
     if (error) {
       throw new Error('Failed to fetch unread counts');
@@ -31,7 +45,7 @@ export class MessageService {
     
     const { count, error } = await supabase
       .from('messages')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('direction', 'inbound')
       .is('read_at', null);
     
@@ -119,22 +133,54 @@ export class MessageService {
       throw new Error(customerError.message);
     }
 
-    // Get message statistics
-    const { data: messages, error: messagesError } = await supabase
-      .from('messages')
-      .select('twilio_status, created_at')
-      .eq('customer_id', customerId)
-      .eq('direction', 'outbound')
-      .order('created_at', { ascending: false });
+    const [
+      totalResult,
+      deliveredResult,
+      failedResult,
+      recentMessagesResult
+    ] = await Promise.all([
+      supabase
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('customer_id', customerId)
+        .eq('direction', 'outbound'),
+      supabase
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('customer_id', customerId)
+        .eq('direction', 'outbound')
+        .eq('twilio_status', 'delivered'),
+      supabase
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('customer_id', customerId)
+        .eq('direction', 'outbound')
+        .in('twilio_status', ['failed', 'undelivered']),
+      supabase
+        .from('messages')
+        .select('twilio_status, created_at')
+        .eq('customer_id', customerId)
+        .eq('direction', 'outbound')
+        .order('created_at', { ascending: false })
+        .limit(10)
+    ]);
 
-    if (messagesError) {
-      throw new Error(messagesError.message);
+    if (totalResult.error) {
+      throw new Error(totalResult.error.message);
+    }
+    if (deliveredResult.error) {
+      throw new Error(deliveredResult.error.message);
+    }
+    if (failedResult.error) {
+      throw new Error(failedResult.error.message);
+    }
+    if (recentMessagesResult.error) {
+      throw new Error(recentMessagesResult.error.message);
     }
 
-    // Calculate statistics
-    const totalMessages = messages?.length || 0;
-    const deliveredMessages = messages?.filter(m => m.twilio_status === 'delivered').length || 0;
-    const failedMessages = messages?.filter(m => m.twilio_status === 'failed' || m.twilio_status === 'undelivered').length || 0;
+    const totalMessages = totalResult.count || 0;
+    const deliveredMessages = deliveredResult.count || 0;
+    const failedMessages = failedResult.count || 0;
     const deliveryRate = totalMessages > 0 ? (deliveredMessages / totalMessages) * 100 : 0;
 
     return {
@@ -144,7 +190,7 @@ export class MessageService {
         deliveredMessages,
         failedMessages,
         deliveryRate: deliveryRate.toFixed(1),
-        recentMessages: messages?.slice(0, 10) || []
+        recentMessages: recentMessagesResult.data || []
       }
     };
   }

@@ -9,9 +9,15 @@ import { EventService, eventSchema, CreateEventInput, UpdateEventInput } from '@
 import { createClient } from '@/lib/supabase/server' // Required for getting user in action
 
 type CreateEventResult = { error: string } | { success: true; data: Event }
+type EventFaqInput = NonNullable<CreateEventInput['faqs']>[number]
+type PreparedEventData = Partial<CreateEventInput> & { faqs: EventFaqInput[] }
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback
+}
 
 // Helper to extract event data from FormData and apply category defaults
-async function prepareEventDataFromFormData(formData: FormData, existingEventId?: string | null) {
+async function prepareEventDataFromFormData(formData: FormData, _existingEventId?: string | null): Promise<PreparedEventData> {
   const supabase = await createClient(); // For fetching category defaults
 
   const categoryId = formData.get('category_id') as string || null;
@@ -20,7 +26,29 @@ async function prepareEventDataFromFormData(formData: FormData, existingEventId?
   if (categoryId) {
     const { data: category } = await supabase
       .from('event_categories')
-      .select('*')
+      .select(`
+        default_start_time,
+        default_end_time,
+        default_duration_minutes,
+        default_doors_time,
+        default_last_entry_time,
+        default_price,
+        default_is_free,
+        short_description,
+        long_description,
+        brief,
+        highlights,
+        keywords,
+        meta_title,
+        meta_description,
+        image_url,
+        promo_video_url,
+        highlight_video_urls,
+        gallery_image_urls,
+        default_performer_type,
+        default_event_status,
+        default_booking_url
+      `)
       .eq('id', categoryId)
       .single();
     
@@ -87,7 +115,7 @@ async function prepareEventDataFromFormData(formData: FormData, existingEventId?
   };
 
   // Handle FAQs
-  let faqs: Array<{question: string, answer: string, sort_order?: number}> = [];
+  let faqs: EventFaqInput[] = [];
   try {
     const faqsJson = formData.get('faqs') as string;
     if (faqsJson) {
@@ -99,9 +127,9 @@ async function prepareEventDataFromFormData(formData: FormData, existingEventId?
   } catch (e) {
     console.error('Error parsing FAQs:', e);
   }
-  (data as any).faqs = faqs;
+  data.faqs = faqs;
 
-  return data;
+  return data as PreparedEventData;
 }
 
 export async function createEvent(formData: FormData): Promise<CreateEventResult> {
@@ -144,9 +172,9 @@ export async function createEvent(formData: FormData): Promise<CreateEventResult
     revalidateTag('dashboard')
     revalidatePath('/dashboard')
     return { success: true, data: event as Event };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Unexpected error creating event:', error);
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error, 'An unexpected error occurred') };
   }
 }
 
@@ -192,9 +220,9 @@ export async function updateEvent(id: string, formData: FormData) {
     revalidateTag('dashboard')
     revalidatePath('/dashboard')
     return { success: true, data: event as Event };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Unexpected error updating event:', error);
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error, 'An unexpected error occurred') };
   }
 }
 
@@ -230,9 +258,9 @@ export async function deleteEvent(id: string) {
     revalidateTag('dashboard')
     revalidatePath('/dashboard')
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Unexpected error deleting event:', error);
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error, 'An unexpected error occurred') };
   }
 }
 
@@ -240,9 +268,9 @@ export async function getEventFAQs(eventId: string): Promise<{ data?: EventFAQ[]
   try {
     const data = await EventService.getEventFAQs(eventId);
     return { data };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching event FAQs:', error);
-    return { error: error.message || 'Failed to fetch FAQs' };
+    return { error: getErrorMessage(error, 'Failed to fetch FAQs') };
   }
 }
 
@@ -250,9 +278,9 @@ export async function getEventById(eventId: string): Promise<{ data?: Event | nu
   try {
     const data = await EventService.getEventById(eventId);
     return { data };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching event by ID:', error);
-    return { error: error.message || 'Failed to fetch event' };
+    return { error: getErrorMessage(error, 'Failed to fetch event') };
   }
 }
 
@@ -267,8 +295,8 @@ export async function getEvents(options?: {
   try {
     const { events, pagination } = await EventService.getEvents(options);
     return { data: events, pagination };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching events:', error);
-    return { error: error.message || 'Failed to fetch events' };
+    return { error: getErrorMessage(error, 'Failed to fetch events') };
   }
 }

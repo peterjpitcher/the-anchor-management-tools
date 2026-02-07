@@ -37,8 +37,10 @@ const nextConfig = {
     'data-uri-to-buffer',
   ],
   webpack: (config) => {
-    // Disable webpack filesystem cache to silence noisy serialization warnings during build
-    config.cache = false
+    // Keep filesystem cache enabled by default for faster incremental builds.
+    if (process.env.NEXT_DISABLE_WEBPACK_CACHE === '1') {
+      config.cache = false
+    }
     if (Array.isArray(config.externals)) {
       config.externals.push('@napi-rs/canvas')
     }
