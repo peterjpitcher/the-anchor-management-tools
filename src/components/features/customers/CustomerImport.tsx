@@ -6,7 +6,7 @@ import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Button } from '@/components/ui-v2/forms/Button'
 
 interface CustomerImportProps {
-  onImportComplete: (customers: Omit<Customer, 'id' | 'created_at'>[]) => void
+  onImportComplete: (customers: Omit<Customer, 'id' | 'created_at'>[]) => Promise<void>
   onCancel: () => void
   existingCustomers: Customer[]
 }
@@ -183,7 +183,7 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
         email: email || undefined,
         mobile_number,
       }))
-      onImportComplete(customersToImport)
+      await onImportComplete(customersToImport)
       toast.success('Customers imported successfully!')
     } catch (error) {
       console.error('Error importing customers:', error)

@@ -4,14 +4,14 @@ import { checkUserPermission } from './rbac'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { MessageService } from '@/services/messages'
 
-export async function getUnreadMessageCounts() {
+export async function getUnreadMessageCounts(customerIds?: string[]) {
   try {
     const canView = await checkUserPermission('messages', 'view')
     if (!canView) {
       return {}
     }
 
-    return await MessageService.getUnreadCounts();
+    return await MessageService.getUnreadCounts(customerIds);
   } catch (error) {
     console.error('Error fetching unread counts:', error)
     return {}

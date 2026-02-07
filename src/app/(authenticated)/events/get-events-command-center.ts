@@ -54,10 +54,37 @@ export type PrivateBookingCalendarOverview = {
     guest_count: number | null
 }
 
+const COMMAND_CENTER_LOOKAHEAD_DAYS = 90
+
+type EventCategoryRow = {
+    id: string
+    name: string
+    color: string
+}
+
+type CommandCenterEventRow = {
+    id: string
+    name: string
+    date: string
+    time: string
+    booking_url: string | null
+    poster_image_url: string | null
+    hero_image_url: string | null
+    event_status: string | null
+    category: EventCategoryRow | EventCategoryRow[] | null
+}
+
+type ChecklistStatusRow = {
+    event_id: string
+    task_key: string
+    completed_at: string | null
+}
+
 export async function getEventsCommandCenterData(): Promise<EventsOverviewResult> {
     const supabase = createAdminClient()
     const todayIso = getTodayIsoDate()
     const windowEndIso = getLocalIsoDateDaysAhead(30)
+    const commandCenterEndIso = getLocalIsoDateDaysAhead(COMMAND_CENTER_LOOKAHEAD_DAYS)
 
     // 1. Parallel Fetching
     const [eventsResult, checklistResult] = await Promise.all([
@@ -79,6 +106,7 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
         category:event_categories(id, name, color)
       `)
             .gte('date', todayIso)
+            .lte('date', commandCenterEndIso)
             .order('date', { ascending: true })
             .order('time', { ascending: true }),
 
@@ -93,6 +121,7 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
             .from('event_checklist_statuses')
             .select('event_id, task_key, completed_at, event:events!inner(date)')
             .gte('event.date', todayIso)
+            .lte('event.date', commandCenterEndIso)
     ])
 
     if (eventsResult.error) {
@@ -107,12 +136,18 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
         }
     }
 
-    const events = eventsResult.data || []
-    const checklistStatuses = checklistResult.data || []
+    if (checklistResult.error) {
+        console.error('Error fetching checklist statuses:', checklistResult.error)
+    }
+
+    const events = (eventsResult.data || []) as CommandCenterEventRow[]
+    const checklistStatuses = checklistResult.error
+        ? []
+        : ((checklistResult.data || []) as ChecklistStatusRow[])
 
     // Map statuses by Event ID
     const statusMap = new Map<string, { task_key: string; completed_at: string | null }[]>()
-    checklistStatuses.forEach((status: any) => {
+    checklistStatuses.forEach((status) => {
         if (!statusMap.has(status.event_id)) {
             statusMap.set(status.event_id, [])
         }
@@ -146,7 +181,7 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
         const overdueCount = checklistItems.filter(i => i.status === 'overdue').length
         const dueTodayCount = checklistItems.filter(i => i.status === 'due_today').length
         const outstanding = checklistItems.filter(i => !i.completed)
-        const nextTask = outstanding.length > 0 ? outstanding.sort((a, b) => a.order - b.order)[0] : null // Simplified sort
+        const nextTask = outstanding.length > 0 ? [...outstanding].sort((a, b) => a.order - b.order)[0] : null
 
         // Status Badge Logic
         let badgeLabel = 'On Track'
@@ -180,7 +215,7 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
             date: event.date,
             time: event.time,
             daysUntil,
-            category: categoryRecord as any,
+            category: categoryRecord ?? null,
             heroImageUrl: event.hero_image_url,
             posterImageUrl: event.poster_image_url,
             eventStatus: event.event_status,

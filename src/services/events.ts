@@ -38,6 +38,16 @@ export type CreateEventInput = {
 
 export type UpdateEventInput = Partial<CreateEventInput>;
 
+const eventFaqSchema = z.object({
+  question: z.string().trim().min(1, 'FAQ question is required'),
+  answer: z.string().trim().min(1, 'FAQ answer is required'),
+  sort_order: z.preprocess((val) => {
+    if (val === undefined || val === null || val === '') return undefined
+    const parsed = Number(val)
+    return Number.isNaN(parsed) ? undefined : parsed
+  }, z.number().int().min(0).optional())
+})
+
 // Helper function to generate a URL-friendly slug
 function generateSlug(name: string, date: string): string {
   const nameSlug = name
@@ -78,9 +88,10 @@ export const eventSchema = z.object({
     .min(1, 'Time is required')
     .refine((val) => /^([0-1]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$|^24:00(:00)?$/.test(val), 'Invalid time format (HH:MM)')
     .transform(val => {
-      if (val.startsWith('24:00')) return '23:59'
+      if (val.startsWith('24:00')) return '00:00'
       const parts = val.split(':')
-      return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : val
+      if (parts.length < 2) return val
+      return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`
     }),
   capacity: z.preprocess(
     (val) => {
@@ -101,25 +112,25 @@ export const eventSchema = z.object({
   meta_description: z.string().max(500).nullable().optional(),
   end_time: z.string().optional().nullable().transform(val => {
     if (!val || val.trim() === '') return null
-    if (val.startsWith('24:00') || val.startsWith('00:00')) return '23:59'
+    if (val.startsWith('24:00')) return '00:00'
     if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/.test(val)) return null
     const parts = val.split(':')
-    return `${parts[0]}:${parts[1]}`
+    return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`
   }),
   duration_minutes: z.number().nullable().optional(),
   doors_time: z.string().optional().nullable().transform(val => {
     if (!val || val.trim() === '') return null
-    if (val.startsWith('24:00') || val.startsWith('00:00')) return '23:59'
+    if (val.startsWith('24:00')) return '00:00'
     if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/.test(val)) return null
     const parts = val.split(':')
-    return `${parts[0]}:${parts[1]}`
+    return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`
   }),
   last_entry_time: z.string().optional().nullable().transform(val => {
     if (!val || val.trim() === '') return null
-    if (val.startsWith('24:00') || val.startsWith('00:00')) return '23:59'
+    if (val.startsWith('24:00')) return '00:00'
     if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/.test(val)) return null
     const parts = val.split(':')
-    return `${parts[0]}:${parts[1]}`
+    return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`
   }),
   event_status: z.enum(['scheduled', 'cancelled', 'postponed', 'rescheduled', 'sold_out', 'draft']).default('scheduled'),
   performer_name: z.string().max(255).nullable().optional(),
@@ -199,7 +210,8 @@ export const eventSchema = z.object({
         return false
       }
     })
-  })
+  }),
+  faqs: z.array(eventFaqSchema).default([])
 })
 
 export class EventService {
@@ -355,7 +367,7 @@ export class EventService {
 
     const { data, error } = await supabase
       .from('event_faqs')
-      .select('*')
+      .select('id, event_id, question, answer, sort_order, created_at, updated_at')
       .eq('event_id', eventId)
       .order('sort_order', { ascending: true });
 

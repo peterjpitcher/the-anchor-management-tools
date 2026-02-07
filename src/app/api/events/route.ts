@@ -3,7 +3,12 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { eventToSchema } from '@/lib/api/schema';
 import { getTodayIsoDate } from '@/lib/dateUtils';
+import { resolveStatusFilters } from '@/lib/events/status-filters';
 // Removed unused date-fns imports
+
+type EventFaqRow = {
+  sort_order: number | null;
+};
 
 // Handle CORS preflight
 export async function OPTIONS(request: NextRequest) {
@@ -26,11 +31,26 @@ export async function GET(_request: NextRequest) {
     const categoryId = searchParams.get('category_id');
     const status = searchParams.get('status');
     const availableOnly = searchParams.get('available_only') === 'true';
-    const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100);
-    const offset = parseInt(searchParams.get('offset') || '0');
-    const fetchLimit = availableOnly ? limit * 3 : limit; // Over-fetch when filtering to reduce empty pages
+    const rawLimit = parseInt(searchParams.get('limit') || '20', 10);
+    const limit = Number.isNaN(rawLimit) ? 20 : Math.min(Math.max(rawLimit, 1), 100);
+    const rawOffset = parseInt(searchParams.get('offset') || '0', 10);
+    const offset = Number.isNaN(rawOffset) ? 0 : Math.max(rawOffset, 0);
 
     const supabase = createAdminClient();
+    const { statuses, applyAvailabilityFilter, emptyResult } = resolveStatusFilters(status, availableOnly);
+
+    if (emptyResult) {
+      return createApiResponse({
+        events: [],
+        meta: {
+          total: 0,
+          limit,
+          offset,
+          has_more: false,
+          lastUpdated: new Date().toISOString(),
+        },
+      });
+    }
 
     // Build query with all enhanced fields
     let query = supabase
@@ -54,15 +74,15 @@ export async function GET(_request: NextRequest) {
       // Removed hardcoded .eq('event_status', 'scheduled')
       .order('date', { ascending: true })
       .order('time', { ascending: true })
-      .range(offset, offset + fetchLimit - 1);
+      .range(offset, offset + limit - 1);
 
     // Apply filters
-    if (status && status !== 'all') {
-      // Allow comma-separated statuses e.g. "scheduled,sold_out"
-      const statuses = status.split(',').map(s => s.trim());
+    if (statuses) {
       query = query.in('event_status', statuses);
     }
-    // If status is omitted or "all", apply no status filter (returns drafts, cancelled, etc.).
+    if (applyAvailabilityFilter) {
+      query = query.or('event_status.is.null,event_status.not.in.(sold_out,cancelled,draft)');
+    }
 
     if (fromDate) {
       query = query.gte('date', fromDate);
@@ -86,15 +106,11 @@ export async function GET(_request: NextRequest) {
     }
 
     // Transform events to Schema.org format with FAQs
-    const filtered = (events || []).filter((event) => {
-      if (!availableOnly) return true
-      const status = (event.event_status as string | null | undefined) ?? null
-      return status !== 'sold_out' && status !== 'cancelled' && status !== 'draft'
-    })
-
-    const schemaEvents = filtered.slice(0, limit).map(event => {
+    const schemaEvents = (events || []).map(event => {
       // Sort FAQs by sort_order
-      const faqs = event.event_faqs?.sort((a: any, b: any) => a.sort_order - b.sort_order) || [];
+      const faqs = [...(event.event_faqs || [])].sort(
+        (a: EventFaqRow, b: EventFaqRow) => (a.sort_order || 0) - (b.sort_order || 0)
+      );
 
       return {
         id: event.id,
@@ -109,12 +125,10 @@ export async function GET(_request: NextRequest) {
     return createApiResponse({
       events: schemaEvents,
       meta: {
-        total: availableOnly ? Math.max(filtered.length + offset, schemaEvents.length) : (count || 0),
+        total: count || 0,
         limit,
         offset,
-        has_more: availableOnly
-          ? filtered.length > limit || (count || 0) > offset + fetchLimit
-          : (count || 0) > offset + limit,
+        has_more: (count || 0) > offset + limit,
         lastUpdated: new Date().toISOString(),
       },
     });

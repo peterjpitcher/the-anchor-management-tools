@@ -49,6 +49,8 @@ type CustomerCategoryStatsQueryRow = {
   event_categories: { id: string; name: string } | { id: string; name: string }[]
 }
 
+const CUSTOMER_LIST_SELECT = 'id, first_name, last_name, mobile_number, email, sms_opt_in, created_at'
+
 export default function CustomersPage() {
   const supabase = useSupabase()
   const { hasPermission } = usePermissions()
@@ -68,14 +70,14 @@ export default function CustomersPage() {
   const queryConfig = useMemo(() => {
     if (showDeactivated) {
       return {
-        select: '*',
+        select: CUSTOMER_LIST_SELECT,
         orderBy: { column: 'first_name', ascending: true },
         filters: [{ column: 'sms_opt_in', operator: 'eq' as const, value: false }]
       }
     }
 
     return {
-      select: '*',
+      select: CUSTOMER_LIST_SELECT,
       orderBy: { column: 'first_name', ascending: true },
       filters: [],
       or: 'sms_opt_in.is.null,sms_opt_in.eq.true'
@@ -85,7 +87,8 @@ export default function CustomersPage() {
   const [customPageSize, setCustomPageSize] = useState(50)
 
   const paginationOptions = useMemo(() => ({
-    pageSize: customPageSize === 1000 ? 10000 : customPageSize, // Use a very large number for "All"
+    pageSize: customPageSize,
+    countMode: 'estimated' as const,
     searchTerm: searchTerm,
     searchColumns: ['first_name', 'last_name', 'mobile_number', 'email']
   }), [customPageSize, searchTerm])
@@ -156,7 +159,7 @@ export default function CustomersPage() {
         const [statsResult, labelResult, unreadResult] = await Promise.all([
           fetchCustomerCategoryStats(customerIds),
           getBulkCustomerLabels(customerIds),
-          getUnreadMessageCounts()
+          getUnreadMessageCounts(customerIds)
         ])
 
         if (cancelled) return
@@ -195,11 +198,7 @@ export default function CustomersPage() {
         const unreadCountsMap = (unreadResult && typeof unreadResult === 'object')
           ? unreadResult as Record<string, number>
           : {}
-        const relevantUnread = customerIds.reduce<Record<string, number>>((acc, id) => {
-          acc[id] = unreadCountsMap[id] ?? 0
-          return acc
-        }, {})
-        setUnreadCounts(relevantUnread)
+        setUnreadCounts(unreadCountsMap)
       } catch (error) {
         if (!cancelled) {
           console.error('Error loading customer data:', error)
@@ -574,7 +573,7 @@ export default function CustomersPage() {
                 )}
                 {!searchTerm && totalCount > 0 && (
                   <span>
-                    Showing {customPageSize === 1000 ? visibleCustomers.length : Math.min(visibleCustomers.length, customPageSize)} of {totalCount} customers
+                    Showing {visibleCustomers.length} of {totalCount} customers
                   </span>
                 )}
               </div>
@@ -587,7 +586,7 @@ export default function CustomersPage() {
                 <option value={100}>100 per page</option>
                 <option value={200}>200 per page</option>
                 <option value={500}>500 per page</option>
-                <option value={1000}>All customers</option>
+                <option value={1000}>1000 per page</option>
               </select>
             </div>
           </div>

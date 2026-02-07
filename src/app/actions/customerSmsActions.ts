@@ -7,6 +7,10 @@ import { revalidatePath } from 'next/cache'
 import { CustomerService } from '@/services/customers'
 import { MessageService } from '@/services/messages'
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback
+}
+
 export async function toggleCustomerSmsOptIn(customerId: string, optIn: boolean) {
   const supabase = await createClient()
   const {
@@ -53,15 +57,16 @@ export async function toggleCustomerSmsOptIn(customerId: string, optIn: boolean)
     revalidatePath('/customers')
     revalidatePath(`/customers/${customerId}`)
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Failed to update customer SMS preferences')
     console.error('Failed to update customer SMS opt-in:', error)
     await logAuditEvent({
       ...auditBase,
       operation_type: 'update',
       operation_status: 'failure',
-      error_message: error.message || 'Failed to update',
+      error_message: message,
     })
-    return { error: error.message || 'Failed to update customer SMS preferences' }
+    return { error: message }
   }
 }
 
@@ -73,8 +78,8 @@ export async function getCustomerSmsStats(customerId: string) {
 
   try {
     return await MessageService.getCustomerSmsStats(customerId);
-  } catch (error: any) {
-    return { error: error.message };
+  } catch (error: unknown) {
+    return { error: getErrorMessage(error, 'Failed to load customer SMS stats') };
   }
 }
 
@@ -86,8 +91,8 @@ export async function getCustomerMessages(customerId: string) {
 
   try {
     return await MessageService.getCustomerMessages(customerId);
-  } catch (error: any) {
-    return { error: error.message };
+  } catch (error: unknown) {
+    return { error: getErrorMessage(error, 'Failed to load customer messages') };
   }
 }
 
@@ -103,8 +108,8 @@ export async function getDeliveryFailureReport() {
 
   try {
     return await MessageService.getDeliveryFailureReport();
-  } catch (error: any) {
-    return { error: error.message };
+  } catch (error: unknown) {
+    return { error: getErrorMessage(error, 'Failed to load delivery failure report') };
   }
 }
 
@@ -120,7 +125,7 @@ export async function getSmsDeliveryStats() {
 
   try {
     return await MessageService.getSmsDeliveryStats();
-  } catch (error: any) {
-    return { error: error.message };
+  } catch (error: unknown) {
+    return { error: getErrorMessage(error, 'Failed to load SMS delivery stats') };
   }
 }

@@ -23,6 +23,20 @@ import { CustomerForm } from '@/components/features/customers/CustomerForm'
 import { CustomerLabelSelector } from '@/components/features/customers/CustomerLabelSelector'
 
 export const dynamic = 'force-dynamic'
+const CUSTOMER_DETAIL_SELECT = `
+  id,
+  first_name,
+  last_name,
+  email,
+  mobile_number,
+  created_at,
+  sms_opt_in,
+  sms_delivery_failures,
+  last_sms_failure_reason,
+  last_successful_sms_at,
+  sms_deactivated_at,
+  sms_deactivation_reason
+`
 
 export default function CustomerViewPage() {
   const params = useParams<{ id: string }>()
@@ -103,7 +117,7 @@ export default function CustomerViewPage() {
       ] = await Promise.all([
         supabase
           .from('customers')
-          .select('*')
+          .select(CUSTOMER_DETAIL_SELECT)
           .eq('id', customerId)
           .single(),
         getCustomerSmsStats(customerId),
@@ -385,4 +399,3 @@ export default function CustomerViewPage() {
     </PageLayout>
   )
 }
-
