@@ -3034,7 +3034,7 @@ export function FohScheduleClient({
               {createMode === 'walk_in'
                 ? 'Walk-ins require covers. Guest name and phone are optional.'
                 : createForm.purpose !== 'event'
-                ? 'Party sizes 7-20 will be created as pending card capture based on policy.'
+                ? 'Party sizes over 6 will be created as pending card capture based on policy.'
                 : 'Event booking status depends on event payment mode and capacity.'}
             </p>
             <div className="flex items-center gap-2">
