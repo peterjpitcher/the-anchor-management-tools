@@ -6,6 +6,8 @@ export interface Event {
   date: string;
   time: string;
   capacity: number | null;
+  booking_mode?: 'table' | 'general' | 'mixed' | null;
+  event_type?: string | null;
   category_id?: string | null;
   created_at: string;
   end_time?: string | null;

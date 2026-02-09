@@ -32,7 +32,7 @@ nav[aria-label="Mobile navigation"],
 
 /* Ensure proper touch targets (48px minimum) */
 @media (max-width: 768px) {
-  button,
+  button:not(.sidebar-item),
   a[role="button"],
   [role="button"],
   .touch-target {
@@ -40,9 +40,9 @@ nav[aria-label="Mobile navigation"],
     min-width: 44px;
   }
   
-  /* Fix small buttons */
-  button.text-sm,
-  a.text-sm {
+  /* Apply larger mobile padding only to explicit button styles, not sidebar nav items */
+  button.text-sm:not(.sidebar-item),
+  a.text-sm.btn-mobile {
     padding: 0.75rem 1rem;
     min-height: 44px;
   }

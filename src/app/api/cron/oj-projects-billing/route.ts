@@ -3,6 +3,7 @@ import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { calculateInvoiceTotals, type InvoiceTotalsResult } from '@/lib/invoiceCalculations'
 import { isGraphConfigured, sendInvoiceEmail } from '@/lib/microsoft-graph'
+import { resolveVendorInvoiceRecipients } from '@/lib/invoice-recipients'
 import { generateOjTimesheetPDF } from '@/lib/oj-timesheet'
 import { formatInTimeZone } from 'date-fns-tz'
 import type { InvoiceWithDetails } from '@/types/invoices'
@@ -66,14 +67,6 @@ function formatPeriodLabel(periodYyyymm: string | null | undefined) {
   return match ? match[0] : raw
 }
 
-function parseRecipientList(raw: string | null) {
-  if (!raw) return []
-  return String(raw)
-    .split(/[;,]/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-}
-
 function toLondonTimeHm(iso: string | null) {
   if (!iso) return ''
   try {
@@ -108,54 +101,6 @@ function getPreviousMonthPeriod(now: Date) {
     period_end: toIsoDateUtc(prevMonthEndUtc),
     period_yyyymm: formatInTimeZone(prevMonthEndUtc, LONDON_TZ, 'yyyy-MM'),
   }
-}
-
-async function resolveInvoiceRecipients(
-  supabase: ReturnType<typeof createAdminClient>,
-  vendorId: string,
-  vendorEmailRaw: string | null
-) {
-  const recipientsFromVendor = parseRecipientList(vendorEmailRaw)
-
-  const { data: contacts, error } = await supabase
-    .from('invoice_vendor_contacts')
-    .select('email, is_primary, receive_invoice_copy')
-    .eq('vendor_id', vendorId)
-    .order('is_primary', { ascending: false })
-    .order('created_at', { ascending: true })
-
-  if (error) return { error: error.message as string }
-
-  const contactEmails = (contacts || [])
-    .map((c: any) => ({
-      email: c?.email ? String(c.email).trim() : '',
-      isPrimary: !!c?.is_primary,
-      cc: !!c?.receive_invoice_copy,
-    }))
-    .filter((c) => c.email && c.email.includes('@'))
-
-  const primaryEmail = contactEmails.find((c) => c.isPrimary)?.email || null
-  const firstVendorEmail = recipientsFromVendor[0] || null
-  const to = primaryEmail || firstVendorEmail || contactEmails[0]?.email || null
-
-  const ccRaw = [
-    ...recipientsFromVendor.slice(firstVendorEmail ? 1 : 0),
-    ...contactEmails.filter((c) => c.cc).map((c) => c.email),
-  ]
-
-  const seen = new Set<string>()
-  const toLower = to ? to.toLowerCase() : null
-  const cc = ccRaw
-    .map((e) => e.trim())
-    .filter((e) => e && e.includes('@') && e.toLowerCase() !== toLower)
-    .filter((e) => {
-      const key = e.toLowerCase()
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
-
-  return { to, cc }
 }
 
 function buildInvoiceNotes(input: {
@@ -1998,7 +1943,7 @@ export async function GET(request: Request) {
           continue
         }
 
-        const recipients = await resolveInvoiceRecipients(supabase, vendorId, vendor.email)
+        const recipients = await resolveVendorInvoiceRecipients(supabase, vendorId, vendor.email)
         if ('error' in recipients) throw new Error(recipients.error)
         if (!recipients.to) throw new Error('No invoice recipient email configured (primary contact or vendor email)')
 
@@ -2704,7 +2649,7 @@ export async function GET(request: Request) {
       if ('error' in fullInvoiceRes) throw new Error(fullInvoiceRes.error)
       const fullInvoice = fullInvoiceRes.invoice
 
-      const recipients = await resolveInvoiceRecipients(supabase, vendorId, vendor.email)
+      const recipients = await resolveVendorInvoiceRecipients(supabase, vendorId, vendor.email)
       if ('error' in recipients) throw new Error(recipients.error)
       if (!recipients.to) {
         await supabase

@@ -10,6 +10,8 @@ type ExportMode = 'all' | 'single'
 
 interface EventExportPanelProps {
   events: EventOverview[]
+  idPrefix?: string
+  onExportSuccess?: () => void
 }
 
 function getFilenameFromHeaders(headers: Headers): string | null {
@@ -19,12 +21,20 @@ function getFilenameFromHeaders(headers: Headers): string | null {
   return filenameMatch[1]
 }
 
-export default function EventExportPanel({ events }: EventExportPanelProps) {
+export default function EventExportPanel({
+  events,
+  idPrefix = 'event-export',
+  onExportSuccess,
+}: EventExportPanelProps) {
   const [startDate, setStartDate] = useState(() => getTodayIsoDate())
   const [endDate, setEndDate] = useState(() => getLocalIsoDateDaysAhead(30))
   const [mode, setMode] = useState<ExportMode>('all')
   const [eventId, setEventId] = useState('')
   const [isExporting, setIsExporting] = useState(false)
+  const startDateId = `${idPrefix}-start-date`
+  const endDateId = `${idPrefix}-end-date`
+  const modeId = `${idPrefix}-mode`
+  const eventIdField = `${idPrefix}-event`
 
   const rangeEvents = useMemo(() => {
     if (!startDate || !endDate) return events
@@ -105,6 +115,7 @@ export default function EventExportPanel({ events }: EventExportPanelProps) {
       window.URL.revokeObjectURL(url)
 
       toast.success('Event export downloaded.')
+      onExportSuccess?.()
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to export events.'
       toast.error(message)
@@ -114,41 +125,40 @@ export default function EventExportPanel({ events }: EventExportPanelProps) {
   }
 
   return (
-    <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="flex flex-wrap gap-3">
-          <div className="flex min-w-[160px] flex-1 flex-col gap-1">
-            <label className="text-xs font-medium text-gray-500" htmlFor="export-start-date">
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500" htmlFor={startDateId}>
               Start date
             </label>
             <input
-              id="export-start-date"
+              id={startDateId}
               type="date"
               value={startDate}
               onChange={(event) => setStartDate(event.target.value)}
               className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
             />
-          </div>
+        </div>
 
-          <div className="flex min-w-[160px] flex-1 flex-col gap-1">
-            <label className="text-xs font-medium text-gray-500" htmlFor="export-end-date">
+        <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500" htmlFor={endDateId}>
               End date
             </label>
             <input
-              id="export-end-date"
+              id={endDateId}
               type="date"
               value={endDate}
               onChange={(event) => setEndDate(event.target.value)}
               className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
             />
-          </div>
+        </div>
 
-          <div className="flex min-w-[180px] flex-1 flex-col gap-1">
-            <label className="text-xs font-medium text-gray-500" htmlFor="export-mode">
+        <div className="flex flex-col gap-1 sm:col-span-2">
+            <label className="text-xs font-medium text-gray-500" htmlFor={modeId}>
               Export scope
             </label>
             <select
-              id="export-mode"
+              id={modeId}
               value={mode}
               onChange={(event) => {
                 const nextMode = event.target.value as ExportMode
@@ -160,15 +170,15 @@ export default function EventExportPanel({ events }: EventExportPanelProps) {
               <option value="all">All events in range</option>
               <option value="single">Single event</option>
             </select>
-          </div>
+        </div>
 
-          {mode === 'single' && (
-            <div className="flex min-w-[240px] flex-[2] flex-col gap-1">
-              <label className="text-xs font-medium text-gray-500" htmlFor="export-event">
+        {mode === 'single' && (
+          <div className="flex flex-col gap-1 sm:col-span-2">
+              <label className="text-xs font-medium text-gray-500" htmlFor={eventIdField}>
                 Event
               </label>
               <select
-                id="export-event"
+                id={eventIdField}
                 value={eventId}
                 onChange={(event) => setEventId(event.target.value)}
                 className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
@@ -180,21 +190,20 @@ export default function EventExportPanel({ events }: EventExportPanelProps) {
                   </option>
                 ))}
               </select>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
+      </div>
 
-        <div className="flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={handleExport}
-            disabled={isExporting}
-            className="inline-flex items-center gap-2 rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <ArrowDownTrayIcon className="h-4 w-4" />
-            {isExporting ? 'Downloading...' : 'Download events'}
-          </button>
-        </div>
+      <div className="flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={isExporting}
+          className="inline-flex items-center gap-2 rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <ArrowDownTrayIcon className="h-4 w-4" />
+          {isExporting ? 'Downloading...' : 'Download events'}
+        </button>
       </div>
 
       <p className="mt-2 text-xs text-gray-500">

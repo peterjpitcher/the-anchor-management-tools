@@ -4,11 +4,18 @@ import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/a
 import { eventToSchema } from '@/lib/api/schema';
 import { getTodayIsoDate } from '@/lib/dateUtils';
 import { resolveStatusFilters } from '@/lib/events/status-filters';
+import { logger } from '@/lib/logger';
 // Removed unused date-fns imports
 
 type EventFaqRow = {
   sort_order: number | null;
 };
+
+type EventCapacityRow = {
+  event_id: string
+  seats_remaining: number | null
+  is_full: boolean
+}
 
 // Handle CORS preflight
 export async function OPTIONS(request: NextRequest) {
@@ -105,12 +112,44 @@ export async function GET(_request: NextRequest) {
       return createErrorResponse('Failed to fetch events', 'DATABASE_ERROR', 500);
     }
 
-    // Transform events to Schema.org format with FAQs
+    const eventIds = (events || []).map((event: any) => event.id).filter(Boolean)
+    const capacityByEventId = new Map<string, EventCapacityRow>()
+
+    if (eventIds.length > 0) {
+      const { data: capacityRows, error: capacityError } = await supabase.rpc(
+        'get_event_capacity_snapshot_v05',
+        { p_event_ids: eventIds }
+      )
+
+      if (capacityError) {
+        logger.warn('Failed to load event capacity snapshot; falling back to static capacity fields', {
+          metadata: { error: capacityError.message }
+        })
+      } else if (Array.isArray(capacityRows)) {
+        for (const row of capacityRows as EventCapacityRow[]) {
+          capacityByEventId.set(row.event_id, row)
+        }
+      }
+    }
+
+    // Transform events to Schema.org format with FAQs and booking availability fields
     const schemaEvents = (events || []).map(event => {
       // Sort FAQs by sort_order
       const faqs = [...(event.event_faqs || [])].sort(
         (a: EventFaqRow, b: EventFaqRow) => (a.sort_order || 0) - (b.sort_order || 0)
       );
+
+      const capacityRow = capacityByEventId.get(event.id)
+      const seatsRemaining =
+        capacityRow?.seats_remaining ??
+        (typeof event.capacity === 'number' ? event.capacity : null)
+      const isFull =
+        capacityRow?.is_full ??
+        (typeof seatsRemaining === 'number' ? seatsRemaining <= 0 : false)
+      const paymentMode =
+        event.payment_mode ||
+        ((event.is_free === true || Number(event.price || 0) === 0) ? 'free' : 'cash_only')
+      const price = event.price_per_seat ?? event.price ?? 0
 
       return {
         id: event.id,
@@ -118,6 +157,14 @@ export async function GET(_request: NextRequest) {
         bookingUrl: event.booking_url || null,
         highlights: event.highlights || [],
         event_status: event.event_status, // Expose raw status
+        seats_remaining: seatsRemaining,
+        is_full: isFull,
+        waitlist_enabled: typeof event.capacity === 'number' && event.capacity > 0,
+        payment_mode: paymentMode,
+        booking_mode: ['table', 'general', 'mixed'].includes(String(event.booking_mode))
+          ? event.booking_mode
+          : 'table',
+        price,
         ...eventToSchema(event, faqs),
       };
     });

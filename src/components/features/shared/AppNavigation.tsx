@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation'
 import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, BuildingOfficeIcon, DocumentTextIcon, LinkIcon, ReceiptRefundIcon, TruckIcon, Squares2X2Icon, BanknotesIcon, MicrophoneIcon, BriefcaseIcon } from '@heroicons/react/24/outline'
-import { useEffect, useState, useMemo } from 'react'
+import { useMemo } from 'react'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import type { ModuleName, ActionType } from '@/types/rbac'
@@ -28,6 +28,7 @@ const primaryNavigation: NavigationItemWithPermission[] = [
 
 const secondaryNavigation: NavigationItemWithPermission[] = [
   { name: 'Menu Management', href: '/menu-management', icon: Squares2X2Icon, permission: { module: 'menu_management', action: 'view' } },
+  { name: 'Table Bookings', href: '/table-bookings/foh', icon: CalendarIcon, permission: { module: 'table_bookings', action: 'view' } },
   { name: 'Private Bookings', href: '/private-bookings', icon: BuildingOfficeIcon, permission: { module: 'private_bookings', action: 'view' } },
   { name: 'Parking', href: '/parking', icon: TruckIcon, permission: { module: 'parking', action: 'view' } },
 ];
@@ -53,22 +54,9 @@ interface AppNavigationProps {
 
 export function AppNavigation({ onQuickAddNoteClick, onNavigate }: AppNavigationProps) {
   const pathname = usePathname() ?? '/'
-  const [isMobile, setIsMobile] = useState(false)
   const { hasPermission, loading: permissionsLoading } = usePermissions()
   const unreadCount = useUnreadMessageCount()
   const { counts: outstandingCounts } = useOutstandingCounts()
-
-  useEffect(() => {
-    // Check if mobile on mount and window resize
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 640) // 640px is Tailwind's 'sm' breakpoint
-    }
-
-    checkMobile()
-    window.addEventListener('resize', checkMobile)
-
-    return () => window.removeEventListener('resize', checkMobile)
-  }, [])
 
   // Filter navigation items based on permissions
   const filteredPrimaryNav = useMemo(() => {
@@ -80,14 +68,10 @@ export function AppNavigation({ onQuickAddNoteClick, onNavigate }: AppNavigation
 
   const filteredSecondaryNav = useMemo(() => {
     if (permissionsLoading) return [];
-    return secondaryNavigation.filter(item => {
-      // Hide VIP Club on mobile (kept logic if ever reintroduced)
-      if (isMobile && item.name === 'VIP Club') {
-        return false;
-      }
-      return !item.permission || hasPermission(item.permission.module, item.permission.action);
-    });
-  }, [hasPermission, permissionsLoading, isMobile]);
+    return secondaryNavigation.filter(item =>
+      !item.permission || hasPermission(item.permission.module, item.permission.action)
+    );
+  }, [hasPermission, permissionsLoading]);
 
   const filteredTertiaryNav = useMemo(() => {
     if (permissionsLoading) return [];
@@ -106,7 +90,9 @@ export function AppNavigation({ onQuickAddNoteClick, onNavigate }: AppNavigation
   const getOutstandingCount = (name: string) => {
     if (!outstandingCounts) return 0
     switch (name) {
+      case 'Events': return outstandingCounts.events
       case 'Menu Management': return outstandingCounts.menu_management
+      case 'Table Bookings': return outstandingCounts.table_bookings
       case 'Private Bookings': return outstandingCounts.private_bookings
       case 'Parking': return outstandingCounts.parking
       case 'Cashing Up': return outstandingCounts.cashing_up

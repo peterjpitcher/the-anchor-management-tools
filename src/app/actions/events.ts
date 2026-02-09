@@ -7,6 +7,14 @@ import type { Event, EventFAQ } from '@/types/database'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { EventService, eventSchema, CreateEventInput, UpdateEventInput } from '@/services/events'
 import { createClient } from '@/lib/supabase/server' // Required for getting user in action
+import { createAdminClient } from '@/lib/supabase/admin'
+import { formatPhoneForStorage } from '@/lib/utils'
+import { ensureCustomerForPhone } from '@/lib/sms/customers'
+import { createEventManageToken } from '@/lib/events/manage-booking'
+import { createEventPaymentToken } from '@/lib/events/event-payments'
+import { recordAnalyticsEvent } from '@/lib/analytics/events'
+import { sendSMS } from '@/lib/twilio'
+import { ensureReplyInstruction } from '@/lib/sms/support'
 
 type CreateEventResult = { error: string } | { success: true; data: Event }
 type EventFaqInput = NonNullable<CreateEventInput['faqs']>[number]
@@ -81,12 +89,20 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
 
   const rawData = Object.fromEntries(formData.entries());
 
+  const bookingModeInput = rawData.booking_mode
+  const bookingMode: CreateEventInput['booking_mode'] =
+    bookingModeInput === 'table' || bookingModeInput === 'general' || bookingModeInput === 'mixed'
+      ? bookingModeInput
+      : 'table'
+
   // Handle specific fields from form data
   const data: Partial<CreateEventInput> = {
     name: rawData.name as string,
     date: rawData.date as string,
     time: rawData.time as string || categoryDefaults.time,
     capacity: null,
+    booking_mode: bookingMode,
+    event_type: (rawData.event_type as string)?.trim() || null,
     category_id: categoryId,
     short_description: rawData.short_description as string || categoryDefaults.short_description || null,
     long_description: rawData.long_description as string || categoryDefaults.long_description || null,
@@ -298,5 +314,495 @@ export async function getEvents(options?: {
   } catch (error: unknown) {
     console.error('Error fetching events:', error);
     return { error: getErrorMessage(error, 'Failed to fetch events') };
+  }
+}
+
+const createEventManualBookingSchema = z.object({
+  eventId: z.string().uuid(),
+  phone: z.string().trim().min(7).max(32),
+  defaultCountryCode: z.string().regex(/^\d{1,4}$/).optional(),
+  seats: z.number().int().min(1).max(20),
+  firstName: z.string().trim().max(80).optional(),
+  lastName: z.string().trim().max(80).optional()
+})
+
+type EventManualBookingResult =
+  | {
+      error: string
+    }
+  | {
+      success: true
+      data: {
+        state: 'confirmed' | 'pending_payment' | 'full_with_waitlist_option' | 'blocked'
+        reason: string | null
+        booking_id: string | null
+        manage_booking_url: string | null
+        next_step_url: string | null
+        table_booking_id: string | null
+        table_name: string | null
+      }
+    }
+
+type CreateEventBookingRpcResult = {
+  state?: 'confirmed' | 'pending_payment' | 'full_with_waitlist_option' | 'blocked'
+  reason?: string
+  booking_id?: string
+  hold_expires_at?: string | null
+  event_start_datetime?: string | null
+  payment_mode?: 'free' | 'cash_only' | 'prepaid'
+}
+
+type CreateEventTableReservationRpcResult = {
+  state?: 'confirmed' | 'blocked'
+  reason?: string
+  table_booking_id?: string
+  table_name?: string
+}
+
+async function rollbackEventBookingForTableFailure(
+  supabase: ReturnType<typeof createAdminClient>,
+  bookingId: string
+): Promise<void> {
+  const nowIso = new Date().toISOString()
+  await Promise.allSettled([
+    (supabase.from('bookings') as any)
+      .update({
+        status: 'cancelled',
+        cancelled_at: nowIso,
+        cancelled_by: 'system',
+        updated_at: nowIso
+      })
+      .eq('id', bookingId),
+    (supabase.from('booking_holds') as any)
+      .update({
+        status: 'released',
+        released_at: nowIso,
+        updated_at: nowIso
+      })
+      .eq('event_booking_id', bookingId)
+      .eq('hold_type', 'payment_hold')
+      .eq('status', 'active')
+  ])
+}
+
+function normalizeEventBookingMode(value: unknown): 'table' | 'general' | 'mixed' {
+  if (value === 'general' || value === 'mixed' || value === 'table') {
+    return value
+  }
+  return 'table'
+}
+
+export async function createEventManualBooking(input: {
+  eventId: string
+  phone: string
+  seats: number
+  defaultCountryCode?: string
+  firstName?: string
+  lastName?: string
+}): Promise<EventManualBookingResult> {
+  try {
+    const canManageEvents = await checkUserPermission('events', 'manage')
+    if (!canManageEvents) {
+      return { error: 'You do not have permission to create event bookings.' }
+    }
+
+    const parsed = createEventManualBookingSchema.safeParse(input)
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message || 'Invalid booking details.' }
+    }
+
+    let normalizedPhone: string
+    try {
+      normalizedPhone = formatPhoneForStorage(parsed.data.phone, {
+        defaultCountryCode: parsed.data.defaultCountryCode
+      })
+    } catch {
+      return { error: 'Please enter a valid phone number.' }
+    }
+
+    const supabase = createAdminClient()
+    const customerResolution = await ensureCustomerForPhone(supabase, normalizedPhone, {
+      firstName: parsed.data.firstName,
+      lastName: parsed.data.lastName
+    })
+
+    if (!customerResolution.customerId) {
+      return { error: 'Could not create or find customer for this phone number.' }
+    }
+
+    const { data: eventRow, error: eventError } = await supabase
+      .from('events')
+      .select('id, name, booking_mode')
+      .eq('id', parsed.data.eventId)
+      .maybeSingle()
+
+    if (eventError || !eventRow) {
+      return { error: 'Event not found.' }
+    }
+
+    const bookingMode = normalizeEventBookingMode((eventRow as any).booking_mode)
+
+    const { data: bookingRpcRaw, error: bookingRpcError } = await supabase.rpc('create_event_booking_v05', {
+      p_event_id: parsed.data.eventId,
+      p_customer_id: customerResolution.customerId,
+      p_seats: parsed.data.seats,
+      p_source: 'admin'
+    })
+
+    if (bookingRpcError) {
+      console.error('create_event_booking_v05 failed in createEventManualBooking:', bookingRpcError)
+      return { error: 'Failed to create booking.' }
+    }
+
+    const bookingResult = (bookingRpcRaw || {}) as CreateEventBookingRpcResult
+    const state = bookingResult.state || 'blocked'
+    const bookingId = bookingResult.booking_id || null
+    let reason = bookingResult.reason || null
+    let manageBookingUrl: string | null = null
+    let nextStepUrl: string | null = null
+    let tableBookingId: string | null = null
+    let tableName: string | null = null
+
+    const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+
+    if (
+      (state === 'confirmed' || state === 'pending_payment') &&
+      bookingId &&
+      bookingResult.event_start_datetime
+    ) {
+      try {
+        const manageToken = await createEventManageToken(supabase, {
+          customerId: customerResolution.customerId,
+          bookingId,
+          eventStartIso: bookingResult.event_start_datetime,
+          appBaseUrl
+        })
+        manageBookingUrl = manageToken.url
+      } catch (tokenError) {
+        console.error('Failed to create event manage token:', tokenError)
+      }
+    }
+
+    if (
+      state === 'pending_payment' &&
+      bookingId &&
+      bookingResult.hold_expires_at
+    ) {
+      try {
+        const paymentToken = await createEventPaymentToken(supabase, {
+          customerId: customerResolution.customerId,
+          bookingId,
+          holdExpiresAt: bookingResult.hold_expires_at,
+          appBaseUrl
+        })
+        nextStepUrl = paymentToken.url
+      } catch (tokenError) {
+        console.error('Failed to create event payment token:', tokenError)
+      }
+    }
+
+    if (state === 'confirmed' && bookingId && bookingMode !== 'general') {
+      const { data: tableRpcRaw, error: tableRpcError } = await supabase.rpc(
+        'create_event_table_reservation_v05',
+        {
+          p_event_id: parsed.data.eventId,
+          p_event_booking_id: bookingId,
+          p_customer_id: customerResolution.customerId,
+          p_party_size: parsed.data.seats,
+          p_source: 'admin',
+          p_notes: `Event booking ${bookingId}`
+        }
+      )
+
+      const tableResult = (tableRpcRaw || {}) as CreateEventTableReservationRpcResult
+      if (tableRpcError || tableResult.state !== 'confirmed') {
+        await rollbackEventBookingForTableFailure(supabase, bookingId)
+        reason = tableResult.reason || 'no_table'
+        revalidatePath(`/events/${parsed.data.eventId}`)
+        return {
+          success: true,
+          data: {
+            state: 'blocked',
+            reason,
+            booking_id: null,
+            manage_booking_url: null,
+            next_step_url: null,
+            table_booking_id: null,
+            table_name: null
+          }
+        }
+      }
+
+      tableBookingId = tableResult.table_booking_id || null
+      tableName = tableResult.table_name || null
+    }
+
+    if (state === 'confirmed' || state === 'pending_payment') {
+      await recordAnalyticsEvent(supabase, {
+        customerId: customerResolution.customerId,
+        eventType: 'event_booking_created',
+        eventBookingId: bookingId || undefined,
+        metadata: {
+          event_id: parsed.data.eventId,
+          event_name: (eventRow as any).name || null,
+          seats: parsed.data.seats,
+          state,
+          source: 'admin'
+        }
+      })
+    }
+
+    revalidatePath(`/events/${parsed.data.eventId}`)
+    revalidatePath('/events')
+    revalidatePath('/table-bookings/foh')
+
+    return {
+      success: true,
+      data: {
+        state,
+        reason,
+        booking_id: bookingId,
+        manage_booking_url: manageBookingUrl,
+        next_step_url: nextStepUrl,
+        table_booking_id: tableBookingId,
+        table_name: tableName
+      }
+    }
+  } catch (error) {
+    console.error('Unexpected createEventManualBooking error:', error)
+    return { error: getErrorMessage(error, 'Failed to create booking.') }
+  }
+}
+
+const cancelEventManualBookingSchema = z.object({
+  bookingId: z.string().uuid(),
+  sendSms: z.boolean().optional().default(true)
+})
+
+type CancelEventManualBookingResult =
+  | {
+      error: string
+    }
+  | {
+      success: true
+      data: {
+        state: 'cancelled' | 'already_cancelled' | 'blocked'
+        reason: string | null
+        booking_id: string
+        sms_sent: boolean
+      }
+    }
+
+function formatEventDateTimeForSms(input: {
+  startDatetime?: string | null
+  date?: string | null
+  time?: string | null
+}): string {
+  let parsed: Date | null = null
+  if (input.startDatetime) {
+    const fromStart = new Date(input.startDatetime)
+    if (Number.isFinite(fromStart.getTime())) {
+      parsed = fromStart
+    }
+  }
+
+  if (!parsed && input.date) {
+    const fallbackTime = (input.time || '00:00').slice(0, 5)
+    const fallback = new Date(`${input.date}T${fallbackTime}:00`)
+    if (Number.isFinite(fallback.getTime())) {
+      parsed = fallback
+    }
+  }
+
+  if (!parsed) return 'your event time'
+
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  }).format(parsed)
+}
+
+function buildEventBookingCancelledSms(input: {
+  firstName: string
+  eventName: string
+  eventStartText: string
+  seats: number
+  isReminderOnly: boolean
+}): string {
+  if (input.isReminderOnly) {
+    return `The Anchor: Hi ${input.firstName}, your reminder guest entry for ${input.eventName} on ${input.eventStartText} has been removed. Reply if you need help rejoining.`
+  }
+
+  const seatWord = input.seats === 1 ? 'seat' : 'seats'
+  return `The Anchor: Hi ${input.firstName}, your booking for ${input.eventName} on ${input.eventStartText} has been cancelled (${input.seats} ${seatWord}). Reply if you need help rebooking.`
+}
+
+export async function cancelEventManualBooking(input: {
+  bookingId: string
+  sendSms?: boolean
+}): Promise<CancelEventManualBookingResult> {
+  try {
+    const canManageEvents = await checkUserPermission('events', 'manage')
+    if (!canManageEvents) {
+      return { error: 'You do not have permission to cancel event bookings.' }
+    }
+
+    const parsed = cancelEventManualBookingSchema.safeParse(input)
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message || 'Invalid booking id.' }
+    }
+
+    const supabase = createAdminClient()
+    const { data: bookingRow, error: bookingError } = await (supabase.from('bookings') as any)
+      .select(`
+        id,
+        event_id,
+        customer_id,
+        seats,
+        status,
+        is_reminder_only,
+        event:events(id, name, start_datetime, date, time),
+        customer:customers(id, first_name, mobile_number, sms_status)
+      `)
+      .eq('id', parsed.data.bookingId)
+      .maybeSingle()
+
+    if (bookingError || !bookingRow) {
+      return { error: 'Booking not found.' }
+    }
+
+    const bookingStatus = typeof bookingRow.status === 'string' ? bookingRow.status : null
+    if (bookingStatus === 'cancelled' || bookingStatus === 'expired') {
+      return {
+        success: true,
+        data: {
+          state: 'already_cancelled',
+          reason: bookingStatus,
+          booking_id: bookingRow.id,
+          sms_sent: false
+        }
+      }
+    }
+
+    if (bookingStatus && !['confirmed', 'pending_payment'].includes(bookingStatus)) {
+      return {
+        success: true,
+        data: {
+          state: 'blocked',
+          reason: 'status_not_cancellable',
+          booking_id: bookingRow.id,
+          sms_sent: false
+        }
+      }
+    }
+
+    const nowIso = new Date().toISOString()
+    const { error: cancelError } = await (supabase.from('bookings') as any)
+      .update({
+        status: 'cancelled',
+        cancelled_at: nowIso,
+        cancelled_by: 'admin',
+        updated_at: nowIso
+      })
+      .eq('id', bookingRow.id)
+
+    if (cancelError) {
+      return { error: cancelError.message || 'Failed to cancel booking.' }
+    }
+
+    await Promise.allSettled([
+      (supabase.from('booking_holds') as any)
+        .update({
+          status: 'released',
+          released_at: nowIso,
+          updated_at: nowIso
+        })
+        .eq('event_booking_id', bookingRow.id)
+        .eq('status', 'active'),
+      (supabase.from('table_bookings') as any)
+        .update({
+          status: 'cancelled',
+          cancellation_reason: 'event_booking_cancelled_admin',
+          cancelled_at: nowIso,
+          updated_at: nowIso
+        })
+        .eq('event_booking_id', bookingRow.id)
+        .not('status', 'in', '(cancelled,no_show)')
+    ])
+
+    const eventRecord = Array.isArray(bookingRow.event) ? bookingRow.event[0] : bookingRow.event
+    const customerRecord = Array.isArray(bookingRow.customer) ? bookingRow.customer[0] : bookingRow.customer
+
+    let smsSent = false
+    const shouldSendSms = parsed.data.sendSms !== false
+    if (
+      shouldSendSms &&
+      customerRecord?.id &&
+      typeof customerRecord.mobile_number === 'string' &&
+      customerRecord.mobile_number.trim() &&
+      customerRecord.sms_status === 'active'
+    ) {
+      const smsBody = ensureReplyInstruction(
+        buildEventBookingCancelledSms({
+          firstName: customerRecord.first_name || 'there',
+          eventName: eventRecord?.name || 'your event',
+          eventStartText: formatEventDateTimeForSms({
+            startDatetime: eventRecord?.start_datetime ?? null,
+            date: eventRecord?.date ?? null,
+            time: eventRecord?.time ?? null
+          }),
+          seats: Math.max(0, Number(bookingRow.seats || 0)),
+          isReminderOnly: bookingRow.is_reminder_only === true
+        }),
+        process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+      )
+
+      const smsResult = await sendSMS(customerRecord.mobile_number, smsBody, {
+        customerId: customerRecord.id,
+        metadata: {
+          event_booking_id: bookingRow.id,
+          event_id: bookingRow.event_id,
+          template_key: 'event_booking_cancelled_admin'
+        }
+      })
+
+      smsSent = smsResult.success === true
+    }
+
+    if (bookingRow.customer_id) {
+      await recordAnalyticsEvent(supabase, {
+        customerId: bookingRow.customer_id,
+        eventBookingId: bookingRow.id,
+        eventType: 'event_booking_cancelled',
+        metadata: {
+          event_id: bookingRow.event_id,
+          seats: bookingRow.seats,
+          source: 'admin',
+          sms_sent: smsSent
+        }
+      })
+    }
+
+    revalidatePath(`/events/${bookingRow.event_id}`)
+    revalidatePath('/events')
+    revalidatePath('/table-bookings/foh')
+
+    return {
+      success: true,
+      data: {
+        state: 'cancelled',
+        reason: null,
+        booking_id: bookingRow.id,
+        sms_sent: smsSent
+      }
+    }
+  } catch (error) {
+    console.error('Unexpected cancelEventManualBooking error:', error)
+    return { error: getErrorMessage(error, 'Failed to cancel booking.') }
   }
 }

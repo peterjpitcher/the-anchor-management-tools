@@ -29,6 +29,21 @@ export interface PageLayoutProps {
    */
   headerActions?: React.ReactNode
   /**
+   * Renders header actions in the mobile header row.
+   * @default false
+   */
+  showHeaderActionsOnMobile?: boolean
+  /**
+   * Hides mobile menu button in the header.
+   * @default false
+   */
+  hideMobileMenuButton?: boolean
+  /**
+   * Applies a denser header layout.
+   * @default false
+   */
+  compactHeader?: boolean
+  /**
    * Secondary navigation displayed beneath the header.
    */
   navItems?: HeaderNavItem[]
@@ -104,6 +119,9 @@ export function PageLayout({
   className,
   headerClassName,
   contentClassName,
+  showHeaderActionsOnMobile = false,
+  hideMobileMenuButton = false,
+  compactHeader = false,
 }: PageLayoutProps) {
   const hasNavRow = (navItems && navItems.length > 0) || Boolean(navActions)
 
@@ -175,6 +193,9 @@ export function PageLayout({
           subtitle={subtitle}
           breadcrumbs={breadcrumbs}
           backButton={backButton}
+          showHeaderActionsOnMobile={showHeaderActionsOnMobile}
+          hideMobileMenuButton={hideMobileMenuButton}
+          compact={compactHeader}
           actions={
             toolbar ? (
               <div className="flex flex-col gap-3 w-full">

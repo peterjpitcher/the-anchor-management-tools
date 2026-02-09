@@ -157,10 +157,9 @@ export class UnifiedJobQueue {
         const smsPayload = payload as JobPayload
         const customerId = (smsPayload as any).customer_id ?? (smsPayload as any).customerId
         if (!customerId) {
-          logger.error('Rejected send_sms job without customer id', {
+          logger.warn('Enqueuing send_sms job without explicit customer id; resolver will run at send time', {
             metadata: { payload }
           })
-          return { success: false, error: 'send_sms jobs require a customerId' }
         }
       }
 
@@ -610,10 +609,17 @@ export class UnifiedJobQueue {
           const { sendSMS } = await import('@/lib/twilio')
           const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
           const messageWithSupport = ensureReplyInstruction(payload.message || '', supportPhone)
+          const baseMetadata =
+            typeof payload.metadata === 'object' && payload.metadata !== null
+              ? { ...(payload.metadata as Record<string, unknown>) }
+              : {}
+          if (payload.booking_id && baseMetadata.booking_id === undefined) {
+            baseMetadata.booking_id = payload.booking_id
+          }
 
           const result = await sendSMS(payload.to, messageWithSupport, {
             customerId: payload.customer_id || payload.customerId,
-            metadata: payload.booking_id ? { booking_id: payload.booking_id } : undefined
+            metadata: Object.keys(baseMetadata).length > 0 ? baseMetadata : undefined
           })
 
           return result

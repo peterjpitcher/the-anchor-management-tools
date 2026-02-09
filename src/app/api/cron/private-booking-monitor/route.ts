@@ -1,14 +1,31 @@
 import { NextResponse } from 'next/server'
+import { fromZonedTime } from 'date-fns-tz'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { SmsQueueService } from '@/services/sms-queue'
 import { PrivateBookingService } from '@/services/private-bookings'
-import { toLocalIsoDate } from '@/lib/dateUtils'
+import { ensureReplyInstruction } from '@/lib/sms/support'
+import { ensureCustomerForPhone } from '@/lib/sms/customers'
+import { sendSMS } from '@/lib/twilio'
+import {
+  createPrivateBookingFeedbackToken,
+  PRIVATE_BOOKING_FEEDBACK_TEMPLATE_KEY
+} from '@/lib/private-bookings/feedback'
+import { recordAnalyticsEvent } from '@/lib/analytics/events'
 
 const JOB_NAME = 'private-booking-monitor'
 const LONDON_TZ = 'Europe/London'
 const STALE_RUN_WINDOW_MINUTES = 30
+const PRIVATE_FEEDBACK_LOOKBACK_DAYS = 7
+
+function chunkArray<T>(input: T[], size = 250): T[][] {
+  const chunks: T[][] = []
+  for (let index = 0; index < input.length; index += size) {
+    chunks.push(input.slice(index, index + size))
+  }
+  return chunks
+}
 
 function getLondonRunKey(now: Date = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', {
@@ -17,6 +34,64 @@ function getLondonRunKey(now: Date = new Date()): string {
     month: '2-digit',
     day: '2-digit'
   }).format(now)
+}
+
+function computePrivateFeedbackDueAt(eventDate?: string | null): Date | null {
+  if (!eventDate) return null
+  try {
+    const [yearRaw, monthRaw, dayRaw] = eventDate.split('-').map((value) => Number.parseInt(value, 10))
+    if (!Number.isFinite(yearRaw) || !Number.isFinite(monthRaw) || !Number.isFinite(dayRaw)) {
+      return null
+    }
+
+    const nextDayUtc = new Date(Date.UTC(yearRaw, monthRaw - 1, dayRaw + 1))
+    const nextDateKey = [
+      String(nextDayUtc.getUTCFullYear()),
+      String(nextDayUtc.getUTCMonth() + 1).padStart(2, '0'),
+      String(nextDayUtc.getUTCDate()).padStart(2, '0')
+    ].join('-')
+
+    const londonNextMorning = fromZonedTime(`${nextDateKey}T09:00`, LONDON_TZ)
+    return Number.isFinite(londonNextMorning.getTime()) ? londonNextMorning : null
+  } catch {
+    return null
+  }
+}
+
+async function loadSentPrivateFeedbackSet(
+  supabase: ReturnType<typeof createAdminClient>,
+  bookingIds: string[]
+): Promise<Set<string>> {
+  const sent = new Set<string>()
+  if (bookingIds.length === 0) {
+    return sent
+  }
+
+  for (const bookingChunk of chunkArray(bookingIds)) {
+    const { data, error } = await supabase
+      .from('messages')
+      .select('private_booking_id, metadata')
+      .in('private_booking_id', bookingChunk)
+      .eq('template_key', PRIVATE_BOOKING_FEEDBACK_TEMPLATE_KEY)
+
+    if (error) {
+      logger.warn('Failed loading private-booking feedback dedupe set', {
+        metadata: {
+          error: error.message
+        }
+      })
+      continue
+    }
+
+    for (const row of data || []) {
+      const bookingId = (row as any).private_booking_id || (row as any)?.metadata?.private_booking_id
+      if (typeof bookingId === 'string') {
+        sent.add(bookingId)
+      }
+    }
+  }
+
+  return sent
 }
 
 async function acquireCronRun(runKey: string) {
@@ -147,7 +222,13 @@ export async function GET(request: Request) {
     console.log('Starting private booking monitor...')
 
     const now = new Date()
-    const stats = { remindersSent: 0, expirationsProcessed: 0, balanceRemindersSent: 0, eventRemindersSent: 0 }
+    const stats = {
+      remindersSent: 0,
+      expirationsProcessed: 0,
+      balanceRemindersSent: 0,
+      eventRemindersSent: 0,
+      privateFeedbackSmsSent: 0
+    }
 
     // --- PASS 1: REMINDERS (Drafts - Catch-up Logic) ---
     // Find draft bookings where hold_expiry is approaching (<= 7 days)
@@ -196,7 +277,7 @@ export async function GET(request: Request) {
                 .in('status', ['pending', 'approved', 'sent']);
             
             if ((count ?? 0) === 0) {
-                const messageBody = `Hi ${booking.customer_first_name}, just a quick reminder that your hold on ${eventDateReadable} expires in ${diffDays} days. Please pay the deposit soon to secure the booking.`;
+                const messageBody = `The Anchor: Hi ${booking.customer_first_name}, just a reminder that your hold on ${eventDateReadable} expires in ${diffDays} days. Please pay the deposit soon to secure the date.`;
                 
                 const result = await SmsQueueService.queueAndSend({
                     booking_id: booking.id,
@@ -232,7 +313,7 @@ export async function GET(request: Request) {
               day: 'numeric',
               month: 'long'
             })
-            const messageBody = `Hi ${booking.customer_first_name}, your hold on ${eventDateReadable} expires soon (by ${expiryReadable}). Please pay the deposit to prevent the date being released.`
+            const messageBody = `The Anchor: Hi ${booking.customer_first_name}, your hold on ${eventDateReadable} expires soon (by ${expiryReadable}). Please pay the deposit to prevent the date being released.`
 
             const result = await SmsQueueService.queueAndSend({
               booking_id: booking.id,
@@ -326,7 +407,7 @@ export async function GET(request: Request) {
                : null
 
              const duePart = dueDateReadable ? ` is due by ${dueDateReadable}` : ' is now due'
-             const messageBody = `Hi ${booking.customer_first_name}, your event at The Anchor is coming up on ${eventDateReadable}! Your remaining balance of £${balanceDue.toFixed(2)}${duePart}. Can you please arrange payment?`
+             const messageBody = `The Anchor: Hi ${booking.customer_first_name}, your event at The Anchor is coming up on ${eventDateReadable}. Your remaining balance of £${balanceDue.toFixed(2)}${duePart}. Please arrange payment.`
 
              const result = await SmsQueueService.queueAndSend({
                booking_id: booking.id,
@@ -381,7 +462,7 @@ export async function GET(request: Request) {
         const timePart = startTimeReadable ? ` at ${startTimeReadable}` : ''
         const guestPart = booking.guest_count ? ` for your ${booking.guest_count} guests` : ''
 
-        const messageBody = `Hi ${firstName}, just a reminder that your event at The Anchor is tomorrow${timePart}! We're all set${guestPart}. See you tomorrow!`
+        const messageBody = `The Anchor: Hi ${firstName}, reminder: your event at The Anchor is tomorrow${timePart}. We're all set${guestPart}. See you tomorrow!`
 
         const result = await SmsQueueService.queueAndSend({
           booking_id: booking.id,
@@ -399,6 +480,131 @@ export async function GET(request: Request) {
         } else {
           stats.eventRemindersSent++
         }
+      }
+    }
+
+    // --- PASS 5: PRIVATE FEEDBACK FOLLOW-UP (next morning) ---
+    const supportPhone =
+      process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+    const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin
+    const todayLondon = getLondonRunKey(now)
+    const lookbackDate = new Date(now)
+    lookbackDate.setDate(lookbackDate.getDate() - PRIVATE_FEEDBACK_LOOKBACK_DAYS)
+    const lookbackLondon = getLondonRunKey(lookbackDate)
+
+    const { data: privateFeedbackCandidates } = await supabase
+      .from('private_bookings')
+      .select(
+        'id, customer_id, customer_first_name, customer_last_name, customer_name, contact_phone, event_date, start_time, status'
+      )
+      .in('status', ['confirmed', 'completed'])
+      .gte('event_date', lookbackLondon)
+      .lt('event_date', todayLondon)
+      .not('event_date', 'is', null)
+      .limit(2000)
+
+    if (privateFeedbackCandidates && privateFeedbackCandidates.length > 0) {
+      const sentPrivateFeedback = await loadSentPrivateFeedbackSet(
+        supabase,
+        privateFeedbackCandidates.map((booking) => booking.id)
+      )
+
+      for (const booking of privateFeedbackCandidates) {
+        if (sentPrivateFeedback.has(booking.id)) {
+          continue
+        }
+
+        const feedbackDueAt = computePrivateFeedbackDueAt(booking.event_date)
+        if (!feedbackDueAt || feedbackDueAt.getTime() > now.getTime()) {
+          continue
+        }
+
+        let customerId = booking.customer_id as string | null
+        let mobileNumber = booking.contact_phone as string | null
+        let customerFirstName = booking.customer_first_name as string | null
+        let customerLastName = booking.customer_last_name as string | null
+        let smsStatus: string | null = null
+
+        if (customerId) {
+          const { data: linkedCustomer } = await supabase
+            .from('customers')
+            .select('id, first_name, last_name, mobile_number, sms_status')
+            .eq('id', customerId)
+            .maybeSingle()
+
+          if (linkedCustomer) {
+            mobileNumber = mobileNumber || linkedCustomer.mobile_number || null
+            customerFirstName = customerFirstName || linkedCustomer.first_name || null
+            customerLastName = customerLastName || linkedCustomer.last_name || null
+            smsStatus = linkedCustomer.sms_status || null
+          }
+        }
+
+        if (!mobileNumber || smsStatus === 'opted_out' || smsStatus === 'sms_deactivated') {
+          continue
+        }
+
+        if (!customerId) {
+          const ensured = await ensureCustomerForPhone(supabase, mobileNumber, {
+            firstName:
+              customerFirstName || booking.customer_name?.split(' ')[0] || undefined,
+            lastName: customerLastName || undefined
+          })
+
+          customerId = ensured.customerId
+
+          if (customerId) {
+            await supabase
+              .from('private_bookings')
+              .update({
+                customer_id: customerId
+              })
+              .eq('id', booking.id)
+          }
+        }
+
+        if (!customerId) {
+          continue
+        }
+
+        const feedbackToken = await createPrivateBookingFeedbackToken(supabase, {
+          customerId,
+          privateBookingId: booking.id,
+          eventDate: booking.event_date,
+          startTime: booking.start_time,
+          appBaseUrl
+        })
+
+        const firstName = customerFirstName || booking.customer_name?.split(' ')[0] || 'there'
+        const smsBody = ensureReplyInstruction(
+          `The Anchor: Hi ${firstName}, thanks for your private booking at The Anchor. We'd love your feedback: ${feedbackToken.url}`,
+          supportPhone
+        )
+
+        const smsResult = await sendSMS(mobileNumber, smsBody, {
+          customerId,
+          metadata: {
+            private_booking_id: booking.id,
+            template_key: PRIVATE_BOOKING_FEEDBACK_TEMPLATE_KEY
+          }
+        })
+
+        if (!smsResult.success) {
+          continue
+        }
+
+        sentPrivateFeedback.add(booking.id)
+        stats.privateFeedbackSmsSent += 1
+
+        await recordAnalyticsEvent(supabase, {
+          customerId,
+          privateBookingId: booking.id,
+          eventType: 'review_sms_sent',
+          metadata: {
+            booking_type: 'private',
+            template_key: PRIVATE_BOOKING_FEEDBACK_TEMPLATE_KEY
+          }
+        })
       }
     }
 

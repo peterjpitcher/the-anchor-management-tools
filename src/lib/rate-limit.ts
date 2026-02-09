@@ -1,16 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-// In-memory store for rate limiting (consider Redis for production)
+// In-memory store for rate limiting
 const rateLimitStore = new Map<string, { badge: number; resetTime: number }>()
 
-// Clean up old entries periodically
-setInterval(() => {
-  const now = Date.now()
+function cleanupExpiredRateLimits(now = Date.now()) {
+  let removed = 0
   for (const [key, value] of Array.from(rateLimitStore.entries())) {
     if (value.resetTime < now) {
       rateLimitStore.delete(key)
+      removed += 1
     }
   }
+  return removed
+}
+
+// Clean up old entries periodically
+setInterval(() => {
+  cleanupExpiredRateLimits()
 }, 60000) // Clean every minute
 
 export interface RateLimitConfig {
@@ -111,6 +117,13 @@ export const rateLimiters = {
     max: 1000,
     message: 'Too many webhook requests.'
   })
+}
+
+export function cleanupRateLimits() {
+  return {
+    removed: cleanupExpiredRateLimits(),
+    remaining: rateLimitStore.size,
+  }
 }
 
 // Helper to apply rate limiting to server actions

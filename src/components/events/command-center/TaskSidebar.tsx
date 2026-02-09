@@ -98,7 +98,7 @@ export default function TaskSidebar({ todos, isOpen, toggle }: TaskSidebarProps)
                         <Link
                             key={`${todo.eventId}-${todo.key}`}
                             href={`/events/${todo.eventId}`}
-                            className="block relative pl-4 border-l-2 border-gray-100 hover:border-black transition-colors group mb-4"
+                            className="group mb-4 block rounded-r-md border-l-2 border-gray-100 py-2 pl-4 pr-2 transition-colors hover:border-black"
                         >
                             <div className="mb-0.5 flex items-start justify-between">
                                 <span className={`text-[10px] uppercase font-bold tracking-wider 
@@ -118,10 +118,10 @@ export default function TaskSidebar({ todos, isOpen, toggle }: TaskSidebarProps)
                                     <CheckIcon className="w-3 h-3 text-black opacity-0 group-hover/check:opacity-100" />
                                 </div>
                                 <div>
-                                    <h4 className="text-sm font-medium text-gray-800 group-hover:text-black leading-snug mb-1">
+                                    <h4 className="mb-1 text-sm font-medium leading-snug text-gray-800 group-hover:text-black line-clamp-2">
                                         {todo.label}
                                     </h4>
-                                    <p className="text-xs text-gray-500 truncate">{todo.eventName}</p>
+                                    <p className="line-clamp-2 text-xs leading-snug text-gray-500">{todo.eventName}</p>
                                 </div>
                             </div>
                         </Link>

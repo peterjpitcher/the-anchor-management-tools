@@ -97,7 +97,9 @@ export default async function DashboardPage() {
   const todayItemCount =
     eventsToday.length + privateToday.length + parkingToday.length + invoicesDueToday.length + overdueInvoices.length
 
-  const calendarEvents = snapshot.events.permitted ? [...snapshot.events.today, ...snapshot.events.upcoming] : []
+  const calendarEvents = snapshot.events.permitted
+    ? [...snapshot.events.past, ...snapshot.events.today, ...snapshot.events.upcoming]
+    : []
   const calendarPrivateBookings = snapshot.privateBookings.permitted ? snapshot.privateBookings.upcoming : []
   const calendarParkingBookings = snapshot.parking.permitted ? snapshot.parking.upcoming : []
 

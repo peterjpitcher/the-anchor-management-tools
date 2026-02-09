@@ -7,6 +7,8 @@ import { retry, RetryConfigs } from '@/lib/retry';
 import { logger } from '@/lib/logger';
 import { mapTwilioStatus, isStatusUpgrade, formatErrorMessage } from '@/lib/sms-status';
 import { skipTwilioSignatureValidation } from '@/lib/env';
+import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils';
+import { recordAnalyticsEvent } from '@/lib/analytics/events';
 
 // Create public Supabase client for logging (no auth required)
 function getPublicSupabaseClient() {
@@ -103,6 +105,81 @@ function verifyTwilioSignature(request: NextRequest, body: string): boolean {
     url,
     paramsObject
   );
+}
+
+async function applySmsDeliveryOutcome(
+  adminClient: any,
+  input: {
+    customerId?: string | null
+    messageStatus?: string | null
+    errorCode?: string | null
+  }
+) {
+  const customerId = input.customerId
+  if (!customerId || !input.messageStatus) {
+    return
+  }
+
+  const normalizedStatus = input.messageStatus.toLowerCase()
+  const nowIso = new Date().toISOString()
+
+  const { data: customer, error: customerError } = await adminClient
+    .from('customers')
+    .select('id, sms_status, sms_opt_in, sms_delivery_failures')
+    .eq('id', customerId)
+    .maybeSingle()
+
+  if (customerError || !customer) {
+    return
+  }
+
+  if (normalizedStatus === 'delivered') {
+    await adminClient
+      .from('customers')
+      .update({
+        sms_delivery_failures: 0,
+        last_sms_failure_reason: null,
+        last_successful_sms_at: nowIso
+      })
+      .eq('id', customerId)
+
+    return
+  }
+
+  const isFailureStatus = ['failed', 'undelivered', 'canceled'].includes(normalizedStatus)
+  if (!isFailureStatus) {
+    return
+  }
+
+  const nextFailures = Number(customer.sms_delivery_failures || 0) + 1
+  const shouldDeactivate = nextFailures > 3 && customer.sms_status !== 'opted_out'
+  const updatePayload: Record<string, unknown> = {
+    sms_delivery_failures: nextFailures,
+    last_sms_failure_reason: input.errorCode ? formatErrorMessage(input.errorCode) : 'Message delivery failed'
+  }
+
+  if (shouldDeactivate && customer.sms_status !== 'sms_deactivated') {
+    updatePayload.sms_status = 'sms_deactivated'
+    updatePayload.sms_opt_in = false
+    updatePayload.sms_deactivated_at = nowIso
+    updatePayload.sms_deactivation_reason = 'delivery_failures'
+  }
+
+  await adminClient
+    .from('customers')
+    .update(updatePayload)
+    .eq('id', customerId)
+
+  if (shouldDeactivate && customer.sms_status !== 'sms_deactivated') {
+    await recordAnalyticsEvent(adminClient, {
+      customerId,
+      eventType: 'sms_deactivated',
+      metadata: {
+        reason: 'delivery_failures',
+        failures: nextFailures
+      }
+    })
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -230,6 +307,15 @@ async function handleInboundSMS(
     const fromNumber = params.From;
     const toNumber = params.To;
     const messageSid = params.MessageSid || params.SmsSid;
+    let normalizedFromNumber = fromNumber;
+    let canonicalFromNumber: string | null = null;
+
+    try {
+      canonicalFromNumber = formatPhoneForStorage(fromNumber);
+      normalizedFromNumber = canonicalFromNumber;
+    } catch {
+      // Fall back to raw value from Twilio if normalization fails.
+    }
     
     console.log('Message details:', { from: fromNumber, to: toNumber, sid: messageSid, bodyLength: messageBody.length });
     
@@ -237,10 +323,15 @@ async function handleInboundSMS(
     let customer;
     
     // Try to find existing customer
-    const phoneVariants = generatePhoneVariants(fromNumber);
+    const phoneVariants = generatePhoneVariants(normalizedFromNumber);
     console.log('Searching for customer with phone variants:', phoneVariants);
-    
-    const orConditions = phoneVariants.map(variant => `mobile_number.eq.${variant}`).join(',');
+
+    const orClauses = [
+      ...(canonicalFromNumber ? [`mobile_e164.eq.${canonicalFromNumber}`] : []),
+      ...phoneVariants.map(variant => `mobile_number.eq.${variant}`)
+    ];
+
+    const orConditions = orClauses.join(',');
     const { data: customers, error: customerError } = await adminClient
       .from('customers')
       .select('*')
@@ -262,8 +353,10 @@ async function handleInboundSMS(
             .insert({
               first_name: 'Unknown',
               last_name: `(${fromNumber})`,
-              mobile_number: fromNumber,
-              sms_opt_in: true
+              mobile_number: normalizedFromNumber,
+              mobile_e164: canonicalFromNumber,
+              sms_opt_in: true,
+              sms_status: 'active'
             })
             .select()
             .single();
@@ -288,6 +381,15 @@ async function handleInboundSMS(
     } else {
       customer = customers[0];
       console.log('Found existing customer:', customer.id);
+
+      if (!customer.mobile_e164 && canonicalFromNumber) {
+        await adminClient
+          .from('customers')
+          .update({
+            mobile_e164: canonicalFromNumber
+          })
+          .eq('id', customer.id)
+      }
     }
     
     // Check for opt-out keywords
@@ -299,11 +401,24 @@ async function handleInboundSMS(
       console.log('Processing opt-out request');
       const { error: optOutError } = await adminClient
         .from('customers')
-        .update({ sms_opt_in: false })
+        .update({
+          sms_opt_in: false,
+          sms_status: 'opted_out',
+          marketing_sms_opt_in: false
+        })
         .eq('id', customer.id);
       
       if (optOutError) {
         console.error('Failed to update opt-out status:', optOutError);
+      } else {
+        await recordAnalyticsEvent(adminClient, {
+          customerId: customer.id,
+          eventType: 'sms_opted_out',
+          metadata: {
+            source: 'twilio_inbound_stop',
+            keyword: messageUpper.split(' ')[0]
+          }
+        })
       }
     }
     
@@ -316,7 +431,7 @@ async function handleInboundSMS(
       body: messageBody,
       status: 'received',
       twilio_status: 'received',
-      from_number: fromNumber,
+      from_number: normalizedFromNumber,
       to_number: toNumber,
       message_type: 'sms'
     };
@@ -407,7 +522,7 @@ async function handleStatusUpdate(
     // First, try to find the existing message
     const { data: existingMessage, error: fetchError } = await adminClient
       .from('messages')
-      .select('id, status, twilio_status, direction')
+      .select('id, status, twilio_status, direction, customer_id')
       .eq('twilio_message_sid', messageSid)
       .single();
     
@@ -492,6 +607,12 @@ async function handleStatusUpdate(
     if (historyError) {
       console.error('Failed to save status history:', historyError);
     }
+
+    await applySmsDeliveryOutcome(adminClient, {
+      customerId: existingMessage.customer_id,
+      messageStatus,
+      errorCode: errorCode || null
+    })
     
     // Log success
     if (publicClient) {
@@ -526,37 +647,4 @@ async function handleStatusUpdate(
     
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
-
-function generatePhoneVariants(phone: string): string[] {
-  const variants = [phone];
-  
-  // Clean the phone number - remove all non-digits except leading +
-  const cleaned = phone.replace(/[^\d+]/g, '').replace(/\+/g, (match, offset) => offset === 0 ? match : '');
-  const digitsOnly = cleaned.replace(/^\+/, '');
-  
-  // UK number handling
-  if (cleaned.startsWith('+44') && digitsOnly.length >= 12) {
-    const ukNumber = digitsOnly.substring(2); // Remove 44 from the digits
-    variants.push('+44' + ukNumber);
-    variants.push('44' + ukNumber);
-    variants.push('0' + ukNumber);
-  } else if (digitsOnly.startsWith('44') && digitsOnly.length >= 12) {
-    const ukNumber = digitsOnly.substring(2); // Remove 44
-    variants.push('+44' + ukNumber);
-    variants.push('44' + ukNumber);
-    variants.push('0' + ukNumber);
-  } else if (digitsOnly.startsWith('0') && digitsOnly.length === 11) {
-    const ukNumber = digitsOnly.substring(1); // Remove 0
-    variants.push('+44' + ukNumber);
-    variants.push('44' + ukNumber);
-    variants.push('0' + ukNumber);
-  }
-  
-  // Also add the cleaned version if different from original
-  if (cleaned !== phone) {
-    variants.push(cleaned);
-  }
-  
-  return [...new Set(variants)];
 }

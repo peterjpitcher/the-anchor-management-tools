@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { eventSchema } from '@/services/events'
+import { eventSchema, getPublishValidationIssues } from '@/services/events'
 
 const baseEventInput = {
   name: 'Test Event',
@@ -58,5 +58,58 @@ describe('eventSchema time normalization', () => {
         sort_order: 1,
       },
     ])
+  })
+})
+
+describe('getPublishValidationIssues', () => {
+  it('does not require publish fields for draft events', () => {
+    const issues = getPublishValidationIssues({
+      status: 'draft',
+      name: '',
+      date: '',
+      time: '',
+      slug: '',
+      short_description: '',
+      hero_image_url: '',
+      is_free: false,
+      price: 0,
+    })
+
+    expect(issues).toEqual([])
+  })
+
+  it('requires key publish fields for non-draft events', () => {
+    const issues = getPublishValidationIssues({
+      status: 'scheduled',
+      name: 'Quiz Night',
+      date: '2026-06-15',
+      time: '20:00',
+      slug: '',
+      short_description: '',
+      hero_image_url: '',
+      is_free: false,
+      price: 0,
+    })
+
+    expect(issues).toContain('URL slug')
+    expect(issues).toContain('short description')
+    expect(issues).toContain('event image')
+    expect(issues).toContain('ticket price (or mark event as free)')
+  })
+
+  it('passes with complete publish-ready content', () => {
+    const issues = getPublishValidationIssues({
+      status: 'scheduled',
+      name: 'Quiz Night',
+      date: '2026-06-15',
+      time: '20:00',
+      slug: 'quiz-night-2026-06-15',
+      short_description: 'Weekly pub quiz with prizes.',
+      hero_image_url: 'https://example.com/quiz.jpg',
+      is_free: true,
+      price: 0,
+    })
+
+    expect(issues).toEqual([])
   })
 })

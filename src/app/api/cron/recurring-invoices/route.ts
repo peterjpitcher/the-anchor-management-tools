@@ -5,64 +5,9 @@ import { getTodayIsoDate } from '@/lib/dateUtils'
 import { InvoiceService } from '@/services/invoices'
 import { addDaysIsoDate, calculateNextInvoiceIsoDate } from '@/lib/recurringInvoiceSchedule'
 import { isGraphConfigured, sendInvoiceEmail } from '@/lib/microsoft-graph'
+import { resolveVendorInvoiceRecipients } from '@/lib/invoice-recipients'
 import type { InvoiceLineItemInput, InvoiceWithDetails, RecurringFrequency } from '@/types/invoices'
 import { logAuditEvent } from '@/app/actions/audit'
-
-function parseRecipientList(raw: string | null) {
-  if (!raw) return []
-  return String(raw)
-    .split(/[;,]/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-}
-
-async function resolveInvoiceRecipients(
-  supabase: ReturnType<typeof createAdminClient>,
-  vendorId: string,
-  vendorEmailRaw: string | null
-) {
-  const recipientsFromVendor = parseRecipientList(vendorEmailRaw)
-
-  const { data: contacts, error } = await supabase
-    .from('invoice_vendor_contacts')
-    .select('email, is_primary, receive_invoice_copy')
-    .eq('vendor_id', vendorId)
-    .order('is_primary', { ascending: false })
-    .order('created_at', { ascending: true })
-
-  if (error) return { error: error.message as string }
-
-  const contactEmails = (contacts || [])
-    .map((c: any) => ({
-      email: c?.email ? String(c.email).trim() : '',
-      isPrimary: !!c?.is_primary,
-      cc: !!c?.receive_invoice_copy,
-    }))
-    .filter((c) => c.email && c.email.includes('@'))
-
-  const primaryEmail = contactEmails.find((c) => c.isPrimary)?.email || null
-  const firstVendorEmail = recipientsFromVendor[0] || null
-  const to = primaryEmail || firstVendorEmail || contactEmails[0]?.email || null
-
-  const ccRaw = [
-    ...recipientsFromVendor.slice(firstVendorEmail ? 1 : 0),
-    ...contactEmails.filter((c) => c.cc).map((c) => c.email),
-  ]
-
-  const seen = new Set<string>()
-  const toLower = to ? to.toLowerCase() : null
-  const cc = ccRaw
-    .map((e) => e.trim())
-    .filter((e) => e && e.includes('@') && e.toLowerCase() !== toLower)
-    .filter((e) => {
-      const key = e.toLowerCase()
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
-
-  return { to, cc }
-}
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60 // 1 minute max
@@ -220,7 +165,7 @@ export async function GET(request: Request) {
           continue
         }
 
-        const recipientResult = await resolveInvoiceRecipients(
+        const recipientResult = await resolveVendorInvoiceRecipients(
           supabase,
           recurringInvoice.vendor_id,
           recurringInvoice.vendor?.email ? String(recurringInvoice.vendor.email) : null

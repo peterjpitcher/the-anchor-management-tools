@@ -15,6 +15,31 @@ export function generateCompactQuoteHTML(data: QuoteTemplateData): string {
     (quote.line_items?.some(item => item.discount_percentage > 0) ?? false)
 
   // Helper functions
+  const escapeHtml = (value: string) => {
+    return String(value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;')
+  }
+
+  const formatAddressHtml = (value: string | null | undefined) => {
+    if (!value) return ''
+
+    const normalized = String(value).replace(/\r\n/g, '\n').trim()
+    if (!normalized) return ''
+
+    const parts = normalized.includes('\n')
+      ? normalized.split('\n')
+      : normalized.split(',')
+
+    return parts
+      .map((part) => escapeHtml(part.trim()))
+      .filter(Boolean)
+      .join('<br>')
+  }
+
   const formatDate = (date: string | null) => {
     return formatDateFull(date)
   }
@@ -359,7 +384,7 @@ export function generateCompactQuoteHTML(data: QuoteTemplateData): string {
     <div class="address-block">
       <h3>From</h3>
       <p><strong>${COMPANY_DETAILS.name}</strong></p>
-      <p>${COMPANY_DETAILS.fullAddress.split(',').join('<br>')}</p>
+      <p>${formatAddressHtml(COMPANY_DETAILS.fullAddress)}</p>
       <p>${COMPANY_DETAILS.phone}</p>
       <p>${COMPANY_DETAILS.email}</p>
     </div>
@@ -367,7 +392,7 @@ export function generateCompactQuoteHTML(data: QuoteTemplateData): string {
       <h3>Quote For</h3>
       <p><strong>${quote.vendor?.name || 'Customer'}</strong></p>
       ${quote.vendor?.contact_name ? `<p>${quote.vendor.contact_name}</p>` : ''}
-      ${quote.vendor?.address ? `<p>${quote.vendor.address.split(',').join('<br>')}</p>` : ''}
+      ${quote.vendor?.address ? `<p>${formatAddressHtml(quote.vendor.address)}</p>` : ''}
       ${quote.vendor?.email ? `<p>${quote.vendor.email}</p>` : ''}
       ${quote.vendor?.phone ? `<p>${quote.vendor.phone}</p>` : ''}
       ${quote.vendor?.vat_number ? `<p>VAT: ${quote.vendor.vat_number}</p>` : ''}

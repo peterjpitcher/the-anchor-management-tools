@@ -7,6 +7,7 @@ import { logAuditEvent } from './audit'
 import { z } from 'zod'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { getTodayIsoDate, getLocalIsoDateDaysAhead, toLocalIsoDate } from '@/lib/dateUtils'
+import { QuoteService } from '@/services/quotes'
 import type { 
   Quote, 
   QuoteWithDetails, 
@@ -25,26 +26,6 @@ const CreateQuoteSchema = z.object({
   notes: z.string().optional(),
   internal_notes: z.string().optional()
 })
-
-// Get next quote number from series
-async function getNextQuoteNumber(): Promise<string> {
-  const adminClient = await createAdminClient()
-  
-  // Get and increment the sequence atomically using the database function
-  const { data, error } = await adminClient
-    .rpc('get_and_increment_invoice_series', { p_series_code: 'QTE' })
-    .single()
-
-  if (error) {
-    console.error('Error getting next quote number:', error)
-    throw new Error('Failed to generate quote number')
-  }
-
-  // Encode the sequential number to appear non-sequential
-  const encoded = ((data as { next_sequence: number }).next_sequence + 3000).toString(36).toUpperCase().padStart(5, '0')
-  
-  return `QTE-${encoded}`
-}
 
 // Get quote summary
 export async function getQuoteSummary() {
@@ -184,8 +165,6 @@ export async function getQuote(quoteId: string) {
 
 export async function createQuote(formData: FormData) {
   try {
-    const supabase = await createClient()
-    
     const hasPermission = await checkUserPermission('invoices', 'create')
     if (!hasPermission) {
       return { error: 'You do not have permission to create quotes' }
@@ -213,85 +192,16 @@ export async function createQuote(formData: FormData) {
       return { error: 'At least one line item is required' }
     }
 
-    // Calculate totals
-    let subtotal = 0
-    let totalVat = 0
-
-    lineItems.forEach(item => {
-      const lineSubtotal = item.quantity * item.unit_price
-      const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
-      const lineAfterDiscount = lineSubtotal - lineDiscount
-      subtotal += lineAfterDiscount
-    })
-
-    const quoteDiscount = subtotal * (validatedData.quote_discount_percentage / 100)
-    const afterQuoteDiscount = subtotal - quoteDiscount
-
-    // Calculate VAT after all discounts
-    lineItems.forEach(item => {
-      const lineSubtotal = item.quantity * item.unit_price
-      const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
-      const lineAfterDiscount = lineSubtotal - lineDiscount
-      const lineShare = lineAfterDiscount / subtotal
-      const lineAfterQuoteDiscount = lineAfterDiscount - (quoteDiscount * lineShare)
-      const lineVat = lineAfterQuoteDiscount * (item.vat_rate / 100)
-      totalVat += lineVat
-    })
-
-    const totalAmount = afterQuoteDiscount + totalVat
-
-    // Get next quote number
-    const quoteNumber = await getNextQuoteNumber()
-
-    // Create quote
-    const { data: quote, error: quoteError } = await supabase
-      .from('quotes')
-      .insert({
-        quote_number: quoteNumber,
+    const quote = await QuoteService.createQuote({
         vendor_id: validatedData.vendor_id,
         quote_date: validatedData.quote_date,
         valid_until: validatedData.valid_until,
         reference: validatedData.reference,
         quote_discount_percentage: validatedData.quote_discount_percentage,
-        subtotal_amount: subtotal,
-        discount_amount: quoteDiscount,
-        vat_amount: totalVat,
-        total_amount: totalAmount,
         notes: validatedData.notes,
         internal_notes: validatedData.internal_notes,
-        status: 'draft' as QuoteStatus
+        line_items: lineItems
       })
-      .select()
-      .single()
-
-    if (quoteError) {
-      console.error('Error creating quote:', quoteError)
-      return { error: 'Failed to create quote' }
-    }
-
-    // Create line items
-    const lineItemsToInsert = lineItems.map(item => ({
-      quote_id: quote.id,
-      catalog_item_id: item.catalog_item_id || null,
-      description: item.description,
-      quantity: item.quantity,
-      unit_price: item.unit_price,
-      discount_percentage: item.discount_percentage,
-      vat_rate: item.vat_rate
-      // Note: subtotal_amount, discount_amount, vat_amount, and total_amount are GENERATED columns
-      // and will be automatically calculated by the database
-    }))
-
-    const { error: lineItemsError } = await supabase
-      .from('quote_line_items')
-      .insert(lineItemsToInsert)
-
-    if (lineItemsError) {
-      console.error('Error creating line items:', lineItemsError)
-      // Rollback quote creation
-      await supabase.from('quotes').delete().eq('id', quote.id)
-      return { error: 'Failed to create quote line items' }
-    }
 
     await logAuditEvent({
       operation_type: 'create',

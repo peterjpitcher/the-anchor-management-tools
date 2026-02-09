@@ -1,21 +1,33 @@
 import { z } from 'zod';
+import { formatPhoneForStorage as normalizePhoneForStorage } from '@/lib/utils';
 
 // Phone number validation
-export const ukPhoneRegex = /^\+44[1-9]\d{9}$/;
-export const internationalPhoneRegex = /^\+[1-9]\d{1,14}$/;
+export const ukPhoneRegex = /^(?:\+44|0)\d{10}$/;
+export const internationalPhoneRegex = /^\+[1-9]\d{7,14}$/;
+export const phoneInputRegex = /^[+0-9()\-\s]{7,25}$/;
 
-export const phoneSchema = z.string()
-  .regex(ukPhoneRegex, {
-    message: 'Please enter a valid UK phone number (e.g., +447700900123)'
+const basePhoneSchema = z.string()
+  .trim()
+  .regex(phoneInputRegex, {
+    message: 'Please enter a valid phone number'
   })
+  .refine((value) => {
+    try {
+      normalizePhoneForStorage(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }, {
+    message: 'Please enter a valid phone number'
+  });
+
+export const phoneSchema = basePhoneSchema
   .or(z.literal('')) // Allow empty
   .or(z.null())
   .optional();
 
-export const requiredPhoneSchema = z.string()
-  .regex(ukPhoneRegex, {
-    message: 'Please enter a valid UK phone number (e.g., +447700900123)'
-  });
+export const requiredPhoneSchema = basePhoneSchema;
 
 // Date validation
 export const futureDateSchema = z.string()
@@ -91,21 +103,7 @@ export function formatPhoneForDisplay(phone: string | null): string {
 
 export function formatPhoneForStorage(phone: string): string {
   if (!phone) return '';
-  // Remove all non-digits
-  const digits = phone.replace(/\D/g, '');
-  
-  // UK mobile starting with 07
-  if (digits.startsWith('07') && digits.length === 11) {
-    return `+44${digits.slice(1)}`;
-  }
-  
-  // Already has country code
-  if (digits.startsWith('44') && digits.length === 12) {
-    return `+${digits}`;
-  }
-  
-  // Invalid format
-  throw new Error('Invalid UK phone number format');
+  return normalizePhoneForStorage(phone);
 }
 
 // Sanitization helpers

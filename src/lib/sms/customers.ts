@@ -13,6 +13,11 @@ type ResolvedCustomerResult = {
   standardizedPhone?: string | null
 }
 
+type CustomerLookupRow = {
+  id: string
+  mobile_e164: string | null
+}
+
 function deriveNameParts(fullName?: string | null): CustomerFallback {
   if (!fullName) {
     return {}
@@ -36,6 +41,41 @@ function deriveNameParts(fullName?: string | null): CustomerFallback {
   }
 }
 
+async function findCustomerByPhone(
+  client: SupabaseClient<any, 'public', any>,
+  standardizedPhone: string,
+  numbersToMatch: string[]
+): Promise<CustomerLookupRow | null> {
+  const { data: canonicalMatches, error: canonicalLookupError } = await client
+    .from('customers')
+    .select('id, mobile_e164')
+    .eq('mobile_e164', standardizedPhone)
+    .order('created_at', { ascending: true })
+    .limit(1)
+
+  if (canonicalLookupError) {
+    console.error('Failed to look up customer by mobile_e164:', canonicalLookupError)
+  } else if (canonicalMatches && canonicalMatches.length > 0) {
+    return canonicalMatches[0] as CustomerLookupRow
+  }
+
+  const { data: legacyMatches, error: legacyLookupError } = await client
+    .from('customers')
+    .select('id, mobile_e164')
+    .in('mobile_number', numbersToMatch)
+    .order('created_at', { ascending: true })
+    .limit(1)
+
+  if (legacyLookupError) {
+    console.error('Failed to look up customer by legacy mobile_number:', legacyLookupError)
+    return null
+  }
+
+  return legacyMatches && legacyMatches.length > 0
+    ? (legacyMatches[0] as CustomerLookupRow)
+    : null
+}
+
 export async function ensureCustomerForPhone(
   supabase: SupabaseClient<any, 'public', any> | undefined,
   phone: string | null | undefined,
@@ -52,19 +92,18 @@ export async function ensureCustomerForPhone(
     const variants = generatePhoneVariants(standardizedPhone)
     const numbersToMatch = variants.length > 0 ? variants : [standardizedPhone]
 
-    const { data: existingMatches, error: lookupError } = await client
-      .from('customers')
-      .select('id')
-      .in('mobile_number', numbersToMatch)
-      .order('created_at', { ascending: true })
-      .limit(1)
+    const existingMatch = await findCustomerByPhone(client, standardizedPhone, numbersToMatch)
+    if (existingMatch) {
+      if (!existingMatch.mobile_e164) {
+        await client
+          .from('customers')
+          .update({
+            mobile_e164: standardizedPhone
+          })
+          .eq('id', existingMatch.id)
+      }
 
-    if (lookupError) {
-      console.error('Failed to look up customer for SMS logging:', lookupError)
-    }
-
-    if (existingMatches && existingMatches.length > 0) {
-      return { customerId: existingMatches[0].id, standardizedPhone }
+      return { customerId: existingMatch.id, standardizedPhone }
     }
 
     const sanitizedFirstName = fallback.firstName?.trim()
@@ -87,8 +126,10 @@ export async function ensureCustomerForPhone(
       first_name: fallbackFirstName,
       last_name: fallbackLastName,
       mobile_number: standardizedPhone,
+      mobile_e164: standardizedPhone,
       email: fallback.email ?? null,
-      sms_opt_in: true
+      sms_opt_in: true,
+      sms_status: 'active'
     }
 
     const { data: inserted, error: insertError } = await client
@@ -99,15 +140,18 @@ export async function ensureCustomerForPhone(
 
     if (insertError) {
       if ((insertError as any)?.code === '23505') {
-        const { data: conflictMatches } = await client
-          .from('customers')
-          .select('id')
-          .in('mobile_number', numbersToMatch)
-          .order('created_at', { ascending: true })
-          .limit(1)
+        const conflictMatch = await findCustomerByPhone(client, standardizedPhone, numbersToMatch)
+        if (conflictMatch) {
+          if (!conflictMatch.mobile_e164) {
+            await client
+              .from('customers')
+              .update({
+                mobile_e164: standardizedPhone
+              })
+              .eq('id', conflictMatch.id)
+          }
 
-        if (conflictMatches && conflictMatches.length > 0) {
-          return { customerId: conflictMatches[0].id, standardizedPhone }
+          return { customerId: conflictMatch.id, standardizedPhone }
         }
       }
 

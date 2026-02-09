@@ -1,15 +1,16 @@
 import { NextRequest } from 'next/server'
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth'
 import { z } from 'zod'
-import { resolveCustomerByPhone } from '@/lib/parking/customers'
-import { calculateParkingPricing } from '@/lib/parking/pricing'
-import { getActiveParkingRate, insertParkingBooking } from '@/lib/parking/repository'
-import { checkParkingCapacity } from '@/lib/parking/capacity'
-import { createParkingPaymentOrder } from '@/lib/parking/payments'
+import { createParkingPaymentOrder, sendParkingPaymentRequest } from '@/lib/parking/payments'
 import { createAdminClient } from '@/lib/supabase/admin'
-import crypto from 'crypto'
 import { logAuditEvent } from '@/app/actions/audit'
 import type { ParkingBooking } from '@/types/parking'
+import { createPendingParkingBooking } from '@/services/parking'
+import {
+  computeIdempotencyRequestHash,
+  lookupIdempotencyKey,
+  persistIdempotencyResponse
+} from '@/lib/api/idempotency'
 
 const CreateBookingSchema = z.object({
   customer: z.object({
@@ -33,11 +34,32 @@ function sanitizeRegistration(reg: string): string {
   return reg.replace(/\s+/g, '').toUpperCase()
 }
 
-function computeRequestHash(payload: { start_at: string; end_at: string; mobile_number: string; registration: string }) {
-  return crypto
-    .createHash('sha256')
-    .update(JSON.stringify(payload))
-    .digest('hex')
+function mapParkingCreateError(message: string) {
+  if (message.includes('End time must be after start time') || message.includes('Invalid start or end time')) {
+    return createErrorResponse(message, 'VALIDATION_ERROR', 400)
+  }
+
+  if (message.includes('Parking rates have not been configured')) {
+    return createErrorResponse('Parking rates are not configured', 'CONFIGURATION_MISSING', 500)
+  }
+
+  if (message.includes('Parking rates are invalid')) {
+    return createErrorResponse('Parking rates are invalid', 'CONFIGURATION_INVALID', 500)
+  }
+
+  if (message.includes('No parking spaces remaining')) {
+    return createErrorResponse(
+      'No parking spaces available for the requested period',
+      'CAPACITY_UNAVAILABLE',
+      409
+    )
+  }
+
+  if (message.includes('Override price must be greater than zero')) {
+    return createErrorResponse('Override price must be greater than zero', 'VALIDATION_ERROR', 400)
+  }
+
+  return null
 }
 
 export async function POST(request: NextRequest) {
@@ -71,95 +93,70 @@ export async function POST(request: NextRequest) {
         mobile_number: payload.customer.mobile_number,
         registration: sanitizeRegistration(payload.vehicle.registration)
       }
-      const requestHash = computeRequestHash(requestHashPayload)
+      const requestHash = computeIdempotencyRequestHash(requestHashPayload)
 
       if (idempotencyKey) {
-        const { data: existingKey } = await supabase
-          .from('idempotency_keys')
-          .select('response')
-          .eq('key', idempotencyKey)
-          .eq('request_hash', requestHash)
-          .maybeSingle()
+        const lookup = await lookupIdempotencyKey(supabase, idempotencyKey, requestHash)
 
-        if (existingKey?.response) {
-          return createApiResponse(existingKey.response, 201)
+        if (lookup.state === 'conflict') {
+          return createErrorResponse(
+            'Idempotency key already used with a different request payload',
+            'IDEMPOTENCY_KEY_CONFLICT',
+            409
+          )
+        }
+
+        if (lookup.state === 'replay') {
+          return createApiResponse(lookup.response, 201)
         }
       }
 
-      const rates = await getActiveParkingRate(supabase)
-      if (!rates) {
-        return createErrorResponse('Parking rates are not configured', 'CONFIGURATION_MISSING', 500)
-      }
-
-      const hourly = Number(rates.hourly_rate)
-      const daily = Number(rates.daily_rate)
-      const weekly = Number(rates.weekly_rate)
-      const monthly = Number(rates.monthly_rate)
-
-      if ([hourly, daily, weekly, monthly].some((value) => !Number.isFinite(value) || value <= 0)) {
-        return createErrorResponse('Parking rates are invalid', 'CONFIGURATION_INVALID', 500)
-      }
-
-      const pricing = calculateParkingPricing(start, end, {
-        hourlyRate: hourly,
-        dailyRate: daily,
-        weeklyRate: weekly,
-        monthlyRate: monthly
-      })
-
-      const capacity = await checkParkingCapacity(payload.start_at, payload.end_at)
-      if (capacity.remaining <= 0) {
-        return createErrorResponse(
-          'No parking spaces available for the requested period',
-          'CAPACITY_UNAVAILABLE',
-          409,
-          { remaining: capacity.remaining }
+      let booking: ParkingBooking
+      try {
+        const result = await createPendingParkingBooking(
+          {
+            customer: {
+              firstName: payload.customer.first_name,
+              lastName: payload.customer.last_name,
+              email: payload.customer.email,
+              mobile: payload.customer.mobile_number
+            },
+            vehicle: {
+              registration: payload.vehicle.registration,
+              make: payload.vehicle.make,
+              model: payload.vehicle.model,
+              colour: payload.vehicle.colour
+            },
+            startAt: payload.start_at,
+            endAt: payload.end_at,
+            notes: payload.notes,
+            createdBy: null,
+            updatedBy: null
+          },
+          { client: supabase }
         )
+        booking = result.booking
+      } catch (serviceError) {
+        const message = serviceError instanceof Error ? serviceError.message : 'Failed to create parking booking'
+        const mappedError = mapParkingCreateError(message)
+        if (mappedError) {
+          return mappedError
+        }
+        throw serviceError
       }
-
-      const customer = await resolveCustomerByPhone(supabase, {
-        firstName: payload.customer.first_name,
-        lastName: payload.customer.last_name,
-        email: payload.customer.email,
-        phone: payload.customer.mobile_number
-      })
-
-      const paymentDueAt = new Date()
-      paymentDueAt.setDate(paymentDueAt.getDate() + 7)
-
-      const booking = await insertParkingBooking(
-        {
-          customer_id: customer.id,
-          customer_first_name: customer.first_name,
-          customer_last_name: customer.last_name ?? null,
-          customer_mobile: customer.mobile_number,
-          customer_email: customer.email ?? null,
-          vehicle_registration: sanitizeRegistration(payload.vehicle.registration),
-          vehicle_make: payload.vehicle.make ?? null,
-          vehicle_model: payload.vehicle.model ?? null,
-          vehicle_colour: payload.vehicle.colour ?? null,
-          start_at: payload.start_at,
-          end_at: payload.end_at,
-          duration_minutes: pricing.durationMinutes,
-          calculated_price: pricing.total,
-          pricing_breakdown: pricing.breakdown,
-          status: 'pending_payment',
-          payment_status: 'pending',
-          payment_due_at: paymentDueAt.toISOString(),
-          expires_at: paymentDueAt.toISOString(),
-          notes: payload.notes ?? null,
-          created_by: null,
-          updated_by: null
-        },
-        supabase
-      )
 
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-      const paymentResult = await createParkingPaymentOrder(booking as ParkingBooking, {
+      const paymentResult = await createParkingPaymentOrder(booking, {
         returnUrl: `${appUrl}/api/parking/payment/return?booking_id=${booking.id}`,
         cancelUrl: `${appUrl}/parking/bookings/${booking.id}?cancelled=true`,
         client: supabase
       })
+
+      try {
+        await sendParkingPaymentRequest(booking, paymentResult.approveUrl, { client: supabase })
+      } catch (notificationError) {
+        console.error('Failed to send initial parking payment request SMS', notificationError)
+      }
 
       const responsePayload = {
         success: true,
@@ -175,14 +172,7 @@ export async function POST(request: NextRequest) {
       }
 
       if (idempotencyKey) {
-        await supabase
-          .from('idempotency_keys')
-          .upsert({
-            key: idempotencyKey,
-            request_hash: requestHash,
-            response: responsePayload,
-            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-          })
+        await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, responsePayload)
       }
 
       await logAuditEvent({

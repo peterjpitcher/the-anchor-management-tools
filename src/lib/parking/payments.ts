@@ -162,6 +162,24 @@ export async function sendParkingPaymentRequest(
       payload: { sms: smsBody }
     }, supabase)
 
+    if (smsResult.success) {
+      const { error: updateBookingError } = await supabase
+        .from('parking_bookings')
+        .update({
+          initial_request_sms_sent: true,
+          // The initial payment request is sent when the 7-day offer window starts.
+          unpaid_week_before_sms_sent: true
+        })
+        .eq('id', booking.id)
+
+      if (updateBookingError) {
+        logger.warn('Failed to update parking booking reminder flags after payment request SMS', {
+          error: updateBookingError,
+          metadata: { bookingId: booking.id }
+        })
+      }
+    }
+
     if (!smsResult.success) {
       logger.warn('Parking payment request SMS failed', {
         metadata: { bookingId: booking.id, error: smsResult.error }
@@ -198,7 +216,9 @@ export async function captureParkingPayment(
     {
       payment_status: 'paid',
       status: 'confirmed',
-      confirmed_at: new Date().toISOString()
+      confirmed_at: new Date().toISOString(),
+      paid_start_three_day_sms_sent: false,
+      paid_end_three_day_sms_sent: false
     },
     supabase
   )
