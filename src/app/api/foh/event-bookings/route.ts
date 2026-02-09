@@ -11,6 +11,10 @@ import { sendSMS } from '@/lib/twilio'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { sendManagerTableBookingCreatedEmailIfAllowed } from '@/lib/table-bookings/bookings'
 import { logger } from '@/lib/logger'
+import {
+  isSundayLunchOnlyEvent,
+  SUNDAY_LUNCH_ONLY_EVENT_MESSAGE
+} from '@/lib/events/sunday-lunch-only-policy'
 
 const CreateFohEventBookingSchema = z.object({
   customer_id: z.string().uuid().optional(),
@@ -244,7 +248,7 @@ async function sendBookingSmsIfAllowed(
 
   const to = customer.mobile_number || normalizedPhone
 
-  await sendSMS(to, smsBody, {
+  const smsResult = await sendSMS(to, smsBody, {
     customerId,
     metadata: {
       event_booking_id: bookingResult.booking_id,
@@ -252,6 +256,17 @@ async function sendBookingSmsIfAllowed(
       template_key: bookingResult.state === 'pending_payment' ? 'event_booking_pending_payment' : 'event_booking_confirmed'
     }
   })
+
+  if (!smsResult.success) {
+    logger.warn('Failed to send FOH event booking SMS', {
+      metadata: {
+        customerId,
+        bookingId: bookingResult.booking_id,
+        state: bookingResult.state,
+        error: smsResult.error || 'Unknown SMS error'
+      }
+    })
+  }
 }
 
 async function cancelEventBookingAfterTableReservationFailure(
@@ -324,6 +339,33 @@ export async function POST(request: NextRequest) {
   }
 
   const payload = parsed.data
+  const { data: eventRow, error: eventLookupError } = await auth.supabase
+    .from('events')
+    .select('id, booking_mode, name, date, start_datetime')
+    .eq('id', payload.event_id)
+    .maybeSingle()
+
+  if (eventLookupError) {
+    return NextResponse.json({ error: 'Failed to load event details' }, { status: 500 })
+  }
+
+  if (!eventRow) {
+    return NextResponse.json({ error: 'Selected event could not be found' }, { status: 404 })
+  }
+
+  if (
+    isSundayLunchOnlyEvent({
+      id: (eventRow as any).id || null,
+      name: (eventRow as any).name || null,
+      date: (eventRow as any).date || null,
+      start_datetime: (eventRow as any).start_datetime || null
+    })
+  ) {
+    return NextResponse.json({ error: SUNDAY_LUNCH_ONLY_EVENT_MESSAGE }, { status: 409 })
+  }
+
+  const bookingMode = normalizeEventBookingMode((eventRow as any).booking_mode)
+
   let normalizedPhone: string | null = null
   let customerId: string | null = null
   let shouldSendBookingSms = true
@@ -408,22 +450,6 @@ export async function POST(request: NextRequest) {
   if (!customerId) {
     return NextResponse.json({ error: 'Failed to resolve customer' }, { status: 500 })
   }
-
-  const { data: eventRow, error: eventLookupError } = await auth.supabase
-    .from('events')
-    .select('id, booking_mode')
-    .eq('id', payload.event_id)
-    .maybeSingle()
-
-  if (eventLookupError) {
-    return NextResponse.json({ error: 'Failed to load event details' }, { status: 500 })
-  }
-
-  if (!eventRow) {
-    return NextResponse.json({ error: 'Selected event could not be found' }, { status: 404 })
-  }
-
-  const bookingMode = normalizeEventBookingMode((eventRow as any).booking_mode)
 
   const { data: rpcResultRaw, error: rpcError } = await auth.supabase.rpc('create_event_booking_v05', {
     p_event_id: payload.event_id,

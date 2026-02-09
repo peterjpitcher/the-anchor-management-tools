@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fromZonedTime } from 'date-fns-tz'
 import { getLondonDateIso, requireFohPermission } from '@/lib/foh/api-auth'
+import { isSundayLunchOnlyEvent } from '@/lib/events/sunday-lunch-only-policy'
 
 type EventCapacityRow = {
   event_id: string
@@ -86,7 +87,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to load events' }, { status: 500 })
   }
 
-  const rows = Array.isArray(events) ? events : []
+  const rows = (Array.isArray(events) ? events : []).filter(
+    (row) =>
+      !isSundayLunchOnlyEvent({
+        id: row.id || null,
+        name: row.name || null,
+        date: row.date || null,
+        start_datetime: row.start_datetime || null
+      })
+  )
   const eventIds = rows.map((row) => row.id).filter(Boolean)
 
   const capacityByEventId = new Map<string, EventCapacityRow>()
